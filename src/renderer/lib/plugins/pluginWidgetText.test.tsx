@@ -10,7 +10,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 import type { GameLocalizationBundle } from "@shared/types/localization";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
-import { EMPTY_UI_TEXT_WRITER_INDEX } from "@shared/types/ui-editor/textWriters";
 import { uiTextSitesFromPluginDeclaration, uiTextSitesOf } from "@shared/types/ui-editor/textSource";
 import type { FieldDefinition } from "@/apps/workspace/modules/properties/framework/types";
 import { ElementRendererRegistry, type ElementRendererProps } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
@@ -171,14 +170,14 @@ describe("a plugin widget's declared words in the editor", () => {
     it("lists each word-holding prop in the translation table, named by what the plugin calls it", () => {
         registerGuarded();
         const element = badge({ caption: "Treasure", hint: "Press to open", captionKey: "" });
-        const rows = extractUiTranslationRows(documentWith(element), EMPTY_UI_TEXT_WRITER_INDEX, { locale: "zh" });
+        const rows = extractUiTranslationRows(documentWith(element), { locale: "zh" });
         expect(rows.map(row => [row.unitId, row.elementName, row.groupName, row.sourceText])).toEqual([
             ["ui:badge-1.caption", "Badge › 说明", "Title", "Treasure"],
             ["ui:badge-1.hint", "Badge › hint", "Title", "Press to open"],
         ]);
         // A key's words have the key's row, not the widget's.
         const keyed = badge({ captionKey: "menu.treasure", hint: "Press to open" });
-        expect(extractUiTranslationRows(documentWith(keyed), EMPTY_UI_TEXT_WRITER_INDEX).map(row => row.unitId))
+        expect(extractUiTranslationRows(documentWith(keyed)).map(row => row.unitId))
             .toEqual(["ui:badge-1.hint"]);
     });
 });

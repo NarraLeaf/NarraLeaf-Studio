@@ -1594,7 +1594,9 @@ describe("story/quit-page-missing", () => {
         expect(findings[0].location).toMatchObject({ blockId: "q1" });
     });
 
-    it("names the page a deleted one left behind", () => {
+    it("says the page is gone without printing the id it left behind", () => {
+        // A page's id is a UUID for every page but the main one, and the interface never shows one;
+        // the deleted page's name is not kept anywhere the row can read.
         const findings = run(
             "story/quit-page-missing",
             createTestLintContext({
@@ -1604,7 +1606,7 @@ describe("story/quit-page-missing", () => {
         );
         expect(findings).toHaveLength(1);
         expect(findings[0].messageKey).toBe("lint.rule.storyQuitPageMissing.deleted");
-        expect(findings[0].messageParams).toEqual({ page: "gone" });
+        expect(findings[0].messageParams).toBeUndefined();
     });
 
     it("stays quiet when the interface document could not be read", () => {

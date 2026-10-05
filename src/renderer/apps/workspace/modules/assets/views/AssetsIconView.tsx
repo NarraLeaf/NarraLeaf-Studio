@@ -10,7 +10,7 @@ import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { AssetThumbnail } from "../components/AssetThumbnail";
 import { AssetSupportBadge } from "../components/AssetSupportBadge";
-import { AssetSetIconTile } from "../components/AssetSetRow";
+import { ASSET_SET_REVEAL_RING, AssetSetIconTile } from "../components/AssetSetRow";
 import { AssetTransferSweep, assetLibraryFreezeScope } from "../assetLiveSession";
 import type { ResolvedAssetSet } from "../state/useAssetSets";
 import { cn } from "@/lib/utils/cn";
@@ -599,11 +599,14 @@ function IconSectionGrid({
      */
     const revealNonce = assetSetReveal?.nonce ?? null;
     const revealSetId = assetSetReveal?.setId ?? null;
+    const revealAssetId = assetSetReveal?.assetId ?? null;
     useEffect(() => {
-        if (revealNonce === null || !revealSetId) {
+        if (revealNonce === null || (!revealSetId && !revealAssetId)) {
             return;
         }
-        const index = tiles.findIndex(tile => tile.kind === "set" && tile.entry.set.id === revealSetId);
+        const index = revealSetId
+            ? tiles.findIndex(tile => tile.kind === "set" && tile.entry.set.id === revealSetId)
+            : tiles.findIndex(tile => tile.kind === "asset" && tile.asset.id === revealAssetId);
         if (index >= 0) {
             virtualizer.scrollToIndex(Math.floor(index / columns), { align: "center" });
         }
@@ -905,10 +908,13 @@ function AssetIconTile({ asset, category, caption, assetSetValue }: {
         mediaSupport,
         handleConvertMedia,
         assetTransfers,
+        assetSetReveal,
     } = useAssetsPanelContext();
     const Icon = ASSET_TYPE_ICONS[asset.type];
     const isImage = asset.type === AssetType.Image;
     const isSelected = selectedItems.has("asset:" + asset.id);
+    // The tile a jump just landed on; the grid has already scrolled its row into view.
+    const revealed = assetSetReveal?.assetId === asset.id;
     const isDragging = !!draggedItem && !draggedItem.isGroup && draggedItem.item.id === asset.id;
     const support = mediaSupport.get(asset.id);
     // How far this file has got, while it is still coming in over a session. Undefined at every
@@ -921,10 +927,12 @@ function AssetIconTile({ asset, category, caption, assetSetValue }: {
     return (
         <div
             draggable={movable}
+            data-asset-row={asset.id}
+            data-revealed={revealed ? "" : undefined}
             data-tip={arriving === undefined ? undefined : t("assets.live.transferring", { percent: Math.round(arriving * 100) })}
             className={`${movable ? "nl-drag-source " : ""}relative isolate border rounded-lg p-2 bg-fill-subtle flex flex-col gap-2 cursor-pointer hover:border-edge-strong ${
                 isSelected ? "border-primary/80 bg-primary/10" : "border-transparent"
-            } ${isDragging ? "opacity-50" : ""} ${
+            } ${revealed ? ASSET_SET_REVEAL_RING : ""} ${isDragging ? "opacity-50" : ""} ${
                 clipboard?.type === "cut" && clipboard.assets.some((a) => a.id === asset.id) ? "opacity-40" : ""
             }`}
             onClick={(e) => {

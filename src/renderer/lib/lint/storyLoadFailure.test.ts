@@ -26,6 +26,11 @@ describe("storyUnreadableFinding", () => {
         expect(finding.location).toEqual({ kind: "story", storyId: "story-1", storyName: "First Day" });
     });
 
+    it("opens on the story's own row, since there is no scene to open", () => {
+        const finding = storyUnreadableFinding(STORY, new Error("truncated"));
+        expect(finding.target).toEqual({ kind: "storyEntry", storyId: "story-1", storyName: "First Day" });
+    });
+
     it("names both versions for a document below the floor", () => {
         const below = STORY_DOCUMENT_MIN_SUPPORTED_VERSION - 1;
         const finding = storyUnreadableFinding(

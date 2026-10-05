@@ -90,6 +90,27 @@ export function liveBlocks(scene: StoryScene): StoryBlock[] {
     return listSceneBlocksInDocumentOrder(scene, { skipSubtree: block => Boolean(block.disabled) });
 }
 
+/** A live `/quit` row and the page it names - trimmed, and empty when it names none. */
+export type QuitRow = SceneCursor & { block: StoryBlock; surfaceId: string };
+
+/**
+ * Every live `/quit` row in the project, with the page it ends the playthrough on.
+ *
+ * One reading for the two rules that ask: `story/quit-page-missing` about the row, and
+ * `ui/page-unreachable` about the page - a page a quit row lands on is a page a player reaches.
+ */
+export function listQuitRows(ctx: LintContext): QuitRow[] {
+    const rows: QuitRow[] = [];
+    for (const cursor of eachScene(ctx)) {
+        for (const block of liveBlocks(cursor.scene)) {
+            if (block.kind === "control" && block.payload.control === "quit") {
+                rows.push({ ...cursor, block, surfaceId: block.payload.surfaceId.trim() });
+            }
+        }
+    }
+    return rows;
+}
+
 /** Direct children that are still live. The parent is assumed live, so no ancestor walk is needed. */
 function liveChildren(scene: StoryScene, block: StoryBlock): StoryBlock[] {
     const children: StoryBlock[] = [];
@@ -1051,25 +1072,20 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
             const surfaces = ctx.uiDocument
                 ? new Set(ctx.uiDocument.surfaces.map(surface => surface.id))
                 : null;
-            for (const { entry, scene } of eachScene(ctx)) {
-                for (const block of liveBlocks(scene)) {
-                    if (block.kind !== "control" || block.payload.control !== "quit") {
-                        continue;
-                    }
-                    const surfaceId = block.payload.surfaceId.trim();
-                    if (surfaceId && (!surfaces || surfaces.has(surfaceId))) {
-                        continue;
-                    }
-                    findings.push({
-                        ruleId: "story/quit-page-missing",
-                        messageKey: surfaceId
-                            ? "lint.rule.storyQuitPageMissing.deleted"
-                            : "lint.rule.storyQuitPageMissing.message",
-                        ...(surfaceId ? { messageParams: { page: surfaceId } } : {}),
-                        location: storyLocation(entry, scene, block.id),
-                        target: blockTarget(entry, scene, block.id),
-                    });
+            for (const { entry, scene, block, surfaceId } of listQuitRows(ctx)) {
+                if (surfaceId && (!surfaces || surfaces.has(surfaceId))) {
+                    continue;
                 }
+                findings.push({
+                    ruleId: "story/quit-page-missing",
+                    // The deleted page is not named: all the row still holds is its id, and an id is
+                    // not something an author can look up.
+                    messageKey: surfaceId
+                        ? "lint.rule.storyQuitPageMissing.deleted"
+                        : "lint.rule.storyQuitPageMissing.message",
+                    location: storyLocation(entry, scene, block.id),
+                    target: blockTarget(entry, scene, block.id),
+                });
             }
             return findings;
         },

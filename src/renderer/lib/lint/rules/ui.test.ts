@@ -14,6 +14,7 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_GO,
 } from "@shared/types/blueprint/graph";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
+import { STORY_DOCUMENT_SCHEMA_VERSION, type StoryDocument } from "@shared/types/story";
 import type { UIInputActionDef, UISurfaceActionEnablement } from "@shared/types/ui-editor/inputAction";
 import { UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
 import { widgetMainOwnerKey } from "../../workspace/services/ui-editor/blueprint/ownerKeys";
@@ -24,7 +25,6 @@ import { createTestLintContext } from "../testContext";
 import type { LintRule, LintRuleId } from "../types";
 import { widgetModuleRegistry } from "../../ui-editor/widget-modules/registryInstance";
 import { listInterfaceTextUnitSites, UI_LINT_RULES } from "./ui";
-import { indexUITextWriters } from "@shared/types/ui-editor/textWriters";
 
 /**
  * The `ui` category.
@@ -106,8 +106,8 @@ function textWidget(props: Record<string, unknown>): UIElement {
 }
 
 /** The units a document's words are read through, as `unitId` or `key:<name>`. */
-function unitsOf(document: UIDocument, blueprints: BlueprintDocument = NO_GRAPHS): string[] {
-    return listInterfaceTextUnitSites(document, indexUITextWriters(blueprints)).map(site =>
+function unitsOf(document: UIDocument): string[] {
+    return listInterfaceTextUnitSites(document).map(site =>
         site.binding.kind === "key" ? `key:${site.binding.keyName}` : site.binding.unitId,
     );
 }
@@ -141,28 +141,6 @@ describe("listInterfaceTextUnitSites", () => {
 
         expect(unitsOf(rowField)).toEqual([]);
         expect(unitsOf(valueBlueprint)).toEqual([]);
-    });
-
-    it("leaves out words a blueprint writes over, and keeps words it only appends to", () => {
-        // The save slot's place name, written by the slot's own graph: the words are sample text,
-        // which no package carries. An append keeps them on screen as the start of the line.
-        const document = onePage(textWidget({ text: "The corridor" }));
-        const writtenBy = (nodeType: string): BlueprintDocument => blueprintDocument({
-            [encodeBlueprintOwnerKey({ kind: "surfaceMain", surfaceId: MAIN_APP_SURFACE_ID })]: {
-                nodes: {
-                    ref: {
-                        id: "ref",
-                        type: "blueprint.element.ref",
-                        params: { surfaceId: MAIN_APP_SURFACE_ID, elementId: "label", elementType: "nl.text" },
-                    },
-                    write: { id: "write", type: nodeType },
-                },
-                edges: [{ from: { nodeId: "ref", port: "element" }, to: { nodeId: "write", port: "element" } }],
-            },
-        });
-
-        expect(unitsOf(document, writtenBy("blueprint.element.text.setText"))).toEqual([]);
-        expect(unitsOf(document, writtenBy("blueprint.element.text.appendText"))).toEqual(["ui:label.text"]);
     });
 
     it("still reads words when only some other prop of the widget is bound", () => {
@@ -263,6 +241,73 @@ describe("ui/page-unreachable", () => {
         ]);
     });
 
+    it("says nothing about a page a story's /quit row ends the playthrough on", async () => {
+        // The quit page is opened by the story, not by any graph or widget, and it is the page every
+        // ending lands on - reporting it was a warning on the one page a finished game always shows.
+        const quitStory = {
+            id: "s1",
+            name: "Main",
+            document: {
+                schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+                id: "s1",
+                name: "Main",
+                chapters: [],
+                scenes: {
+                    sc1: {
+                        id: "sc1",
+                        name: "Ending",
+                        runtimeName: "Ending",
+                        rootBlockIds: ["q1"],
+                        blocks: {
+                            q1: { id: "q1", kind: "control", parentId: null, childrenIds: [], payload: { control: "quit", surfaceId: "settings" } },
+                        },
+                    },
+                },
+            } as unknown as StoryDocument,
+        };
+
+        expect(
+            await run("ui/page-unreachable", createTestLintContext({
+                uiDocument: twoPages(),
+                blueprintDocument: NO_GRAPHS,
+                stories: [quitStory],
+            })),
+        ).toEqual([]);
+        // And stays quiet while the stories were not all read: the quit row may be in the missing one.
+        expect(
+            await run("ui/page-unreachable", createTestLintContext({
+                uiDocument: twoPages(),
+                blueprintDocument: NO_GRAPHS,
+                storiesComplete: false,
+            })),
+        ).toEqual([]);
+    });
+
+    it("says nothing about a page a component placement names in its params", async () => {
+        // One nav entry placed once per destination: the Go Page inside the definition names nothing,
+        // and the page is named by the placement instead.
+        const document = uiDocument({
+            surfaces: [
+                { id: MAIN_APP_SURFACE_ID, name: "Main Page", rootElementId: "root-main" },
+                { id: "settings", name: "Settings", rootElementId: "root-settings" },
+            ],
+            elements: [
+                element({ id: "root-main", type: "nl.root", childrenIds: ["nav"] }),
+                element({
+                    id: "nav",
+                    type: "nl.container",
+                    extra: { componentLink: { componentId: "nav-entry", linked: true, params: { page: "settings" } } },
+                } as Partial<UIElement> & { id: string; type: string }),
+                element({ id: "root-settings", type: "nl.root" }),
+            ],
+            components: [{ id: "nav-entry", name: "Nav entry", rootElementId: "nav-root", elements: {} }] as unknown as UIDocument["components"],
+        });
+
+        expect(
+            await run("ui/page-unreachable", createTestLintContext({ uiDocument: document, blueprintDocument: NO_GRAPHS })),
+        ).toEqual([]);
+    });
+
     it("says nothing about a page a Page widget embeds", async () => {
         const document = uiDocument({
             surfaces: [
@@ -354,8 +399,17 @@ describe("ui/empty-behavior", () => {
             ruleId: "ui/empty-behavior",
             messageKey: "lint.rule.uiEmptyBehavior.message",
             location: { kind: "surface", surfaceId: MAIN_APP_SURFACE_ID, elementId: "start", elementName: "Start" },
-            target: { kind: "uiSurface", surfaceId: MAIN_APP_SURFACE_ID },
+            // The click selects the button the row names, not just the page it is on.
+            target: { kind: "uiSurface", surfaceId: MAIN_APP_SURFACE_ID, elementId: "start" },
         });
+    });
+
+    it("says nothing at all when the blueprints could not be read", async () => {
+        // A null document is a failed read, not a project with no graphs: answered as the second, it
+        // reported every button in the project as doing nothing.
+        expect(
+            await run("ui/empty-behavior", createTestLintContext({ uiDocument: onePage(button()), blueprintDocument: null })),
+        ).toEqual([]);
     });
 
     it("says nothing about a button whose own blueprint starts on a click", async () => {
@@ -641,7 +695,7 @@ describe("ui/frame-target-missing", () => {
             elementId: "window",
             elementName: "Window",
         });
-        expect(findings[0].target).toEqual({ kind: "uiComponent", componentId: "card-id" });
+        expect(findings[0].target).toEqual({ kind: "uiComponent", componentId: "card-id", elementId: "window" });
     });
 });
 
@@ -934,7 +988,7 @@ describe("a component's text parameters", () => {
             { paramKeys: { label: "nav.title" } },
             {},
         ]);
-        const sites = listInterfaceTextUnitSites(document, indexUITextWriters(null));
+        const sites = listInterfaceTextUnitSites(document);
         expect(sites.map(site => [site.element.id, site.binding.kind === "key" ? `key:${site.binding.keyName}` : site.binding.unitId])).toEqual([
             ["p1", "ui:p1.param.label"],
             ["p2", "key:nav.title"],

@@ -47,12 +47,41 @@ export type SearchJumpTarget =
           focusFunctionId?: string;
           focusNodeId?: string;
       }
+    /**
+     * A named string: its row in a translation table, which is the one place its words are edited.
+     * Opens the table of the project's first translated language; a project with none has no table,
+     * and the jump shows the Localization panel instead, where a language is added.
+     */
     | { kind: "localizationKey"; keyName: string }
     /**
-     * A project-level story variable — the panel that owns it, since no row declares one.
-     *
-     * Carries the identity even though the jump can only reveal the panel today, for the reason
-     * `localizationKey` carries its key: the target says what it points at, and the day the panel can
-     * be told which row to reveal, nothing that produces one of these has to change.
+     * A project-level story variable: its row in the Variables panel, selected and scrolled into view.
+     * `variableId` is the registry entry's id, or the declaration row's for one a story declares.
      */
-    | { kind: "storyVariable"; scope: "saved" | "persistent"; variableId: string };
+    | { kind: "storyVariable"; scope: "saved" | "persistent"; variableId: string }
+    /**
+     * A translation table - one language's - and, with `unitId`, the row of one translation unit in
+     * it, scrolled into view and marked.
+     *
+     * The table lists one source at a time, so a row is found under the source it belongs to:
+     * `storyId` for a story's lines and scene names, absent for the interface's words, the named keys
+     * and the plugins' words. A character's name heads every story's rows and needs neither.
+     */
+    | { kind: "translation"; locale: string; unitId?: string; storyId?: string }
+    /**
+     * A voice table - one voiced language's - and, with `unitId` (a line's text id), that line's row,
+     * where its take is linked. `storyId` names the story the line is in; without it the table looks
+     * the line up itself.
+     */
+    | { kind: "voiceLine"; locale: string; unitId?: string; storyId?: string }
+    /** A story motion, open in its own editor. */
+    | { kind: "storyMotion"; animationId: string }
+    /**
+     * A page of Project settings - the panel's sub-pages - and, with `part`, the part of it to scroll
+     * into view: `fonts` is the project's font stack on the Design page.
+     */
+    | { kind: "projectPage"; page: "app" | "game" | "design" | "project" | "runtimes" | "settings"; part?: "fonts" }
+    /**
+     * A story's own row in the Story panel's list, selected and scrolled into view - the place a story
+     * is renamed or deleted, and the one way into a story whose document cannot be opened.
+     */
+    | { kind: "storyEntry"; storyId: string; storyName: string };

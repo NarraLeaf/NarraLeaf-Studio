@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AssetSet } from "@shared/types/assetSet";
 import { AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import type { AssetGroup } from "@/lib/workspace/services/assets/types";
-import { planAssetSetReveal, type AssetSetPlacement } from "./assetSetRevealPlan";
+import { planAssetReveal, planAssetSetReveal, type AssetSetPlacement } from "./assetSetRevealPlan";
 
 /**
  * What has to be open before a jumped-to set is on screen.
@@ -79,5 +79,50 @@ describe("planAssetSetReveal", () => {
             groups: [group("a", "b"), group("b", "a")],
         });
         expect(plan?.groupPathIds).toEqual(["b", "a"]);
+    });
+});
+
+describe("planAssetReveal", () => {
+    const holding = (setId: string, cells: { assetIds: string[]; childSetIds?: string[] }[]) => ({
+        set: { id: setId },
+        contents: { cells },
+    });
+
+    it("opens the folders a file is filed in, outermost first", () => {
+        expect(planAssetReveal({
+            asset: { id: "a1", groupId: "inner" },
+            category: AssetCategory.Image,
+            holders: [],
+            placements: [],
+            groups: [group("outer"), group("inner", "outer")],
+        })).toEqual({ category: AssetCategory.Image, groupPathIds: ["outer", "inner"], ancestorSetIds: [] });
+    });
+
+    it("reaches a file a set answers with through the set, ending the path with that set", () => {
+        // The library lists such a file inside its set and nowhere else, so its row is one step past
+        // the set's own: the set is opened (the tree) or stepped into (the grid).
+        const parent = set("parent", ["char:alice"], ["en", "ja"], "outer");
+        expect(planAssetReveal({
+            asset: { id: "a1", groupId: "somewhere-else" },
+            category: AssetCategory.Image,
+            holders: [holding("parent", [{ assetIds: ["a1"] }, { assetIds: ["a2"] }])],
+            placements: placements(parent),
+            groups: [group("outer")],
+        })).toEqual({ category: AssetCategory.Image, groupPathIds: ["outer"], ancestorSetIds: ["parent"] });
+    });
+
+    it("prefers the set whose value the file answers directly over one that answers through a sub-set", () => {
+        const parent = set("parent", ["char:alice"], ["en", "ja"], "outer");
+        const child = set("child", ["char:alice", "locale:ja"], ["en", "ja"]);
+        expect(planAssetReveal({
+            asset: { id: "a1" },
+            category: AssetCategory.Image,
+            holders: [
+                holding("parent", [{ assetIds: ["a1"], childSetIds: ["child"] }]),
+                holding("child", [{ assetIds: ["a1"] }]),
+            ],
+            placements: placements(parent, child),
+            groups: [group("outer")],
+        })?.ancestorSetIds).toEqual(["parent", "child"]);
     });
 });

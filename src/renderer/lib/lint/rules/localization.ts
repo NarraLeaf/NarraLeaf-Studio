@@ -2,17 +2,14 @@ import { localizationKeyUnitId, type LocalizationUnit } from "@shared/types/loca
 import { isSourceHashStale, segmentHasMarkup, validateMarkupParity } from "@shared/utils/localizationText";
 import { deriveUnitState } from "../../workspace/services/localization/localizationModel";
 import type { LintContext, LintLocalizationContext } from "../context";
-import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
 import type { LintFinding, LintLocation, LintRule } from "../types";
 import {
     isBlankSegment,
     listLiveTextSegments,
     segmentSourceText,
-    storyBlockTarget,
     storyLocation,
     type LintTextSegmentRef,
 } from "./text/textSegments";
-import { indexUITextWriters } from "@shared/types/ui-editor/textWriters";
 import { clipLiteral, listInterfaceTextUnitSites } from "./ui";
 
 /**
@@ -54,7 +51,6 @@ type InterfaceTextUnit = {
     /** What the unit is hashed against - the key's source words, or the widget's own literal. */
     sourceText: string;
     location: LintLocation;
-    target: SearchJumpTarget;
 };
 
 /**
@@ -80,7 +76,7 @@ function interfaceTextUnits(ctx: LintContext): InterfaceTextUnit[] {
     }
     const units: InterfaceTextUnit[] = [];
     const seen = new Set<string>();
-    for (const site of listInterfaceTextUnitSites(ctx.uiDocument, indexUITextWriters(ctx.blueprintDocument))) {
+    for (const site of listInterfaceTextUnitSites(ctx.uiDocument)) {
         let unit: InterfaceTextUnit;
         if (site.binding.kind === "key") {
             const sourceText = ctx.localizationKeys?.get(site.binding.keyName);
@@ -91,15 +87,12 @@ function interfaceTextUnits(ctx: LintContext): InterfaceTextUnit[] {
                 unitId: localizationKeyUnitId(site.binding.keyName),
                 sourceText,
                 location: site.location,
-                // The key's row is where its translation is written; the page only shows it.
-                target: { kind: "localizationKey", keyName: site.binding.keyName },
             };
         } else {
             unit = {
                 unitId: site.binding.unitId,
                 sourceText: site.binding.sourceText,
                 location: site.location,
-                target: site.target,
             };
         }
         if (seen.has(unit.unitId)) {
@@ -124,7 +117,9 @@ function interfaceFinding(
         // Save button's finding from the Load button's.
         messageParams: { locale, text: clipLiteral(unit.sourceText) },
         location: unit.location,
-        target: unit.target,
+        // The page only shows the words; the translation is typed into that language's table, in its
+        // row among the interface's words - a named key's row as much as a widget's own.
+        target: { kind: "translation", locale, unitId: unit.unitId },
     };
 }
 
@@ -240,11 +235,15 @@ function runStale(ctx: LintContext): LintFinding[] {
  * than alarming.
  *
  * **One finding per locale, carrying a count.** An orphan has no story row to point at - its row is
- * what is gone - so every finding here has `location: {kind: "project"}` and no jump target. Emitted
+ * what is gone - so every finding here has `location: {kind: "project"}`. Emitted
  * per unit, N orphans rendered as N byte-identical rows at project scope: unreadable, unactionable,
  * and enough to bury the rest of the report on any project that has ever renamed a scene. The
- * author's move is the same one whatever the number is (open that locale and prune), so the number
+ * author's move is the same one whatever the number is (open that language's table), so the number
  * is what the finding carries. A locale with no orphans emits nothing at all.
+ *
+ * Opening one lands on that language's table, which is as near as there is: the table lists the
+ * project's lines, so a translation of a line that is not there has no row in it to reveal, and the
+ * table can neither show nor remove one.
  */
 function runOrphan(ctx: LintContext): LintFinding[] {
     const localization = ctx.localization;
@@ -274,6 +273,7 @@ function runOrphan(ctx: LintContext): LintFinding[] {
             messageParams: { count, locale },
             messageParamCounts: { translations: { key: "lint.rule.localizationOrphan.translationCount", count } },
             location: { kind: "project" },
+            target: { kind: "translation", locale },
         });
     }
     return findings;
@@ -337,8 +337,10 @@ function finding(
         ruleId,
         messageKey,
         messageParams: { locale },
+        // Filed under the line, which is what the report groups and numbers by; opened in the
+        // language's table, at the line's row, which is where its translation is typed.
         location: storyLocation(ref),
-        target: storyBlockTarget(ref),
+        target: { kind: "translation", locale, unitId: ref.textId, storyId: ref.story.id },
     };
 }
 

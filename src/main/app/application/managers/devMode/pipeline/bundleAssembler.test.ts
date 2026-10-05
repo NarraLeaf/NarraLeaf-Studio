@@ -1348,12 +1348,13 @@ describe("bundleAssembler asset set refusals", () => {
 });
 
 /**
- * Sample text never ships.
+ * Sample text never ships; the words a blueprint writes over do.
  *
- * The words a text holds under a value blueprint, or where a blueprint writes over it, are what the
- * canvas draws while a page is laid out. A package is where that promise is kept: the interface
- * document it carries has them emptied, and a translation a language file still holds for them stays
- * behind with them. The words a player reads ship as written.
+ * The words a text holds under a value blueprint are what the canvas draws while a page is laid out.
+ * A package is where that promise is kept: the interface document it carries has them emptied, and a
+ * translation a language file still holds for them stays behind with them. The words a player reads
+ * ship as written - among them the words a blueprint's Set Text replaces, which are the element's
+ * default value and show, translated, until the first write lands.
  */
 describe("bundleAssembler sample text", () => {
     const tempDirs: string[] = [];
@@ -1407,8 +1408,9 @@ describe("bundleAssembler sample text", () => {
                     id: "slot",
                     name: "Save slot",
                     rootElementId: "place",
-                    // The component's own graph writes the place name over this.
-                    elements: { place: text("place", { text: "SAMPLE-PLACE" }) },
+                    // The component's own graph writes the place name over this; until it does, these
+                    // words are what the slot shows.
+                    elements: { place: text("place", { text: "No place yet" }) },
                 }],
             }),
             "utf-8",
@@ -1460,6 +1462,7 @@ describe("bundleAssembler sample text", () => {
                     // Left over from when the name tag's own words were translated.
                     "ui:nametag.text": { target: "SAMPLE-TRANSLATED", sourceHash: "fnv1a:1", status: "translated" },
                     "ui:title.text": { target: "你的游戏", sourceHash: "fnv1a:2", status: "translated" },
+                    "ui:place.text": { target: "尚无地点", sourceHash: "fnv1a:3", status: "translated" },
                 },
             }),
             "utf-8",
@@ -1467,7 +1470,7 @@ describe("bundleAssembler sample text", () => {
         return projectPath;
     }
 
-    it("carries no sample words and no translation of them, and every word a player reads", async () => {
+    it("carries no sample words and no translation of them, and every word a player reads with its translation", async () => {
         const bundle = await assembleDevModeBundleFromProjectPath({
             projectPath: await createSampleProject(),
             bundleId: "b",
@@ -1476,10 +1479,11 @@ describe("bundleAssembler sample text", () => {
 
         expect(JSON.stringify(bundle)).not.toMatch(/SAMPLE-/);
         expect(bundle.ui.uidoc.elements.nametag.props).toEqual({ text: "" });
-        expect(bundle.ui.uidoc.components?.[0].elements.place.props).toEqual({ text: "" });
-        // The binding and the write are untouched: they are what the game shows there.
+        // The binding is untouched: it is what the game shows there.
         expect(bundle.ui.uidoc.elements.nametag.valueBindings?.text).toMatchObject({ kind: "blueprintValue" });
         expect(bundle.ui.uidoc.elements.title.props).toEqual({ text: "Your Game" });
-        expect(bundle.localization?.tables["zh-CN"]).toEqual({ "ui:title.text": "你的游戏" });
+        // Written over by the slot's graph, and shown until then: the words and their translation ship.
+        expect(bundle.ui.uidoc.components?.[0].elements.place.props).toEqual({ text: "No place yet" });
+        expect(bundle.localization?.tables["zh-CN"]).toEqual({ "ui:title.text": "你的游戏", "ui:place.text": "尚无地点" });
     });
 });

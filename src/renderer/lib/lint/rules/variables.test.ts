@@ -294,8 +294,10 @@ describe("variables/undeclared", () => {
         const findings = run("variables/undeclared", ctx);
 
         expect(findings).toHaveLength(1);
-        expect(findings[0].messageKey).toBe("lint.rule.variablesUndeclared.message");
-        expect(findings[0].messageParams).toEqual({ variable: "v1" });
+        // No declaration is left anywhere to name it by, and its id - the declaring row's UUID, for a
+        // scene variable - is not a name: the sentence says so without one.
+        expect(findings[0].messageKey).toBe("lint.rule.variablesUndeclared.messageUnnamed");
+        expect(findings[0].messageParams).toBeUndefined();
         expect(findings[0].target).toEqual({
             kind: "storyBlock",
             storyId: "s1",
@@ -554,7 +556,8 @@ describe("variables/unused", () => {
         expect(findings).toHaveLength(1);
         expect(findings[0].messageParams).toEqual({ variable: "Playthroughs" });
         expect(findings[0].location).toEqual({ kind: "project" });
-        expect(findings[0].target).toBeUndefined();
+        // Declared in the Variables panel rather than by any row: its row there is where it opens.
+        expect(findings[0].target).toEqual({ kind: "storyVariable", scope: "persistent", variableId: "reg-1" });
     });
 
     it("says nothing about a registry entry a blueprint node names", () => {
@@ -697,6 +700,19 @@ describe("variables/name-collision", () => {
         expect(findings[0].target).toBeUndefined();
     });
 
+    it("opens the registry half of the clash when no story row carries the key", () => {
+        const ctx = createTestLintContext({
+            variableRegistry: [registryEntry("reg-entry", "Playthroughs", "reg-1")],
+            persistentNameCollisions: [{ name: "Playthroughs", storageKeys: ["pk-1", "reg-1"] }],
+        });
+
+        const findings = run("variables/name-collision", ctx);
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].location).toEqual({ kind: "project" });
+        expect(findings[0].target).toEqual({ kind: "storyVariable", scope: "persistent", variableId: "reg-entry" });
+    });
+
     it("reports a saved collision too, anchored on the saved row", () => {
         const ctx = createTestLintContext({
             stories: [story("s1", "Main", [scene("sc1", "Prologue", [declaration("d1", "saved", "Affection", "sk-1")])])],
@@ -706,6 +722,8 @@ describe("variables/name-collision", () => {
         const findings = run("variables/name-collision", ctx);
 
         expect(findings).toHaveLength(1);
+        // Its own sentence: the persistent one said "persistent" about a saved variable.
+        expect(findings[0].messageKey).toBe("lint.rule.variablesNameCollision.messageSaved");
         expect(findings[0].messageParams).toEqual({ variable: "Affection" });
         expect(findings[0].target).toMatchObject({ kind: "storyBlock", blockId: "d1" });
     });
@@ -963,6 +981,23 @@ describe("variables/read-never-written", () => {
         const findings = run("variables/read-never-written", ctx);
         expect(findings).toHaveLength(1);
         expect(findings[0]?.messageParams).toMatchObject({ variable: "affection", count: 1 });
+    });
+
+    it("says a variable with no declaration left is tested, without printing its id", () => {
+        // The declaring row is gone, so nothing in the project knows the name; the ref's id is the
+        // row's UUID, which the interface never shows.
+        const ctx = createTestLintContext({
+            stories: [story("s1", "Story", [
+                scene("a", "A", [
+                    ifBranch("if1", "b1", "affection >= 1", binary(">=", varRead(AFFECTION_REF, "affection"), num(1))),
+                ]),
+            ])],
+        });
+
+        const findings = run("variables/read-never-written", ctx);
+        expect(findings).toHaveLength(1);
+        expect(findings[0]?.messageKey).toBe("lint.rule.variablesReadNeverWritten.messageUnnamed");
+        expect(findings[0]?.messageParams).toEqual({ count: 1 });
     });
 
     it("counts every guard on one dead flag as one finding", () => {

@@ -168,10 +168,11 @@ describe("typography/glyph-coverage", () => {
         expect(findings).toEqual([{
             ruleId: "typography/glyph-coverage",
             messageKey: "lint.rule.typographyGlyphCoverage.messageUnreadable",
-            // The library's name, not the asset id: these findings are filed under the project, so
-            // the locator column prints nothing and this is all the author gets to identify it by.
+            // The library's name, not the asset id.
             messageParams: { font: "Wrecked Serif" },
-            location: { kind: "project" },
+            // Filed under the font, and opened on its row in the library, where it is replaced.
+            location: { kind: "asset", assetId: "broken", assetName: "Wrecked Serif" },
+            target: { kind: "asset", assetId: "broken", assetType: "font" },
         }]);
     });
 
@@ -194,7 +195,8 @@ describe("typography/glyph-coverage", () => {
             ruleId: "typography/glyph-coverage",
             messageKey: "lint.rule.typographyGlyphCoverage.messageUnloadable",
             messageParams: { font: "MS Gothic.ttc", format: "ttc" },
-            location: { kind: "project" },
+            location: { kind: "asset", assetId: "collection", assetName: "MS Gothic.ttc" },
+            target: { kind: "asset", assetId: "collection", assetType: "font" },
         });
         // The Latin face still answers for the rest, so the kana is still reported.
         expect(findings[1]!.messageParams).toMatchObject({ character: "こ" });
@@ -211,6 +213,8 @@ describe("typography/glyph-coverage", () => {
         expect(findings.at(-1)).toMatchObject({
             messageKey: "lint.rule.typographyGlyphCoverage.messageMore",
             messageParams: { count: 5 },
+            // That many missing says the font is not for this language: the font list is the answer.
+            target: { kind: "projectPage", page: "design", part: "fonts" },
         });
     });
 });
@@ -472,6 +476,8 @@ describe("typography/locale-no-font", () => {
             messageKey: "lint.rule.typographyLocaleNoFont.message",
             messageParams: { language: "en" },
             location: { kind: "project" },
+            // Project ▸ Design, at the font stack, where each font's languages are chosen.
+            target: { kind: "projectPage", page: "design", part: "fonts" },
         }]);
     });
 

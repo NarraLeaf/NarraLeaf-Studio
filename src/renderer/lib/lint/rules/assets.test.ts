@@ -535,6 +535,7 @@ describe("assets/group-incomplete", () => {
             messageKey: "lint.rule.assetsGroupIncomplete.message",
             messageParams: { set: "Alice", variant: "Demo" },
             location: { kind: "project" },
+            target: { kind: "assetSet", assetSetId: "set-alice" },
         }]);
         expect(JSON.stringify(findings)).not.toContain(DEMO.id);
     });
@@ -550,6 +551,7 @@ describe("assets/group-incomplete", () => {
             messageKey: "lint.rule.assetsGroupIncomplete.message",
             messageParams: { set: "Alice", variant: "ja" },
             location: { kind: "project" },
+            target: { kind: "assetSet", assetSetId: "set-alice" },
         }]);
     });
 
@@ -568,6 +570,7 @@ describe("assets/group-incomplete", () => {
             messageParams: { set: "Alice", variant: "" },
             messageParamKeys: { variant: "assets.sets.deletedVariant" },
             location: { kind: "project" },
+            target: { kind: "assetSet", assetSetId: "set-alice" },
         }]);
         expect(JSON.stringify(findings)).not.toContain(DEMO.id);
     });
@@ -584,6 +587,7 @@ describe("assets/group-incomplete", () => {
             messageKey: "lint.rule.assetsGroupIncomplete.messageAmbiguous",
             messageParams: { set: "Alice", variant: "main", count: "2" },
             location: { kind: "project" },
+            target: { kind: "assetSet", assetSetId: "set-alice" },
         }]);
     });
 
@@ -618,6 +622,7 @@ describe("assets/group-incomplete", () => {
             messageKey: "lint.rule.assetsGroupIncomplete.messageResidency",
             messageParams: { set: "Alice EN", axis: "mood", outerAxis: "locale" },
             location: { kind: "project" },
+            target: { kind: "assetSet", assetSetId: "inner" },
         });
     });
 
@@ -666,6 +671,7 @@ describe("assets/group-incomplete", () => {
             messageKey: "lint.rule.assetsGroupIncomplete.message",
             messageParams: { set: "Alice", variant: "main" },
             location: { kind: "project" },
+            target: { kind: "assetSet", assetSetId: "set-alice" },
         }]);
     });
 

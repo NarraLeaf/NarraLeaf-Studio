@@ -73,13 +73,14 @@ export const widgets = {
         bindingNoEffect: "This binding has no effect in the {slot} slot.",
         removeBinding: "Remove",
         hintBlueprintValue: "Shown in the editor only. The game shows the Blueprint Value's result.",
-        hintWritten: "Shown in the editor only. The game shows what the blueprints below write.",
         hintComponentParam: "Shown while editing the component only. Each placement shows the value it sets for the parameter.",
     },
     textWriters: {
         title: "Written in the game by",
         entry: "{blueprint} › {node}",
         count: "×{count}",
+        defaultValue: "Default value",
+        defaultValueHint: "The game shows this text until one of the blueprints below writes to it.",
     },
     localization: {
         direct: "Direct",

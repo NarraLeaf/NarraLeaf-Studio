@@ -431,7 +431,7 @@ export const lint = {
             description: "A /quit row that names no page, or one the project no longer has",
             // Two sentences, both states: what the row does now, and what the player is left with.
             message: "This row names no page, so no page opens and the rows after it in this list never play",
-            deleted: "This project has no page \"{page}\", so the playthrough ends with nothing on screen",
+            deleted: "The page this row names is no longer in the project, so the playthrough ends with nothing on screen",
             help:
                 "A /quit row (Quit to page) whose Page shown afterwards is not set, or names a page this "
                 + "project no longer has.\n"
@@ -999,6 +999,7 @@ export const lint = {
             title: "Undeclared variable",
             description: "A variable used without a declaration",
             message: "{variable} is used but never declared",
+            messageUnnamed: "This row uses a variable that is not declared anywhere",
             help:
                 "A row reads or sets a variable that is not declared where the row is. A scene variable needs "
                 + "a /local row in the same scene; a saved or persistent variable needs an entry in the "
@@ -1033,6 +1034,7 @@ export const lint = {
             title: "Variable name collision",
             description: "One name declared in two places",
             message: "{variable} is declared twice as a persistent variable",
+            messageSaved: "{variable} is declared twice as a saved variable",
             help:
                 "One name belongs to two different saved variables, or two different persistent variables: "
                 + "one defined in the Variables panel and one declared by a row in a story.\n"
@@ -1048,6 +1050,7 @@ export const lint = {
             title: "Condition no path can satisfy",
             description: "A condition whose variable can never reach the value it tests for",
             message: "{variable} is always within {bound} here, so this condition cannot hold",
+            messageUnnamed: "A variable with no declaration is always within {bound} here, so this condition cannot hold",
             help:
                 "No value the variable can have at this row makes the condition true. Only comparisons of a "
                 + "number variable with a written number are checked, such as affection >= 50. The range in the "
@@ -1067,6 +1070,7 @@ export const lint = {
             title: "Condition nothing can change",
             description: "A variable a condition tests, that nothing in the project ever assigns",
             message: "{variable} is tested by {conditions} but nothing ever sets it",
+            messageUnnamed: "A variable with no declaration is tested by {conditions} and nothing ever sets it",
             conditionCount: {
                 one: "{count} condition",
                 other: "{count} conditions",

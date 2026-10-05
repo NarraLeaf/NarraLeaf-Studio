@@ -102,7 +102,6 @@ import type { StoryAnimationAsset, StoryAnimationIndex, StoryDocument, StoryLibr
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import { withoutUITextSamples, withoutUITextSampleUnits } from "@shared/types/ui-editor/textSample";
-import { indexUITextWriters } from "@shared/types/ui-editor/textWriters";
 import {
     applyUITextLocaleEdits,
     migrateUITextSourcesV13,
@@ -208,12 +207,13 @@ async function assembleBundle(context: DevModeBundleLoadContext): Promise<DevMod
         ),
     };
     const localBlueprints = uigraphs.blueprintDocument;
-    // Sample words - what a text or a button holds where a value binding answers it or a blueprint
-    // writes over it - are what the canvas draws while a page is laid out, and no player reads them.
-    // They are taken out here, against the graphs this edition actually ships, so a package never
-    // carries them, and with them the switch and the translations that would put their translation
-    // in place of what the binding or the blueprint shows. See `@shared/types/ui-editor/textSample`.
-    const sampleStrip = withoutUITextSamples(authoredUidoc, indexUITextWriters(localBlueprints));
+    // Sample words - what a text or a button holds where a value binding answers it - are what the
+    // canvas draws while a page is laid out, and no player reads them. They are taken out here so a
+    // package never carries them, and with them the translations that would put their translation in
+    // place of what the binding shows. Words a blueprint writes over are not among them: they are the
+    // element's default value, shown and translated until the first write lands, and they ship as any
+    // other words do. See `@shared/types/ui-editor/textSample`.
+    const sampleStrip = withoutUITextSamples(authoredUidoc);
     const uidoc = sampleStrip.document;
     const variableTables = await loadVariableRuntimeTables(context.projectPath);
     reportLiveVariantReads(context, fold, localBlueprints);

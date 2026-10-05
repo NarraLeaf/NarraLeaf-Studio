@@ -3,8 +3,9 @@
  *
  * Derived from the blueprint document every time it is asked, never stored: a write is a node on a
  * graph, and the graph is the only place that knows it exists. The inspector lists the writers of the
- * element it shows, and the words an element holds under a writer that replaces them are sample text
- * (`textSample.ts`) - drawn on the canvas, never shipped, never translated.
+ * element it shows. The words an element holds under a writer that replaces them are its default
+ * value: the game shows them, translated, until the first write lands, so they ship and are translated
+ * like any other words a player reads (only words a binding answers are sample text, `textSample.ts`).
  *
  * Two shapes write a widget's words, and both are read here:
  *
@@ -199,6 +200,21 @@ function collectGraphWriters(
             textProp: requireUITextSite(write.widgetType).textProp,
         });
     }
+}
+
+/**
+ * Whether one of an element's writers replaces the words on `site` while the game runs - `Set Text`,
+ * `Clear Text`, `Set Label`, the words pin of `Set All Properties`. The words the element holds are
+ * then its default value: what the game shows until the first write lands. A writer that only appends
+ * keeps them on screen as the start of what it adds, the same as words nothing writes.
+ *
+ * `writers` are the element's own (`UITextWriterIndex.get(element.id)`).
+ */
+export function uiTextSiteIsWrittenOver(
+    writers: readonly UITextWriter[] | undefined,
+    site: Pick<UITextSite, "textProp">,
+): boolean {
+    return writers?.some(writer => writer.textProp === site.textProp && writer.effect === "replace") ?? false;
 }
 
 /**

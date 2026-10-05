@@ -90,9 +90,32 @@ describe("brand/broken-link", () => {
             ruleId: "brand/broken-link",
             messageKey: "lint.rule.brandBrokenLink.message",
             messageParams: { where: "Main Menu › Start › style.backgroundColor", color: "nope" },
-            location: { kind: "project" },
-            // The report row opens the surface the broken widget is on.
-            target: { kind: "uiSurface", surfaceId: "s1" },
+            // Filed under the widget on its page, and opened there with the widget selected.
+            location: { kind: "surface", surfaceId: "s1", surfaceName: "Main Menu", elementId: "start", elementName: "Start" },
+            target: { kind: "uiSurface", surfaceId: "s1", elementId: "start" },
+        });
+    });
+
+    it("opens a link inside a component on the definition, the widget selected", async () => {
+        const findings = await RULE.run(createTestLintContext({
+            uiDocument: {
+                surfaces: [],
+                elements: {},
+                components: [{
+                    id: "c1",
+                    name: "Badge",
+                    rootElementId: "badgeRoot",
+                    elements: {
+                        badgeRoot: { id: "badgeRoot", type: "nl.container", name: "Face", style: { backgroundColor: "nlbrand:nope" } },
+                    },
+                }],
+            } as unknown as UIDocument,
+        }), {});
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0]).toMatchObject({
+            location: { kind: "component", componentId: "c1", componentName: "Badge", elementId: "badgeRoot", elementName: "Face" },
+            target: { kind: "uiComponent", componentId: "c1", elementId: "badgeRoot" },
         });
     });
 

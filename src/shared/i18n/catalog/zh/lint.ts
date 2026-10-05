@@ -363,7 +363,7 @@ export const lint = {
             title: "没有页面的退出行",
             description: "未指定页面，或指定的页面已不在项目中的 /quit 行",
             message: "该行未指定页面，不会打开任何页面，同一层中其后的行也不会播放",
-            deleted: "项目中没有页面「{page}」，本次游玩结束后画面上不会有任何内容",
+            deleted: "该行指定的页面已不在项目中，本次游玩结束后画面上不会有任何内容",
             help:
                 "/quit 行（退出到页面）的「结束后显示的页面」未设置，或指向本项目中已不存在的页面\n"
                 + "\n"
@@ -854,6 +854,7 @@ export const lint = {
             title: "未声明的变量",
             description: "变量在使用前未声明",
             message: "{variable} 已被使用，但从未声明",
+            messageUnnamed: "该行使用的变量在任何地方都没有声明",
             help:
                 "某一行读取或设置的变量，在该行所在的位置没有声明。场景变量须在同一场景中由 /local 行声明；"
                 + "存档变量与持久变量须存在于「变量」面板中。已禁用的行不检查\n"
@@ -883,6 +884,7 @@ export const lint = {
             title: "变量重名",
             description: "同一名称在两处声明",
             message: "{variable} 作为持久变量声明了两次",
+            messageSaved: "{variable} 作为存档变量声明了两次",
             help:
                 "同一名称属于两个不同的存档变量（或两个不同的持久变量）：一个在「变量」面板中定义，"
                 + "另一个由故事中的某一行声明\n"
@@ -897,6 +899,7 @@ export const lint = {
             title: "没有路径能满足的条件",
             description: "变量在任何路径上都无法取到条件要求的值",
             message: "此处 {variable} 的取值始终在 {bound} 之内，该条件不会成立",
+            messageUnnamed: "此处一个未声明的变量取值始终在 {bound} 之内，该条件不会成立",
             help:
                 "在该行处，变量所有可能的取值都无法使条件成立。只检查数字变量与写明的数字之间的比较，"
                 + "例如 affection >= 50。问题中给出的范围由变量的默认值，"
@@ -914,6 +917,7 @@ export const lint = {
             title: "永远不会变的条件",
             description: "条件判断读取了某个变量，而整个项目从来没有给它赋过值",
             message: "{conditions}读取了 {variable}，但没有任何地方给它赋值",
+            messageUnnamed: "{conditions}读取了一个没有声明的变量，也没有任何地方给它赋值",
             conditionCount: {
                 other: "{count} 处条件判断",
             },
