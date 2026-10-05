@@ -13,7 +13,7 @@ import { stripImageMetadata } from "@shared/utils/assetImageMetadata";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 import type { WebImageCodec, WebImageSourceType } from "./webImageCodec";
-import { createKeyedTurns, forEachInLanes, MemoryBudget, resolveBuildLanes } from "./buildLanes";
+import { createKeyedTurns, forEachInLanes, MemoryBudget, resolveBuildLanes } from "../../../../buildWorker/buildLanes";
 
 /**
  * Re-encode the project's images once, before anything is compiled, and hand the

@@ -182,6 +182,7 @@ import { BuilderDownloadWatcher } from "./builderDownloadLog";
 import { collectVariantContentFindings } from "./variantContentPreflight";
 import { collectProgressCarryFindings } from "./progressCarryPreflight";
 import { gameThirdPartyNotices, THIRD_PARTY_NOTICES_FILENAME } from "./thirdPartyNotices";
+import { packagingThreadPoolSize } from "../../../../buildWorker/buildLanes";
 
 type BuildSession = {
     id: string;
@@ -3415,6 +3416,10 @@ export class GameBuildManager {
                 env: {
                     ...process.env,
                     ELECTRON_BUILDER_CACHE: electronBuilderCacheRoot(this.app.getCacheRootDir()),
+                    // A zip is compressed in pieces on zlib's thread pool (see parallelZip), which has
+                    // four threads unless this says otherwise before the worker starts. An author who
+                    // has set it themselves keeps their value.
+                    UV_THREADPOOL_SIZE: process.env.UV_THREADPOOL_SIZE ?? String(packagingThreadPoolSize()),
                 },
             });
             session.worker = worker;

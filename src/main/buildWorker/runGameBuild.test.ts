@@ -5,7 +5,7 @@ import { LinuxPackager, type AfterPackContext } from "electron-builder";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { LINUX_PROGRAM_SUFFIX, renderLinuxLauncher } from "./linuxLauncher";
 import { compute7zCompressArgs } from "app-builder-lib/out/targets/archive";
-import { builderConfiguration, electronFuseConfig, extraFilesFor, withArchiveCompressionLevel } from "./runGameBuild";
+import { builderConfiguration, electronFuseConfig, extraFilesFor, studioWritesZip, withArchiveCompressionLevel } from "./runGameBuild";
 import type { GameBuildWorkerConfig, GameBuildWorkerFuses, GameBuildWorkerTarget } from "./protocol";
 
 const config = {
@@ -50,6 +50,19 @@ describe("builderConfiguration", () => {
  * The archive level, checked against electron-builder's own argument builder rather than a copy of
  * it: the variable only means what that function makes of it.
  */
+describe("studioWritesZip", () => {
+    it("takes a Windows zip from electron-builder, whatever else the target asks for", () => {
+        expect(studioWritesZip({ platform: "windows", formats: ["zip"] })).toBe(true);
+        expect(studioWritesZip({ platform: "windows", formats: ["nsis", "zip", "dir"] })).toBe(true);
+        expect(studioWritesZip({ platform: "windows", formats: ["nsis"] })).toBe(false);
+    });
+
+    it("leaves a macOS or Linux zip made on its own host to electron-builder", () => {
+        expect(studioWritesZip({ platform: "macos", formats: ["zip"] })).toBe(false);
+        expect(studioWritesZip({ platform: "linux", formats: ["zip"] })).toBe(false);
+    });
+});
+
 describe("withArchiveCompressionLevel", () => {
     it("gives a zip 7-Zip's highest level without electron-builder's fifteen extra passes", async () => {
         const outside = compute7zCompressArgs("zip", { compression: "maximum" });
