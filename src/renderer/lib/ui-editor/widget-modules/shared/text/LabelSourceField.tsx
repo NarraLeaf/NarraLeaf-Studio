@@ -78,11 +78,11 @@ function liveElementOf(data: UIInspectorData): UIElement {
  * (`ComponentParamBindingRow`), each placement giving its own - the component's counterpart of a list
  * row's field, picked the same way above the choice.
  *
- * Where a Blueprint Value or a component parameter answers the words, or a blueprint writes over them
- * while the game runs, the element's own words are sample text (`textSample.ts`): edited here, drawn on the canvas, and stated
- * to be shown in the editor only - a package carries none of them, and nothing translates them. The
- * blueprints that write the words are listed under the field, each opening at its node
- * (`TextWritersList`), whatever the words' source.
+ * Where a Blueprint Value or a component parameter answers the words, the element's own words are
+ * sample text (`textSample.ts`): edited here, drawn on the canvas, and stated to be shown in the editor
+ * only - a package carries none of them, and nothing translates them. The blueprints that write the
+ * words while the game runs are listed under the field, each opening at its node (`TextWritersList`),
+ * whatever the words' source.
  *
  * Read-only aware (`selfReadOnly`): on a frozen project the source row and the boxes are inert, while
  * the key list still opens to be read and a bound blueprint still opens to be looked at.
@@ -151,7 +151,7 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
         const live = blueprintState.live;
         const source = uiTextSourceOf(live, site);
         const writers = useElementTextWriters(live.id);
-        const sampleCause = uiTextSampleCauseOf(live, site, writers);
+        const sampleCause = uiTextSampleCauseOf(live, site);
         const writersList = <TextWritersList writers={writers} />;
 
         // "Translation key" picked before a key is: nothing is written until one is chosen, so the
@@ -305,8 +305,7 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
                     disabled={readOnly}
                     blueprint={config.blueprint ? { unavailable: blueprintState.createUnavailable } : undefined}
                 />
-                {shown === "literal" && sampleCause === "written" ? sampleBlock("widgets.sampleText.hintWritten") : null}
-                {shown === "literal" && sampleCause !== "written" ? ownWordsEditor : null}
+                {shown === "literal" ? ownWordsEditor : null}
                 {shown === "key" ? (
                     <>
                         <KeyPicker {...props} readOnly={props.readOnly} />

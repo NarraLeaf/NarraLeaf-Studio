@@ -3,8 +3,9 @@
  *
  * Derived from the blueprint document every time it is asked, never stored: a write is a node on a
  * graph, and the graph is the only place that knows it exists. The inspector lists the writers of the
- * element it shows, and the words an element holds under a writer that replaces them are sample text
- * (`textSample.ts`) - drawn on the canvas, never shipped, never translated.
+ * element it shows. The words an element holds under a writer that replaces them are its default
+ * value: the game shows them, translated, until the first write lands, so they ship and are translated
+ * like any other words a player reads (only words a binding answers are sample text, `textSample.ts`).
  *
  * Two shapes write a widget's words, and both are read here:
  *

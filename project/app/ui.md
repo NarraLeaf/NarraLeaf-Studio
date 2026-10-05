@@ -171,9 +171,11 @@ own words, or the key in `placeholderLocalizationKey`, whose text the canvas and
 the game both show. A dialogue line's or NVL line's `text` is sample words the
 canvas shows; in their slots the game draws the story's line instead. So is the
 `text` or `label` of an element whose words a value blueprint or a row field
-answers, or that a blueprint writes over while the game runs (`Set Text`,
-`Clear Text`, `Set Label` - `Append Text` keeps the words it adds to): the
-canvas shows them, a build carries none of them, and nothing translates them.
+answers: the canvas shows them, a build carries none of them, and nothing
+translates them. An element a blueprint writes into while the game runs
+(`Set Text`, `Clear Text`, `Set Label`) is not one of these: its own words are
+its default value, which the game shows - translated through its own unit -
+until the first write lands, and a build carries them like any other words.
 
 Inside a component definition a text's `text` or a button's `label` can show
 one of the component's text parameters instead - `bind text = param <paramId>`,

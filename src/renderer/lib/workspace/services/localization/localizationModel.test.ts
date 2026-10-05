@@ -14,7 +14,6 @@ import {
     extractUiTranslationRows,
 } from "./localizationModel";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
-import type { UITextWriterIndex } from "@shared/types/ui-editor/textWriters";
 
 function block(partial: Partial<StoryBlock> & Pick<StoryBlock, "id" | "kind" | "payload">): StoryBlock {
     return {
@@ -278,9 +277,10 @@ describe("buildTranslationExchangeRows", () => {
 });
 
 /**
- * The interface half of the translation table. Sample words - under a value binding, or where a
- * blueprint writes over them - have no row: no player reads them and no package carries them, so a
- * translation of them would be work that never shows.
+ * The interface half of the translation table. Sample words - under a value binding - have no row: no
+ * player reads them and no package carries them, so a translation of them would be work that never
+ * shows. The words a blueprint writes over do have one: they are the element's default value, which
+ * the game shows until the first write, so the table reads no graphs to decide it.
  */
 describe("extractUiTranslationRows", () => {
     function text(id: string, props: Record<string, unknown>, valueBindings?: UIElement["valueBindings"]): UIElement {
@@ -303,22 +303,18 @@ describe("extractUiTranslationRows", () => {
             nametag: text("nametag", { text: "Narra" }, {
                 text: { kind: "blueprintValue", blueprintId: "bp", valueType: "string" },
             }),
+            // Set Text replaces the score on a click, and the slot's graph writes the place name.
+            score: text("score", { text: "Score: 0" }),
             place: text("place", { text: "The corridor" }),
-            log: text("log", { text: "Log" }),
+            speaker: text("speaker", { text: "Aoi" }, { text: { kind: "listItemField", fieldId: "speaker" } }),
         },
     } as unknown as UIDocument;
-    const writer = (effect: "replace" | "append") => ({
-        blueprintId: "bp-slot", graphKind: "event" as const, graphId: "init", nodeId: "n", nodeType: "t", effect, textProp: "text" as const,
-    });
-    const writers: UITextWriterIndex = new Map([
-        ["place", [writer("replace")]],
-        ["log", [writer("append")]],
-    ]);
 
-    it("lists the words a player reads and none of the sample words", () => {
-        expect(extractUiTranslationRows(document, writers).map(row => [row.unitId, row.sourceText])).toEqual([
+    it("lists the words a player reads, the words a blueprint writes over among them, and none of the sample words", () => {
+        expect(extractUiTranslationRows(document).map(row => [row.unitId, row.sourceText])).toEqual([
             ["ui:title.text", "Your Game"],
-            ["ui:log.text", "Log"],
+            ["ui:score.text", "Score: 0"],
+            ["ui:place.text", "The corridor"],
         ]);
     });
 
@@ -363,7 +359,7 @@ describe("extractUiTranslationRows", () => {
         } as unknown as UIDocument;
 
         it("lists each written value once as the placement's unit, a default once as the component's, and no sample", () => {
-            const rows = extractUiTranslationRows(withParams, new Map());
+            const rows = extractUiTranslationRows(withParams);
             expect(rows.map(row => [row.unitId, row.sourceText, row.groupName, row.elementName])).toEqual([
                 ["ui:p1.param.label", "Start", "Title", "Nav p1 › Label"],
                 ["ui:p2.param.label", "Continue", "Title", "Nav p2 › Label"],
