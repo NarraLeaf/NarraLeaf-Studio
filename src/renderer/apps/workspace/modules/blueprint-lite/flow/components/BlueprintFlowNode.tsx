@@ -510,7 +510,10 @@ function pinLabelOnly(pin: CatalogPin, t: UseTranslation["t"]): string {
 function pinCaption(pin: CatalogPin, semantic: "exec" | "data", t: UseTranslation["t"]): string {
     const name = pinLabelOnly(pin, t);
     if (semantic === "data" && pin.valueType && pin.valueType !== "any") {
-        return `${name} · ${formatBlueprintValueTypeLabel(pin.valueType, t)}`;
+        const type = formatBlueprintValueTypeLabel(pin.valueType, t);
+        // A struct type is named in words, and the words can be the pin's own: Get Endings' Endings
+        // pin carries an "Ending list", which in Chinese is the pin's label word for word.
+        return type === name ? name : `${name} · ${type}`;
     }
     return name;
 }

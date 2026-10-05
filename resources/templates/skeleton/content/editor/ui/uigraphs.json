@@ -751,7 +751,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "Runs when the player presses a row. Going back undoes everything after that line, so Show Confirm asks first; its question and its two answers are localization keys, looked up by the three Get Text nodes on the execution wire. On the first answer, Restore From History takes the story back to the pressed line (Get Item Field reads the row's id) and Go back closes this page over it. The second answer leaves the log as it was.",
+                      "text": "Runs when the player presses a row. Going back undoes everything after that line, so Show Confirm asks first; its question and its two answers are localization keys, looked up by the three Get Text nodes on the execution wire. On the first answer, Restore From History takes the story back to the pressed line (Get Field reads the row's id) and Go back closes this page over it. The second answer leaves the log as it was.",
                       "width": 1100,
                       "height": 130
                     },
@@ -11240,7 +11240,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "Item Click runs for the row that was pressed, and Get Item Field reads that row's auto save. Over a running game the Confirm page asks first, because loading leaves the game the player is in, and the auto save loads only on the first answer. With no game running there is nothing to lose, so it loads at once.",
+                      "text": "Item Click runs for the row that was pressed, and Get Field reads that row's auto save. Over a running game the Confirm page asks first, because loading leaves the game the player is in, and the auto save loads only on the first answer. With no game running there is nothing to lose, so it loads at once.",
                       "width": 1100,
                       "height": 110
                     },
@@ -11626,7 +11626,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "The Blueprint Value of the row's Auto time text. It runs for each row the list draws: Get Item Field reads that row's auto save, and what Return Value gives back is what the text shows.",
+                      "text": "The Blueprint Value of the row's Auto time text. It runs for each row the list draws: Get Field reads that row's auto save, and what Return Value gives back is what the text shows.",
                       "width": 828,
                       "height": 110
                     },
