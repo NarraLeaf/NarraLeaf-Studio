@@ -15,19 +15,49 @@ permissions:
   packages: read
 
 jobs:
-  verify:
+  # The gate is three jobs rather than one so it finishes in a few minutes
+  # rather than a quarter of an hour. On a single runner the test suite alone
+  # took 8-13 minutes: the runner has four cores, vitest.config.ts leaves two
+  # of them to the main process, and two workers were importing and running
+  # some fifteen hundred files between them. Spread over four runners each
+  # part takes about a quarter of that, the checks run beside them, and a part
+  # that goes red can be re-run on its own ("Re-run failed jobs") instead of
+  # repeating the whole gate.
+
+  # Everything that is not the test suite: the five typechecks, oxlint, the
+  # style ratchet, the generated declarations and starter templates, the
+  # plugin API types and the runtime bundle. Run through scripts/verify.mjs -
+  # the same file a developer runs before pushing - so what CI checks and what
+  # a local run checks are one list, and the reason for each check is written
+  # beside it there.
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/install
+        with:
+          packages-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checks
+        run: node scripts/verify.mjs --checks --ci
+
+  # The test suite, a quarter on each runner.
+  test:
+    name: test (${{ matrix.shard }}/4)
     # ubuntu-latest ships a licensed Android SDK. That is the point of running
     # here: the SDK's components cannot be redistributed, so Studio never bundles
     # them and the tools that judge a repacked APK (apksigner, aapt2, zipalign)
     # only exist on the runner. See the mobile pipeline plan, §2.2.
     runs-on: ubuntu-latest
+    strategy:
+      # Every part reports, so one red part does not hide what the others found.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
 
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
 
       # apksigner is a Java tool. Pinned rather than left to the image's default
       # so the oracle does not break the day the runner image moves.
@@ -36,33 +66,9 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Enable Corepack
-        run: corepack enable
-
-      # --no-immutable is required, not a shortcut: yarn defaults to --immutable
-      # under CI, and this repo deliberately does not commit yarn.lock, so every
-      # run legitimately writes one. The dependency the mobile tests rely on
-      # (@narraleaf/studio-shell) is pinned exactly in package.json, so a fresh
-      # resolve still gets the same templates.
-      # GitHub Packages serves the whole @narraleaf scope and asks for a
-      # credential on every package it holds, the ones whose repositories are
-      # public included. The run's own GITHUB_TOKEN is enough and is the right
-      # thing to reach for: it is minted for this job, dies with it, and is
-      # masked in the log, so no long-lived personal token has to be stored as a
-      # repository secret.
-      #
-      # It reaches @narraleaf/bindings - which is private, and belongs to
-      # NarraLeaf-Encryption rather than to this repository - only because that
-      # package grants this repository read access under "Manage Actions access".
-      # Withdrawing that grant is how this repository loses the dependency, and
-      # that is the intended control: nothing here can widen it.
-      - name: Authenticate to GitHub Packages
-        run: node .github/scripts/write-packages-credential.mjs
-        env:
-          GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install dependencies
-        run: yarn install --no-immutable
+      - uses: ./.github/actions/install
+        with:
+          packages-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Locate the Android build tools
         shell: bash
@@ -70,63 +76,6 @@ jobs:
           set -euo pipefail
           test -d "$ANDROID_HOME/build-tools" || { echo "::error::no Android build-tools on this runner"; exit 1; }
           echo "Using $(ls -1 "$ANDROID_HOME"/build-tools | sort -V | tail -1)"
-
-      - name: Typecheck
-        run: yarn lint
-
-      # Counts the hard-coded styling patterns the design-system consolidation is
-      # retiring (docs/design-system.md) and fails if any count rises above
-      # scripts/style-ratchet.baseline.json.
-      #
-      # Gated here because leaving it local-only did not work: the baseline was
-      # last written on 2026-07-16 and was already inconsistent with the tree it
-      # was committed against, so every branch cut afterwards inherited a red
-      # ratchet it did not cause — which is the same as having no gate at all. A
-      # rise must now be argued for in the PR that causes it, not discovered
-      # months later.
-      - name: Style ratchet
-        run: yarn style:ratchet
-
-      # Oxlint, running its type-aware pass (oxlint-tsgolint), so this covers the
-      # same five projects the Typecheck step does and additionally applies ~100
-      # lint rules that nothing enforced before: eslint.config.mjs set them but
-      # eslint was never installed, so it has never once run in this repo.
-      #
-      # Advisory for now, and deliberately so: .oxlintrc.json puts the whole
-      # correctness category at `warn`, which oxlint does not fail on, and the
-      # first run finds several hundred of them - almost all React effect/ref/memo
-      # rules. The step still fails on a TypeScript error, because tsgolint
-      # reports those as errors regardless of the category setting. Raise the
-      # category to `error` (or add --deny-warnings here) once the backlog is
-      # worked down; until then this step exists to make the count visible and to
-      # stop it growing unnoticed.
-      - name: Oxlint
-        run: yarn lint:oxc
-
-      # The other half of the same problem, for the declarations a script's author
-      # imports. They are generated from Studio's own source and checked in, and the
-      # `--check` this runs existed from the first day with nothing calling it: the file
-      # reached develop stale at least once, which means an author completing against
-      # members the runtime did not have. Cheap to keep honest, 30s, and it is the only
-      # thing standing between a changed context type and a wrong `script.d.ts`.
-      - name: Script API declarations
-        run: yarn check:script-api
-
-      # The Chinese and Japanese starter projects are generated from the English
-      # one, and checked in. An edit to the English template that is not followed
-      # by regenerating them ships a starter whose pages, lines or translations
-      # differ by language - with nothing failing, because each tree is valid on its
-      # own. `--check` regenerates in memory and fails on any file that differs, or
-      # on an English string the translation tables have no entry for.
-      - name: Starter template translations
-        run: node scripts/gen-skeleton-locale.mjs --check
-
-      # Regenerates the published plugin API declarations and fails if they no
-      # longer compile on their own. Without this, a refactor that leaks an
-      # unexportable internal type into the plugin surface would only be caught
-      # at publish time, by which point the API has already shipped.
-      - name: Build plugin API types
-        run: yarn build:plugin-types
 
       # The iOS signing oracle signs a real package with the real binary, so the
       # binary has to be here. Staged as its own step rather than left to the
@@ -138,12 +87,32 @@ jobs:
       # Both REQUIRE_* variables turn a missing tool into a failure rather than a
       # skip. These oracles are the only judgement from outside our own code on
       # whether a signed package is real, and a silent skip is indistinguishable
-      # from a pass.
+      # from a pass. Each part stages both tools, since which part an oracle's
+      # file lands in is vitest's choice.
+      #
+      # Straight to vitest rather than through scripts/verify.mjs, which runs a
+      # red file again on its own and forgives it if it then passes. That is the
+      # right call before a push on a loaded developer machine, and the wrong one
+      # here: this is the run whose red has to stay red.
       - name: Test
-        run: yarn test
+        run: yarn test --shard=${{ matrix.shard }}/4
         env:
           REQUIRE_ANDROID_SDK_ORACLE: "1"
           REQUIRE_ZSIGN_ORACLE: "1"
+
+  # One result for the whole gate, under the name it has always had, for
+  # anything that waits on "verify" - a release goes out only on a green one.
+  verify:
+    if: ${{ always() }}
+    needs: [checks, test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checks and every test part passed
+        shell: bash
+        run: |
+          echo "checks: ${{ needs.checks.result }}, test: ${{ needs.test.result }}"
+          test "${{ needs.checks.result }}" = success
+          test "${{ needs.test.result }}" = success
 
   # Package the Studio for every desktop target it ships on, so a change that
   # only breaks packaging (native deps, electron-builder config, per-arch
@@ -193,9 +162,9 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      # Same reasoning as the verify job: yarn.lock is deliberately not
+      # Same reasoning as .github/actions/install: yarn.lock is deliberately not
       # committed, so an immutable install would fail on every run.
-      # See the same step in the verify job for why this is the run's own
+      # See the same step in .github/actions/install for why this is the run's own
       # GITHUB_TOKEN and not a stored personal token.
       - name: Authenticate to GitHub Packages
         run: node .github/scripts/write-packages-credential.mjs
@@ -211,7 +180,7 @@ jobs:
       #
       # NLS_REQUIRE_FFMPEG turns prepare-ffmpeg.js's skips into failures, for the
       # same reason REQUIRE_ANDROID_SDK_ORACLE and REQUIRE_ZSIGN_ORACLE do it in
-      # the verify job: skipping is the right answer on a developer's machine and
+      # the test job: skipping is the right answer on a developer's machine and
       # the wrong one here, where "media conversion is unavailable" would be what
       # every author who downloads this build gets, announced only by a warning
       # in the middle of a green log. It matters most on macOS, where the binary
