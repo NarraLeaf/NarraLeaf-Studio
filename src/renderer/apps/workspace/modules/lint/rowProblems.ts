@@ -2,7 +2,8 @@ import { useSyncExternalStore } from "react";
 import type { LintReport, LintReportEntry, LintRuleId } from "@/lib/lint";
 
 /**
- * The project checks' findings, by story row - what the scene editor marks its rows with.
+ * The project checks' findings, by story row - what the scene editor marks its rows with - and by
+ * blueprint, for the list under the blueprint editor's canvas.
  *
  * The Problems panel lists every finding; this is the same report seen from the other side, so an
  * author reading a scene sees which of its rows something is wrong with without opening the panel,
@@ -72,7 +73,36 @@ export function indexRowProblems(
     return next;
 }
 
+/**
+ * Group a report's blueprint findings by blueprint, with the same reuse as {@link indexRowProblems}.
+ * Every severity and every rule: a blueprint editor shows a handful of findings, not thousands.
+ */
+export function indexBlueprintProblems(
+    report: LintReport | null,
+    previous: ReadonlyMap<string, readonly LintReportEntry[]>,
+): Map<string, readonly LintReportEntry[]> {
+    const grouped = new Map<string, LintReportEntry[]>();
+    for (const entry of report?.entries ?? []) {
+        if (entry.location.kind !== "blueprint") {
+            continue;
+        }
+        const list = grouped.get(entry.location.blueprintId);
+        if (list) {
+            list.push(entry);
+        } else {
+            grouped.set(entry.location.blueprintId, [entry]);
+        }
+    }
+    const next = new Map<string, readonly LintReportEntry[]>();
+    for (const [blueprintId, entries] of grouped) {
+        const kept = previous.get(blueprintId);
+        next.set(blueprintId, kept && signature(kept) === signature(entries) ? kept : entries);
+    }
+    return next;
+}
+
 let byRow: ReadonlyMap<string, readonly LintReportEntry[]> = new Map();
+let byBlueprint: ReadonlyMap<string, readonly LintReportEntry[]> = new Map();
 const listeners = new Set<() => void>();
 
 function subscribe(listener: () => void): () => void {
@@ -85,6 +115,7 @@ function subscribe(listener: () => void): () => void {
 /** Replace the store's contents from a new report. Called by the window's lint host. */
 export function publishRowProblems(report: LintReport | null): void {
     byRow = indexRowProblems(report, byRow);
+    byBlueprint = indexBlueprintProblems(report, byBlueprint);
     for (const listener of [...listeners]) {
         listener();
     }
@@ -93,6 +124,14 @@ export function publishRowProblems(report: LintReport | null): void {
 /** A row's findings; the same array until they change. */
 export function useRowProblems(blockId: string): readonly LintReportEntry[] {
     return useSyncExternalStore(subscribe, () => byRow.get(blockId) ?? EMPTY, () => EMPTY);
+}
+
+/**
+ * A blueprint's findings, for the blueprint editor's own list - so the list under the canvas and the
+ * Problems panel never give two answers about one node.
+ */
+export function useBlueprintProblems(blueprintId: string): readonly LintReportEntry[] {
+    return useSyncExternalStore(subscribe, () => byBlueprint.get(blueprintId) ?? EMPTY, () => EMPTY);
 }
 
 /**
