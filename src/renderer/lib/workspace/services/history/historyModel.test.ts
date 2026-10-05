@@ -133,3 +133,34 @@ describe("HistoryStack", () => {
         expect(stack.undoDepth).toBe(2);
     });
 });
+
+describe("dropping one family of commands", () => {
+    function command(tag: string | undefined, onDispose: () => void, now: number): HistoryEntry {
+        return createCommandEntry({ scopeId: "s", label: LABEL, undo: () => undefined, redo: () => undefined, now, tag, dispose: onDispose });
+    }
+
+    it("takes its entries off both sides, lets them go, and leaves every other entry in order", () => {
+        const stack = new HistoryStack();
+        const disposed: string[] = [];
+        const kept = command(undefined, () => disposed.push("kept"), 0);
+        stack.push(kept, { now: 0 });
+        stack.push(command("library", () => disposed.push("library-undo"), 1), { now: 1 });
+        stack.push(checkpoint("tagless snapshot side", 2), { now: 2 });
+        stack.push(command("library", () => disposed.push("library-redo"), 3), { now: 3 });
+        stack.acceptUndo(stack.takeUndo()!);
+
+        expect(stack.dropWhere(entry => entry.tag === "library")).toBe(2);
+        expect(disposed.sort()).toEqual(["library-redo", "library-undo"]);
+        expect(stack.redoDepth).toBe(0);
+        expect(stack.listUndo().map(entry => entry.body.kind)).toEqual(["command", "checkpoint"]);
+        expect(stack.listUndo()[0]).toBe(kept);
+    });
+
+    it("never drops a snapshot or a checkpoint, whatever the predicate says", () => {
+        const stack = new HistoryStack();
+        stack.push(checkpoint("a", 0), { now: 0 });
+        stack.push(snapshot("a", "b", 1), { now: 1 });
+        expect(stack.dropWhere(() => true)).toBe(0);
+        expect(stack.undoDepth).toBe(2);
+    });
+});

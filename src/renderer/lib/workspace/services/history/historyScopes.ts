@@ -39,6 +39,20 @@ export const HistoryScopeKind = {
 
 export type HistoryScopeKind = typeof HistoryScopeKind[keyof typeof HistoryScopeKind];
 
+/**
+ * Families of command entries on a shared stack, for dropping one family without the rest
+ * (`HistoryService.dropTagged`).
+ */
+export const HistoryEntryTag = {
+    /**
+     * The interface's library-level steps on the project's stack: adding, copying, deleting and
+     * importing pages and component definitions, reordering the pages, moving the entry page. A live
+     * session drops them with the interface editors' own stacks - each takes back a change to a
+     * document the whole room is about to edit.
+     */
+    UILibrary: "ui-library",
+} as const;
+
 function scope(kind: HistoryScopeKind, ...parts: string[]): HistoryScopeId {
     return [kind, ...parts].join(":");
 }

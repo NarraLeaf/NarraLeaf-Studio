@@ -166,7 +166,7 @@ if (menu) {
 }
 ```
 
-内建插件 `narraleaf.menu-bar` 就是这个域的第一个使用者：作者面在 Studio 左边栏，文档随包（`contributes.runtimeData`），标签用项目的翻译键，或者直接写、经 studio 入口的 `registerWords` 进译表。
+内建插件 `narraleaf.menu-bar` 就是这个域的第一个使用者：作者面在 Studio 左边栏，文档随包（`contributes.runtimeData`），标签用项目的翻译键，或者直接输入、经 studio 入口的 `registerWords` 进译表。
 
 标签（`GameMenuLabel`）是 `{ key, text, words? }`：有 `key` 时显示键在当前语言下的字（键不在这份构建里时显示 `text`）；没有 `key` 时显示 `text`，
 写了 `words` 就按这个 id 取 `text` 的译文——`words` 是插件在 studio 入口 `app.services.localization.registerWords` 里给这段字的 id，宿主在交给游戏前把它限定成本插件的单元（`plugin:<插件 ID>/<id>`），每次重画都重新取，所以玩家切换语言时菜单跟着变。

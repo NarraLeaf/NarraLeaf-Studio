@@ -446,6 +446,7 @@ interface IUIDocumentService extends IService {
     renameComponent(componentId: string, name: string): void;
     deleteComponents(componentIds: string[]): void;
     duplicateComponent(componentId: string): UIComponentDefinition | null;
+    duplicateComponents(componentIds: readonly string[]): UIComponentDefinition[];
     updateComponentElementLayout(
         componentId: string,
         elementId: string,

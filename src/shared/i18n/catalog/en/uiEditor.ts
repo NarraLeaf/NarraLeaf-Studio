@@ -80,6 +80,17 @@ export const uiEditor = {
     history: {
         moveSurface: "move interface {name}",
         setEntryPage: "set entry page {name}",
+        createComponent: "create component {name}",
+        duplicateComponent: "duplicate component {name}",
+        duplicateComponents: "duplicate {count} components",
+        deleteComponent: "delete component {name}",
+        deleteComponents: "delete {count} components",
+        // A template or a pasted page: named by the page it added, or by its definition when only
+        // definitions arrived.
+        importSurface: "add interface {name}",
+        importSurfaces: "add {count} interfaces",
+        importComponent: "add component {name}",
+        importComponents: "add {count} components",
     },
     // The project's input vocabulary. An author names a gesture once - "Advance", "Skip" - and each
     // interface answers the ones it wants, so the same six words are read in the library panel and

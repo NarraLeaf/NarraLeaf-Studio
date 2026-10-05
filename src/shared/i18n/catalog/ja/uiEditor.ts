@@ -71,6 +71,15 @@ export const uiEditor = {
     history: {
         moveSurface: "インターフェース {name} の移動",
         setEntryPage: "入口ページ {name} の設定",
+        createComponent: "コンポーネント {name} の作成",
+        duplicateComponent: "コンポーネント {name} の複製",
+        duplicateComponents: "{count} 個のコンポーネントの複製",
+        deleteComponent: "コンポーネント {name} の削除",
+        deleteComponents: "{count} 個のコンポーネントの削除",
+        importSurface: "インターフェース {name} の追加",
+        importSurfaces: "{count} 個のインターフェースの追加",
+        importComponent: "コンポーネント {name} の追加",
+        importComponents: "{count} 個のコンポーネントの追加",
     },
     inputActions: {
         title: "入力アクション",

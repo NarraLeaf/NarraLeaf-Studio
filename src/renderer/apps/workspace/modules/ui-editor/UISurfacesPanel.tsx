@@ -449,8 +449,11 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         // The list is filtered by kind and a copied Game UI keeps its kind, so an interface pasted
         // while the other tab is showing would arrive out of sight.
         setKind(pasted.kind);
-        handleOpenSurface(pasted);
-    }, [documentService, handleOpenSurface]);
+        // Opened the way its card opens it, which leaves the focus in this panel: the paste is a
+        // step on the project's stack, and that is the stack Ctrl+Z and the Edit menu reach from here.
+        // Focus in the new page's editor would point both at the page's own stack, which is empty.
+        handleSurfaceClick(pasted);
+    }, [documentService, handleSurfaceClick]);
 
     const handleDuplicateSurface = useCallback((surface: UISurface) => {
         if (!documentService || surface.kind !== "appSurface") {
@@ -806,7 +809,9 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 runtimeBridge={runtimeBridge}
                 initialKind={kind}
                 occupiedStageSlotIds={occupiedStageSlotIds}
-                onApplied={handleOpenSurface}
+                // As a pasted interface is opened, for the same reason: the template's step is on
+                // the project's stack, and the focus has to stay where that stack is reached.
+                onApplied={handleSurfaceClick}
                 onNotify={(message, level) => uiService?.showNotification(message, level)}
             />
         </>

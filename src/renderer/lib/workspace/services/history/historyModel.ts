@@ -51,6 +51,11 @@ export type HistoryEntry = {
     label: HistoryLabel;
     /** Same key within {@link HistoryPushOptions.mergeWindowMs} folds into the previous entry. */
     mergeKey?: string;
+    /**
+     * Which family of operations left this entry, for a caller that has to drop that family and
+     * nothing else from a shared stack (`HistoryStack.dropWhere`). Command entries only.
+     */
+    tag?: string;
     createdAt: number;
     updatedAt: number;
     body: HistoryEntryBody;
@@ -132,12 +137,14 @@ export function createCommandEntry(input: {
     mergeKey?: string;
     now: number;
     dispose?: () => void;
+    tag?: string;
 }): HistoryEntry {
     return {
         id: nextHistoryEntryId(),
         scopeId: input.scopeId,
         label: input.label,
         mergeKey: input.mergeKey,
+        ...(input.tag ? { tag: input.tag } : {}),
         createdAt: input.now,
         updatedAt: input.now,
         body: { kind: "command", undo: input.undo, redo: input.redo },
@@ -320,6 +327,29 @@ export class HistoryStack {
         const dropped = this.redoEntries;
         this.redoEntries = [];
         dropped.forEach(disposeEntry);
+    }
+
+    /**
+     * Drop the entries `predicate` picks, from both sides, and let them go. Returns how many.
+     *
+     * For command entries only: each one acts on records it names and holds, so the steps on either
+     * side of a dropped one still mean what they meant. A snapshot or checkpoint taken out of the
+     * middle would leave its neighbours describing documents that never followed one another.
+     */
+    public dropWhere(predicate: (entry: HistoryEntry) => boolean): number {
+        const keep = (entry: HistoryEntry) => entry.body.kind !== "command" || !predicate(entry);
+        const dropped = [
+            ...this.undoEntries.filter(entry => !keep(entry)),
+            ...this.redoEntries.filter(entry => !keep(entry)),
+        ];
+        if (dropped.length === 0) {
+            return 0;
+        }
+        this.undoEntries = this.undoEntries.filter(keep);
+        this.redoEntries = this.redoEntries.filter(keep);
+        this.mergeBarrier = true;
+        dropped.forEach(disposeEntry);
+        return dropped.length;
     }
 
     /** Entries oldest-first. For tests and diagnostics; callers must not mutate them. */

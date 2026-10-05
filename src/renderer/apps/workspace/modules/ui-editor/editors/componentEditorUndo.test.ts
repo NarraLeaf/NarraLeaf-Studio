@@ -408,6 +408,77 @@ describe("scopes side by side", () => {
     });
 });
 
+/**
+ * The list widget's content editor, opened on a list inside a definition. It asks the service it is
+ * handed for a field id and writes the item shape through it - two members the component editor's
+ * service did not have, so adding a field threw a TypeError and nothing was written.
+ */
+describe("a list inside a definition", () => {
+    it("takes its fields and rows through the component editor's own service, each one undoable", () => {
+        const h = createHarness();
+        const list = h.slot.createElement("slotRoot", "nl.list", { x: 300, y: 10, width: 120, height: 200 });
+        const scope = uiComponentHistoryScope(SLOT);
+        const start = h.depth(scope).undo;
+        const before = h.definition(SLOT);
+
+        const fieldId = h.slot.generateId();
+        expect(fieldId).toMatch(/^gen-/);
+        h.slot.setListItemStructFields(list.id, [{ id: fieldId, key: "label", type: "string" }]);
+        const withField = h.definition(SLOT);
+        const structId = withField.elements[list.id]!.props?.itemStructId as string;
+        expect(structId).toBeTruthy();
+        expect(h.uidoc.getDocument().structs?.[structId]?.fields).toEqual([{ id: fieldId, key: "label", type: "string" }]);
+        expect(h.depth(scope).undo).toBe(start + 1);
+
+        h.slot.updateElementProps(list.id, { items: [{ label: "First" }] });
+        const withRow = h.definition(SLOT);
+        expect(withRow.elements[list.id]!.props?.items).toEqual([{ label: "First" }]);
+        expect(h.depth(scope).undo).toBe(start + 2);
+
+        h.uiHistory.undo(SLOT_SURFACE);
+        expect(h.definition(SLOT)).toEqual(withField);
+        h.uiHistory.undo(SLOT_SURFACE);
+        expect(h.definition(SLOT)).toEqual(before);
+        h.uiHistory.redo(SLOT_SURFACE);
+        h.uiHistory.redo(SLOT_SURFACE);
+        expect(h.definition(SLOT)).toEqual(withRow);
+    });
+
+    it("forks a shape another list names rather than reshaping it", () => {
+        const h = createHarness();
+        const first = h.slot.createElement("slotRoot", "nl.list", { x: 300, y: 10 });
+        const second = h.badge.createElement("badgeRoot", "nl.list", { x: 0, y: 0 });
+        const fields = [{ id: "f-label", key: "label", type: "string" as const }];
+        h.slot.setListItemStructFields(first.id, fields);
+        h.badge.setListItemStructFields(second.id, fields);
+        const shared = h.definition(SLOT).elements[first.id]!.props?.itemStructId;
+        expect(h.definition(BADGE).elements[second.id]!.props?.itemStructId).toBe(shared);
+
+        h.slot.setListItemStructFields(first.id, [...fields, { id: "f-count", key: "count", type: "number" }]);
+        expect(h.definition(SLOT).elements[first.id]!.props?.itemStructId).not.toBe(shared);
+        expect(h.uidoc.getDocument().structs?.[shared as string]?.fields).toEqual(fields);
+    });
+});
+
+describe("the component editor's service", () => {
+    it("passes every project member to the project's service as it was called", () => {
+        const calls: Array<[string, unknown[]]> = [];
+        const project = new Proxy({}, {
+            get: (_target, key) => (...args: unknown[]) => {
+                calls.push([String(key), args]);
+                return `answered by ${String(key)}`;
+            },
+        }) as unknown as UIDocumentService;
+        const adapter = createComponentDocumentServiceAdapter(project, SLOT) as unknown as Record<string, unknown>;
+        const passed = Object.keys(adapter).filter(key => typeof adapter[key] === "function");
+        expect(passed).toEqual(expect.arrayContaining(["generateId", "setComponentListItemStructFields", "duplicateComponents"]));
+        for (const key of passed) {
+            expect((adapter[key] as (...args: unknown[]) => unknown)("a", 1)).toBe(`answered by ${key}`);
+            expect(calls.at(-1)).toEqual([key, ["a", 1]]);
+        }
+    });
+});
+
 function clipboardWithOneText(): UIEditorClipboardPayload {
     return {
         v: 1,

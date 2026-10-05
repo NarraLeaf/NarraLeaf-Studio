@@ -55,7 +55,7 @@ export const uiEditor = {
         allSlotsUsed: "所有游戏 UI 位置均已有界面。从列表中打开已有的游戏 UI",
         starterTitlePage: {
             title: "新建标题页",
-            description: "「开始」「继续」按钮已接好，替换空白的入口页面",
+            description: "带有可用的「开始」「继续」按钮，替换空白的入口页面",
         },
     },
     naming: {
@@ -68,6 +68,15 @@ export const uiEditor = {
     history: {
         moveSurface: "移动界面 {name}",
         setEntryPage: "设置入口页面 {name}",
+        createComponent: "新建组件 {name}",
+        duplicateComponent: "创建组件 {name} 的副本",
+        duplicateComponents: "创建 {count} 个组件的副本",
+        deleteComponent: "删除组件 {name}",
+        deleteComponents: "删除 {count} 个组件",
+        importSurface: "添加界面 {name}",
+        importSurfaces: "添加 {count} 个界面",
+        importComponent: "添加组件 {name}",
+        importComponents: "添加 {count} 个组件",
     },
     inputActions: {
         title: "输入意图",

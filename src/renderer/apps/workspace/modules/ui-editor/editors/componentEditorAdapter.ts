@@ -6,7 +6,9 @@ import type {
     UISurface,
 } from "@shared/types/ui-editor/document";
 import type { UIPageAnimationSettings } from "@shared/types/ui-editor/pageAnimation";
+import type { UIStructField } from "@shared/types/ui-editor/struct";
 import type { UIEditorClipboardPayload } from "@/lib/ui-editor/commands/uiEditorClipboard";
+import type { Service } from "@/lib/workspace/services/Service";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { MoveUiElementsResult } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
 import { COMPONENT_EDITOR_VIRTUAL_ROOT_PREFIX } from "@/lib/ui-editor/componentEditorRoot";
@@ -55,7 +57,80 @@ function resolveComponentEditorDesignSize(root: UIElement | undefined): UISurfac
     };
 }
 
-export class ComponentDocumentServiceAdapter {
+/** The service lifecycle every service has, which nothing calls on a document service it was handed. */
+type ServiceLifecycleMember = Exclude<keyof Service<UIDocumentService>, "getContext">;
+
+/**
+ * Everything the project's document service offers a caller: what the canvas, the commands, the
+ * inspectors and their modals can call on the object an editor hands them.
+ *
+ * A component editor hands them this adapter in the service's place, through a cast - their props are
+ * typed with the service - so this type is what makes the cast honest. The adapter implements it, and
+ * a member the service gains is a compile error here until the adapter says what it means for a
+ * definition. Before, a missing member was a TypeError in the running editor, found by an author:
+ * a list's content editor called two the adapter never had.
+ */
+export type UIDocumentServiceSurface = {
+    [K in Exclude<keyof UIDocumentService, ServiceLifecycleMember>]: UIDocumentService[K];
+};
+
+/**
+ * Members that mean the same thing whichever editor asks: the project's document as a whole - its
+ * file, its pages, its input vocabulary, its live session - and the library calls that name the
+ * definition they act on. Passed straight to the project's service.
+ */
+type ProjectMember =
+    | "load"
+    | "save"
+    | "flushPendingChanges"
+    | "setAfterMutateHook"
+    | "restoreDocumentFromHistory"
+    | "setOperationSink"
+    | "applyLiveOp"
+    | "takeTextSourceMigrationChanges"
+    | "giveKeyedWidgetsTheirWords"
+    | "prepareTemplateDocumentForPreview"
+    | "generateId"
+    | "getComponentContentRevision"
+    | "getComponentUsageCount"
+    | "getInputActions"
+    | "createInputAction"
+    | "renameInputAction"
+    | "setInputActionBindings"
+    | "deleteInputAction"
+    | "setSurfaceActionEnabled"
+    | "updateSurfaceActionEnablement"
+    | "createSurface"
+    | "deleteSurface"
+    | "reorderSurfaces"
+    | "setEntrySurface"
+    | "renameSurface"
+    | "updateSurface"
+    | "duplicateSurface"
+    | "importTemplateBundle"
+    | "createEmptyComponent"
+    | "renameComponent"
+    | "setComponentParams"
+    | "deleteComponents"
+    | "duplicateComponent"
+    | "duplicateComponents"
+    | "updateComponentElementLayout"
+    | "updateComponentElementLayouts"
+    | "setComponentElementValueBinding"
+    | "updateComponentElementProps"
+    | "updateComponentElementAnimation"
+    | "updateComponentElementExtra"
+    | "renameComponentElement"
+    | "reorderComponentChildren"
+    | "deleteComponentElements"
+    | "moveComponentElements"
+    | "ungroupComponentContainers"
+    | "groupComponentElements"
+    | "createComponentElement"
+    | "pasteComponentClipboardPayload"
+    | "setComponentListItemStructFields";
+
+export class ComponentDocumentServiceAdapter implements UIDocumentServiceSurface {
     public readonly surfaceId: string;
     private readonly virtualRootId: string;
     /** The last document built, and the base document and revision it was built from. */
@@ -68,6 +143,73 @@ export class ComponentDocumentServiceAdapter {
         this.surfaceId = getComponentEditorSurfaceId(componentId);
         this.virtualRootId = getComponentEditorRootId(componentId);
     }
+
+    // === The project's, whichever editor asks ==============================================
+
+    public readonly load = this.project("load");
+    public readonly save = this.project("save");
+    public readonly flushPendingChanges = this.project("flushPendingChanges");
+    public readonly setAfterMutateHook = this.project("setAfterMutateHook");
+    public readonly restoreDocumentFromHistory = this.project("restoreDocumentFromHistory");
+    public readonly setOperationSink = this.project("setOperationSink");
+    public readonly applyLiveOp = this.project("applyLiveOp");
+    public readonly takeTextSourceMigrationChanges = this.project("takeTextSourceMigrationChanges");
+    public readonly giveKeyedWidgetsTheirWords = this.project("giveKeyedWidgetsTheirWords");
+    public readonly prepareTemplateDocumentForPreview = this.project("prepareTemplateDocumentForPreview");
+    public readonly generateId = this.project("generateId");
+    public readonly getComponentContentRevision = this.project("getComponentContentRevision");
+    public readonly getComponentUsageCount = this.project("getComponentUsageCount");
+    public readonly getInputActions = this.project("getInputActions");
+    public readonly createInputAction = this.project("createInputAction");
+    public readonly renameInputAction = this.project("renameInputAction");
+    public readonly setInputActionBindings = this.project("setInputActionBindings");
+    public readonly deleteInputAction = this.project("deleteInputAction");
+    // A definition has no surface record and answers no input action; asked about this editor's own
+    // surface, the project's service finds none and changes nothing.
+    public readonly setSurfaceActionEnabled = this.project("setSurfaceActionEnabled");
+    public readonly updateSurfaceActionEnablement = this.project("updateSurfaceActionEnablement");
+    public readonly createSurface = this.project("createSurface");
+    public readonly deleteSurface = this.project("deleteSurface");
+    public readonly reorderSurfaces = this.project("reorderSurfaces");
+    public readonly setEntrySurface = this.project("setEntrySurface");
+    public readonly renameSurface = this.project("renameSurface");
+    public readonly updateSurface = this.project("updateSurface");
+    public readonly duplicateSurface = this.project("duplicateSurface");
+    public readonly importTemplateBundle = this.project("importTemplateBundle");
+    public readonly createEmptyComponent = this.project("createEmptyComponent");
+    public readonly renameComponent = this.project("renameComponent");
+    public readonly setComponentParams = this.project("setComponentParams");
+    public readonly deleteComponents = this.project("deleteComponents");
+    public readonly duplicateComponent = this.project("duplicateComponent");
+    public readonly duplicateComponents = this.project("duplicateComponents");
+    public readonly updateComponentElementLayout = this.project("updateComponentElementLayout");
+    public readonly updateComponentElementLayouts = this.project("updateComponentElementLayouts");
+    public readonly setComponentElementValueBinding = this.project("setComponentElementValueBinding");
+    public readonly updateComponentElementProps = this.project("updateComponentElementProps");
+    public readonly updateComponentElementAnimation = this.project("updateComponentElementAnimation");
+    public readonly updateComponentElementExtra = this.project("updateComponentElementExtra");
+    public readonly renameComponentElement = this.project("renameComponentElement");
+    public readonly reorderComponentChildren = this.project("reorderComponentChildren");
+    public readonly deleteComponentElements = this.project("deleteComponentElements");
+    public readonly moveComponentElements = this.project("moveComponentElements");
+    public readonly ungroupComponentContainers = this.project("ungroupComponentContainers");
+    public readonly groupComponentElements = this.project("groupComponentElements");
+    public readonly createComponentElement = this.project("createComponentElement");
+    public readonly pasteComponentClipboardPayload = this.project("pasteComponentClipboardPayload");
+    public readonly setComponentListItemStructFields = this.project("setComponentListItemStructFields");
+
+    /**
+     * One of the project service's own members, called on the project service.
+     *
+     * Looked up when it is called rather than when the adapter is built, so the member a test or a
+     * live session swaps in on the service is the one that runs.
+     */
+    private project<K extends ProjectMember>(name: K): UIDocumentService[K] {
+        return ((...args: unknown[]) =>
+            (this.base[name] as unknown as (...rest: unknown[]) => unknown).apply(this.base, args)) as UIDocumentService[K];
+    }
+
+    // === The definition, as this editor shows it ===========================================
 
     /**
      * The component shown as a document of its own: one surface, a virtual root, and the
@@ -173,6 +315,13 @@ export class ComponentDocumentServiceAdapter {
 
     public getRevision(): number {
         return this.base.getRevision();
+    }
+
+    /** This editor's surface is the definition, whose own counter the library keeps. */
+    public getSurfaceContentRevision(surfaceId: string): number {
+        return surfaceId === this.surfaceId
+            ? this.base.getComponentContentRevision(this.componentId)
+            : this.base.getSurfaceContentRevision(surfaceId);
     }
 
     public isDirty(): boolean {
@@ -296,6 +445,17 @@ export class ComponentDocumentServiceAdapter {
             propPath,
             id ? { kind: "listItemField", fieldId: id } : null,
         );
+    }
+
+    /**
+     * The item shape of a list inside the definition: one step in the definition's own history, with
+     * the library's fork-or-reuse rules applied across the whole project.
+     */
+    public setListItemStructFields(elementId: string, fields: readonly UIStructField[]): void {
+        if (this.isVirtualRoot(elementId)) {
+            return;
+        }
+        this.base.setComponentListItemStructFields(this.componentId, elementId, fields);
     }
 
     /** Show one of this component's text parameters in an element's words, or (`null`) stop showing one. */
@@ -440,9 +600,17 @@ export class ComponentDocumentServiceAdapter {
     }
 }
 
+/**
+ * The adapter, typed as the service its callers take.
+ *
+ * Still a cast - the service's class has private members, so nothing else is assignable to it - but
+ * no longer an unchecked one: the adapter implements {@link UIDocumentServiceSurface}, every member a
+ * caller can reach.
+ */
 export function createComponentDocumentServiceAdapter(
     base: UIDocumentService,
     componentId: string,
 ): UIDocumentService {
-    return new ComponentDocumentServiceAdapter(base, componentId) as unknown as UIDocumentService;
+    const adapter: UIDocumentServiceSurface = new ComponentDocumentServiceAdapter(base, componentId);
+    return adapter as unknown as UIDocumentService;
 }
