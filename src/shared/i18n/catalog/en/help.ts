@@ -194,6 +194,8 @@ export const help = {
                 + "- The panel spells commands the way they are typed. With the editor in Chinese the Chinese "
                 + "spellings parse, and the English spellings remain valid.\n"
                 + "- The star beside a command adds it to Starred. Starred commands are listed first in the “/” menu.\n"
+                + "- Abbreviations of your own are set on a command's page in the panel. An abbreviation followed by a "
+                + "space is replaced with the command, so rows never contain it.\n"
                 + "- A row with a required value missing cannot be committed.",
         },
         storyVariables: {

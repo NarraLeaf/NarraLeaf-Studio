@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowLeft, CornerDownLeft, LayoutGrid, Plus, Star } from "lucide-react";
+import { ArrowLeft, CornerDownLeft, LayoutGrid, Plus, Star, X } from "lucide-react";
 import type { PanelComponentProps } from "../../types";
-import { Button, PanelHeader, SectionCard } from "@/lib/components/elements";
+import { Badge, Button, Input, PanelHeader, SectionCard } from "@/lib/components/elements";
 // Not on the barrel (it lists the rest of the Phase 2 set); the other call sites reach in too.
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { cn } from "@/lib/utils/cn";
@@ -19,7 +19,7 @@ import {
     type StoryCommandGroupId,
 } from "./storyCommandCategories";
 import { localizeSpecCommand } from "./commands/specPalette";
-import { getCommandSpec, listCommandSpecs } from "./commands/registry";
+import { getCommandDef, getCommandSpec, listCommandSpecs, localizedCommandToken } from "./commands/registry";
 import { specGroupIds } from "./commands/specSidebar";
 import { availableSidebarGroups, buildSpecSidebarGroups, dedupeToPrimarySubject, filterSidebarGroups, pickStarredCommands, type StoryCommandSidebarGroup } from "./commands/specSidebar";
 import { EMPTY_STORY_COMMAND_CONTEXT, type StoryCommandContext } from "./storyCommandValues";
@@ -28,6 +28,8 @@ import { searchActionCommands } from "./storyCommandSearch";
 import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
 import { STARRED_ICON_COLOR } from "./storyActionCreatorFavorites";
 import { useStarredStoryCommands } from "./useStarredStoryCommands";
+import { useStoryCommandAbbreviations } from "./useStoryCommandAbbreviations";
+import { abbreviationsOf, checkAbbreviation, type AbbreviationCheck, type StoryCommandAbbreviations } from "./storyCommandAbbreviations";
 import {
     buildStoryCommandManual,
     type StoryCommandManualEntry,
@@ -109,6 +111,9 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
     }, [doc, openCommandId]);
     // The same set the `/` menu leads with, so a star set here heads that menu on the next line typed.
     const { starredIds, toggleStarred } = useStarredStoryCommands();
+    // Edited here, on a command's page, and nowhere else; the list search reads the live ones so it
+    // finds what the `/` menu finds.
+    const { abbreviations, live: liveAbbreviations, addAbbreviation, removeAbbreviation } = useStoryCommandAbbreviations();
     const pluginCommands = useStoryPluginActionCommands();
 
     const localize = useCallback((command: PaletteActionCommand) => localizeSpecCommand(command, ct), [ct]);
@@ -171,8 +176,8 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
         [activeTab, sidebarGroups, starredIds],
     );
     const starredCommands = useMemo<PaletteActionCommand[]>(
-        () => searchActionCommands(allStarredCommands, query),
-        [allStarredCommands, query],
+        () => searchActionCommands(allStarredCommands, query, liveAbbreviations),
+        [allStarredCommands, liveAbbreviations, query],
     );
 
     /**
@@ -192,9 +197,9 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
             ? dedupeToPrimarySubject(sidebarGroups)
             : filterSidebarGroups(sidebarGroups, activeTab);
         return scoped
-            .map(entry => ({ ...entry, commands: searchActionCommands(entry.commands, query) }))
+            .map(entry => ({ ...entry, commands: searchActionCommands(entry.commands, query, liveAbbreviations) }))
             .filter(entry => entry.commands.length > 0);
-    }, [activeTab, query, sidebarGroups]);
+    }, [activeTab, liveAbbreviations, query, sidebarGroups]);
 
     const createAction = useCallback((commandId: string) => {
         if (!payload?.tabId) {
@@ -387,6 +392,9 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
                                 <CommandDetail
                                     entry={openCommand}
                                     filedUnder={filedUnderById.get(openCommand.id) ?? []}
+                                    abbreviations={abbreviations}
+                                    onAddAbbreviation={word => addAbbreviation(word, openCommand.id)}
+                                    onRemoveAbbreviation={removeAbbreviation}
                                     onInsert={() => createAction(openCommand.id)}
                                 />
                             ) : openPlugin ? (
@@ -506,6 +514,9 @@ function ActionCreatorRow(props: {
 function CommandDetail(props: {
     entry: StoryCommandManualEntry;
     filedUnder: readonly StoryCommandGroupId[];
+    abbreviations: StoryCommandAbbreviations;
+    onAddAbbreviation: (word: string) => void;
+    onRemoveAbbreviation: (word: string) => void;
     onInsert: () => void;
 }) {
     const { t } = useTranslation();
@@ -527,6 +538,12 @@ function CommandDetail(props: {
                     <span className="font-mono">{entry.aliases.join("  ")}</span>
                 </p>
             ) : null}
+            <CommandAbbreviations
+                commandId={entry.id}
+                abbreviations={props.abbreviations}
+                onAdd={props.onAddAbbreviation}
+                onRemove={props.onRemoveAbbreviation}
+            />
             {alsoFiledUnder.length > 0 ? (
                 <p className="text-2xs text-fg-subtle">
                     {t("story.manual.appliesTo")}
@@ -563,6 +580,143 @@ function CommandDetail(props: {
             ) : null}
         </div>
     );
+}
+
+/**
+ * The author's own abbreviations for this command, edited in place under the spellings the command
+ * already has.
+ *
+ * This is the only place they are set. It sits under "Also written" on purpose: both lines answer
+ * "what else can I type for this command", one with the words Studio gives it and one with the words
+ * the author gave it, and keeping them apart is what lets an author tell the two kinds apart.
+ *
+ * A word a built-in command has since taken (a later version can add spellings) is kept and drawn as
+ * such, with what took it, rather than silently dropped: it no longer expands, and this is where the
+ * author would look to find out why.
+ */
+function CommandAbbreviations(props: {
+    commandId: string;
+    abbreviations: StoryCommandAbbreviations;
+    onAdd: (word: string) => void;
+    onRemove: (word: string) => void;
+}) {
+    const { t } = useTranslation();
+    const words = abbreviationsOf(props.commandId, props.abbreviations);
+    /** The word being typed, or `null` while the field is closed. */
+    const [draft, setDraft] = useState<string | null>(null);
+    const [problem, setProblem] = useState<string | null>(null);
+    const addRef = useRef<HTMLButtonElement>(null);
+
+    const close = (refocus: boolean) => {
+        setDraft(null);
+        setProblem(null);
+        // Back to the `+` rather than to nothing: focus on the body would take the page's Escape with it.
+        if (refocus) {
+            window.requestAnimationFrame(() => addRef.current?.focus());
+        }
+    };
+    const submit = (refocus: boolean) => {
+        const word = draft ?? "";
+        if (!word.trim()) {
+            close(refocus);
+            return;
+        }
+        const check = checkAbbreviation(word, props.commandId, props.abbreviations);
+        if (!check.ok) {
+            setProblem(abbreviationProblem(check, t));
+            return;
+        }
+        props.onAdd(check.word);
+        close(refocus);
+    };
+
+    return (
+        <div className="flex flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-1 text-2xs text-fg-subtle">
+                <span>
+                    {t("story.manual.abbreviations")}
+                    {": "}
+                </span>
+                {words.map(word => {
+                    const owner = getCommandDef(word);
+                    const shadowed = owner !== null && owner.commandId !== props.commandId;
+                    return (
+                        <Badge
+                            key={word}
+                            tone={shadowed ? "warning" : "neutral"}
+                            className="font-mono"
+                            data-tip={shadowed ? t("story.manual.abbreviationShadowed", { command: localizedCommandToken(owner) }) : undefined}
+                        >
+                            <span className={shadowed ? "line-through" : undefined}>{word}</span>
+                            <button
+                                type="button"
+                                className="grid place-items-center rounded-sm text-fg-subtle transition-colors hover:text-fg"
+                                data-tip={t("story.manual.removeAbbreviation", { word })}
+                                aria-label={t("story.manual.removeAbbreviation", { word })}
+                                onClick={() => props.onRemove(word)}
+                            >
+                                <X className="h-3 w-3" />
+                            </button>
+                        </Badge>
+                    );
+                })}
+                {draft === null ? (
+                    <ToolbarButton
+                        ref={addRef}
+                        size="xs"
+                        data-tip={t("story.manual.addAbbreviation")}
+                        aria-label={t("story.manual.addAbbreviation")}
+                        onClick={() => setDraft("")}
+                    >
+                        <Plus className="h-3 w-3" />
+                    </ToolbarButton>
+                ) : (
+                    <Input
+                        size="sm"
+                        autoFocus
+                        value={draft}
+                        variant={problem ? "error" : "default"}
+                        className="w-28 font-mono text-xs"
+                        placeholder={t("story.manual.abbreviationPlaceholder")}
+                        aria-label={t("story.manual.addAbbreviation")}
+                        onChange={event => {
+                            setDraft(event.target.value);
+                            setProblem(null);
+                        }}
+                        onKeyDown={event => {
+                            if (event.key === "Enter") {
+                                event.preventDefault();
+                                submit(true);
+                            } else if (event.key === "Escape") {
+                                // The page closes on Escape; this one only closes the field.
+                                event.preventDefault();
+                                event.stopPropagation();
+                                close(true);
+                            }
+                        }}
+                        onBlur={() => submit(false)}
+                    />
+                )}
+            </div>
+            {problem ? <p className="text-2xs text-danger">{problem}</p> : null}
+        </div>
+    );
+}
+
+/** What is wrong with a word that cannot become an abbreviation, said in the interface language. */
+function abbreviationProblem(check: Extract<AbbreviationCheck, { ok: false }>, t: ReturnType<typeof useTranslation>["t"]): string | null {
+    switch (check.reason) {
+        case "empty":
+            return null;
+        case "space":
+            return t("story.manual.abbreviationSpace");
+        case "character":
+            return t("story.manual.abbreviationCharacter");
+        case "builtIn":
+            return t("story.manual.abbreviationBuiltIn", { command: localizedCommandToken(check.def) });
+        case "taken":
+            return t("story.manual.abbreviationTaken", { command: localizedCommandToken(check.def) });
+    }
 }
 
 function ParamRow({ param }: { param: StoryCommandManualParam }) {
