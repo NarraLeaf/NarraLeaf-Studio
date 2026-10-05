@@ -4,6 +4,7 @@
  */
 
 import {
+    BLUEPRINT_NODE_PARAM_INFERRED_PIN_TYPES,
     BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
@@ -184,9 +185,59 @@ export function isValidBlueprintPinConnection(params: {
             pinValueType: inPin.valueType,
             params: params.targetParams,
         });
-        return areDataValueTypesCompatible(sourceValueType, targetValueType);
+        if (areDataValueTypesCompatible(sourceValueType, targetValueType)) {
+            return true;
+        }
+        return areDeclaredDataValueTypesCompatible(params);
     }
     return true;
+}
+
+function withoutInferredPinTypes(params: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+    if (!params || !(BLUEPRINT_NODE_PARAM_INFERRED_PIN_TYPES in params)) {
+        return params;
+    }
+    const { [BLUEPRINT_NODE_PARAM_INFERRED_PIN_TYPES]: _inferred, ...rest } = params;
+    return rest;
+}
+
+/**
+ * Whether the pair fits by the types the two nodes declare, before anything was worked out from the
+ * wires.
+ *
+ * A type the editor works out (`graphStructTypeInference.ts`) is a promise added on top of the one a
+ * node declares, never one taken away. Get Field declared `any` for as long as it only read list rows,
+ * and the shipped templates wire it into `json` and `string` pins; typing its output as the field's
+ * type must not turn those wires red. So a pair the declared types accept stays accepted, and what the
+ * worked-out types add is only what the declared ones could not say - a struct arriving at a reader of
+ * that struct.
+ */
+function areDeclaredDataValueTypesCompatible(params: {
+    sourceType: string;
+    sourcePort: string;
+    targetType: string;
+    targetPort: string;
+    sourceParams?: Record<string, unknown>;
+    targetParams?: Record<string, unknown>;
+}): boolean {
+    const sourceParams = withoutInferredPinTypes(params.sourceParams);
+    const targetParams = withoutInferredPinTypes(params.targetParams);
+    if (sourceParams === params.sourceParams && targetParams === params.targetParams) {
+        return false;
+    }
+    const outPin = blueprintNodeRegistry
+        .resolveCatalogEntryForNode(params.sourceType, sourceParams)
+        .pins.find(p => p.id === params.sourcePort && p.kind === "output");
+    const inPin = blueprintNodeRegistry
+        .resolveCatalogEntryForNode(params.targetType, targetParams)
+        .pins.find(p => p.id === params.targetPort && p.kind === "input");
+    if (!outPin || !inPin) {
+        return false;
+    }
+    return areDataValueTypesCompatible(
+        resolvePinValueType({ nodeType: params.sourceType, portId: params.sourcePort, pinValueType: outPin.valueType, params: sourceParams }),
+        resolvePinValueType({ nodeType: params.targetType, portId: params.targetPort, pinValueType: inPin.valueType, params: targetParams }),
+    );
 }
 
 /** Exec-only shortcut for legacy call sites */

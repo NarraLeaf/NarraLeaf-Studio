@@ -361,6 +361,8 @@ function compileGraph(
         buildBlueprintStructTypeContext({
             uiDocument: options.uiElements ? { elements: options.uiElements, structs: { ...(options.uiStructs ?? {}) } } : null,
             widgetElement: "elementId" in owner ? options.uiElements?.[owner.elementId] : undefined,
+            owner,
+            isComponentDefinitionGraph: anchorComponentId(owner) !== null,
         }),
     );
     const typedParams = new Map(Object.entries(typed.nodes ?? {}).map(([id, node]) => [id, node.params ?? {}]));

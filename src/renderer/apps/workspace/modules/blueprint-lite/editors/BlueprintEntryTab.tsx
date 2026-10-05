@@ -721,10 +721,16 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             : undefined;
     /** The shapes this graph's pins are typed with: the document's lists, and the row in scope. */
     const structTypeContext = useMemo(
-        () => buildBlueprintStructTypeContext({ uiDocument: blueprintDocumentService.getDocument(), widgetElement }),
+        () =>
+            buildBlueprintStructTypeContext({
+                uiDocument: blueprintDocumentService.getDocument(),
+                widgetElement,
+                owner: bp.owner,
+                isComponentDefinitionGraph,
+            }),
         // `uiDocumentRevision` stands in for the document read through the service.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [blueprintDocumentService, uiDocumentRevision, widgetElement],
+        [blueprintDocumentService, bp.owner, isComponentDefinitionGraph, uiDocumentRevision, widgetElement],
     );
     const widgetLogicEvents = useMemo(() => {
         const t = widgetElement?.type;

@@ -48,7 +48,7 @@ import {
 } from "../../workspace/services/ui-editor/blueprint/graphStructTypeInference";
 import { blueprintStructNameKey } from "../../ui-editor/blueprint-nodes/structTypeLabels";
 import { blueprintNodeTitleKey } from "@/apps/workspace/modules/blueprint-lite/blueprintNodeI18n";
-import { anchorElementId } from "@shared/blueprint/ownerShape";
+import { anchorComponentId, anchorElementId } from "@shared/blueprint/ownerShape";
 import type { LintContext } from "../context";
 import type { LintFinding, LintLocation, LintRule } from "../types";
 
@@ -882,6 +882,8 @@ function runFieldMissing(ctx: LintContext): LintFinding[] {
             buildBlueprintStructTypeContext({
                 uiDocument: ctx.uiDocument,
                 widgetElement: elementId ? ctx.uiDocument?.elements[elementId] : null,
+                owner: site.owner,
+                isComponentDefinitionGraph: site.owner ? anchorComponentId(site.owner) !== null : false,
             }),
         );
         if (typed.size === 0) {

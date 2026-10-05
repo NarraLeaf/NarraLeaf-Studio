@@ -537,7 +537,12 @@ export function validateBlueprintGraphIr(
     // both ends typed the way the canvas draws them.
     const structTypes = analyzeBlueprintStructTypes(
         ir,
-        buildBlueprintStructTypeContext({ uiDocument: ctx.uiDocument, widgetElement: ctx.widgetElement }),
+        buildBlueprintStructTypeContext({
+            uiDocument: ctx.uiDocument,
+            widgetElement: ctx.widgetElement,
+            owner: ctx.blueprintOwner,
+            isComponentDefinitionGraph: ctx.isComponentDefinitionGraph,
+        }),
     );
     ir = applyBlueprintStructTypes(ir, structTypes);
     const nodes = ir.nodes ?? {};

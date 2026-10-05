@@ -37,6 +37,8 @@ import { blueprintArrayElementType, blueprintArrayValueType } from "@shared/type
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { resolveListRowContext } from "@shared/types/ui-editor/listItemContext";
+import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
+import { resolveListItemContextAvailable } from "@/lib/ui-editor/blueprint-nodes/graphContext";
 import {
     findUIStructField,
     uiStructFieldValueType,
@@ -300,16 +302,27 @@ export function applyBlueprintStructTypes(
 export function buildBlueprintStructTypeContext(input: {
     uiDocument?: (Pick<UIDocument, "elements"> & Partial<Pick<UIDocument, "structs">>) | null;
     widgetElement?: UIElement | null;
+    /** The blueprint's owner. Given, whether a row is in scope is the palette's own answer. */
+    owner?: BlueprintOwnerRef;
+    isComponentDefinitionGraph?: boolean;
 }): BlueprintStructTypeInferenceContext {
     const document = input.uiDocument ?? null;
     const resolveStruct = (structId: string) => resolveUIStruct(document, structId);
     const row = document && input.widgetElement ? resolveListRowContext(document, input.widgetElement) : null;
     return {
         resolveStruct,
-        // With no document to walk, a row is not known to be absent - the command-line tools check
-        // graphs that way, and the palette's own row scope reads it the same way
-        // (`buildBlueprintGraphContext`). An unwired reader is then a row reader of unknown shape.
-        rowAvailable: document ? row !== null : true,
+        // The palette's rule, so an unwired reader reads a row exactly where the palette says a row
+        // can be. Where nothing establishes the answer - no document to walk, a component definition
+        // any instance of which may be the row - a row is not known to be absent, and an unwired
+        // reader is a row reader of unknown shape rather than a reader with nothing to read.
+        rowAvailable: input.owner
+            ? resolveListItemContextAvailable({
+                  owner: input.owner,
+                  isComponentDefinitionGraph: input.isComponentDefinitionGraph,
+                  uiDocument: document,
+                  widgetElement: input.widgetElement,
+              })
+            : document ? row !== null : true,
         rowStruct: row?.structId ? resolveStruct(row.structId) : null,
     };
 }
