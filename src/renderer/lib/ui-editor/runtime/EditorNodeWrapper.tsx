@@ -401,7 +401,8 @@ export function EditorNodeWrapper({
     }, [interactionDisabled, interactive, isComponentRoot, isRoot, runtimeElementKey, widgetRuntimeStore]);
 
     // Whichever drawings take pointer enter and leave below, so the store can ask them where the
-    // pointer is when something other than the pointer moved (`retargetHover`).
+    // pointer is when something other than the pointer moved (`retargetHover`), and lets go of the
+    // element's hover and press once its last drawing is gone (`registerPointerTarget`).
     useLayoutEffect(() => {
         if (!widgetRuntimeStore || !interactive) {
             return undefined;

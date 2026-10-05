@@ -322,6 +322,12 @@ export class WidgetRuntimeStateStore {
     /**
      * Record a drawing of `id` that the pointer can be over; returns the call that takes it away. An
      * element drawn twice under one key is over the pointer when either drawing is.
+     *
+     * When the last drawing of an element goes, the element stops being hovered or pressed: a drawing
+     * that is gone is under no pointer and held by none. Nothing else would say so - the leave and
+     * the release are never sent to a node that has been removed - so an element hidden while the
+     * pointer was on it, or while it was being pressed, came back hovered or pressed whenever it was
+     * next drawn, wherever the pointer was by then.
      */
     registerPointerTarget(id: string, contains: (node: Node) => boolean): () => void {
         let drawings = this.pointerTargets.get(id);
@@ -333,8 +339,17 @@ export class WidgetRuntimeStateStore {
         own.add(contains);
         return () => {
             own.delete(contains);
-            if (own.size === 0 && this.pointerTargets.get(id) === own) {
-                this.pointerTargets.delete(id);
+            if (own.size > 0 || this.pointerTargets.get(id) !== own) {
+                return;
+            }
+            this.pointerTargets.delete(id);
+            const wasHovered = this.hoverTargetIds.delete(id);
+            const wasPressed = this.activePointerId === id;
+            if (wasPressed) {
+                this.activePointerId = null;
+            }
+            if (wasHovered || wasPressed) {
+                this.emit();
             }
         };
     }

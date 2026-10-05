@@ -75,6 +75,35 @@ describe("WidgetRuntimeStateStore", () => {
         expect(store.getSignalsForElement("row", false).hovered).toBe(false);
     });
 
+    it("stops an element being hovered or pressed when its last drawing goes", () => {
+        const store = new WidgetRuntimeStateStore();
+        const releaseFirst = store.registerPointerTarget("button", () => false);
+        const releaseSecond = store.registerPointerTarget("button", () => false);
+        store.setHoverTarget("button");
+        store.setActivePointerTarget("button");
+
+        releaseFirst();
+        expect(store.getSignalsForElement("button", false)).toMatchObject({ hovered: true, active: true });
+
+        let announcements = 0;
+        store.subscribe(() => {
+            announcements += 1;
+        });
+        releaseSecond();
+        expect(store.getSignalsForElement("button", false)).toMatchObject({ hovered: false, active: false });
+        expect(announcements).toBe(1);
+    });
+
+    it("leaves another element's press alone when a drawing goes", () => {
+        const store = new WidgetRuntimeStateStore();
+        const release = store.registerPointerTarget("image", () => false);
+        store.setActivePointerTarget("button");
+
+        release();
+
+        expect(store.getSnapshot().activePointerId).toBe("button");
+    });
+
     it("notifies dedicated runtime patch subscribers without changing widget interaction state", () => {
         const store = new WidgetRuntimeStateStore();
         let calls = 0;
