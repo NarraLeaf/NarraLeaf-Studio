@@ -28,7 +28,6 @@ import {
 } from "@shared/types/ui-editor/textSource";
 import { uiTextSampleCauseOf } from "@shared/types/ui-editor/textSample";
 import { listUIPlacementTextValues, uiComponentTextValueUnitBinding } from "@shared/types/ui-editor/componentTextParams";
-import type { UITextWriterIndex } from "@shared/types/ui-editor/textWriters";
 import {
     countSegmentInterpolations,
     segmentHasMarkup,
@@ -231,16 +230,14 @@ export type UiTranslationRow = {
  * key translates through the key registry instead, and its row is the key's. Studio's own widgets have
  * one site; a plugin's widget has one per prop its manifest declares as words (`uiTextSitesOf`).
  *
- * Sample words have no row (`textSample.ts`): a value binding or a blueprint decides what the game
- * shows there, and a package carries neither the sample words nor a translation of them.
+ * Sample words have no row (`textSample.ts`): a value binding decides what the game shows there, and
+ * a package carries neither the sample words nor a translation of them. Words a blueprint writes over
+ * do have one - they are the element's default value, which the game shows until the first write.
  */
-function getLocalizableWidgetTexts(
-    element: UIElement,
-    writers: UITextWriterIndex,
-): { site: UITextSite; sourceText: string }[] {
+function getLocalizableWidgetTexts(element: UIElement): { site: UITextSite; sourceText: string }[] {
     const out: { site: UITextSite; sourceText: string }[] = [];
     for (const site of uiTextSitesOf(element.type)) {
-        if (site.role !== "words" || uiTextSampleCauseOf(element, site, writers.get(element.id))) {
+        if (site.role !== "words" || uiTextSampleCauseOf(element, site)) {
             continue;
         }
         const binding = uiTextUnitBindingOf(element, site);
@@ -260,20 +257,17 @@ export function uiTranslationUnitId(elementId: string, prop: string): string {
  * Collect every widget's own words: top-level elements grouped by their page,
  * component-definition elements grouped by their component's name.
  *
- * `writers` are the project's writers of interface words (`indexUITextWriters`), which decide whose
- * words are sample text. Required, so no caller can leave the words a blueprint writes over in the
- * table by forgetting them. `locale` is the editor's, for what a plugin widget calls each of its words.
+ * `locale` is the editor's, for what a plugin widget calls each of its words.
  */
 export function extractUiTranslationRows(
     document: UIDocument,
-    writers: UITextWriterIndex,
     options: { locale?: string } = {},
 ): UiTranslationRow[] {
     const rows: UiTranslationRow[] = [];
     // A parameter's default is one unit however many placements fall back to it.
     const paramUnits = new Set<string>();
     const pushRow = (element: UIElement, groupName: string) => {
-        const texts = getLocalizableWidgetTexts(element, writers);
+        const texts = getLocalizableWidgetTexts(element);
         const severalSites = uiTextSitesOf(element.type).length > 1;
         for (const { site, sourceText } of texts) {
             const elementName = element.name || element.type;

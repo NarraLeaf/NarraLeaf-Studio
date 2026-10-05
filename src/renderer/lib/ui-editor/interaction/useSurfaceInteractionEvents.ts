@@ -40,6 +40,7 @@ import {
     type SurfacePoint,
 } from "./insertAspectRatio";
 import { isSurfaceGestureEnabled, UI_EDITOR_WRITABLE, type UIEditorReadOnly } from "./readOnlyInteraction";
+import { GESTURE_DEADZONE_PX } from "./gestureDeadzone";
 
 const WHEEL_ZOOM_SPEED = 0.003;
 const PINCH_ZOOM_SPEED = 0.006;
@@ -84,6 +85,13 @@ type UseSurfaceInteractionEventsParams = {
     insertSnapSuspended?: () => boolean;
     /** While active, the insert draw gesture never starts. Selection, drill, pan and zoom are untouched. */
     readOnly?: UIEditorReadOnly;
+    /**
+     * True for a press the selection's drag takes although it hit something else - its frame, where
+     * a clipping container hides the element (`pressLandsOnClippedSelection`). Such a press leaves the
+     * selection alone, so that the drag starting from it has something to move; released without
+     * moving, it selects what it hit after all, as the same click anywhere else does.
+     */
+    pressDragsClippedSelection?: (event: PointerEvent) => boolean;
 };
 
 export type InsertPreview = {
@@ -111,9 +119,12 @@ export function useSurfaceInteractionEvents({
     insertSnapEnabled,
     insertSnapSuspended,
     readOnly = UI_EDITOR_WRITABLE,
+    pressDragsClippedSelection,
 }: UseSurfaceInteractionEventsParams) {
     /** Pointer events often keep `detail` at 0; use timing + target to emulate double-activation for container drill. */
     const containerDrillLastPointerRef = useRef<{ elementId: string; t: number } | null>(null);
+    /** A press `pressDragsClippedSelection` gave to the selection's drag, until the pointer comes up. */
+    const heldClippedPressRef = useRef<PointerEvent | null>(null);
     const insertDrawEnabled = isSurfaceGestureEnabled("insertDraw", readOnly);
 
     useEffect(() => {
@@ -249,7 +260,18 @@ export function useSurfaceInteractionEvents({
             });
         };
 
-        const handlePointerUp = () => {
+        const handlePointerUp = (event: PointerEvent) => {
+            const held = heldClippedPressRef.current;
+            heldClippedPressRef.current = null;
+            if (
+                held &&
+                event.type === "pointerup" &&
+                Math.hypot(event.clientX - held.clientX, event.clientY - held.clientY) < GESTURE_DEADZONE_PX
+            ) {
+                // After the mouseup that ends Moveable's drag, which comes after this event: changing
+                // the selection now would swap its targets in the middle of the gesture.
+                window.setTimeout(() => applySelectionPress(held), 0);
+            }
             if (insertStateRef.current?.active) {
                 finishInsert();
             }
@@ -262,8 +284,6 @@ export function useSurfaceInteractionEvents({
                 return;
             }
             const isInsideSurface = !!(target && surfaceElement.contains(target));
-            const elementNode = target?.closest?.(SELECTABLE_TARGET) as HTMLElement | null;
-            const isElementNode = !!elementNode;
             const isMoveableTarget = isMoveableInteractionTarget(target);
 
             const isPanTool = tool.kind === "pan" && event.button === 0;
@@ -320,6 +340,24 @@ export function useSurfaceInteractionEvents({
                 selectSurfaceForProperties(stateService, surfaceId, uiService);
                 return;
             }
+
+            if (tool.kind === "select" && !isMoveableTarget && pressDragsClippedSelection?.(event)) {
+                // Held until the pointer comes up: dragged, it moved the selection; released where it
+                // was pressed, it is the click it would have been anywhere else.
+                heldClippedPressRef.current = event;
+                return;
+            }
+
+            applySelectionPress(event);
+        };
+
+        /** What a press does to the selection: select what it hit, or the surface when it hit nothing. */
+        const applySelectionPress = (event: PointerEvent) => {
+            const target = event.target as HTMLElement | null;
+            const isInsideSurface = !!(target && surfaceElement.contains(target));
+            const elementNode = target?.closest?.(SELECTABLE_TARGET) as HTMLElement | null;
+            const isElementNode = !!elementNode;
+            const isMoveableTarget = isMoveableInteractionTarget(target);
 
             if (tool.kind === "select" && event.button === 0 && isElementNode) {
                 const elementId = elementNode?.dataset.uiElementId;
@@ -433,6 +471,7 @@ export function useSurfaceInteractionEvents({
         insertSnapEnabled,
         insertSnapSuspended,
         insertDrawEnabled,
+        pressDragsClippedSelection,
     ]);
 
     useEffect(() => {

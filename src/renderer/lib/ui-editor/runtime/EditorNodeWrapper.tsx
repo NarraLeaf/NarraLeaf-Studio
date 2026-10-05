@@ -400,6 +400,19 @@ export function EditorNodeWrapper({
         return () => view.cancelAnimationFrame(frameId);
     }, [interactionDisabled, interactive, isComponentRoot, isRoot, runtimeElementKey, widgetRuntimeStore]);
 
+    // Whichever drawings take pointer enter and leave below, so the store can ask them where the
+    // pointer is when something other than the pointer moved (`retargetHover`), and lets go of the
+    // element's hover and press once its last drawing is gone (`registerPointerTarget`).
+    useLayoutEffect(() => {
+        if (!widgetRuntimeStore || !interactive) {
+            return undefined;
+        }
+        return widgetRuntimeStore.registerPointerTarget(
+            runtimeElementKey,
+            node => containerRef.current?.contains(node) === true,
+        );
+    }, [interactive, runtimeElementKey, widgetRuntimeStore]);
+
     const dispatchWidgetEvent = useCallback(
         (
             eventName: string,

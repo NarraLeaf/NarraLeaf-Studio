@@ -24,7 +24,6 @@ import { createTestLintContext } from "../testContext";
 import type { LintRule, LintRuleId } from "../types";
 import { widgetModuleRegistry } from "../../ui-editor/widget-modules/registryInstance";
 import { listInterfaceTextUnitSites, UI_LINT_RULES } from "./ui";
-import { indexUITextWriters } from "@shared/types/ui-editor/textWriters";
 
 /**
  * The `ui` category.
@@ -106,8 +105,8 @@ function textWidget(props: Record<string, unknown>): UIElement {
 }
 
 /** The units a document's words are read through, as `unitId` or `key:<name>`. */
-function unitsOf(document: UIDocument, blueprints: BlueprintDocument = NO_GRAPHS): string[] {
-    return listInterfaceTextUnitSites(document, indexUITextWriters(blueprints)).map(site =>
+function unitsOf(document: UIDocument): string[] {
+    return listInterfaceTextUnitSites(document).map(site =>
         site.binding.kind === "key" ? `key:${site.binding.keyName}` : site.binding.unitId,
     );
 }
@@ -141,28 +140,6 @@ describe("listInterfaceTextUnitSites", () => {
 
         expect(unitsOf(rowField)).toEqual([]);
         expect(unitsOf(valueBlueprint)).toEqual([]);
-    });
-
-    it("leaves out words a blueprint writes over, and keeps words it only appends to", () => {
-        // The save slot's place name, written by the slot's own graph: the words are sample text,
-        // which no package carries. An append keeps them on screen as the start of the line.
-        const document = onePage(textWidget({ text: "The corridor" }));
-        const writtenBy = (nodeType: string): BlueprintDocument => blueprintDocument({
-            [encodeBlueprintOwnerKey({ kind: "surfaceMain", surfaceId: MAIN_APP_SURFACE_ID })]: {
-                nodes: {
-                    ref: {
-                        id: "ref",
-                        type: "blueprint.element.ref",
-                        params: { surfaceId: MAIN_APP_SURFACE_ID, elementId: "label", elementType: "nl.text" },
-                    },
-                    write: { id: "write", type: nodeType },
-                },
-                edges: [{ from: { nodeId: "ref", port: "element" }, to: { nodeId: "write", port: "element" } }],
-            },
-        });
-
-        expect(unitsOf(document, writtenBy("blueprint.element.text.setText"))).toEqual([]);
-        expect(unitsOf(document, writtenBy("blueprint.element.text.appendText"))).toEqual(["ui:label.text"]);
     });
 
     it("still reads words when only some other prop of the widget is bound", () => {
@@ -934,7 +911,7 @@ describe("a component's text parameters", () => {
             { paramKeys: { label: "nav.title" } },
             {},
         ]);
-        const sites = listInterfaceTextUnitSites(document, indexUITextWriters(null));
+        const sites = listInterfaceTextUnitSites(document);
         expect(sites.map(site => [site.element.id, site.binding.kind === "key" ? `key:${site.binding.keyName}` : site.binding.unitId])).toEqual([
             ["p1", "ui:p1.param.label"],
             ["p2", "key:nav.title"],

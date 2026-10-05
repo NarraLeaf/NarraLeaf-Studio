@@ -122,7 +122,7 @@ describe("the placements' words every reader lists", () => {
     it("knows the bound widget's words as sample text, and which parameter they show", () => {
         const label = nav.elements["nav-label"];
         expect(uiTextComponentParamOf(label, TEXT_SITE)).toBe("label");
-        expect(uiTextSampleCauseOf(label, TEXT_SITE, undefined)).toBe("componentParam");
+        expect(uiTextSampleCauseOf(label, TEXT_SITE)).toBe("componentParam");
     });
 
     it("lets a key the widget names win over the binding", () => {

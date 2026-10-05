@@ -12,7 +12,6 @@ import {
     storyLocation,
     type LintTextSegmentRef,
 } from "./text/textSegments";
-import { indexUITextWriters } from "@shared/types/ui-editor/textWriters";
 import { clipLiteral, listInterfaceTextUnitSites } from "./ui";
 
 /**
@@ -80,7 +79,7 @@ function interfaceTextUnits(ctx: LintContext): InterfaceTextUnit[] {
     }
     const units: InterfaceTextUnit[] = [];
     const seen = new Set<string>();
-    for (const site of listInterfaceTextUnitSites(ctx.uiDocument, indexUITextWriters(ctx.blueprintDocument))) {
+    for (const site of listInterfaceTextUnitSites(ctx.uiDocument)) {
         let unit: InterfaceTextUnit;
         if (site.binding.kind === "key") {
             const sourceText = ctx.localizationKeys?.get(site.binding.keyName);

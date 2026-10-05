@@ -4,6 +4,13 @@ import { LOCALIZATION_DOCUMENT_SCHEMA_VERSION } from "@shared/types/localization
 import { hashSourceText } from "@shared/utils/localizationText";
 import type { StoryBlock } from "@shared/types/story";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
+import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
+import type { BlueprintDocument, BlueprintOwnerRef } from "@shared/types/blueprint/document";
+import {
+    BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+    BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
+} from "@shared/types/blueprint/graph";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { createTestLintContext } from "../testContext";
 import type { LintContext } from "../context";
@@ -438,6 +445,115 @@ describe("localization/missing on interface text", () => {
             Title: [widget(TITLE_ID, "nl.text", { text: "Summer Rain" })],
         });
         expect(await run("localization/missing", createTestLintContext({ uiDocument: document }))).toEqual([]);
+    });
+});
+
+/**
+ * Words a blueprint writes over while the game runs are the widget's default value: the game shows
+ * them, in the player's language, until the first write lands. They are read through the widget's own
+ * unit like any other words, so a language with no translation of them is reported. Words under a
+ * binding are sample text, which no package carries, and are not.
+ */
+describe("localization/missing on words a blueprint writes over", () => {
+    const BUTTON_OWNER: BlueprintOwnerRef = { kind: "widgetMain", surfaceId: MAIN_APP_SURFACE_ID, elementId: "auto" };
+    const PAGE_OWNER: BlueprintOwnerRef = { kind: "surfaceMain", surfaceId: MAIN_APP_SURFACE_ID };
+
+    /** The page's graph writes the score with Set Text; the button's own graph sets its label. */
+    const writers = {
+        ownerRecords: {
+            [encodeBlueprintOwnerKey(PAGE_OWNER)]: { blueprintId: "bp-page" },
+            [encodeBlueprintOwnerKey(BUTTON_OWNER)]: { blueprintId: "bp-auto" },
+        },
+        blueprints: {
+            "bp-page": {
+                id: "bp-page",
+                name: "Title",
+                owner: PAGE_OWNER,
+                graphs: {
+                    events: {
+                        click: {
+                            id: "click",
+                            graph: {
+                                nodes: {
+                                    head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK },
+                                    ref: {
+                                        id: "ref",
+                                        type: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+                                        params: { surfaceId: MAIN_APP_SURFACE_ID, elementId: "score", elementType: "nl.text" },
+                                    },
+                                    write: { id: "write", type: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT, params: { text: "Score: 1" } },
+                                },
+                                edges: [
+                                    { from: { nodeId: "head", port: "next" }, to: { nodeId: "write", port: "in" } },
+                                    { from: { nodeId: "ref", port: "element" }, to: { nodeId: "write", port: "element" } },
+                                ],
+                            },
+                        },
+                    },
+                    functions: {},
+                },
+            },
+            "bp-auto": {
+                id: "bp-auto",
+                name: "Auto",
+                owner: BUTTON_OWNER,
+                graphs: {
+                    events: {
+                        click: {
+                            id: "click",
+                            graph: {
+                                nodes: {
+                                    head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK },
+                                    write: { id: "write", type: "blueprint.button.setLabel", params: { label: "Auto: on" } },
+                                },
+                                edges: [{ from: { nodeId: "head", port: "next" }, to: { nodeId: "write", port: "in" } }],
+                            },
+                        },
+                    },
+                    functions: {},
+                },
+            },
+        },
+    } as unknown as BlueprintDocument;
+
+    const document = interfaceDocument({
+        Title: [
+            widget("score", "nl.text", { text: "Score: 0" }, "Score"),
+            widget("auto", "nl.button", { label: "Auto: off" }, "Auto"),
+            {
+                ...widget("nametag", "nl.text", { text: "Narra" }, "Name tag"),
+                valueBindings: { text: { kind: "blueprintValue", blueprintId: "bp-name", valueType: "string" } },
+            } as UIElement,
+        ],
+    });
+
+    function context(units: Record<string, LocalizationUnit>): LintContext {
+        return createTestLintContext({
+            uiDocument: document,
+            blueprintDocument: writers,
+            localizationKeys: new Map(),
+            localization: {
+                sourceLocale: "en",
+                targetLocales: ["en", "ja"],
+                documents: new Map([["ja", documentOf("ja", units)]]),
+            },
+        });
+    }
+
+    it("reports the written widgets' own words, and not the sample words under a binding", async () => {
+        const findings = await run("localization/missing", context({}));
+        expect(findings.map(entry => [entry.location, entry.messageParams])).toEqual([
+            [expect.objectContaining({ elementId: "score" }), { locale: "ja", text: "Score: 0" }],
+            [expect.objectContaining({ elementId: "auto" }), { locale: "ja", text: "Auto: off" }],
+        ]);
+    });
+
+    it("is quiet once the written widgets' own units are translated", async () => {
+        const findings = await run("localization/missing", context({
+            "ui:score.text": unit("スコア：0", "Score: 0"),
+            "ui:auto.label": unit("オート：オフ", "Auto: off"),
+        }));
+        expect(findings).toEqual([]);
     });
 });
 
