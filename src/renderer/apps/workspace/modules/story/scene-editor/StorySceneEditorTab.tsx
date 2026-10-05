@@ -1304,6 +1304,17 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const scrollContainerRef = editor.scrollContainerRef;
     const sceneId = editor.scene?.id;
     const rowCount = editor.visibleRows.length;
+    /**
+     * Whether the scroller is still standing in for the list.
+     *
+     * The rows are worked out while the tab still shows its loading line, so `rowCount` can arrive
+     * a commit before the scroller that holds them exists. The three effects below that place the
+     * view on open (saved place, deep link, drafted jump) each wait for both - and re-run on this,
+     * because nothing else they watch changes when the loading line is replaced by the list. Without
+     * it, a navigation into a scene that was not open yet was dropped every time: the effect ran
+     * while the list was still loading, found no scroller, and was never asked again.
+     */
+    const listLoading = editor.loading;
     const deepLinkBlockId = payload?.activeBlockId ?? null;
     // What counts as "this navigation, already handled". The token is part of it so that asking for
     // the same row twice is two navigations rather than one (see `StorySceneEditorTabPayload`).
@@ -1329,7 +1340,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         const el = scrollContainerRef.current;
         // Skip the saved-anchor restore when opening via a deep link or a drafted jump — those
         // effects below position the view on the target block / the open slot instead.
-        if (!el || !sceneId || !panelStateService || rowCount === 0 || didRestoreRef.current === sceneId || deepLinkBlockId || draftJump) {
+        if (!el || listLoading || !sceneId || !panelStateService || rowCount === 0 || didRestoreRef.current === sceneId || deepLinkBlockId || draftJump) {
             return;
         }
         didRestoreRef.current = sceneId;
@@ -1359,7 +1370,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         };
         attempt();
         return () => window.cancelAnimationFrame(rafId);
-    }, [scrollContainerRef, sceneId, rowCount, panelStateService, deepLinkBlockId, draftJump]);
+    }, [scrollContainerRef, listLoading, sceneId, rowCount, panelStateService, deepLinkBlockId, draftJump]);
 
     // Capture the scroll anchor at most once per frame while scrolling (querying row geometry on every
     // raw scroll event would thrash layout on long scenes). The live scrollTop is recorded eagerly so
@@ -1454,7 +1465,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             return;
         }
         const el = scrollContainerRef.current;
-        if (!el) {
+        if (!el || listLoading) {
             return;
         }
         // Not "is the row in the DOM" — the list is windowed and it very often is not — but "is the
@@ -1473,7 +1484,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         handledDeepLinkRef.current = deepLinkKey;
         editor.revealBlock(deepLinkBlockId);
         editor.focusRoot();
-    }, [active, deepLinkBlockId, deepLinkKey, rowCount, scrollContainerRef, rowIndexOf, editor.revealBlock, editor.focusRoot]);
+    }, [active, listLoading, deepLinkBlockId, deepLinkKey, rowCount, scrollContainerRef, rowIndexOf, editor.revealBlock, editor.focusRoot]);
 
     // The scene flow map's connect gesture: open a slot with the `/jump` typed into it and the caret
     // on the end, and leave the committing to the author's Enter (see `StorySceneEditorDraftJump`).
@@ -1485,7 +1496,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // requests.
     const handledDraftJumpRef = useRef<number | null>(null);
     useEffect(() => {
-        if (!active || !draftJump || handledDraftJumpRef.current === draftJump.token || !editor.scene) {
+        if (!active || !draftJump || handledDraftJumpRef.current === draftJump.token || !editor.scene || listLoading) {
             return;
         }
         handledDraftJumpRef.current = draftJump.token;
@@ -1496,7 +1507,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         // list is windowed, so on a long chapter that single look found nothing and the page stayed
         // where it was.
         editor.startJumpDraft(draftJump);
-    }, [active, draftJump, rowCount, editor.scene, editor.startJumpDraft]);
+    }, [active, listLoading, draftJump, rowCount, editor.scene, editor.startJumpDraft]);
 
     // Dev Mode play head: follow the running row in place when this editor owns the scene.
     // Uses the plain row-select visual — never `revealBlock` (which would flip the author's
