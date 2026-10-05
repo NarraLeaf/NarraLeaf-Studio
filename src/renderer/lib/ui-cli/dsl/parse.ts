@@ -314,7 +314,7 @@ function parseAction(line: SourceLine, tokens: string[], body: SourceLine[]): Ui
         throw new UiParseError('an action needs an id: `action advance "Advance"`.', line.number);
     }
     const name = tokens[2] ? readString(tokens[2], line) : id;
-    const bindings: ({ kind: "pointer"; gesture: string } | { kind: "key"; key: string })[] = [];
+    const bindings: ({ kind: "pointer"; gesture: string } | { kind: "key"; key: string } | { kind: "gamepad"; button: string })[] = [];
     for (const item of blockItems(body)) {
         const itemTokens = tokensOf(item.line);
         if (itemTokens[0] === "pointer") {
@@ -325,7 +325,11 @@ function parseAction(line: SourceLine, tokens: string[], body: SourceLine[]): Ui
             bindings.push({ kind: "key", key: readString(itemTokens[1] ?? "", item.line) });
             continue;
         }
-        throw new UiParseError("an action holds `pointer <gesture>` and `key <Key>` lines.", item.line.number);
+        if (itemTokens[0] === "gamepad") {
+            bindings.push({ kind: "gamepad", button: readString(itemTokens[1] ?? "", item.line) });
+            continue;
+        }
+        throw new UiParseError("an action holds `pointer <gesture>`, `key <Key>` and `gamepad <Button>` lines.", item.line.number);
     }
     return { kind: "action", line: line.number, id, name, bindings };
 }

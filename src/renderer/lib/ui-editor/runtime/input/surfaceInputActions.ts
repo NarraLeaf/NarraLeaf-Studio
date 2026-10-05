@@ -88,6 +88,11 @@ export type UIInputSignal =
            * the heads are matched by, so a binding and a head spelled alike behave alike.
            */
           event: BlueprintKeyboardEventLike;
+      }
+      | {
+          kind: "gamepad";
+          /** Canonical button name. */
+          button: string;
       };
 
 /** One action this surface answers for this input. */
@@ -235,6 +240,9 @@ function bindingMatchesSignal(binding: UIInputBinding, signal: UIInputSignal): b
     if (binding.kind === "pointer") {
         return signal.kind === "pointer" && binding.gesture === signal.gesture;
     }
+    if (binding.kind === "gamepad") {
+        return signal.kind === "gamepad" && binding.button === signal.button;
+    }
     return signal.kind === "key" && blueprintKeyboardBindingMatchesEvent(binding.key, signal.event);
 }
 
@@ -282,7 +290,9 @@ export function resolveSurfaceInputActionHits(input: {
             payload:
                 signal.kind === "pointer"
                     ? { actionId: enablement.actionId, source: signal.device, x: signal.x, y: signal.y }
-                    : { actionId: enablement.actionId, source: "key" },
+                    : signal.kind === "gamepad"
+                      ? { actionId: enablement.actionId, source: "gamepad" }
+                      : { actionId: enablement.actionId, source: "key" },
         });
     }
     return hits;

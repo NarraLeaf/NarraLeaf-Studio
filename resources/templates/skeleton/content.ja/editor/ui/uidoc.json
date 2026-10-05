@@ -49672,6 +49672,10 @@
         {
           "kind": "key",
           "key": "Enter"
+        },
+        {
+          "kind": "gamepad",
+          "button": "A"
         }
       ]
     },
@@ -49682,6 +49686,10 @@
         {
           "kind": "pointer",
           "gesture": "wheelUp"
+        },
+        {
+          "kind": "gamepad",
+          "button": "LB"
         }
       ]
     },
@@ -49692,6 +49700,10 @@
         {
           "kind": "key",
           "key": "Escape"
+        },
+        {
+          "kind": "gamepad",
+          "button": "B"
         }
       ]
     },
@@ -49706,6 +49718,10 @@
         {
           "kind": "pointer",
           "gesture": "wheelDown"
+        },
+        {
+          "kind": "gamepad",
+          "button": "B"
         }
       ]
     },

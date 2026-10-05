@@ -12,6 +12,10 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAMEPAD_BUTTON_DOWN,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAMEPAD_BUTTON_UP,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_GAMEPAD_BUTTON_DOWN,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_GAMEPAD_BUTTON_UP,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_BLUR,
@@ -58,6 +62,10 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED,
 } from "@shared/types/blueprint/graph";
+import {
+    BLUEPRINT_GAMEPAD_BUTTONS,
+    BLUEPRINT_NODE_PARAM_EVENT_HEAD_GAMEPAD_BUTTON,
+} from "@shared/types/blueprint/gamepad";
 import { BLUEPRINT_VALUE_TYPE_ELEMENT } from "@shared/types/blueprint/valueTypes";
 import { BUILTIN_WIDGET_LOGIC_APIS } from "@shared/types/ui-editor/widgetLogic";
 import type { BlueprintAssetNameFlow, BlueprintNodeDef, BlueprintNodePinDef } from "../../types";
@@ -89,6 +97,14 @@ const PIN_KEY: BlueprintNodePinDef = {
     valueType: "string",
     label: "Key",
 };
+const PIN_GAMEPAD_BUTTON: BlueprintNodePinDef = {
+    id: "button",
+    kind: "output",
+    semantic: "data",
+    valueType: "string",
+    label: "Button",
+};
+const GAMEPAD_BUTTON_HEAD_OPTIONS = BLUEPRINT_GAMEPAD_BUTTONS.map(button => ({ value: button, label: button }));
 const PIN_ALT_KEY: BlueprintNodePinDef = {
     id: "altKey",
     kind: "output",
@@ -507,6 +523,44 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
         displayName: "Any Key Up",
         keywords: ["any", "key", "keyboard", "up", "release", "global", "input"],
         pins: [THEN_PIN, PIN_KEY, PIN_ALT_KEY, PIN_CTRL_KEY, PIN_SHIFT_KEY, PIN_META_KEY],
+    }),
+    keyboardEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAMEPAD_BUTTON_DOWN,
+        displayName: "On Gamepad Button Down",
+        keywords: ["gamepad", "controller", "joystick", "button", "down", "press", "global", "input"],
+        pins: [THEN_PIN],
+        inspectorParams: [{
+            key: BLUEPRINT_NODE_PARAM_EVENT_HEAD_GAMEPAD_BUTTON,
+            label: "Button",
+            kind: "select",
+            options: GAMEPAD_BUTTON_HEAD_OPTIONS,
+        }],
+    }),
+    keyboardEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAMEPAD_BUTTON_UP,
+        displayName: "On Gamepad Button Up",
+        keywords: ["gamepad", "controller", "joystick", "button", "up", "release", "global", "input"],
+        pins: [THEN_PIN],
+        inspectorParams: [{
+            key: BLUEPRINT_NODE_PARAM_EVENT_HEAD_GAMEPAD_BUTTON,
+            label: "Button",
+            kind: "select",
+            options: GAMEPAD_BUTTON_HEAD_OPTIONS,
+        }],
+    }),
+    keyboardEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_GAMEPAD_BUTTON_DOWN,
+        assetNames: "assembled",
+        displayName: "Any Gamepad Button Down",
+        keywords: ["any", "gamepad", "controller", "joystick", "button", "down", "press", "global", "input"],
+        pins: [THEN_PIN, PIN_GAMEPAD_BUTTON],
+    }),
+    keyboardEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_GAMEPAD_BUTTON_UP,
+        assetNames: "assembled",
+        displayName: "Any Gamepad Button Up",
+        keywords: ["any", "gamepad", "controller", "joystick", "button", "up", "release", "global", "input"],
+        pins: [THEN_PIN, PIN_GAMEPAD_BUTTON],
     }),
     widgetEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,

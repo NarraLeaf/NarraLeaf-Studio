@@ -87,7 +87,7 @@ export type UiActionStatement = {
     line: number;
     id: string;
     name: string;
-    bindings: ({ kind: "pointer"; gesture: string } | { kind: "key"; key: string })[];
+    bindings: ({ kind: "pointer"; gesture: string } | { kind: "key"; key: string } | { kind: "gamepad"; button: string })[];
 };
 
 export type UiDocumentStatement = {

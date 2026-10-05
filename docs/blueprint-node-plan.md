@@ -15,6 +15,13 @@
 | Before Surface Exit | `blueprint.event.head.beforeSurfaceExit` | **已实现**。Surface 退出动画开始之前触发；Surface 蓝图和仍挂载存活的元素私有蓝图可监听。 |
 | After Surface Enter | `blueprint.event.head.afterSurfaceEnter` | **已实现**。Surface 进入动画结束之后触发；Surface 蓝图和仍挂载存活的元素私有蓝图可监听。 |
 | On Key Down | `blueprint.event.head.keyDown` | **已实现**。运行时窗口指定键按下时触发；卡片 `Key` 字段使用键盘绑定浮窗，显示当前绑定并支持单键或 `Ctrl` / `Alt` / `Shift` / `Meta` 组合键；单键兼容 `KeyboardEvent.key` 大小写不敏感匹配；仅输出 `then`。 |
+| On Gamepad Button Down | `blueprint.event.head.gamepadButtonDown` | **已实现**。标准 mapping 手柄指定按键按下；Inspector 从 17 个 Xbox 规范名里选；Global / Surface / 控件蓝图可用。 |
+| On Gamepad Button Up | `blueprint.event.head.gamepadButtonUp` | **已实现**。同上，抬起。 |
+| Any Gamepad Button Down | `blueprint.event.head.anyGamepadButtonDown` | **已实现**。任意手柄按键按下，输出 `button`。 |
+| Any Gamepad Button Up | `blueprint.event.head.anyGamepadButtonUp` | **已实现**。任意手柄按键抬起，输出 `button`。 |
+| Is Gamepad Connected | `blueprint.input.isGamepadConnected` | **已实现**。是否有标准 mapping 手柄连接。 |
+| Is Gamepad Button Held | `blueprint.input.isGamepadButtonHeld` | **已实现**。指定规范按键是否按住。 |
+| Get Gamepad Axis | `blueprint.input.getGamepadAxis` | **已实现**。第一只标准手柄的 LeftX/LeftY/RightX/RightY，死区 0.18。 |
 | On Key Up | `blueprint.event.head.keyUp` | **已实现**。运行时窗口指定键抬起时触发；卡片 `Key` 字段使用键盘绑定浮窗，显示当前绑定并支持单键或 `Ctrl` / `Alt` / `Shift` / `Meta` 组合键；单键兼容 `KeyboardEvent.key` 大小写不敏感匹配；仅输出 `then`。 |
 | Any Key Down | `blueprint.event.head.anyKeyDown` | **已实现**。运行时窗口任意键按下时触发；Global 蓝图、当前 active Surface 蓝图和已挂载控件私有蓝图都会收到；输出 `key` 和修改键。 |
 | Any Key Up | `blueprint.event.head.anyKeyUp` | **已实现**。运行时窗口任意键抬起时触发；Global 蓝图、当前 active Surface 蓝图和已挂载控件私有蓝图都会收到；输出 `key` 和修改键。 |

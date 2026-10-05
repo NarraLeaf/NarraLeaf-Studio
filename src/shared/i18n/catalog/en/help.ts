@@ -566,6 +566,7 @@ export const help = {
                 + "- Trackpad: sliding left and right, which a wheel cannot do.\n"
                 + "- Touch screen: tap, long press, and sliding in four directions.\n"
                 + "- Keyboard: press the combination to record it.\n"
+                + "- Gamepad: pick a button by its Xbox name.\n"
                 + "\n"
                 + "A gesture that more than one device produces is added once and works on all of them. Each "
                 + "binding is marked with the devices that reach it.\n"
@@ -589,7 +590,7 @@ export const help = {
                 + "has somewhere left to travel and lets it through once it does not. That is what lets one "
                 + "more pull at the bottom of a list close the page the list is in.\n"
                 + "\n"
-                + "Keys go to one place at a time: the modal layer on top, or the page on top, or, while the "
+                + "Keys and gamepad buttons go to one place at a time: the modal layer on top, or the page on top, or, while the "
                 + "story is on screen with nothing over it, the interfaces on the stage such as the dialogue "
                 + "box. A key held down fires its action once. When a button or list row has the keyboard "
                 + "focus, Enter and Space press it and fire no action.",

@@ -352,7 +352,7 @@ const EVENT_HEAD_NODE_TYPES: readonly string[] = [
     "blueprint.event.head.elementClick", "blueprint.event.head.elementFlush", "blueprint.event.head.flush",
     "blueprint.event.head.focus", "blueprint.event.head.fullscreenChanged",
     "blueprint.event.head.windowFocusChanged",
-    "blueprint.event.head.gameReady", "blueprint.event.head.init", "blueprint.event.head.itemClick",
+    "blueprint.event.head.gameReady", "blueprint.event.head.gamepadButtonDown", "blueprint.event.head.gamepadButtonUp", "blueprint.event.head.anyGamepadButtonDown", "blueprint.event.head.anyGamepadButtonUp", "blueprint.event.head.init", "blueprint.event.head.itemClick",
     "blueprint.event.head.itemHover", "blueprint.event.head.itemRender", "blueprint.event.head.keyDown",
     "blueprint.event.head.keyUp", "blueprint.event.head.listItemRefresh", "blueprint.event.head.mouseClick",
     "blueprint.event.head.mouseDoubleClick", "blueprint.event.head.mouseDown",
