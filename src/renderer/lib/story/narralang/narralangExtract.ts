@@ -46,7 +46,10 @@ import {
     actionableSubjectWord,
     displayableSubjectWord,
     resolveDisplayableTargetRef,
+    resolveStoryGroupRunMode,
     resolveStoryLayerRef,
+    storyGroupKindOfMode,
+    storyGroupWaits,
     storyTransitionKindOf,
 } from "@shared/types/story";
 import { formatStoryExpressionName } from "@shared/utils/storyExpressionParser";
@@ -1237,7 +1240,15 @@ function controlShape(ctx: NarralangExtractContext, block: StoryBlock, payload: 
                         : { times: optNumber(payload.times), async: asyncWord },
                 };
             }
-            return { form: "statement", verb: payload.control, opensBlock: true, slots: { async: asyncWord } };
+            // Written as the group runs: a row whose stored `mode` disagrees with its `control` word
+            // runs by its `mode`, so that is the verb, or reading the script back would change it.
+            const run = resolveStoryGroupRunMode(payload);
+            return {
+                form: "statement",
+                verb: storyGroupKindOfMode(run),
+                opensBlock: true,
+                slots: { async: storyGroupWaits(run) ? undefined : asWord("async") },
+            };
         }
         case "break":
             return { form: "statement", verb: "break", slots: {} };

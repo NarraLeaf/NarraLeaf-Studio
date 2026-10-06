@@ -132,7 +132,7 @@ import {
     resolveAudioTrackPlayback,
 } from "@shared/types/audioTrack";
 import { parseTranslatedRuns } from "@shared/utils/localizationText";
-import { resolveStoryAssetVariant, type StoryAssetVariants } from "@shared/types/story";
+import { resolveStoryAssetVariant, resolveStoryGroupRunMode, type StoryAssetVariants } from "@shared/types/story";
 import {
     composeStoryFilter,
     isEmptyStoryTransformProps,
@@ -5285,7 +5285,7 @@ async function compileUnchainedGroupBody(ctx: SceneCompileContext, blockIds: rea
 
 async function compileControlGroup(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "control" }>): Promise<NlrStatement[]> {
     const payload = block.payload as Extract<StoryControlPayload, { control: "sequence" | "parallel" | "race" | "repeat" }>;
-    const mode = payload.mode ?? (payload.control === "parallel" ? "all" : payload.control === "race" ? "any" : "do");
+    const mode = resolveStoryGroupRunMode(payload);
     // Which of the two body shapes below this group hands the engine. `repeat` is decided by the row
     // and not by `mode`, in its counted form and in its `until` form alike, so it is tested first -
     // a stale `mode` on a repeat row never reaches the call.
