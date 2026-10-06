@@ -18,13 +18,17 @@ import {
     BookOpenText,
     CheckCircle2,
     ClipboardCheck,
+    Download,
     Languages,
     MessageSquareText,
     PenLine,
     SplitSquareVertical,
+    Upload,
 } from "lucide-react";
 import type { EditorComponentProps } from "../types";
 import { EmptyState, Select, type SelectOption } from "@/lib/components/elements";
+import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useWorkspace } from "../../context";
 import { useKeybinding, whenEditorFocused } from "@/apps/workspace/hooks";
 import { TableFindOverlay } from "@/apps/workspace/components/ui/TableFindOverlay";
@@ -64,9 +68,11 @@ import { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionSer
 import type { LocalizationEditorTabPayload } from "./localizationEditorTabId";
 import {
     TranslationClaimsProvider,
+    translationDocumentFreezeScope,
     useLocalizationKeyClaimHold,
     useTranslationClaimHold,
 } from "./localizationLiveSession";
+import { useTranslationExchange } from "./translationExchange";
 import { AddKeyRow, ReviewRow, TranslateRow, type InlineEditing, type TranslationTableRow } from "./TranslationRows";
 
 type EditorMode = "translate" | "review";
@@ -162,6 +168,15 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
         [context, isInitialized],
     );
     const uiDocumentRevision = useUIDocumentRevision(uiDocumentService);
+    /**
+     * Export and import, the same two the language's menu in the Localization panel holds.
+     *
+     * On the table as well because this is where a translator is when a batch goes out or comes
+     * back. The import writes this language's translations, so it asks that document's guard; the
+     * export writes nothing in the project.
+     */
+    const exchange = useTranslationExchange();
+    const importFreeze = useFreezeGuard(translationDocumentFreezeScope(locale));
 
     /**
      * Whether this table's language is still in the project's list.
@@ -915,13 +930,15 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
         // re-render on every remote keystroke.
         <TranslationClaimsProvider locale={locale}>
         <div className="flex h-full min-h-0 flex-col bg-surface">
-            <div className="flex items-center gap-3 border-b border-edge px-4 py-2">
+            {/* Wraps rather than squeezes: in a narrow editor the controls move to a second line
+                instead of breaking their own labels one character per line. */}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-edge px-4 py-2">
                 <div className="flex min-w-0 items-center gap-2">
                     <Languages className="h-4 w-4 shrink-0 text-fg-muted" />
                     <span className="truncate text-sm font-medium text-fg">{localeDisplayName}</span>
                     <span className="rounded-md border border-edge px-1.5 py-0.5 text-2xs text-fg-subtle">{locale}</span>
                 </div>
-                <div className="ml-auto flex items-center gap-3">
+                <div className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-2 whitespace-nowrap">
                     <div className="flex items-center gap-2">
                         <span className="text-2xs text-fg-subtle">{t("workspace.localization.table.storyLabel")}</span>
                         <Select
@@ -975,6 +992,26 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
                                 ) : null}
                             </button>
                         ))}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-0.5 border-l border-edge pl-2">
+                        <ToolbarButton
+                            size="sm"
+                            className="text-fg-muted hover:bg-fill hover:text-fg"
+                            aria-label={t("workspace.localization.exchange.exportMenu")}
+                            data-tip={t("workspace.localization.exchange.exportMenu")}
+                            onClick={() => void exchange.exportLanguage(locale, localeDisplayName)}
+                        >
+                            <Download className="h-4 w-4" />
+                        </ToolbarButton>
+                        <ToolbarButton
+                            size="sm"
+                            className="text-fg-muted hover:bg-fill hover:text-fg"
+                            aria-label={t("workspace.localization.exchange.importMenu")}
+                            {...importFreeze.writes(false, t("workspace.localization.exchange.importMenu"))}
+                            onClick={() => void exchange.importLanguage(locale, localeDisplayName, importFreeze.frozen)}
+                        >
+                            <Upload className="h-4 w-4" />
+                        </ToolbarButton>
                     </div>
                 </div>
             </div>
