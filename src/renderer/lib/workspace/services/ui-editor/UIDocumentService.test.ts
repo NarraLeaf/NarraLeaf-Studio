@@ -592,6 +592,34 @@ describe("UIDocumentService surface creation", () => {
         ].sort());
     });
 
+    it("gives a new Game UI the project's palette rather than colours of its own", () => {
+        const { service } = createHarness({ withLocalBlueprint: true });
+        const colours: unknown[] = [];
+        for (const slotId of ["dialog", "choice", "notification", "nvl"] as const) {
+            const surface = service.createSurface({ kind: "stageSurface", host: "player", name: slotId, stageMount: { kind: "slot", slotId } });
+            const doc = service.getDocument();
+            const walk = (id: string) => {
+                const element = doc.elements[id]!;
+                // The colours that are drawn: a fill that is shown, a stroke that has width, a text's ink.
+                const props = (element.props ?? {}) as Record<string, unknown>;
+                const drawn = [
+                    props.fillVisible !== false ? props.backgroundColor : undefined,
+                    props.strokeVisible !== false && Number(props.borderWidth) > 0 ? props.borderColor : undefined,
+                    props.color,
+                ];
+                for (const value of drawn) {
+                    if (typeof value === "string" && value !== "transparent") {
+                        colours.push(value);
+                    }
+                }
+                element.childrenIds.forEach(walk);
+            };
+            walk(surface.rootElementId);
+        }
+        expect(colours.length).toBeGreaterThan(0);
+        expect(colours.filter(colour => !String(colour).startsWith("nlbrand:"))).toEqual([]);
+    });
+
     it("creates On-Stage Game UI as a bare transparent root", () => {
         const { service } = createHarness({ withLocalBlueprint: true });
 

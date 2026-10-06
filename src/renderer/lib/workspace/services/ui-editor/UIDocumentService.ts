@@ -548,6 +548,23 @@ function cloneBlueprintForSurfaceDuplicate(
     return cloned;
 }
 
+/**
+ * The colours the Game UI starters are drawn in: links into the project's palette (`nlbrand:`),
+ * the slots the Design page edits, rather than colours of their own. A starter made in a project
+ * whose palette is blue on dark comes out blue on dark, and changes with the palette afterwards.
+ */
+const STARTER_COLORS = {
+    /** A panel's fill: the dialogue box, the NVL page, a notification. */
+    panel: "nlbrand:container.background",
+    panelBorder: "nlbrand:container.border",
+    text: "nlbrand:text.primary",
+    /** The speaker's name. */
+    accent: "nlbrand:primary",
+    /** A choice, which is pressed like a button and so is dressed like one. */
+    option: "nlbrand:button.primary",
+    optionText: "nlbrand:button.text",
+} as const;
+
 function createContainerTemplateProps(overrides: Partial<ContainerWidgetProps>): ContainerWidgetProps {
     const props: ContainerWidgetProps = {
         ...cloneJson(defaultContainerWidgetProps),
@@ -5511,14 +5528,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }),
             props: createContainerTemplateProps({
                 layoutKind: "free",
-                backgroundColor: "#0b0d12",
+                backgroundColor: STARTER_COLORS.panel,
                 fillOpacity: 0.78,
                 borderRadius: 8,
                 borderRadiusTL: 8,
                 borderRadiusTR: 8,
                 borderRadiusBL: 8,
                 borderRadiusBR: 8,
-                borderColor: "#f8fafc",
+                borderColor: STARTER_COLORS.panelBorder,
                 borderWidth: 1,
                 strokeOpacity: 0.18,
                 clipContent: true,
@@ -5605,7 +5622,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             props: createTextTemplateProps({
                 text: translate("defaultDoc.speaker"),
                 fontSize: 22,
-                color: "#f8d37a",
+                color: STARTER_COLORS.accent,
                 fontWeight: "600",
                 lineHeight: 1.2,
                 textVerticalAlign: "center",
@@ -5629,7 +5646,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             props: createTextTemplateProps({
                 text: translate("defaultDoc.dialog.sentenceText"),
                 fontSize: 24,
-                color: "#f8fafc",
+                color: STARTER_COLORS.text,
                 lineHeight: 1.45,
             }),
         };
@@ -6094,7 +6111,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 stackPaddingRight: 20,
                 stackPaddingBottom: 12,
                 stackPaddingLeft: 20,
-                backgroundColor: "#0b0d12",
+                backgroundColor: STARTER_COLORS.panel,
                 fillOpacity: 0.72,
                 borderRadius: 999,
                 borderRadiusTL: 999,
@@ -6125,7 +6142,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             props: createTextTemplateProps({
                 text: translate("defaultDoc.notification.messageText"),
                 fontSize: 20,
-                color: "#f8fafc",
+                color: STARTER_COLORS.text,
                 lineHeight: 1.3,
                 textVerticalAlign: "center",
             }),
@@ -6211,7 +6228,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 stackPaddingRight: 24,
                 stackPaddingBottom: 14,
                 stackPaddingLeft: 24,
-                backgroundColor: "#f8fafc",
+                backgroundColor: STARTER_COLORS.option,
                 fillOpacity: 0.92,
                 borderRadius: 8,
                 borderRadiusTL: 8,
@@ -6242,7 +6259,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             props: createTextTemplateProps({
                 text: translate("defaultDoc.choice.itemText"),
                 fontSize: 24,
-                color: "#0b0d12",
+                color: STARTER_COLORS.optionText,
                 lineHeight: 1.3,
                 textAlign: "center",
                 textVerticalAlign: "center",
@@ -6326,7 +6343,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }),
             props: createContainerTemplateProps({
                 layoutKind: "free",
-                backgroundColor: "#0b0d12",
+                backgroundColor: STARTER_COLORS.panel,
                 fillOpacity: 0.82,
                 borderRadius: 12,
                 borderRadiusTL: 12,
@@ -6383,7 +6400,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             props: createTextTemplateProps({
                 text: translate("defaultDoc.speaker"),
                 fontSize: 20,
-                color: "#f8d37a",
+                color: STARTER_COLORS.accent,
                 fontWeight: "600",
                 lineHeight: 1.2,
                 textVerticalAlign: "center",
@@ -6408,7 +6425,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             props: createTextTemplateProps({
                 text: translate("defaultDoc.nvl.entryText"),
                 fontSize: 22,
-                color: "#f8fafc",
+                color: STARTER_COLORS.text,
                 lineHeight: 1.5,
             }),
             extra: { listSlot: "itemTemplate" },
