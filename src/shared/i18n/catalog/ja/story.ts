@@ -1339,6 +1339,7 @@ export const story = {
         parallel: "並行",
         race: "先に終わったほう",
         sequence: "順に実行",
+        noWait: "待たない",
         nvl: "NVL",
         menu: "メニュー",
         option: "選択肢",

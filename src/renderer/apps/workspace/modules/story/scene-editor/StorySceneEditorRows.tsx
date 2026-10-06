@@ -291,11 +291,6 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
     const block = row.block;
     const container = isContainerBlock(block);
     const containerInfo = container ? getContainerHeaderInfo(block) : null;
-    const lensMode: "all" | "allAsync" | "any" | null = block.kind === "control" && block.payload.control === "race"
-        ? "any"
-        : block.kind === "control" && block.payload.control === "parallel"
-            ? (block.payload.mode === "allAsync" ? "allAsync" : "all")
-            : null;
     const canFold = block.childrenIds.length > 0 && canAcceptChildren(block);
     const textSegment = getTextSegment(block);
     const isDialogue = block.kind === "nodeAction" && block.payload.action === "dialogue";
@@ -546,7 +541,7 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                                 pill it used to wear was a fourth icon shape AND it started further left
                                 than its own children's text, so a block never lined up with itself. */}
                             <ContainerHeaderWord info={containerInfo} textStyle={textStyle} />
-                            {lensMode ? <span className={HEADER_SLOT_CLASS}><ContainerModeBadge mode={lensMode} /></span> : null}
+                            {containerInfo.groupWaits === false ? <span className={HEADER_SLOT_CLASS}><ContainerNoWaitBadge /></span> : null}
                         </>
                     ) : null}
                     {containerInfo?.role === "branch" && containerInfo.hasCondition ? (
@@ -1971,15 +1966,20 @@ function ContainerHeaderWord({ info, textStyle }: { info: StoryContainerHeaderIn
     );
 }
 
-/** The engine-mode badge on a parallel/race header: `all` / `allAsync` / `any`, in control colour. */
-function ContainerModeBadge({ mode }: { mode: "all" | "allAsync" | "any" }) {
+/**
+ * The mark on a sequence or parallel header whose group the story does not wait for, in control
+ * colour. The header word already says how the rows inside run; this says the one thing it cannot -
+ * that the rows after the group start along with it.
+ */
+function ContainerNoWaitBadge() {
+    const { t } = useTranslation();
     const color = getCommandCategory("flow").iconColor;
     return (
         <span
-            className="shrink-0 rounded-md border px-1 py-px font-mono text-2xs leading-none"
+            className="shrink-0 rounded-md border px-1 py-px text-2xs leading-none"
             style={{ color, borderColor: color }}
         >
-            {mode}
+            {t("story.containerHeader.noWait")}
         </span>
     );
 }

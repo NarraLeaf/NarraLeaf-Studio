@@ -1282,6 +1282,7 @@ export const story = {
         parallel: "并行",
         race: "竞速（最先完成者）",
         sequence: "依次执行",
+        noWait: "不等待",
         nvl: "NVL",
         menu: "菜单",
         option: "选项",

@@ -4,6 +4,7 @@ import { LOCALIZED_COMMANDS_DEFAULT } from "@/lib/settings/commandLanguageOption
 import type { StoryBlock, StoryDocument, StoryScene } from "@shared/types/story";
 import {
     describeStoryBlock,
+    getStoryContainerHeaderInfo,
     projectStoryRow,
     storyBlockBadge,
     storyContainerChain,
@@ -285,6 +286,24 @@ describe("colour", () => {
         };
         expect(storyBlockBadge(invalid).group).toBeNull();
         expect(storyRowAccentColor(invalid)).toBe("rgb(var(--nl-danger))");
+    });
+});
+
+describe("a group's header", () => {
+    it("names the group by how it runs, which its stored mode decides", () => {
+        expect(getStoryContainerHeaderInfo(control({ control: "parallel", mode: "all" }))?.commandId).toBe("parallel");
+        expect(getStoryContainerHeaderInfo(control({ control: "sequence" }))?.commandId).toBe("sequence");
+        expect(getStoryContainerHeaderInfo(control({ control: "race" }))?.commandId).toBe("race");
+        // Rows the earlier inspector let disagree with themselves read as they play.
+        expect(getStoryContainerHeaderInfo(control({ control: "sequence", mode: "all" }))?.commandId).toBe("parallel");
+        expect(getStoryContainerHeaderInfo(control({ control: "parallel", mode: "do" }))?.commandId).toBe("sequence");
+    });
+
+    it("marks a group the rows after it do not wait for, and only that", () => {
+        expect(getStoryContainerHeaderInfo(control({ control: "parallel", mode: "allAsync" }))?.groupWaits).toBe(false);
+        expect(getStoryContainerHeaderInfo(control({ control: "sequence", mode: "doAsync" }))?.groupWaits).toBe(false);
+        expect(getStoryContainerHeaderInfo(control({ control: "parallel", mode: "all" }))?.groupWaits).toBeUndefined();
+        expect(getStoryContainerHeaderInfo(control({ control: "race", mode: "any" }))?.groupWaits).toBeUndefined();
     });
 });
 

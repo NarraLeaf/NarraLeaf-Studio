@@ -1485,6 +1485,7 @@ export const story = {
         parallel: "Parallel",
         race: "Race, first to finish",
         sequence: "In order",
+        noWait: "Doesn't wait",
         nvl: "NVL",
         menu: "Menu",
         option: "Option",
