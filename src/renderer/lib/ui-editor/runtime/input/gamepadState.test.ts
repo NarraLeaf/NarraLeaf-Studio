@@ -44,19 +44,30 @@ type FakeGamepadHost = UIGamepadHost & {
     pads: Array<Gamepad | null>;
     frames: FrameRequestCallback[];
     setHidden: (value: boolean) => void;
+    setFocused: (value: boolean) => void;
     /** Deliver a window or document event to whatever the tracker is listening with. */
     fire: (type: string) => void;
+    /** Run the frame the tracker asked for last. */
+    tick: () => void;
 };
 
 function hostWith(pads: Array<Gamepad | null>, opts?: { hidden?: boolean }): FakeGamepadHost {
     const frames: FrameRequestCallback[] = [];
     let hidden = opts?.hidden ?? false;
+    let focused = true;
     const listeners = new Map<string, Set<EventListener>>();
     const host: FakeGamepadHost = {
         pads,
         frames,
         setHidden: value => {
             hidden = value;
+        },
+        setFocused: value => {
+            focused = value;
+        },
+        hasFocus: () => focused,
+        tick: () => {
+            host.frames.at(-1)?.(0);
         },
         fire: type => {
             for (const listener of listeners.get(type) ?? []) {
@@ -188,6 +199,48 @@ describe("createGamepadTracker", () => {
         tracker.dispose();
     });
 
+    it("does not read the pads while the window does not have focus", () => {
+        // The Gamepad API still reports to a visible, unfocused page; a game left open beside
+        // another one must not play along with the pad meant for that one.
+        const host = hostWith([pad({ buttons: [{ pressed: false }], axes: [0.9, 0, 0, 0] })]);
+        const tracker = createGamepadTracker(host);
+        const edges: string[] = [];
+        tracker.onEdge(edge => edges.push(`${edge.type}:${edge.button}`));
+        tracker.start();
+        expect(tracker.read().axes.LeftX).toBe(0.9);
+        host.setFocused(false);
+        host.pads = [pad({ buttons: [{ pressed: true }], axes: [0.9, 0, 0, 0] })];
+        host.tick();
+        expect(edges).toEqual([]);
+        expect(tracker.read().buttons.size).toBe(0);
+        expect(tracker.read().axes.LeftX).toBe(0);
+        expect(tracker.read().connected).toBe(true);
+        tracker.dispose();
+    });
+
+    it("takes a button held while focus returns as held, not pressed, and still reports its release", () => {
+        const host = hostWith([pad({ buttons: [{ pressed: false }] })]);
+        const tracker = createGamepadTracker(host);
+        const edges: string[] = [];
+        tracker.onEdge(edge => edges.push(`${edge.type}:${edge.button}`));
+        tracker.start();
+        host.setFocused(false);
+        host.fire("blur");
+        host.pads = [pad({ buttons: [{ pressed: true }] })];
+        host.tick();
+        host.setFocused(true);
+        host.tick();
+        expect(tracker.read().buttons.has("A")).toBe(true);
+        expect(edges).toEqual([]);
+        host.pads = [pad({ buttons: [{ pressed: false }] })];
+        host.tick();
+        expect(edges).toEqual(["up:A"]);
+        host.pads = [pad({ buttons: [{ pressed: true }] })];
+        host.tick();
+        expect(edges).toEqual(["up:A", "down:A"]);
+        tracker.dispose();
+    });
+
     it("clears held buttons on stop without emitting ups", () => {
         const host = hostWith([pad({ buttons: [{ pressed: true }] })]);
         const tracker = createGamepadTracker(host);
@@ -207,6 +260,7 @@ describe("the shared tracker over the real window", () => {
         // for the rest of the session, so hiding the window never cleared what was held.
         let visibility: DocumentVisibilityState = "visible";
         Object.defineProperty(document, "visibilityState", { configurable: true, get: () => visibility });
+        Object.defineProperty(document, "hasFocus", { configurable: true, value: () => true });
         Object.defineProperty(navigator, "getGamepads", {
             configurable: true,
             value: () => [pad({ buttons: [{ pressed: true }] })],
@@ -220,6 +274,7 @@ describe("the shared tracker over the real window", () => {
             expect(tracker.read().buttons.size).toBe(0);
         } finally {
             delete (document as { visibilityState?: unknown }).visibilityState;
+            delete (document as { hasFocus?: unknown }).hasFocus;
             delete (navigator as { getGamepads?: unknown }).getGamepads;
         }
     });

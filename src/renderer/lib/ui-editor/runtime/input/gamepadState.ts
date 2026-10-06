@@ -11,9 +11,16 @@
  * release is it leaving; two pads holding A is still one A. Analogue sticks are not buttons. They
  * are read through query nodes, from the first connected standard pad in `getGamepads()` order.
  *
- * Blur and `visibilitychange` to hidden forget the held set without emitting releases. A pad that
+ * Pads are not read while the window is hidden or does not have focus. The Gamepad API keeps
+ * reporting to a page that is visible but unfocused, so without this a game left open beside
+ * another one would play along with the pad meant for that one - the keyboard does not reach an
+ * unfocused window, and neither does this.
+ *
+ * Leaving (blur, hidden) forgets the held set and the sticks without emitting releases. A pad that
  * went up inside another window would otherwise stick `Is Gamepad Button Held` for the rest of the
  * session, and synthesising an up would fire graphs for a button the player did not release here.
+ * Coming back takes whatever is down as already down, with no press, the way a key held while its
+ * window gains focus sends no keydown; its release still arrives as an up.
  *
  * Comments in English per project convention.
  */
@@ -66,6 +73,8 @@ export type UIGamepadHost = {
     requestAnimationFrame: (callback: FrameRequestCallback) => number;
     cancelAnimationFrame: (handle: number) => void;
     visibilityState?: Document["visibilityState"];
+    /** Whether the player is in this window. A host without it is treated as always focused. */
+    hasFocus?: () => boolean;
 };
 
 export type UIGamepadTracker = {
@@ -134,6 +143,11 @@ function hostIsHidden(host: UIGamepadHost): boolean {
     return host.visibilityState === "hidden";
 }
 
+/** Hidden, or shown but not the window the player is in. Pads are not read for either. */
+function hostIsAway(host: UIGamepadHost): boolean {
+    return hostIsHidden(host) || host.hasFocus?.() === false;
+}
+
 export function createGamepadTracker(host: UIGamepadHost | null | undefined): UIGamepadTracker {
     let buttons = new Set<string>();
     let axes: Record<BlueprintGamepadAxis, number> = { ...NO_GAMEPAD_AXES };
@@ -174,39 +188,50 @@ export function createGamepadTracker(host: UIGamepadHost | null | undefined): UI
         }
     };
 
+    // Set whenever the held set has been forgotten - at start, on leaving. The next read takes what
+    // is down as already down instead of reporting it as pressed.
+    let resync = true;
+
+    const forget = (live: ReturnType<typeof readUnion> | null): void => {
+        // `connected` is a fact about the pads, not about the window, so it stays current and Is
+        // Gamepad Connected does not flip false on blur. The sticks are not: a stick pushed at the
+        // moment of blur would otherwise read as pushed for as long as the player is away.
+        applyUnion({ buttons: new Set(), axes: { ...NO_GAMEPAD_AXES }, connected: live?.connected ?? connected }, false);
+        resync = true;
+    };
+
+    const readPads = (): void => {
+        if (!host) {
+            return;
+        }
+        const live = readUnion(host.getGamepads());
+        if (hostIsAway(host)) {
+            forget(live);
+            return;
+        }
+        applyUnion(live, !resync);
+        resync = false;
+    };
+
     const poll = (): void => {
         if (!running || !host) {
             return;
         }
-        if (hostIsHidden(host)) {
-            frame = host.requestAnimationFrame(poll);
-            return;
-        }
-        applyUnion(readUnion(host.getGamepads()), true);
+        readPads();
         frame = host.requestAnimationFrame(poll);
     };
 
-    const clearSilent = (): void => {
-        applyUnion({ buttons: new Set(), axes: { ...NO_GAMEPAD_AXES }, connected }, false);
-        // `connected` is a fact about the pads, not about the window: re-read so Is Gamepad
-        // Connected does not flip false just because the window blurred.
-        if (host) {
-            const live = readUnion(host.getGamepads());
-            connected = live.connected;
-            axes = live.axes;
-        }
-    };
+    const clearSilent = (): void => forget(host ? readUnion(host.getGamepads()) : null);
 
     const onConnect = (): void => {
-        if (!running || !host) {
-            return;
+        if (running) {
+            readPads();
         }
-        applyUnion(readUnion(host.getGamepads()), true);
     };
 
     const onBlur = (): void => clearSilent();
     const onVisibility = (): void => {
-        if (hostIsHidden(host!)) {
+        if (host && hostIsHidden(host)) {
             clearSilent();
         }
     };
@@ -234,7 +259,8 @@ export function createGamepadTracker(host: UIGamepadHost | null | undefined): UI
             host.addEventListener("gamepaddisconnected", onConnect);
             host.addEventListener("blur", onBlur);
             host.addEventListener("visibilitychange", onVisibility);
-            applyUnion(readUnion(host.getGamepads()), false);
+            resync = true;
+            readPads();
             frame = host.requestAnimationFrame(poll);
         },
         stop: () => {
@@ -269,6 +295,7 @@ export function createGamepadTracker(host: UIGamepadHost | null | undefined): UI
             buttons = new Set();
             axes = { ...NO_GAMEPAD_AXES };
             connected = false;
+            resync = true;
         },
     };
 }
@@ -300,6 +327,7 @@ function windowHost(): UIGamepadHost | null {
         get visibilityState() {
             return typeof document === "undefined" ? undefined : document.visibilityState;
         },
+        hasFocus: () => typeof document === "undefined" || document.hasFocus(),
     };
 }
 

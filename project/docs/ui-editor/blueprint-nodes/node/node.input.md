@@ -46,7 +46,7 @@
 
 `blueprint.input.isGamepadButtonHeld` - 指定手柄按键当前是否按住
 
-卡片选一个规范按键名。未选时读 `false`。
+卡片选一个规范按键名。未选时读 `false`；游戏窗口没有焦点或被隐藏时也读 `false`。
 
 - `held` - `boolean`
 
@@ -54,7 +54,7 @@
 
 `blueprint.input.getGamepadAxis` - 读第一只标准手柄的摇杆轴
 
-`LeftX` / `LeftY` / `RightX` / `RightY`。死区 0.18 以内读 0。Y 轴不翻转。
+`LeftX` / `LeftY` / `RightX` / `RightY`。死区 0.18 以内读 0。Y 轴不翻转。游戏窗口没有焦点或被隐藏时读 0。
 
 - `value` - `float`
 

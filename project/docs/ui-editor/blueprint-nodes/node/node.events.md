@@ -115,7 +115,7 @@ Global 蓝图里有多个 `On Game Ready` 事件头时（同一图层或不同�
 
 `blueprint.event.head.gamepadButtonDown` - 手柄指定按键按下
 
-标准 mapping 手柄的该按键按下时触发。派发顺序与键盘相同：先 Global，再当前持有输入的界面；已挂载控件的私有蓝图也会收到。不经过文本框门。按键名是 Xbox 式规范名（A、B、LB、D-pad Up 等）。卡片未选按键时，这个头什么也不听。
+标准 mapping 手柄的该按键按下时触发。派发顺序与键盘相同：先 Global，再当前持有输入的界面；已挂载控件的私有蓝图也会收到。不经过文本框门。按键名是 Xbox 式规范名（A、B、LB、D-pad Up 等）。卡片未选按键时，这个头什么也不听。游戏窗口没有焦点或被隐藏时不读手柄；回到窗口时仍按着的键算作按住、不算按下，松开时照常触发 `On Gamepad Button Up`。
 
 - `then` - 执行出口
 
