@@ -1289,9 +1289,10 @@ interface IUIEditorHistoryService extends IService {
     /**
      * One page's slice of the two interface documents - or, for a component editor's
      * `component-editor:<id>` surface, one definition's. Opaque outside the service: it is only
-     * ever handed back to {@link record}.
+     * ever handed back to {@link record}. `withPlacements` adds where a definition's placements stand,
+     * for a step that moves them along with it.
      */
-    captureSnapshot(surfaceId: string): {
+    captureSnapshot(surfaceId: string, options?: { withPlacements?: boolean }): {
         document: unknown;
         blueprint: unknown;
     };
@@ -1301,6 +1302,7 @@ interface IUIEditorHistoryService extends IService {
         after: ReturnType<IUIEditorHistoryService["captureSnapshot"]>;
         mergeKey?: string;
         mergeWindowMs?: number;
+        label?: HistoryLabel;
     }): void;
     canUndo(surfaceId: string): boolean;
     canRedo(surfaceId: string): boolean;

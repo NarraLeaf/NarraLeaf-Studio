@@ -87,6 +87,7 @@ describe("UI editor context menus", () => {
             canGroup: false,
             canUngroup: false,
             allowAddToComponentLibrary: true,
+            insertBlockedReason: null,
         });
 
         expect(enabled(findItem(items, "insert"))).toBe(true);
@@ -134,6 +135,7 @@ describe("UI editor context menus", () => {
             canGroup: false,
             canUngroup: false,
             allowAddToComponentLibrary: true,
+            insertBlockedReason: null,
             insertParentIdForRow: "root",
         });
 
@@ -187,6 +189,7 @@ describe("UI editor context menus", () => {
             canGroup: false,
             canUngroup: false,
             allowAddToComponentLibrary: true,
+            insertBlockedReason: null,
             insertParentIdForRow: "child",
         });
 

@@ -107,6 +107,7 @@ import {
     getComponentTabId,
 } from "./componentEditorAdapter";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
+import { insertToolCanPlace } from "@/lib/ui-editor/tree/resolveAddTarget";
 import {
     cancelElementBindingSession,
     cancelElementBindingSessionById,
@@ -680,6 +681,20 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
             }
         };
     }, [active, context, historyService, surfaceId]);
+
+    // The insert tool is the workspace's rather than this tab's, so one armed on a page is still armed
+    // when the author switches here. A component's editor places no component, and one whose root holds
+    // nothing places nothing at all; such a tool is put down when the tab is shown, instead of staying
+    // lit in the bar over a canvas where every drag creates nothing.
+    useEffect(() => {
+        if (!active || !stateService || !documentService || !surfaceId) {
+            return;
+        }
+        const current = stateService.getTool();
+        if (current.kind === "insert" && !insertToolCanPlace(documentService.getDocument(), surfaceId, current)) {
+            stateService.setTool({ kind: "select" });
+        }
+    }, [active, documentService, stateService, surfaceId]);
 
     useEffect(() => {
         const root = editorRootRef.current;

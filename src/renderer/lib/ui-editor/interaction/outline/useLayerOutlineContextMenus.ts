@@ -4,6 +4,8 @@ import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import type { InputDialog } from "@/lib/components/dialogs";
 import { buildOutlineContextMenu } from "@/lib/ui-editor/context-menu/buildOutlineContextMenu";
+import { describeInsertRefusal, describeSurfaceInsertRefusal } from "@/lib/ui-editor/context-menu/insertRefusal";
+import { resolveComponentRootSwapMenuEntry } from "@/lib/ui-editor/context-menu/componentRootSwapMenu";
 import {
     resolveCanvasContextSelection,
     shouldApplyCanvasContextRetarget,
@@ -98,15 +100,16 @@ export function useLayerOutlineContextMenus(params: {
             const doc = documentService.getDocument();
             const surface = doc.surfaces.find(candidate => candidate.id === surfaceId);
             const insertParentId = resolveNearestInsertParentInSurface(doc, surfaceId, element.id);
+            const insertBlockedReason = describeInsertRefusal(doc, element);
             const canGroup = canGroupSelection(doc, surfaceId, menuSel);
             const canUngroup = getContainersToUngroup(doc, surfaceId, menuSel).length > 0;
 
             const insertChildInOutline = (type: string) => {
-                if (!insertParentId) {
+                if (insertBlockedReason != null) {
                     return;
                 }
-                const patch = defaultLayoutPatchForOutlineInsert(documentService.getDocument(), insertParentId);
-                const created = documentService.createElement(insertParentId, type, patch);
+                const patch = defaultLayoutPatchForOutlineInsert(documentService.getDocument(), element.id);
+                const created = documentService.createElement(element.id, type, patch);
                 stateService.setUIElementSelection({
                     editor: "ui",
                     surfaceId,
@@ -144,6 +147,8 @@ export function useLayerOutlineContextMenus(params: {
                 widgetModules: listInsertPaletteModules(surface),
                 documentService,
                 insertParentIdForRow: insertParentId,
+                insertBlockedReason,
+                rootSwap: resolveComponentRootSwapMenuEntry({ document: doc, surfaceId, menuSelection: menuSel, documentService, stateService }),
                 canGroup,
                 canUngroup,
                 allowAddToComponentLibrary: allowAddSelectionToComponentLibrary,
@@ -192,8 +197,12 @@ export function useLayerOutlineContextMenus(params: {
             const surface = doc.surfaces.find(candidate => candidate.id === surfaceId);
             const canGroup = canGroupSelection(doc, surfaceId, menuSel);
             const canUngroup = getContainersToUngroup(doc, surfaceId, menuSel).length > 0;
+            const insertBlockedReason = describeSurfaceInsertRefusal(doc, surfaceId);
 
             const insertOutline = (type: string) => {
+                if (insertBlockedReason != null) {
+                    return;
+                }
                 const fresh = documentService.getDocument();
                 const parentId = effectiveRootId;
                 const patch = defaultLayoutPatchForOutlineInsert(fresh, parentId);
@@ -234,6 +243,7 @@ export function useLayerOutlineContextMenus(params: {
                 widgetModules: listInsertPaletteModules(surface),
                 documentService,
                 insertParentIdForRow: null,
+                insertBlockedReason,
                 canGroup,
                 canUngroup,
                 allowAddToComponentLibrary: allowAddSelectionToComponentLibrary,
