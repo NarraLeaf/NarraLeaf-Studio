@@ -139,7 +139,8 @@ function GridDots({ lines, frame }: { lines: GridScreenLines; frame: OverlayFram
         }
         context.clearRect(0, 0, canvas.width, canvas.height);
         // The colour comes from the canvas's own text colour class, read at draw time, so a theme
-        // switch shows on the next repaint.
+        // switch shows on the next repaint. Faint on purpose: a field of dots over the page reads as
+        // noise long before it reads as too faint to find.
         context.fillStyle = getComputedStyle(canvas).color;
         context.beginPath();
         for (const y of layout.ys) {
@@ -153,7 +154,7 @@ function GridDots({ lines, frame }: { lines: GridScreenLines; frame: OverlayFram
     return (
         <canvas
             ref={canvasRef}
-            className="absolute text-fg-muted/60"
+            className="absolute text-fg-muted/25"
             style={{ left: layout.css.left, top: layout.css.top, width: layout.css.width, height: layout.css.height }}
             aria-hidden="true"
         />
