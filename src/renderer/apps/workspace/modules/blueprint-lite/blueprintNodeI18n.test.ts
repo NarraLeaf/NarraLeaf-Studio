@@ -44,6 +44,9 @@ const UNTRANSLATED_TITLES = new Set(["+", "+1", "−", "−1", "×", "÷", "<", 
 const UNTRANSLATED_LABELS = new Set([
     "A", "B", "X", "Y", "-",
     "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD",
+    "LB", "RB", "LT", "RT", "Back", "Start", "L3", "R3", "Home",
+    "D-pad Up", "D-pad Down", "D-pad Left", "D-pad Right",
+    "LeftX", "LeftY", "RightX", "RightY",
 ]);
 
 function collectLabels(): Array<{ text: string; where: string }> {

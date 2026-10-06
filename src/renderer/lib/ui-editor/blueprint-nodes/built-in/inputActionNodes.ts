@@ -12,8 +12,17 @@
 import {
     BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
     BLUEPRINT_NODE_TYPE_INPUT_GET_DEVICE,
+    BLUEPRINT_NODE_TYPE_INPUT_GET_GAMEPAD_AXIS,
     BLUEPRINT_NODE_TYPE_INPUT_IS_ACTION_HELD,
+    BLUEPRINT_NODE_TYPE_INPUT_IS_GAMEPAD_BUTTON_HELD,
+    BLUEPRINT_NODE_TYPE_INPUT_IS_GAMEPAD_CONNECTED,
 } from "@shared/types/blueprint/graph";
+import {
+    BLUEPRINT_GAMEPAD_AXES,
+    BLUEPRINT_GAMEPAD_BUTTONS,
+    BLUEPRINT_NODE_PARAM_EVENT_HEAD_GAMEPAD_BUTTON,
+    BLUEPRINT_NODE_PARAM_GAMEPAD_AXIS,
+} from "@shared/types/blueprint/gamepad";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type {
     BlueprintInspectorParamDef,
@@ -95,6 +104,9 @@ export type BlueprintInputActionHostApi = {
      * could accept, because only the first tells an interface which word to print.
      */
     getDevice?: () => string;
+    isGamepadConnected?: () => boolean;
+    isGamepadButtonHeld?: (button: string) => boolean;
+    getGamepadAxis?: (axis: string) => number;
 };
 
 export const inputActionBlueprintNodes: BlueprintNodeDef[] = [
@@ -122,7 +134,7 @@ export const inputActionBlueprintNodes: BlueprintNodeDef[] = [
         // too, so a translated name is what a query in another language matches on.
         keywords: [
             "input", "device", "pointer", "mouse", "keyboard", "key", "touch", "tap", "click",
-            "platform", "mobile", "desktop",
+            "gamepad", "controller", "platform", "mobile", "desktop",
         ],
         graphKinds: ["event", "function", "macro"],
         isPure: true,
@@ -136,6 +148,48 @@ export const inputActionBlueprintNodes: BlueprintNodeDef[] = [
         // widened, because a graph written against a smaller set has no branch for a value that
         // did not exist when it was authored, and would fall through in silence.
         pins: [{ id: "device", kind: "output", semantic: "data", valueType: "string", label: "Device" }],
+        execute: () => ({}),
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_INPUT_IS_GAMEPAD_CONNECTED,
+        displayName: "Is Gamepad Connected",
+        category: "Input",
+        keywords: ["input", "gamepad", "controller", "joystick", "connected", "pad"],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        pins: [{ id: "connected", kind: "output", semantic: "data", valueType: "boolean", label: "Connected" }],
+        execute: () => ({}),
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_INPUT_IS_GAMEPAD_BUTTON_HELD,
+        displayName: "Is Gamepad Button Held",
+        category: "Input",
+        keywords: ["input", "gamepad", "controller", "joystick", "button", "held", "down", "pressed"],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        pins: [{ id: "held", kind: "output", semantic: "data", valueType: "boolean", label: "Held" }],
+        inspectorParams: [{
+            key: BLUEPRINT_NODE_PARAM_EVENT_HEAD_GAMEPAD_BUTTON,
+            label: "Button",
+            kind: "select",
+            options: BLUEPRINT_GAMEPAD_BUTTONS.map(button => ({ value: button, label: button })),
+        }],
+        execute: () => ({}),
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_INPUT_GET_GAMEPAD_AXIS,
+        displayName: "Get Gamepad Axis",
+        category: "Input",
+        keywords: ["input", "gamepad", "controller", "joystick", "axis", "stick", "analog"],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        pins: [{ id: "value", kind: "output", semantic: "data", valueType: "float", label: "Value" }],
+        inspectorParams: [{
+            key: BLUEPRINT_NODE_PARAM_GAMEPAD_AXIS,
+            label: "Axis",
+            kind: "select",
+            options: BLUEPRINT_GAMEPAD_AXES.map(axis => ({ value: axis, label: axis })),
+        }],
         execute: () => ({}),
     },
 ];

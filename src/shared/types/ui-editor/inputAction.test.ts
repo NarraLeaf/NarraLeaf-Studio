@@ -175,9 +175,16 @@ describe("inputBindingDevices", () => {
         }
     });
 
-    it("gives no binding to the gamepad yet", () => {
-        // The pad is declared in the source union and produced by nothing. Whoever wires one up
-        // turns this red, which is the reminder to say in the table above which gestures it reaches.
+    it("reads a gamepad binding as the pad alone", () => {
+        const a: UIInputBinding = { kind: "gamepad", button: "A" };
+        expect(devicesOf(a)).toEqual(["gamepad"]);
+        expect(inputBindingReachesDevice(a, "gamepad")).toBe(true);
+        expect(inputBindingReachesDevice(a, "key")).toBe(false);
+        expect(inputBindingReachesDevice(click, "gamepad")).toBe(false);
+        expect(inputBindingReachesDevice(escape, "gamepad")).toBe(false);
+    });
+
+    it("does not share pointer gestures with the gamepad", () => {
         const bindings: UIInputBinding[] = [...UI_INPUT_POINTER_GESTURES.map(pointer), escape, space];
         for (const binding of bindings) {
             expect(inputBindingReachesDevice(binding, "gamepad")).toBe(false);
@@ -226,6 +233,11 @@ describe("normalize", () => {
                 advance: { id: "advance", name: "Advance", bindings: [{ kind: "key", key: "esc" }, { kind: "key", key: " " }] },
             }).advance?.bindings,
         ).toEqual([escape, space]);
+    });
+
+    it("spells a stored gamepad button the Xbox name", () => {
+        expect(normalizeUIInputBinding({ kind: "gamepad", button: "cross" })).toEqual({ kind: "gamepad", button: "A" });
+        expect(normalizeUIInputBinding({ kind: "gamepad", button: "not-a-button" })).toBeNull();
     });
 
     it("collapses two spellings of one key into one binding", () => {

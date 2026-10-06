@@ -356,6 +356,9 @@ const OFFLINE_NETWORK_HOST: BlueprintHostApiRuntime["network"] = {
 const NO_HELD_INPUT_HOST: BlueprintHostApiRuntime["input"] = {
     isActionHeld: () => false,
     getDevice: () => "pointer",
+    isGamepadConnected: () => false,
+    isGamepadButtonHeld: () => false,
+    getGamepadAxis: () => 0,
 };
 
 /** No host in these tests owns a window, so no cursor can be moved from one. */

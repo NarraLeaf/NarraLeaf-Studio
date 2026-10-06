@@ -148,6 +148,18 @@ describe("resolveSurfaceInputActionHits", () => {
         ).toBe("key");
     });
 
+    it("reports a gamepad as gamepad, with no pointer coordinates", () => {
+        const padAction: Record<string, UIInputActionDef> = {
+            advance: { id: "advance", name: "Advance", bindings: [{ kind: "gamepad", button: "A" }] },
+        };
+        const hit = hits({
+            vocabulary: padAction,
+            enablements: [{ actionId: "advance" }],
+            signal: { kind: "gamepad", button: "A" },
+        })[0];
+        expect(hit?.payload).toEqual({ actionId: "advance", source: "gamepad" });
+    });
+
     it("ignores an action this project does not define", () => {
         // What a surface pasted in from another project leaves behind. It is inert, a lint rule
         // reports it where the author can see it, and routing steps over it without a word.

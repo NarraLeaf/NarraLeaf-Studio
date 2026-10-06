@@ -207,7 +207,9 @@ class CompileContext {
             bindings: statement.bindings.map(binding =>
                 binding.kind === "pointer"
                     ? { kind: "pointer", gesture: binding.gesture as never }
-                    : { kind: "key", key: binding.key },
+                    : binding.kind === "gamepad"
+                      ? { kind: "gamepad", button: binding.button }
+                      : { kind: "key", key: binding.key },
             ),
         };
     }

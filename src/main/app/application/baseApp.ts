@@ -28,6 +28,8 @@ import { StorageManager } from "./managers/storageManager";
 import { WindowManager } from "./managers/windowManager";
 import { GlobalStateManager } from "./managers/storage/globalState";
 import { DOWNLOAD_REWRITES_KEY, setDownloadRewriteSource } from "./managers/downloadRewrites";
+import { setUseSystemProxySource } from "./managers/downloadProxy";
+import { USE_SYSTEM_PROXY_KEY } from "@shared/types/downloadSource";
 import { sweepPsdTempDirectories } from "./managers/storage/cacheInventory";
 import {
     describeCacheRoot,
@@ -189,6 +191,7 @@ export class BaseApp {
         // Read through on every download rather than snapshotted: a mirror typed in the Settings
         // window has to apply to the next fetch, not the next launch.
         setDownloadRewriteSource(() => this.globalState.get(DOWNLOAD_REWRITES_KEY));
+        setUseSystemProxySource(() => this.globalState.get(USE_SYSTEM_PROXY_KEY));
         // Before anything that caches, so the log says where this machine decided to put it and
         // the answer is fixed for the rest of the session.
         this.logger.info(`[Cache] ${describeCacheRoot(this.resolveCacheRootOnce())}`);

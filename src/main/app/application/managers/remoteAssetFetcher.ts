@@ -10,6 +10,7 @@ import {
     type RemoteAssetValidators,
 } from "@shared/types/remoteAsset";
 import { applyDownloadRewrite } from "./downloadRewrites";
+import { studioFetch } from "./downloadProxy";
 
 /**
  * The main process's fetch for remote assets.
@@ -74,7 +75,7 @@ export async function fetchRemoteAsset(
     const timer = setTimeout(() => controller.abort(), REMOTE_ASSET_FETCH_TIMEOUT_MS);
     let response: Response;
     try {
-        response = await fetch(applyDownloadRewrite(url), {
+        response = await studioFetch(applyDownloadRewrite(url), {
             redirect: "follow",
             signal: controller.signal,
             headers: conditionalHeaders(validators),

@@ -127,7 +127,10 @@ import {
     BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE_OPTIONS,
     BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SIZE,
     BLUEPRINT_NODE_TYPE_INPUT_GET_DEVICE,
+    BLUEPRINT_NODE_TYPE_INPUT_GET_GAMEPAD_AXIS,
     BLUEPRINT_NODE_TYPE_INPUT_IS_ACTION_HELD,
+    BLUEPRINT_NODE_TYPE_INPUT_IS_GAMEPAD_BUTTON_HELD,
+    BLUEPRINT_NODE_TYPE_INPUT_IS_GAMEPAD_CONNECTED,
     BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
     BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
     BLUEPRINT_NODE_TYPE_LAYER_IS_MOUNTED,
@@ -2014,6 +2017,24 @@ function resolveInputActionNodeOutput(
     if (nodeType === BLUEPRINT_NODE_TYPE_INPUT_GET_DEVICE && portId === "device") {
         const device = hostApi?.input?.getDevice?.();
         return device ? String(device) : "pointer";
+    }
+    if (nodeType === BLUEPRINT_NODE_TYPE_INPUT_IS_GAMEPAD_CONNECTED && portId === "connected") {
+        return hostApi?.input?.isGamepadConnected?.() === true;
+    }
+    if (nodeType === BLUEPRINT_NODE_TYPE_INPUT_IS_GAMEPAD_BUTTON_HELD && portId === "held") {
+        const button = String(params.button ?? "").trim();
+        if (!button) {
+            return false;
+        }
+        return hostApi?.input?.isGamepadButtonHeld?.(button) === true;
+    }
+    if (nodeType === BLUEPRINT_NODE_TYPE_INPUT_GET_GAMEPAD_AXIS && portId === "value") {
+        const axis = String(params.axis ?? "").trim();
+        if (!axis) {
+            return 0;
+        }
+        const value = hostApi?.input?.getGamepadAxis?.(axis);
+        return typeof value === "number" && Number.isFinite(value) ? value : 0;
     }
     if (nodeType !== BLUEPRINT_NODE_TYPE_INPUT_IS_ACTION_HELD || portId !== "held") {
         return undefined;

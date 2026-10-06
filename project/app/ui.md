@@ -94,6 +94,8 @@ nl.switch
     rightClick               interaction blueprint.event.head.rightClick
     keyDown                  interaction blueprint.event.head.keyDown, blueprint.event.head.anyKeyDown
     keyUp                    interaction blueprint.event.head.keyUp, blueprint.event.head.anyKeyUp
+    gamepadButtonDown        interaction blueprint.event.head.gamepadButtonDown, blueprint.event.head.anyGamepadButtonDown
+    gamepadButtonUp          interaction blueprint.event.head.gamepadButtonUp, blueprint.event.head.anyGamepadButtonUp
     focus                    interaction blueprint.event.head.focus
     blur                     interaction blueprint.event.head.blur
     onAnyBroadcast           interaction blueprint.event.head.onAnyBroadcast

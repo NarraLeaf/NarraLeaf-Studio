@@ -1,5 +1,6 @@
 import type { InterpolationParams, TranslationKey } from "@shared/i18n";
 import { formatBlueprintKeyboardBinding } from "@shared/types/blueprint/graph";
+import { BLUEPRINT_GAMEPAD_BUTTONS, formatBlueprintGamepadButton } from "@shared/types/blueprint/gamepad";
 import {
     inputBindingDevices,
     type UIInputBinding,
@@ -24,21 +25,25 @@ export function getInputPointerGestureLabel(gesture: UIInputPointerGesture, t: T
 }
 
 export function getInputBindingLabel(binding: UIInputBinding, t: TranslateFn): string {
-    return binding.kind === "pointer"
-        ? getInputPointerGestureLabel(binding.gesture, t)
-        : formatBlueprintKeyboardBinding(binding.key) || binding.key;
+    if (binding.kind === "pointer") {
+        return getInputPointerGestureLabel(binding.gesture, t);
+    }
+    if (binding.kind === "gamepad") {
+        return formatBlueprintGamepadButton(binding.button) || binding.button;
+    }
+    return formatBlueprintKeyboardBinding(binding.key) || binding.key;
 }
 
 /**
  * The devices the author panels list bindings under, in the order they are listed.
  *
- * **Four, where the model has three.** The model's `pointer` is every device that aims at a point -
+ * **Five display groups, four model values.** The model's `pointer` is every device that aims at a point -
  * a mouse, a trackpad, a pen - which is the right grouping for routing and the wrong one for a
  * picker: it put a sideways scroll in a row called Mouse, and no mouse scrolls sideways. So the
  * panels split it, and the split is theirs alone. Nothing is stored per display device and nothing
  * routes by one.
  */
-export const INPUT_BINDING_DEVICES = ["mouse", "trackpad", "touch", "key"] as const;
+export const INPUT_BINDING_DEVICES = ["mouse", "trackpad", "touch", "key", "gamepad"] as const;
 
 export type InputBindingDevice = (typeof INPUT_BINDING_DEVICES)[number];
 
@@ -95,6 +100,7 @@ export const INPUT_DEVICE_GESTURE_OFFERS: Record<InputBindingDevice, readonly In
         { gesture: "wheelLeft", labelKey: "uiEditor.inputActions.menu.touchSlideRight" },
     ],
     key: [],
+    gamepad: [],
 };
 
 /**
@@ -120,6 +126,9 @@ export function getInputBindingDevices(binding: UIInputBinding): InputBindingDev
     if (binding.kind === "key") {
         return ["key"];
     }
+    if (binding.kind === "gamepad") {
+        return ["gamepad"];
+    }
     const capable = GESTURE_CAPABLE_DEVICES[binding.gesture];
     return INPUT_BINDING_DEVICES.filter(device => capable.includes(device));
 }
@@ -142,6 +151,9 @@ export function getInputBindingDeviceActs(binding: UIInputBinding, t: TranslateF
     if (binding.kind === "key") {
         return getInputDeviceLabel("key", t);
     }
+    if (binding.kind === "gamepad") {
+        return getInputDeviceLabel("gamepad", t);
+    }
     const lines: string[] = [];
     for (const device of getInputBindingDevices(binding)) {
         const offer = INPUT_DEVICE_GESTURE_OFFERS[device].find(entry => entry.gesture === binding.gesture);
@@ -160,3 +172,6 @@ export function getInputBindingDeviceActs(binding: UIInputBinding, t: TranslateF
 export function getInputBindingRoutingDevices(binding: UIInputBinding): ReadonlySet<string> {
     return inputBindingDevices(binding) as ReadonlySet<string>;
 }
+
+/** The 17 standard buttons the add-menu lists. Hardware names, not localised. */
+export const GAMEPAD_BINDING_BUTTONS = BLUEPRINT_GAMEPAD_BUTTONS;

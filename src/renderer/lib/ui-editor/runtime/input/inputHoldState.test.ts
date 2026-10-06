@@ -32,7 +32,7 @@ import {
 } from "./inputHoldState";
 
 function held(keys: string[] = [], buttons: number[] = [], gestures: UIInputPointerGesture[] = []): UIHeldInputs {
-    return { keys: new Set(keys), buttons: new Set(buttons), gestures: new Set(gestures) };
+    return { keys: new Set(keys), buttons: new Set(buttons), gestures: new Set(gestures), gamepadButtons: new Set() };
 }
 
 const KEY = (key: string): UIInputBinding => ({ kind: "key", key });
@@ -137,7 +137,7 @@ describe("the tracker over a window", () => {
         // here. A hold that outlived this would never end.
         window.dispatchEvent(new Event("blur"));
 
-        expect(tracker.read()).toEqual({ keys: new Set(), buttons: new Set(), gestures: new Set() });
+        expect(tracker.read()).toEqual({ keys: new Set(), buttons: new Set(), gestures: new Set(), gamepadButtons: new Set() });
     });
 
     it("forgets the rest of the keyboard when Meta is released", () => {
@@ -227,7 +227,7 @@ describe("the tracker over a window", () => {
 
     it("reads nothing held where there is no window to listen to", () => {
         const tracker = createInputHoldTracker(null);
-        expect(tracker.read()).toEqual({ keys: new Set(), buttons: new Set(), gestures: new Set() });
+        expect(tracker.read()).toEqual({ keys: new Set(), buttons: new Set(), gestures: new Set(), gamepadButtons: new Set() });
         expect(tracker.readPressTarget("click")).toBeNull();
     });
 });
