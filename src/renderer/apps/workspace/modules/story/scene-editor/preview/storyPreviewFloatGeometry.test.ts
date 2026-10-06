@@ -73,6 +73,18 @@ describe("floating preview geometry", () => {
         });
     });
 
+    it("opens at the top-right corner of an editor whose subject sits low", () => {
+        const canvas = { x: 371, y: 130, width: 660, height: 708 };
+        expect(createDefaultStoryPreviewFloatRect(AREA, canvas, "top-right")).toEqual({
+            x: 371 + 660 - 420 - STORY_PREVIEW_FLOAT_MARGIN,
+            y: 130 + STORY_PREVIEW_FLOAT_MARGIN,
+            width: 420,
+            height: 300,
+        });
+        // An editor barely taller than the window keeps the window inside it.
+        expect(createDefaultStoryPreviewFloatRect(AREA, { ...canvas, height: 310 }, "top-right").y).toBe(140);
+    });
+
     it("puts a rect saved against the editor body back where it was on screen", () => {
         const saved = { x: 240, y: 432, width: 420, height: 300 };
         expect(migrateEditorBodyStoryPreviewFloatRect(saved, { x: 371, y: 82 })).toEqual({ x: 611, y: 514, width: 420, height: 300 });
