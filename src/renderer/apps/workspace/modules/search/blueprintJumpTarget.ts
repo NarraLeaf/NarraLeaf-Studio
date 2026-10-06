@@ -1,4 +1,6 @@
 import { GLOBAL_MAIN_OWNER_KEY } from "@shared/blueprint/ownerKey";
+import { blueprintDisplayName } from "@shared/types/ui-editor/ownerLabels";
+import { translate } from "@/lib/i18n";
 import type { ParsedBlueprintOwnerKey } from "@/lib/workspace/services/search/blueprintOwnerKey";
 import type { SearchJumpTarget } from "@/lib/workspace/services/search/searchIndexModel";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
@@ -80,11 +82,11 @@ function blueprintTabTitle(context: WorkspaceContext, tabId: string, blueprintId
         return open.title;
     }
     try {
-        const name = context.services
+        const blueprint = context.services
             .get<LocalBlueprintService>(Services.LocalBlueprint)
             .getBlueprintDocument()
-            .blueprints[blueprintId]?.name;
-        return name || undefined;
+            .blueprints[blueprintId];
+        return (blueprint && blueprintDisplayName(blueprint, translate)) || undefined;
     } catch {
         // No blueprint document yet: the tab factory's generic name is the honest one.
         return undefined;

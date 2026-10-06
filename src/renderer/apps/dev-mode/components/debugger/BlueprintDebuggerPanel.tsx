@@ -8,6 +8,7 @@ import { useMemo, type ReactNode } from "react";
 import { CircleDot, Network, SlidersHorizontal, Trash2 } from "lucide-react";
 import type { BlueprintBreakpoint } from "@shared/types/blueprint/breakpoints";
 import { blueprintBreakpointKey } from "@shared/types/blueprint/breakpoints";
+import { blueprintDisplayName } from "@shared/types/ui-editor/ownerLabels";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { useTranslation, type UseTranslation } from "@/lib/i18n";
 import { getBlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
@@ -89,12 +90,13 @@ export function BlueprintDebuggerPanel(props: {
                             <ul className="space-y-0.5">
                                 {[...snapshot.stack].reverse().map(frame => {
                                     const graphName =
-                                        resolveBlueprintGraphName(blueprintDocument, frame.blueprintId, frame.graphId) ??
+                                        resolveBlueprintGraphName(blueprintDocument, frame.blueprintId, frame.graphId, t) ??
                                         frame.graphId ??
                                         "";
-                                    const blueprintName = frame.blueprintId
-                                        ? blueprintDocument?.blueprints[frame.blueprintId]?.name ?? ""
-                                        : "";
+                                    const frameBlueprint = frame.blueprintId
+                                        ? blueprintDocument?.blueprints[frame.blueprintId]
+                                        : undefined;
+                                    const blueprintName = frameBlueprint ? blueprintDisplayName(frameBlueprint, t) : "";
                                     const nodeTitle = frame.currentNodeId
                                         ? nodeTitleOf(
                                               blueprintDocument,
@@ -250,7 +252,7 @@ function BreakpointRow(props: { breakpoint: BlueprintBreakpoint }): ReactNode {
     const nodeType = resolveBlueprintNodeType(ctx.blueprintDocument, breakpoint);
     const catalog = nodeType ? getBlueprintNodeEditorCatalogEntry(nodeType) : undefined;
     const graphName =
-        resolveBlueprintGraphName(ctx.blueprintDocument, breakpoint.blueprintId, breakpoint.graphId) ??
+        resolveBlueprintGraphName(ctx.blueprintDocument, breakpoint.blueprintId, breakpoint.graphId, t) ??
         breakpoint.graphId;
     const missing = !resolveBlueprintGraphIr(ctx.blueprintDocument, breakpoint.blueprintId, breakpoint.graphId)?.nodes?.[
         breakpoint.nodeId

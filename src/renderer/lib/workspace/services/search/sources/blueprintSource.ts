@@ -10,6 +10,7 @@ import { UIDocumentService } from "../../ui-editor/UIDocumentService";
 import { BlueprintNodeCatalogService } from "../../ui-editor/BlueprintNodeCatalogService";
 import { VariableRegistryService } from "../../variables/VariableRegistryService";
 import { decodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
+import { blueprintDisplayName, factoryLayerNameKey } from "@shared/types/ui-editor/ownerLabels";
 import { anchorComponentId, anchorElementId, anchorSurfaceId, blueprintAnchor } from "@shared/blueprint/ownerShape";
 import type { SearchIndexEntry } from "../searchIndexModel";
 import type { SearchSource } from "../searchSource";
@@ -188,12 +189,15 @@ export function extractBlueprintEntries(
             continue;
         }
         const ownerLabel = resolveOwnerLabel?.(ownerKey);
+        // As Quick Open and the blueprint's tab name it: a story blueprint nobody has named reads as
+        // its kind in the interface language, not as the English placeholder it was stored with.
+        const blueprintName = blueprint.name ? blueprintDisplayName(blueprint, translate) : "";
 
-        if (blueprint.name) {
+        if (blueprintName) {
             entries.push({
                 id: `bp:${blueprint.id}`,
                 group: "blueprint",
-                text: blueprint.name,
+                text: blueprintName,
                 detail: ownerLabel,
                 target: { kind: "blueprint", blueprintId: blueprint.id, ownerKey },
             });
@@ -207,7 +211,7 @@ export function extractBlueprintEntries(
                 id: `bpvar:${blueprint.id}:${variable.id}`,
                 group: "variable",
                 text: variable.name,
-                detail: ownerLabel ? `${blueprint.name} › ${ownerLabel}` : blueprint.name,
+                detail: ownerLabel ? `${blueprintName} › ${ownerLabel}` : blueprintName,
                 target: { kind: "blueprint", blueprintId: blueprint.id, ownerKey },
             });
         }
@@ -219,12 +223,17 @@ export function extractBlueprintEntries(
             ir: { nodes?: Record<string, { id: string; type: string; params?: Record<string, unknown> }> } | undefined;
         };
         const graphSlots: GraphSlot[] = [
-            ...Object.entries(blueprint.graphs.events).map(([graphId, slot]) => ({
-                focus: "event" as const,
-                graphId,
-                name: slot.name || labels.unnamedEvent,
-                ir: slot.graph,
-            })),
+            ...Object.entries(blueprint.graphs.events).map(([graphId, slot]) => {
+                // A layer Studio seeded reads as the title of the event that starts it, as the layer
+                // list shows it; one the author named reads as they named it.
+                const seededKey = factoryLayerNameKey(graphId, slot.name);
+                return {
+                    focus: "event" as const,
+                    graphId,
+                    name: seededKey ? translate(seededKey) : slot.name || labels.unnamedEvent,
+                    ir: slot.graph,
+                };
+            }),
             ...Object.entries(blueprint.graphs.functions).map(([graphId, slot]) => ({
                 focus: "function" as const,
                 graphId,
@@ -234,7 +243,7 @@ export function extractBlueprintEntries(
         ];
 
         for (const { focus, graphId, name: graphName, ir } of graphSlots) {
-            const where = ownerLabel ? `${ownerLabel} › ${graphName}` : `${blueprint.name} › ${graphName}`;
+            const where = ownerLabel ? `${ownerLabel} › ${graphName}` : `${blueprintName} › ${graphName}`;
             for (const node of Object.values(ir?.nodes ?? {})) {
                 const label = resolveNodeLabel(node.type) ?? node.type;
                 if (!label) {

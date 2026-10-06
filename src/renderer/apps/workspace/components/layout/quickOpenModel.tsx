@@ -1,6 +1,8 @@
 import { FileText, Image as ImageIcon, Music, PanelsTopLeft, Users, Workflow, File } from "lucide-react";
 import type { ReactNode } from "react";
 import type { TranslationKey } from "@shared/i18n";
+import { blueprintDisplayName } from "@shared/types/ui-editor/ownerLabels";
+import { translate } from "@/lib/i18n";
 import { listScenesInDocumentOrder } from "@shared/types/story";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -159,7 +161,7 @@ export function collectQuickOpenEntries(ctx: WorkspaceContext): QuickOpenEntry[]
             entries.push({
                 key: `blueprint:${blueprint.id}`,
                 kind: "blueprint",
-                title: blueprint.name,
+                title: blueprintDisplayName(blueprint, translate),
                 icon: <Workflow className="h-4 w-4" />,
                 // Addressed and named as the interface panel and the inspector open it, so picking a
                 // blueprint whose editor is already open focuses that tab instead of adding another.

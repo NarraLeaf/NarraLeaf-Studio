@@ -41,6 +41,33 @@ export function isFactoryStoryBlueprintName(name: string | undefined): boolean {
 }
 
 /**
+ * What the story calls the editor of a blueprint it runs, by how the row uses it - the title the
+ * blueprint's tab gets when it is opened from that row.
+ */
+const STORY_BLUEPRINT_TITLE_KEYS: Readonly<Record<"action" | "value" | "condition", TranslationKey>> = {
+    action: "storyInspector.blueprint.storyActionTitle",
+    value: "story.interpolation.storyValueTitle",
+    condition: "story.condition.title",
+};
+
+/**
+ * A blueprint's name as a list or a tab that names blueprints shows it: as stored, unless it is a
+ * story blueprint still carrying the name it was created with, which reads as the title its tab is
+ * given from the story - so opening it from Quick Open or a search result names the tab as opening it
+ * from its row does, in the interface language.
+ */
+export function blueprintDisplayName(
+    blueprint: { name: string; owner?: BlueprintOwnerRef },
+    t: (key: TranslationKey) => string,
+): string {
+    const { owner } = blueprint;
+    if (owner?.kind === "storyAction" && isFactoryStoryBlueprintName(blueprint.name)) {
+        return t(STORY_BLUEPRINT_TITLE_KEYS[owner.mode ?? "action"]);
+    }
+    return blueprint.name;
+}
+
+/**
  * The layers Studio seeds, by layer id: a Blueprint Value's `init` layer and a story blueprint's
  * `onCall` layer, each named after the event that starts it.
  *
