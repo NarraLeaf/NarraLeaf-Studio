@@ -63,6 +63,28 @@ describe("lintLocationLabel", () => {
         expect(lintLocationLabel({ kind: "character", characterId: "c1", characterName: "" }, "")).toBe("c1");
     });
 
+    it("reads a blueprint location as blueprint / layer, and leaves the node to the row", () => {
+        const location: LintLocation = {
+            kind: "blueprint",
+            blueprintId: "bp",
+            blueprintName: "Click area",
+            graphId: "layer-a",
+            nodeId: "start",
+            layerName: "Load",
+            nodeTitle: "Start Story",
+        };
+
+        expect(lintLocationLabel(location, "My Game")).toBe("Click area / Load");
+        expect(lintLocationLabel({ ...location, layerName: undefined }, "My Game")).toBe("Click area");
+        expect(lintEntryExcerpt(location)).toBe("Start Story");
+    });
+
+    it("names a seeded layer by the title of the event that starts it", () => {
+        const location: LintLocation = { kind: "blueprint", blueprintId: "bp", blueprintName: "Value", graphId: "init", layerName: "Init" };
+
+        expect(lintLocationLabel(location, "My Game", key => `t:${key}`)).toBe("Value / t:blueprint.node.init");
+    });
+
     it("names a widget inside a component by the component's name and its own, and never by an id", () => {
         const location: LintLocation = {
             kind: "component",
