@@ -1473,6 +1473,8 @@ export const lint = {
     },
     message: {
         ruleFailed: "{rule} could not run",
+        // Between the words of a list inside a message: the platforms a file will not play on.
+        listSeparator: ", ",
         storyLoadFailed: "{story} could not be opened",
         /**
          * Beside the line above and ahead of it, because it is the one reason a story will not open
