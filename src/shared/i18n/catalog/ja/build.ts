@@ -164,6 +164,7 @@ export const build = {
             contentLabel: "内容の取得元バリアント",
             contentHint: "このバリアントのシーン、条件分岐、アートがパッチに入る",
             sameVariant: "内容と更新対象のビルドが同じバリアント。このパッチに変更は含まれない。",
+            sameProject: "更新対象のビルドは現在のプロジェクトから作られる。このパッチに変更は含まれない。リリース済みのビルドには「既存のビルドフォルダー」を選ぶ。",
             outputLabel: "保存先",
             nameLabel: "名前",
             namePlaceholder: "ゲームのログに表示される",
