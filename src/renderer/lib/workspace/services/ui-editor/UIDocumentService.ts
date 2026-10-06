@@ -82,8 +82,8 @@ import { LocalBlueprintService } from "./LocalBlueprintService";
 import { UIEditorHistoryService, cloneUIHistoryDocument } from "./UIEditorHistoryService";
 import type { TranslationKey } from "@shared/i18n";
 import { HistoryService } from "../history/HistoryService";
-import type { HistoryLabel } from "../history/historyModel";
-import { HistoryEntryTag, projectHistoryScope } from "../history/historyScopes";
+import type { HistoryLabel, HistoryScopeId } from "../history/historyModel";
+import { HistoryEntryTag, projectHistoryScope, uiSurfaceHistoryScope } from "../history/historyScopes";
 import type { UIGraphService } from "./UIGraphService";
 import {
     captureUILibraryRecords,
@@ -2168,20 +2168,29 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
      * (`resolveWorkspaceUndoScope`). A definition's own stack holds edits *inside* it, and a deleted
      * definition has no tab to press Ctrl+Z in.
      *
+     * `scopeId` names another stack for the one library operation that is made from inside a page's
+     * editor - {@link createComponentFromElements}, from the canvas or the outline. The same rule
+     * puts that step on the page's stack: Ctrl+Z pressed where the gesture was made has to take it
+     * back, and on the project's stack it instead undid whatever the page's last edit had been.
+     *
      * Each step is a command over whole records, not a snapshot of the library: whichever direction
      * runs reads the records as they stand at that moment and writes them back exactly, and nothing
      * else in the library is touched. Tagged, so a live session drops these steps with the interface
      * editors' stacks (`LiveSessionService`): taking back an addition after a session would remove
-     * whatever the room built inside it.
+     * whatever the room built inside it. (A page's stack is cleared whole when a session starts.)
      */
-    private pushLibraryStep(label: HistoryLabel, step: { undo: () => void; redo: () => void }): void {
+    private pushLibraryStep(
+        label: HistoryLabel,
+        step: { undo: () => void; redo: () => void },
+        scopeId: HistoryScopeId = projectHistoryScope(),
+    ): void {
         let history: HistoryService;
         try {
             history = this.getContext().services.get<HistoryService>(Services.History);
         } catch {
             return;
         }
-        history.pushCommand(projectHistoryScope(), { label, ...step, tag: HistoryEntryTag.UILibrary });
+        history.pushCommand(scopeId, { label, ...step, tag: HistoryEntryTag.UILibrary });
     }
 
     /**
@@ -2244,6 +2253,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     private recordLibraryAddition(
         ids: { surfaceIds: readonly string[]; componentIds: readonly string[] },
         label: HistoryLabel,
+        scopeId?: HistoryScopeId,
     ): void {
         const document = this.getDocument();
         const arrived =
@@ -2258,7 +2268,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 held = this.takeLibraryRecords(ids);
             },
             redo: () => this.putLibraryRecords(held),
-        });
+        }, scopeId);
     }
 
     private getElementSurfaceId(elementId: string): string | null {
@@ -3744,8 +3754,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     /**
      * A new definition made of copies of elements on a page, with the logic they carry.
      *
-     * The page is not changed, so the step that takes this back is the library's - the project's
-     * stack, the one {@link createEmptyComponent} uses - rather than the page's.
+     * The page is not changed, but the step that takes this back goes on the page's stack all the
+     * same: it is made from the page's canvas or outline, and that is where Ctrl+Z and the Edit menu
+     * reach (`resolveWorkspaceUndoScope`). On the project's stack - the one {@link createEmptyComponent}
+     * uses, from the rail - Ctrl+Z right after it undid the page's previous edit and left the copy.
+     *
+     * `name` names the definition; without one it takes the element's name, or the catalog's word for
+     * a component when there are several elements or the one has no name.
      */
     public createComponentFromElements(surfaceId: string, elementIds: string[], name?: string): UIComponentDefinition | null {
         const document = this.getDocument();
@@ -3915,7 +3930,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
         const component: UIComponentDefinition = {
             id: componentId,
-            name: sanitizeComponentName(name, selectedTopElements.length === 1 ? (selectedTopElements[0].name ?? translate("defaultDoc.componentName")) : translate("defaultDoc.componentName")),
+            name: sanitizeComponentName(
+                name,
+                (selectedTopElements.length === 1 ? selectedTopElements[0].name?.trim() : "") || translate("defaultDoc.componentName"),
+            ),
             rootElementId,
             elements: componentElements,
             previewMeta: {
@@ -3937,9 +3955,12 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 }
             });
         }
+        // On the page's stack, not the project's: this is made from the page's canvas or outline, and
+        // Ctrl+Z there is what takes it back (see `pushLibraryStep`).
         this.recordLibraryAddition(
             { surfaceIds: [], componentIds: [component.id] },
             { key: "uiEditor.history.createComponent" as TranslationKey, params: { name: component.name } },
+            uiSurfaceHistoryScope(surfaceId),
         );
         return component;
     }
