@@ -117,6 +117,11 @@ export function TooltipHost() {
             className={TOOLTIP_BUBBLE_CLASS}
         >
             {target.text}
+            {/* The chord sits after the words, subdued the way a menu row sets its own apart: the
+                words say what the control does, the chord is the note that it has a key. */}
+            {target.shortcut ? (
+                <span className="ml-2 whitespace-nowrap text-fg-subtle tabular-nums">{target.shortcut}</span>
+            ) : null}
         </div>,
         doc.body,
     );

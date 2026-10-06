@@ -58,6 +58,7 @@ import {
     buildBlueprintStructTypeContext,
     pinBlueprintFieldReaderStruct,
 } from "@/lib/workspace/services/ui-editor/blueprint/graphStructTypeInference";
+import { blueprintValueTypeForVariable } from "@/lib/workspace/services/ui-editor/blueprint/graphVariableTypeInference";
 import {
     BLUEPRINT_INPUT_ACTION_OPTIONS_SOURCE,
     listBlueprintInputActionOptions,
@@ -727,10 +728,12 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 widgetElement,
                 owner: bp.owner,
                 isComponentDefinitionGraph,
+                savedVariables: localBp.listSavedVariables(),
             }),
-        // `uiDocumentRevision` stands in for the document read through the service.
+        // `uiDocumentRevision` stands in for the document read through the service, and
+        // `registryRevision` for the variable table read through the blueprint service.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [blueprintDocumentService, bp.owner, isComponentDefinitionGraph, uiDocumentRevision, widgetElement],
+        [blueprintDocumentService, bp.owner, isComponentDefinitionGraph, uiDocumentRevision, registryRevision, widgetElement],
     );
     const widgetLogicEvents = useMemo(() => {
         const t = widgetElement?.type;
@@ -2012,7 +2015,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 id: variable.id,
                 name: variable.name,
                 value: variable.id,
-                valueType: variable.valueType,
+                valueType: blueprintValueTypeForVariable(variable.valueType),
             }));
     }, [localBp, registryRevision]);
 
@@ -2023,7 +2026,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 id: variable.id,
                 name: variable.name,
                 value: variable.id,
-                valueType: variable.valueType,
+                valueType: blueprintValueTypeForVariable(variable.valueType),
             }));
     }, [localBp, registryRevision]);
 

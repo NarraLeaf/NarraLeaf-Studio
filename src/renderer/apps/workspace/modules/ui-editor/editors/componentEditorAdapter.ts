@@ -128,7 +128,8 @@ type ProjectMember =
     | "groupComponentElements"
     | "createComponentElement"
     | "pasteComponentClipboardPayload"
-    | "setComponentListItemStructFields";
+    | "setComponentListItemStructFields"
+    | "setComponentListItemStructShape";
 
 export class ComponentDocumentServiceAdapter implements UIDocumentServiceSurface {
     public readonly surfaceId: string;
@@ -197,6 +198,7 @@ export class ComponentDocumentServiceAdapter implements UIDocumentServiceSurface
     public readonly createComponentElement = this.project("createComponentElement");
     public readonly pasteComponentClipboardPayload = this.project("pasteComponentClipboardPayload");
     public readonly setComponentListItemStructFields = this.project("setComponentListItemStructFields");
+    public readonly setComponentListItemStructShape = this.project("setComponentListItemStructShape");
 
     /**
      * One of the project service's own members, called on the project service.
@@ -456,6 +458,14 @@ export class ComponentDocumentServiceAdapter implements UIDocumentServiceSurface
             return;
         }
         this.base.setComponentListItemStructFields(this.componentId, elementId, fields);
+    }
+
+    /** The engine shape of a list inside the definition, or its own again; see `setListItemStructShape`. */
+    public setListItemStructShape(elementId: string, shapeId: string | null): void {
+        if (this.isVirtualRoot(elementId)) {
+            return;
+        }
+        this.base.setComponentListItemStructShape(this.componentId, elementId, shapeId);
     }
 
     /** Show one of this component's text parameters in an element's words, or (`null`) stop showing one. */

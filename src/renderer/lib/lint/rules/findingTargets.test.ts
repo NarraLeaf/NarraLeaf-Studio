@@ -21,6 +21,9 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_GAME_START_STORY,
     BLUEPRINT_NODE_TYPE_GAME_GET_ENDINGS,
+    BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST,
+    BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+    BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SET_ITEMS,
     BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIRST,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
     BLUEPRINT_NODE_TYPE_LOG,
@@ -703,6 +706,34 @@ const FIXTURES: Record<RegisteredLintRuleId, Case[]> = {
                             { from: { nodeId: "endings", port: "endings" }, to: { nodeId: "first", port: "array" } },
                             { from: { nodeId: "first", port: "item" }, to: { nodeId: "read", port: "object" } },
                             { from: { nodeId: "read", port: "value" }, to: { nodeId: "log", port: "value" } },
+                        ],
+                    } as unknown as BlueprintGraphIr,
+                },
+            }),
+        }),
+    }],
+
+    "blueprint/list-shape-mismatch": [{
+        context: () => createTestLintContext({
+            uiDocument: onePage(element({ id: "endings", type: "nl.list", props: { itemStructId: "nl.ending" } })),
+            blueprintDocument: blueprints({
+                [PAGE_OWNER]: {
+                    click: {
+                        nodes: {
+                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK, params: {} },
+                            saves: { id: "saves", type: BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST, params: {} },
+                            list: {
+                                id: "list",
+                                type: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+                                params: { surfaceId: MAIN_APP_SURFACE_ID, elementId: "endings", elementType: "nl.list" },
+                            },
+                            fill: { id: "fill", type: BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SET_ITEMS, params: {} },
+                        },
+                        edges: [
+                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "saves", port: "in" } },
+                            { from: { nodeId: "saves", port: "next" }, to: { nodeId: "fill", port: "in" } },
+                            { from: { nodeId: "saves", port: "entries" }, to: { nodeId: "fill", port: "items" } },
+                            { from: { nodeId: "list", port: "element" }, to: { nodeId: "fill", port: "list" } },
                         ],
                     } as unknown as BlueprintGraphIr,
                 },

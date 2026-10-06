@@ -193,7 +193,8 @@ export function isValidBlueprintPinConnection(params: {
     return true;
 }
 
-function withoutInferredPinTypes(params: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+/** A node's params as the node declares them: what the editor worked out for its pins taken off. */
+export function withoutInferredPinTypes(params: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
     if (!params || !(BLUEPRINT_NODE_PARAM_INFERRED_PIN_TYPES in params)) {
         return params;
     }

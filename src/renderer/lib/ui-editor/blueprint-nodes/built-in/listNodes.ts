@@ -400,7 +400,33 @@ async function sortListByField(ctx: Parameters<BlueprintNodeDef["execute"]>[0], 
     );
 }
 
-export const listBlueprintNodes: BlueprintNodeDef[] = [
+/** Which pins of the list nodes carry the list's rows; see `BlueprintNodeDef.listRowTypes`. */
+const ROWS_IN = { inputs: { items: "array" } } as const;
+const ROWS_OUT = { outputs: { items: "array" } } as const;
+const ROW_IN = { inputs: { item: "item" } } as const;
+const ROW_OUT = { outputs: { item: "item" } } as const;
+const LIST_ROW_TYPES: Readonly<Record<string, NonNullable<BlueprintNodeDef["listRowTypes"]>>> = {
+    [BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS]: ROWS_IN,
+    [BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SET_ITEMS]: ROWS_IN,
+    [BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS]: ROWS_OUT,
+    [BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_ITEMS]: ROWS_OUT,
+    [BLUEPRINT_NODE_TYPE_LIST_APPEND_ITEM]: ROW_IN,
+    [BLUEPRINT_NODE_TYPE_ELEMENT_LIST_APPEND_ITEM]: ROW_IN,
+    [BLUEPRINT_NODE_TYPE_LIST_INSERT_ITEM]: ROW_IN,
+    [BLUEPRINT_NODE_TYPE_ELEMENT_LIST_INSERT_ITEM]: ROW_IN,
+    [BLUEPRINT_NODE_TYPE_LIST_REMOVE_ITEM]: ROW_IN,
+    [BLUEPRINT_NODE_TYPE_ELEMENT_LIST_REMOVE_ITEM]: ROW_IN,
+    [BLUEPRINT_NODE_TYPE_LIST_SET_SELECTED_ITEM]: ROW_IN,
+    [BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SET_SELECTED_ITEM]: ROW_IN,
+    [BLUEPRINT_NODE_TYPE_LIST_GET_SELECTED_ITEM]: ROW_OUT,
+    [BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SELECTED_ITEM]: ROW_OUT,
+    [BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_AT]: ROW_OUT,
+    [BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_ITEM_AT]: ROW_OUT,
+    [BLUEPRINT_NODE_TYPE_LIST_FIND_ITEM_BY_FIELD]: ROW_OUT,
+    [BLUEPRINT_NODE_TYPE_ELEMENT_LIST_FIND_ITEM_BY_FIELD]: ROW_OUT,
+};
+
+const listBlueprintNodeDefs: BlueprintNodeDef[] = [
     writeNode({
         type: BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS,
         displayName: "Set List Content",
@@ -895,3 +921,7 @@ export const listBlueprintNodes: BlueprintNodeDef[] = [
         execute: ctx => sortListByField(ctx, "element"),
     }),
 ];
+
+export const listBlueprintNodes: BlueprintNodeDef[] = listBlueprintNodeDefs.map(def =>
+    LIST_ROW_TYPES[def.type] ? { ...def, listRowTypes: LIST_ROW_TYPES[def.type] } : def,
+);

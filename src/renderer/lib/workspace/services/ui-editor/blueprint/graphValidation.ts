@@ -55,7 +55,8 @@ import {
     buildBlueprintStructTypeContext,
     type BlueprintNodeStructTypes,
 } from "./graphStructTypeInference";
-import { blueprintStructName } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
+import { blueprintStructName, formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
+import { withoutInferredPinTypes } from "@/lib/ui-editor/blueprint-nodes/connectionPolicy";
 import {
     isValidBlueprintExecConnection,
     resolveBlueprintNodeEditorCatalogEntryForNode,
@@ -491,6 +492,17 @@ function reportStructFieldDiagnostics(
         }
         return;
     }
+    if (typed.rowMismatch) {
+        out.push({
+            severity: "warning",
+            code: "node.list_shape_mismatch",
+            message: translate("blueprint.diagnostics.node.listShapeMismatch", {
+                node: title,
+                struct: formatBlueprintValueTypeLabel(typed.rowMismatch.givenType, translate),
+            }),
+            target,
+        });
+    }
     const keyPin = node.def.elementTypeFlow?.keyPin;
     if (!keyPin || !typed.struct) {
         return;
@@ -521,6 +533,8 @@ export function validateBlueprintGraphIr(
         validSavedVariableIds?: ReadonlySet<string>;
         variableValueTypes?: readonly BlueprintVariableTypeOption[];
         persistentVariableValueTypes?: readonly BlueprintVariableTypeOption[];
+        /** The project's saved variables, which type Get / Set Saved Var. */
+        savedVariables?: readonly { id: string; valueType?: string }[];
         widgetElement?: UIElement | null;
         widgetElementType?: string;
         /** The interface document the widget element lives in; see `BlueprintGraphContextInput`. */
@@ -542,6 +556,7 @@ export function validateBlueprintGraphIr(
             widgetElement: ctx.widgetElement,
             owner: ctx.blueprintOwner,
             isComponentDefinitionGraph: ctx.isComponentDefinitionGraph,
+            savedVariables: ctx.savedVariables,
         }),
     );
     ir = applyBlueprintStructTypes(ir, structTypes);
@@ -920,9 +935,12 @@ function validateStoryConditionReturnType(
         if (!sourceNode) {
             continue;
         }
+        // Judged by the declared type: what the editor works out only ever adds a connection, so a
+        // saved number variable typed `float` here is not a new error on a condition that read it
+        // as `any` before.
         const sourceParams = withInferredBlueprintVariableValueTypeParam(
             sourceNode.type,
-            sourceNode.params,
+            withoutInferredPinTypes(sourceNode.params),
             variableTypeContext,
         );
         const sourceEntry = resolveBlueprintNodeEditorCatalogEntryForNode(sourceNode.type, sourceParams);
@@ -1018,6 +1036,7 @@ export function validateBlueprintDocumentGraphs(
                 validSavedVariableIds,
                 variableValueTypes,
                 persistentVariableValueTypes,
+                savedVariables: options?.savedVariables,
                 widgetElement: options?.widgetElement,
                 widgetElementType: options?.widgetElement?.type,
                 uiDocument: options?.uiDocument,
@@ -1039,6 +1058,7 @@ export function validateBlueprintDocumentGraphs(
                 validSavedVariableIds,
                 variableValueTypes,
                 persistentVariableValueTypes,
+                savedVariables: options?.savedVariables,
                 widgetElement: options?.widgetElement,
                 widgetElementType: options?.widgetElement?.type,
                 uiDocument: options?.uiDocument,

@@ -9,6 +9,9 @@ import { cn } from "@/lib/utils/cn";
 import { useCommandTranslation, useTranslation } from "@/lib/i18n";
 import { useHostDocument } from "@/lib/components/layout";
 import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox";
+import { useWorkspace } from "@/apps/workspace/context";
+import { Services } from "@/lib/workspace/services/services";
+import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { PaletteActionCommand } from "./storyActionCommands";
 import {
     commandCategoryLabelKey,
@@ -201,12 +204,19 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
             .filter(entry => entry.commands.length > 0);
     }, [activeTab, liveAbbreviations, query, sidebarGroups]);
 
+    /**
+     * Insert into the scene the author was in last, bringing it forward first. The manual stays open
+     * while that scene is behind another editor, and a line put into a scene nobody can see reads as
+     * a button that did nothing.
+     */
+    const { context } = useWorkspace();
     const createAction = useCallback((commandId: string) => {
         if (!payload?.tabId) {
             return;
         }
+        context?.services.get<UIService>(Services.UI).editor.setActive(payload.tabId);
         dispatchStoryActionCreateRequest({ tabId: payload.tabId, commandId });
-    }, [payload?.tabId]);
+    }, [context, payload?.tabId]);
 
     const openCommand = manualById.get(openCommandId ?? "") ?? null;
     // A plugin action can be opened too; it just has nothing beyond its own label and detail.

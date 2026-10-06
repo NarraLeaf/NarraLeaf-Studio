@@ -284,6 +284,8 @@ export type NodeDetail = {
     magicElementTarget?: unknown;
     /** Params the node keeps that are not inspector fields (`storedParams` on the definition). */
     storedParams?: readonly string[];
+    /** Pins a field types by the option it picks (`paramPinTypes` on the definition). */
+    paramPinTypes?: { param: string; pins: readonly string[]; types: Readonly<Record<string, string>> };
     /**
      * The fields of every engine shape a pin of this node carries, so a file can name a field without
      * anyone reading the source to find out what is in an ending.
@@ -337,6 +339,7 @@ export function describeNode(type: string, params?: Record<string, unknown>): No
         saveSchemaPins: def.saveSchemaPins,
         magicElementTarget: def.magicElementTarget,
         storedParams: def.storedParams,
+        paramPinTypes: def.paramPinTypes,
         structs: describePinStructs(entry.pins.map(pin => pin.valueType)),
     };
 }
@@ -541,6 +544,11 @@ export function formatNodeDetail(detail: NodeDetail): string {
                     : `    ${key}`,
             );
         }
+    }
+    if (detail.paramPinTypes) {
+        const spec = detail.paramPinTypes;
+        lines.push("", `  typed by ${spec.param} (what ${spec.pins.join(", ")} carries for each option)`);
+        lines.push(`    ${Object.entries(spec.types).map(([option, valueType]) => `${option}:${valueType}`).join(", ")}`);
     }
     if (detail.structs?.length) {
         lines.push("", "  structs (field:type)");

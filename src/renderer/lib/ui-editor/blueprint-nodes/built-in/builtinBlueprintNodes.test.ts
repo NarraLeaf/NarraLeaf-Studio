@@ -6417,6 +6417,28 @@ describe("built-in blueprint nodes", () => {
             ),
         ).toBe(-8);
 
+        // Size is the Vector2D its pin says - x the width, y the height - and keeps the two names a
+        // graph may already read it by.
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        getSize: { type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY, params: { property: "size" } },
+                    },
+                    edges: [],
+                },
+                "getSize",
+                "value",
+                { property: "size" },
+                undefined,
+                0,
+                {
+                    hostAdapter,
+                    executionOwner: { surfaceId: "surface", elementId: "self", blueprintId: "bp" },
+                },
+            ),
+        ).toEqual({ x: 100, y: 50, width: 100, height: 50 });
+
         expect(
             resolveDataPinValue(
                 {
