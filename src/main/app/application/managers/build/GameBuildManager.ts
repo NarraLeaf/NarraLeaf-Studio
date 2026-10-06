@@ -119,6 +119,7 @@ import type { ShippedContentAuditReport } from "@/buildWorker/compileWorkerProto
 // Relative, not `@/`: the alias is resolved by esbuild and tsc but not by
 // vitest, so a value import through it fails only under test.
 import { asarUnpackedPath } from "../../../../buildWorker/asarUnpackedPath";
+import { watchOutputGrowth } from "./outputGrowth";
 import { electronLanguagesForGame } from "../../../../buildWorker/electronLanguages";
 import { createAssetOverlay, OVERLAY_DESCRIPTOR_ENTRY, type ReaderBuildOptions } from "@narraleaf/bindings";
 import { formatBytes } from "@shared/utils/formatBytes";
@@ -230,6 +231,12 @@ type BuildSession = {
      * is to look at when it is the step that failed.
      */
     codecScratch: string[];
+    /**
+     * When this run last showed that it was getting somewhere: a line on its log, a count in a step,
+     * or the package it is writing grown on disk. Read by a command-line build whose workspace has
+     * been quiet a long time, to tell a build that is busy from one that has stopped.
+     */
+    lastActivityAt: number;
 };
 
 /**
@@ -603,6 +610,22 @@ export class GameBuildManager {
 
     public getStatus(projectPath: string): GameBuildStateSnapshot {
         return this.sessions.get(this.projectKey(projectPath))?.snapshot ?? { status: "idle", progress: null };
+    }
+
+    /**
+     * When the build of this project last showed it was getting somewhere, or null when no build of
+     * it is running.
+     *
+     * More than its log: a step that counts what it has done, and a packaging step that is writing a
+     * file, are both progress without a line. The second is the one that matters - an archiver
+     * compressing gigabytes says nothing for as long as it takes.
+     */
+    public lastActivity(projectPath: string): number | null {
+        const session = this.sessions.get(this.projectKey(projectPath));
+        if (!session || session.snapshot.status === "done" || session.snapshot.status === "error") {
+            return null;
+        }
+        return session.lastActivityAt;
     }
 
     /**
@@ -1026,6 +1049,7 @@ export class GameBuildManager {
             assetReport: null,
             assetCompression: null,
             codecScratch: [],
+            lastActivityAt: Date.now(),
         };
         this.sessions.set(key, session);
         // Another Studio having the project is refused the same way and for a kindred reason: the
@@ -1126,6 +1150,7 @@ export class GameBuildManager {
             assetReport: null,
             assetCompression: null,
             codecScratch: [],
+            lastActivityAt: Date.now(),
         };
         this.sessions.set(key, session);
         const refusedPatch = refuseDistrustedOperation(this.app, normalizedProjectPath, "patch export")
@@ -3430,12 +3455,18 @@ export class GameBuildManager {
             // observe from the inside. See builderDownloadLog.ts.
             const downloads = new DownloadTaskBridge(this.app.getTaskScheduler(), session.id);
             const watcher = new BuilderDownloadWatcher(event => downloads.accept(event));
+            // The packaging step's long silences are an archiver or an installer compiler writing
+            // one big file, and the file growing is the only sign of it. See lastActivity.
+            const stopWatchingOutput = watchOutputGrowth(config.outputDir, () => {
+                session.lastActivityAt = Date.now();
+            });
             let settled = false;
             const settle = (fn: () => void) => {
                 if (settled) {
                     return;
                 }
                 settled = true;
+                stopWatchingOutput();
                 session.worker = null;
                 // A killed worker sends no closing line for whatever it was in the middle of
                 // fetching, so the end of the packaging step is what closes those - otherwise a
@@ -4087,6 +4118,7 @@ export class GameBuildManager {
      */
     private reportProgress(session: BuildSession, progress: StudioTaskProgress | null): void {
         session.snapshot = { ...session.snapshot, progress };
+        session.lastActivityAt = Date.now();
     }
 
     /** The variant this run resolved to, kept for the record it will leave behind. */
@@ -4152,6 +4184,7 @@ export class GameBuildManager {
     }
 
     private emit(session: BuildSession, payload: DevModeConsoleLogPayload): void {
+        session.lastActivityAt = Date.now();
         emitWorkspaceConsoleLog(this.app, session.projectPath, payload);
     }
 

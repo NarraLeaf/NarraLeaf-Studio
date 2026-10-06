@@ -72,7 +72,9 @@ export type CommandLineRunKind = "build" | "test" | "lint";
  * a first cross-build downloads an Electron runtime - and a walkthrough of a long story the same.
  * What it catches is a window that opened, said nothing, and never will. A build's is shorter
  * because a build logs as it goes, and a check can sit in one long step (a sweep of a large asset
- * library) without a line.
+ * library) without a line. A build that has been quiet this long is still let run while it shows
+ * other signs of progress - its step counts, the package it is writing growing - because packaging a
+ * large game has stretches with no line at all (see `CommandLineBuildRun`).
  */
 export const COMMAND_LINE_RUN_SILENCE_MS: Readonly<Record<CommandLineRunKind, number>> = {
     build: 15 * 60 * 1000,
