@@ -8,8 +8,6 @@ import type { PanelStateService } from "@/lib/workspace/services/core/PanelState
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { useWorkspace } from "../../../../context";
 import { useRegistry } from "../../../../registry";
-import type { EditorLayout } from "../../../../registry/types";
-import { isStorySceneEditorTabId, type StorySceneEditorTabPayload } from "../storySceneEditorTabId";
 import { getStoryEditorViewState, patchStoryEditorViewState } from "../storyEditorSessionStore";
 import { StoryScenePreviewFloat } from "./StoryScenePreviewFloat";
 import { useStoryScenePreviewController } from "./useStoryScenePreviewController";
@@ -26,6 +24,7 @@ import {
     type StoryPreviewFloatBounds,
 } from "./storyPreviewFloatGeometry";
 import { trackStoryPreviewFloatOwner } from "./storyPreviewFloatTracking";
+import { findStorySceneTab } from "./storyPreviewFloatOwner";
 import type { StoryScenePreviewFloatRect } from "./storyScenePreviewSessionStore";
 
 type AreaBox = { left: number; top: number; width: number; height: number };
@@ -182,22 +181,6 @@ export function StoryScenePreviewFloatHost(props: { areaRef: RefObject<HTMLEleme
             />
         </div>
     );
-}
-
-/** The open story scene tab with this id, and the group holding it. */
-function findStorySceneTab(
-    layout: EditorLayout,
-    tabId: string | null,
-): { tabId: string; groupId: string; payload: StorySceneEditorTabPayload } | null {
-    if (!tabId || !isStorySceneEditorTabId(tabId)) {
-        return null;
-    }
-    if ("tabs" in layout) {
-        const tab = layout.tabs.find(candidate => candidate.id === tabId);
-        const payload = tab?.payload as StorySceneEditorTabPayload | undefined;
-        return tab && payload?.storyId && payload.sceneId ? { tabId, groupId: layout.id, payload } : null;
-    }
-    return findStorySceneTab(layout.first, tabId) ?? findStorySceneTab(layout.second, tabId);
 }
 
 /** Keep the hub's focus order current for as long as the workspace is up. */

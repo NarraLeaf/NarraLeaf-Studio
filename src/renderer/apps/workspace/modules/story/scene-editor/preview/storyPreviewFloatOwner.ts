@@ -1,3 +1,6 @@
+import type { EditorLayout } from "../../../../registry/types";
+import { isStorySceneEditorTabId, type StorySceneEditorTabPayload } from "../storySceneEditorTabId";
+
 /**
  * Which scene the floating live preview shows.
  *
@@ -7,7 +10,8 @@
  * the window to the tab focused before it; with none left there is nothing to show. Focusing any
  * other kind of tab leaves the order alone, so the window keeps the scene it was showing.
  *
- * Kept as plain functions over a list so the rules can be read and tested without a workspace.
+ * Kept as plain functions over a list and the editor layout so the rules can be read and tested
+ * without a workspace.
  */
 export type StoryPreviewFloatOrder = readonly string[];
 
@@ -45,4 +49,20 @@ export function reconcileStoryPreviewTabs(
         }
     }
     return next.length === order.length && next.every((id, index) => id === order[index]) ? order : next;
+}
+
+/** The open story scene tab with this id, and the group holding it. */
+export function findStorySceneTab(
+    layout: EditorLayout,
+    tabId: string | null,
+): { tabId: string; groupId: string; payload: StorySceneEditorTabPayload } | null {
+    if (!tabId || !isStorySceneEditorTabId(tabId)) {
+        return null;
+    }
+    if ("tabs" in layout) {
+        const tab = layout.tabs.find(candidate => candidate.id === tabId);
+        const payload = tab?.payload as StorySceneEditorTabPayload | undefined;
+        return tab && payload?.storyId && payload.sceneId ? { tabId, groupId: layout.id, payload } : null;
+    }
+    return findStorySceneTab(layout.first, tabId) ?? findStorySceneTab(layout.second, tabId);
 }
