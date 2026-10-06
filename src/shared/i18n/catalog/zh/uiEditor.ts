@@ -176,6 +176,9 @@ export const uiEditor = {
     canvas: {
         unknownWidget: "未知控件",
         widgetRenderFailed: "控件绘制失败",
+        componentMissing: "缺少组件",
+        componentLoopBlocked: "已阻止组件循环",
+        componentRootMissing: "缺少组件根元素",
         wordsFromRowField: "此文字来自列表行字段“{field}”",
         wordsFromBlueprintValue: "此文字由蓝图值“{name}”决定",
         wordsFromComponentParam: "此文字来自组件参数“{param}”，在各放置处设置",

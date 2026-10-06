@@ -1,8 +1,10 @@
 /**
  * `game` - text the running game produces, in Dev Mode and in a shipped build alike.
  *
- * `saveLoad.refused*` is shown to the player inside the game. The rest is written to whoever is
- * watching the run: the Dev Mode issues panel where there is one, the log otherwise.
+ * `saveLoad.refused*` and `words` are shown to the player inside the game, in the game's language
+ * (`playerWords.ts`). `crash` and `session` are the shell's, in the machine's language. The rest is
+ * written to whoever is watching the run: the Dev Mode issues panel where there is one, the log
+ * otherwise.
  */
 export const game = {
     saveLoad: {
@@ -126,5 +128,15 @@ export const game = {
         title: "The game is already open",
         detail: "It is running in another browser tab. Close that tab, then reload this page.",
         reload: "Reload",
+    },
+    /**
+     * Words the story puts in front of the player where the author wrote none. Read in the game, so
+     * they are drawn in the game's language rather than the interface's (`playerWords.ts`).
+     */
+    words: {
+        // A choice option whose text was left empty.
+        option: "Option",
+        // The nametag of a line whose character has no name, or is no longer in the project.
+        unknownSpeaker: "Unknown",
     },
 } as const;
