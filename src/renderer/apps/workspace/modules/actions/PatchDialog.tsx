@@ -123,9 +123,16 @@ function PatchDialogContent({
      * last time would offer to ship one to an author who came here for a patch.
      */
     const [dlcId, setDlcId] = useState("");
-    /** How the build this patch updates is arrived at. */
+    /**
+     * How the build this patch updates is arrived at.
+     *
+     * A project that has only the release variant starts on the build folder. Building the baseline
+     * as part of the export compiles the same project twice, so with one variant the patch it makes
+     * carries nothing, and the export a single-variant project has a use for - a fix to a build that
+     * already went out - is the one that names that build.
+     */
     const [baselineMode, setBaselineMode] = useState<PatchBaselineMode>(
-        info.stored?.baselineMode ?? "variant",
+        info.stored?.baselineMode ?? (info.appTags.length > 1 ? "variant" : "artifact"),
     );
     /**
      * The variant whose build this file installs into.
@@ -244,6 +251,11 @@ function PatchDialogContent({
     const carriesNothing = baselineMode === "variant"
         && !dlc
         && (effectiveContentId || RELEASE_APP_TAG.id) === (effectiveTargetId || RELEASE_APP_TAG.id);
+    /**
+     * Where the content row is not drawn - a project with one variant - the same fact is stated under
+     * the mode instead. The content row's own sentence names a field that is not on screen there.
+     */
+    const contentRowShown = !dlc && info.appTags.length > 1;
 
     /**
      * The folder was refused before anything looked inside it, because this window has never been
@@ -349,18 +361,29 @@ function PatchDialogContent({
                             ? t("build.patch.baselineModeVariantHint")
                             : t("build.patch.baselineModeArtifactHint")}
                     </span>
+                    {carriesNothing && !contentRowShown && (
+                        <span className="text-2xs text-warning" data-patch-carries-nothing="">
+                            {t("build.patch.sameProject")}
+                        </span>
+                    )}
                 </div>
 
                 {baselineMode === "artifact" && (
                     <div className="grid gap-1">
                         <FieldLabel as="div">{t("build.patch.artifactLabel")}</FieldLabel>
                         <div className="flex min-w-0 items-center gap-2">
-                            <Input
-                                value={baselineAppDir}
-                                onChange={event => setBaselineAppDir(event.target.value)}
-                                placeholder={t("build.patch.artifactPlaceholder")}
-                                className="min-w-0 flex-1"
-                            />
+                            {/* The wrapper takes the row's spare width: `Input` draws its own
+                                wrapper around the box, so a flex class on the box itself never
+                                reaches the row and the path would sit in a field the width of
+                                its placeholder. */}
+                            <div className="min-w-0 flex-1">
+                                <Input
+                                    value={baselineAppDir}
+                                    onChange={event => setBaselineAppDir(event.target.value)}
+                                    placeholder={t("build.patch.artifactPlaceholder")}
+                                    fullWidth
+                                />
+                            </div>
                             <Button variant="secondary" onClick={() => { void pickBaseline(); }}>
                                 {t("build.patch.browse")}
                             </Button>
@@ -424,7 +447,7 @@ function PatchDialogContent({
                     places to say it is one place for the two to disagree. */}
                 {dlc || (baselineMode === "artifact" && reading?.appTagId) ? statedTarget : chosenTarget}
 
-                {!dlc && info.appTags.length > 1 && (
+                {contentRowShown && (
                     <div className="grid gap-1">
                         <FieldLabel as="div">{t("build.patch.contentLabel")}</FieldLabel>
                         <Select
@@ -446,11 +469,13 @@ function PatchDialogContent({
                 <div className="grid gap-1">
                     <FieldLabel as="div">{t("build.patch.outputLabel")}</FieldLabel>
                     <div className="flex min-w-0 items-center gap-2">
-                        <Input
-                            value={outputFile}
-                            onChange={event => setOutputFile(event.target.value)}
-                            className="min-w-0 flex-1"
-                        />
+                        <div className="min-w-0 flex-1">
+                            <Input
+                                value={outputFile}
+                                onChange={event => setOutputFile(event.target.value)}
+                                fullWidth
+                            />
+                        </div>
                         <Button variant="secondary" onClick={() => { void pickOutput(); }}>
                             {t("build.patch.browse")}
                         </Button>

@@ -132,7 +132,7 @@ import {
     resolveAudioTrackPlayback,
 } from "@shared/types/audioTrack";
 import { parseTranslatedRuns } from "@shared/utils/localizationText";
-import { resolveStoryAssetVariant, type StoryAssetVariants } from "@shared/types/story";
+import { resolveStoryAssetVariant, resolveStoryGroupRunMode, type StoryAssetVariants } from "@shared/types/story";
 import {
     composeStoryFilter,
     isEmptyStoryTransformProps,
@@ -207,7 +207,8 @@ import {
 // aliases this module to its shim). An author reads these in the Issues panel, so they are never the
 // compiler's own English and never carry an id.
 import { translate } from "@/lib/i18n";
-import type { InterpolationParams, TranslationKey } from "@shared/i18n";
+import type { InterpolationParams, LocaleCode, TranslationKey } from "@shared/i18n";
+import { playerWordsLocale, translatePlayerWords } from "@/lib/ui-editor/runtime/localization/playerWords";
 import { authoredNameOrNull } from "@shared/utils/generatedId";
 import { classifyAssetFailure } from "../assetResolution";
 import { sceneMusicElementId, STORY_CAMERA_ELEMENT_ID } from "./stableElementIds";
@@ -331,6 +332,11 @@ type SceneLocalizationResolver = {
      * separately is how they come to disagree.
      */
     variant: (variants: StoryAssetVariants | undefined, assetId: string) => string | null;
+    /**
+     * The catalogue language Studio's own words are drawn in for the current locale - the words the
+     * story puts in front of the player where the author wrote none (see `playerWords.ts`).
+     */
+    playerWordsLocale: () => LocaleCode | null;
 };
 
 function createSceneLocalizationResolver(input: StoryLocalizationRuntime): SceneLocalizationResolver {
@@ -346,6 +352,7 @@ function createSceneLocalizationResolver(input: StoryLocalizationRuntime): Scene
         hasTranslation: textId => Object.values(input.tables).some(table => Boolean(table[textId])),
         variant: (variants, assetId) =>
             resolveStoryAssetVariant(variants, assetId, activeLocale(), input.sourceLocale),
+        playerWordsLocale: () => playerWordsLocale(input, activeLocale()),
         resolve: textId => {
             const locale = activeLocale();
             const chain = chains.get(locale) ?? resolveLocaleChain(input, locale);
@@ -1238,8 +1245,6 @@ const BGM_SOUND_NAME = BGM_STAGE_OBJECT_NAME;
 const EMPTY_STORY_ID = "__nlr_empty_story__";
 const EMPTY_SCENE_ID = "__nlr_empty_scene__";
 const UNKNOWN_CHARACTER_ID = "__unknown_character__";
-/** Nametag for a character that has no authored name. Must be non-empty, and must not be a UUID. */
-const UNKNOWN_CHARACTER_NAME = "Unknown";
 
 /**
  * Build a minimal, playable NLR story that mounts an empty scene. Used to boot the
@@ -4910,7 +4915,7 @@ async function getVfx(
  */
 function choiceOptionPrompt(ctx: SceneCompileContext, segment: StoryTextSegment, blockId: string): unknown {
     if (!segment.value && !segmentHasInterpolation(segment)) {
-        return "Option";
+        return playerWordsPrompt(ctx, "game.words.option");
     }
     const prompt = buildLocalizedSentencePrompt(ctx, segment, blockId);
     const voiceConfig = voiceConfigForLine(ctx, segment.textId);
@@ -5280,7 +5285,7 @@ async function compileUnchainedGroupBody(ctx: SceneCompileContext, blockIds: rea
 
 async function compileControlGroup(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "control" }>): Promise<NlrStatement[]> {
     const payload = block.payload as Extract<StoryControlPayload, { control: "sequence" | "parallel" | "race" | "repeat" }>;
-    const mode = payload.mode ?? (payload.control === "parallel" ? "all" : payload.control === "race" ? "any" : "do");
+    const mode = resolveStoryGroupRunMode(payload);
     // Which of the two body shapes below this group hands the engine. `repeat` is decided by the row
     // and not by `mode`, in its counted form and in its `until` form alike, so it is tested first -
     // a stale `mode` on a repeat row never reaches the call.
@@ -5362,7 +5367,9 @@ function getCharacter(ctx: SceneCompileContext, characterId: string | undefined,
     // silently disappears. `normalizedId` is a characterId UUID, which must never reach the UI.
     // Identity is keyed on `normalizedId` above, so this string is cosmetic only.
     const summary = ctx.characterSummaries.get(normalizedId);
-    const displayName = summary?.name?.trim() || UNKNOWN_CHARACTER_NAME;
+    // The nametag for a character with no authored name: never empty and never a UUID, and in the
+    // game's language rather than in English.
+    const displayName = summary?.name?.trim() || playerWords(ctx, "game.words.unknownSpeaker");
     const character = new Character(displayName, characterNametagConfig(summary));
     setStableElementId(ctx.elementIdBindings, character, `nl:character:${normalizedId}`);
     ctx.characters.set(normalizedId, character);
@@ -8005,6 +8012,27 @@ function sceneDisplayName(scene: Pick<StoryScene, "name" | "runtimeName">): stri
 /** A catalog sentence for a diagnostic. Every message in this file is one. */
 function say(key: TranslationKey, params?: InterpolationParams): string {
     return translate(key, params);
+}
+
+/**
+ * Studio's words for the player, where the story leaves a place without words of its own - an option
+ * the author left empty. Unlike {@link say}, which writes to the author, these are read in the game,
+ * so they are in the game's language (`playerWords.ts`); and they are resolved as they are drawn,
+ * the way a translated line is (`buildLocalizedSentencePrompt`).
+ */
+function playerWordsPrompt(ctx: SceneCompileContext, key: TranslationKey): unknown[] {
+    const localization = ctx.localization;
+    const resolveDynamic = () => translatePlayerWords(localization ? localization.playerWordsLocale() : null, key);
+    return [new Word((resolveDynamic as unknown) as any)];
+}
+
+/**
+ * {@link playerWordsPrompt}'s words as they read in the language this compile is for, for a place
+ * that takes a plain string. A compile is per language (`compiledStoryCache` keys on it), so a
+ * language change never reuses these.
+ */
+function playerWords(ctx: SceneCompileContext, key: TranslationKey): string {
+    return translatePlayerWords(ctx.localization ? ctx.localization.playerWordsLocale() : null, key);
 }
 
 /**

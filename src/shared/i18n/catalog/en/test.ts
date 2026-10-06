@@ -177,13 +177,14 @@ export const test = {
             finding: {
                 sceneUnreachable: "No path can satisfy the conditions leading to \"{scene}\"",
                 optionUnreachable: "No path can satisfy the condition for offering \"{option}\"",
+                conditionUnreachable: "No path can satisfy \"{condition}\"",
                 branchUnreachable: "No path can satisfy the condition for taking this branch",
                 endingUnreachable: "\"{name}\" is written but no path can satisfy the conditions to reach it",
                 endingUnreachableUnnamed: "This ending is written but no path can satisfy the conditions to reach it",
             },
             summary: {
                 passed: "Everything the script leads to can be reached",
-                failed: "Unreachable: scenes {scenes}, options {options}, endings {endings}",
+                failed: "Unreachable: scenes {scenes}, options {options}, condition branches {conditions}, endings {endings}",
             },
         },
         reachableEndings: {

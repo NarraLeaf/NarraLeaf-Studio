@@ -16,11 +16,19 @@
  * build-written answers to resolve, and a set id there is resolved against the live library instead.
  */
 
+import type { LocalizationLocaleEntry } from "@shared/types/localization";
+
 export type RuntimeLocaleSource = {
     /** The player's current language. Read fresh on every call - it changes without a remount. */
     getLocale: () => string;
     /** The language the project is authored in, which every fallback chain ends at. */
     sourceLocale: string;
+    /**
+     * The project's languages with the fallbacks each declares - the rest of the chain between the
+     * current language and the source one. Optional because only a reader that walks that chain
+     * needs it (`translateForPlayer`); without it the chain is the language and then the source.
+     */
+    locales?: readonly LocalizationLocaleEntry[];
 };
 
 let activeSource: RuntimeLocaleSource | null = null;
@@ -41,10 +49,18 @@ export function setRuntimeLocaleSource(source: RuntimeLocaleSource): () => void 
     };
 }
 
-/** The current language and the source language, or blanks outside a running game. */
-export function readRuntimeLocale(): { locale?: string; sourceLocale?: string } {
+/** The current language, the source language and the project's languages, or blanks outside a running game. */
+export function readRuntimeLocale(): {
+    locale?: string;
+    sourceLocale?: string;
+    locales?: readonly LocalizationLocaleEntry[];
+} {
     if (!activeSource) {
         return {};
     }
-    return { locale: activeSource.getLocale(), sourceLocale: activeSource.sourceLocale };
+    return {
+        locale: activeSource.getLocale(),
+        sourceLocale: activeSource.sourceLocale,
+        ...(activeSource.locales ? { locales: activeSource.locales } : {}),
+    };
 }

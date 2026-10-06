@@ -13,6 +13,7 @@ export const storyVars = {
     },
     row: {
         nameAria: "变量名",
+        defaultName: "变量",
         defaultPlaceholder: "默认值",
         defaultAria: "默认值",
         delete: "删除变量",

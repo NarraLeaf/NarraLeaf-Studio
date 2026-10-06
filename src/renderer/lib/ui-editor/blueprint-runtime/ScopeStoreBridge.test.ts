@@ -103,6 +103,20 @@ describe("ScopeStoreBridge persistence", () => {
         expect(bridge.persistenceGet("k")).toBe("derived");
         await vi.waitFor(() => expect(writes).toEqual([]));
     });
+
+    it("forgets what the session wrote and reads the declared defaults again on a reset", async () => {
+        const bridge = new ScopeStoreBridge({ persistentDefaults: { place: "", clears: 0 } });
+        await bridge.persistenceSet("place", "corridor");
+        await bridge.persistenceSet("clears", 3);
+        const seen: unknown[] = [];
+        bridge.subscribePersistence(() => seen.push(bridge.persistenceGet("place")));
+
+        bridge.resetPersistenceToDefaults();
+        expect(bridge.persistenceGet("place")).toBe("");
+        expect(bridge.persistenceGet("clears")).toBe(0);
+        expect(bridge.getPersistenceSnapshot().size).toBe(0);
+        expect(seen).toEqual([""]);
+    });
 });
 
 /**

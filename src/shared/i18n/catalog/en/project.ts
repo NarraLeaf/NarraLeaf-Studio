@@ -202,6 +202,10 @@ export const project = {
             // A real choice, not the empty state: the last frame stays on screen, which is what
             // every build did before this field existed.
             none: "Show nothing",
+            // A variant that states no page and inherits none: what a build that cuts the story refuses.
+            unset: "Not chosen",
+            // A stored page the project no longer has. Named, never shown as its id.
+            missing: "Deleted page",
         },
         // Beside Delete inside an open variant: the count the confirmation is about to be about.
         usedBy: {
