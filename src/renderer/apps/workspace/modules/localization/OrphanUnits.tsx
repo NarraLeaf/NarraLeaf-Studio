@@ -51,10 +51,18 @@ export function useStoryTextLineIndex(storyService: StoryService | null): StoryT
         const read = async () => {
             const mine = ++run;
             const stories: { name: string; document: StoryDocument }[] = [];
+            let lines: ReturnType<typeof indexStoryTextLines>;
             try {
                 for (const entry of storyService.listStories()) {
-                    stories.push({ name: entry.name, document: await storyService.loadStory(entry.id) });
+                    const document: StoryDocument | undefined = await storyService.loadStory(entry.id);
+                    // A story that loads as nothing is as unreadable as one that throws: listing
+                    // without it would offer that story's lines up as orphans to be deleted.
+                    if (!document) {
+                        throw new Error(`Story ${entry.id} could not be read`);
+                    }
+                    stories.push({ name: entry.name, document });
                 }
+                lines = indexStoryTextLines(stories);
             } catch {
                 if (mine === run) {
                     setIndex({ kind: "unreadable" });
@@ -62,7 +70,6 @@ export function useStoryTextLineIndex(storyService: StoryService | null): StoryT
                 return;
             }
             if (mine === run) {
-                const lines = indexStoryTextLines(stories);
                 setIndex({ kind: "ready", lines, live: liveTextIds(lines) });
             }
         };
