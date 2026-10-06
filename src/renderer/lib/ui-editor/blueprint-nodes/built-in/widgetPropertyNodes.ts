@@ -189,7 +189,7 @@ function readOptionalFramePropsPatch(
     targetSurfaceId: string | null,
 ): { params?: Record<string, unknown> } {
     const props = targetSurfaceId
-        ? readOpenedPageProps(ctx, targetSurfaceId, ctx.params.targetSurfaceId)
+        ? readOpenedPageProps(ctx, targetSurfaceId, "targetSurfaceId")
         : readPin(ctx, "props");
     return props === undefined ? {} : { params: toRecordValue(props) };
 }

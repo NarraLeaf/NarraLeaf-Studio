@@ -63,7 +63,7 @@ async function goToSurface(ctx: Parameters<BlueprintNodeDef["execute"]>[0], surf
     const targetSurfaceId = String(surfaceId ?? "").trim();
     await requireHostApi(ctx).navigation.openSurface(
         targetSurfaceId,
-        readOpenedPageProps(ctx, targetSurfaceId, ctx.params.surfaceId),
+        readOpenedPageProps(ctx, targetSurfaceId, "surfaceId"),
     );
     return { nextPort: undefined };
 }
@@ -174,7 +174,7 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
             }
             await requireHostApi(ctx).navigation.replaceSurface(
                 targetSurfaceId,
-                readOpenedPageProps(ctx, targetSurfaceId, ctx.params.surfaceId),
+                readOpenedPageProps(ctx, targetSurfaceId, "surfaceId"),
             );
             return { nextPort: undefined };
         },
@@ -718,7 +718,7 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
         inspectorParams: [
             {
                 key: "paramId",
-                label: "Param",
+                label: "Parameter",
                 kind: "select",
                 dynamicOptionsSource: BLUEPRINT_PAGE_PARAM_OPTIONS_SOURCE,
                 emptyOptionLabel: "None",

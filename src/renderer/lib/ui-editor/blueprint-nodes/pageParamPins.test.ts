@@ -203,6 +203,27 @@ describe("opening a page with its parameters", () => {
         expect(opened).toEqual([{ surfaceId: "plain", props: undefined }]);
     });
 
+    it("ignores the inputs whenever the page arrives on a wire, even the picked page", async () => {
+        // The card shows no parameter inputs while the Page input is wired, so a value typed before
+        // it was wired, still in the params, is not handed over either.
+        publish();
+        const opened: { surfaceId: string; props: unknown }[] = [];
+        await executeGraph({
+            graph: {
+                id: "go",
+                entries: { main: { start: { nodeId: "go", port: "in" } } },
+                nodes: {
+                    go: { id: "go", type: BLUEPRINT_NODE_TYPE_PAGE_GO, params: { surfaceId: "confirm", [uiPageParamPinId("message")]: "Quit?" } },
+                    target: { id: "target", type: BLUEPRINT_NODE_TYPE_LITERAL_STRING, params: { value: "confirm" } },
+                },
+                edges: [{ from: { nodeId: "target", port: "value" }, to: { nodeId: "go", port: "surfaceId" } }],
+            },
+            entry: { start: { nodeId: "go", port: "in" } },
+            hostAdapter: host(opened),
+        });
+        expect(opened).toEqual([{ surfaceId: "confirm", props: undefined }]);
+    });
+
     it("shows a layer with its parameters", async () => {
         publish();
         const shown: { surfaceId: string; props: unknown }[] = [];

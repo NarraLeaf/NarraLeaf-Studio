@@ -176,7 +176,7 @@ export const layerBlueprintNodes: BlueprintNodeDef[] = [
             const group = String(readPin(ctx, "group") ?? "").trim();
             let layer: string;
             try {
-                layer = await api.layers.show(surfaceId, readOpenedPageProps(ctx, surfaceId, ctx.params.surfaceId), {
+                layer = await api.layers.show(surfaceId, readOpenedPageProps(ctx, surfaceId, "surfaceId"), {
                     modal: readPin(ctx, "modal") === true,
                     // Unwired reads as dismissible: a layer the player cannot get out of is a
                     // decision, and a decision is not what an untouched pin should mean.

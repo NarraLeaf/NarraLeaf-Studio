@@ -18,10 +18,11 @@ type NodeExecutionContext = Parameters<BlueprintNodeDef["execute"]>[0];
 /**
  * The props to open `targetSurfaceId` with.
  *
- * The declared inputs are the picked page's (`pickedSurfaceId`, the card's own choice): a page that
- * arrives on a wire instead may declare other parameters or none, and values typed for one page's
- * names are not answers to another's. So when the two differ the node gives the `props` input alone,
- * exactly what it gave before pages declared anything.
+ * The declared inputs are the picked page's - the page in the card's own field, `pickedParam`: a
+ * page that arrives on a wire instead may declare other parameters or none, and values typed for one
+ * page's names are not answers to another's. So when the node's input of that name is wired - the
+ * card shows no parameter inputs then - or the page it opens is not the picked one, the node gives
+ * the `props` input alone, exactly what it gave before pages declared anything.
  *
  * An input given nothing - unwired, nothing typed on the card - is left out rather than written as
  * empty, so the page reads the parameter's declared default (`withUIPageParamDefaults`). A value is
@@ -34,12 +35,14 @@ type NodeExecutionContext = Parameters<BlueprintNodeDef["execute"]>[0];
 export function readOpenedPageProps(
     ctx: NodeExecutionContext,
     targetSurfaceId: string,
-    pickedSurfaceId: unknown,
+    pickedParam: string,
     rawPropsPinId = "props",
 ): unknown {
     const raw = resolveNodeInput(ctx, rawPropsPinId);
+    const pickedSurfaceId = ctx.params[pickedParam];
     const picked = typeof pickedSurfaceId === "string" ? pickedSurfaceId.trim() : "";
-    if (!targetSurfaceId || picked !== targetSurfaceId) {
+    const pageWired = ctx.graph.edges.some(edge => edge.to.nodeId === ctx.node.id && edge.to.port === pickedParam);
+    if (!targetSurfaceId || picked !== targetSurfaceId || pageWired) {
         return raw;
     }
     const given: Record<string, unknown> = {};
