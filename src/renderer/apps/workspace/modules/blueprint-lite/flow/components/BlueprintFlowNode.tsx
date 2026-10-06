@@ -21,6 +21,7 @@ import {
 import { BLUEPRINT_FIELD_READER_INPUT_PIN } from "@/lib/ui-editor/blueprint-nodes/effectivePins";
 import { formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
 import { BLUEPRINT_SCENE_VARIABLE_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/storyVariableNodes";
+import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { BlueprintLiteralValueControl, type LiteralEditMode } from "../../components/BlueprintLiteralValueControl";
 import { BlueprintJsonValueControl } from "../../components/BlueprintJsonValueControl";
 import { BlueprintColorValueControl } from "../../components/BlueprintColorValueControl";
@@ -2424,7 +2425,10 @@ function BlueprintElementLiteralNodeCard({
     // holds: the interface shows no ids.
     const emptyLabel = elementId ? t("blueprint.element.missing") : t("blueprint.element.select");
     const boundLabel = elementPreview?.name || emptyLabel;
-    const typeLabel = elementPreview?.type || elementType || t("blueprint.element.unbound");
+    // The kind of control by the name the insert palette gives it; its type id is not a word.
+    const typeLabel = elementPreview?.type
+        || (elementType ? widgetModuleRegistry.get(elementType)?.displayName ?? elementType : "")
+        || t("blueprint.element.unbound");
     const outputPins = catalog.pins.filter(p => p.kind === "output");
     return (
         <div
@@ -2740,14 +2744,18 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
         );
     }
 
+    // A node's own add label is English in its definition, like its pin labels, and is read the same way.
+    const addPinLabel = catalog.dynamicInputPinAddLabel
+        ? resolveBlueprintLabel(catalog.dynamicInputPinAddLabel, t)
+        : t("blueprint.pin.addInput");
     const addPinButton = (
         <Button
             type="button"
-            data-tip={catalog.dynamicInputPinAddLabel ?? t("blueprint.pin.addInput")}
+            data-tip={addPinLabel}
             className="nodrag mt-0.5 flex w-full items-center justify-center rounded-md border border-dashed border-edge !py-0.5 text-fg-subtle hover:border-edge-strong hover:bg-fill-subtle hover:text-fg-muted"
             variant="ghost"
             size="sm"
-            aria-label={catalog.dynamicInputPinAddLabel ?? t("blueprint.pin.addInput")}
+            aria-label={addPinLabel}
             onMouseDown={stopFlowNodePointerBubble}
             onPointerDown={stopFlowNodePointerBubble}
             onClick={e => {

@@ -510,6 +510,9 @@ export const blueprint = {
         removeOutput: "Remove output pin",
         jsonFieldName: "JSON object field name",
         readsRow: "Current row",
+        /** The name a parameter or a result added to a Fn card starts with, before the author renames it. */
+        newParamName: "param{n}",
+        newResultName: "result{n}",
     },
     comment: {
         color: {

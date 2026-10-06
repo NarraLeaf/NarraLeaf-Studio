@@ -12,6 +12,8 @@ import { resolveBlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
 import { BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY } from "@/lib/ui-editor/blueprint-nodes/types";
 import { BLUEPRINT_SCENE_VARIABLE_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/storyVariableNodes";
+import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
+import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import { BlueprintFlowNode } from "./BlueprintFlowNode";
 
 function renderSaveGameCapturePin(screenshot: unknown): string {
@@ -296,5 +298,18 @@ describe("BlueprintFlowNode", () => {
 
         expect(markup).not.toContain("gone");
         expect(markup).not.toContain(">hp<");
+    });
+
+    it("names the kind of control an element card holds, not its type id", () => {
+        // A stand-in module rather than the built-ins: registering those imports every widget.
+        widgetModuleRegistry.register({ type: "test.gauge", displayName: "Gauge" } as unknown as UIWidgetModule);
+        try {
+            const markup = renderElementCard({ surfaceId: "page", elementId: "title", elementType: "test.gauge" });
+
+            expect(markup).not.toContain("test.gauge");
+            expect(markup).toContain("Gauge");
+        } finally {
+            widgetModuleRegistry.unregister("test.gauge");
+        }
     });
 });

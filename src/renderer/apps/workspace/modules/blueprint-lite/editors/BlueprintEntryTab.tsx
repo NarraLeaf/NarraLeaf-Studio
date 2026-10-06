@@ -226,6 +226,17 @@ function getActiveIr(bp: Blueprint, view: BlueprintEditorGraphView | null): Blue
     return ensureBlueprintGraphIr(bp.graphs.functions[view.graphId]?.graph);
 }
 
+/**
+ * An element as a card names it: by its name, or - unnamed - by the name the insert palette gives
+ * its kind. Never by its type id, which is not a word.
+ */
+function elementCardLabel(element: UIElement | null | undefined): string | undefined {
+    if (!element) {
+        return undefined;
+    }
+    return element.name?.trim() || widgetModuleRegistry.get(element.type)?.displayName || element.type;
+}
+
 function getGraphToolbarLabel(bp: Blueprint, view: BlueprintEditorGraphView | null): string {
     if (!view) {
         return "";
@@ -1793,10 +1804,13 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             }
             const { document: targetDocument, surface, element } = target;
             const revisionKey = `${node.id}:${ref.surfaceId}:${ref.elementId}:${uiDocumentRevision}`;
+            // The kind of control by the name the insert palette gives it, for an unnamed element too:
+            // the card prints both lines, and a type id is not a word.
+            const kindName = widgetModuleRegistry.get(element.type)?.displayName ?? element.type;
             previews[node.id] = {
                 revisionKey,
-                name: element.name?.trim() || element.type,
-                type: element.type,
+                name: element.name?.trim() || kindName,
+                type: kindName,
                 text: typeof element.props?.text === "string" ? element.props.text : undefined,
                 layout: {
                     width: element.layout.width,
@@ -1825,7 +1839,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         const out: Record<string, BlueprintFlowNodeData["displayableTargetVariants"]> = {};
         for (const node of Object.values(activeIr.nodes ?? {})) {
             if (node.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT) {
-                const label = widgetElement?.name?.trim() || widgetElement?.type;
+                const label = elementCardLabel(widgetElement);
                 out[node.id] = elementVariantOptions(widgetElement, label, t);
                 continue;
             }
@@ -1852,7 +1866,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             }
             const ref = readBlueprintElementRefParams(sourceNode.params);
             const element = ref ? currentDocument.elements[ref.elementId] : undefined;
-            const label = element?.name?.trim() || element?.type;
+            const label = elementCardLabel(element);
             out[node.id] = elementVariantOptions(element, label, t);
         }
         return out;

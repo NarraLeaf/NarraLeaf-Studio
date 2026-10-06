@@ -465,6 +465,8 @@ export const blueprint = {
         removeOutput: "出力ピンを取り除く",
         jsonFieldName: "JSON オブジェクトのフィールド名",
         readsRow: "現在の行",
+        newParamName: "引数{n}",
+        newResultName: "結果{n}",
     },
     comment: {
         color: {

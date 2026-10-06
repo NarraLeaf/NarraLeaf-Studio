@@ -465,6 +465,8 @@ export const blueprint = {
         removeOutput: "移除输出端口",
         jsonFieldName: "JSON 对象字段名称",
         readsRow: "当前行",
+        newParamName: "参数{n}",
+        newResultName: "结果{n}",
     },
     comment: {
         color: {
