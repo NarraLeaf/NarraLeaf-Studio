@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { BookOpen, Check, ChevronDown, ChevronRight, Code, FileText, Filter, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Rows3, Trash2 } from "lucide-react";
+import { BookOpen, Check, ChevronDown, ChevronRight, Code, FileText, Filter, Image as ImageIcon, MonitorPlay, Plus, Rows3, Trash2 } from "lucide-react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
@@ -10,7 +10,6 @@ import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName
 import { useCommandTranslation, useTranslation } from "@/lib/i18n";
 import { getDefById, localizedCommandToken } from "./commands/registry";
 import type { EditorComponentProps } from "../../types";
-import { PanelPosition } from "../../../registry/types";
 import { Services } from "@/lib/workspace/services/services";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
@@ -24,10 +23,10 @@ import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { useAssetFieldNotice } from "@/lib/workspace/hooks/useAssetFieldNotice";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import type { StorySceneEditorTabPayload } from "./storySceneEditorTabId";
-import { StoryActionCreatorPanel } from "./StoryActionCreatorPanel";
 import {
     STORY_ACTION_CREATE_REQUEST_EVENT,
     STORY_ACTION_CREATOR_PANEL_ID,
+    takePendingStoryActionCreateRequest,
     type StoryActionCreateRequestDetail,
 } from "./storyActionCreatorEvents";
 import { STORY_MOTION_PANEL_ID } from "../../story-motion";
@@ -755,46 +754,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         catalogPrefix: "story.",
     });
 
-    // Side panels are global (keyed by fixed ids), so only the visible scene tab may own them —
-    // otherwise several kept-alive scene tabs would fight over the same registration. Gate on `active`.
-    useEffect(() => {
-        if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
-            return;
-        }
-        const uiService = editor.context.services.get<UIService>(Services.UI);
-        const unregister = uiService.panels.register({
-            id: STORY_ACTION_CREATOR_PANEL_ID,
-            title: t("story.commandManual.title"),
-            icon: <ListPlus className="w-4 h-4" />,
-            position: PanelPosition.Right,
-            component: StoryActionCreatorPanel,
-            defaultVisible: false,
-            order: 10,
-            payload: {
-                tabId,
-                storyId: payload.storyId,
-                sceneId: payload.sceneId,
-            },
-        });
-        return () => {
-            uiService.panels.hide(STORY_ACTION_CREATOR_PANEL_ID);
-            unregister();
-        };
-    }, [active, editor.context, editor.isInitialized, payload?.sceneId, payload?.storyId, tabId, t]);
-
-    useEffect(() => {
-        if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
-            return;
-        }
-        const uiService = editor.context.services.get<UIService>(Services.UI);
-        uiService.panels.updatePayload(STORY_ACTION_CREATOR_PANEL_ID, {
-            tabId,
-            storyId: payload.storyId,
-            sceneId: payload.sceneId,
-            storyName: editor.document?.name,
-            sceneName: editor.scene?.name,
-        });
-    }, [active, editor.context, editor.document?.name, editor.isInitialized, editor.scene?.name, payload?.sceneId, payload?.storyId, tabId]);
+    // The command manual is not registered here: it stays on the rail for as long as any scene is
+    // open, which no single tab can know (see `StoryCommandManualDock`).
 
     /**
      * The Variables panel is a static module (see `modules/story-variables`) - it exists whether or
@@ -1286,17 +1247,29 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         };
     }, [active, editor.context, tabId]);
 
+    // Inserts asked for from the command manual. The manual stays open while this tab is behind
+    // another editor, and brings the tab forward before it asks - so the request can arrive while the
+    // scene is still loading, or before this tab was mounted at all. Whatever cannot be acted on yet
+    // is left pending and taken up here once the scene is ready.
+    const sceneReady = editor.isInitialized && Boolean(editor.scene);
     useEffect(() => {
+        if (sceneReady) {
+            const pending = takePendingStoryActionCreateRequest(tabId);
+            if (pending) {
+                editor.createActionFromSidebar(pending);
+            }
+        }
         const handleCreateRequest = (event: Event) => {
             const detail = (event as CustomEvent<StoryActionCreateRequestDetail>).detail;
-            if (detail?.tabId !== tabId) {
+            if (detail?.tabId !== tabId || !sceneReady) {
                 return;
             }
+            event.preventDefault();
             editor.createActionFromSidebar(detail.commandId);
         };
         window.addEventListener(STORY_ACTION_CREATE_REQUEST_EVENT, handleCreateRequest);
         return () => window.removeEventListener(STORY_ACTION_CREATE_REQUEST_EVENT, handleCreateRequest);
-    }, [editor.createActionFromSidebar, tabId]);
+    }, [editor.createActionFromSidebar, sceneReady, tabId]);
 
     // Silence any voice audition this tab started when it loses focus or closes — the app-wide player
     // otherwise plays the take to its end after the author has switched tabs or closed the project (#6).
