@@ -262,11 +262,13 @@ export type UIComponentDefinition = {
  * one literal baked into it and every slot would show the same save. The repeated thing is exactly
  * the thing worth making a component of, so the difference has to live on the instance.
  *
- * Two types (`UIComponentParamType`). A `string` is what a text field gives back - an index, an id, a
- * mode - and reaches the definition only through a blueprint's `Get Component Param`. A `text` is
+ * Three types (`UIComponentParamType`). A `string` is what a text field gives back - an index, an id,
+ * a mode - and reaches the definition only through a blueprint's `Get Component Param`. A `text` is
  * words a player reads: an instance gives them the way a text's words are given, written directly or
  * as a translation key, and a text or a button inside the definition shows them through a
- * `componentParam` value binding, translated per placement (`componentTextParams.ts`). Adding a type
+ * `componentParam` value binding, translated per placement (`componentTextParams.ts`). An
+ * `audioTrack` is one of the project's audio tracks, stored as its id and picked by its name - what a
+ * volume slider placed once per track reads, so an author never types a track's id. Adding a type
  * later is additive as long as `type` stays required.
  */
 export type UIComponentParam = {
@@ -283,12 +285,28 @@ export type UIComponentParam = {
     defaultValue: string;
 };
 
-/** What a component parameter holds: a plain string, or words a player reads. See {@link UIComponentParam}. */
-export type UIComponentParamType = "string" | "text";
+/**
+ * What a component parameter holds: a plain string, words a player reads, or an audio track. See
+ * {@link UIComponentParam}.
+ *
+ * All three are stored as a string, so a Studio that does not know a type reads the parameter as a
+ * plain string and loses nothing but the picker.
+ */
+export type UIComponentParamType = "string" | "text" | "audioTrack";
 
 /** Whether a parameter holds words a player reads, which a text inside the definition may be bound to. */
 export function isUIComponentTextParam(param: { type?: string } | null | undefined): boolean {
     return param?.type === "text";
+}
+
+/** Whether a parameter holds one of the project's audio tracks, by id, picked from the track list. */
+export function isUIComponentAudioTrackParam(param: { type?: string } | null | undefined): boolean {
+    return param?.type === "audioTrack";
+}
+
+/** A parameter's declared type, read defensively: anything unknown is a plain string. */
+export function readUIComponentParamType(param: { type?: unknown } | null | undefined): UIComponentParamType {
+    return param?.type === "text" || param?.type === "audioTrack" ? param.type : "string";
 }
 
 export type UIComponentLink = {

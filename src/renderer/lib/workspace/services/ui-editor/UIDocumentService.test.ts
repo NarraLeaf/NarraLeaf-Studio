@@ -1144,6 +1144,18 @@ describe("UIDocumentService component library", () => {
             .toEqual({ saveId: "7", label: "" });
     });
 
+    it("keeps an audio track parameter's type, and reads an unknown type as a plain string", () => {
+        const { service } = createHarness();
+        const component = service.createEmptyComponent("Volume slider");
+
+        service.setComponentParams(component.id, [
+            { id: "track", name: "Track", type: "audioTrack", defaultValue: "bgm" },
+            { id: "mode", name: "Mode", type: "lyrics" as never, defaultValue: "" },
+        ]);
+
+        expect(service.getComponent(component.id)?.params?.map(param => param.type)).toEqual(["audioTrack", "string"]);
+    });
+
     // A component that arrives inert is worth placing once, which is why every component in the
     // bundled template had exactly one instance. Extraction now carries the logic across, remapped so
     // it drives the copy rather than the elements still sitting on the surface.

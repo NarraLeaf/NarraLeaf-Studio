@@ -24,7 +24,7 @@ import {
     getUIStructuralSlotPointerProp,
     getUIComponentLink,
     isLinkedUIComponentElement,
-    isUIComponentTextParam,
+    readUIComponentParamType,
     type UIComponentParam,
     type UIElementValueBinding,
     type UIPageParam,
@@ -3972,7 +3972,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 .map(param => ({
                     id: param.id.trim(),
                     name: param.name.trim(),
-                    type: isUIComponentTextParam(param) ? ("text" as const) : ("string" as const),
+                    type: readUIComponentParamType(param),
                     defaultValue: typeof param.defaultValue === "string" ? param.defaultValue : "",
                 }))
                 .filter(param => {

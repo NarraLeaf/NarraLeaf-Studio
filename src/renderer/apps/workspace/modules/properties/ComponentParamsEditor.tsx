@@ -9,7 +9,9 @@
  *
  * A text parameter (`type: "text"`) is words a player reads, and a placement gives it the way a
  * text's words are given: written directly, or as a translation key, chosen with the same choice and
- * the same key picker a text's inspector offers (`TextParamValueField`).
+ * the same key picker a text's inspector offers (`TextParamValueField`). An audio track parameter
+ * (`type: "audioTrack"`) is picked from the project's tracks by name (`AudioTrackParamValueField`):
+ * its stored value is the track's id, which for a track the author made is a UUID nobody should type.
  *
  * Comments in English per project convention.
  */
@@ -19,10 +21,14 @@ import { Plus, Trash2 } from "lucide-react";
 import {
     getUIComponentLink,
     getUIComponentParams,
+    isUIComponentAudioTrackParam,
     isUIComponentTextParam,
+    readUIComponentParamType,
     type UIComponentDefinition,
     type UIComponentParam,
 } from "@shared/types/ui-editor/document";
+import type { ProjectAudioTrack } from "@shared/types/audioTrack";
+import { useProjectAudioTracks } from "@/lib/ui-editor/widget-modules/shared/sound/useProjectAudioTracks";
 // SectionCard is missing from the elements barrel, so it comes from its own module.
 import { FieldLabel, IconButton, Input } from "@/lib/components/elements";
 import { SectionCard } from "@/lib/components/elements/SectionCard";
@@ -134,7 +140,9 @@ export function ComponentParamsEditor({
 }) {
     const { t } = useTranslation();
     const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
-    const params = useMemo(() => getUIComponentParams(component), [component]);
+    // Keyed on the list as well as the definition: the document is edited in place, so the definition
+    // is the same object after an edit, and only its `params` array is replaced.
+    const params = useMemo(() => getUIComponentParams(component), [component, component.params]);
 
     const write = useCallback(
         (next: UIComponentParam[]) => {
@@ -153,6 +161,7 @@ export function ComponentParamsEditor({
     const typeOptions = [
         { value: "string", label: t("properties.componentParams.typeString") },
         { value: "text", label: t("properties.componentParams.typeText") },
+        { value: "audioTrack", label: t("properties.componentParams.typeAudioTrack") },
     ];
 
     return (
@@ -189,16 +198,17 @@ export function ComponentParamsEditor({
                             />
                             {/* What the parameter holds. A string reaches the definition through a
                                 blueprint; text is words a widget inside it can show, translated per
-                                placement. Switching keeps every value: both are stored as strings. */}
+                                placement; an audio track is a track's id, picked by name. Switching
+                                keeps every value: all three are stored as strings. */}
                             <Select
                                 size="sm"
                                 className="w-24 shrink-0"
-                                value={isUIComponentTextParam(param) ? "text" : "string"}
+                                value={readUIComponentParamType(param)}
                                 options={typeOptions}
                                 portalMenu
                                 ariaLabel={t("properties.componentParams.type")}
                                 disabled={freeze.frozen}
-                                onChange={value => patchParam(param.id, { type: value === "text" ? "text" : "string" })}
+                                onChange={value => patchParam(param.id, { type: readUIComponentParamType({ type: value }) })}
                             />
                             <IconButton
                                 size="sm"
@@ -210,13 +220,21 @@ export function ComponentParamsEditor({
                                 <Trash2 className="h-4 w-4" />
                             </IconButton>
                         </div>
-                        <DraftInput
-                            value={param.defaultValue}
-                            placeholder={t("properties.componentParams.defaultPlaceholder")}
-                            ariaLabel={t("properties.componentParams.defaultPlaceholder")}
-                            {...freeze.writes()}
-                            onCommit={next => patchParam(param.id, { defaultValue: next })}
-                        />
+                        {isUIComponentAudioTrackParam(param) ? (
+                            <AudioTrackDefaultField
+                                value={param.defaultValue}
+                                disabled={freeze.frozen}
+                                onChange={next => patchParam(param.id, { defaultValue: next })}
+                            />
+                        ) : (
+                            <DraftInput
+                                value={param.defaultValue}
+                                placeholder={t("properties.componentParams.defaultPlaceholder")}
+                                ariaLabel={t("properties.componentParams.defaultPlaceholder")}
+                                {...freeze.writes()}
+                                onCommit={next => patchParam(param.id, { defaultValue: next })}
+                            />
+                        )}
                     </div>
                 ))
             )}
@@ -251,6 +269,99 @@ function keyPickerFor(paramId: string): ComponentType<CustomFieldProps<UIInspect
         keyPickerByParam.set(paramId, picker);
     }
     return picker;
+}
+
+/** The tracks as select options, by name, with the stored value kept when it names no track. */
+function audioTrackOptions(
+    tracks: readonly ProjectAudioTrack[],
+    stored: string,
+    t: ReturnType<typeof useTranslation>["t"],
+): { value: string; label: string }[] {
+    const options = tracks.map(track => ({ value: track.id, label: track.name }));
+    if (!tracks.some(track => track.id === stored)) {
+        // A track that has been deleted, or none chosen yet: said in words, never as the stored id.
+        options.unshift({
+            value: stored,
+            label: stored ? t("properties.componentParams.trackMissing") : t("properties.componentParams.trackNone"),
+        });
+    }
+    return options;
+}
+
+/** The track an audio track parameter falls back to, picked from the project's tracks. */
+function AudioTrackDefaultField({ value, disabled, onChange }: { value: string; disabled: boolean; onChange: (next: string) => void }) {
+    const { t } = useTranslation();
+    const tracks = useProjectAudioTracks();
+    return (
+        <Select
+            size="sm"
+            fullWidth
+            value={value}
+            options={audioTrackOptions(tracks, value, t)}
+            portalMenu
+            ariaLabel={t("properties.componentParams.defaultPlaceholder")}
+            disabled={disabled}
+            onChange={next => onChange(String(next))}
+        />
+    );
+}
+
+/** The select value standing for "no value of its own": the definition's default applies. */
+const TRACK_PARAM_INHERIT = "__inherit__";
+
+/**
+ * One audio track parameter of the selected placement, picked from the project's tracks by name.
+ *
+ * The first option is the definition's default, named after the track it is, which is what a
+ * placement that has chosen nothing plays on; choosing it again removes the placement's own value
+ * rather than copying the default's id, so the placement keeps following the definition.
+ */
+function AudioTrackParamValueField({
+    data,
+    param,
+    readOnly,
+}: {
+    data: UIInspectorData;
+    param: UIComponentParam;
+    readOnly: boolean;
+}) {
+    const { t } = useTranslation();
+    const tracks = useProjectAudioTracks();
+    const live = data.documentService.getDocument().elements[data.element.id] ?? data.element;
+    const supplied = getUIComponentLink(live)?.params?.[param.id];
+    const label = param.name.trim() || param.id;
+    const defaultTrack = tracks.find(track => track.id === param.defaultValue);
+    const inherit = {
+        value: TRACK_PARAM_INHERIT,
+        label: t("storyInspector.audio.trackDefault", {
+            name: defaultTrack?.name ?? t(param.defaultValue ? "properties.componentParams.trackMissing" : "properties.componentParams.trackNone"),
+        }),
+    };
+    const own = typeof supplied === "string" && supplied ? supplied : null;
+    const options = [inherit, ...(own ? audioTrackOptions(tracks, own, t) : tracks.map(track => ({ value: track.id, label: track.name })))];
+    return (
+        <div>
+            <FieldLabel as="div">{label}</FieldLabel>
+            <Select
+                size="sm"
+                fullWidth
+                value={own ?? TRACK_PARAM_INHERIT}
+                options={options}
+                portalMenu
+                ariaLabel={label}
+                disabled={readOnly}
+                onChange={next => {
+                    const value = String(next);
+                    if (value === TRACK_PARAM_INHERIT) {
+                        // Neither words nor a key: the placement falls back to the definition's default.
+                        data.documentService.setComponentInstanceParamKey(live.id, param.id, null);
+                    } else {
+                        data.documentService.setComponentInstanceParam(live.id, param.id, value);
+                    }
+                }}
+            />
+        </div>
+    );
 }
 
 type TextParamSource = "literal" | "key";
@@ -382,6 +493,16 @@ export function LinkedComponentParamsField({ data, readOnly }: { data: UIInspect
                 if (isUIComponentTextParam(param)) {
                     return (
                         <TextParamValueField
+                            key={param.id}
+                            data={data}
+                            param={param}
+                            readOnly={readOnly === true || freeze.frozen}
+                        />
+                    );
+                }
+                if (isUIComponentAudioTrackParam(param)) {
+                    return (
+                        <AudioTrackParamValueField
                             key={param.id}
                             data={data}
                             param={param}
