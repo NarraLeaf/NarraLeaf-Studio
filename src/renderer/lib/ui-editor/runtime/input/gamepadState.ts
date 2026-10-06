@@ -295,7 +295,11 @@ function windowHost(): UIGamepadHost | null {
         },
         requestAnimationFrame: callback => window.requestAnimationFrame(callback),
         cancelAnimationFrame: handle => window.cancelAnimationFrame(handle),
-        visibilityState: typeof document === "undefined" ? undefined : document.visibilityState,
+        // A getter, not a value: the tracker is built once and asks again on every frame and every
+        // `visibilitychange`, and a copy taken at construction would answer the same thing forever.
+        get visibilityState() {
+            return typeof document === "undefined" ? undefined : document.visibilityState;
+        },
     };
 }
 

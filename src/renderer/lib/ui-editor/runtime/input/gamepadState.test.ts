@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import {
     BLUEPRINT_GAMEPAD_BUTTONS,
@@ -7,6 +8,7 @@ import {
 import {
     GAMEPAD_AXIS_DEADZONE,
     createGamepadTracker,
+    getSharedGamepadTracker,
     resetSharedGamepadTracker,
     type UIGamepadHost,
 } from "./gamepadState";
@@ -38,15 +40,28 @@ function pad(input: {
     };
 }
 
-function hostWith(pads: Array<Gamepad | null>, opts?: { hidden?: boolean }): UIGamepadHost & { pads: Array<Gamepad | null>; frames: FrameRequestCallback[] } {
+type FakeGamepadHost = UIGamepadHost & {
+    pads: Array<Gamepad | null>;
+    frames: FrameRequestCallback[];
+    setHidden: (value: boolean) => void;
+    /** Deliver a window or document event to whatever the tracker is listening with. */
+    fire: (type: string) => void;
+};
+
+function hostWith(pads: Array<Gamepad | null>, opts?: { hidden?: boolean }): FakeGamepadHost {
     const frames: FrameRequestCallback[] = [];
     let hidden = opts?.hidden ?? false;
     const listeners = new Map<string, Set<EventListener>>();
-    const host: UIGamepadHost & { pads: Array<Gamepad | null>; frames: FrameRequestCallback[]; setHidden: (value: boolean) => void } = {
+    const host: FakeGamepadHost = {
         pads,
         frames,
         setHidden: value => {
             hidden = value;
+        },
+        fire: type => {
+            for (const listener of listeners.get(type) ?? []) {
+                listener(new Event(type));
+            }
         },
         getGamepads: () => host.pads,
         addEventListener: (type, listener) => {
@@ -148,21 +163,64 @@ describe("createGamepadTracker", () => {
     });
 
     it("clears held buttons on blur without emitting ups", () => {
-        const host = hostWith([pad({ buttons: [{ pressed: true }] })]) as ReturnType<typeof hostWith> & {
-            addEventListener: UIGamepadHost["addEventListener"];
-        };
+        const host = hostWith([pad({ buttons: [{ pressed: true }] })]);
         const tracker = createGamepadTracker(host);
         const edges: string[] = [];
         tracker.onEdge(edge => edges.push(`${edge.type}:${edge.button}`));
         tracker.start();
         host.frames.at(-1)?.(0);
         expect(tracker.read().buttons.has("A")).toBe(true);
-        edges.length = 0;
-        const blur = (host as unknown as { addEventListener: UIGamepadHost["addEventListener"] });
-        // Recreate with captured listeners is awkward; call stop's silent path via dispose after start.
+        host.fire("blur");
+        expect(tracker.read().buttons.size).toBe(0);
+        expect(edges).toEqual([]);
+        tracker.dispose();
+    });
+
+    it("clears held buttons when the window is hidden, and not while it is shown", () => {
+        const host = hostWith([pad({ buttons: [{ pressed: true }] })]);
+        const tracker = createGamepadTracker(host);
+        tracker.start();
+        host.fire("visibilitychange");
+        expect(tracker.read().buttons.has("A")).toBe(true);
+        host.setHidden(true);
+        host.fire("visibilitychange");
+        expect(tracker.read().buttons.size).toBe(0);
+        tracker.dispose();
+    });
+
+    it("clears held buttons on stop without emitting ups", () => {
+        const host = hostWith([pad({ buttons: [{ pressed: true }] })]);
+        const tracker = createGamepadTracker(host);
+        const edges: string[] = [];
+        tracker.onEdge(edge => edges.push(`${edge.type}:${edge.button}`));
+        tracker.start();
         tracker.stop();
         expect(tracker.read().buttons.size).toBe(0);
         expect(edges).toEqual([]);
         tracker.dispose();
+    });
+});
+
+describe("the shared tracker over the real window", () => {
+    it("asks the document whether it is hidden when that changes, not when the tracker was built", () => {
+        // The tracker is built once, early. A visibility read at construction answered "visible"
+        // for the rest of the session, so hiding the window never cleared what was held.
+        let visibility: DocumentVisibilityState = "visible";
+        Object.defineProperty(document, "visibilityState", { configurable: true, get: () => visibility });
+        Object.defineProperty(navigator, "getGamepads", {
+            configurable: true,
+            value: () => [pad({ buttons: [{ pressed: true }] })],
+        });
+        try {
+            const tracker = getSharedGamepadTracker();
+            tracker.start();
+            expect(tracker.read().buttons.has("A")).toBe(true);
+            visibility = "hidden";
+            document.dispatchEvent(new Event("visibilitychange"));
+            expect(tracker.read().buttons.size).toBe(0);
+        } finally {
+            delete (document as { visibilityState?: unknown }).visibilityState;
+            delete (navigator as { getGamepads?: unknown }).getGamepads;
+        }
     });
 });
