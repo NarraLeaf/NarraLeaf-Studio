@@ -337,13 +337,15 @@ describe("a gamepad press goes the way a key goes", () => {
         // hear the press that opened it.
         const game = await runningGame();
         const late: string[] = [];
-        let stopLate: (() => void) | null = null;
+        const stopLate: Array<() => void> = [];
         game.duringGlobal.run = () => {
-            stopLate ??= listenAsGamepadControl(edge => {
-                if (edge.type === "down") {
-                    late.push(edge.button);
-                }
-            });
+            if (stopLate.length === 0) {
+                stopLate.push(listenAsGamepadControl(edge => {
+                    if (edge.type === "down") {
+                        late.push(edge.button);
+                    }
+                }));
+            }
         };
 
         expect(await game.press("A")).toEqual(["global: A", "page: A", "control: A"]);
@@ -352,7 +354,7 @@ describe("a gamepad press goes the way a key goes", () => {
         // The next press finds it listening.
         await game.press("A");
         expect(late).toEqual(["A"]);
-        stopLate?.();
+        stopLate.forEach(stop => stop());
     });
 
     it("skips a control that stopped listening while the global's head ran", async () => {
