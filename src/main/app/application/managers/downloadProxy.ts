@@ -1,4 +1,4 @@
-import { USE_SYSTEM_PROXY_KEY } from "@shared/types/downloadSource";
+import type { Session } from "electron";
 
 /**
  * How Studio's own downloads meet this computer's proxy.
@@ -131,10 +131,28 @@ export async function studioFetch(url: string, init?: RequestInit): Promise<Resp
     return fetchViaSystemProxy(url, init);
 }
 
+let downloadSessionReady: Promise<Session> | null = null;
+
+/**
+ * The partition, put in system mode once. Setting the proxy again before every fetch reconfigures
+ * the session under requests already in flight, and the plugin store fetches several at a time.
+ * A failure is not kept, so the next download tries again.
+ */
+function systemProxySession(): Promise<Session> {
+    downloadSessionReady ??= (async () => {
+        const { session } = await import("electron");
+        const downloadSession = session.fromPartition(DOWNLOAD_PARTITION);
+        await downloadSession.setProxy({ mode: "system" });
+        return downloadSession;
+    })().catch((error: unknown) => {
+        downloadSessionReady = null;
+        throw error;
+    });
+    return downloadSessionReady;
+}
+
 async function fetchViaSystemProxy(url: string, init?: RequestInit): Promise<Response> {
-    const { session } = await import("electron");
-    const downloadSession = session.fromPartition(DOWNLOAD_PARTITION);
-    await downloadSession.setProxy({ mode: "system" });
+    const downloadSession = await systemProxySession();
     return downloadSession.fetch(url, {
         method: init?.method,
         headers: init?.headers,
@@ -151,5 +169,3 @@ async function resolveSystemPac(url: string): Promise<string | null> {
         return null;
     }
 }
-
-export { USE_SYSTEM_PROXY_KEY };
