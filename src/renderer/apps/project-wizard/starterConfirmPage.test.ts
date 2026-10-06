@@ -3,9 +3,10 @@
  *
  * Read off the shipped files rather than a fixture, for the same reason the asset-pin sweep does:
  * what is asserted here is what an author actually receives. The page is ordinary - a text, a list,
- * an item template - and that is the claim under test. `Show Confirm` hands it a message and a
- * `buttons` array as page props and waits; the page reads them through bindings any author could
- * have drawn, and answers by closing itself with the index of the row that was pressed. Nothing in
+ * an item template - and that is the claim under test. It declares two parameters, `message` and
+ * `buttons`; `Show Confirm` opens it with a message and a `buttons` array under those names and
+ * waits; the page reads them through bindings any author could have drawn, and answers by closing
+ * itself with the index of the row that was pressed. Nothing in
  * it is reserved, so redrawing the whole page is a supported thing to do, and these assertions are
  * the contract that survives the redraw.
  *
@@ -16,7 +17,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-    BLUEPRINT_NODE_TYPE_DATA_JSON_GET,
     BLUEPRINT_NODE_TYPE_DATA_MEMO,
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
@@ -28,7 +28,7 @@ import {
     BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS,
-    BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS,
+    BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
 } from "@shared/types/blueprint/graph";
 import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
@@ -49,6 +49,7 @@ type Surface = {
     rootElementId: string;
     settings?: Record<string, unknown>;
     actions?: { actionId: string }[];
+    params?: { id: string; name: string; type: string }[];
 };
 type InputAction = { id: string; bindings: { kind: string; key?: string }[] };
 type GraphNode = { id: string; type: string; params?: Record<string, unknown> };
@@ -225,10 +226,21 @@ describe("the Confirm page in the starter template", () => {
     });
 
     /**
-     * The message is not a row's own data - it belongs to the whole layer - so it is still read from
-     * the page props by a graph, which is the shape a value that has to be computed always takes.
+     * The two names `Show Confirm` opens the page with are the page's own declarations, so the
+     * nodes and pickers that name them read them off the page rather than off a convention.
      */
-    it("draws its message from the props the layer was shown with", () => {
+    it("declares the message and the buttons it is opened with", () => {
+        expect(confirm.params?.map(param => [param.name, param.type])).toEqual([
+            ["message", "string"],
+            ["buttons", "json"],
+        ]);
+    });
+
+    /**
+     * The message is not a row's own data - it belongs to the whole layer - so it is read from the
+     * page by a graph: the declared parameter, picked rather than typed.
+     */
+    it("draws its message from the parameter the layer was shown with", () => {
         const text = pageElements().filter(element => element.type === "nl.text")[0]!;
         // Blank on the element, so nothing is left on screen when the binding is what speaks.
         expect(text.props?.text).toBe("");
@@ -237,13 +249,12 @@ describe("the Confirm page in the starter template", () => {
         )!;
         expect(blueprint.owner.propPath).toBe("text");
         const { byType, wired } = onlyGraph(blueprint);
-        const source = byType(BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS)!;
-        const read = byType(BLUEPRINT_NODE_TYPE_DATA_JSON_GET)!;
+        const read = byType(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)!;
         const value = byType(BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE)!;
         expect(byType(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT)).toBeDefined();
-        expect(read.params?.path).toBe("message");
-        expect(wired({ nodeId: source.id, port: "props" }, { nodeId: read.id, port: "json" })).toBe(true);
-        expect(wired({ nodeId: read.id, port: "result" }, { nodeId: value.id, port: "value" })).toBe(true);
+        const message = confirm.params?.find(param => param.name === "message");
+        expect(read.params?.paramId).toBe(message?.id);
+        expect(wired({ nodeId: read.id, port: "value" }, { nodeId: value.id, port: "value" })).toBe(true);
     });
 
     /**

@@ -405,6 +405,16 @@ export type BlueprintNodeDeclaration = {
      * be as many copies as there are save nodes, drifting by hand.
      */
     saveSchemaPins?: { kind: "input" | "output" };
+    /**
+     * Grow one input per parameter the page this node opens declares (`UIPageParam`).
+     *
+     * The page is the one picked on the card, read from `params[surfaceParam]` - the key the node's
+     * page picker writes. Like {@link saveSchemaPins} the list comes from a project document rather
+     * than from the node, so every node that opens one page grows the same inputs, in the page's
+     * order, and renaming a parameter relabels all of them. The inputs belong to the picked page: a
+     * different page arriving on a wire is opened with the node's `props` input alone.
+     */
+    pageParamPins?: { surfaceParam: string };
     inspectorParams?: BlueprintInspectorParamDef[];
     role?: BlueprintNodeRole;
     /**

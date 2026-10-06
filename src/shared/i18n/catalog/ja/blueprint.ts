@@ -187,6 +187,7 @@ export const blueprint = {
             fieldUnpicked: "ノード「{node}」：フィールドを選ぶ",
             keyNotAField: "「{node}」：{struct}にフィールド「{key}」がない。一致する項目はない",
             listShapeMismatch: "「{node}」：接続された{struct}がこのリストのフィールドと一致しない。一致しないフィールドは空で表示される",
+            pageParamMissing: "「{node}」：ページがこのパラメータを宣言していない",
         },
         fn: {
             nameMissing: "関数「{node}」：関数名を決める",
@@ -1236,7 +1237,7 @@ export const blueprint = {
         getNormalizedValue: "正規化した値を取得",
         getNotifications: "通知を取得",
         getOpacity: "不透明度を取得",
-        getPageParam: "ページの引数を取得",
+        getPageParam: "ページのパラメータを取得",
         getPageProps: "ページのプロパティを取得",
         getPersistent: "永続変数を取得",
         getPosition: "位置を取得",
@@ -1532,6 +1533,7 @@ export const blueprint = {
     },
     nodeDescription: {
         getComponentParam: "この置いたものが選んだパラメータに設定した値。設定がなければパラメータの初期値。翻訳キーを使う「テキスト」パラメータではキー名になり、その文字は「翻訳キーのテキスト」で得られる",
+        getPageParam: "ページを開いたときに選んだパラメータへ渡された値。渡されていなければパラメータの初期値。パラメータはページのプロパティで宣言する",
         compareEqual: "A と B が型も値も同じとき真。数値の 1 と文字列の \"1\" は等しくない",
         compareNotEqual: "A と B の値か型が異なるとき真。数値の 1 と文字列の \"1\" は異なるものとして扱う",
         compareGreaterThan: "A が B より大きいとき真。両辺を数値として比べ、どちらかが数値として読めないときは偽",

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent } from "react";
 import { MotionConfig } from "motion/react";
 import { getActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { useTranslation, type UseTranslation } from "@/lib/i18n";
@@ -43,6 +43,12 @@ import type { StoryDocument } from "@shared/types/story";
 import { listSceneIdsInDocumentOrder, listStoryEndings } from "@shared/types/story";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getUIComponentParams } from "@shared/types/ui-editor/document";
+import {
+    getActiveUIPageParams,
+    getActiveUIPageParamsRevision,
+    subscribeActiveUIPageParams,
+} from "@shared/types/ui-editor/pageParams";
+import { BLUEPRINT_PAGE_PARAM_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/frameNodes";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
 import { isFactoryStoryBlueprintName, ownerLabelKey } from "@shared/types/ui-editor/ownerLabels";
 import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemContext";
@@ -56,6 +62,7 @@ import {
 import {
     analyzeBlueprintStructTypes,
     buildBlueprintStructTypeContext,
+    pageSurfaceIdOf,
     pinBlueprintFieldReaderStruct,
 } from "@/lib/workspace/services/ui-editor/blueprint/graphStructTypeInference";
 import { blueprintValueTypeForVariable } from "@/lib/workspace/services/ui-editor/blueprint/graphVariableTypeInference";
@@ -635,6 +642,14 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const [storyDocumentsById, setStoryDocumentsById] = useState<Record<string, StoryDocument>>({});
     const [storyLibraryRevision, setStoryLibraryRevision] = useState(0);
     const [dynamicSelectOptionsRevision, setDynamicSelectOptionsRevision] = useState(0);
+    // The pages' declared parameters: the nodes that open a page grow an input per parameter of the
+    // page they name, and `Get Page Param` picks one, so a parameter added or renamed in the page's
+    // inspector has to reach the cards of a blueprint that is already open.
+    const pageParamsRevision = useSyncExternalStore(
+        subscribeActiveUIPageParams,
+        getActiveUIPageParamsRevision,
+        getActiveUIPageParamsRevision,
+    );
     // The `characters` source is reactive: renaming or deleting a character while a blueprint tab is
     // open has to be visible in the picker, otherwise a stale list is the only evidence the author
     // ever sees that the reference they are about to pick no longer exists.
@@ -730,10 +745,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 isComponentDefinitionGraph,
                 savedVariables: localBp.listSavedVariables(),
             }),
-        // `uiDocumentRevision` stands in for the document read through the service, and
-        // `registryRevision` for the variable table read through the blueprint service.
+        // `uiDocumentRevision` stands in for the document read through the service, `registryRevision`
+        // for the variable table read through the blueprint service, and `pageParamsRevision` for the
+        // pages' parameters, read through their shared table.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [blueprintDocumentService, bp.owner, isComponentDefinitionGraph, uiDocumentRevision, registryRevision, widgetElement],
+        [blueprintDocumentService, bp.owner, isComponentDefinitionGraph, uiDocumentRevision, registryRevision, pageParamsRevision, widgetElement],
     );
     const widgetLogicEvents = useMemo(() => {
         const t = widgetElement?.type;
@@ -2173,6 +2189,15 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 label: param.name.trim() || param.id,
             }));
         }
+        // The parameters of the page this blueprint belongs to, for `Get Page Param`. Ids, not names,
+        // for the same reason.
+        const pageSurfaceId = pageSurfaceIdOf(bp.owner);
+        if (pageSurfaceId) {
+            opts[BLUEPRINT_PAGE_PARAM_OPTIONS_SOURCE] = getActiveUIPageParams(pageSurfaceId).map(param => ({
+                value: param.id,
+                label: param.name,
+            }));
+        }
         if (isWidgetEventGraph(bp.owner) && payload.surfaceId) {
             const surface = uiDocument.surfaces.find(s => s.id === payload.surfaceId);
             if (surface) {
@@ -2213,6 +2238,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         appTagRevision,
         nodeCatalog,
         dynamicSelectOptionsRevision,
+        pageParamsRevision,
         doc,
         bp.owner,
         t,

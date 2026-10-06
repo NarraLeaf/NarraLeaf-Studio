@@ -229,13 +229,17 @@ Title  appSurface  1920x1080  entry
     owner=surfaceMain surface=narraleaf-studio:main-surface
     Root / Title / Quit  [nl.button]  owner=widgetMain surface=narraleaf-studio:… element=281a47c0-…  # Quit
 
+Confirm  appSurface  1920x1080  answers dismiss  (params message buttons:json)
+    owner=surfaceMain surface=b7c1f3ae-…
+
 Save slot  component=d8d996da-…  (slot="1" mode="save")
     Save slot / Hit area  [nl.container]  owner=componentWidgetMain component=d8d996da-… element=5d138ead-…
 ```
 
 The `owner=` lines are the ones `blueprint apply` wants, and a `#` at the end of
 a line names the blueprints already hanging off that element. `entry` marks the
-page the game starts on.
+page the game starts on, and `params` lists the parameters a page declares, by
+id, with the type of any that is not a string.
 
 ## The text format
 
@@ -280,6 +284,18 @@ surface "Gallery" id=demo-gallery kind=appSurface size=1920x1080
   page. Under it, `setting <key> = <value>` writes surface settings and
   `answers <actionId> [consume=false]` says which of the project's actions this
   surface answers.
+- **`param <id> <name> [type=] [= <default>]`** under a page declares a value the
+  page is opened with. `type=` is `string` (the default), `number`, `boolean` or
+  `json`, and the default is written in that type (`= 3`, `= true`, `= []`); left
+  out, the page reads the type's empty value. The id is a plain word - letters,
+  digits, `_` and `-` - because it names an input on every node that opens the
+  page (`param_<id>` on `Go Page`, `Replace Page`, `Show Layer` and `Set Frame
+  Page`) and the parameter `Get Page Param` reads (`paramId = <id>`); the name
+  is the key the value travels under in the page's props, which is what a script,
+  a list bound to a page prop and `Show Confirm` (`message`, `buttons`) read. Ids
+  and names are unique on a page, and a Game UI declares none: the player opens
+  it with nothing. Like the rest of a surface block, the lines are the whole
+  list - a `param` the file leaves out is no longer declared.
 - **`component <name> [id=] [size=WxH]`** opens a component definition, with
   `param <id> <name> [type=text] = <default>` lines for the values each instance
   supplies. Without `type=` a param is a string, which a blueprint reads with
@@ -449,6 +465,20 @@ file or in the project:
 - **`ui.param_unknown`** - a placement gives a value to a parameter the component
   does not declare. A warning: the value is kept, and read again if a parameter by
   that id comes back.
+
+A page's parameters are checked where the file declares or names them:
+
+- **`ui.page_param_id`**, **`ui.page_param_type`**, **`ui.page_param_duplicate`**,
+  **`ui.page_param_default`** - an id that is not a plain word, a type other than
+  the four, an id or a name a line above already took, a default that is not of
+  the declared type. Errors: Studio would not keep the line as written.
+- **`ui.page_param_on_game_ui`** - a `param` line under a Game UI. An error.
+- **`ui.page_prop_undeclared`** - a list on a page shows a page prop the page does
+  not declare. A warning: nothing that opens the page is told to give it, so the
+  list shows no rows in the game.
+- **`ui.page_param_unknown`** - a Page widget gives the page it shows a name that
+  page does not declare, usually a parameter renamed on the page afterwards. A
+  warning: the value reaches nothing.
 
 Three findings are notes rather than refusals, deliberately:
 

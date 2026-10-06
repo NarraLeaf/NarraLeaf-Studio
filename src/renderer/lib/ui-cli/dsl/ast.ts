@@ -62,6 +62,12 @@ export type UiSurfaceStatement = {
     settings: UiAssignment[];
     answers: { line: number; actionId: string; consume?: boolean }[];
     slots: { line: number; id: string; name: string; rootElementId?: string }[];
+    /**
+     * The page's declared parameters (`UIPageParam`), as written. `type` is checked by the compiler,
+     * which has somewhere to report a page parameter on a Game UI; `defaultValue` is absent when the
+     * line gives none.
+     */
+    params: { line: number; id: string; name: string; type: string; defaultValue?: unknown }[];
     root: UiElementNode | null;
 };
 

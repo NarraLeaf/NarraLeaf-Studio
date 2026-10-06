@@ -145,6 +145,32 @@ At`, `Get List Content` - the list wired into the node's `list` pin, or the list
 (`node.list_shape_mismatch`). Pins whose type a field picks - `Get Property` by `property`, `On
 Preference Changed` by `preferenceKey` - say so under `typed by` in `node`.
 
+## Pages that take parameters
+
+A page may declare the values it is opened with - in its properties in Studio, with `param` lines in
+a `.ui` file - and `targets` lists them after the page's owner line, by id and type:
+
+```
+Confirm  owner=surfaceMain surface=b7c1f3ae-…  # params: message:string, buttons:json
+```
+
+`Go Page`, `Replace Page`, `Show Layer` and `Set Frame Page` grow one input per parameter of the
+page they pick, named `param_<id>`, in front of their `Page props` input. A literal is written like
+any other input's; given nothing, the page reads the parameter's default. `Get Page Param` names the
+one it reads by id and gives it in its declared type:
+
+```
+    open: blueprint.page.go surfaceId=<surfaceId>
+        param_message = "Leave without saving?"
+    count: blueprint.frame.getParam
+        paramId = count
+```
+
+The inputs belong to the page picked in the node's own field. A page that arrives on the
+`surfaceId` wire instead is opened with `Page props` alone. `check` reports a `Get Page Param`
+whose parameter the page no longer declares (`node.page_param_missing`), and an input left wired
+after its parameter was removed is the ordinary `edge.port_mismatch`.
+
 ## Finding a project's surfaces, components and elements
 
 An owner line needs ids. This prints them, already spelled as owner fields:

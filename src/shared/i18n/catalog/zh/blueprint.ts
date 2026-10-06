@@ -187,6 +187,7 @@ export const blueprint = {
             fieldUnpicked: "节点“{node}”：选择字段",
             keyNotAField: "“{node}”：{struct}没有字段“{key}”，不会匹配任何项",
             listShapeMismatch: "“{node}”：连入的{struct}与该列表的字段不一致，不一致的字段显示为空",
+            pageParamMissing: "“{node}”：页面没有声明这个参数",
         },
         fn: {
             nameMissing: "函数“{node}”：设置函数名称",
@@ -1530,6 +1531,7 @@ export const blueprint = {
     },
     nodeDescription: {
         getComponentParam: "当前放置处为所选参数设置的值；未设置时为参数的默认值。使用翻译键的「文字」参数得到键名，其文字由「翻译键文本」取得",
+        getPageParam: "打开页面时为所选参数传入的值；未传入时为参数的默认值。参数在页面属性中声明",
         compareEqual: "A 与 B 类型相同且值相同时为真。数字 1 与文本“1”不相等",
         compareNotEqual: "A 与 B 的值或类型不同时为真。数字 1 与文本“1”视为不同",
         compareGreaterThan: "A 大于 B 时为真。两边按数字比较；任一边无法读作数字时结果为假",

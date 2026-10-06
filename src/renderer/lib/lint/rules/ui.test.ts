@@ -1336,3 +1336,55 @@ describe("ui/localization-key-missing", () => {
         expect(findings.map(finding => finding.messageParams?.key)).toEqual(["field.gone"]);
     });
 });
+
+// ---------------------------------------------------------------------------
+// Page parameters: ui/page-prop-undeclared, ui/page-param-unknown
+// ---------------------------------------------------------------------------
+
+describe("ui/page-prop-undeclared", () => {
+    const list = (key: string) => element({ id: "rows", type: "nl.list", parentId: "root", props: { itemsBinding: { kind: "pageProp", key } } });
+    const declaring = (document: UIDocument, params: unknown[]) => ({
+        ...document,
+        surfaces: document.surfaces.map(surface => ({ ...surface, params })),
+    }) as UIDocument;
+
+    it("says nothing when the page declares the prop the list shows", async () => {
+        const document = declaring(onePage(list("buttons")), [{ id: "buttons", name: "buttons", type: "json" }]);
+        expect(await run("ui/page-prop-undeclared", createTestLintContext({ uiDocument: document }))).toEqual([]);
+    });
+
+    it("reports the prop by name when the page does not declare it, whatever else it declares", async () => {
+        for (const params of [[], [{ id: "message", name: "message", type: "string" }]]) {
+            const findings = await run("ui/page-prop-undeclared", createTestLintContext({ uiDocument: declaring(onePage(list("buttons")), params) }));
+            expect(findings.map(finding => finding.messageParams)).toEqual([{ name: "buttons" }]);
+        }
+    });
+});
+
+describe("ui/page-param-unknown", () => {
+    function withFrame(params: Record<string, unknown>, declared: unknown[]): UIDocument {
+        return uiDocument({
+            surfaces: [
+                { id: MAIN_APP_SURFACE_ID, name: "Title", rootElementId: "root" },
+                { id: "confirm", name: "Confirm", rootElementId: "confirm-root", params: declared } as never,
+            ],
+            elements: [
+                element({ id: "root", type: "nl.root", childrenIds: ["embed"] }),
+                element({ id: "embed", type: UI_FRAME_ELEMENT_TYPE, parentId: "root", props: { targetSurfaceId: "confirm", params } }),
+                element({ id: "confirm-root", type: "nl.root" }),
+            ],
+        });
+    }
+
+    it("says nothing for declared names, or for a page that declares nothing", async () => {
+        const declared = [{ id: "message", name: "message", type: "string" }];
+        expect(await run("ui/page-param-unknown", createTestLintContext({ uiDocument: withFrame({ message: "Quit?" }, declared) }))).toEqual([]);
+        expect(await run("ui/page-param-unknown", createTestLintContext({ uiDocument: withFrame({ anything: 1 }, []) }))).toEqual([]);
+    });
+
+    it("reports each name the page does not declare", async () => {
+        const declared = [{ id: "message", name: "message", type: "string" }];
+        const findings = await run("ui/page-param-unknown", createTestLintContext({ uiDocument: withFrame({ message: "x", question: "y" }, declared) }));
+        expect(findings.map(finding => finding.messageParams)).toEqual([{ name: "question" }]);
+    });
+});

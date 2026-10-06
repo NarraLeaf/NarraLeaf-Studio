@@ -10408,7 +10408,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "「メッセージ」のテキストはこのブループリントに結び付いている（ブループリント値）。「確認を求める」は質問をページのプロパティの message に入れてこのページを開く。ページが現れると「ページのプロパティを取得」がそれを読み、「JSON のフィールドを取得」が message を取り出し、「値を返す」がテキストに渡す。",
+                      "text": "「メッセージ」のテキストはこのブループリントに結び付いている（ブループリント値）。このページはプロパティで message と buttons の 2 つのパラメータを宣言しており、「確認を求める」は質問を message に渡してこのページを開く。ページが現れると「ページのパラメータを取得」がそれを読み、「値を返す」がテキストに渡す。",
                       "width": 760,
                       "height": 130
                     },
@@ -10430,25 +10430,11 @@
                       }
                     }
                   },
-                  "props": {
-                    "id": "props",
-                    "type": "blueprint.page.getProps",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": -313
-                      }
-                    }
-                  },
                   "question": {
                     "id": "question",
-                    "type": "blueprint.data.jsonGet",
+                    "type": "blueprint.frame.getParam",
                     "params": {
-                      "__inlineLiteralPins": [
-                        "path"
-                      ],
-                      "path": "message"
+                      "paramId": "message"
                     },
                     "meta": {
                       "editorLayout": {
@@ -10482,18 +10468,8 @@
                   },
                   {
                     "from": {
-                      "nodeId": "props",
-                      "port": "props"
-                    },
-                    "to": {
                       "nodeId": "question",
-                      "port": "json"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "question",
-                      "port": "result"
+                      "port": "value"
                     },
                     "to": {
                       "nodeId": "give",
@@ -24365,6 +24341,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-10-04T21:55:42.306Z"
+    "updatedAt": "2026-10-06T01:46:17.153Z"
   }
 }

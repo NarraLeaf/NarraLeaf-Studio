@@ -27,7 +27,9 @@ import {
     isUIComponentTextParam,
     type UIComponentParam,
     type UIElementValueBinding,
+    type UIPageParam,
 } from "@shared/types/ui-editor/document";
+import { getUIPageParams, normalizeUIPageParams, setActiveUIPageParams } from "@shared/types/ui-editor/pageParams";
 import { entrySurfacePointerMisses, isEntrySurface, resolveEntrySurface } from "@shared/types/ui-editor/entrySurface";
 import { buildUIComponentEditorSurfaceId, buildUIComponentSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
 import { foldLegacyImageProps, UI_IMAGE_ELEMENT_TYPE } from "@shared/types/ui-editor/legacyImageProps";
@@ -817,6 +819,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const localizationService = ctx.services.get<LocalizationService>(Services.Localization);
         await depend([filesystemService, projectService, uuidService, localizationService]);
         await registerAutoSaver(ctx, depend, "uiDocument", "workspace.shell.save.stores.uiDocument", this.autoSaver);
+        // The pages' declared parameters are what the nodes that open a page grow inputs from, and
+        // pin resolution reads them from the shared table rather than from this service. Every
+        // route a document arrives or changes by announces it here, the first load included.
+        this.events.on("documentChanged", document => setActiveUIPageParams(document.surfaces));
 
         await this.ensureDocumentDir();
         await this.load();
@@ -2249,7 +2255,31 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     }
 
     private migrateIfNeeded(document: UIDocument): UIDocument {
-        return this.normalizeLegacyImageProps(this.normalizeInputModel(this.migrateSchemaVersion(document)));
+        return this.normalizePageParams(
+            this.normalizeLegacyImageProps(this.normalizeInputModel(this.migrateSchemaVersion(document))),
+        );
+    }
+
+    /**
+     * Every page's declared parameters, in the shape this build reads (`normalizeUIPageParams`).
+     *
+     * A normalizer for the reason {@link normalizeInputModel} is one: an empty list and no list mean
+     * the same thing, so a page that declares none keeps its record as short as it was. A Game UI's
+     * are dropped - the player mounts it with nothing, so nothing could ever fill them.
+     */
+    private normalizePageParams(document: UIDocument): UIDocument {
+        for (const surface of document.surfaces) {
+            if (!("params" in surface)) {
+                continue;
+            }
+            const params = surface.kind === "appSurface" ? normalizeUIPageParams(surface.params) : [];
+            if (params.length > 0) {
+                (surface as { params?: UIPageParam[] }).params = params;
+            } else {
+                delete (surface as { params?: unknown }).params;
+            }
+        }
+        return document;
     }
 
     /**
@@ -3492,6 +3522,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             ? remapSurfaceDuplicateReferenceValue(cloneJson(sourceSurface.settings), remapContext)
             : undefined;
 
+        const sourcePageParams = getUIPageParams(sourceSurface);
         const newSurface: UISurface = placement.kind === "stageSurface"
             ? {
                 id: newSurfaceId,
@@ -3511,6 +3542,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 designSize,
                 rootElementId: newRootElementId,
                 settings: createDefaultPageSurfaceSettings(remappedSettings),
+                // What the page is opened with comes along with it: the lists on it and the graphs
+                // copied beside it read those names, and the nodes that open it grow inputs from them.
+                ...(sourcePageParams.length > 0 ? { params: sourcePageParams } : {}),
             };
 
         localBp?.applyBlueprintMutation(bpDoc => {
@@ -3899,6 +3933,60 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 });
             component.updatedAt = new Date().toISOString();
         }, { history: this.componentHistory(componentId) });
+    }
+
+    /**
+     * Replace the parameters a page declares.
+     *
+     * A parameter is identified by `id`, so the nodes that open the page and the `Get Page Param`
+     * nodes that read it keep pointing at it through a rename. What reads it by name - the key its
+     * value travels under - is followed in the same step where it lives on the page itself: a list on
+     * the page bound to the old name is bound to the new one. Anything elsewhere that names it (a Page
+     * widget on another page giving it a value, a script) is left alone, because this page's undo must
+     * not reach into another page; the project check reports those.
+     *
+     * A removed parameter's values are not swept from anywhere, as a component's are not: re-adding it
+     * is how an author takes a deletion back.
+     */
+    public setPageParams(surfaceId: string, params: UIPageParam[]): void {
+        const surface = this.getDocument().surfaces.find(item => item.id === surfaceId);
+        if (!surface || surface.kind !== "appSurface") {
+            return;
+        }
+        const before = normalizeUIPageParams(surface.params);
+        const next = normalizeUIPageParams(params);
+        const renamed = new Map<string, string>();
+        for (const param of next) {
+            const previous = before.find(item => item.id === param.id);
+            if (previous && previous.name !== param.name) {
+                renamed.set(previous.name, param.name);
+            }
+        }
+        this.mutateDocument(document => {
+            const target = document.surfaces.find(item => item.id === surfaceId);
+            if (!target || target.kind !== "appSurface") {
+                return;
+            }
+            if (next.length > 0) {
+                target.params = next;
+            } else {
+                delete target.params;
+            }
+            if (renamed.size === 0) {
+                return;
+            }
+            for (const elementId of collectSubtreeElementIds(document, target.rootElementId)) {
+                const element = document.elements[elementId];
+                const binding = element?.props?.itemsBinding as { kind?: unknown; key?: unknown } | undefined;
+                if (!element || !isListLikeWidgetType(element.type) || binding?.kind !== "pageProp" || typeof binding.key !== "string") {
+                    continue;
+                }
+                const nextKey = renamed.get(binding.key);
+                if (nextKey !== undefined) {
+                    element.props = { ...element.props, itemsBinding: { ...binding, key: nextKey } };
+                }
+            }
+        }, { history: { surfaceId } });
     }
 
     /**

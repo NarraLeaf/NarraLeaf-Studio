@@ -39,6 +39,7 @@ import {
 import { isListLikeWidgetType, isUIListItemTemplateChild } from "@shared/types/ui-editor/list";
 import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemContext";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
+import { getUIPageParams } from "@shared/types/ui-editor/pageParams";
 import { findUIStructField } from "@shared/types/ui-editor/struct";
 import { uiTextSampleCauseOf } from "@shared/types/ui-editor/textSample";
 import {
@@ -931,6 +932,90 @@ function runListItemFieldMissing(ctx: LintContext): LintFinding[] {
 }
 
 // ---------------------------------------------------------------------------
+// ui/page-prop-undeclared, ui/page-param-unknown
+// ---------------------------------------------------------------------------
+
+/**
+ * A list on a page showing a page prop the page does not declare as a parameter.
+ *
+ * The list draws its rows from the value the page was opened with under that name, and nothing tells
+ * whoever opens the page to give one: the nodes that open it grow an input per declared parameter and
+ * none for this, so the list shows its preview rows in the editor and nothing in the game. It arises
+ * from renaming or removing a parameter, from a page built before pages declared parameters, and from
+ * pasting the list out of another page.
+ *
+ * Only on a page. A Game UI is opened by the player with nothing, and a list inside a component is
+ * drawn on whichever page places it, so neither has one declaration to ask.
+ */
+function runPagePropUndeclared(ctx: LintContext): LintFinding[] {
+    const document = ctx.uiDocument;
+    if (!document) {
+        return [];
+    }
+    const findings: LintFinding[] = [];
+    for (const { surface, element } of listSurfaceElements(document)) {
+        if (surface.kind !== "appSurface" || !isListLikeWidgetType(element.type)) {
+            continue;
+        }
+        const binding = elementProps(element).itemsBinding as { kind?: unknown; key?: unknown } | undefined;
+        const name = binding?.kind === "pageProp" && typeof binding.key === "string" ? binding.key.trim() : "";
+        if (!name || getUIPageParams(surface).some(param => param.name === name)) {
+            continue;
+        }
+        findings.push({
+            ruleId: "ui/page-prop-undeclared",
+            messageKey: "lint.rule.uiPagePropUndeclared.message",
+            messageParams: { name },
+            location: surfaceLocation(surface, element),
+            target: surfaceTarget(surface, element),
+        });
+    }
+    return findings;
+}
+
+/**
+ * A Page widget giving the page it shows a value under a name the page does not declare.
+ *
+ * Once a page declares its parameters, they are what it reads, so a value under any other name
+ * reaches nothing on it - most often a parameter renamed on the page after the widget was filled in,
+ * which leaves the renamed one at its default with no sign why. A page that declares nothing is not
+ * judged: its props are whatever its readers agreed on, as they always were.
+ */
+function runPageParamUnknown(ctx: LintContext): LintFinding[] {
+    const document = ctx.uiDocument;
+    if (!document) {
+        return [];
+    }
+    const findings: LintFinding[] = [];
+    for (const site of listUIFrameSites(document)) {
+        const props = getUIFrameWidgetProps(site.element);
+        const target = props.targetSurfaceId
+            ? document.surfaces.find(surface => surface.id === props.targetSurfaceId)
+            : undefined;
+        const declared = getUIPageParams(target);
+        if (declared.length === 0) {
+            continue;
+        }
+        for (const name of Object.keys(props.params)) {
+            if (declared.some(param => param.name === name)) {
+                continue;
+            }
+            const filed = frameSiteLocation(document, site);
+            if (!filed) {
+                break;
+            }
+            findings.push({
+                ruleId: "ui/page-param-unknown",
+                messageKey: "lint.rule.uiPageParamUnknown.message",
+                messageParams: { name },
+                ...filed,
+            });
+        }
+    }
+    return findings;
+}
+
+// ---------------------------------------------------------------------------
 // ui/component-param-missing
 // ---------------------------------------------------------------------------
 
@@ -1355,6 +1440,24 @@ export const UI_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "warning",
         slug: "uiComponentParamMissing",
         run: ctx => runComponentParamMissing(ctx),
+    },
+    {
+        id: "ui/page-prop-undeclared",
+        category: "ui",
+        // A warning, beside the missing item field: the page draws, and what is lost is the rows one
+        // list was meant to show. An author half-way through declaring a page's parameters should not
+        // have the build refused.
+        defaultSeverity: "warning",
+        slug: "uiPagePropUndeclared",
+        run: ctx => runPagePropUndeclared(ctx),
+    },
+    {
+        id: "ui/page-param-unknown",
+        category: "ui",
+        // A warning: the page draws, with the parameter the value was meant for at its default.
+        defaultSeverity: "warning",
+        slug: "uiPageParamUnknown",
+        run: ctx => runPageParamUnknown(ctx),
     },
     {
         id: "ui/gesture-answered-twice",

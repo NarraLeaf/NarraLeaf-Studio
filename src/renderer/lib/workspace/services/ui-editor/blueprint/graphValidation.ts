@@ -27,8 +27,10 @@ import {
     isStoryActionCallHeadType,
     readBlueprintFnSignatureSnapshot,
     BLUEPRINT_NODE_PARAM_FIELD,
+    BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
 } from "@shared/types/blueprint/graph";
+import { getActiveUIPageParam } from "@shared/types/ui-editor/pageParams";
 import {
     collectDeclaredBlueprintFns,
     collectExecReachableNodeIds,
@@ -53,6 +55,7 @@ import {
     analyzeBlueprintStructTypes,
     applyBlueprintStructTypes,
     buildBlueprintStructTypeContext,
+    pageSurfaceIdOf,
     type BlueprintNodeStructTypes,
 } from "./graphStructTypeInference";
 import { blueprintStructName, formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
@@ -880,6 +883,22 @@ export function validateBlueprintGraphIr(
                     severity: "warning",
                     code: "node.saved_variable_id_invalid",
                     message: translate("blueprint.diagnostics.node.savedVariableIdInvalid", { node: nid }),
+                    target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
+                });
+            }
+        }
+        // A `Get Page Param` whose parameter the page no longer declares reads nothing at run time.
+        // Only where the graph belongs to a page: anywhere else there is no declaration to ask.
+        if (n.type === BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM) {
+            const paramId = String(n.params?.paramId ?? "").trim();
+            const surfaceId = pageSurfaceIdOf(ctx.blueprintOwner);
+            if (paramId && surfaceId && !getActiveUIPageParam(surfaceId, paramId)) {
+                out.push({
+                    severity: "warning",
+                    code: "node.page_param_missing",
+                    message: translate("blueprint.diagnostics.node.pageParamMissing", {
+                        node: def ? resolveBlueprintNodeTitle(def.displayName, translate) : nid,
+                    }),
                     target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
                 });
             }

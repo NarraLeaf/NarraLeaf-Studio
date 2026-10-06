@@ -28,6 +28,7 @@
  */
 
 import type { UISurface } from "@shared/types/ui-editor/document";
+import { withUIPageParamDefaults } from "@shared/types/ui-editor/pageParams";
 import type { DevModeBundle } from "@shared/types/devMode";
 import {
     createDevModeBlueprintHostApi,
@@ -69,6 +70,9 @@ export function buildPageHostAdapterBundle(
 ): HostAdapterBundle {
     const { core, capabilities, bundle } = inputs;
     const runtimeScopeId = entry.runtimeScopeId;
+    // The props as the page reads them: what it was opened with, over the defaults it declares.
+    // Once, here, so its blueprints, its value bindings and a script all read the same values.
+    const pageProps = withUIPageParamDefaults(surface, entry.props);
     let hostAdapter: UIHostAdapter | null = null;
     const hostApi = createDevModeBlueprintHostApi(buildGameHostApiOptions(capabilities, {
         document: bundle.ui.uidoc,
@@ -76,7 +80,7 @@ export function buildPageHostAdapterBundle(
         emit: event => core.debug.emit(event),
         activeSurfaceId: surface.id,
         runtimeScopeId,
-        pageProps: entry.props,
+        pageProps,
         // How the page was pushed decides it: an entry opened as a game overlay is drawn over a
         // running playthrough, and one opened as a page is not.
         isGameOverlay: () => entry.presentation === "gameOverlay",
@@ -103,7 +107,7 @@ export function buildPageHostAdapterBundle(
             get: key => core.scopeBridge.globalGet(key),
             subscribe: listener => core.scopeBridge.subscribeGlobals(listener),
         },
-        pageProps: entry.props,
+        pageProps,
     };
     return { hostAdapter, bindingContext, runtimeScopeId };
 }

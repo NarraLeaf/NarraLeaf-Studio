@@ -7,6 +7,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_GAME_START_STORY,
     BLUEPRINT_NODE_PARAM_FIELD,
+    BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
     isBlueprintEventDispatchHeadType,
     isStoryActionCallHeadType,
@@ -44,8 +45,10 @@ import { assetNameGapTarget } from "../../workspace/services/references/referenc
 import {
     analyzeBlueprintStructTypes,
     buildBlueprintStructTypeContext,
+    pageSurfaceIdOf,
     type BlueprintNodeStructTypes,
 } from "../../workspace/services/ui-editor/blueprint/graphStructTypeInference";
+import { getUIPageParams } from "@shared/types/ui-editor/pageParams";
 import { blueprintStructNameParam } from "../../ui-editor/blueprint-nodes/structTypeLabels";
 import { blueprintNodeTitleKey } from "@/apps/workspace/modules/blueprint-lite/blueprintNodeI18n";
 import { anchorComponentId, anchorElementId } from "@shared/blueprint/ownerShape";
@@ -157,6 +160,8 @@ export const UNCHECKED_OPTIONS_SOURCES: ReadonlySet<string> = new Set([
     // The same, for Get Field: its fields are those of the one struct it reads, and
     // `blueprint/field-missing` asks against that struct.
     "structFields",
+    // Scoped to the page that owns the blueprint; `blueprint/page-param-missing` asks against it.
+    "pageParams",
 ]);
 
 const REFERENCE_MESSAGE_KEY: Readonly<Record<BlueprintReferenceKind, TranslationKey>> = {
@@ -974,6 +979,60 @@ function runListShapeMismatch(ctx: LintContext): LintFinding[] {
     return findings;
 }
 
+// ---------------------------------------------------------------------------
+// blueprint/page-param-missing
+// ---------------------------------------------------------------------------
+
+/**
+ * A `Get Page Param` reading a parameter its page no longer declares.
+ *
+ * It reads nothing at run time - the parameter has no name to be read by - and the card still shows
+ * the dropdown it was set from, so the graph looks finished. It arises from removing the parameter on
+ * the page, and from pasting the node into a graph of another page.
+ *
+ * Only in a graph that belongs to a page, the only place the node is offered and the only place a
+ * declaration can be asked. A warning: the page runs, and what is lost is the value it was meant to
+ * read.
+ */
+function runPageParamMissing(ctx: LintContext): LintFinding[] {
+    const document = ctx.uiDocument;
+    if (!document) {
+        return [];
+    }
+    registerCoreBlueprintNodes();
+    const findings: LintFinding[] = [];
+    for (const site of listBlueprintGraphSites(ctx.blueprintDocument)) {
+        const surfaceId = pageSurfaceIdOf(site.owner);
+        if (!surfaceId) {
+            continue;
+        }
+        const declared = getUIPageParams(document.surfaces.find(surface => surface.id === surfaceId));
+        let live: ReadonlySet<string> | null = null;
+        for (const node of Object.values(site.ir.nodes ?? {})) {
+            const paramId = node.type === BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM && typeof node.params?.paramId === "string"
+                ? node.params.paramId.trim()
+                : "";
+            if (!paramId || declared.some(param => param.id === paramId)) {
+                continue;
+            }
+            live ??= collectLiveBlueprintGraphNodeIds(site.ir);
+            if (!live.has(node.id)) {
+                continue;
+            }
+            const titleKey = blueprintNodeTitleKey(blueprintNodeDisplayName(node.type));
+            findings.push({
+                ruleId: "blueprint/page-param-missing",
+                messageKey: "lint.rule.blueprintPageParamMissing.message" as TranslationKey,
+                messageParams: { node: blueprintNodeDisplayName(node.type) },
+                ...(titleKey ? { messageParamKeys: { node: titleKey } } : {}),
+                location: blueprintLocation(site, node.id),
+                target: blueprintNodeJumpTarget(site, node.id),
+            });
+        }
+    }
+    return findings;
+}
+
 /** The field this node names and its shape does not have, or null when there is none. */
 function missingFieldName(node: BlueprintGraphNode, info: BlueprintNodeStructTypes): string | null {
     if (node.type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD) {
@@ -1113,6 +1172,14 @@ export const BLUEPRINT_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "warning",
         slug: "blueprintListShapeMismatch",
         run: ctx => runListShapeMismatch(ctx),
+    },
+    {
+        id: "blueprint/page-param-missing",
+        category: "blueprint",
+        // A warning, beside a missing field: the node runs and reads nothing.
+        defaultSeverity: "warning",
+        slug: "blueprintPageParamMissing",
+        run: ctx => runPageParamMissing(ctx),
     },
     {
         id: "blueprint/assembled-asset-name",

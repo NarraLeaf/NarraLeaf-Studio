@@ -106,6 +106,7 @@ type ProjectMember =
     | "setEntrySurface"
     | "renameSurface"
     | "updateSurface"
+    | "setPageParams"
     | "duplicateSurface"
     | "importTemplateBundle"
     | "createEmptyComponent"
@@ -175,6 +176,8 @@ export class ComponentDocumentServiceAdapter implements UIDocumentServiceSurface
     public readonly setEntrySurface = this.project("setEntrySurface");
     public readonly renameSurface = this.project("renameSurface");
     public readonly updateSurface = this.project("updateSurface");
+    // A page's own record; a definition is no page, and its editor never shows the page inspector.
+    public readonly setPageParams = this.project("setPageParams");
     public readonly duplicateSurface = this.project("duplicateSurface");
     public readonly importTemplateBundle = this.project("importTemplateBundle");
     public readonly createEmptyComponent = this.project("createEmptyComponent");
