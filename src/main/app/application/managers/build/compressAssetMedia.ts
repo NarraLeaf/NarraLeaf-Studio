@@ -16,7 +16,7 @@ import { probeDurationUs, type ProbeReport } from "@shared/utils/mediaSupport";
 import { probeMediaReport, type ProbeRunner } from "../media/mediaProbe";
 import { compressionArgs, startMediaEncode, type MediaTranscodeOptions } from "../media/mediaTranscode";
 import { resolveFfmpegBinary, type FfmpegResolveOptions, type FfmpegResolverApp } from "../media/ffmpegTool";
-import { createKeyedTurns, forEachInLanes, resolveBuildLanes } from "./buildLanes";
+import { createKeyedTurns, forEachInLanes, resolveBuildLanes } from "../../../../buildWorker/buildLanes";
 
 /**
  * Re-encode the project's sound and video once, before anything is compiled, and

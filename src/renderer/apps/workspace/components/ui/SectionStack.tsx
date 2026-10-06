@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { HTMLAttributes, ReactNode, Ref } from "react";
 import { createPortal } from "react-dom";
 import { ChevronRight } from "lucide-react";
@@ -19,6 +19,31 @@ export type { SectionStackSpec } from "./sectionStackLayout";
 
 /** How far one arrow key moves a focused seam - the editor split's step. */
 const KEYBOARD_STEP_PX = 24;
+
+/**
+ * How long a section takes to open or fold - the Accordion's. Every body moves over the same time
+ * and the same curve, so their heights keep adding up to the panel's the whole way and the headers
+ * below slide to where they end up rather than jumping there.
+ */
+const SECTION_MOTION_MS = 200;
+const SECTION_MOTION = `height ${SECTION_MOTION_MS}ms ease-out`;
+
+type SectionMotion = {
+    /**
+     * The heights the bodies are leaving, held for one painted frame before they set off; null once
+     * they have. Opening a section costs a render of everything in it, and a transition started
+     * inside that render has already used up a third of its time by the first frame anybody sees -
+     * the header jumps most of the way and only then eases in, which is the jump the motion is for
+     * taking away. Starting from a frame that is already on screen, the whole of it is seen.
+     */
+    from: readonly number[] | null;
+    /** Which sections are folding closed, by index: their bodies stay up, shrinking, until the motion ends. */
+    folding: readonly boolean[];
+};
+
+function sameFlags(a: readonly boolean[], b: readonly boolean[]): boolean {
+    return a.length === b.length && a.every((flag, index) => flag === b[index]);
+}
 
 /** Body heights the author chose, by section id. A missing id is a section they never sized. */
 export type SectionStackSizes = Readonly<Record<string, number | undefined>>;
@@ -42,6 +67,10 @@ type DividerSlot = { kind: "none" } | { kind: "line" } | { kind: "sash"; upper: 
 
 type SectionSlot = {
     open: boolean;
+    /** Whether the body is drawn: while the section is open, and while it folds. */
+    mounted: boolean;
+    /** Whether the body's height is moving rather than set - a section opening or folding. */
+    animate: boolean;
     /** The body's height in CSS pixels. */
     size: number;
     toggle: () => void;
@@ -98,6 +127,9 @@ function useMeasuredHeight(): [number | null, (node: HTMLDivElement | null) => v
  * never carries another one, or the whole panel, along with it. How the height is shared is
  * `resolveSectionStackLayout`.
  *
+ * Opening or folding a section animates; nothing else does. A drag, an arrow key on a seam and a
+ * panel that changes height all set the bodies at once, the way VS Code's panes behave.
+ *
  * Open states and sizes belong to the caller, which decides where they are remembered - a project's
  * panel state, usually. Sizes are reported once per gesture, never per pointer move.
  *
@@ -139,6 +171,47 @@ export function SectionStack({
         return resolveSectionStackLayout(height - sectionStackChromeHeight(openFlags), entries, fillIndex);
     }, [fillIndex, height, openFlags, sections, sizes]);
 
+    /** The body heights last put on screen - where a section that starts to open or fold moves from. */
+    const committedSizes = useRef<readonly number[]>(laidOut);
+
+    /**
+     * A section opening or folding, from the render that changes which ones are open until the
+     * bodies have had the time to get there. Set while rendering rather than in an effect, so the
+     * commit that opens a body is already the one that holds it at nothing.
+     */
+    const [motion, setMotion] = useState<SectionMotion | null>(null);
+    const [lastFlags, setLastFlags] = useState(openFlags);
+    if (!sameFlags(lastFlags, openFlags)) {
+        setLastFlags(openFlags);
+        // Before the panel is measured nothing has been painted, so there is nothing to move from.
+        // Mid-motion, the bodies hold their course for the frame and then turn towards the new
+        // heights from wherever they have got to.
+        setMotion(height === null || lastFlags.length !== openFlags.length
+            ? null
+            : {
+                from: motion?.from ?? committedSizes.current,
+                folding: openFlags.map((isOpen, index) =>
+                    !isOpen && (lastFlags[index] === true || motion?.folding[index] === true)),
+            });
+    }
+    useEffect(() => {
+        if (!motion) {
+            return;
+        }
+        if (motion.from) {
+            // A frame, then the targets: the update this schedules is rendered after that frame
+            // has been painted, so the transitions start from heights that are already on screen.
+            const frame = requestAnimationFrame(() => {
+                setMotion(current => (current === motion ? { ...motion, from: null } : current));
+            });
+            return () => cancelAnimationFrame(frame);
+        }
+        const timer = window.setTimeout(() => {
+            setMotion(current => (current === motion ? null : current));
+        }, SECTION_MOTION_MS + 50);
+        return () => window.clearTimeout(timer);
+    }, [motion]);
+
     /**
      * The sizes during a drag, which the stack holds itself and reports only on release. Set on the
      * first move rather than on the press, so a press that does not move - the first half of a
@@ -148,7 +221,10 @@ export function SectionStack({
     const liveRef = useRef<number[] | null>(null);
     const latest = useRef({ laidOut, sections, sizes, openFlags, onSizesChange });
     latest.current = { laidOut, sections, sizes, openFlags, onSizesChange };
-    const shown = live ?? laidOut;
+    const shown = live ?? motion?.from ?? laidOut;
+    useLayoutEffect(() => {
+        committedSizes.current = shown;
+    });
 
     const beginDrag = useCallback(() => {
         liveRef.current = latest.current.laidOut.slice();
@@ -208,6 +284,9 @@ export function SectionStack({
             }
             return {
                 open: openFlags[index]!,
+                mounted: openFlags[index]! || motion?.folding[index] === true,
+                // Never under a drag: the seam has to stay under the pointer.
+                animate: motion !== null && live === null,
                 size: shown[index] ?? 0,
                 toggle: () => onOpenChange(sectionId, !openFlags[index]),
                 divider,
@@ -230,7 +309,7 @@ export function SectionStack({
                 />
             );
         },
-    }), [beginDrag, dragBy, endDrag, onOpenChange, openFlags, reset, sections, shown, t]);
+    }), [beginDrag, dragBy, endDrag, live, motion, onOpenChange, openFlags, reset, sections, shown, t]);
 
     return (
         <SectionStackContext.Provider value={context}>
@@ -290,40 +369,50 @@ export function StackSection({
     if (!context || !slot) {
         return null;
     }
-    const { open, size, toggle, divider } = slot;
+    const { open, mounted, animate, size, toggle, divider } = slot;
 
     return (
         <>
             {divider.kind === "sash" ? context.renderSash(divider.upper, divider.lower) : null}
             {divider.kind === "line" ? <div className="shrink-0 border-t border-edge" aria-hidden /> : null}
             <div ref={ref} data-section={sectionId} className={cn("flex shrink-0 flex-col", className)} {...rootProps}>
-                {/* Exactly `h-9`, border included: the layout counts every header as
-                    SECTION_HEADER_HEIGHT when it shares the panel out. */}
-                <PanelHeader size="sm" className="h-9 gap-1 bg-surface-sunken pl-1.5 pr-2">
-                    <button
-                        type="button"
-                        className="flex h-full min-w-0 flex-1 items-center gap-1 rounded-md pl-0.5 text-left cursor-default"
-                        onClick={toggle}
-                        aria-expanded={open}
-                        aria-controls={open ? bodyId : undefined}
-                    >
-                        {/* The Accordion's chevron: right when closed, a quarter turn down when open. */}
-                        <ChevronRight
-                            className="h-4 w-4 shrink-0 text-fg-muted transition-[rotate] duration-150"
-                            style={{ rotate: open ? "90deg" : "0deg" }}
-                            aria-hidden
-                        />
-                        <span className="min-w-0 truncate text-xs font-semibold text-fg">{title}</span>
-                        {count !== undefined ? <span className="shrink-0 text-2xs text-fg-subtle">{count}</span> : null}
-                    </button>
-                    {open && actions ? <div className="flex shrink-0 items-center gap-0.5">{actions}</div> : null}
-                </PanelHeader>
-                {open ? (
+                {/* The sunken surface sits under the header rather than on it, so the hover fill -
+                    the one every row and the Accordion's header use - lands on top of it instead of
+                    replacing it. The whole row lights, actions included: it is one target. */}
+                <div className="shrink-0 bg-surface-sunken">
+                    {/* Exactly `h-9`, border included: the layout counts every header as
+                        SECTION_HEADER_HEIGHT when it shares the panel out. */}
+                    <PanelHeader size="sm" className="h-9 gap-1 pl-1.5 pr-2 transition-colors duration-150 hover:bg-fill">
+                        <button
+                            type="button"
+                            className="flex h-full min-w-0 flex-1 items-center gap-1 rounded-md pl-0.5 text-left cursor-default"
+                            onClick={toggle}
+                            aria-expanded={open}
+                            aria-controls={open ? bodyId : undefined}
+                        >
+                            {/* The Accordion's chevron: right when closed, a quarter turn down when
+                                open, turning over the time the body takes to get there. */}
+                            <ChevronRight
+                                className="h-4 w-4 shrink-0 text-fg-muted transition-[rotate] duration-200"
+                                style={{ rotate: open ? "90deg" : "0deg" }}
+                                aria-hidden
+                            />
+                            <span className="min-w-0 truncate text-xs font-semibold text-fg">{title}</span>
+                            {count !== undefined ? <span className="shrink-0 text-2xs text-fg-subtle">{count}</span> : null}
+                        </button>
+                        {open && actions ? <div className="flex shrink-0 items-center gap-0.5">{actions}</div> : null}
+                    </PanelHeader>
+                </div>
+                {mounted ? (
                     <div
                         id={bodyId}
                         data-section-body={sectionId}
                         className={cn("flex min-h-0 flex-col overflow-hidden", bodyClassName)}
-                        style={{ height: size }}
+                        // Inline rather than a class: a body's own `transition-colors` would win a
+                        // class merge and stop the height from moving.
+                        style={{ height: size, transition: animate ? SECTION_MOTION : undefined }}
+                        // A folding body is on its way out: nothing in it takes focus or a click.
+                        inert={!open}
                     >
                         {children}
                     </div>

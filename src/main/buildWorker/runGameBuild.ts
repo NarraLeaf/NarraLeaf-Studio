@@ -1,9 +1,11 @@
+import fsPromises from "fs/promises";
 import path from "path";
 import { build, Platform, Arch, type AfterPackContext, type Configuration } from "electron-builder";
 import { perTargetFileSets } from "./perTargetPayload";
 import { installLinuxLauncher, LINUX_PROGRAM_SUFFIX } from "./linuxLauncher";
 import {
     currentGameBuildPlatform,
+    desktopArtifactFileName,
     gameBuildArtifactNamePattern,
     hostPackagesWithoutPlatformTools,
     type GameBuildArch,
@@ -29,6 +31,7 @@ import { runMobileRepack } from "./mobile/runMobileRepack";
 import { packageWebSite } from "./packageWebSite";
 import type { GameBuildWorkerConfig, GameBuildWorkerFuses, GameBuildWorkerTarget } from "./protocol";
 import { ensureWinCodeSignCache, withBinariesMirrorEnv } from "./winCodeSignCache";
+import { writeFolderZip } from "./desktopZip";
 
 /**
  * The electron-builder invocation behind a production game build. Pure with
@@ -341,18 +344,44 @@ async function packageDesktopTargets(config: GameBuildWorkerConfig, log: GameBui
             // installer does (rcedit lives in the same bundle).
             await ensureWinCodeSignCache(log, runConfig.electronBuilderBinariesMirror);
         }
+        // A zip Studio writes itself is left out of what electron-builder is asked for; it still
+        // lays the app out (a `dir` target, when nothing else is wanted) and the folder it leaves is
+        // what goes into the zip once it has signed what it signs.
+        const zipsItself = studioWritesZip(target);
+        const builderFormats = zipsItself ? target.formats.filter(format => format !== "zip") : target.formats;
+        const configuration = builderConfiguration(runConfig, target, log);
+        // A holder rather than a plain local: it is set inside the hook, which the compiler cannot follow.
+        const laidOut: { appOutDir: string | null } = { appOutDir: null };
+        const ownAfterPack = configuration.afterPack;
         const produced = await build({
             // Exactly one arch per target: a multi-arch NSIS request would be
             // folded into a single installer whose name drops the ${arch} macro,
             // which the dialog's artifact preview could not have predicted.
             targets: BUILDER_PLATFORMS[target.platform].createTarget(
-                target.formats.map(format => BUILDER_TARGET_NAMES[format]),
+                (builderFormats.length > 0 ? builderFormats : ["dir" as const]).map(format => BUILDER_TARGET_NAMES[format]),
                 BUILDER_ARCHS[target.arch],
             ),
             projectDir: appDir,
-            config: builderConfiguration(runConfig, target, log),
+            config: zipsItself
+                ? {
+                    ...configuration,
+                    afterPack: async context => {
+                        laidOut.appOutDir = context.appOutDir;
+                        if (typeof ownAfterPack === "function") {
+                            await ownAfterPack(context);
+                        }
+                    },
+                }
+                : configuration,
         });
-        return produced.map(artifact => path.resolve(artifact));
+        const artifacts = produced.map(artifact => path.resolve(artifact));
+        if (zipsItself) {
+            if (!laidOut.appOutDir) {
+                throw new Error(`electron-builder laid out no ${target.platform} app to zip`);
+            }
+            artifacts.push(await writeAppZip(runConfig, target, laidOut.appOutDir, log));
+        }
+        return artifacts;
     };
     await withBinariesMirrorEnv(config.electronBuilderBinariesMirror, () =>
         withNotarizationEnv(notarizationForTargets(config.targets), () =>
@@ -383,6 +412,43 @@ async function packageDesktopTargets(config: GameBuildWorkerConfig, log: GameBui
 }
 
 /**
+ * Whether this target's zip is written by Studio rather than by electron-builder.
+ *
+ * electron-builder hands a zip to 7-Zip, whose Deflate gives each file one thread, and a game's zip
+ * is two very large files - minutes on one core. Studio's writer compresses every file in pieces on
+ * all of them (see parallelZip). Windows only, for now: a Windows app is plain files with nothing a
+ * zip has to take care to keep. A macOS bundle needs its links and modes kept, and a Linux app its
+ * modes; on their own hosts those zips stay with electron-builder until each has been checked on its
+ * platform, and from Windows they were always Studio's (packWithoutPlatformTools), now on the same
+ * writer.
+ */
+export function studioWritesZip(target: Pick<GameBuildWorkerTarget, "platform" | "formats">): boolean {
+    return target.platform === "windows" && target.formats.includes("zip");
+}
+
+/** The laid-out app in `appOutDir` as the zip electron-builder's zip target would have named. */
+async function writeAppZip(
+    config: GameBuildWorkerConfig,
+    target: GameBuildWorkerTarget,
+    appOutDir: string,
+    log: GameBuildLogger,
+): Promise<string> {
+    const { version } = JSON.parse(await fsPromises.readFile(path.join(config.appDir as string, "package.json"), "utf8")) as {
+        version: string;
+    };
+    const file = path.join(config.outputDir, desktopArtifactFileName({
+        artifactBaseName: config.artifactBaseName,
+        version,
+        platform: target.platform,
+        arch: target.arch,
+        format: "zip",
+    }));
+    log("info", `writing the ${target.platform} zip, compressed on every core`);
+    await writeFolderZip(appOutDir, file);
+    return file;
+}
+
+/**
  * The level electron-builder's 7-Zip runs at, and the only way to set it.
  *
  * Left to `compression: "maximum"`, electron-builder adds `-mfb=258 -mpass=15` to every zip: fifteen
@@ -392,6 +458,9 @@ async function packageDesktopTargets(config: GameBuildWorkerConfig, log: GameBui
  * Measured on a real 500 MB project, those two passes held the zip for six and a half minutes on one
  * core, to make the executable 7 KB smaller than 7-Zip's own highest level does in a third of the
  * time, and to make the store not one byte smaller than it already was.
+ *
+ * A Windows zip no longer goes through 7-Zip at all (see studioWritesZip); this is the level the
+ * zips still made by electron-builder - macOS and Linux on their own hosts - are written at.
  *
  * Level 9 is that highest level. It changes nothing else electron-builder writes: the installer's
  * payload and the other archive formats are at 9 already, and a dmg keeps the format "maximum"

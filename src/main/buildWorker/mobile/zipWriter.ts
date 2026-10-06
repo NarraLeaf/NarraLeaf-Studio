@@ -30,10 +30,29 @@ import {
  * repack orchestration layer (and by tests, which use in-memory ones).
  */
 
+/**
+ * zlib's CRC-32, present from Node 22.2 (and so in every Electron Studio ships), absent from older
+ * runtimes a test might run under. Same polynomial and initial value as the table in zipModel.
+ */
+const NATIVE_CRC32: ((data: Buffer, value?: number) => number) | null =
+    typeof (zlib as { crc32?: unknown }).crc32 === "function"
+        ? (zlib as unknown as { crc32: (data: Buffer, value?: number) => number }).crc32
+        : null;
+
 const MAX_UINT32 = 0xffffffff;
 const MAX_UINT16 = 0xffff;
 
 const ZIP64_EXTRA_ID = 0x0001;
+
+/**
+ * Whether a Deflate stream encoded elsewhere might come out at 4 GiB or more, which only its end can
+ * say. A stream that falls back to stored blocks for what does not shrink grows by five bytes per
+ * 64 KiB at worst, so the margin is that, and a little: an entry this close to the line gets zip64
+ * size fields up front, rather than finding out after its header is written that they do not fit.
+ */
+function deflatedMayNeedZip64(size: number): boolean {
+    return size + Math.ceil(size / 8192) + 4096 >= MAX_UINT32;
+}
 
 /** Byte sink the writer emits into. `patch` must not move `position`. */
 export interface ZipOutput {
@@ -91,6 +110,19 @@ export type ZipEntrySource =
         compressedSize: number;
         uncompressedSize: number;
         open: () => AsyncIterable<Buffer> | NodeJS.ReadableStream;
+    }
+    | {
+        /**
+         * A Deflate stream encoded somewhere else - several threads at once, by `parallelZip` - and
+         * handed over in order. Unlike a raw entry its CRC and compressed size are only known once the
+         * last piece has gone past, so they are patched in afterwards like a stream's; `size` is the
+         * uncompressed length, known up front from the file.
+         */
+        kind: "deflated";
+        size: number;
+        open: () => AsyncIterable<Buffer>;
+        /** The CRC-32 of the uncompressed bytes, read once `open()` is exhausted. */
+        crc32: () => number;
     };
 
 export type ZipWriteEntry = {
@@ -185,12 +217,19 @@ async function pumpData(
     deflate: boolean,
 ): Promise<{ crc32: number; uncompressedSize: number; compressedSize: number }> {
     let crcState = CRC32_INITIAL;
+    let nativeCrc = 0;
     let uncompressedSize = 0;
     let compressedSize = 0;
     async function* tapped(): AsyncIterable<Buffer> {
         for await (const raw of data) {
             const chunk = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
-            crcState = crc32Update(crcState, chunk);
+            // zlib's own CRC where the runtime has it: the same value, without a byte-at-a-time loop
+            // over every file in the archive on the one thread that is also writing it.
+            if (NATIVE_CRC32) {
+                nativeCrc = NATIVE_CRC32(chunk, nativeCrc);
+            } else {
+                crcState = crc32Update(crcState, chunk);
+            }
             uncompressedSize += chunk.length;
             yield chunk;
         }
@@ -206,7 +245,7 @@ async function pumpData(
     } else {
         await pipeline(Readable.from(tapped()), sink);
     }
-    return { crc32: crc32Final(crcState), uncompressedSize, compressedSize };
+    return { crc32: NATIVE_CRC32 ? nativeCrc : crc32Final(crcState), uncompressedSize, compressedSize };
 }
 
 /** zip64 extra-field block carrying the given (already saturated) values. */
@@ -320,6 +359,10 @@ export async function writeZip(
             knownCompressedSize = source.compressedSize;
             uncompressedSize = source.uncompressedSize;
             openData = () => toIterable(source.open());
+        } else if (source.kind === "deflated") {
+            method = ZIP_METHOD_DEFLATE;
+            uncompressedSize = source.size;
+            openData = () => source.open();
         } else if (source.kind === "buffer") {
             const wantsDeflate = !entry.symlink && (entry.method ?? defaultMethodForName(entry.name)) === "deflate";
             uncompressedSize = source.data.length;
@@ -351,7 +394,8 @@ export async function writeZip(
 
         // Local-header zip64 extra when a known size saturates its field.
         const sizesNeedZip64 = uncompressedSize >= MAX_UINT32
-            || (knownCompressedSize !== undefined && knownCompressedSize >= MAX_UINT32);
+            || (knownCompressedSize !== undefined && knownCompressedSize >= MAX_UINT32)
+            || (source !== null && source.kind === "deflated" && deflatedMayNeedZip64(uncompressedSize));
         if (sizesNeedZip64) {
             requireZip64(`entry "${entry.name}" exceeds 4 GiB`);
         }
@@ -411,6 +455,11 @@ export async function writeZip(
                 }
                 finalCrc = pumped.crc32;
                 finalCompressedSize = pumped.compressedSize;
+            } else if (source !== null && source.kind === "deflated") {
+                // What went past was already encoded; how much of it there was is the compressed size,
+                // and the CRC of what it decodes to is the source's to give.
+                finalCrc = source.crc32();
+                finalCompressedSize = pumped.compressedSize;
             } else if (pumped.compressedSize !== knownCompressedSize) {
                 throw new Error(
                     `"${entry.name}": source produced ${pumped.compressedSize} bytes, expected ${knownCompressedSize}`,
@@ -430,6 +479,13 @@ export async function writeZip(
                 const sizeFixup = Buffer.alloc(4);
                 sizeFixup.writeUInt32LE(finalCompressedSize >>> 0, 0);
                 await output.patch(localHeaderOffset + 18, sizeFixup);
+            } else if (knownCompressedSize === undefined) {
+                // A deflated entry with zip64 sizes: the local header's 32-bit fields hold the marker,
+                // and the compressed size goes into the second field of the zip64 extra, after the
+                // block's id and length and the uncompressed size.
+                const sizeFixup = Buffer.alloc(8);
+                sizeFixup.writeBigUInt64LE(BigInt(finalCompressedSize), 0);
+                await output.patch(localHeaderOffset + LOCAL_HEADER_SIZE + nameBytes.length + 4 + 8, sizeFixup);
             }
         }
 
