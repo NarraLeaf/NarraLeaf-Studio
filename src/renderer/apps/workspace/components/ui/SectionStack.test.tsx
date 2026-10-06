@@ -23,6 +23,7 @@ beforeEach(() => {
 afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    vi.useRealTimers();
 });
 
 function Panel({
@@ -63,8 +64,15 @@ function Panel({
 
 const bodyHeight = (container: HTMLElement, id: string) =>
     (container.querySelector(`[data-section-body="${id}"]`) as HTMLElement | null)?.style.height ?? null;
+const bodyTransition = (container: HTMLElement, id: string) =>
+    (container.querySelector(`[data-section-body="${id}"]`) as HTMLElement | null)?.style.transition ?? null;
 const toggle = (container: HTMLElement, title: string) =>
     [...container.querySelectorAll("button[aria-expanded]")].find(button => button.textContent?.startsWith(title))!;
+/** Lets the frame a section holds still for go by: the bodies set off on the one after it. */
+const nextFrame = () =>
+    act(() => {
+        vi.advanceTimersByTime(20);
+    });
 const sashes = (container: HTMLElement) => [...container.querySelectorAll('[role="separator"]')] as HTMLElement[];
 
 describe("SectionStack", () => {
@@ -77,13 +85,68 @@ describe("SectionStack", () => {
     });
 
     it("folds a section to its header, and the space goes back to the fill section", () => {
+        vi.useFakeTimers();
         const { container, getByText } = render(<Panel />);
         fireEvent.click(toggle(container, "Library"));
         expect(toggle(container, "Library").getAttribute("aria-expanded")).toBe("false");
-        expect(bodyHeight(container, "library")).toBeNull();
         expect(getByText("4")).toBeTruthy();
         expect(container.textContent).not.toContain("add");
+        nextFrame();
         expect(bodyHeight(container, "list")).toBe(`${700 - 108 - 1 - 100}px`);
+        // The body shrinks away rather than vanishing, and is gone once it has.
+        expect(bodyHeight(container, "library")).toBe("0px");
+        act(() => {
+            vi.advanceTimersByTime(300);
+        });
+        expect(bodyHeight(container, "library")).toBeNull();
+    });
+
+    it("animates every body while a section opens or folds, and at no other time", () => {
+        vi.useFakeTimers();
+        const { container } = render(<Panel initialOpen={{ list: true, library: false, actions: true }} />);
+        expect(bodyTransition(container, "list")).toBe("");
+
+        const listBefore = bodyHeight(container, "list");
+        fireEvent.click(toggle(container, "Library"));
+        // One frame where everything is still where it was, the opening body at nothing...
+        expect(bodyHeight(container, "library")).toBe("0px");
+        expect(bodyHeight(container, "list")).toBe(listBefore);
+        nextFrame();
+        // ...and then the one opening and the ones making room for it move together, so the
+        // headers between them slide rather than jump.
+        expect(bodyHeight(container, "library")).toBe("100px");
+        expect(bodyHeight(container, "list")).not.toBe(listBefore);
+        expect(bodyTransition(container, "library")).toContain("height");
+        expect(bodyTransition(container, "list")).toContain("height");
+        expect(bodyTransition(container, "actions")).toContain("height");
+
+        act(() => {
+            vi.advanceTimersByTime(300);
+        });
+        expect(bodyTransition(container, "list")).toBe("");
+        expect(bodyTransition(container, "library")).toBe("");
+    });
+
+    it("never animates a body under a seam being dragged", () => {
+        vi.useFakeTimers();
+        const { container } = render(<Panel initialOpen={{ list: true, library: false, actions: true }} />);
+        fireEvent.click(toggle(container, "Library"));
+        nextFrame();
+        const [, between] = sashes(container);
+        fireEvent.mouseDown(between!, { clientY: 400 });
+        act(() => {
+            document.dispatchEvent(new MouseEvent("mousemove", { clientY: 420 }));
+        });
+        expect(bodyTransition(container, "library")).toBe("");
+        expect(bodyTransition(container, "actions")).toBe("");
+    });
+
+    it("keeps a folding body out of reach", () => {
+        vi.useFakeTimers();
+        const { container } = render(<Panel />);
+        fireEvent.click(toggle(container, "Actions"));
+        const body = container.querySelector('[data-section-body="actions"]') as HTMLElement;
+        expect(body.hasAttribute("inert")).toBe(true);
     });
 
     it("draws a seam that resizes only between open bodies", () => {
