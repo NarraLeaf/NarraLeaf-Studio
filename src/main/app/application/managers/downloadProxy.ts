@@ -82,7 +82,14 @@ export function stripProxyEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     return next;
 }
 
-/** Put a proxy URL into the variables Node and electron-builder both honour. */
+/**
+ * Put a proxy URL into the variables Node and electron-builder both honour.
+ *
+ * Node's own `fetch` is only told to read them for an http(s) proxy. NODE_USE_ENV_PROXY makes
+ * undici build its dispatcher from HTTPS_PROXY, and it throws on a `socks5:` URL - every fetch in
+ * the worker would fail. app-builder reads the same variables and does speak SOCKS, so a SOCKS
+ * proxy still reaches the toolchain downloads while the worker's own fetches go direct.
+ */
 export function applyProxyUrlToEnv(env: NodeJS.ProcessEnv, proxyUrl: string): NodeJS.ProcessEnv {
     const next = stripProxyEnv(env);
     next.HTTP_PROXY = proxyUrl;
@@ -91,7 +98,9 @@ export function applyProxyUrlToEnv(env: NodeJS.ProcessEnv, proxyUrl: string): No
     next.http_proxy = proxyUrl;
     next.https_proxy = proxyUrl;
     next.all_proxy = proxyUrl;
-    next.NODE_USE_ENV_PROXY = "1";
+    if (/^https?:/i.test(proxyUrl)) {
+        next.NODE_USE_ENV_PROXY = "1";
+    }
     return next;
 }
 

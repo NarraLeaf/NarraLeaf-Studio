@@ -51,6 +51,14 @@ describe("worker env", () => {
         expect(env.NODE_USE_ENV_PROXY).toBe("1");
         expect(env.PATH).toBe("/bin");
     });
+
+    it("does not point Node's fetch at a SOCKS proxy it cannot speak", () => {
+        // undici throws on a socks5: URL in HTTPS_PROXY once NODE_USE_ENV_PROXY is set, so every
+        // fetch in the worker would fail. app-builder still reads the variables and speaks SOCKS.
+        const env = applyProxyUrlToEnv({ PATH: "/bin" }, "socks5://127.0.0.1:7897");
+        expect(env.HTTPS_PROXY).toBe("socks5://127.0.0.1:7897");
+        expect(env.NODE_USE_ENV_PROXY).toBeUndefined();
+    });
 });
 
 describe("currentUseSystemProxy", () => {
