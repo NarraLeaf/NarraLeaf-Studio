@@ -9,7 +9,8 @@ import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetS
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
-import { isBuiltinUIStructId } from "@shared/types/ui-editor/builtinStructs";
+import { BUILTIN_UI_STRUCTS, isBuiltinUIStructId } from "@shared/types/ui-editor/builtinStructs";
+import { blueprintStructName } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
 import {
     UI_STRUCT_FIELD_TYPES,
     coerceItemToStruct,
@@ -42,9 +43,11 @@ export function ListContentModal(props: {
     items: readonly unknown[];
     onFieldsChange: (fields: UIStructField[]) => void;
     onItemsChange: (items: unknown[]) => void;
+    /** One of the engine's shapes by id, or `null` for a shape of the list's own. */
+    onShapeChange: (shapeId: string | null) => void;
     generateFieldId: () => string;
 }): React.ReactNode {
-    const { isOpen, onClose, struct, structId, items, onFieldsChange, onItemsChange, generateFieldId } = props;
+    const { isOpen, onClose, struct, structId, items, onFieldsChange, onItemsChange, onShapeChange, generateFieldId } = props;
     const { t } = useTranslation();
     const freeze = useFreezeGuard(INTERFACE_DOCUMENT_PATHS);
     const fieldsLocked = isBuiltinUIStructId(structId);
@@ -58,6 +61,18 @@ export function ListContentModal(props: {
                 value,
                 label: t(`struct.type.${value}` as Parameters<typeof t>[0]),
             })),
+        [t],
+    );
+
+    // The list's own shape first, then the engine's by name: a list that shows endings, saves or
+    // history takes the shape the engine hands out instead of an author typing its field names.
+    const shapeOptions = useMemo(
+        () => [
+            { value: CUSTOM_SHAPE, label: t("struct.shape.custom") },
+            ...Object.keys(BUILTIN_UI_STRUCTS)
+                .map(id => ({ value: id, label: blueprintStructName(id, t) }))
+                .sort((a, b) => a.label.localeCompare(b.label)),
+        ],
         [t],
     );
 
@@ -188,12 +203,25 @@ export function ListContentModal(props: {
             <ModalBody>
                 <div className="flex flex-col gap-4">
                     <section className="flex flex-col gap-1.5">
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between gap-2">
                             <span className="text-xs font-medium text-fg-muted">{t("widgets.list.fields")}</span>
-                            {fieldsLocked ? (
-                                <span className="text-2xs text-fg-subtle">{t("struct.field.engineOwned")}</span>
-                            ) : null}
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-2xs text-fg-subtle">{t("struct.shape.label")}</span>
+                                <Select
+                                    size="sm"
+                                    className="w-40"
+                                    value={fieldsLocked && structId ? structId : CUSTOM_SHAPE}
+                                    options={shapeOptions}
+                                    portalMenu
+                                    disabled={readOnly}
+                                    ariaLabel={t("struct.shape.label")}
+                                    onChange={value => onShapeChange(value === CUSTOM_SHAPE ? null : String(value))}
+                                />
+                            </div>
                         </div>
+                        {fieldsLocked ? (
+                            <span className="text-2xs text-fg-subtle">{t("struct.field.engineOwned")}</span>
+                        ) : null}
                         {fields.map(field => (
                             <div key={field.id} className="flex items-center gap-1.5">
                                 <Input
@@ -353,6 +381,9 @@ export function ListContentModal(props: {
         </Modal>
     );
 }
+
+/** The shape picker's value for a list's own shape; no struct id is empty. */
+const CUSTOM_SHAPE = "";
 
 function readCell(item: unknown, key: string): unknown {
     return item && typeof item === "object" && !Array.isArray(item)

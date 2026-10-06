@@ -154,6 +154,7 @@ export type LintRuleId =
     | "blueprint/start-scene-foreign"
     | "blueprint/required-input-unwired"
     | "blueprint/field-missing"
+    | "blueprint/list-shape-mismatch"
     | "variables/undeclared"
     | "variables/unused"
     | "variables/name-collision"

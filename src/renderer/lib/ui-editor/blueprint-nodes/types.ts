@@ -480,6 +480,14 @@ export type BlueprintNodeDef = BlueprintNodeDeclaration & {
      */
     alternativeInputs?: readonly (readonly string[])[];
     /**
+     * Params the node keeps that no inspector field edits.
+     *
+     * Get Field remembers the struct it reads this way: the shape is set by what is first wired in
+     * (or by the add-node menu that made it) and is shown on the card as the type of its input pin,
+     * not as a picker. Listed so a tool writing the node by hand knows the key is the node's own.
+     */
+    storedParams?: readonly string[];
+    /**
      * Outputs whose type follows the items of an array input.
      *
      * The array nodes take any array and hand back the same items, so what comes out is whatever went
@@ -496,19 +504,45 @@ export type BlueprintNodeDef = BlueprintNodeDeclaration & {
      * Not on {@link BlueprintNodeDeclaration}: plugins declare their nodes through that type, and
      * which array nodes pass their items through is the host's own catalogue.
      */
-    /**
-     * Params the node keeps that no inspector field edits.
-     *
-     * Get Field remembers the struct it reads this way: the shape is set by what is first wired in
-     * (or by the add-node menu that made it) and is shown on the card as the type of its input pin,
-     * not as a picker. Listed so a tool writing the node by hand knows the key is the node's own.
-     */
-    storedParams?: readonly string[];
     elementTypeFlow?: {
         input: string;
         outputs: Readonly<Record<string, "array" | "item">>;
         keyPin?: string;
         keyValuePins?: readonly string[];
+    };
+    /**
+     * Data pins whose type is chosen by one of the node's own select params.
+     *
+     * `Get Property` set to Position answers a Vector2D and set to Opacity a number; the pin is
+     * declared `any` because it has to carry both, and this says which one it carries for the option
+     * picked, so the card shows it and a Vector2D wire is offered where a Vector2D goes. An option
+     * missing from `types` leaves the declared type.
+     *
+     * Worked out by `graphStructTypeInference.ts` alongside the array nodes, so it has the same
+     * standing: it only adds connections. A wire that was valid against the declared `any` stays
+     * valid, and the runtime never reads it.
+     */
+    paramPinTypes?: {
+        param: string;
+        pins: readonly string[];
+        types: Readonly<Record<string, string>>;
+    };
+    /**
+     * Pins that carry the rows of the list this node acts on: one row (`item`) or all of them
+     * (`array`).
+     *
+     * Which list is the one wired into the node's `list` pin, or with none the list the graph belongs
+     * to - its own graph, or the item template it draws. A list that declares its rows' shape types
+     * these pins with it, so Item Click's `Item` on an ending list is an ending and its fields are on
+     * the menu. Inputs are compared with what is wired in, and a value of another shape is reported
+     * (`node.list_shape_mismatch`) - a Set List Content handed saves for a list of endings draws rows
+     * with nothing in them.
+     *
+     * Worked out in the editor like `elementTypeFlow`; the runtime never reads it.
+     */
+    listRowTypes?: {
+        outputs?: Readonly<Record<string, "item" | "array">>;
+        inputs?: Readonly<Record<string, "item" | "array">>;
     };
     execute: BlueprintNodeExecuteFn;
 };

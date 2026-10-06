@@ -26,6 +26,10 @@ export const struct = {
         visiblePicker: "Visible from field",
         pickerEmpty: "No field",
     },
+    shape: {
+        label: "Struct",
+        custom: "Custom",
+    },
     row: {
         add: "Add row",
         remove: "Remove row",

@@ -1,4 +1,5 @@
 import type { UIComponentId, UIElement, UISurface } from "@shared/types/ui-editor/document";
+import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import type { DevModeBundle } from "@shared/types/devMode";
 import { isPointerPositionElementEvent } from "@shared/types/ui-editor/widgetLogic";
 import { UI_SURFACE_INPUT_ACTION_EVENT } from "@shared/types/ui-editor/inputActionEvent";
@@ -83,6 +84,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
         },
         resolveWidgetAddress: (elementId, instanceKey) => resolveUIWidgetAddressFromDrawing(document, elementId, instanceKey),
         drawings: createWidgetDrawingRegistry(document),
+        resolveStruct: structId => resolveUIStruct(document, structId),
         dispatchElementBlueprintEvent: async () => {
             /* assigned after adapter */
         },
