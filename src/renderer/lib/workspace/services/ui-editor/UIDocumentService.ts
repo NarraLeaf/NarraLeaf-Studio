@@ -397,8 +397,8 @@ function cloneJson<T>(value: T): T {
     return value == null ? value : JSON.parse(JSON.stringify(value)) as T;
 }
 
-function createDuplicateName(baseName: string, existingNames: Set<string>): string {
-    const base = translate("defaultDoc.pageCopy", { name: baseName.trim() || translate("defaultDoc.pageName") });
+function createDuplicateName(baseName: string, existingNames: Set<string>, fallbackName = translate("defaultDoc.pageName")): string {
+    const base = translate("defaultDoc.nameCopy", { name: baseName.trim() || fallbackName });
     if (!existingNames.has(base)) {
         return base;
     }
@@ -4194,7 +4194,11 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const component: UIComponentDefinition = {
             ...cloneJson(source),
             id: newComponentId,
-            name: `${source.name} Copy`,
+            name: createDuplicateName(
+                source.name,
+                new Set((this.getDocument().components ?? []).map(component => component.name)),
+                translate("defaultDoc.componentName"),
+            ),
             rootElementId: idMap[source.rootElementId],
             elements,
             createdAt: now,

@@ -11,7 +11,7 @@ export const defaultDoc = {
     rootName: "ルート",
     componentName: "コンポーネント",
     pageName: "ページ",
-    pageCopy: "{name} のコピー",
+    nameCopy: "{name} のコピー",
     speaker: "話者",
     dialog: {
         interactionLayer: "ダイアログ操作レイヤー",

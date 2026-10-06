@@ -238,6 +238,7 @@ export const uiEditor = {
         showSelected: "選択中のものを表示",
         hideSelected: "選択中のものを隠す",
         addToComponentLibrary: "コンポーネントライブラリに追加",
+        addedToComponentLibrary: "「{name}」をコンポーネントライブラリに追加した",
         cannotHoldChildren: "{name}は子要素を持てない",
         linkedInstanceContents: "リンクされたインスタンスの中身はコンポーネント側で編集する",
         group: "グループにする",

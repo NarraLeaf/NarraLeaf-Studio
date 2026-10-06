@@ -215,7 +215,7 @@ export function useSurfaceCanvasContextMenu(params: {
                             fallbackName,
                         );
                         if (component) {
-                            uiService?.showNotification(`Added "${component.name}" to Component Library`, "success");
+                            uiService?.showNotification(translate("uiEditor.contextMenu.addedToComponentLibrary", { name: component.name }), "success");
                         }
                     },
                     arrange: op => {
