@@ -111,6 +111,7 @@ export const uiEditor = {
             trackpad: "触控板",
             touch: "触控屏幕",
             key: "键盘",
+            gamepad: "手柄",
         },
         gesture: {
             click: "单击",

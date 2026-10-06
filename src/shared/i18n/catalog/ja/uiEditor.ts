@@ -114,6 +114,7 @@ export const uiEditor = {
             trackpad: "トラックパッド",
             touch: "タッチスクリーン",
             key: "キーボード",
+            gamepad: "ゲームパッド",
         },
         gesture: {
             click: "クリック",

@@ -67,7 +67,9 @@ export function printUiDocument(document: UIDocument, options: PrintOptions = {}
                 lines.push(
                     binding.kind === "pointer"
                         ? `${INDENT}pointer ${binding.gesture}`
-                        : `${INDENT}key ${printValue(binding.key)}`,
+                        : binding.kind === "gamepad"
+                          ? `${INDENT}gamepad ${printValue(binding.button)}`
+                          : `${INDENT}key ${printValue(binding.key)}`,
                 );
             }
             blocks.push(lines.join("\n"));

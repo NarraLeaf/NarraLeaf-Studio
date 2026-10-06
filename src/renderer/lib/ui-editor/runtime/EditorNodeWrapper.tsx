@@ -25,7 +25,8 @@ import {
 } from "@/lib/ui-editor/runtime/displayableMotion";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { BehaviorGraphEventControl } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
-import { getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
+import { createEventPropagationControl, getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
+import { getSharedGamepadTracker } from "@/lib/ui-editor/runtime/input/gamepadState";
 import { readInputEventTime, wheelGestureGate } from "@/lib/ui-editor/runtime/input/wheelGesture";
 import { isTouchStrokeInFlight } from "@/lib/ui-editor/runtime/input/touchGesture";
 import { getWidgetLogicEvent, isPointerPositionElementEvent } from "@shared/types/ui-editor/widgetLogic";
@@ -505,6 +506,29 @@ export function EditorNodeWrapper({
             window.removeEventListener("keydown", onKeyDown);
             window.removeEventListener("keyup", onKeyUp);
         };
+    }, [blueprintRuntime, dispatchMountedWidgetEvent, element.type, keyboardInteractive]);
+
+    useEffect(() => {
+        if (!keyboardInteractive || !blueprintRuntime) {
+            return undefined;
+        }
+        const canDown = Boolean(getWidgetLogicEvent(element.type, "gamepadButtonDown"));
+        const canUp = Boolean(getWidgetLogicEvent(element.type, "gamepadButtonUp"));
+        if (!canDown && !canUp) {
+            return undefined;
+        }
+        // Subscribe only. The GameApp poller starts the tracker; the editor canvas never does, so
+        // these heads stay quiet there even though every mounted widget would otherwise hear them.
+        return getSharedGamepadTracker().onEdge(edge => {
+            const eventControl = createEventPropagationControl();
+            const payload = { button: edge.button };
+            if (edge.type === "down" && canDown) {
+                dispatchMountedWidgetEvent("gamepadButtonDown", payload, eventControl);
+            }
+            if (edge.type === "up" && canUp) {
+                dispatchMountedWidgetEvent("gamepadButtonUp", payload, eventControl);
+            }
+        });
     }, [blueprintRuntime, dispatchMountedWidgetEvent, element.type, keyboardInteractive]);
 
     const localMousePayload = useCallback(

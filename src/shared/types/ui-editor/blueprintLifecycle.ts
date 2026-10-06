@@ -33,6 +33,21 @@ const KEYBOARD_EVENTS: readonly LifecycleEventDef[] = [
     },
 ];
 
+const GAMEPAD_EVENTS: readonly LifecycleEventDef[] = [
+    {
+        id: "gamepadButtonDown",
+        displayName: "Gamepad button down",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.gamepadButtonDown", "blueprint.event.head.anyGamepadButtonDown"],
+    },
+    {
+        id: "gamepadButtonUp",
+        displayName: "Gamepad button up",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.gamepadButtonUp", "blueprint.event.head.anyGamepadButtonUp"],
+    },
+];
+
 /**
  * Fires when a NarraLeaf game preference changes on the active live game.
  * Backed by NarraLeaf React `game.preference.onPreferenceChange`. Shared by the
@@ -134,6 +149,7 @@ export const GLOBAL_LIFECYCLE_EVENTS: readonly LifecycleEventDef[] = [
         headNodeTypes: ["blueprint.event.head.gameReady"],
     },
     ...KEYBOARD_EVENTS,
+    ...GAMEPAD_EVENTS,
     ...GAME_PREFERENCE_EVENTS,
     ...WINDOW_FULLSCREEN_EVENTS,
     ...WINDOW_CLOSE_EVENTS,
@@ -190,6 +206,7 @@ export const SURFACE_LIFECYCLE_EVENTS: readonly LifecycleEventDef[] = [
         headNodeTypes: ["blueprint.event.head.rightClick"],
     },
     ...KEYBOARD_EVENTS,
+    ...GAMEPAD_EVENTS,
     ...GAME_PREFERENCE_EVENTS,
     ...WINDOW_FULLSCREEN_EVENTS,
     ...WINDOW_CLOSE_EVENTS,

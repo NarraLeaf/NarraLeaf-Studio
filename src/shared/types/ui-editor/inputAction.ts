@@ -21,6 +21,7 @@
  */
 
 import { formatBlueprintKeyboardBinding } from "../blueprint/graph";
+import { formatBlueprintGamepadButton } from "../blueprint/gamepad";
 import type { UIDocument } from "./document";
 import type { UIInputActionSource } from "./inputActionEvent";
 import { getWidgetLogicApi } from "./widgetLogic";
@@ -80,10 +81,17 @@ export function isUIInputPointerGesture(value: unknown): value is UIInputPointer
  * `@shared/types/blueprint/graph`. {@link normalizeUIInputBinding} runs a stored key through
  * `formatBlueprintKeyboardBinding`, so an author who typed "esc" and a head that says "Escape" are
  * the one binding rather than two that look alike.
+ *
+ * A `gamepad` button is the Xbox-layout name in {@link formatBlueprintGamepadButton}. It does not
+ * share a gesture with the pointer family: a pad has no click, and putting it on
+ * `POINTER_GESTURE_DEVICES` would make every click reachable from a controller that never produces
+ * one. The device set is therefore always `{"gamepad"}`. Sticks are continuous and are not a
+ * binding; they are read through query nodes.
  */
 export type UIInputBinding =
     | { kind: "pointer"; gesture: UIInputPointerGesture }
-    | { kind: "key"; key: string };
+    | { kind: "key"; key: string }
+    | { kind: "gamepad"; button: string };
 
 /** One entry of the project's action vocabulary. */
 export type UIInputActionDef = {
@@ -120,12 +128,13 @@ export const UI_INPUT_ACTION_PRESETS: readonly {
             { kind: "pointer", gesture: "click" },
             { kind: "key", key: "Space" },
             { kind: "key", key: "Enter" },
+            { kind: "gamepad", button: "A" },
         ],
     },
-    { id: "back", bindings: [{ kind: "key", key: "Escape" }] },
-    { id: "backlog", bindings: [{ kind: "pointer", gesture: "wheelUp" }] },
+    { id: "back", bindings: [{ kind: "key", key: "Escape" }, { kind: "gamepad", button: "B" }] },
+    { id: "backlog", bindings: [{ kind: "pointer", gesture: "wheelUp" }, { kind: "gamepad", button: "LB" }] },
     { id: "hideInterface", bindings: [{ kind: "pointer", gesture: "longPress" }] },
-    { id: "menu", bindings: [{ kind: "pointer", gesture: "rightClick" }] },
+    { id: "menu", bindings: [{ kind: "pointer", gesture: "rightClick" }, { kind: "gamepad", button: "Start" }] },
 ];
 
 /** The preset that lays nothing down, drawn apart from the templates. */
@@ -156,7 +165,13 @@ export const UI_SURFACE_ACTION_DEFAULT_CONSUME = true;
 
 /** The key a binding is the same as another one by. */
 function bindingIdentity(binding: UIInputBinding): string {
-    return binding.kind === "pointer" ? `pointer:${binding.gesture}` : `key:${binding.key}`;
+    if (binding.kind === "pointer") {
+        return `pointer:${binding.gesture}`;
+    }
+    if (binding.kind === "gamepad") {
+        return `gamepad:${binding.button}`;
+    }
+    return `key:${binding.key}`;
 }
 
 /**
@@ -176,6 +191,10 @@ export function normalizeUIInputBinding(value: unknown): UIInputBinding | null {
     if (raw.kind === "key") {
         const key = formatBlueprintKeyboardBinding(raw.key);
         return key ? { kind: "key", key } : null;
+    }
+    if (raw.kind === "gamepad") {
+        const button = formatBlueprintGamepadButton(raw.button);
+        return button ? { kind: "gamepad", button } : null;
     }
     return null;
 }
@@ -263,7 +282,13 @@ const POINTER_GESTURE_DEVICES: Record<UIInputPointerGesture, readonly UIInputAct
  * it.
  */
 export function inputBindingDevices(binding: UIInputBinding): ReadonlySet<UIInputActionSource> {
-    return new Set(binding.kind === "pointer" ? POINTER_GESTURE_DEVICES[binding.gesture] : ["key"]);
+    if (binding.kind === "pointer") {
+        return new Set(POINTER_GESTURE_DEVICES[binding.gesture]);
+    }
+    if (binding.kind === "gamepad") {
+        return new Set(["gamepad"]);
+    }
+    return new Set(["key"]);
 }
 
 /** Whether a player on this device can trigger this binding. */

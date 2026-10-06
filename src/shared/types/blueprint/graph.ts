@@ -9,6 +9,7 @@ import {
     resolveGlobalLifecycleEventHeadTypes,
     resolveSurfaceLifecycleEventHeadTypes,
 } from "@shared/types/ui-editor/blueprintLifecycle";
+import { formatBlueprintGamepadButton } from "./gamepad";
 
 /** Persisted on BlueprintGraphIr.meta to disambiguate slot semantics (events vs functions vs macros). */
 export type BlueprintGraphKind = "event" | "function" | "macro";
@@ -33,6 +34,10 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP = "blueprint.event.head.keyUp
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN = "blueprint.event.head.anyKeyDown" as const;
 /** Entry for owner-level global keyboard up events without a key filter. */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP = "blueprint.event.head.anyKeyUp" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAMEPAD_BUTTON_DOWN = "blueprint.event.head.gamepadButtonDown" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAMEPAD_BUTTON_UP = "blueprint.event.head.gamepadButtonUp" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_GAMEPAD_BUTTON_DOWN = "blueprint.event.head.anyGamepadButtonDown" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_GAMEPAD_BUTTON_UP = "blueprint.event.head.anyGamepadButtonUp" as const;
 /** Persisted on On Key event heads: keyboard binding string to match, case-insensitive. */
 export const BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME = "key" as const;
 /** Inspector param key selecting which Game Preference field an `On Preference Changed` head watches. */
@@ -60,6 +65,9 @@ export const BLUEPRINT_NODE_TYPE_INPUT_IS_ACTION_HELD = "blueprint.input.isActio
  * own languages, which are not Studio's.
  */
 export const BLUEPRINT_NODE_TYPE_INPUT_GET_DEVICE = "blueprint.input.getDevice" as const;
+export const BLUEPRINT_NODE_TYPE_INPUT_IS_GAMEPAD_CONNECTED = "blueprint.input.isGamepadConnected" as const;
+export const BLUEPRINT_NODE_TYPE_INPUT_IS_GAMEPAD_BUTTON_HELD = "blueprint.input.isGamepadButtonHeld" as const;
+export const BLUEPRINT_NODE_TYPE_INPUT_GET_GAMEPAD_AXIS = "blueprint.input.getGamepadAxis" as const;
 /** Entry for widget `focus` UI event. */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS = "blueprint.event.head.focus" as const;
 /** Entry for widget `blur` UI event. */
@@ -159,6 +167,10 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAMEPAD_BUTTON_DOWN,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAMEPAD_BUTTON_UP,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_GAMEPAD_BUTTON_DOWN,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_GAMEPAD_BUTTON_UP,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_BLUR,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
@@ -458,6 +470,31 @@ function isFilteredKeyboardEventHeadType(nodeType: string): boolean {
     return nodeType === BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN || nodeType === BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP;
 }
 
+function isFilteredGamepadEventHeadType(nodeType: string): boolean {
+    return (
+        nodeType === BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAMEPAD_BUTTON_DOWN
+        || nodeType === BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAMEPAD_BUTTON_UP
+    );
+}
+
+/**
+ * Whether a filtered gamepad head is about the button that was just pressed or released.
+ *
+ * An unconfigured head watches nothing, the same ruling as an unconfigured preference head: the
+ * paired `Any Gamepad Button Down` / `Up` nodes exist for the unfiltered case, and a blank select
+ * matching every button would make those two look like a misconfigured filtered head.
+ */
+function matchesGamepadButtonDispatch(
+    node: { params?: Record<string, unknown> },
+    eventPayload?: Record<string, unknown>,
+): boolean {
+    const selected = formatBlueprintGamepadButton(node.params?.button);
+    if (!selected) {
+        return false;
+    }
+    return selected === formatBlueprintGamepadButton(eventPayload?.button);
+}
+
 function matchesPreferenceChangeDispatch(
     node: { params?: Record<string, unknown> },
     eventPayload?: Record<string, unknown>,
@@ -496,6 +533,9 @@ function matchesDispatchPayload(
 ): boolean {
     if (isFilteredKeyboardEventHeadType(node.type)) {
         return blueprintKeyboardBindingMatchesEvent(node.params?.[BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME], eventPayload);
+    }
+    if (isFilteredGamepadEventHeadType(node.type)) {
+        return matchesGamepadButtonDispatch(node, eventPayload);
     }
     if (node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED) {
         return matchesPreferenceChangeDispatch(node, eventPayload);

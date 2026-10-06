@@ -191,3 +191,9 @@ project/installer/webview2/.sdk/
 /AGENTS.md
 /CLAUDE.md
 /memory/
+
+# Local editor / agent working dirs. Not product files.
+/.claude/
+/.cline/
+/.codex/
+/.cursor/
