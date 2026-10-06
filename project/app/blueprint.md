@@ -112,8 +112,12 @@ history entries, `List Auto Saves` save entries. Their type says so - `array<str
 
 ```sh
 node project/app/blueprint.js node blueprint.game.getEndings
-node project/app/blueprint.js structs                 # every shape the engine hands out
+node project/app/blueprint.js structs                 # every shape the engine and bundled plugins hand out
 ```
+
+A plugin declares the shapes its nodes hand out in its manifest (`contributes.structs`); the bundled
+Gallery's `Get Gallery` answers `array<struct:narraleaf.gallery.entry>`, and those shapes are listed
+beside the engine's. A list that shows such rows names the shape as its item struct.
 
 The array nodes pass the item type along (`Array Filter By Key` on endings gives endings, `Array
 First` gives one ending), and `check` follows the wires the way the canvas does. A field is then read
@@ -134,6 +138,12 @@ it beside `field`. For the engine's shapes a field is named by its key. Left unw
 row, Get Field reads the row instead - write no `struct` then, and name the field by the id the list
 gives it. A field the shape does not have, and an array node's `key` that names no field of its
 items, are reported by `check`.
+
+Items, events and contents of a list are typed by that list's shape: `Item Click`'s `item`, `Get Item
+At`, `Get List Content` - the list wired into the node's `list` pin, or the list the graph belongs to.
+`Set List Content` and the other nodes that take rows report rows lacking a field the list declares
+(`node.list_shape_mismatch`). Pins whose type a field picks - `Get Property` by `property`, `On
+Preference Changed` by `preferenceKey` - say so under `typed by` in `node`.
 
 ## Finding a project's surfaces, components and elements
 

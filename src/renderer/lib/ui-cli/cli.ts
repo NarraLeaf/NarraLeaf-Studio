@@ -71,6 +71,7 @@ import {
 } from "./remove";
 import { didYouMean } from "./text";
 import { findUsages, formatPropValues, formatUsages, readSkeletonDocument, repoRoot } from "./usage";
+import { registerBuiltInPluginStructs } from "@/lib/blueprint-cli/builtinPluginNodes";
 
 export type CliIo = {
     out: (text: string) => void;
@@ -194,6 +195,9 @@ export function runCli(argv: readonly string[], io: CliIo): number {
  * the command's own output.
  */
 function loadPlugins(args: Args, io: CliIo): void {
+    // The plugins bundled with Studio declare row shapes a shipped list may name; they are known
+    // without being asked for, as their nodes are to the blueprint tool.
+    registerBuiltInPluginStructs();
     for (const dir of args.lists.plugin ?? []) {
         const loaded = loadCliPlugin(dir);
         for (const note of loaded.notes) {

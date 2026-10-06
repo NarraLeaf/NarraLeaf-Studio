@@ -909,6 +909,12 @@ function runListItemFieldMissing(ctx: LintContext): LintFinding[] {
         }
         const context = findOwningListItemTemplate(document, site.element);
         const struct = context ? resolveUIStruct(document, context.structId) : null;
+        // A list whose shape resolves nowhere names one a plugin declares, and that plugin is not
+        // loaded. Its bindings are not wrong - the shape is missing, and the project's dependency
+        // warning already says which plugin - so they are not reported one by one.
+        if (context?.structId && !struct) {
+            continue;
+        }
         for (const fieldId of fieldIds) {
             if (findUIStructField(struct, fieldId)) {
                 continue;

@@ -20,7 +20,9 @@ import {
     UI_STRUCT_ID_NVL_ITEM,
     UI_STRUCT_ID_SAVE_ENTRY,
     UI_STRUCT_ID_VOICE_LANGUAGE,
+    pluginUIStructName,
 } from "@shared/types/ui-editor/builtinStructs";
+import { i18nStore } from "@/lib/i18n";
 import { isUIStructValueType, uiStructIdFromValueType } from "@shared/types/ui-editor/struct";
 
 type Translate = (key: TranslationKey, params?: Record<string, string | number>) => string;
@@ -51,9 +53,22 @@ export function blueprintStructNameKey(structId: string | null | undefined): Tra
     return BUILTIN_STRUCT_NAME_KEYS[structId] ?? "blueprint.struct.listRow";
 }
 
-/** A struct's name, in the interface language. See {@link blueprintStructNameKey}. */
+/**
+ * A struct's name, in the interface language. See {@link blueprintStructNameKey}; a plugin's shape is
+ * named by its manifest, in the editor's language where the manifest gives one.
+ */
 export function blueprintStructName(structId: string | null | undefined, t: Translate): string {
-    return t(blueprintStructNameKey(structId));
+    return pluginUIStructName(structId, i18nStore.getLocale()) ?? t(blueprintStructNameKey(structId));
+}
+
+/**
+ * A struct's name as a finding's parameter: a catalogue key for the engine's shapes and a list's own,
+ * so the panel renders it in whatever language it is shown in, and the manifest's words for a
+ * plugin's, which no catalogue holds.
+ */
+export function blueprintStructNameParam(structId: string | null | undefined): { value: string; key?: TranslationKey } {
+    const plugin = pluginUIStructName(structId, i18nStore.getLocale());
+    return plugin ? { value: plugin } : { value: structId ?? "", key: blueprintStructNameKey(structId) };
 }
 
 /**

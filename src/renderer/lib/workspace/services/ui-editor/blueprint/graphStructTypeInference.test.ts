@@ -549,4 +549,26 @@ describe("the rows of a list", () => {
         expect(fed(BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST, "entries")?.rowMismatch?.givenStructId).toBe("nl.saveEntry");
         expect(fed(BLUEPRINT_NODE_TYPE_GAME_GET_ENDINGS, "endings")?.rowMismatch).toBeUndefined();
     });
+
+    it("takes rows that carry more than the list shows, and refuses rows that lack a field it shows", () => {
+        // A list that names two of an ending's fields, written by hand before the shape was offered.
+        const subset: UIStructDef = {
+            id: "handWritten",
+            fields: [{ id: "a", key: "name", type: "string" }, { id: "b", key: "isReached", type: "boolean" }],
+        };
+        const lacking: UIStructDef = { id: "lacking", fields: [{ id: "c", key: "title", type: "string" }] };
+        const fed = (shape: UIStructDef) => {
+            const document = listDocument(shape.id);
+            return typed(
+                graph(
+                    { source: { type: BLUEPRINT_NODE_TYPE_GAME_GET_ENDINGS }, fill: { type: BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS } },
+                    ["source.endings -> fill.items"],
+                ),
+                { ...document, structs: { [shape.id]: shape } },
+                "list",
+            ).get("fill");
+        };
+        expect(fed(subset)?.rowMismatch).toBeUndefined();
+        expect(fed(lacking)?.rowMismatch?.givenStructId).toBe("nl.ending");
+    });
 });

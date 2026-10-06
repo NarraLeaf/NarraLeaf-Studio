@@ -195,6 +195,47 @@ describe("validatePluginManifest", () => {
         });
     });
 
+    describe("contributes.structs", () => {
+        const withStructs = (structs: unknown) =>
+            validatePluginManifest({
+                manifestVersion: 2,
+                id: "acme.sample-plugin",
+                name: "Sample Plugin",
+                version: "1.0.0",
+                entries: { runtime: "runtime.js" },
+                contributes: { structs },
+            });
+        const GOOD = {
+            id: "acme.sample-plugin.good",
+            name: "Shop item",
+            localized: { zh: "商品" },
+            fields: [{ key: "name", type: "string" }, { key: "price", type: "number" }],
+        };
+
+        it("defaults to no shapes", () => {
+            expect(withStructs(undefined)).toMatchObject({ ok: true, manifest: { contributes: { structs: [] } } });
+        });
+
+        it("keeps a shape as declared, and derives no install permission", () => {
+            const result = withStructs([GOOD]);
+            expect(result).toMatchObject({ ok: true, manifest: { contributes: { structs: [GOOD] } } });
+            expect(result.ok && result.manifest.permissions).toEqual([]);
+        });
+
+        it.each([
+            ["an id outside the plugin", [{ ...GOOD, id: "other.good" }], "prefixed with the plugin id"],
+            ["the same id twice", [GOOD, GOOD], "declared twice"],
+            ["no name", [{ ...GOOD, name: " " }], "needs a name"],
+            ["no fields", [{ ...GOOD, fields: [] }], "at least one field"],
+            ["a field type lists do not have", [{ ...GOOD, fields: [{ key: "when", type: "date" }] }], "unsupported type"],
+            ["a key twice", [{ ...GOOD, fields: [{ key: "name", type: "string" }, { key: "name", type: "number" }] }], "twice"],
+            ["an invalid locale code", [{ ...GOOD, localized: { zh_CN: "商品" } }], "invalid localized name"],
+            ["not an array", GOOD, "must be an array"],
+        ])("refuses %s", (_, structs, message) => {
+            expect(withStructs(structs)).toMatchObject({ ok: false, error: expect.stringContaining(message) });
+        });
+    });
+
     it("normalizes contributed runtime data namespaces", () => {
         const result = validatePluginManifest({
             manifestVersion: 2,

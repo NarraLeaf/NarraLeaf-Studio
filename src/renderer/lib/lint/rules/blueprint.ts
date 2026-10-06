@@ -46,7 +46,7 @@ import {
     buildBlueprintStructTypeContext,
     type BlueprintNodeStructTypes,
 } from "../../workspace/services/ui-editor/blueprint/graphStructTypeInference";
-import { blueprintStructNameKey } from "../../ui-editor/blueprint-nodes/structTypeLabels";
+import { blueprintStructNameParam } from "../../ui-editor/blueprint-nodes/structTypeLabels";
 import { blueprintNodeTitleKey } from "@/apps/workspace/modules/blueprint-lite/blueprintNodeI18n";
 import { anchorComponentId, anchorElementId } from "@shared/blueprint/ownerShape";
 import type { LintContext } from "../context";
@@ -884,13 +884,14 @@ function runFieldMissing(ctx: LintContext): LintFinding[] {
                 continue;
             }
             const titleKey = blueprintNodeTitleKey(blueprintNodeDisplayName(node.type));
+            const struct = blueprintStructNameParam(info.structId);
             findings.push({
                 ruleId: "blueprint/field-missing",
                 messageKey: "lint.rule.blueprintFieldMissing.message" as TranslationKey,
-                messageParams: { node: blueprintNodeDisplayName(node.type), struct: info.structId ?? "", field: named },
+                messageParams: { node: blueprintNodeDisplayName(node.type), struct: struct.value, field: named },
                 messageParamKeys: {
                     ...(titleKey ? { node: titleKey } : {}),
-                    struct: blueprintStructNameKey(info.structId),
+                    ...(struct.key ? { struct: struct.key } : {}),
                 },
                 location: blueprintLocation(site, node.id),
                 target: blueprintNodeJumpTarget(site, node.id),
@@ -940,9 +941,10 @@ function listTypedBlueprintGraphSites(ctx: LintContext): {
  * A list node handed rows of another shape than the list declares.
  *
  * The list draws every row from its own fields, so saves wired into an ending list draw rows whose
- * names and pictures are empty - with nothing anywhere saying why. Judged the way the struct library
- * judges two shapes (`structsAreCompatible`): by their fields, never by their ids, so two lists that
- * agree feed each other without a finding.
+ * names and pictures are empty - with nothing anywhere saying why. Judged by the fields, never by the
+ * ids: rows that carry every field the list declares, by name and type, are fine however many more
+ * they carry, so two lists that agree feed each other and a list showing two of a gallery entry's
+ * fields takes gallery entries without a finding.
  *
  * A warning: the game runs, and what is lost is what the rows were meant to show.
  */
@@ -955,13 +957,14 @@ function runListShapeMismatch(ctx: LintContext): LintFinding[] {
                 continue;
             }
             const titleKey = blueprintNodeTitleKey(blueprintNodeDisplayName(node.type));
+            const struct = blueprintStructNameParam(info.rowMismatch.givenStructId);
             findings.push({
                 ruleId: "blueprint/list-shape-mismatch",
                 messageKey: "lint.rule.blueprintListShapeMismatch.message" as TranslationKey,
-                messageParams: { node: blueprintNodeDisplayName(node.type), struct: info.rowMismatch.givenStructId },
+                messageParams: { node: blueprintNodeDisplayName(node.type), struct: struct.value },
                 messageParamKeys: {
                     ...(titleKey ? { node: titleKey } : {}),
-                    struct: blueprintStructNameKey(info.rowMismatch.givenStructId),
+                    ...(struct.key ? { struct: struct.key } : {}),
                 },
                 location: blueprintLocation(site, node.id),
                 target: blueprintNodeJumpTarget(site, node.id),

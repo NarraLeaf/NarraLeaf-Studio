@@ -9,6 +9,7 @@
  * global so plugin widget renderers resolve the host's React instance.
  */
 
+import { registerPluginUIStructs } from "@shared/types/ui-editor/builtinStructs";
 import * as React from "react";
 import * as ReactDOM from "react-dom";
 import * as ReactJsxRuntime from "react/jsx-runtime";
@@ -312,6 +313,9 @@ async function loadRuntimePlugin(
 ): Promise<RuntimePluginLoadResult> {
     const pluginId = descriptor.plugin.id;
     const pluginName = descriptor.manifest.name || pluginId;
+    // The row shapes are the manifest's, not the entry's: a list given one draws from it whether or
+    // not the entry below loads, the way it draws from the engine's own shapes.
+    registerPluginUIStructs(pluginId, descriptor.manifest.contributes?.structs);
     try {
         const mod = await import(descriptor.entryUrl) as RuntimePluginModule;
         const definition = mod.default ?? mod.plugin;

@@ -49,6 +49,7 @@ async function writePlugin(id: string, name: string, source: string): Promise<Ru
             externalLinks: [],
             network: [],
             widgetText: {},
+            structs: [],
         },
         permissions: [],
     };

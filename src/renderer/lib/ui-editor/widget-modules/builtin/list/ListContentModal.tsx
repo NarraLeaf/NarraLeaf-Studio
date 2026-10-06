@@ -9,7 +9,7 @@ import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetS
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
-import { BUILTIN_UI_STRUCTS, isBuiltinUIStructId } from "@shared/types/ui-editor/builtinStructs";
+import { isBuiltinUIStructId, isPluginUIStructId, listEngineUIStructIds } from "@shared/types/ui-editor/builtinStructs";
 import { blueprintStructName } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
 import {
     UI_STRUCT_FIELD_TYPES,
@@ -64,17 +64,16 @@ export function ListContentModal(props: {
         [t],
     );
 
-    // The list's own shape first, then the engine's by name: a list that shows endings, saves or
-    // history takes the shape the engine hands out instead of an author typing its field names.
-    const shapeOptions = useMemo(
-        () => [
-            { value: CUSTOM_SHAPE, label: t("struct.shape.custom") },
-            ...Object.keys(BUILTIN_UI_STRUCTS)
-                .map(id => ({ value: id, label: blueprintStructName(id, t) }))
-                .sort((a, b) => a.label.localeCompare(b.label)),
-        ],
-        [t],
-    );
+    // The list's own shape first, then the engine's and the loaded plugins' by name: a list that shows
+    // endings, saves or gallery entries takes the shape they are handed out in instead of an author
+    // typing its field names. Read on every draw rather than memoised - a plugin switched on while
+    // the editor is open brings its shapes with it.
+    const shapeOptions = [
+        { value: CUSTOM_SHAPE, label: t("struct.shape.custom") },
+        ...listEngineUIStructIds()
+            .map(id => ({ value: id, label: blueprintStructName(id, t) }))
+            .sort((a, b) => a.label.localeCompare(b.label)),
+    ];
 
     /**
      * Rewrite the rows alongside the shape.
@@ -220,7 +219,9 @@ export function ListContentModal(props: {
                             </div>
                         </div>
                         {fieldsLocked ? (
-                            <span className="text-2xs text-fg-subtle">{t("struct.field.engineOwned")}</span>
+                            <span className="text-2xs text-fg-subtle">
+                                {t(isPluginUIStructId(structId) ? "struct.field.pluginOwned" : "struct.field.engineOwned")}
+                            </span>
                         ) : null}
                         {fields.map(field => (
                             <div key={field.id} className="flex items-center gap-1.5">

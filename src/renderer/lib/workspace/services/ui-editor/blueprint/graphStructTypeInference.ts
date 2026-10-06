@@ -49,7 +49,6 @@ import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import { resolveListItemContextAvailable } from "@/lib/ui-editor/blueprint-nodes/graphContext";
 import {
     findUIStructField,
-    structsAreCompatible,
     uiStructFieldValueType,
     uiStructIdFromValueType,
     uiStructValueType,
@@ -138,6 +137,19 @@ export function isBlueprintStructTypedNodeType(type: string): boolean {
 
 /** The pin a list node is told which list to act on through; see `listNodes.ts`. */
 const LIST_TARGET_PIN = "list";
+
+/**
+ * Whether rows of one shape carry every field a list draws: each of the list's fields, by name and
+ * type, is among theirs.
+ *
+ * Looser than the library's own equality (`structsAreCompatible`) on purpose. A list draws its rows
+ * from its own fields, so rows that carry more - a gallery entry handed to a list that only shows the
+ * name and the picture - draw exactly as the list says; only a field the rows lack, or carry as
+ * another type, draws empty.
+ */
+function rowsCarryListFields(rows: UIStructDef, list: UIStructDef): boolean {
+    return list.fields.every(field => rows.fields.some(candidate => candidate.key === field.key && candidate.type === field.type));
+}
 
 function withPinTypeStamp(
     params: Record<string, unknown> | undefined,
@@ -317,7 +329,7 @@ export function analyzeBlueprintStructTypes(
                 continue;
             }
             const givenStruct = resolveStruct(givenStructId);
-            if (struct && givenStruct && !structsAreCompatible(givenStruct, struct)) {
+            if (struct && givenStruct && !rowsCarryListFields(givenStruct, struct)) {
                 rowMismatch = { pin: pinId, givenStructId, givenType: given as string };
                 break;
             }

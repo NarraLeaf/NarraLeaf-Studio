@@ -193,7 +193,7 @@ key's name.
 `--json` on any of these.
 
 ```sh
-node project/app/ui.js structs                   # the list-item shapes Studio ships
+node project/app/ui.js structs                   # the list-item shapes Studio and its bundled plugins ship
 node project/app/ui.js structs --project <dir>   # and the ones this project declares
 ```
 

@@ -106,6 +106,7 @@ Manifest 字段：
 | `buildDependencies` | `PluginBuildDependencyContribution[]` | 构建时下载/校验/缓存的外部二进制。 |
 | `buildConfig` | `PluginBuildConfigFieldContribution[]` | 构建前需要作者填写的值（如 Steam App ID）。**只能在 manifest 里静态声明，没有运行时注册 API**——构建过程中不执行任何插件代码。**不派生安装权限**：声明一个字段只是多一个待填的空格，插件不会因此获得任何能力。 |
 | `widgetText` | `Record<string, PluginWidgetTextContribution[]>` | 按 widget type 列出它哪些 prop 是玩家读的字。键必须在 `widgets` 里。宿主像对待内建文本与按钮一样对待这些 prop，见下面的 [控件里玩家读的字](#控件里玩家读的字widgettext)。**不派生安装权限**。 |
+| `structs` | `PluginStructContribution[]` | 插件节点交出的行的形状（id 必须以插件 ID 为前缀）。见下面的 [节点交出的行](#节点交出的行structs)。**不派生安装权限**。 |
 
 `buildConfig` 每个字段：
 
@@ -625,6 +626,51 @@ execute: async ctx => {
 ⚠ **`isPure: true` 的节点做不到这件事。** pure 节点没有 exec 引脚，宓主的执行器永远走不到它，
 `execute()` 根本不会被调用；pure 节点的输出由宓主自己的数据解析器产出，而那条链只认识内建节点类型。
 **产值节点一律写成 `isPure: false` 加 exec 引脚**，内建 Gallery 插件就是这么做的。
+
+### 节点交出的行（`structs`）
+
+节点交出一组记录（画廊条目、成就、商店货品）时，在 manifest 里声明这种记录的形状，再把输出引脚的类型写成它：
+
+```json
+"contributes": {
+  "blueprintNodes": ["acme.shop.getGoods"],
+  "structs": [
+    {
+      "id": "acme.shop.good",
+      "name": "Shop item",
+      "localized": { "zh": "商品", "ja": "商品" },
+      "fields": [
+        { "key": "id", "type": "string" },
+        { "key": "name", "type": "string" },
+        { "key": "price", "type": "number" },
+        { "key": "icon", "type": "image" },
+        { "key": "owned", "type": "boolean" }
+      ]
+    }
+  ]
+}
+```
+
+```ts
+{ id: "goods", kind: "output", semantic: "data", valueType: "array<struct:acme.shop.good>", label: "Goods" }
+```
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | `string` | 形状的 id，以插件 ID 为前缀。引脚类型里写 `struct:<id>`（一条）或 `array<struct:<id>>`（一组）。 |
+| `name` | `string` | 编辑器里这种形状的名字。 |
+| `localized` | `Record<string, string>` | 可选。`name` 的各语言写法，按 Studio 界面语言代码精确匹配。 |
+| `fields` | `{ key, type }[]` | 每行带的字段，按这个顺序显示。`type` 是 `string` / `number` / `boolean` / `image` / `color` / `json` 之一；同一个 `key` 不能出现两次。 |
+
+声明之后，插件交出的行与引擎自己的（结局、存档条目）同等对待：
+
+- 列表在「编辑内容」的「结构」里可以直接选这种形状，字段由插件提供、不可编辑，作者不用再照着文档手抄字段名。
+- 从这个引脚拖线时，菜单最上面列出每个字段；「获取字段」按字段名读，输出带字段的类型。
+- 「设置列表内容」收到缺少列表字段的行时，画布与项目检查都会报出来。
+- 字段的 id 就是 `key`：插件的行没有让作者改名的余地，也就不需要第二个名字。
+
+声明在 manifest 里而不是在注册时，是因为编辑器、运行中的游戏和命令行检查都要知道形状，三者都在执行插件代码之前就读 manifest。
+插件没有加载时（被禁用、未安装），用它形状的列表画不出字段，与它的节点一样不可用；项目的依赖提示会指出是哪个插件。
 
 ### 节点文字的翻译
 

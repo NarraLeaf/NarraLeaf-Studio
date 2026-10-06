@@ -11,7 +11,7 @@
 
 import { BLUEPRINT_NODE_PARAM_FIELD_STRUCT } from "@shared/types/blueprint/graph";
 import { blueprintArrayElementType } from "@shared/types/blueprint/valueTypes";
-import { BUILTIN_UI_STRUCTS, resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
+import { listEngineUIStructIds, resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { uiStructIdFromValueType } from "@shared/types/ui-editor/struct";
 import { BLUEPRINT_STRUCT_FIELD_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/listNodes";
 import { createTranslator } from "@shared/i18n";
@@ -359,7 +359,7 @@ function describePinStructs(valueTypes: readonly (string | undefined)[]): NodeDe
 
 /** Every shape the engine owns, for `blueprint structs`. */
 export function listBuiltinStructs(): NonNullable<NodeDetail["structs"]> {
-    return Object.values(BUILTIN_UI_STRUCTS).map(struct => ({
+    return listEngineUIStructIds().flatMap(id => resolveUIStruct(null, id) ?? []).map(struct => ({
         id: struct.id,
         fields: struct.fields.map(field => ({ key: field.key, type: field.type })),
     }));

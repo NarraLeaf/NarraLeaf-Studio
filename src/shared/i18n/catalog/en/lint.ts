@@ -1000,9 +1000,9 @@ export const lint = {
             description: "Rows of another shape given to a list",
             message: "{node}: {struct} does not match the list's fields",
             help:
-                "Set List Content, Append List Item or another list node is given rows whose fields differ from "
-                + "the ones the list declares - for example saves wired into a list whose Struct is Ending. Only "
-                + "nodes that will run are checked, and only where both shapes are known.\n"
+                "Set List Content, Append List Item or another list node is given rows that lack fields the list "
+                + "declares, or carry them as another type - for example saves wired into a list whose Struct is "
+                + "Ending. Only nodes that will run are checked, and only where both shapes are known.\n"
                 + "\n"
                 + "The list draws each row from its own fields, so the fields the rows do not carry show empty.\n"
                 + "\n"

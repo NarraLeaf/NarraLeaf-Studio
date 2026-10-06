@@ -66,7 +66,15 @@ export const GROUP_OPTIONS_SOURCE = `${PLUGIN_ID}.groups`;
  * imageless variant yields null, and every built-in image consumer accepts it.
  */
 const VALUE_TYPE_IMAGE_ASSET_NULLABLE = "ImageAsset|null";
-const VALUE_TYPE_ARRAY = "array";
+
+/**
+ * The rows the three list readers hand out, typed by the shapes this plugin declares in its manifest
+ * (`contributes.structs`). Typed, a row's fields are on the menu when a wire is dragged off it, and a
+ * list given the matching shape takes them with its fields locked to the plugin's.
+ */
+const VALUE_TYPE_ENTRIES = "array<struct:narraleaf.gallery.entry>";
+const VALUE_TYPE_VARIANTS = "array<struct:narraleaf.gallery.variant>";
+const VALUE_TYPE_GROUPS = "array<struct:narraleaf.gallery.group>";
 
 const PARAM_ARTWORK = "galleryItemId";
 const PARAM_VARIANT = "galleryVariantId";
@@ -147,9 +155,11 @@ const entriesOut = {
     id: "entries",
     kind: "output",
     semantic: "data",
-    valueType: VALUE_TYPE_ARRAY,
+    valueType: VALUE_TYPE_ENTRIES,
     label: "Entries",
 } as const;
+const variantsOut = { ...entriesOut, valueType: VALUE_TYPE_VARIANTS } as const;
+const groupsOut = { ...entriesOut, id: "groups", valueType: VALUE_TYPE_GROUPS, label: "Groups" } as const;
 
 const countOut = { id: "count", kind: "output", semantic: "data", valueType: "integer", label: "Count" } as const;
 const unlockedCountOut = {
@@ -521,7 +531,7 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
                 artworkIdIn,
                 onlyUnlockedIn,
                 execNext,
-                entriesOut,
+                variantsOut,
                 countOut,
                 unlockedCountOut,
             ],
@@ -553,7 +563,7 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
             keywords: ["gallery", "group", "category", "chapter", "tab", "section", "array"],
             graphKinds: ["event", "macro"],
             isPure: false,
-            pins: [execIn, execNext, { ...entriesOut, id: "groups", label: "Groups" }, countOut],
+            pins: [execIn, execNext, groupsOut, countOut],
             // Feeds a category tab bar; each row's `id` goes back into Get
             // Gallery's Group Id pin.
             execute: ctx => {
