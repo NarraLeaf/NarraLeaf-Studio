@@ -836,6 +836,51 @@ describe("blueprint fn validation", () => {
         expect(diagnostics.map(d => d.code)).not.toContain("node.no_runtime");
     });
 
+    /**
+     * The message bar under the canvas reads these out. Node ids in them put a UUID on the interface,
+     * and owner and graph kinds put internal words there - the node is named by its card's title,
+     * which is what the author is taken to when they click the message.
+     */
+    it("names nodes by their cards' titles and owners by their labels, never by ids or kinds", () => {
+        registerCoreBlueprintNodes();
+        const headId = "6f1c2a3b-0000-4000-8000-00000000aaaa";
+        const callId = "6f1c2a3b-0000-4000-8000-00000000bbbb";
+        const doc = fnDocument({
+            "bp-a": {
+                owner: { kind: "surfaceMain", surfaceId: "s1" },
+                ir: {
+                    nodes: {
+                        init: { id: "init", type: "blueprint.event.head.surfaceInit" },
+                        [headId]: { id: headId, ...fnHeadNode("") },
+                        [callId]: { id: callId, type: BLUEPRINT_NODE_TYPE_FN_CALL },
+                    },
+                    edges: [
+                        { from: { nodeId: callId, port: "next" }, to: { nodeId: callId, port: "in" } },
+                        { from: { nodeId: "init", port: "then" }, to: { nodeId: "gone", port: "in" } },
+                    ],
+                },
+            },
+            "bp-v": {
+                owner: { kind: "widgetValue", surfaceId: "s1", elementId: "text", propPath: "props.text" },
+                ir: { nodes: { head: { id: "head", ...fnHeadNode("Echo") } }, edges: [] },
+            },
+        });
+
+        const messages = [
+            ...validateBlueprintDocumentGraphs(doc, "bp-a"),
+            ...validateBlueprintDocumentGraphs(doc, "bp-v"),
+        ].map(d => d.message);
+        const byCode = (diagnostics: ReturnType<typeof validateBlueprintDocumentGraphs>, code: string) =>
+            diagnostics.find(d => d.code === code)?.message ?? "";
+
+        expect(messages.join(" | ")).not.toMatch(/6f1c2a3b|gone|widgetValue|surfaceMain/);
+        const bpA = validateBlueprintDocumentGraphs(doc, "bp-a");
+        expect(byCode(bpA, "fn.name_missing")).toContain("Fn");
+        expect(byCode(bpA, "fn.call_unset")).toContain("Call Fn");
+        expect(byCode(bpA, "edge.self_connection")).toContain("Call Fn");
+        expect(byCode(validateBlueprintDocumentGraphs(doc, "bp-v"), "node.context_invalid")).toContain("Widget value");
+    });
+
     it("anchors edge.port_mismatch on the node missing the pin, not its upstream neighbour", () => {
         registerCoreBlueprintNodes();
         const ir: BlueprintGraphIr = {
