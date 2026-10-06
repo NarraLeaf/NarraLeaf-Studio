@@ -49,6 +49,8 @@ import {
     subscribeActiveUIPageParams,
 } from "@shared/types/ui-editor/pageParams";
 import { BLUEPRINT_PAGE_PARAM_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/frameNodes";
+import { BLUEPRINT_SCENE_VARIABLE_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/storyVariableNodes";
+import { buildSceneVariableOptions } from "./sceneVariableOptions";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
 import { isFactoryStoryBlueprintName, ownerLabelKey } from "@shared/types/ui-editor/ownerLabels";
 import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemContext";
@@ -2188,6 +2190,16 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 value: param.id,
                 label: param.name.trim() || param.id,
             }));
+        }
+        // The variables of the scene whose row runs this blueprint, for `Get Scene Var` / `Set Scene
+        // Var`. Ids, not names: the variable's row id is what the node stores and what the compiled
+        // scene answers to, so renaming the variable must not unpoint the graph.
+        if (bp.owner.kind === "storyAction") {
+            opts[BLUEPRINT_SCENE_VARIABLE_OPTIONS_SOURCE] = buildSceneVariableOptions(
+                storyEntries.map(story => ({ id: story.id, document: storyDocumentsById[story.id] })),
+                payload.blueprintId,
+                t("blueprint.options.untitledScene"),
+            );
         }
         // The parameters of the page this blueprint belongs to, for `Get Page Param`. Ids, not names,
         // for the same reason.

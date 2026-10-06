@@ -20,6 +20,7 @@ import {
 } from "@/lib/ui-editor/blueprint-nodes/types";
 import { BLUEPRINT_FIELD_READER_INPUT_PIN } from "@/lib/ui-editor/blueprint-nodes/effectivePins";
 import { formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
+import { BLUEPRINT_SCENE_VARIABLE_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/storyVariableNodes";
 import { BlueprintLiteralValueControl, type LiteralEditMode } from "../../components/BlueprintLiteralValueControl";
 import { BlueprintJsonValueControl } from "../../components/BlueprintJsonValueControl";
 import { BlueprintColorValueControl } from "../../components/BlueprintColorValueControl";
@@ -1377,6 +1378,18 @@ function InspectorParamOnCard({
             label: v.name,
         })),
     ];
+    // The scene's variables arrive with the editor's other dynamic lists: which scene they belong to
+    // is a fact about the story rows naming this blueprint, which only the editor has to hand.
+    const sceneVariableOptions =
+        spec.kind === "sceneVariableRef" ? dynamicSelectOptions?.[BLUEPRINT_SCENE_VARIABLE_OPTIONS_SOURCE] ?? [] : [];
+    const sceneVariableSelectValue =
+        spec.kind === "sceneVariableRef" && typeof raw === "string" && sceneVariableOptions.some(option => option.value === raw)
+            ? raw
+            : "";
+    const sceneVariableComponentOptions: SelectOption[] = [
+        { value: "", label: "-" },
+        ...sceneVariableOptions.map(option => ({ value: option.value, label: option.label })),
+    ];
     const isVarDefaultValueParam =
         spec.kind === "literal" && spec.key === "defaultValue" && nodeType === BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR;
     const isReadonlyAnyDefaultValue = isVarDefaultValueParam && params.valueType === "any";
@@ -1441,6 +1454,19 @@ function InspectorParamOnCard({
                     size="sm"
                     options={savedVariableComponentOptions}
                     value={savedVariableSelectValue}
+                    onChange={value => {
+                        const v = String(value);
+                        onPatchNodeParam(nodeId, spec.key, v.length > 0 ? v : undefined);
+                    }}
+                    portalMenu
+                    menuPlacement="below"
+                />
+            ) : spec.kind === "sceneVariableRef" ? (
+                <Select
+                    fullWidth
+                    size="sm"
+                    options={sceneVariableComponentOptions}
+                    value={sceneVariableSelectValue}
                     onChange={value => {
                         const v = String(value);
                         onPatchNodeParam(nodeId, spec.key, v.length > 0 ? v : undefined);

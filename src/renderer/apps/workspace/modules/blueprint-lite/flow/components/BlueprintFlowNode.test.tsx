@@ -6,10 +6,12 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_COMMENT,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
+    BLUEPRINT_NODE_TYPE_SCENE_GET,
 } from "@shared/types/blueprint/graph";
 import { resolveBlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
 import { BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY } from "@/lib/ui-editor/blueprint-nodes/types";
+import { BLUEPRINT_SCENE_VARIABLE_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/storyVariableNodes";
 import { BlueprintFlowNode } from "./BlueprintFlowNode";
 
 function renderSaveGameCapturePin(screenshot: unknown): string {
@@ -60,6 +62,25 @@ function renderComment(params: Record<string, unknown>): string {
                     params,
                     onPatchNodeParam: vi.fn(),
                     onFitGroupFrame: vi.fn(),
+                },
+            } as any)}
+        />,
+    );
+}
+
+function renderSceneVarCard(params: Record<string, unknown>, options: { value: string; label: string }[]): string {
+    registerCoreBlueprintNodes();
+    const catalog = resolveBlueprintNodeEditorCatalogEntry(BLUEPRINT_NODE_TYPE_SCENE_GET);
+    return renderToStaticMarkup(
+        <BlueprintFlowNode
+            {...({
+                selected: false,
+                data: {
+                    catalog,
+                    nodeId: "get",
+                    params,
+                    dynamicSelectOptions: { [BLUEPRINT_SCENE_VARIABLE_OPTIONS_SOURCE]: options },
+                    onPatchNodeParam: vi.fn(),
                 },
             } as any)}
         />,
@@ -255,5 +276,25 @@ describe("BlueprintFlowNode", () => {
         expect(markup).toContain("Title");
         expect(markup).toContain('data-preview="title"');
         expect(markup).not.toContain("Missing element");
+    });
+    /**
+     * A Scene Var card had no control for its variable at all: the field's kind had no picker, so
+     * an author could not point it at anything with the mouse and every such node failed to run.
+     */
+    it("lets a Scene Var card pick from its scene's variables, and shows the one it holds by name", () => {
+        const markup = renderSceneVarCard({ sceneVariableId: "var-hp" }, [
+            { value: "var-hp", label: "hp" },
+            { value: "var-mood", label: "Mood" },
+        ]);
+
+        expect(markup).toContain(">hp<");
+        expect(markup).not.toContain("var-hp");
+    });
+
+    it("leaves a Scene Var card unset when the variable it held is no longer in its scene", () => {
+        const markup = renderSceneVarCard({ sceneVariableId: "gone" }, [{ value: "var-hp", label: "hp" }]);
+
+        expect(markup).not.toContain("gone");
+        expect(markup).not.toContain(">hp<");
     });
 });

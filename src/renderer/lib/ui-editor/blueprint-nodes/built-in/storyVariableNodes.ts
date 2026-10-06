@@ -30,6 +30,15 @@ import { savedVariableStateKey } from "../../blueprint-runtime/blueprintStateWri
 
 type ExecuteCtx = Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0];
 
+/**
+ * Where the canvas finds the choices for a `sceneVariableRef` field: the scene variables of the scene
+ * whose row runs the blueprint, filled in by the editor as one of its dynamic option lists.
+ *
+ * Not a `select` param's `dynamicOptionsSource`, because the field keeps its own kind - what it holds
+ * is a scene variable's id, and the tools that read a node definition say so by the kind.
+ */
+export const BLUEPRINT_SCENE_VARIABLE_OPTIONS_SOURCE = "sceneVariables";
+
 function requireStoryRuntime(ctx: ExecuteCtx) {
     const runtime = ctx.hostAdapter.storyRuntime;
     if (!runtime) {
