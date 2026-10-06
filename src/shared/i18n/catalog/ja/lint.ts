@@ -1403,6 +1403,7 @@ export const lint = {
     },
     message: {
         ruleFailed: "{rule} を実行できなかった",
+        listSeparator: "、",
         storyLoadFailed: "{story} を開けなかった",
         storyTooOld: "{story} はストーリー形式 v{version}、このバージョンの Studio が開けるのは v{minimum} 以降",
         storyTooNew: "{story} は新しいバージョンの NarraLeaf Studio が書き込んだもの（ストーリー形式 v{version}）、このバージョンの Studio が読めるのは v{supported} まで",

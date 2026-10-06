@@ -1,7 +1,8 @@
 import React, { type ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
-import { translate } from "@/lib/i18n";
+import type { TranslationKey } from "@shared/i18n";
 import type { UIElement } from "@shared/types/ui-editor/document";
+import { usePlayerWords } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
 
 /**
  * The block drawn where a widget could not be.
@@ -16,16 +17,21 @@ import type { UIElement } from "@shared/types/ui-editor/document";
  * registered - a dashed warning frame, a warning triangle, a short badge and the raw type string in
  * a monospace face - so that "the plugin that defined this is not here" reads the same in both
  * editors.
+ *
+ * A game draws it too, where a plugin's widget threw, so the badge is worded in the game's language
+ * there and in the author's on the canvas (`usePlayerWords`).
  */
 function WidgetProblemBlock({
-    label,
+    labelKey,
     type,
     children,
 }: {
-    label: string;
+    labelKey: TranslationKey;
     type: string;
     children?: ReactNode;
 }): React.ReactElement {
+    const words = usePlayerWords();
+    const label = words(labelKey);
     return (
         <div
             className="flex flex-col min-h-[20px] w-full h-full box-border border-2 border-dashed border-warning/55 bg-warning/10 overflow-hidden"
@@ -58,7 +64,7 @@ export function renderUnknownWidgetTypeContent(element: UIElement, children: Rea
     }
 
     return (
-        <WidgetProblemBlock label={translate("uiEditor.canvas.unknownWidget")} type={element.type}>
+        <WidgetProblemBlock labelKey="uiEditor.canvas.unknownWidget" type={element.type}>
             {children.length > 0 ? <div className="w-full flex-1 min-h-0">{children}</div> : null}
         </WidgetProblemBlock>
     );
@@ -72,5 +78,5 @@ export function renderUnknownWidgetTypeContent(element: UIElement, children: Rea
  * problem. See `WidgetRenderBoundary`.
  */
 export function renderWidgetRenderFailureContent(type: string): ReactNode {
-    return <WidgetProblemBlock label={translate("uiEditor.canvas.widgetRenderFailed")} type={type} />;
+    return <WidgetProblemBlock labelKey="uiEditor.canvas.widgetRenderFailed" type={type} />;
 }

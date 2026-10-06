@@ -619,6 +619,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         return setRuntimeLocaleSource({
             getLocale: gameLocalizationRuntime.getLocale,
             sourceLocale: gameLocalizationRuntime.bundle.sourceLocale,
+            locales: gameLocalizationRuntime.bundle.locales,
         });
     }, [gameLocalizationRuntime]);
     /**
