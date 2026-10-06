@@ -19,6 +19,10 @@ export const struct = {
         visiblePicker: "表示の項目",
         pickerEmpty: "項目なし",
     },
+    shape: {
+        label: "構造体",
+        custom: "カスタム",
+    },
     row: {
         add: "行を追加",
         remove: "この行を削除",

@@ -6,6 +6,8 @@ import {
     buildUIComponentEditorSurfaceId,
     readUIComponentEditorSurfaceComponentId,
 } from "@shared/types/ui-editor/componentInstanceKey";
+import type { UIStructDef } from "@shared/types/ui-editor/struct";
+import { pruneUIStructs, readUIElementStructIds } from "@shared/types/ui-editor/structLibrary";
 import { collectSubtreeElementIds } from "./uiDocumentTreeMove";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { EventEmitter } from "../ui/EventEmitter";
@@ -32,6 +34,8 @@ export type UIEditorBlueprintSurfaceSnapshot = {
 export type UIEditorUIDocumentSurfaceSnapshot = Pick<UIDocument, "schemaVersion" | "id" | "name" | "meta"> & {
     surfaces: UISurface[];
     elements: Record<string, UIElement>;
+    /** The library shapes these elements name; see {@link captureNamedUIStructs}. */
+    structs?: Record<string, UIStructDef>;
 };
 
 /**
@@ -45,7 +49,48 @@ export type UIEditorUIDocumentSurfaceSnapshot = Pick<UIDocument, "schemaVersion"
 export type UIEditorComponentDocumentSnapshot = {
     componentId: string;
     component: UIComponentDefinition | null;
+    /** The library shapes the definition's elements name; see {@link captureNamedUIStructs}. */
+    structs?: Record<string, UIStructDef>;
 };
+
+/**
+ * The shapes in the document's library that these elements name.
+ *
+ * A list's fields live in the library rather than on the list (`structLibrary.ts`), so a snapshot of
+ * a page's elements alone held the pointer and not what it points at: renaming a field changed no
+ * element, recorded no step, and could not be undone, and undoing a change of shape put back a
+ * pointer to a shape the library had already dropped. Only the shapes these elements name, because a
+ * page's undo must not reach into another page's lists - and a shape two lists share is never
+ * reshaped in place (`applyUIStructFieldsForOwner` forks it), so putting one back changes nothing for
+ * the other.
+ */
+function captureNamedUIStructs(
+    document: Pick<UIDocument, "structs">,
+    elements: Iterable<UIElement>,
+): Record<string, UIStructDef> {
+    const out: Record<string, UIStructDef> = {};
+    for (const element of elements) {
+        for (const id of readUIElementStructIds(element)) {
+            const struct = document.structs?.[id];
+            if (struct) {
+                out[id] = cloneBlueprint(struct);
+            }
+        }
+    }
+    return out;
+}
+
+/** Put a snapshot's shapes back into `document`'s library and drop the ones nothing names now. */
+function restoreNamedUIStructs(document: UIDocument, structs: Record<string, UIStructDef> | undefined): void {
+    if (!structs) {
+        return;
+    }
+    const library = { ...(document.structs ?? {}) };
+    for (const [id, struct] of Object.entries(structs)) {
+        library[id] = cloneBlueprint(struct);
+    }
+    document.structs = pruneUIStructs({ ...document, structs: library });
+}
 
 export type UIEditorHistorySnapshot = {
     document: UIEditorUIDocumentSurfaceSnapshot | UIEditorComponentDocumentSnapshot;
@@ -227,7 +272,11 @@ export function captureUIDocumentComponentSnapshot(
     componentId: string,
 ): UIEditorComponentDocumentSnapshot {
     const component = (document.components ?? []).find(item => item.id === componentId);
-    return { componentId, component: component ? cloneBlueprint(component) : null };
+    return {
+        componentId,
+        component: component ? cloneBlueprint(component) : null,
+        structs: captureNamedUIStructs(document, Object.values(component?.elements ?? {})),
+    };
 }
 
 /**
@@ -252,6 +301,7 @@ export function applyUIDocumentComponentSnapshot(
         components.splice(index, 1);
     }
     next.components = components;
+    restoreNamedUIStructs(next, target.structs);
     return next;
 }
 
@@ -279,6 +329,7 @@ export function captureUIDocumentSurfaceSnapshot(
         name: document.name,
         surfaces: surface ? [cloneBlueprint(surface)] : [],
         elements,
+        structs: captureNamedUIStructs(document, Object.values(elements)),
         meta: document.meta ? cloneBlueprint(document.meta) : undefined,
     };
 }
@@ -317,6 +368,7 @@ export function applyUIDocumentSurfaceSnapshot(
             next.elements[elementId] = cloneBlueprint(element);
         }
     }
+    restoreNamedUIStructs(next, "structs" in targetDocument ? targetDocument.structs : undefined);
 
     return next;
 }

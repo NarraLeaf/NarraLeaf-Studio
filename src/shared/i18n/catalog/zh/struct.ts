@@ -19,6 +19,10 @@ export const struct = {
         visiblePicker: "显示字段",
         pickerEmpty: "不绑定字段",
     },
+    shape: {
+        label: "结构",
+        custom: "自定义",
+    },
     row: {
         add: "添加一行",
         remove: "删除该行",

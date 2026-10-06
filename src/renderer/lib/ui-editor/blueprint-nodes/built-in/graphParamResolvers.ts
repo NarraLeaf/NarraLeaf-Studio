@@ -2187,6 +2187,17 @@ function resolveElementTextNodeOutput(
     return undefined;
 }
 
+/**
+ * A widget's size as the Vector2D its pins declare: `x` is the width and `y` the height.
+ *
+ * The host reports `{ width, height }`, and handed on as it was, a Vector2D reader such as Break
+ * Vector2D read neither key and answered 0 by 0. The two named keys stay alongside, so a graph that
+ * read the size by name through Get JSON Field before this keeps reading the same numbers.
+ */
+function displayableSizeValue(size: { width: number; height: number }): Record<string, number> {
+    return { x: size.width, y: size.height, width: size.width, height: size.height };
+}
+
 function resolveElementDisplayableNodeOutput(
     graph: DataPinGraph,
     nodeId: string,
@@ -2223,7 +2234,7 @@ function resolveElementDisplayableNodeOutput(
     if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_SIZE && portId === "size") {
         trackElementDependency(runtime, ref, "layout.width");
         trackElementDependency(runtime, ref, "layout.height");
-        return props.size;
+        return displayableSizeValue(props.size);
     }
     if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_BOUNDS && portId === "bounds") {
         trackElementDependency(runtime, ref, "layout.x");
@@ -2268,7 +2279,7 @@ function resolveElementDisplayableNodeOutput(
             case "size":
                 trackElementDependency(runtime, ref, "layout.width");
                 trackElementDependency(runtime, ref, "layout.height");
-                return props.size;
+                return displayableSizeValue(props.size);
             case "bounds":
                 trackElementDependency(runtime, ref, "layout.x");
                 trackElementDependency(runtime, ref, "layout.y");
@@ -2336,7 +2347,7 @@ function resolveSelfDisplayableNodeOutput(
         return props.position;
     }
     if (type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_SIZE && portId === "size") {
-        return props.size;
+        return displayableSizeValue(props.size);
     }
     if (type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS && portId === "bounds") {
         return props.bounds;
@@ -2373,7 +2384,7 @@ function resolveSelfDisplayableNodeOutput(
             case "position":
                 return props.position;
             case "size":
-                return props.size;
+                return displayableSizeValue(props.size);
             case "bounds":
                 return props.bounds;
             case "x":
@@ -3392,11 +3403,20 @@ function resolveSelfOutput(
         const wired = graph.edges?.some(edge => edge.to.nodeId === nodeId && edge.to.port === BLUEPRINT_FIELD_READER_INPUT_PIN);
         if (wired) {
             const object = resolveDataPinValue(graph, nodeId, BLUEPRINT_FIELD_READER_INPUT_PIN, params, blueprintLocals, depth + 1, runtime);
-            // The engine's own shapes resolve here without a document. Their field ids are their
-            // keys (`builtinStructs.ts`), which is also what makes the fallback below exact for
-            // them: a shape this build does not know is read by the id the field was stored under.
-            const structId = selfNode.params?.[BLUEPRINT_NODE_PARAM_FIELD_STRUCT];
-            const struct = resolveUIStruct(null, typeof structId === "string" ? structId : null);
+            // The engine's own shapes resolve here without a document; a list's own shape comes from
+            // the document the surface runs, or from the row in scope when it is that row's shape.
+            // The engine's field ids are their keys (`builtinStructs.ts`), which is also what makes
+            // the fallback below exact for them: a shape nothing here knows is read by the id the
+            // field was stored under.
+            const structId = typeof selfNode.params?.[BLUEPRINT_NODE_PARAM_FIELD_STRUCT] === "string"
+                ? selfNode.params[BLUEPRINT_NODE_PARAM_FIELD_STRUCT]
+                : null;
+            const struct = structId
+                ? resolveUIStruct(null, structId)
+                    ?? (runtime?.listItemScope?.struct?.id === structId ? runtime.listItemScope.struct : null)
+                    ?? runtime?.hostAdapter?.blueprintRuntime?.resolveStruct?.(structId)
+                    ?? null
+                : null;
             const value = struct
                 ? readUIStructFieldValue(struct, fieldId, object)
                 : object && typeof object === "object" && !Array.isArray(object)

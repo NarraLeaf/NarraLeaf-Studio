@@ -271,6 +271,7 @@ function displayableReadNode(input: {
     hideInPalette?: boolean;
     elementTypes?: readonly string[];
     inspectorParams?: BlueprintNodeDef["inspectorParams"];
+    paramPinTypes?: BlueprintNodeDef["paramPinTypes"];
     /** See `BlueprintNodeDeclaration.assetNames`. */
     assetNames?: BlueprintAssetNameFlow;
 }): BlueprintNodeDef {
@@ -292,6 +293,7 @@ function displayableReadNode(input: {
             : undefined,
         pins: elementTarget ? [genericElementIn, ...input.pins] : input.pins,
         inspectorParams: input.inspectorParams,
+        ...(input.paramPinTypes ? { paramPinTypes: input.paramPinTypes } : {}),
         scope: elementTarget
             ? undefined
             : { ownerKinds: [...WIDGET_OWN_GRAPH_OWNER_KINDS], widgetElementTypes: [...(input.elementTypes ?? DISPLAYABLE_WIDGET_TYPES)] },
@@ -339,6 +341,7 @@ function displayableWriteNode(input: {
     target: "self" | "element";
     elementTypes?: readonly string[];
     inspectorParams?: BlueprintNodeDef["inspectorParams"];
+    paramPinTypes?: BlueprintNodeDef["paramPinTypes"];
     execute: BlueprintNodeDef["execute"];
 }): BlueprintNodeDef {
     const elementTarget = input.target === "element";
@@ -355,6 +358,7 @@ function displayableWriteNode(input: {
             : undefined,
         pins: elementTarget ? [execIn, execNext, genericElementIn, ...(input.pins ?? [])] : [execIn, execNext, ...(input.pins ?? [])],
         inspectorParams: input.inspectorParams,
+        ...(input.paramPinTypes ? { paramPinTypes: input.paramPinTypes } : {}),
         scope: elementTarget
             ? undefined
             : { ownerKinds: [...WIDGET_OWN_GRAPH_OWNER_KINDS], widgetElementTypes: [...(input.elementTypes ?? DISPLAYABLE_WIDGET_TYPES)] },
@@ -673,6 +677,42 @@ function displayableSetPropertyInspectorParams(): BlueprintNodeDef["inspectorPar
     ];
 }
 
+/** What each property Set Property writes takes. Every one it offers is a number but Visible. */
+const DISPLAYABLE_SET_PROPERTY_VALUE_TYPES: Readonly<Record<string, string>> = {
+    x: "float",
+    y: "float",
+    offsetX: "float",
+    offsetY: "float",
+    width: "float",
+    height: "float",
+    rotation: "float",
+    opacity: "float",
+    visible: "boolean",
+};
+
+/**
+ * What each property Get Property reads answers. Size is a Vector2D of width and height, the same
+ * as `Get Size` says (`displayableSizeValue` in `graphParamResolvers.ts` is where the runtime makes it one).
+ */
+const DISPLAYABLE_GET_PROPERTY_VALUE_TYPES: Readonly<Record<string, string>> = {
+    ...DISPLAYABLE_SET_PROPERTY_VALUE_TYPES,
+    position: BLUEPRINT_VALUE_TYPE_VECTOR2D,
+    size: BLUEPRINT_VALUE_TYPE_VECTOR2D,
+    bounds: BLUEPRINT_VALUE_TYPE_RECT,
+};
+
+const DISPLAYABLE_GET_PROPERTY_PIN_TYPES: NonNullable<BlueprintNodeDef["paramPinTypes"]> = {
+    param: "property",
+    pins: ["value"],
+    types: DISPLAYABLE_GET_PROPERTY_VALUE_TYPES,
+};
+
+const DISPLAYABLE_SET_PROPERTY_PIN_TYPES: NonNullable<BlueprintNodeDef["paramPinTypes"]> = {
+    param: "property",
+    pins: ["value"],
+    types: DISPLAYABLE_SET_PROPERTY_VALUE_TYPES,
+};
+
 async function setDisplayableVariant(ctx: Parameters<BlueprintNodeDef["execute"]>[0], target: "self" | "element") {
     const api = requireHostApi(ctx);
     const elementId = resolveDisplayableTargetElementId(ctx, target, APPEARANCE_VARIANT_WIDGET_TYPES);
@@ -972,6 +1012,7 @@ export const elementBlueprintNodes: BlueprintNodeDef[] = [
         target: "self",
         hideInPalette: false,
         inspectorParams: displayableGetPropertyInspectorParams(),
+        paramPinTypes: DISPLAYABLE_GET_PROPERTY_PIN_TYPES,
     }),
     displayableWriteNode({
         type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
@@ -980,6 +1021,7 @@ export const elementBlueprintNodes: BlueprintNodeDef[] = [
         pins: [dataIn("value", "Value", "any")],
         target: "self",
         inspectorParams: displayableSetPropertyInspectorParams(),
+        paramPinTypes: DISPLAYABLE_SET_PROPERTY_PIN_TYPES,
         execute: ctx => setDisplayableProperty(ctx, "self"),
     }),
     displayableVariantReadNode({
@@ -1099,6 +1141,7 @@ export const elementBlueprintNodes: BlueprintNodeDef[] = [
         pins: [out("value", "Value", "any")],
         target: "element",
         inspectorParams: displayableGetPropertyInspectorParams(),
+        paramPinTypes: DISPLAYABLE_GET_PROPERTY_PIN_TYPES,
     }),
     displayableWriteNode({
         type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY,
@@ -1107,6 +1150,7 @@ export const elementBlueprintNodes: BlueprintNodeDef[] = [
         pins: [dataIn("value", "Value", "any")],
         target: "element",
         inspectorParams: displayableSetPropertyInspectorParams(),
+        paramPinTypes: DISPLAYABLE_SET_PROPERTY_PIN_TYPES,
         execute: ctx => setDisplayableProperty(ctx, "element"),
     }),
     displayableVariantReadNode({

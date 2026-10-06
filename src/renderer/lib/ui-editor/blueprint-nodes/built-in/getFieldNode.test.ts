@@ -34,7 +34,10 @@ const ROW: UIListItemScope = {
 
 const ENDING = { endingId: "e1", name: "Festival together", sceneId: "s1", sceneName: "Last light", isReached: true };
 
-function read(params: Record<string, unknown>, options: { wired?: unknown; row?: UIListItemScope } = {}): unknown {
+function read(
+    params: Record<string, unknown>,
+    options: { wired?: unknown; row?: UIListItemScope; documentStructs?: Record<string, UIStructDef> } = {},
+): unknown {
     const nodes: Record<string, unknown> = {
         read: { id: "read", type: BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD, params },
     };
@@ -44,7 +47,12 @@ function read(params: Record<string, unknown>, options: { wired?: unknown; row?:
         edges.push({ from: { nodeId: "source", port: "value" }, to: { nodeId: "read", port: "object" } });
     }
     const graph = { id: "graph", nodes, edges } as unknown as DataPinGraph;
-    const runtime = options.row ? ({ listItemScope: options.row } as Parameters<typeof resolveDataPinValue>[6]) : undefined;
+    const runtime = {
+        ...(options.row ? { listItemScope: options.row } : {}),
+        ...(options.documentStructs
+            ? { hostAdapter: { blueprintRuntime: { resolveStruct: (id: string) => options.documentStructs?.[id] ?? null } } }
+            : {}),
+    } as Parameters<typeof resolveDataPinValue>[6];
     return resolveDataPinValue(graph, "read", "value", params, {}, 0, runtime);
 }
 
@@ -60,6 +68,13 @@ describe("Get Field", () => {
         const { name: _name, ...nameless } = ENDING;
         expect(read({ [BLUEPRINT_NODE_PARAM_FIELD_STRUCT]: "nl.ending", [BLUEPRINT_NODE_PARAM_FIELD]: "name" }, { wired: nameless }))
             .toBe("");
+    });
+
+    it("reads a list's own shape wired in by the field's name, from the document the surface runs", () => {
+        const params = { [BLUEPRINT_NODE_PARAM_FIELD_STRUCT]: "rowShape", [BLUEPRINT_NODE_PARAM_FIELD]: "f1" };
+        expect(read(params, { wired: { title: "Chapter two" }, documentStructs: { rowShape: ROW_STRUCT } })).toBe("Chapter two");
+        // The row in scope answers for its own shape where no document is to hand.
+        expect(read(params, { wired: { title: "Chapter two" }, row: ROW })).toBe("Chapter two");
     });
 
     it("reads the wire rather than the row when both are there", () => {
