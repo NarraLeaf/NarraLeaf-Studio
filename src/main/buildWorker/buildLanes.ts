@@ -45,6 +45,25 @@ export function resolveBuildLanes(
     return buildLaneCount(ceiling);
 }
 
+/**
+ * The most pieces a zip compresses at once (see parallelZip). Higher than the asset passes' ceilings
+ * because a lane here is a zlib call on a thread, not a renderer or a process: it costs a megabyte of
+ * input and the output it makes.
+ */
+export const ARCHIVE_LANE_CEILING = 16;
+
+/**
+ * How many threads the packaging worker's libuv pool should have, for its environment at fork time.
+ *
+ * zlib's asynchronous calls run on that pool, and it has four threads unless `UV_THREADPOOL_SIZE`
+ * says otherwise before the process starts - so without this a zip's lanes would queue for four
+ * threads. Four more than the lanes, so the reads feeding them and every other file operation in the
+ * worker never wait behind a compression.
+ */
+export function packagingThreadPoolSize(cpus: number = availableCores()): number {
+    return Math.max(4, buildLaneCount(ARCHIVE_LANE_CEILING, cpus) + 4);
+}
+
 function availableCores(): number {
     return typeof os.availableParallelism === "function" ? os.availableParallelism() : os.cpus().length;
 }
