@@ -187,6 +187,8 @@ export function useStoryScenePreviewController(input: {
     }, [logStoryConsole]);
 
     const host = useStoryPreviewGameUi({ context, enabled: open && active, onIssue: pushIssue });
+    const hostRef = useRef(host);
+    hostRef.current = host;
 
     // Local assets resolve to session-lived blob URLs: `app://fs/{hash}` grants are single-use,
     // and the engine loads the same image URL repeatedly (preloader + render + session remounts).
@@ -383,6 +385,10 @@ export function useStoryScenePreviewController(input: {
         // the reset aborts cleanly, and React commits the removal and the reveal in one paint.
         disposeRunObject(retiring);
         refreshStageLayers();
+        // The retired row's persistent writes go with it, here rather than when the rebuild began so
+        // the frame still on screen kept reading its own values until it was swapped out. The target's
+        // own action, which may write one, runs after the reveal below.
+        hostRef.current.resetPersistence();
         run.resolveReveal();
     }, [disposeRunObject, refreshStageLayers]);
 

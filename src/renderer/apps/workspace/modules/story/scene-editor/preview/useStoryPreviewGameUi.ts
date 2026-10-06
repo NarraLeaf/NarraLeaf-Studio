@@ -109,6 +109,17 @@ export type StoryPreviewGameUiHost = {
     blueprintDocument: DevModeBundle["ui"]["localBlueprints"] | undefined;
     /** In-memory persistent-variable bridge (no host storage in the workspace preview). */
     persistence: StoryPersistenceBridge | undefined;
+    /**
+     * Forget every persistent value written since the last call, so each persistent variable reads
+     * its declared default again.
+     *
+     * The persistent scope lives in the runtime core, which outlives any one previewed row. Without
+     * this, a row that writes a persistent variable would leave its value behind for every row the
+     * cursor visits afterwards, and the same row would preview differently depending on where the
+     * cursor had been. Called once per previewed row, so a row shows the declared defaults plus what
+     * that row itself writes - the same starting point the snapshot walk takes.
+     */
+    resetPersistence: () => void;
     /** Build a per-session NLR Game rendering the project's custom Game UI slots. */
     createPreviewGame: (input: {
         sessionId: string;
@@ -270,6 +281,14 @@ export function useStoryPreviewGameUi(input: {
             get: key => core.scopeBridge.persistenceGet(key),
             set: (key, value) => core.scopeBridge.persistenceSet(key, value),
         };
+    }, [core]);
+
+    const resetPersistence = useCallback(() => {
+        // Only when something was written: the reset re-runs every binding that reads a persistent
+        // variable, and most rows write none.
+        if (core && core.scopeBridge.getPersistenceSnapshot().size > 0) {
+            core.scopeBridge.resetPersistenceToDefaults();
+        }
     }, [core]);
 
     /**
@@ -544,6 +563,7 @@ export function useStoryPreviewGameUi(input: {
         characters,
         blueprintDocument,
         persistence,
+        resetPersistence,
         createPreviewGame,
     };
 }
