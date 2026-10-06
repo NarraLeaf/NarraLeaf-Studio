@@ -29,7 +29,7 @@ import {
     type UIElementValueBinding,
     type UIPageParam,
 } from "@shared/types/ui-editor/document";
-import { normalizeUIPageParams, setActiveUIPageParams } from "@shared/types/ui-editor/pageParams";
+import { getUIPageParams, normalizeUIPageParams, setActiveUIPageParams } from "@shared/types/ui-editor/pageParams";
 import { entrySurfacePointerMisses, isEntrySurface, resolveEntrySurface } from "@shared/types/ui-editor/entrySurface";
 import { buildUIComponentEditorSurfaceId, buildUIComponentSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
 import { foldLegacyImageProps, UI_IMAGE_ELEMENT_TYPE } from "@shared/types/ui-editor/legacyImageProps";
@@ -3522,6 +3522,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             ? remapSurfaceDuplicateReferenceValue(cloneJson(sourceSurface.settings), remapContext)
             : undefined;
 
+        const sourcePageParams = getUIPageParams(sourceSurface);
         const newSurface: UISurface = placement.kind === "stageSurface"
             ? {
                 id: newSurfaceId,
@@ -3541,6 +3542,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 designSize,
                 rootElementId: newRootElementId,
                 settings: createDefaultPageSurfaceSettings(remappedSettings),
+                // What the page is opened with comes along with it: the lists on it and the graphs
+                // copied beside it read those names, and the nodes that open it grow inputs from them.
+                ...(sourcePageParams.length > 0 ? { params: sourcePageParams } : {}),
             };
 
         localBp?.applyBlueprintMutation(bpDoc => {
