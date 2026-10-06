@@ -53,6 +53,12 @@ export function resolveBuildLanes(
 export const ARCHIVE_LANE_CEILING = 16;
 
 /**
+ * The most threads the shipped-content audit reads a sealed package back on. Each holds one entry
+ * whole while it proves it, and on a 1.5 GB package eight came within half a second of sixteen.
+ */
+export const SEALED_PROBE_LANE_CEILING = 8;
+
+/**
  * How many threads the packaging worker's libuv pool should have, for its environment at fork time.
  *
  * zlib's asynchronous calls run on that pool, and it has four threads unless `UV_THREADPOOL_SIZE`
