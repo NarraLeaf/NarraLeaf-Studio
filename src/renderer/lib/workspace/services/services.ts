@@ -414,7 +414,7 @@ interface IUIDocumentService extends IService {
     runSurfaceHistoryTransaction(surfaceId: string, action: () => void): void;
     updateElementLayout(elementId: string, layoutPatch: Partial<UILayout>, options?: { skipHistory?: boolean }): void;
     updateElementLayouts(layoutPatches: Record<string, Partial<UILayout>>, options?: { mergeKey?: string }): void;
-    updateElementProps(elementId: string, propsPatch: Record<string, unknown>): void;
+    updateElementProps(elementId: string, propsPatch: Record<string, unknown>, options?: { skipHistory?: boolean }): void;
     ensureElementBlueprintValueBinding(
         elementId: string,
         propPath: string,
@@ -459,7 +459,12 @@ interface IUIDocumentService extends IService {
         layoutPatches: Record<string, Partial<UILayout>>,
         options?: { mergeKey?: string },
     ): void;
-    updateComponentElementProps(componentId: string, elementId: string, propsPatch: Record<string, unknown>): void;
+    updateComponentElementProps(
+        componentId: string,
+        elementId: string,
+        propsPatch: Record<string, unknown>,
+        options?: { skipHistory?: boolean },
+    ): void;
     updateComponentElementExtra(componentId: string, elementId: string, extraPatch: Record<string, unknown>): void;
     renameComponentElement(componentId: string, elementId: string, name: string): void;
     reorderComponentChildren(componentId: string, parentId: string, orderedChildIds: string[]): void;

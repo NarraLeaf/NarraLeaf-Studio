@@ -6,6 +6,7 @@ import type { LintFinding, LintLocation, LintRule } from "../types";
 import {
     isBlankSegment,
     listLiveTextSegments,
+    orphanTranslationUnitIds,
     segmentSourceText,
     storyLocation,
     type LintTextSegmentRef,
@@ -241,9 +242,8 @@ function runStale(ctx: LintContext): LintFinding[] {
  * author's move is the same one whatever the number is (open that language's table), so the number
  * is what the finding carries. A locale with no orphans emits nothing at all.
  *
- * Opening one lands on that language's table, which is as near as there is: the table lists the
- * project's lines, so a translation of a line that is not there has no row in it to reveal, and the
- * table can neither show nor remove one.
+ * Opening one lands on that language's table showing its orphans - the translations this counts,
+ * each with the line it belonged to when that line is only disabled - where they can be deleted.
  */
 function runOrphan(ctx: LintContext): LintFinding[] {
     const localization = ctx.localization;
@@ -261,9 +261,7 @@ function runOrphan(ctx: LintContext): LintFinding[] {
         if (!document) {
             continue;
         }
-        const count = Object.keys(document.units).filter(
-            unitId => !unitId.includes(":") && !liveTextIds.has(unitId),
-        ).length;
+        const count = orphanTranslationUnitIds(document.units, liveTextIds).length;
         if (count === 0) {
             continue;
         }
@@ -273,7 +271,7 @@ function runOrphan(ctx: LintContext): LintFinding[] {
             messageParams: { count, locale },
             messageParamCounts: { translations: { key: "lint.rule.localizationOrphan.translationCount", count } },
             location: { kind: "project" },
-            target: { kind: "translation", locale },
+            target: { kind: "translationOrphans", locale },
         });
     }
     return findings;

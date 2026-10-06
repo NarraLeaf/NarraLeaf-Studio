@@ -228,7 +228,27 @@ export type LintLocation =
            */
           excerpt?: string;
       }
-    | { kind: "blueprint"; blueprintId: string; blueprintName?: string; graphId?: string; nodeId?: string }
+    | {
+          kind: "blueprint";
+          blueprintId: string;
+          blueprintName?: string;
+          graphId?: string;
+          nodeId?: string;
+          /**
+           * The name of the layer (or function graph) `graphId` is, as the author gave it; absent
+           * for one with no name.
+           *
+           * Not written by rules: `annotateBlueprintLocation` resolves it, with {@link nodeTitle},
+           * once for every rule. They are what tells two findings of one rule in one blueprint apart,
+           * the way `line` and `excerpt` do inside a scene.
+           */
+          layerName?: string;
+          /**
+           * The node's title as the node catalogue spells it (English), translated where the
+           * finding is drawn. Absent for a node the catalogue does not know.
+           */
+          nodeTitle?: string;
+      }
     | {
           kind: "surface";
           surfaceId: string;

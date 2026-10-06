@@ -21,7 +21,10 @@ import {
     displayableSubjectWord,
     layerActionTargetRef,
     resolveDisplayableTargetRef,
+    resolveStoryGroupRunMode,
     resolveStoryLayerRef,
+    storyGroupKindOfMode,
+    storyGroupWaits,
     storyVariableRefKey,
 } from "@shared/types/story";
 import { formatStorySecondsLabel, storyMsToSeconds } from "@shared/utils/storyTime";
@@ -316,6 +319,11 @@ export type StoryContainerHeaderInfo = {
      * because the payload does not have one either (`until` present selects the conditional form).
      */
     repeatUntil?: StoryConditionRef;
+    /**
+     * Set to false on a sequence or parallel group the story does not wait for: the rows after it
+     * start together with it. Absent on every other header.
+     */
+    groupWaits?: boolean;
 };
 
 /** Header descriptor for a container block - the pill text + which inline editors it exposes. */
@@ -354,13 +362,18 @@ export function getStoryContainerHeaderInfo(block: StoryBlock): StoryContainerHe
             }
             return { pill: translate("story.containerHeader.repeat"), commandId: "repeat", role: "group", hasCondition: false, repeatTimes: payload.times ?? 1 };
         }
-        if (payload.control === "parallel") {
-            return { pill: translate("story.containerHeader.parallel"), commandId: "parallel", role: "group", hasCondition: false };
+        // Named by how the group runs, which is its `mode` whenever one is stored: a row written as
+        // `/sequence` that holds `mode: "all"` runs its rows side by side, and its header says so.
+        const run = resolveStoryGroupRunMode(payload);
+        const kind = storyGroupKindOfMode(run);
+        const waits = storyGroupWaits(run);
+        if (kind === "parallel") {
+            return { pill: translate("story.containerHeader.parallel"), commandId: "parallel", role: "group", hasCondition: false, ...(waits ? {} : { groupWaits: false }) };
         }
-        if (payload.control === "race") {
+        if (kind === "race") {
             return { pill: translate("story.containerHeader.race"), commandId: "race", role: "group", hasCondition: false };
         }
-        return { pill: translate("story.containerHeader.sequence"), commandId: "sequence", role: "group", hasCondition: false };
+        return { pill: translate("story.containerHeader.sequence"), commandId: "sequence", role: "group", hasCondition: false, ...(waits ? {} : { groupWaits: false }) };
     }
     if (block.kind === "action" && block.payload.action === "nvl") {
         return { pill: translate("story.containerHeader.nvl"), commandId: "nvl", role: "nvl", hasCondition: false };
@@ -857,7 +870,10 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
     }
     if (block.kind === "control") {
         if (block.payload.control === "condition") return translate("story.describe.condition");
-        if (block.payload.control === "conditionBranch") return translate("story.describe.branch", { branch: block.payload.branch });
+        // The branch in the header's own words (If / Else if / Else), never the stored enum.
+        if (block.payload.control === "conditionBranch") {
+            return translate("story.describe.branch", { branch: getStoryContainerHeaderInfo(block)?.pill ?? "" });
+        }
         // The name IS the row: a label row saying only "Label" would leave the author counting rows
         // to find which one a goto points at.
         if (block.payload.control === "label") return translate("story.describe.label", { name: block.payload.name || translate("story.describe.unnamed") });
@@ -893,7 +909,9 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
                 ? translate("story.describe.quit", { page })
                 : translate("story.describe.quitUnset");
         }
-        return block.payload.control;
+        // A group reads as its header does - by how it runs - and nothing here prints the stored
+        // `control` word, which is an identifier and not the interface's language.
+        return getStoryContainerHeaderInfo(block)?.pill ?? translate("story.badge.control");
     }
     if (block.kind === "jump") {
         return translate("story.describe.jump", { scene: getStorySceneName(scenes, block.payload.targetSceneId) });

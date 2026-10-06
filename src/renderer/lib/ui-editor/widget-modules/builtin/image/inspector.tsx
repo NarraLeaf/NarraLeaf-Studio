@@ -36,7 +36,7 @@ function ImageAppearanceField(props: CustomFieldProps<UIInspectorData>) {
         if (next !== appearance) {
             documentService.updateElementProps(element.id, {
                 appearance: next,
-            });
+            }, { skipHistory: true });
         }
     }, [appearance, documentService, element, props.readOnly]);
 

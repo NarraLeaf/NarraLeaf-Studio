@@ -1,4 +1,4 @@
-import type { StoryBlock, StoryScene, StoryTextSegment } from "@shared/types/story";
+import type { StoryBlock, StoryDocument, StoryScene, StoryTextSegment } from "@shared/types/story";
 import { listSceneBlocksInDocumentOrder, listScenesInDocumentOrder } from "@shared/types/story";
 import { countSegmentInterpolations, serializeSegmentSourceText } from "@shared/utils/localizationText";
 import type { SearchJumpTarget } from "../../../workspace/services/search/searchIndexModel";
@@ -99,6 +99,82 @@ export function listLiveTextSegments(ctx: LintContext): LintTextSegmentRef[] {
         }
     }
     return refs;
+}
+
+/** One line of a story as the orphan views describe it: where it is, what it says, and whether it is in the game. */
+export type StoryTextLine = {
+    storyName: string;
+    sceneName: string;
+    /** The line's plain source text. */
+    text: string;
+    /** Under a disabled row, so not in the game: its translations and takes count as orphans. */
+    disabled: boolean;
+};
+
+/**
+ * Every text-bearing line of the given stories by text id, disabled ones included.
+ *
+ * The same rows {@link listLiveTextSegments} walks, without skipping disabled subtrees: a line under a
+ * disabled row is out of the game - which is why its translation reads as an orphan - but it is still
+ * in the document, and an author deciding whether to delete that translation needs to see which
+ * line it belongs to.
+ */
+export function indexStoryTextLines(stories: readonly { name: string; document: StoryDocument }[]): Map<string, StoryTextLine> {
+    const lines = new Map<string, StoryTextLine>();
+    for (const story of stories) {
+        for (const scene of listScenesInDocumentOrder(story.document)) {
+            const live = new Set<string>();
+            for (const block of listSceneBlocksInDocumentOrder(scene, { skipSubtree: isDisabled })) {
+                live.add(block.id);
+            }
+            for (const block of listSceneBlocksInDocumentOrder(scene)) {
+                const found = textSegmentOfBlock(block);
+                if (!found || !found.segment.textId) {
+                    continue;
+                }
+                // A text id met twice (a document edited outside Studio) is in the game if either
+                // copy is.
+                const disabled = !live.has(block.id);
+                if (disabled && lines.get(found.segment.textId)?.disabled === false) {
+                    continue;
+                }
+                lines.set(found.segment.textId, {
+                    storyName: story.name,
+                    sceneName: scene.name,
+                    text: serializeSegmentSourceText(found.segment),
+                    disabled,
+                });
+            }
+        }
+    }
+    return lines;
+}
+
+/** The text ids of the lines in the game: the set a translation or a take is an orphan against. */
+export function liveTextIds(lines: ReadonlyMap<string, StoryTextLine>): Set<string> {
+    const live = new Set<string>();
+    for (const [textId, line] of lines) {
+        if (!line.disabled) {
+            live.add(textId);
+        }
+    }
+    return live;
+}
+
+/**
+ * The units of one language's translations whose line is not in the game.
+ *
+ * Only story-line units: `key:`, `char:`, `scene:` and `ui:` ids name things that are not lines at
+ * all, and story text ids are UUIDs, which cannot contain a colon - so a namespaced id is excluded by
+ * construction. What `localization/orphan` counts, and what the translation table lists and deletes.
+ */
+export function orphanTranslationUnitIds(units: Readonly<Record<string, unknown>>, live: ReadonlySet<string>): string[] {
+    return Object.keys(units).filter(unitId => !unitId.includes(":") && !live.has(unitId));
+}
+
+/** The takes of one voice language whose line is not in the game. What `voice/orphan` counts. */
+export function orphanVoiceUnitIds(units: Readonly<Record<string, unknown>>, live: ReadonlySet<string>): string[] {
+    return Object.keys(units).filter(unitId => !live.has(unitId));
 }
 
 /**

@@ -301,6 +301,26 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
             ));
             return true;
         }
+        case "translationOrphans": {
+            const context = deps.context;
+            const localization = context ? optionalService<LocalizationService>(context, Services.Localization) : null;
+            const name = localization ? translationLocaleName(localization, target.locale) : null;
+            if (name === null) {
+                return false;
+            }
+            deps.openEditorTab(createLocalizationEditorTab(target.locale, name, undefined, { token: nextTableRevealToken() }));
+            return true;
+        }
+        case "voiceOrphans": {
+            const context = deps.context;
+            const voice = context ? optionalService<VoiceService>(context, Services.Voice) : null;
+            const entry = voice?.getConfiguration().voicedLocales.find(candidate => candidate.code === target.locale);
+            if (!entry) {
+                return false;
+            }
+            deps.openEditorTab(createVoiceEditorTab(target.locale, entry.displayName || entry.code, undefined, { token: nextTableRevealToken() }));
+            return true;
+        }
         case "storyVariable": {
             // A saved or persistent variable is declared in the variables panel rather than by any
             // row, so its row in that panel is its address.
