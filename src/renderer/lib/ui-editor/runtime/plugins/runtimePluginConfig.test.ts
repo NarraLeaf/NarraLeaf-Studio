@@ -60,6 +60,7 @@ async function writePlugin(
             externalLinks: [],
             network: [],
             widgetText: {},
+            structs: [],
         },
         permissions: [],
     };

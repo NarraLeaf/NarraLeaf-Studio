@@ -260,6 +260,10 @@ export const settings = {
         downloadRewrites: {
             label: "ダウンロード先の書き換え",
         },
+        useSystemProxy: {
+            label: "このコンピュータのプロキシを使う",
+            description: "Studio のダウンロードはこのコンピュータのプロキシを使います",
+        },
         pluginRegistryUrl: {
             label: "プラグインレジストリの URL",
             description: "プラグインストアが索引を取ってくる先",

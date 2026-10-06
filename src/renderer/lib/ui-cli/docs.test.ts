@@ -14,6 +14,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { UI_STAGE_SLOT_IDS } from "@shared/types/ui-editor/stageSlots";
+import { listEngineUIStructIds } from "@shared/types/ui-editor/builtinStructs";
 import { describeWidget, formatWidgetDetail, listWidgetModules } from "./catalog";
 import { COMMANDS, USAGE } from "./cli";
 
@@ -41,10 +42,11 @@ function fencedBlockStartingWith(firstLine: string): string | null {
 }
 
 describe("the interface guide", () => {
-    it("names only widget types that exist", () => {
+    it("names only widget types and engine shapes that exist", () => {
         const mentioned = new Set([...GUIDE.matchAll(/\bnl\.[a-z][A-Za-z.]*/g)].map(match => match[0]));
         expect(mentioned.size).toBeGreaterThan(3);
-        const known = new Set(listWidgetModules().map(module => module.type));
+        // A page's list parameter names the shape of its rows - an engine shape, not a widget.
+        const known = new Set([...listWidgetModules().map(module => module.type), ...listEngineUIStructIds()]);
         expect([...mentioned].filter(type => !known.has(type))).toEqual([]);
     });
 

@@ -1239,4 +1239,45 @@ describe("variables/condition-never-holds", () => {
 
         expect(await runAsync("variables/condition-never-holds", ctx)).toEqual([]);
     });
+
+    it("counts what the options of earlier scenes add when the scene leaves after its menu", async () => {
+        // The shipped skeleton's shape: each option says its piece and comes back, and the jump is
+        // the row after the menu. The options' writes were dropped on the way out, so a story whose
+        // menus add up to 30 was told an ending gated at 25 could never be reached.
+        const option = (id: string, step: number | null): BlockSpec => ({
+            id,
+            kind: "nodeAction",
+            payload: { action: "choiceOption", text: { textId: `t-${id}`, value: id, role: "choiceText" } },
+            children: step === null ? [] : [incBy(`w-${id}`, AFFECTION_REF, step, "affection")],
+        });
+        const menu = (id: string, options: BlockSpec[]): BlockSpec => ({
+            id,
+            kind: "nodeAction",
+            payload: { action: "choice" },
+            children: options,
+        });
+        const guardAt = (threshold: number) => createTestLintContext({
+            stories: [storyFrom("s1", "Story", [
+                scene("a", "Corridor", [
+                    numberDeclaration("affection", "affection", 0),
+                    menu("m1", [option("stay", 10), option("leave", null)]),
+                    jump("j1", "b"),
+                ]),
+                scene("b", "Clubroom", [
+                    menu("m2", [option("honest", 20), option("loud", 10)]),
+                    jump("j2", "c"),
+                ]),
+                scene("c", "Last light", [
+                    ifBranch("if1", "b1", `affection >= ${threshold}`,
+                        binary(">=", varRead(AFFECTION_REF, "affection"), num(threshold))),
+                ]),
+            ], "a")],
+        });
+
+        expect(await runAsync("variables/condition-never-holds", guardAt(25))).toEqual([]);
+        // And the bound is the real one, not merely a wider one: one option of each menu runs.
+        const findings = await runAsync("variables/condition-never-holds", guardAt(31));
+        expect(findings).toHaveLength(1);
+        expect(findings[0]?.messageParams).toMatchObject({ variable: "affection", bound: "10..30" });
+    });
 });

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import type { UIComponentTextValues } from "@shared/types/ui-editor/componentTextParams";
+import type { UIPageTextValues } from "@shared/types/ui-editor/pageTextParams";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 
 /**
@@ -209,4 +210,16 @@ export function componentTextsKey(texts: UIComponentTextValues | null): string {
             return [key, value.origin, value.text, value.key, value.unitId].join("\u0000");
         });
     return `texts\u0002${entries.join("\u0001")}`;
+}
+
+/**
+ * What a page gives its text parameters, as one comparable value - rebuilt on every pass of a page's
+ * own canvas, and as small. Whether the page was opened is part of it: unopened, a parameter with no
+ * words in its default leaves the element's own words drawn.
+ */
+export function pageTextsKey(texts: UIPageTextValues | null): string {
+    if (!texts) {
+        return "";
+    }
+    return `${texts.opened ? "opened" : "unopened"}\u0003${componentTextsKey(texts.values)}`;
 }

@@ -10,6 +10,7 @@
  * Comments in English per project convention.
  */
 
+import type { PluginStructContribution } from "../plugins";
 import type { UIDocument } from "./document";
 import type { UIStructDef, UIStructId } from "./struct";
 
@@ -19,6 +20,9 @@ export const UI_STRUCT_ID_SAVE_ENTRY = "nl.saveEntry" as const;
 export const UI_STRUCT_ID_CONFIRM_BUTTON = "nl.confirmButton" as const;
 export const UI_STRUCT_ID_NOTIFICATION_ITEM = "nl.notificationItem" as const;
 export const UI_STRUCT_ID_NVL_ITEM = "nl.nvlItem" as const;
+export const UI_STRUCT_ID_ENDING = "nl.ending" as const;
+export const UI_STRUCT_ID_LANGUAGE = "nl.language" as const;
+export const UI_STRUCT_ID_VOICE_LANGUAGE = "nl.voiceLanguage" as const;
 
 /**
  * Field ids equal their keys here, and only here.
@@ -123,6 +127,41 @@ const CONFIRM_BUTTON_STRUCT: UIStructDef = {
     ],
 };
 
+/**
+ * Mirrors `BlueprintStoryEnding`, the rows `Get Endings` hands out.
+ *
+ * Declared for the reason the history entry is: every project with endings reads these five fields,
+ * and before they were declared an author learned that `isReached` exists from a page of
+ * documentation and then typed it into a key field, where a typo answered "no ending reached".
+ */
+const ENDING_STRUCT: UIStructDef = {
+    id: UI_STRUCT_ID_ENDING,
+    fields: [
+        field("endingId", "string"),
+        field("name", "string"),
+        field("sceneId", "string"),
+        field("sceneName", "string"),
+        field("isReached", "boolean"),
+    ],
+};
+
+/** Mirrors the rows `Get Available Languages` hands out, one per locale the project ships. */
+const LANGUAGE_STRUCT: UIStructDef = {
+    id: UI_STRUCT_ID_LANGUAGE,
+    fields: [field("code", "string"), field("displayName", "string"), field("isSource", "boolean")],
+};
+
+/**
+ * Mirrors the rows `Get Available Voice Languages` hands out.
+ *
+ * A shape of its own rather than the language one with a field missing: a voice track has no
+ * source locale, and a field that is always false would read as information.
+ */
+const VOICE_LANGUAGE_STRUCT: UIStructDef = {
+    id: UI_STRUCT_ID_VOICE_LANGUAGE,
+    fields: [field("code", "string"), field("displayName", "string")],
+};
+
 export const BUILTIN_UI_STRUCTS: Readonly<Record<UIStructId, UIStructDef>> = Object.freeze({
     [UI_STRUCT_ID_CHOICE_ITEM]: CHOICE_ITEM_STRUCT,
     [UI_STRUCT_ID_NOTIFICATION_ITEM]: NOTIFICATION_ITEM_STRUCT,
@@ -130,11 +169,75 @@ export const BUILTIN_UI_STRUCTS: Readonly<Record<UIStructId, UIStructDef>> = Obj
     [UI_STRUCT_ID_HISTORY_ENTRY]: HISTORY_ENTRY_STRUCT,
     [UI_STRUCT_ID_SAVE_ENTRY]: SAVE_ENTRY_STRUCT,
     [UI_STRUCT_ID_CONFIRM_BUTTON]: CONFIRM_BUTTON_STRUCT,
+    [UI_STRUCT_ID_ENDING]: ENDING_STRUCT,
+    [UI_STRUCT_ID_LANGUAGE]: LANGUAGE_STRUCT,
+    [UI_STRUCT_ID_VOICE_LANGUAGE]: VOICE_LANGUAGE_STRUCT,
 });
 
-/** True for a shape the engine owns: its fields are shown, never edited. */
+/**
+ * The shapes the loaded plugins hand out (`contributes.structs`), by id.
+ *
+ * Kept beside the engine's own because they are the same kind of thing to everything that reads a
+ * struct: a plugin writes those rows, so an author who could edit the shape could only make it wrong.
+ * Filled by whoever loads plugins - the editor, the running game, the command-line checker - from the
+ * manifests, which all three read before any plugin code runs. A shape whose plugin is not loaded is
+ * simply unknown, as the plugin's nodes are.
+ */
+type PluginStructEntry = { pluginId: string; struct: UIStructDef; name: string; localized: Readonly<Record<string, string>> };
+const pluginStructs = new Map<UIStructId, PluginStructEntry>();
+
+/**
+ * Make one plugin's shapes resolvable; answers the call that takes them away again.
+ *
+ * Fields keep their keys as ids, for the reason {@link field} gives.
+ */
+export function registerPluginUIStructs(
+    pluginId: string,
+    contributions: readonly PluginStructContribution[] | undefined,
+): () => void {
+    const ids: UIStructId[] = [];
+    for (const contribution of contributions ?? []) {
+        pluginStructs.set(contribution.id, {
+            pluginId,
+            struct: { id: contribution.id, fields: contribution.fields.map(entry => field(entry.key, entry.type)) },
+            name: contribution.name,
+            localized: contribution.localized ?? {},
+        });
+        ids.push(contribution.id);
+    }
+    return () => {
+        for (const id of ids) {
+            if (pluginStructs.get(id)?.pluginId === pluginId) {
+                pluginStructs.delete(id);
+            }
+        }
+    };
+}
+
+/** What the editor calls a plugin's shape in this locale, or null for an id no loaded plugin declares. */
+export function pluginUIStructName(structId: string | null | undefined, locale: string): string | null {
+    const entry = structId ? pluginStructs.get(structId) : undefined;
+    return entry ? entry.localized[locale] ?? entry.name : null;
+}
+
+/** True for a shape a loaded plugin declares, as against one the engine owns. */
+export function isPluginUIStructId(structId: string | null | undefined): boolean {
+    return Boolean(structId) && pluginStructs.has(structId as string);
+}
+
+/** Every shape an author may give a list without declaring it: the engine's, then the loaded plugins'. */
+export function listEngineUIStructIds(): UIStructId[] {
+    return [...Object.keys(BUILTIN_UI_STRUCTS), ...pluginStructs.keys()];
+}
+
+/**
+ * True for a shape the engine or a loaded plugin owns: its fields are shown, never edited, and it is
+ * never stored in a project's own table.
+ */
 export function isBuiltinUIStructId(structId: string | null | undefined): boolean {
-    return Boolean(structId) && Object.prototype.hasOwnProperty.call(BUILTIN_UI_STRUCTS, structId as string);
+    return Boolean(structId) && (
+        Object.prototype.hasOwnProperty.call(BUILTIN_UI_STRUCTS, structId as string) || pluginStructs.has(structId as string)
+    );
 }
 
 /**
@@ -176,7 +279,7 @@ export function isSelfContainedStructImageField(
 }
 
 /**
- * The struct behind an id, from the document first and the built-ins second.
+ * The struct behind an id, from the document first, the built-ins second and the loaded plugins last.
  *
  * Document first so a project that has somehow stored an entry under a built-in id still renders
  * from what it stores rather than from something it cannot see. `null` for an id that resolves
@@ -191,5 +294,5 @@ export function resolveUIStruct(
     if (!id) {
         return null;
     }
-    return document?.structs?.[id] ?? BUILTIN_UI_STRUCTS[id] ?? null;
+    return document?.structs?.[id] ?? BUILTIN_UI_STRUCTS[id] ?? pluginStructs.get(id)?.struct ?? null;
 }

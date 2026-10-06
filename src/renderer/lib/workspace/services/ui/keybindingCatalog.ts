@@ -35,6 +35,7 @@ import {
     Eraser,
     Flag,
     FlaskConical,
+    Grid3x3,
     Group,
     History,
     IndentDecrease,
@@ -273,6 +274,17 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     entry("ui-editor.align-bottom", "alt+s", "workspace.shell.keybindings.catalog.uiEditor.alignBottom", CATEGORY.uiEditor, AlignEndHorizontal),
     entry("ui-editor.distribute-horizontal", "alt+shift+h", "workspace.shell.keybindings.catalog.uiEditor.distributeHorizontal", CATEGORY.uiEditor, AlignHorizontalDistributeCenter),
     entry("ui-editor.distribute-vertical", "alt+shift+v", "workspace.shell.keybindings.catalog.uiEditor.distributeVertical", CATEGORY.uiEditor, AlignVerticalDistributeCenter),
+    // Moving the selection by design pixels: one with the arrows, ten with Shift.
+    entry("ui-editor.nudge-left", "arrowleft", "workspace.shell.keybindings.catalog.uiEditor.nudgeLeft", CATEGORY.uiEditor, ArrowLeft),
+    entry("ui-editor.nudge-right", "arrowright", "workspace.shell.keybindings.catalog.uiEditor.nudgeRight", CATEGORY.uiEditor, ArrowRight),
+    entry("ui-editor.nudge-up", "arrowup", "workspace.shell.keybindings.catalog.uiEditor.nudgeUp", CATEGORY.uiEditor, ArrowUp),
+    entry("ui-editor.nudge-down", "arrowdown", "workspace.shell.keybindings.catalog.uiEditor.nudgeDown", CATEGORY.uiEditor, ArrowDown),
+    entry("ui-editor.nudge-left-large", "shift+arrowleft", "workspace.shell.keybindings.catalog.uiEditor.nudgeLeftLarge", CATEGORY.uiEditor, ChevronsLeft),
+    entry("ui-editor.nudge-right-large", "shift+arrowright", "workspace.shell.keybindings.catalog.uiEditor.nudgeRightLarge", CATEGORY.uiEditor, ChevronsRight),
+    entry("ui-editor.nudge-up-large", "shift+arrowup", "workspace.shell.keybindings.catalog.uiEditor.nudgeUpLarge", CATEGORY.uiEditor, ChevronsUp),
+    entry("ui-editor.nudge-down-large", "shift+arrowdown", "workspace.shell.keybindings.catalog.uiEditor.nudgeDownLarge", CATEGORY.uiEditor, ChevronsDown),
+    // Each selected element's top-left corner onto the nearest point of the project's grid.
+    entry("ui-editor.snap-to-grid", "r", "workspace.shell.keybindings.catalog.uiEditor.snapToGrid", CATEGORY.uiEditor, Grid3x3),
 
     // --- Blueprint editor ----------------------------------------------------
     entry("blueprint.undo", "mod+z", "workspace.shell.keybindings.catalog.blueprint.undo", CATEGORY.blueprint, Undo2),

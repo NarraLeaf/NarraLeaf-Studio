@@ -4,7 +4,7 @@
  * Most events know where they happened: a click lands on one row, one placement. A broadcast, a
  * window focus change, a flush a graph's write set off, the slot bridge refreshing a dialog - these
  * name an element, or no element at all, and an element in a list row is on screen once per row.
- * Run once with no drawing, such an event reached a row's widget as nobody: `Get Item Field` read
+ * Run once with no drawing, such an event reached a row's widget as nobody: `Get Field` read
  * nothing, and `Set Property (self)` wrote to the template, which no row draws. The event ran, the
  * log was clean, and nothing on screen moved.
  *

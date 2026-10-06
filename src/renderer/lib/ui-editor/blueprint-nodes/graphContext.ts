@@ -62,7 +62,9 @@ export type BlueprintGraphContextInput = {
  * Only a walked document can say no. A component definition never can: its elements live in the
  * definition's own table rather than on a surface, and any one instance of it may be the row.
  */
-function resolveListItemContextAvailable(input: BlueprintGraphContextInput): boolean {
+export function resolveListItemContextAvailable(
+    input: Pick<BlueprintGraphContextInput, "owner" | "isComponentDefinitionGraph" | "uiDocument" | "widgetElement">,
+): boolean {
     if (!isBlueprintWidgetOwner(input.owner)) {
         // A global, surface, shared-asset or story graph is not drawn per row by anything.
         return false;

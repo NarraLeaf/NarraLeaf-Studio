@@ -4,7 +4,8 @@ import path from "path";
 import { LinuxPackager, type AfterPackContext } from "electron-builder";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { LINUX_PROGRAM_SUFFIX, renderLinuxLauncher } from "./linuxLauncher";
-import { builderConfiguration, electronFuseConfig, extraFilesFor } from "./runGameBuild";
+import { compute7zCompressArgs } from "app-builder-lib/out/targets/archive";
+import { builderConfiguration, electronFuseConfig, extraFilesFor, studioWritesZip, withArchiveCompressionLevel } from "./runGameBuild";
 import type { GameBuildWorkerConfig, GameBuildWorkerFuses, GameBuildWorkerTarget } from "./protocol";
 
 const config = {
@@ -42,6 +43,60 @@ describe("builderConfiguration", () => {
         expect(typeof built.beforeBuild).toBe("function");
         const answer = await (built.beforeBuild as (context: unknown) => Promise<boolean>)({});
         expect(answer).toBe(false);
+    });
+});
+
+/**
+ * The archive level, checked against electron-builder's own argument builder rather than a copy of
+ * it: the variable only means what that function makes of it.
+ */
+describe("studioWritesZip", () => {
+    it("takes a Windows zip from electron-builder, whatever else the target asks for", () => {
+        expect(studioWritesZip({ platform: "windows", formats: ["zip"] })).toBe(true);
+        expect(studioWritesZip({ platform: "windows", formats: ["nsis", "zip", "dir"] })).toBe(true);
+        expect(studioWritesZip({ platform: "windows", formats: ["nsis"] })).toBe(false);
+    });
+
+    it("takes a macOS or Linux zip too, and leaves their other formats alone", () => {
+        expect(studioWritesZip({ platform: "macos", formats: ["dmg", "zip"] })).toBe(true);
+        expect(studioWritesZip({ platform: "linux", formats: ["appimage", "zip"] })).toBe(true);
+        expect(studioWritesZip({ platform: "macos", formats: ["dmg"] })).toBe(false);
+        expect(studioWritesZip({ platform: "linux", formats: ["appimage"] })).toBe(false);
+    });
+});
+
+describe("withArchiveCompressionLevel", () => {
+    it("gives a zip 7-Zip's highest level without electron-builder's fifteen extra passes", async () => {
+        const outside = compute7zCompressArgs("zip", { compression: "maximum" });
+        const inside = await withArchiveCompressionLevel(async () => compute7zCompressArgs("zip", { compression: "maximum" }));
+
+        expect(outside).toEqual(expect.arrayContaining(["-mx=9", "-mpass=15", "-mfb=258"]));
+        expect(inside).toEqual(expect.arrayContaining(["-mx=9", "-mm=Deflate"]));
+        expect(inside).not.toContain("-mpass=15");
+        expect(inside).not.toContain("-mfb=258");
+    });
+
+    it("leaves an installer's payload exactly as it was", async () => {
+        // What NsisTarget hands the archiver for its differential-aware payload.
+        const payload = { compression: "normal" as const, dictSize: 1, solid: false, installTimeDecodable: true, withoutDir: true };
+        const outside = compute7zCompressArgs("7z", payload);
+        const inside = await withArchiveCompressionLevel(async () => compute7zCompressArgs("7z", payload));
+
+        expect(inside).toEqual(outside);
+    });
+
+    it("puts the environment back afterwards, even when the build fails", async () => {
+        const before = process.env.ELECTRON_BUILDER_COMPRESSION_LEVEL;
+        await expect(withArchiveCompressionLevel(async () => {
+            throw new Error("packaging failed");
+        })).rejects.toThrow("packaging failed");
+        expect(process.env.ELECTRON_BUILDER_COMPRESSION_LEVEL).toBe(before);
+    });
+
+    it("keeps a dmg in the format a maximum build gives it, which the level would otherwise change", () => {
+        expect(builderConfiguration(config, targetFor("macos"), () => undefined).dmg).toEqual({ format: "UDBZ" });
+        expect(builderConfiguration(config, targetFor("windows"), () => undefined).dmg).toBeUndefined();
+        expect(builderConfiguration(config, targetFor("linux"), () => undefined).dmg).toBeUndefined();
     });
 });
 

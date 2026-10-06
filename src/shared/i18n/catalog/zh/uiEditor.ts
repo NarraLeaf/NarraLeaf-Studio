@@ -31,6 +31,7 @@ export const uiEditor = {
         nvl: "全屏小说模式的对白历史",
     },
     panel: {
+        interfaces: "界面",
         interfaceType: "界面类型",
         createPage: "新建页面",
         createGameUi: "新建游戏 UI",
@@ -54,7 +55,7 @@ export const uiEditor = {
         allSlotsUsed: "所有游戏 UI 位置均已有界面。从列表中打开已有的游戏 UI",
         starterTitlePage: {
             title: "新建标题页",
-            description: "「开始」「继续」按钮已接好，替换空白的入口页面",
+            description: "带有可用的「开始」「继续」按钮，替换空白的入口页面",
         },
     },
     naming: {
@@ -67,6 +68,15 @@ export const uiEditor = {
     history: {
         moveSurface: "移动界面 {name}",
         setEntryPage: "设置入口页面 {name}",
+        createComponent: "新建组件 {name}",
+        duplicateComponent: "创建组件 {name} 的副本",
+        duplicateComponents: "创建 {count} 个组件的副本",
+        deleteComponent: "删除组件 {name}",
+        deleteComponents: "删除 {count} 个组件",
+        importSurface: "添加界面 {name}",
+        importSurfaces: "添加 {count} 个界面",
+        importComponent: "添加组件 {name}",
+        importComponents: "添加 {count} 个组件",
     },
     inputActions: {
         title: "输入意图",
@@ -101,6 +111,7 @@ export const uiEditor = {
             trackpad: "触控板",
             touch: "触控屏幕",
             key: "键盘",
+            gamepad: "手柄",
         },
         gesture: {
             click: "单击",
@@ -166,6 +177,7 @@ export const uiEditor = {
         wordsFromRowField: "此文字来自列表行字段“{field}”",
         wordsFromBlueprintValue: "此文字由蓝图值“{name}”决定",
         wordsFromComponentParam: "此文字来自组件参数“{param}”，在各放置处设置",
+        wordsFromPageParam: "此文字来自页面参数“{param}”，由打开页面时传入",
     },
     editor: {
         componentNotFound: "未找到组件",
@@ -177,6 +189,9 @@ export const uiEditor = {
         selectTool: "选择工具",
         panTool: "平移画布",
         openInDevMode: "在开发模式中打开此界面",
+        showInLivePreview: "在实时预览中查看此界面",
+        livePreviewShowsNoNotifications: "实时预览不显示通知",
+        livePreviewNoRow: "故事中没有显示此界面的行",
         componentDefinitionHint: "组件以定义形式编辑",
         bindElement: "绑定元素",
         bindSelectHint: "在当前界面上选择一个元素",
@@ -204,6 +219,11 @@ export const uiEditor = {
         canvasLayout: "画布布局（边缘与中心）",
         elementBorders: "元素边框（边到边）",
         elementLayout: "元素布局（中心）",
+        grid: "网格",
+        gridStyle: "网格样式",
+        gridLines: "网格线",
+        gridDots: "格点",
+        gridSize: "网格间距",
     },
     contextMenu: {
         pasteIntoContainer: "粘贴到容器内",
@@ -251,6 +271,12 @@ export const uiEditor = {
             bottom: "下",
             left: "左",
         },
+    },
+    reference: {
+        label: "游戏 UI 参考",
+        heading: "其他游戏 UI",
+        none: "本项目没有其他游戏 UI",
+        sizeDiffers: "尺寸不同：{name} {width}×{height}",
     },
     crossProject: {
         pasted: {

@@ -86,6 +86,10 @@ Workspace/editor 设置：
 - 用户偏好：主题、语言、字体、soft wrap、auto save、最近项目列表。
 - 编辑器工具偏好：Story Action Creator 收藏等。
 
+按项目记、但不属于项目内容的编辑器状态写 `.nlstudio/services/`（`PanelStateService`，分类表见
+`src/shared/vcs/serviceStores.ts`）：面板布局，以及界面编辑器的网格间距（`uiEditor.canvasGrid`，
+网格开关本身仍和其它吸附目标一起在 `global.json`）。它们跟着项目目录走，不进版本库，也不进游戏。
+
 判断规则：
 
 - 会随项目交给另一个用户、影响项目 runtime/export，写项目文件。

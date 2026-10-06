@@ -30,6 +30,7 @@ import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { readDynamicInputPinIds } from "../effectivePins";
 import { requireHostApi } from "./hostApi";
 import { resolveNodeInput } from "./graphParamResolvers";
+import { readOpenedPageProps } from "./pageParamProps";
 
 const execIn: BlueprintNodePinDef = { id: "in", kind: "input", semantic: "exec", label: "In" };
 const execNext: BlueprintNodePinDef = { id: "next", kind: "output", semantic: "exec", label: "Next" };
@@ -157,6 +158,8 @@ export const layerBlueprintNodes: BlueprintNodeDef[] = [
             },
             { id: "layer", kind: "output", semantic: "data", valueType: "string", label: "Layer" },
         ],
+        // A layer is a page, so it is handed the same parameters the same way `Go Page` hands them.
+        pageParamPins: { surfaceParam: "surfaceId" },
         inspectorParams: [
             {
                 key: "surfaceId",
@@ -173,7 +176,7 @@ export const layerBlueprintNodes: BlueprintNodeDef[] = [
             const group = String(readPin(ctx, "group") ?? "").trim();
             let layer: string;
             try {
-                layer = await api.layers.show(surfaceId, readPin(ctx, "props"), {
+                layer = await api.layers.show(surfaceId, readOpenedPageProps(ctx, surfaceId, "surfaceId"), {
                     modal: readPin(ctx, "modal") === true,
                     // Unwired reads as dismissible: a layer the player cannot get out of is a
                     // decision, and a decision is not what an untouched pin should mean.

@@ -2189,7 +2189,7 @@ async function copyBakedCharacterAvatars(input: {
             let relativePath: string;
             if (input.target.kind === "sealed") {
                 relativePath = gameRuntimeBundleAssetEntry(id);
-                input.target.writer.add(relativePath, await fs.readFile(payloadPath));
+                await input.target.writer.add(relativePath, await fs.readFile(payloadPath));
             } else {
                 // The synthetic id carries characters (`:`) a file name may not, so the copy is
                 // named after the bake path it came from rather than after the id.
@@ -2254,7 +2254,7 @@ async function copyWeatherClips(input: {
         let relativePath: string;
         if (input.target.kind === "sealed") {
             relativePath = gameRuntimeBundleAssetEntry(clip.id);
-            input.target.writer.add(relativePath, await fs.readFile(clip.path));
+            await input.target.writer.add(relativePath, await fs.readFile(clip.path));
         } else {
             relativePath = path.posix.join("assets", fileName);
             await fs.copyFile(clip.path, path.join(input.assetsDir, fileName));

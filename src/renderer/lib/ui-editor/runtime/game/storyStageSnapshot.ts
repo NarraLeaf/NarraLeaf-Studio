@@ -2,6 +2,7 @@ import type {
     StoryActionPayload,
     StoryAnimationAsset,
     StoryBlock,
+    StoryBlockId,
     StoryCharacterTagSelection,
     StoryConditionRef,
     StoryDocument,
@@ -429,6 +430,49 @@ export function computeStoryStageSnapshot(input: {
     return walker.run();
 }
 
+/**
+ * The arm of a condition that play takes, decided from the state play arrives at it with.
+ *
+ * The same decision the snapshot walk makes for a condition it passes on the way to a target row -
+ * the same evaluator, the same order, a disabled arm passed over and `else` answering what is left -
+ * so an arm stepped into from the editor's preview is the arm a preview of a row after the
+ * condition is posed down. Null when no arm is taken: play carries on after the condition.
+ *
+ * `via` puts a row and its branches on the walked path. Stepping out of the option the author is
+ * reading carries that option's assignments to the condition; a walk from the top of the scene
+ * takes no option at all and would decide the condition without them.
+ */
+export function resolveTakenConditionBranch(input: {
+    document: StoryDocument;
+    sceneId: string;
+    conditionBlockId: StoryBlockId;
+    via?: StoryBlockId | null;
+    savedVariables?: SavedVariableRuntimeTable;
+    persistentVariables?: SavedVariableRuntimeTable;
+    readPersistent?: (storageKey: string) => StoryLiteralValue | null | undefined;
+}): StoryBlockId | null {
+    const scene = input.document.scenes[input.sceneId];
+    if (!scene) {
+        return null;
+    }
+    const walker = new SnapshotWalker(
+        scene,
+        input.conditionBlockId,
+        new Map(),
+        savedVariableDefsFromView(collectSavedVariableView(input.document, input.savedVariables)),
+        savedVariableDefsFromView(buildMergedVariableView(
+            Object.values(input.persistentVariables ?? {}),
+            Object.values(storyPersistentDefs(input.document)),
+        )),
+        input.readPersistent,
+        new Map(),
+    );
+    if (input.via && scene.blocks[input.via]) {
+        walker.addToPath(input.via);
+    }
+    return walker.takenBranchOfTarget();
+}
+
 type VariableStore = {
     /** storageKey → value; seeded with defaults, updated by setVariable. */
     scene: Map<string, StoryLiteralValue | null | undefined>;
@@ -493,10 +537,8 @@ class SnapshotWalker {
         /** characterId → the entrance defaults that character carries; only characters that set one. */
         private readonly entranceDefaults: ReadonlyMap<string, StoryTransformProps>,
     ) {
-        let cursor = targetBlockId ? scene.blocks[targetBlockId] : undefined;
-        while (cursor && !this.pathBlockIds.has(cursor.id)) {
-            this.pathBlockIds.add(cursor.id);
-            cursor = cursor.parentId ? scene.blocks[cursor.parentId] : undefined;
+        if (targetBlockId) {
+            this.addToPath(targetBlockId);
         }
         this.sceneDefs = sceneVariableDefs(scene);
         for (const saved of Object.values(this.savedDefs)) {
@@ -853,15 +895,53 @@ class SnapshotWalker {
                 return;
             }
         }
+        const taken = this.firstTakenBranch(branches);
+        if (taken) {
+            this.visitList(taken.childrenIds, insideNvl);
+        }
+    }
+
+    /**
+     * The arm a playthrough takes from the state the walk holds now: the first enabled arm whose
+     * test holds, `else` answering whatever is left. Null when no arm is taken.
+     */
+    private firstTakenBranch(branches: readonly Extract<StoryBlock, { kind: "control" }>[]): Extract<StoryBlock, { kind: "control" }> | null {
         for (const branch of branches) {
             // A disabled branch is compiled out of the condition, so the game never takes it.
             if (branch.payload.control !== "conditionBranch" || branch.disabled) {
                 continue;
             }
             if (branch.payload.branch === "else" || this.evaluateCondition(branch.payload.condition, branch.id)) {
-                this.visitList(branch.childrenIds, insideNvl);
-                return;
+                return branch;
             }
+        }
+        return null;
+    }
+
+    /**
+     * Walk to the target row - a condition - and answer which of its arms play takes from there.
+     * See {@link resolveTakenConditionBranch}.
+     */
+    takenBranchOfTarget(): StoryBlockId | null {
+        const target = this.targetBlockId ? this.scene.blocks[this.targetBlockId] : undefined;
+        if (!target || target.kind !== "control" || target.payload.control !== "condition") {
+            return null;
+        }
+        this.scanCompileOrder(this.scene.rootBlockIds);
+        this.visitList(this.scene.rootBlockIds, false);
+        const branches = target.childrenIds
+            .map(childId => this.scene.blocks[childId])
+            .filter((child): child is Extract<StoryBlock, { kind: "control" }> =>
+                child?.kind === "control" && child.payload.control === "conditionBranch");
+        return this.firstTakenBranch(branches)?.id ?? null;
+    }
+
+    /** Put a row and every row above it on the walked path, so the walk goes down its branches. */
+    addToPath(blockId: StoryBlockId): void {
+        let cursor: StoryBlock | undefined = this.scene.blocks[blockId];
+        while (cursor && !this.pathBlockIds.has(cursor.id)) {
+            this.pathBlockIds.add(cursor.id);
+            cursor = cursor.parentId ? this.scene.blocks[cursor.parentId] : undefined;
         }
     }
 

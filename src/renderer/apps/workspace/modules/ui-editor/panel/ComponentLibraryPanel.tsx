@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent } from "react";
-import { ChevronDown, Component, Copy, Edit3, MoreVertical, Plus, Search, Trash2 } from "lucide-react";
+import { Copy, Edit3, MoreVertical, Plus, Search, Trash2 } from "lucide-react";
 import { getUIComponentLink, type UIComponentDefinition } from "@shared/types/ui-editor/document";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIRuntimeBridgeService } from "@/lib/workspace/services/ui-editor/UIRuntimeBridgeService";
@@ -9,14 +9,15 @@ import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/componen
 import { createInputDialog } from "@/lib/components/dialogs";
 import { useTranslation } from "@/lib/i18n";
 import { Checkbox } from "@/lib/components/elements";
+import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { cn } from "@/lib/utils/cn";
 import { useFreezeGuard } from "../../../components/ui/freezeGuard";
+import { StackSection } from "../../../components/ui/SectionStack";
 import { LivePreviewFrame } from "./LivePreviewFrame";
 import { interfaceDocumentFreezeScope } from "../uiLiveSession";
 import { onComponentLibraryReveal } from "./componentLibraryReveal";
 import { linkedComponentIdsForSelection, scrollRowIntoListView } from "./selectionHighlights";
 import { useSelectionHighlight } from "./useSelectionHighlight";
-import { useRailSectionOpen } from "./useRailSectionOpen";
 
 /** How long a card asked for by name stays marked, long enough to be found by eye. */
 const REVEAL_FLASH_MS = 1600;
@@ -26,6 +27,10 @@ type ComponentLibraryPanelProps = {
     runtimeBridge: UIRuntimeBridgeService | null;
     uiService: UIService | null;
     onOpenComponent: (component: UIComponentDefinition) => void;
+    /** Whether the section is open; the rail remembers it per project (`useRailSections`). */
+    open: boolean;
+    /** Open or close the section - a request to reveal a component opens it this way. */
+    onOpenChange: (open: boolean) => void;
 };
 
 const COMPONENT_PREVIEW_HEIGHT = 80;
@@ -66,13 +71,17 @@ export function ComponentLibraryPanel({
     runtimeBridge,
     uiService,
     onOpenComponent,
+    open,
+    onOpenChange,
 }: ComponentLibraryPanelProps) {
     const { t, tn } = useTranslation();
     // The library is browsable while frozen - search, previews, opening a component for reading - and
     // only creating, renaming, duplicating and deleting are off.
     const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
     const panelRef = useRef<HTMLDivElement | null>(null);
-    const [open, setOpen] = useRailSectionOpen("componentLibrary");
+    // Read by the reveal listener, which subscribes once.
+    const onOpenChangeRef = useRef(onOpenChange);
+    onOpenChangeRef.current = onOpenChange;
     const [components, setComponents] = useState<UIComponentDefinition[]>([]);
     const [query, setQuery] = useState("");
     const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
@@ -136,7 +145,7 @@ export function ComponentLibraryPanel({
         if (needle && !component.name.toLowerCase().includes(needle)) {
             setQuery("");
         }
-        setOpen(true);
+        onOpenChangeRef.current(true);
         scrollTargetRef.current = componentId;
         setFlashId(componentId);
         window.setTimeout(() => {
@@ -247,13 +256,9 @@ export function ComponentLibraryPanel({
         }
     }, [documentService, inputDialog]);
 
+    // Every ticked card in one call, so copying a selection is one undo step rather than one a card.
     const handleDuplicate = useCallback((componentIds: string[]) => {
-        if (!documentService) {
-            return;
-        }
-        for (const componentId of componentIds) {
-            documentService.duplicateComponent(componentId);
-        }
+        documentService?.duplicateComponents(componentIds);
     }, [documentService]);
 
     const handleDelete = useCallback(async (componentIds: string[]) => {
@@ -340,14 +345,21 @@ export function ComponentLibraryPanel({
     const selectedCount = selectedIds.size;
 
     return (
-        <div
+        <StackSection
+            sectionId="componentLibrary"
             ref={panelRef}
-            // Shrinkable rather than fixed: this section and the input actions below it sit under
-            // the surface list, which takes what is left. Both were `shrink-0` with a body capped
-            // at `max-h-72`, so on a short window the two of them claimed the whole column and the
-            // list - the panel's actual subject - was left 16px tall with every page clipped out of
-            // sight. Now the list keeps its floor and the libraries give up their scroll area first.
-            className="flex min-h-0 shrink flex-col border-t border-edge bg-surface-sunken"
+            title={t("uiEditor.componentLibrary.title")}
+            count={components.length}
+            actions={
+                <ToolbarButton
+                    size="xs"
+                    onClick={() => void handleCreate()}
+                    {...freeze.writes(false, t("uiEditor.componentLibrary.createComponent"))}
+                    aria-label={t("uiEditor.componentLibrary.createComponent")}
+                >
+                    <Plus className="h-4 w-4" />
+                </ToolbarButton>
+            }
             tabIndex={0}
             // The Delete key is a third route to the same deletion the toolbar button and the
             // context-menu row both refuse while frozen; a keystroke has no control to grey out,
@@ -360,192 +372,172 @@ export function ComponentLibraryPanel({
                 }
             })}
         >
-            <button
-                type="button"
-                className="flex h-9 w-full shrink-0 items-center gap-2 px-3 text-left text-xs font-semibold text-fg hover:bg-fill-subtle"
-                onClick={() => setOpen(value => !value)}
-            >
-                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "" : "-rotate-90"}`} />
-                <Component className="h-3.5 w-3.5" />
-                <span className="min-w-0 flex-1">{t("uiEditor.componentLibrary.title")}</span>
-                <span className="text-2xs font-normal text-fg-subtle">{components.length}</span>
-            </button>
-            {open ? (
-                <div className="flex min-h-0 flex-1 flex-col space-y-2 border-t border-edge p-2">
-                    <div className="flex items-center gap-1">
-                        <div className="relative min-w-0 flex-1">
-                            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-subtle" />
-                            <input
-                                value={query}
-                                onChange={event => setQuery(event.target.value)}
-                                placeholder={t("common.search")}
-                                className="h-8 w-full rounded-md border border-edge bg-fill-subtle pl-8 pr-2 text-xs text-fg outline-none focus:border-primary/60"
-                            />
-                        </div>
-                        <button
-                            type="button"
-                            className="grid h-8 w-8 place-items-center rounded-md border border-edge text-fg-muted hover:bg-fill hover:text-fg"
-                            onClick={() => void handleCreate()}
-                            {...freeze.writes(false, t("uiEditor.componentLibrary.createComponent"))}
-                            aria-label={t("uiEditor.componentLibrary.createComponent")}
-                        >
-                            <Plus className="h-4 w-4" />
-                        </button>
-                    </div>
+            <div className="shrink-0 p-2">
+                <div className="relative">
+                    <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-subtle" />
+                    <input
+                        value={query}
+                        onChange={event => setQuery(event.target.value)}
+                        placeholder={t("common.search")}
+                        className="h-8 w-full rounded-md border border-edge bg-fill-subtle pl-8 pr-2 text-xs text-fg outline-none focus:border-primary/60"
+                    />
+                </div>
+            </div>
 
-                    {selectedCount > 0 ? (
-                        <div className="flex items-center gap-1 rounded-md border border-edge bg-fill-subtle p-1">
-                            <span className="min-w-0 flex-1 px-1 text-2xs text-fg-muted">{t("uiEditor.componentLibrary.selectedCount", { count: selectedCount })}</span>
-                            <button
-                                type="button"
-                                className="grid h-7 w-7 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-fg"
-                                onClick={() => handleDuplicate([...selectedIds])}
-                                {...freeze.writes(false, t("uiEditor.componentLibrary.duplicateSelected"))}
-                                aria-label={t("uiEditor.componentLibrary.duplicateSelected")}
-                            >
-                                <Copy className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                                type="button"
-                                className="grid h-7 w-7 place-items-center rounded-md text-danger hover:bg-danger/15"
-                                onClick={() => void handleDelete([...selectedIds])}
-                                {...freeze.writes(false, t("uiEditor.componentLibrary.deleteSelected"))}
-                                aria-label={t("uiEditor.componentLibrary.deleteSelected")}
-                            >
-                                <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                        </div>
-                    ) : null}
-
-                    <div ref={listRef} className="min-h-0 max-h-72 flex-1 overflow-y-auto space-y-2 pr-1">
-                        {filteredComponents.length === 0 ? (
-                            <div className="rounded-md border border-dashed border-edge px-3 py-4 text-center text-xs text-fg-subtle">
-                                {components.length === 0 ? t("uiEditor.componentLibrary.emptyCreate") : t("uiEditor.componentLibrary.noMatches")}
-                            </div>
-                        ) : (
-                            filteredComponents.map(component => {
-                                const selected = selectedIds.has(component.id);
-                                const highlighted = highlightedIds.has(component.id);
-                                const root = component.elements[component.rootElementId];
-                                const previewSize = getComponentPreviewSize(component);
-                                const renderPreview = () =>
-                                    runtimeBridge?.renderComponent({
-                                        componentId: component.id,
-                                        hostAdapter: { host: "app" },
-                                        editorChrome: false,
-                                    }) ?? null;
-                                return (
-                                    <div
-                                        key={component.id}
-                                        ref={node => {
-                                            if (node) {
-                                                cardRefs.current.set(component.id, node);
-                                            } else {
-                                                cardRefs.current.delete(component.id);
-                                            }
-                                        }}
-                                        data-component-id={component.id}
-                                        data-canvas-highlight={highlighted ? "true" : undefined}
-                                        className={cn(
-                                            "group rounded-md border px-2 py-2 transition",
-                                            selected
-                                                ? "border-primary/60 bg-primary/10"
-                                                : "border-edge bg-fill-subtle hover:border-edge-strong hover:bg-fill",
-                                            // Framed, the way the canvas frames the instance: a
-                                            // second, inset hairline that adds to the border without
-                                            // moving the card's contents, and reads apart from the
-                                            // fill a ticked card gets.
-                                            highlighted && "border-primary ring-1 ring-inset ring-primary hover:border-primary",
-                                            flashId === component.id && "bg-primary/15",
-                                        )}
-                                        onContextMenu={event => openContextMenu(event, component)}
-                                        onClick={() => onOpenComponent(component)}
-                                        onKeyDown={event => {
-                                            if (event.target !== event.currentTarget) {
-                                                return;
-                                            }
-                                            if (event.key === "Enter" || event.key === " ") {
-                                                event.preventDefault();
-                                                onOpenComponent(component);
-                                            }
-                                        }}
-                                        role="button"
-                                        tabIndex={0}
-                                    >
-                                        <div className="flex items-center gap-2">
-                                            <Checkbox
-                                                checked={selected}
-                                                onCheckedChange={() => toggleSelected(component.id)}
-                                                onClick={event => event.stopPropagation()}
-                                                aria-label={t("uiEditor.componentLibrary.selectComponent", { name: component.name })}
-                                            />
-                                            <div
-                                                className="min-w-0 flex-1 truncate text-left text-xs font-medium text-fg"
-                                                data-tip={component.name}
-                                            >
-                                                {component.name}
-                                            </div>
-                                            <button
-                                                type="button"
-                                                className="grid h-6 w-6 place-items-center rounded-md text-fg-muted opacity-0 hover:bg-fill hover:text-fg group-hover:opacity-100 disabled:cursor-not-allowed disabled:group-hover:opacity-40"
-                                                onClick={event => {
-                                                    event.stopPropagation();
-                                                    void handleRename(component);
-                                                }}
-                                                // Renaming writes the component library, so it is
-                                                // refused while frozen - as the create, duplicate
-                                                // and delete buttons above already are, and as the
-                                                // context menu's own Rename row is. This one card
-                                                // shortcut was the way round all three: the dialog
-                                                // opened, took a new name and kept the old one.
-                                                {...freeze.writes(false, t("common.rename"))}
-                                                aria-label={t("common.rename")}
-                                            >
-                                                <Edit3 className="h-3.5 w-3.5" />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-fg"
-                                                onClick={event => openContextMenu(event, component, { selectComponent: false })}
-                                                data-tip={t("uiEditor.componentLibrary.componentActions")}
-                                                aria-label={t("uiEditor.componentLibrary.componentActions")}
-                                            >
-                                                <MoreVertical className="h-3.5 w-3.5" />
-                                            </button>
-                                        </div>
-                                        <LivePreviewFrame
-                                            previewId={component.id}
-                                            contentRevision={
-                                                documentService?.getComponentContentRevision(component.id) ?? 0
-                                            }
-                                            render={renderPreview}
-                                            designWidth={previewSize.width}
-                                            designHeight={previewSize.height}
-                                            frameHeight={COMPONENT_PREVIEW_HEIGHT}
-                                            className={COMPONENT_PREVIEW_FRAME_CLASS}
-                                        />
-                                        <div className="mt-1 text-2xs text-fg-subtle">
-                                            {Math.round(component.previewMeta?.width ?? root?.layout.width ?? 0)}×
-                                            {Math.round(component.previewMeta?.height ?? root?.layout.height ?? 0)}
-                                            {documentService ? (
-                                                <span className="ml-2">
-                                                    {tn("uiEditor.componentLibrary.refs", usageCounts[component.id] ?? 0)}
-                                                </span>
-                                            ) : null}
-                                        </div>
-                                    </div>
-                                );
-                            })
-                        )}
-                    </div>
+            {selectedCount > 0 ? (
+                <div className="mx-2 mb-2 flex shrink-0 items-center gap-1 rounded-md border border-edge bg-fill-subtle p-1">
+                    <span className="min-w-0 flex-1 px-1 text-2xs text-fg-muted">{t("uiEditor.componentLibrary.selectedCount", { count: selectedCount })}</span>
+                    <button
+                        type="button"
+                        className="grid h-7 w-7 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-fg"
+                        onClick={() => handleDuplicate([...selectedIds])}
+                        {...freeze.writes(false, t("uiEditor.componentLibrary.duplicateSelected"))}
+                        aria-label={t("uiEditor.componentLibrary.duplicateSelected")}
+                    >
+                        <Copy className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                        type="button"
+                        className="grid h-7 w-7 place-items-center rounded-md text-danger hover:bg-danger/15"
+                        onClick={() => void handleDelete([...selectedIds])}
+                        {...freeze.writes(false, t("uiEditor.componentLibrary.deleteSelected"))}
+                        aria-label={t("uiEditor.componentLibrary.deleteSelected")}
+                    >
+                        <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                 </div>
             ) : null}
+
+            {/* The section's own scroller: it gets every pixel the section is given below the
+                search row, and a wheel that reaches its end stops there. No padding at its top edge, so
+                cards scrolled out of view are cut off a gap below the search box rather than against it. */}
+            <div ref={listRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-2 pb-2">
+                {filteredComponents.length === 0 ? (
+                    <div className="rounded-md border border-dashed border-edge px-3 py-4 text-center text-xs text-fg-subtle">
+                        {components.length === 0 ? t("uiEditor.componentLibrary.emptyCreate") : t("uiEditor.componentLibrary.noMatches")}
+                    </div>
+                ) : (
+                    filteredComponents.map(component => {
+                        const selected = selectedIds.has(component.id);
+                        const highlighted = highlightedIds.has(component.id);
+                        const root = component.elements[component.rootElementId];
+                        const previewSize = getComponentPreviewSize(component);
+                        const renderPreview = () =>
+                            runtimeBridge?.renderComponent({
+                                componentId: component.id,
+                                hostAdapter: { host: "app" },
+                                editorChrome: false,
+                            }) ?? null;
+                        return (
+                            <div
+                                key={component.id}
+                                ref={node => {
+                                    if (node) {
+                                        cardRefs.current.set(component.id, node);
+                                    } else {
+                                        cardRefs.current.delete(component.id);
+                                    }
+                                }}
+                                data-component-id={component.id}
+                                data-canvas-highlight={highlighted ? "true" : undefined}
+                                className={cn(
+                                    "group rounded-md border px-2 py-2 transition",
+                                    selected
+                                        ? "border-primary/60 bg-primary/10"
+                                        : "border-edge bg-fill-subtle hover:border-edge-strong hover:bg-fill",
+                                    // Framed, the way the canvas frames the instance: a
+                                    // second, inset hairline that adds to the border without
+                                    // moving the card's contents, and reads apart from the
+                                    // fill a ticked card gets.
+                                    highlighted && "border-primary ring-1 ring-inset ring-primary hover:border-primary",
+                                    flashId === component.id && "bg-primary/15",
+                                )}
+                                onContextMenu={event => openContextMenu(event, component)}
+                                onClick={() => onOpenComponent(component)}
+                                onKeyDown={event => {
+                                    if (event.target !== event.currentTarget) {
+                                        return;
+                                    }
+                                    if (event.key === "Enter" || event.key === " ") {
+                                        event.preventDefault();
+                                        onOpenComponent(component);
+                                    }
+                                }}
+                                role="button"
+                                tabIndex={0}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <Checkbox
+                                        checked={selected}
+                                        onCheckedChange={() => toggleSelected(component.id)}
+                                        onClick={event => event.stopPropagation()}
+                                        aria-label={t("uiEditor.componentLibrary.selectComponent", { name: component.name })}
+                                    />
+                                    <div
+                                        className="min-w-0 flex-1 truncate text-left text-xs font-medium text-fg"
+                                        data-tip={component.name}
+                                    >
+                                        {component.name}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        className="grid h-6 w-6 place-items-center rounded-md text-fg-muted opacity-0 hover:bg-fill hover:text-fg group-hover:opacity-100 disabled:cursor-not-allowed disabled:group-hover:opacity-40"
+                                        onClick={event => {
+                                            event.stopPropagation();
+                                            void handleRename(component);
+                                        }}
+                                        // Renaming writes the component library, so it is
+                                        // refused while frozen - as the create, duplicate
+                                        // and delete buttons above already are, and as the
+                                        // context menu's own Rename row is. This one card
+                                        // shortcut was the way round all three: the dialog
+                                        // opened, took a new name and kept the old one.
+                                        {...freeze.writes(false, t("common.rename"))}
+                                        aria-label={t("common.rename")}
+                                    >
+                                        <Edit3 className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-fg"
+                                        onClick={event => openContextMenu(event, component, { selectComponent: false })}
+                                        data-tip={t("uiEditor.componentLibrary.componentActions")}
+                                        aria-label={t("uiEditor.componentLibrary.componentActions")}
+                                    >
+                                        <MoreVertical className="h-3.5 w-3.5" />
+                                    </button>
+                                </div>
+                                <LivePreviewFrame
+                                    previewId={component.id}
+                                    contentRevision={
+                                        documentService?.getComponentContentRevision(component.id) ?? 0
+                                    }
+                                    render={renderPreview}
+                                    designWidth={previewSize.width}
+                                    designHeight={previewSize.height}
+                                    frameHeight={COMPONENT_PREVIEW_HEIGHT}
+                                    className={COMPONENT_PREVIEW_FRAME_CLASS}
+                                />
+                                <div className="mt-1 text-2xs text-fg-subtle">
+                                    {Math.round(component.previewMeta?.width ?? root?.layout.width ?? 0)}×
+                                    {Math.round(component.previewMeta?.height ?? root?.layout.height ?? 0)}
+                                    {documentService ? (
+                                        <span className="ml-2">
+                                            {tn("uiEditor.componentLibrary.refs", usageCounts[component.id] ?? 0)}
+                                        </span>
+                                    ) : null}
+                                </div>
+                            </div>
+                        );
+                    })
+                )}
+            </div>
             <ContextMenu
                 items={menuItems}
                 position={menuState.position}
                 visible={menuState.visible}
                 onClose={hideMenu}
             />
-        </div>
+        </StackSection>
     );
 }

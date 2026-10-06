@@ -14,10 +14,15 @@ export const struct = {
         remove: "項目を削除",
         newName: "項目",
         none: "項目なし",
-        engineOwned: "このリストの項目はエンジンから提供されます",
+        engineOwned: "このリストのフィールドはエンジンが提供する",
+        pluginOwned: "このリストのフィールドはプラグインが提供する",
         picker: "項目",
         visiblePicker: "表示の項目",
         pickerEmpty: "項目なし",
+    },
+    shape: {
+        label: "構造体",
+        custom: "カスタム",
     },
     row: {
         add: "行を追加",

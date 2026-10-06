@@ -25,6 +25,7 @@ import {
     BlueprintValueBoundCard,
     ComponentParamBindingRow,
     ListItemFieldBindingRow,
+    PageParamBindingRow,
     useBlueprintValueBinding,
     type BlueprintValueFieldConfig,
 } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
@@ -76,7 +77,8 @@ function liveElementOf(data: UIInspectorData): UIElement {
  *
  * Inside a component's definition the words can also show one of the component's text parameters
  * (`ComponentParamBindingRow`), each placement giving its own - the component's counterpart of a list
- * row's field, picked the same way above the choice.
+ * row's field, picked the same way above the choice. On a page they can show one of the page's text
+ * parameters (`PageParamBindingRow`), given by whatever opens the page.
  *
  * Where a Blueprint Value or a component parameter answers the words, the element's own words are
  * sample text (`textSample.ts`): edited here, drawn on the canvas, and stated to be shown in the editor
@@ -126,6 +128,8 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
             data.documentService.setElementListItemFieldBinding(live.id, propPath, null);
         } else if (binding?.kind === "componentParam") {
             data.documentService.setElementComponentParamBinding(live.id, propPath, null);
+        } else if (binding?.kind === "pageParam") {
+            data.documentService.setElementPageParamBinding(live.id, propPath, null);
         }
         data.documentService.updateElementProps(live.id, { [keyProp]: name });
     }
@@ -180,20 +184,31 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
             />
         ) : null;
 
-        // One of the component's text parameters answers the words, a placement at a time.
+        // One of the component's text parameters answers the words, a placement at a time - or, on a
+        // page, one of the page's, given by whatever opens it.
+        const onParamBound = (paramId: string | null) => {
+            if (paramId) {
+                setPickingKey(false);
+                data.documentService.updateElementProps(live.id, leaveKeyPatch(data));
+            }
+        };
         const paramRow = config.blueprint ? (
-            <ComponentParamBindingRow
-                data={data}
-                liveElement={live}
-                propPath={propPath}
-                disabled={readOnly}
-                onBound={paramId => {
-                    if (paramId) {
-                        setPickingKey(false);
-                        data.documentService.updateElementProps(live.id, leaveKeyPatch(data));
-                    }
-                }}
-            />
+            <>
+                <ComponentParamBindingRow
+                    data={data}
+                    liveElement={live}
+                    propPath={propPath}
+                    disabled={readOnly}
+                    onBound={onParamBound}
+                />
+                <PageParamBindingRow
+                    data={data}
+                    liveElement={live}
+                    propPath={propPath}
+                    disabled={readOnly}
+                    onBound={onParamBound}
+                />
+            </>
         ) : null;
 
         const choose = (next: UITextSource) => {
@@ -279,6 +294,19 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
                     {paramRow}
                     {fieldRow}
                     {labelledWords("widgets.sampleText.label", "widgets.sampleText.hintComponentParam")}
+                    {writersList}
+                </div>
+            );
+        }
+
+        if (shown === null && box.kind === "sample" && box.cause === "pageParam") {
+            // Whatever opens the page gives the words, or the parameter's default does. The element's
+            // own words are what the page's own canvas draws while that default is empty.
+            return (
+                <div className="space-y-2">
+                    {paramRow}
+                    {fieldRow}
+                    {labelledWords("widgets.sampleText.label", "widgets.sampleText.hintPageParam")}
                     {writersList}
                 </div>
             );

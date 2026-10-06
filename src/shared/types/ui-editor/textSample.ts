@@ -33,8 +33,10 @@ import { readUITextSite, uiTextSiteOf, uiTextUnitId, type UITextSite } from "./t
  * - `listItemField`: a field of the list row answers them; the canvas draws the list's own rows there.
  * - `componentParam`: a text parameter of the component answers them; each placement draws its own
  *   value, and the element's own words are drawn only in the component's own editor.
+ * - `pageParam`: a text parameter of the page answers them; the page's own canvas draws the
+ *   parameter's default, and the element's own words only while the default is empty.
  */
-export type UITextSampleCause = "blueprintValue" | "listItemField" | "componentParam";
+export type UITextSampleCause = "blueprintValue" | "listItemField" | "componentParam" | "pageParam";
 
 /**
  * Why an element's words on a site are sample text, or null when they are what a player reads.
@@ -61,6 +63,9 @@ export function uiTextSampleCauseOf(element: UIElement, site: UITextSite): UITex
         }
         if (reading.binding?.kind === "componentParam") {
             return "componentParam";
+        }
+        if (reading.binding?.kind === "pageParam") {
+            return "pageParam";
         }
     }
     return null;

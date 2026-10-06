@@ -49,6 +49,7 @@ async function writePlugin(id: string, body: string): Promise<RuntimePluginDescr
             externalLinks: [],
             network: [],
             widgetText: {},
+            structs: [],
         },
         permissions: [],
     };

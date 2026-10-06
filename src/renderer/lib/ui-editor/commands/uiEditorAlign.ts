@@ -66,7 +66,8 @@ function roundsToSameGeometry(next: number, current: number): boolean {
 }
 
 /**
- * Elements this can actually move.
+ * The selected elements whose position a command can actually change - what align, distribute and
+ * the arrow-key nudge move.
  *
  * Beyond the roots that arrange also refuses, three kinds are dropped because writing `x`/`y` on
  * them is a lie: flow-layout children (a stack/scroll container's or a list's direct children) have
@@ -76,8 +77,10 @@ function roundsToSameGeometry(next: number, current: number): boolean {
  * A switch's track and thumb are dropped for the same reason as the slider's, one step removed: the
  * widget owns where its parts sit, and the on-state travel is the `on` variant's transform offset,
  * so aligning them against unrelated siblings moves the off state only and silently desyncs the two.
+ *
+ * Descendants of another selected element are dropped as well: they ride along with their ancestor.
  */
-function getAlignMovers(document: UIDocument, selection: UIElementSelection): string[] {
+export function getUiEditorPositionMovers(document: UIDocument, selection: UIElementSelection): string[] {
     // The surface's own roots never move: a page's root, or a component's frame in its own editor.
     return filterToEditableTopLevel(document, selection.elementIds).filter(id => {
         const element = document.elements[id];
@@ -289,7 +292,7 @@ export function computeUiEditorAlignPatches(
     if (!selection || selection.surfaceId !== surfaceId || selection.elementIds.length === 0) {
         return patches;
     }
-    const movers = getAlignMovers(document, selection);
+    const movers = getUiEditorPositionMovers(document, selection);
     if (movers.length === 0) {
         return patches;
     }

@@ -221,6 +221,7 @@ import {
     resolveKeyboardOwnerLane,
     type KeyboardOwner,
 } from "./keyboardOwner";
+import { listenForGamepads } from "./gamepadInput";
 import {
     createDialogueAdvanceRecord,
     projectDrawsNvlPage,
@@ -5687,7 +5688,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         // beside the pointer half in `GameSurfaceRenderer`, because a key press is not aimed at
         // anything: it belongs to whichever entry currently owns the keys, and that is a fact about
         // the whole composite that only this level knows.
-        return listenForGameKeys(window, {
+        const dispatch = {
             blueprintDocument: bundle.ui.localBlueprints,
             persistentVariables: bundle.ui.persistentVariables,
             vocabulary: bundle.ui.uidoc.actions,
@@ -5716,8 +5717,14 @@ export function GameApp(props: GameAppProps): ReactNode {
                     dialogueAdvance: dialogueAdvances,
                 };
             },
-            onError: err => host.log("error", normalizeError(err)),
-        });
+            onError: (err: unknown) => host.log("error", normalizeError(err)),
+        };
+        const stopKeys = listenForGameKeys(window, dispatch);
+        const stopPads = listenForGamepads(dispatch);
+        return () => {
+            stopKeys();
+            stopPads();
+        };
     }, [
         bundle,
         core,

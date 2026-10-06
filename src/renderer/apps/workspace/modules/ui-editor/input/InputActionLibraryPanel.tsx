@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent } from "react";
-import { ChevronDown, FilePlus2, MoreVertical, Plus, Pointer } from "lucide-react";
+import { FilePlus2, MoreVertical, Plus } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
+import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import {
     UI_INPUT_ACTION_BLANK_PRESET_ID,
     UI_INPUT_ACTION_PRESETS,
@@ -14,12 +15,12 @@ import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/componen
 import { createInputDialog } from "@/lib/components/dialogs";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "../../../components/ui/freezeGuard";
+import { StackSection } from "../../../components/ui/SectionStack";
 import { InputBindingList } from "./InputBindingList";
 import { interfaceDocumentFreezeScope } from "../uiLiveSession";
 import { onInputActionPanelFocus } from "./inputActionPanelFocus";
 import { answeredActionIdsForSelection, scrollRowIntoListView } from "../panel/selectionHighlights";
 import { useSelectionHighlight } from "../panel/useSelectionHighlight";
-import { useRailSectionOpen } from "../panel/useRailSectionOpen";
 
 /** How long the section, or the one action asked for, stays marked after a request to show it. */
 const FOCUS_FLASH_MS = 1600;
@@ -27,6 +28,10 @@ const FOCUS_FLASH_MS = 1600;
 type InputActionLibraryPanelProps = {
     documentService: UIDocumentService | null;
     uiService: UIService | null;
+    /** Whether the section is open; the rail remembers it per project (`useRailSections`). */
+    open: boolean;
+    /** Open or close the section - a request to show an action opens it this way. */
+    onOpenChange: (open: boolean) => void;
 };
 
 /** How many interfaces answer each action, in one pass over the document. */
@@ -52,18 +57,19 @@ function countAnsweringSurfaces(documentService: UIDocumentService | null): Reco
  * "advance" defined one section down the same rail.
  *
  * The actions live here and only here: an interface says whether it answers one, not what it is.
- * Folded on a project that has never opened it, like the library above it (see
- * `useRailSectionOpen`): the interface list is what the rail is for. Somebody who needs an action
- * from elsewhere - the inspector's Input section - opens it through `requestInputActionPanelFocus`.
+ * Folded on a project that has never opened it, like the library above it (see `railSections.ts`):
+ * the interface list is what the rail is for. Somebody who needs an action from elsewhere - the
+ * inspector's Input section - opens it through `requestInputActionPanelFocus`.
  */
-export function InputActionLibraryPanel({ documentService, uiService }: InputActionLibraryPanelProps) {
+export function InputActionLibraryPanel({ documentService, uiService, open, onOpenChange }: InputActionLibraryPanelProps) {
     const { t, tn } = useTranslation();
     // Browsable while frozen, as the component library is: reading the vocabulary costs nothing,
     // and only creating, renaming, rebinding and deleting are off.
     const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
-    const [open, setOpen] = useRailSectionOpen("inputActions");
+    // Read by the focus listener, which subscribes once.
+    const onOpenChangeRef = useRef(onOpenChange);
+    onOpenChangeRef.current = onOpenChange;
     const [highlighted, setHighlighted] = useState(false);
-    const rootRef = useRef<HTMLDivElement | null>(null);
     const [actions, setActions] = useState<UIInputActionDef[]>([]);
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
@@ -96,11 +102,12 @@ export function InputActionLibraryPanel({ documentService, uiService }: InputAct
     const answeredCounts = useMemo(() => countAnsweringSurfaces(documentService), [actions, documentService]);
 
     // Somebody on the other side of the workspace has said they need an action, or asked where one
-    // is. Open, come into view, and mark the section - or that one action - for long enough to be
-    // found: the request means "where is this", so answering it silently would be the same as not
-    // answering.
+    // is. Open, and mark the section - or bring that one action into view and mark it - for long
+    // enough to be found: the request means "where is this", so answering it silently would be the
+    // same as not answering. Opening is all it takes to come into view: the rail never scrolls, and
+    // every section's header stays on screen however the height is shared.
     useEffect(() => onInputActionPanelFocus(actionId => {
-        setOpen(true);
+        onOpenChangeRef.current(true);
         if (actionId) {
             scrollTargetRef.current = actionId;
             setFlashId(actionId);
@@ -111,9 +118,6 @@ export function InputActionLibraryPanel({ documentService, uiService }: InputAct
             setHighlighted(true);
             window.setTimeout(() => setHighlighted(false), FOCUS_FLASH_MS);
         }
-        window.setTimeout(() => {
-            rootRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-        }, 0);
     }), []);
 
     // Following the selection: when the interface being looked at changes, the first action it
@@ -268,102 +272,88 @@ export function InputActionLibraryPanel({ documentService, uiService }: InputAct
     );
 
     return (
-        <div
-            ref={rootRef}
-            // Shrinkable, for the reason spelled out in `ComponentLibraryPanel`: the surface list
-            // above these two sections is what the panel is for, and a fixed-height library pair
-            // left it 16px tall on a short window.
-            className={`flex min-h-0 shrink flex-col border-t bg-surface-sunken transition-colors ${
-                highlighted ? "border-primary/45 bg-primary/5" : "border-edge"
-            }`}
+        <StackSection
+            sectionId="inputActions"
+            title={t("uiEditor.inputActions.title")}
+            count={actions.length}
+            actions={
+                <ToolbarButton
+                    size="xs"
+                    onClick={openCreateMenu}
+                    {...freeze.writes(!documentService, t("uiEditor.inputActions.create"))}
+                    aria-label={t("uiEditor.inputActions.create")}
+                >
+                    <Plus className="h-4 w-4" aria-hidden />
+                </ToolbarButton>
+            }
+            bodyClassName={cn("transition-colors", highlighted && "bg-primary/5")}
             data-help-topic="inputActions"
         >
-            <button
-                type="button"
-                className="flex h-9 w-full shrink-0 items-center gap-2 px-3 text-left text-xs font-semibold text-fg hover:bg-fill-subtle"
-                onClick={() => setOpen(value => !value)}
-            >
-                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "" : "-rotate-90"}`} />
-                <Pointer className="h-3.5 w-3.5" />
-                <span className="min-w-0 flex-1">{t("uiEditor.inputActions.title")}</span>
-                <span className="text-2xs font-normal text-fg-subtle">{actions.length}</span>
-            </button>
-            {open ? (
-                <div className="flex min-h-0 flex-1 flex-col space-y-2 border-t border-edge p-2">
-                    <button
-                        type="button"
-                        className="flex min-h-7 w-full items-center justify-center gap-1 rounded-md border border-edge text-xs text-fg-muted hover:bg-fill hover:text-fg"
-                        onClick={openCreateMenu}
-                        {...freeze.writes(!documentService, t("uiEditor.inputActions.create"))}
-                    >
-                        <Plus className="h-3.5 w-3.5" aria-hidden />
-                        {t("uiEditor.inputActions.create")}
-                    </button>
-                    <div ref={listRef} className="min-h-0 max-h-72 flex-1 space-y-2 overflow-y-auto pr-1">
-                        {actions.length === 0 ? (
-                            <div className="rounded-md border border-dashed border-edge px-3 py-4 text-center text-xs text-fg-subtle">
-                                {t("uiEditor.inputActions.empty")}
-                            </div>
-                        ) : (
-                            actions.map(action => (
-                                <div
-                                    key={action.id}
-                                    ref={node => {
-                                        if (node) {
-                                            rowRefs.current.set(action.id, node);
-                                        } else {
-                                            rowRefs.current.delete(action.id);
-                                        }
-                                    }}
-                                    data-input-action-id={action.id}
-                                    data-canvas-highlight={answeredHere.has(action.id) ? "true" : undefined}
-                                    className={cn(
-                                        "group rounded-md border border-edge bg-fill-subtle px-2 py-2 transition-colors",
-                                        // The same frame the component library draws round the
-                                        // definition behind a selected instance.
-                                        answeredHere.has(action.id) && "border-primary ring-1 ring-inset ring-primary",
-                                        flashId === action.id && "bg-primary/15",
-                                    )}
-                                    onContextMenu={event => openActionMenu(event, action)}
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <div
-                                            className="min-w-0 flex-1 truncate text-left text-xs font-medium text-fg"
-                                            data-tip={action.name}
-                                        >
-                                            {action.name}
-                                        </div>
-                                        <span className="shrink-0 text-2xs text-fg-subtle">
-                                            {tn("uiEditor.inputActions.answered", answeredCounts[action.id] ?? 0)}
-                                        </span>
-                                        <button
-                                            type="button"
-                                            className="grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-fg"
-                                            onClick={event => openActionMenu(event, action)}
-                                            data-tip={t("uiEditor.inputActions.actionOptions")}
-                                            aria-label={t("uiEditor.inputActions.actionOptions")}
-                                        >
-                                            <MoreVertical className="h-3.5 w-3.5" aria-hidden />
-                                        </button>
-                                    </div>
-                                    <div className="mt-2">
-                                        <InputBindingList
-                                            bindings={action.bindings}
-                                            onChange={bindings => setBindings(action, bindings)}
-                                        />
-                                    </div>
-                                </div>
-                            ))
-                        )}
+            {/* The section's own scroller: it gets every pixel the section is given, and a
+                wheel that reaches its end stops there. */}
+            <div ref={listRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-2">
+                {actions.length === 0 ? (
+                    <div className="rounded-md border border-dashed border-edge px-3 py-4 text-center text-xs text-fg-subtle">
+                        {t("uiEditor.inputActions.empty")}
                     </div>
-                </div>
-            ) : null}
+                ) : (
+                    actions.map(action => (
+                        <div
+                            key={action.id}
+                            ref={node => {
+                                if (node) {
+                                    rowRefs.current.set(action.id, node);
+                                } else {
+                                    rowRefs.current.delete(action.id);
+                                }
+                            }}
+                            data-input-action-id={action.id}
+                            data-canvas-highlight={answeredHere.has(action.id) ? "true" : undefined}
+                            className={cn(
+                                "group rounded-md border border-edge bg-fill-subtle px-2 py-2 transition-colors",
+                                // The same frame the component library draws round the
+                                // definition behind a selected instance.
+                                answeredHere.has(action.id) && "border-primary ring-1 ring-inset ring-primary",
+                                flashId === action.id && "bg-primary/15",
+                            )}
+                            onContextMenu={event => openActionMenu(event, action)}
+                        >
+                            <div className="flex items-center gap-2">
+                                <div
+                                    className="min-w-0 flex-1 truncate text-left text-xs font-medium text-fg"
+                                    data-tip={action.name}
+                                >
+                                    {action.name}
+                                </div>
+                                <span className="shrink-0 text-2xs text-fg-subtle">
+                                    {tn("uiEditor.inputActions.answered", answeredCounts[action.id] ?? 0)}
+                                </span>
+                                <button
+                                    type="button"
+                                    className="grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-fg"
+                                    onClick={event => openActionMenu(event, action)}
+                                    data-tip={t("uiEditor.inputActions.actionOptions")}
+                                    aria-label={t("uiEditor.inputActions.actionOptions")}
+                                >
+                                    <MoreVertical className="h-3.5 w-3.5" aria-hidden />
+                                </button>
+                            </div>
+                            <div className="mt-2">
+                                <InputBindingList
+                                    bindings={action.bindings}
+                                    onChange={bindings => setBindings(action, bindings)}
+                                />
+                            </div>
+                        </div>
+                    ))
+                )}
+            </div>
             <ContextMenu
                 items={menuItems}
                 position={menuState.position}
                 visible={menuState.visible}
                 onClose={hideMenu}
             />
-        </div>
+        </StackSection>
     );
 }

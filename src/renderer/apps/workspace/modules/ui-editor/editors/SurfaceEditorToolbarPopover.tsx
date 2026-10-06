@@ -215,6 +215,11 @@ export type SurfaceToolbarPopoverRowProps = {
     shortcut?: string;
     /** Draws a check in the leading slot. For rows that pick one of a set. */
     selected?: boolean;
+    /**
+     * Whether the panel opens with focus on this row while it is selected. Off for a set that is not
+     * the panel's main business - a settings panel whose first stop is its own text field.
+     */
+    focusWhenSelected?: boolean;
     disabled?: boolean;
     onClick: () => void;
 };
@@ -230,6 +235,7 @@ export function SurfaceToolbarPopoverRow({
     label,
     shortcut,
     selected = false,
+    focusWhenSelected = true,
     disabled = false,
     onClick,
 }: SurfaceToolbarPopoverRowProps) {
@@ -241,7 +247,7 @@ export function SurfaceToolbarPopoverRow({
             aria-pressed={selected}
             data-surface-toolbar-row=""
             // The row already chosen is where the keyboard starts when the panel opens.
-            data-autofocus={selected ? "" : undefined}
+            data-autofocus={selected && focusWhenSelected ? "" : undefined}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-fg transition-colors hover:bg-fill-subtle disabled:cursor-not-allowed disabled:opacity-50"
         >
             <span className="flex h-4 w-4 shrink-0 items-center justify-center text-fg-muted">

@@ -628,6 +628,9 @@ export const workspace = {
         panelRenderError: "This panel hit a rendering error",
         mainEditorRegion: "Main editor",
         resizeSplit: "Resize split",
+        // The seam between two sections of a sidebar panel, e.g. the UI rail's component library
+        // and input actions.
+        resizeSections: "Resize sections",
         noActiveEditor: "No active editor",
         closePanel: "Close panel",
         closeTab: "Close {name}",
@@ -1593,6 +1596,15 @@ export const workspace = {
                     alignBottom: "Align bottom",
                     distributeHorizontal: "Distribute horizontally",
                     distributeVertical: "Distribute vertically",
+                    nudgeLeft: "Move left 1 px",
+                    nudgeRight: "Move right 1 px",
+                    nudgeUp: "Move up 1 px",
+                    nudgeDown: "Move down 1 px",
+                    nudgeLeftLarge: "Move left 10 px",
+                    nudgeRightLarge: "Move right 10 px",
+                    nudgeUpLarge: "Move up 10 px",
+                    nudgeDownLarge: "Move down 10 px",
+                    snapToGrid: "Snap to grid",
                 },
                 blueprint: {
                     undo: "Undo",

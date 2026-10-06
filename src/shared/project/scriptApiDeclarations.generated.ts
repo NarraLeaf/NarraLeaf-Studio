@@ -1323,6 +1323,9 @@ declare module "@narraleaf/script" {
     		 * string so a graph compares both against the same literals.
     		 */
     		getDevice: () => string;
+    		isGamepadConnected: () => boolean;
+    		isGamepadButtonHeld: (button: string) => boolean;
+    		getGamepadAxis: (axis: string) => number;
     	};
     	/**
     	 * Moving the player's real cursor, for the Move Mouse family.
@@ -1535,6 +1538,14 @@ declare module "@narraleaf/script" {
     	dispatchSurfaceInputAction?: (payload: UIInputActionEventPayload) => Promise<void>;
     	dispatchBroadcastEvent?: (eventName: string, data: unknown, sender?: string) => Promise<void>;
     	getBroadcastListenerCount?: (eventName: string) => number;
+    	/**
+    	 * A shape from the interface document this surface runs, by id; null for one it does not hold.
+    	 *
+    	 * What lets Get Field read a row of a list the author shaped: the engine's own shapes resolve
+    	 * anywhere, and a list's shape lives in the document. Optional because a host with no document to
+    	 * hand - an editor preview - leaves it out, and Get Field then reads only the engine's shapes.
+    	 */
+    	resolveStruct?: (structId: string) => UIStructDef | null;
     	/** Invoke a declared blueprint fn (Call Fn node); awaits the fn body and returns its Fn Return values. */
     	invokeBlueprintFn?: (input: {
     		fnRef: string;
@@ -1728,6 +1739,12 @@ declare module "@narraleaf/script" {
     		readonly shiftKey: "boolean";
     		readonly metaKey: "boolean";
     	};
+    	readonly gamepadButtonDown: {
+    		readonly button: "string";
+    	};
+    	readonly gamepadButtonUp: {
+    		readonly button: "string";
+    	};
     	readonly preferenceChanged: {
     		readonly key: "preferenceKey";
     		readonly value: "preferenceValue";
@@ -1905,6 +1922,8 @@ declare module "@narraleaf/script" {
     		"gameReady",
     		"keyDown",
     		"keyUp",
+    		"gamepadButtonDown",
+    		"gamepadButtonUp",
     		"preferenceChanged",
     		"fullscreenChanged",
     		"windowFocusChanged",
@@ -1920,6 +1939,8 @@ declare module "@narraleaf/script" {
     		"rightClick",
     		"keyDown",
     		"keyUp",
+    		"gamepadButtonDown",
+    		"gamepadButtonUp",
     		"preferenceChanged",
     		"fullscreenChanged",
     		"windowFocusChanged",
@@ -1942,6 +1963,8 @@ declare module "@narraleaf/script" {
     		"afterSurfaceEnter",
     		"keyDown",
     		"keyUp",
+    		"gamepadButtonDown",
+    		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
     		"broadcast",
@@ -1968,6 +1991,8 @@ declare module "@narraleaf/script" {
     		"afterSurfaceEnter",
     		"keyDown",
     		"keyUp",
+    		"gamepadButtonDown",
+    		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
     		"broadcast",
@@ -1994,6 +2019,8 @@ declare module "@narraleaf/script" {
     		"afterSurfaceEnter",
     		"keyDown",
     		"keyUp",
+    		"gamepadButtonDown",
+    		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
     		"broadcast",
@@ -2020,6 +2047,8 @@ declare module "@narraleaf/script" {
     		"afterSurfaceEnter",
     		"keyDown",
     		"keyUp",
+    		"gamepadButtonDown",
+    		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
     		"broadcast",
@@ -2045,6 +2074,8 @@ declare module "@narraleaf/script" {
     		"afterSurfaceEnter",
     		"keyDown",
     		"keyUp",
+    		"gamepadButtonDown",
+    		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
     		"broadcast",
@@ -2070,6 +2101,8 @@ declare module "@narraleaf/script" {
     		"afterSurfaceEnter",
     		"keyDown",
     		"keyUp",
+    		"gamepadButtonDown",
+    		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
     		"broadcast",
@@ -2096,6 +2129,8 @@ declare module "@narraleaf/script" {
     		"afterSurfaceEnter",
     		"keyDown",
     		"keyUp",
+    		"gamepadButtonDown",
+    		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
     		"broadcast",
@@ -2114,6 +2149,8 @@ declare module "@narraleaf/script" {
     		"afterSurfaceEnter",
     		"keyDown",
     		"keyUp",
+    		"gamepadButtonDown",
+    		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
     		"broadcast",
@@ -2131,6 +2168,8 @@ declare module "@narraleaf/script" {
     		"afterSurfaceEnter",
     		"keyDown",
     		"keyUp",
+    		"gamepadButtonDown",
+    		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
     		"broadcast",
@@ -2159,6 +2198,8 @@ declare module "@narraleaf/script" {
     		"afterSurfaceEnter",
     		"keyDown",
     		"keyUp",
+    		"gamepadButtonDown",
+    		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
     		"broadcast",
@@ -2179,6 +2220,8 @@ declare module "@narraleaf/script" {
     		"afterSurfaceEnter",
     		"keyDown",
     		"keyUp",
+    		"gamepadButtonDown",
+    		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
     		"broadcast",
@@ -2194,6 +2237,8 @@ declare module "@narraleaf/script" {
     		"afterSurfaceEnter",
     		"keyDown",
     		"keyUp",
+    		"gamepadButtonDown",
+    		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
     		"broadcast",
@@ -2220,6 +2265,8 @@ declare module "@narraleaf/script" {
     		"afterSurfaceEnter",
     		"keyDown",
     		"keyUp",
+    		"gamepadButtonDown",
+    		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
     		"broadcast",
@@ -2240,6 +2287,8 @@ declare module "@narraleaf/script" {
     		"afterSurfaceEnter",
     		"keyDown",
     		"keyUp",
+    		"gamepadButtonDown",
+    		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
     		"broadcast",
@@ -2260,6 +2309,8 @@ declare module "@narraleaf/script" {
     		"afterSurfaceEnter",
     		"keyDown",
     		"keyUp",
+    		"gamepadButtonDown",
+    		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
     		"broadcast",
@@ -2280,6 +2331,8 @@ declare module "@narraleaf/script" {
     		"afterSurfaceEnter",
     		"keyDown",
     		"keyUp",
+    		"gamepadButtonDown",
+    		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
     		"broadcast",
@@ -2309,6 +2362,8 @@ declare module "@narraleaf/script" {
     export declare const COMPONENT_EXCLUDED_EVENTS: readonly [
     	"keyDown",
     	"keyUp",
+    	"gamepadButtonDown",
+    	"gamepadButtonUp",
     	"fullscreenChanged",
     	"windowFocusChanged",
     	"broadcast",

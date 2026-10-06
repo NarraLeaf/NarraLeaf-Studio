@@ -14,12 +14,15 @@
  * Comments in English per project convention.
  */
 
+import { normalizeUIStructLibrary } from "@shared/types/ui-editor/structLibrary";
+import type { UIStructDef } from "@shared/types/ui-editor/struct";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Blueprint, BlueprintDocument, BlueprintPrivateOwnerRecord } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { listSaveSchemaFields, migrateSaveSchemaToLatest } from "@shared/saves/saveSchemaModel";
 import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
+import { setActiveUIPageParams } from "@shared/types/ui-editor/pageParams";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
 import type { UIDocument } from "@shared/types/ui-editor/document";
@@ -152,6 +155,8 @@ export type SurfaceTarget = {
     kind?: string;
     host?: string;
     rootElementId?: string;
+    /** The page's declared parameters as stored; read through `getUIPageParams`. */
+    params?: unknown;
 };
 
 /** A component definition, which owns an element tree of its own. */
@@ -198,6 +203,8 @@ export type UiDocumentTargets = {
     elements: ElementTarget[];
     /** The raw element records, which the graph validator wants whole. */
     raw: Record<string, UiDocumentElement>;
+    /** The document's list shapes, by id - what a field reader in a list row reads. */
+    structs: Record<string, UIStructDef>;
 };
 
 /**
@@ -212,12 +219,13 @@ export type UiDocumentTargets = {
 export function readUiDocumentTargets(projectDir: string): UiDocumentTargets {
     const filePath = path.join(projectDir, UI_DOCUMENT_RELATIVE_PATH);
     if (!fs.existsSync(filePath)) {
-        return { surfaces: [], components: [], elements: [], raw: {} };
+        return { surfaces: [], components: [], elements: [], raw: {}, structs: {} };
     }
     let raw: {
         surfaces?: SurfaceTarget[];
         components?: UiDocumentComponent[];
         elements?: Record<string, UiDocumentElement>;
+        structs?: unknown;
     };
     try {
         raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -258,7 +266,7 @@ export function readUiDocumentTargets(projectDir: string): UiDocumentTargets {
             walkElements(component.rootElementId, { surfaceId: null, componentId: component.id }, [], own, out);
         }
     }
-    return { surfaces, components, elements: out, raw: pool };
+    return { surfaces, components, elements: out, raw: pool, structs: normalizeUIStructLibrary(raw.structs) };
 }
 
 function walkElements(
@@ -284,6 +292,36 @@ function walkElements(
     });
     for (const childId of element.childrenIds ?? []) {
         walkElements(childId, owner, [...ancestors, name], pool, out, depth + 1);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Page parameters
+// ---------------------------------------------------------------------------
+
+/**
+ * Publish the parameters the project's pages declare before any pin is resolved.
+ *
+ * `Go Page` and the other nodes that open a page grow an input per parameter the picked page
+ * declares, and `Get Page Param` reads one by id - both through the module-level table the editor
+ * fills (`setActiveUIPageParams`). Without this a graph that gives a page its parameters looks to the
+ * checker like one wiring inputs that do not exist.
+ */
+export function loadPageParams(projectDir: string): void {
+    const filePath = path.join(projectDir, UI_DOCUMENT_RELATIVE_PATH);
+    try {
+        const raw = fs.existsSync(filePath)
+            ? (JSON.parse(fs.readFileSync(filePath, "utf8")) as { surfaces?: SurfaceTarget[] })
+            : {};
+        setActiveUIPageParams(
+            (raw.surfaces ?? []).filter(surface => typeof surface?.id === "string").map(surface => ({
+                id: surface.id,
+                kind: surface.kind === "stageSurface" ? "stageSurface" : "appSurface",
+                params: surface.params,
+            })),
+        );
+    } catch {
+        setActiveUIPageParams([]);
     }
 }
 

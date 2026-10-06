@@ -45,7 +45,9 @@ describe("StorageManager filesystem policy", () => {
         const realProject = path.join(tempDir, "real-project");
         const linkedProject = path.join(tempDir, "linked-project");
         await fs.mkdir(realProject, { recursive: true });
-        await fs.symlink(realProject, linkedProject, "dir");
+        // A junction on Windows: a directory symlink there needs elevation or Developer Mode, a
+        // junction needs neither, and `realpath` sees through both the same way.
+        await fs.symlink(realProject, linkedProject, process.platform === "win32" ? "junction" : "dir");
 
         const manager = new StorageManager({
             getUserDataDir: () => path.join(tempDir, "user-data"),

@@ -39,6 +39,15 @@ function localBpOf(graphs: Partial<BlueprintGraphIndex>): LocalBlueprintService 
 const PLAIN_CATALOG = catalogOf({ "test.node": { role: "normal", pins: [], displayName: "Test" } });
 
 describe("resolveFirstBlueprintLayerPreview", () => {
+    it("names a layer still called what Studio seeded it with by its event, and an author's by their name", () => {
+        const seeded = localBpOf({ events: { onCall: { ...layer("onCall", "n-1"), name: "On Call" } } });
+        const renamed = localBpOf({ events: { onCall: { ...layer("onCall", "n-1"), name: "Check the route" } } });
+
+        expect(resolveFirstBlueprintLayerPreview(seeded, PLAIN_CATALOG, "bp-1")?.graphNameKey).toBe("blueprint.node.onCall");
+        expect(resolveFirstBlueprintLayerPreview(renamed, PLAIN_CATALOG, "bp-1")?.graphNameKey).toBeUndefined();
+        expect(resolveFirstBlueprintLayerPreview(renamed, PLAIN_CATALOG, "bp-1")?.graphName).toBe("Check the route");
+    });
+
     it("previews the layer the editor opens, not whichever key comes first", () => {
         const localBp = localBpOf({
             eventIds: ["ev-second"],

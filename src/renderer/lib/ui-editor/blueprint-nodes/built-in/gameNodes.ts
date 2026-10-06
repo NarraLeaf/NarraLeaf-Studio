@@ -78,10 +78,12 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SET_TRACK_VOLUME,
 } from "@shared/types/blueprint/graph";
 import {
-    BLUEPRINT_VALUE_TYPE_ARRAY,
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
     BLUEPRINT_VALUE_TYPE_RGBA_COLOR,
+    blueprintArrayValueType,
 } from "@shared/types/blueprint/valueTypes";
+import { UI_STRUCT_ID_NOTIFICATION_ITEM, UI_STRUCT_ID_SAVE_ENTRY } from "@shared/types/ui-editor/builtinStructs";
+import { uiStructValueType } from "@shared/types/ui-editor/struct";
 import { blueprintCharacterColorOrDefault } from "@shared/types/blueprint/characterInfo";
 import {
     BLUEPRINT_VALUE_TYPE_SAVE_SLOT,
@@ -543,6 +545,16 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
     },
 ];
 
+/**
+ * What each preference holds, by key: the type its getter answers and its setter takes.
+ *
+ * `On Preference Changed` types its value pins from this, so the head and the getter for the same
+ * preference never disagree about what it is.
+ */
+export const GAME_PREFERENCE_VALUE_TYPES: Readonly<Record<string, string>> = Object.fromEntries(
+    GAME_PREFERENCE_NODE_META.map(meta => [meta.key, meta.valueType]),
+);
+
 function createPreferenceDataPin(meta: GamePreferenceNodeMeta, kind: "input" | "output"): BlueprintNodePinDef {
     const pin: BlueprintNodePinDef = {
         id: meta.pinId,
@@ -999,7 +1011,7 @@ const autoSaveBlueprintNodes: BlueprintNodeDef[] = [
                 id: "entries",
                 kind: "output",
                 semantic: "data",
-                valueType: BLUEPRINT_VALUE_TYPE_ARRAY,
+                valueType: blueprintArrayValueType(uiStructValueType(UI_STRUCT_ID_SAVE_ENTRY)),
                 label: "Entries",
             },
             {
@@ -1467,7 +1479,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
                 id: "notifications",
                 kind: "output",
                 semantic: "data",
-                valueType: BLUEPRINT_VALUE_TYPE_ARRAY,
+                valueType: blueprintArrayValueType(uiStructValueType(UI_STRUCT_ID_NOTIFICATION_ITEM)),
                 label: "Notifications",
             },
         ],
@@ -1978,7 +1990,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
                 id: "ids",
                 kind: "output",
                 semantic: "data",
-                valueType: BLUEPRINT_VALUE_TYPE_ARRAY,
+                valueType: blueprintArrayValueType("string"),
                 label: "Ids",
             },
         ],

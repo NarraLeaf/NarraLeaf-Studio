@@ -800,11 +800,33 @@ function callAbsorbedEffects(
     return { bySceneId: absorbed, pureCallEdges };
 }
 
+/**
+ * A menu or an `if` the run passes through on its way to a jump that is not inside it.
+ *
+ * Every arm comes back to the row after the fork, so the counter leaves it moved by whichever arm
+ * ran: the join of one reading per arm. A menu always runs one of its options. An `if` runs none when
+ * no branch holds and it has no `else`, so passing it untouched is one more way through.
+ */
+type SceneFlowPassedFork = {
+    /** One effect list per arm, in document order within the arm. */
+    arms: SceneFlowVariableEffect[][];
+    /** Some arm always runs: a menu, or an `if` with an `else`. */
+    exhaustive: boolean;
+};
+
+/** One thing that happens to the counter between entering a scene and taking one jump out of it. */
+type SceneFlowTraversalStep =
+    | { kind: "effect"; effect: SceneFlowVariableEffect }
+    | { kind: "fork"; fork: SceneFlowPassedFork };
+
 /** One way of getting from one scene to another, and what it does to the variable on the way. */
 type SceneFlowTraversal = {
     source: StorySceneId;
     target: StorySceneId;
+    /** Applied first: what the scene's calls did, which is `unknown` and so does not depend on order. */
     effects: SceneFlowVariableEffect[];
+    /** The scene's own rows up to the jump, in the order they run. */
+    steps: SceneFlowTraversalStep[];
 };
 
 /**
@@ -866,6 +888,159 @@ function traversalEffects(
         }
     }
     return effects;
+}
+
+/** The order a scene's rows run in, read once per scene however many jumps leave it. */
+type SceneFlowSceneOrder = {
+    position: Map<StoryBlockId, number>;
+    ordered: StoryBlock[];
+    /** A `goto` can send the run backwards, so document order says nothing about what ran first. */
+    hasGoto: boolean;
+};
+
+function readSceneOrder(scene: StoryScene): SceneFlowSceneOrder {
+    // Disabled rows are compiled out with their subtree, exactly as `collectSceneWrites` skips them.
+    const ordered = listSceneBlocksInDocumentOrder(scene, { skipSubtree: block => block.disabled === true });
+    return {
+        ordered,
+        position: new Map(ordered.map((block, index) => [block.id, index])),
+        hasGoto: ordered.some(block => block.kind === "control" && block.payload.control === "goto"),
+    };
+}
+
+/**
+ * What a scene's rows do to the counter between entering the scene and taking one jump out of it.
+ *
+ * Three kinds of row can have run, in the order they are written:
+ *
+ *  - a write on the scene's spine, or on an arm the jump sits inside - certain, the run came through it;
+ *  - a menu or `if` passed on the way, whose arms all lead back to the rows after it - one
+ *    {@link SceneFlowPassedFork}. This is the shape `menu` → options → a jump written after the menu
+ *    has, which is how most scenes leave: dropping those arms reported every option's work as never
+ *    having happened, and a range that is too narrow is a reachable branch reported as unreachable;
+ *  - nothing else. The other arms of a fork the jump is inside are roads not taken, and the rows after
+ *    the jump do not run before it.
+ *
+ * Where row order cannot be read, every write the scene holds may have run first, and widens both ways,
+ * which holds whatever the run did. A `goto` anywhere in the scene can send the run past any row or
+ * back over it, so nothing there is certain. A jump inside a `repeat` still comes after the rows above
+ * the loop on its own path, which stay certain; the loop body runs on both sides of it.
+ */
+function jumpTraversalSteps(
+    document: StoryDocument,
+    writes: readonly SceneFlowWrite[],
+    sceneId: StorySceneId,
+    jumpBlockId: StoryBlockId,
+    order: SceneFlowSceneOrder | undefined,
+): SceneFlowTraversalStep[] {
+    const scene = document.scenes[sceneId];
+    const jump = scene?.blocks[jumpBlockId];
+    const ancestry = scene && jump ? readAncestry(scene, jump) : { armChain: [], insideRepeat: false };
+    const jumpChain = ancestry.armChain;
+    const onPath = (write: SceneFlowWrite): boolean => isChainSuffix(write.armChain, jumpChain);
+    const jumpIndex = order?.position.get(jumpBlockId);
+
+    if (!scene || !order || jumpIndex === undefined || order.hasGoto) {
+        return writes.map(write => ({ kind: "effect" as const, effect: effectOf(write, false) }));
+    }
+    if (ancestry.insideRepeat) {
+        // Without a `goto` the rows above the loop still ran first; the loop's own body runs a number
+        // of laps nobody counted, on both sides of the jump.
+        return writes.map(write => {
+            const index = order.position.get(write.blockId);
+            const block = scene.blocks[write.blockId];
+            const certain = block !== undefined && index !== undefined && index < jumpIndex && onPath(write)
+                && !readAncestry(scene, block).insideRepeat;
+            return { kind: "effect" as const, effect: effectOf(write, certain) };
+        });
+    }
+
+    // The containers holding the arms the jump is inside: the run took one of their arms, so their
+    // other arms did not run on the way here.
+    const takenContainers = new Set<StoryBlockId>();
+    for (const armId of jumpChain) {
+        const parentId = scene.blocks[armId]?.parentId;
+        if (parentId) {
+            takenContainers.add(parentId);
+        }
+    }
+
+    const located: { index: number; step: SceneFlowTraversalStep }[] = [];
+    for (const write of writes) {
+        const index = order.position.get(write.blockId);
+        if (index !== undefined && index < jumpIndex && onPath(write)) {
+            located.push({ index, step: { kind: "effect", effect: effectOf(write, true) } });
+        }
+    }
+
+    const forks = new Map<StoryBlockId, { index: number; arms: StoryBlockId[]; exhaustive: boolean }>();
+    for (const block of order.ordered) {
+        const index = order.position.get(block.id) ?? Number.POSITIVE_INFINITY;
+        if (index >= jumpIndex) {
+            break;
+        }
+        // An arm nested inside an arm the run did not provably take belongs to that outer arm, which
+        // carries its writes as uncertain; only arms at a level the jump's own path passes are forks.
+        if (!isForkArm(block) || jumpChain.includes(block.id) || !isChainSuffix(readAncestry(scene, block).armChain, jumpChain)) {
+            continue;
+        }
+        const containerId = block.parentId ?? block.id;
+        if (takenContainers.has(containerId)) {
+            continue;
+        }
+        const container = scene.blocks[containerId];
+        const isElse = block.kind === "control" && block.payload.control === "conditionBranch" && block.payload.branch === "else";
+        const existing = forks.get(containerId);
+        if (existing) {
+            existing.arms.push(block.id);
+            existing.exhaustive ||= isElse;
+            continue;
+        }
+        forks.set(containerId, {
+            index: order.position.get(containerId) ?? index,
+            arms: [block.id],
+            exhaustive: isElse || (container?.kind === "nodeAction" && container.payload.action === "choice"),
+        });
+    }
+    for (const fork of forks.values()) {
+        located.push({
+            index: fork.index,
+            step: {
+                kind: "fork",
+                fork: {
+                    exhaustive: fork.exhaustive,
+                    arms: fork.arms.map(armId => writes
+                        .filter(write => write.armChain.includes(armId))
+                        // On the arm's own spine it ran whenever the arm did; deeper, another fork decided.
+                        .map(write => effectOf(write, write.armChain[0] === armId))),
+                },
+            },
+        });
+    }
+
+    return located.sort((left, right) => left.index - right.index).map(entry => entry.step);
+}
+
+/** Push a range through one traversal's steps, joining the arms of every fork it passes. */
+function applyTraversalSteps(
+    range: SceneFlowRange,
+    steps: readonly SceneFlowTraversalStep[],
+    variableKey: string,
+): SceneFlowRange {
+    let current = range;
+    for (const step of steps) {
+        if (step.kind === "effect") {
+            current = applyEffects(current, [step.effect], variableKey);
+            continue;
+        }
+        let joined: SceneFlowRange | null = step.fork.exhaustive ? null : current;
+        for (const arm of step.fork.arms) {
+            const through = applyEffects(current, arm, variableKey);
+            joined = joined === null ? through : unionRange(joined, through);
+        }
+        current = joined ?? current;
+    }
+    return current;
 }
 
 /**
@@ -936,7 +1111,9 @@ function findCyclicScenes(sceneIds: readonly StorySceneId[], links: readonly Sce
  * {@link collectSceneEffects}; an arm's is {@link branchDeltaFor}.
  *
  * Forward propagation from the entry scene, seeded with the declaration's default, merging every way
- * in. Three things make it honest rather than merely finite:
+ * in. What a scene does on the way to each jump out of it is {@link jumpTraversalSteps}: its rows up to
+ * that jump, with every menu and `if` passed on the way joined over its arms. Three things make it
+ * honest rather than merely finite:
  *
  * - A missing default is **not** zero. The compiler seeds a saved variable to `null` and skips a
  *   scene-local with no default entirely, so a number the author never stated is a number nobody
@@ -994,49 +1171,29 @@ export function computeVariableRanges(
     }
 
     const { writesByScene } = documentIndex(document, blueprintWrites);
-    const sceneEffects = collectSceneEffects(document, blueprintWrites);
     const callAbsorbed = callAbsorbedEffects(graph, writesByScene);
 
-    // One traversal per way of getting from a scene to a scene, because that is the granularity the
-    // variable moves at: five options into one hallway are five different counters on arrival.
+    // One traversal per jump, because that is the granularity the variable moves at: five options
+    // into one hallway are five different counters on arrival, and so are a jump written inside a menu
+    // option and one written after the menu. Every jump is on a scene edge, whichever arm owns it.
     const traversals: SceneFlowTraversal[] = [];
-    const branchByNodeId = new Map(graph.branches.map(branch => [branch.id, branch]));
-    const coveredJumps = new Map<string, Set<StoryBlockId>>();
-    for (const branchEdge of graph.branchEdges) {
-        const branch = branchByNodeId.get(branchEdge.sourceBranchId);
-        if (!branch) {
-            continue;
-        }
-        const key = `${branchEdge.sourceSceneId}->${branchEdge.target}`;
-        const covered = coveredJumps.get(key) ?? new Set<StoryBlockId>();
-        for (const jump of branchEdge.jumps) {
-            covered.add(jump.blockId);
-        }
-        coveredJumps.set(key, covered);
-
-        traversals.push({
-            source: branchEdge.sourceSceneId,
-            target: branchEdge.target,
-            effects: [
-                ...(callAbsorbed.pureCallEdges.has(`${branchEdge.sourceSceneId}->${branchEdge.target}`)
-                    ? []
-                    : callAbsorbed.bySceneId.get(branchEdge.sourceSceneId) ?? []),
-                ...armTraversalEffects(document, writesByScene, branch),
-            ],
-        });
-    }
+    const orderByScene = new Map<StorySceneId, SceneFlowSceneOrder>();
     for (const edge of graph.edges) {
-        const covered = coveredJumps.get(`${edge.source}->${edge.target}`);
-        // Jumps no arm claimed: an unconditional one on the scene's spine, or one under a fork the
-        // model could not register. Both move the player with no arm effects to apply, and dropping
-        // them would strand every scene behind them as unreachable.
-        if (edge.jumps.some(jump => !covered?.has(jump.blockId))) {
+        const scene = document.scenes[edge.source];
+        let order = orderByScene.get(edge.source);
+        if (!order && scene) {
+            order = readSceneOrder(scene);
+            orderByScene.set(edge.source, order);
+        }
+        const effects = callAbsorbed.pureCallEdges.has(`${edge.source}->${edge.target}`)
+            ? []
+            : [...(callAbsorbed.bySceneId.get(edge.source) ?? [])];
+        for (const jump of edge.jumps) {
             traversals.push({
                 source: edge.source,
                 target: edge.target,
-                effects: callAbsorbed.pureCallEdges.has(`${edge.source}->${edge.target}`)
-                    ? []
-                    : [...(callAbsorbed.bySceneId.get(edge.source) ?? [])],
+                effects,
+                steps: jumpTraversalSteps(document, writesByScene.get(edge.source) ?? [], edge.source, jump.blockId, order),
             });
         }
     }
@@ -1068,9 +1225,12 @@ export function computeVariableRanges(
         }
         const sceneId = queue[cursor];
         const current = arrival.get(sceneId) ?? UNKNOWN_RANGE;
-        const afterScene = applyEffects(current, sceneEffects.get(sceneId) ?? [], variableKey);
         for (const traversal of outgoing.get(sceneId) ?? []) {
-            const candidate = applyEffects(afterScene, traversal.effects, variableKey);
+            const candidate = applyTraversalSteps(
+                applyEffects(current, traversal.effects, variableKey),
+                traversal.steps,
+                variableKey,
+            );
             const existing = arrival.get(traversal.target);
             const merged = existing ? unionRange(existing, candidate) : candidate;
             if (rangesEqual(existing, merged)) {
@@ -1250,12 +1410,14 @@ export function widenRangeAcrossScene(
  * **Final, not on-arrival**: the ending scene's own spine writes are applied, because the rail labels
  * this the route's final value and a counter the last scene moves is part of what the player leaves
  * with. It therefore equals {@link computeVariableRanges}'s arrival range for that ending exactly
- * when the ending writes nothing of its own and one route reaches it — and it is folded from the
- * *same* effect source (`armTraversalEffects`: the arm's subtree plus the spines of the arms it is
- * nested inside), which is the point of it living here. The rail folding `collectBranchEffects`
- * instead was subtree-only, so a story with a fork nested inside an option had the route's value and
- * the ending's chip disagree — two readings of one number, which is the drift
- * `storyRuntimeDebugModel`'s header exists to warn about.
+ * when the ending writes nothing of its own and one route reaches it — and both count an arm the same
+ * way (`armTraversalEffects` here, the path half of {@link jumpTraversalSteps} there: the arm's
+ * subtree plus the spines of the arms it is nested inside), which is the point of it living here.
+ * Where the range walk joins a menu the run falls out of, a route has already chosen one of its
+ * options as that scene's arm. The rail folding `collectBranchEffects` instead was subtree-only, so a
+ * story with a fork nested inside an option had the route's value and the ending's chip disagree —
+ * two readings of one number, which is the drift `storyRuntimeDebugModel`'s header exists to warn
+ * about.
  *
  * Honesty rules, all absorbing — one `?` anywhere on the path is the whole answer:
  *

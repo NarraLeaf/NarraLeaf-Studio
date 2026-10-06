@@ -12,7 +12,7 @@ import { EditorComponentProps } from "../../types";
 import { UIEditorInteractionLayer, useUIEditorKeybindings } from "@/lib/ui-editor/interaction";
 import { useUiClipboardSync } from "@/lib/ui-editor/commands/useUiClipboardSync";
 import { UIEditorDockerBar } from "@/lib/ui-editor/docker";
-import { MousePointer2, Move, Play, Magnet, PanelsTopLeft } from "lucide-react";
+import { MousePointer2, Move, Play, Magnet, PanelsTopLeft, MonitorPlay } from "lucide-react";
 import type { UITool } from "@/lib/ui-editor/editor/types";
 import { useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
@@ -29,9 +29,8 @@ import { Services } from "@/lib/workspace/services/services";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
-import { UIEditorHistoryService } from "@/lib/workspace/services/ui-editor/UIEditorHistoryService";
+import { UIEditorHistoryService, uiEditorHistoryScope } from "@/lib/workspace/services/ui-editor/UIEditorHistoryService";
 import { HistoryService } from "@/lib/workspace/services/history/HistoryService";
-import { uiSurfaceHistoryScope } from "@/lib/workspace/services/history/historyScopes";
 import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSurfaceDiagnostics";
 import { flushUIDocAndGraphIfDirty } from "@/apps/workspace/modules/actions/flushDevModeAssets";
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
@@ -44,8 +43,11 @@ import {
     useViewportTransform,
     useSmartSnapEnabled,
     useSmartSnapDetailSettings,
+    useGridSpacing,
+    useGridStyle,
     usePreviewAspectId,
     usePreviewSafeAreaId,
+    usePreviewReferenceSlotIds,
 } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceEditorTabModel";
 import { useSurfaceViewportZoom } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceViewportZoom";
 import { editorSidebarCssWidth, useEditorSidebarWidth } from "@/apps/workspace/components/ui/EditorSidebar";
@@ -64,9 +66,22 @@ import {
     SurfaceEditorToolbarSegButton,
 } from "@/apps/workspace/modules/ui-editor/editors/SurfaceEditorToolbarButtonGroup";
 import { SurfaceSnapSettingsTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfaceSnapSettingsMenu";
+import { SurfaceGridOverlay } from "@/apps/workspace/modules/ui-editor/editors/SurfaceGridOverlay";
 import { SurfaceAlignTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfaceAlignMenu";
 import { SurfacePreviewFramesTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfacePreviewFramesMenu";
 import { SurfacePreviewFramesReadout } from "@/apps/workspace/modules/ui-editor/editors/SurfacePreviewFramesReadout";
+import { SurfaceReferenceLayersTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfaceReferenceLayersMenu";
+import {
+    SurfaceReferenceLayer,
+    SurfaceReferenceLayersReadout,
+} from "@/apps/workspace/modules/ui-editor/editors/SurfaceReferenceLayer";
+import {
+    listGameUiReferenceCandidates,
+    planGameUiReferenceLayers,
+    type GameUiReferenceCandidate,
+    type GameUiReferenceLayer,
+    type GameUiReferencePlan,
+} from "@/lib/ui-editor/preview/gameUiReferenceLayers";
 import { SurfaceOffPageVeil } from "@/apps/workspace/modules/ui-editor/editors/SurfaceOffPageVeil";
 import { getEditorSurfaceStyle } from "@/apps/workspace/modules/ui-editor/editors/editorSurfaceStyle";
 import {
@@ -83,6 +98,9 @@ import {
 } from "@/lib/ui-editor/interaction/doubleClickDebug";
 import { useRegistry } from "@/apps/workspace/registry";
 import { useSurfaceTabSelection } from "./useSurfaceTabSelection";
+import { showGameUiInStoryPreview } from "@/apps/workspace/modules/story/scene-editor/preview/showGameUiInStoryPreview";
+import { storyPreviewCanShowSlot } from "@/apps/workspace/modules/story/scene-editor/preview/storyPreviewSlotRows";
+import { readRectInArea } from "@/apps/workspace/modules/story/scene-editor/preview/storyPreviewFloatGeometry";
 import {
     createComponentDocumentServiceAdapter,
     getComponentEditorSurfaceId,
@@ -104,6 +122,8 @@ import type { UIEditorReadOnly } from "@/lib/ui-editor/interaction/readOnlyInter
 import { interfaceDocumentFreezeScope, useLiveUndoOverride } from "../uiLiveSession";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
+const NO_REFERENCE_CANDIDATES: readonly GameUiReferenceCandidate[] = [];
+const NO_REFERENCE_PLAN: GameUiReferencePlan = { below: [], above: [] };
 const getSurfaceTabId = (targetSurfaceId: string) => `${SURFACE_TAB_PREFIX}${targetSurfaceId}`;
 
 function findEditorGroupIdByTabId(layout: EditorLayout, tabId: string): string | null {
@@ -152,8 +172,11 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
     const viewport = useViewportTransform(stateService);
     const smartSnapEnabled = useSmartSnapEnabled(stateService);
     const smartSnapDetail = useSmartSnapDetailSettings(stateService);
+    const gridSpacing = useGridSpacing(stateService);
+    const gridStyle = useGridStyle(stateService);
     const previewAspectId = usePreviewAspectId(stateService);
     const previewSafeAreaId = usePreviewSafeAreaId(stateService);
+    const referenceSlotIds = usePreviewReferenceSlotIds(stateService);
     // What the shells lock to, which is what decides which edge a device inset lands on.
     const mobileOrientation = readProjectMobileOrientation(context);
     // Whether the build letterboxes or crops; both frames read differently under `cover`.
@@ -168,6 +191,26 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
      */
     const brandRevision = useBrandPaletteRevision();
     const widgetModules = useMemo(() => listInsertPaletteModules(surface), [surface]);
+    /**
+     * The other Game UI the game draws together with this surface, offered on the canvas as a faint
+     * reference. Only a Game UI surface has any: a page is not composed with the stage slots, and a
+     * component is drawn wherever it is placed.
+     */
+    const showsGameUiReferences = !isComponentEdit && surface?.kind === "stageSurface";
+    const referenceCandidates = useMemo(
+        () =>
+            showsGameUiReferences && surface && baseDocumentService
+                ? listGameUiReferenceCandidates(baseDocumentService.getDocument(), surface)
+                : NO_REFERENCE_CANDIDATES,
+        [baseDocumentService, documentVersion, showsGameUiReferences, surface],
+    );
+    const referencePlan = useMemo(
+        () =>
+            showsGameUiReferences && surface && baseDocumentService
+                ? planGameUiReferenceLayers(baseDocumentService.getDocument(), surface, referenceSlotIds)
+                : NO_REFERENCE_PLAN,
+        [baseDocumentService, documentVersion, referenceSlotIds, showsGameUiReferences, surface],
+    );
     const deferredDocumentVersion = useDeferredValue(documentVersion);
     const deferredGraphVersion = useDeferredValue(graphVersion);
     const [bindingSession, setBindingSession] = useState(readElementBindingSession());
@@ -307,6 +350,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
     const { menuState, showMenu, hideMenu } = useContextMenu();
 
     const editorRootRef = useRef<HTMLDivElement | null>(null);
+    const toolbarRef = useRef<HTMLDivElement | null>(null);
     const canvasRef = useRef<HTMLDivElement | null>(null);
     const viewportRef = useRef<HTMLDivElement | null>(null);
     const doubleClickMouseDownRef = useRef<{
@@ -523,6 +567,40 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         })();
     }, [context, devModeService, isComponentEdit, mobileOrientation, previewSafeAreaId, surfaceId, workspace]);
 
+    /**
+     * The Game UI slot this surface fills, which the story's live preview can show at a row - the
+     * way to see a dialogue box with a real line in it without starting Dev Mode. A page is not drawn
+     * with the stage, and a component is drawn wherever it is placed.
+     */
+    const livePreviewSlotId = !isComponentEdit && surface?.kind === "stageSurface" ? surface.mount.slotId : null;
+    const handleShowInLivePreview = useCallback(() => {
+        if (!context || !uiService || !livePreviewSlotId) {
+            return;
+        }
+        void showGameUiInStoryPreview({
+            context,
+            slotId: livePreviewSlotId,
+            groupId: findEditorGroupIdByTabId(uiService.getStore().getEditorLayout(), tabId),
+            // A window opened for the first time sits over the canvas, under its toolbar: the bottom
+            // corner is where a dialogue box is being edited.
+            anchor: area => {
+                const canvas = readRectInArea(editorRootRef.current, area);
+                const toolbar = readRectInArea(toolbarRef.current, area);
+                if (!canvas) {
+                    return null;
+                }
+                const top = toolbar ? Math.max(canvas.y, toolbar.y + toolbar.height) : canvas.y;
+                return { ...canvas, y: top, height: canvas.y + canvas.height - top };
+            },
+        }).then(result => {
+            if (result === "noRow") {
+                uiService.notifications.info(t("uiEditor.editor.livePreviewNoRow"));
+            }
+        }).catch(error => {
+            console.error("[UIEditor] showing the surface in the live preview failed", error);
+        });
+    }, [context, livePreviewSlotId, t, tabId, uiService]);
+
     const handleOpenSurfaceEditor = useCallback(
         (targetSurfaceId: string) => {
             const targetSurface = baseDocumentService?.getDocument().surfaces.find(next => next.id === targetSurfaceId);
@@ -586,14 +664,15 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
      * project stack whatever the author had open.
      *
      * Keyed on `active` rather than on focus: an edit made in the property inspector belongs to the
-     * surface being shown, and by then focus is on the panel rather than on the canvas.
+     * surface being shown, and by then focus is on the panel rather than on the canvas. A component
+     * tab claims its definition's stack, which is the one its edits land in (`uiEditorHistoryScope`).
      */
     useEffect(() => {
         if (!historyService || !surfaceId || !active || !context) {
             return undefined;
         }
         const history = context.services.get<HistoryService>(Services.History);
-        const scopeId = uiSurfaceHistoryScope(surfaceId);
+        const scopeId = uiEditorHistoryScope(surfaceId);
         history.setActiveScope(scopeId);
         return () => {
             if (history.getActiveScopeId() === scopeId) {
@@ -696,6 +775,21 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         );
     }
 
+    const referenceLayers: readonly GameUiReferenceLayer[] = [...referencePlan.below, ...referencePlan.above];
+    const renderReferenceLayers = (layers: readonly GameUiReferenceLayer[]) =>
+        runtimeBridge && baseDocumentService
+            ? layers.map(layer => (
+                  <SurfaceReferenceLayer
+                      key={`${layer.slotId}:${layer.surfaceId}`}
+                      runtimeBridge={runtimeBridge}
+                      slotId={layer.slotId}
+                      surfaceId={layer.surfaceId}
+                      contentRevision={baseDocumentService.getSurfaceContentRevision(layer.surfaceId)}
+                      brandRevision={brandRevision}
+                  />
+              ))
+            : null;
+
     const transformStyle = {
         transform: `translate(${viewport.offsetX}px, ${viewport.offsetY}px) scale(${viewport.scale})`,
         transformOrigin: "top left" as const,
@@ -737,6 +831,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                     {/* Top toolbar. Kept to the canvas the outline leaves free, wrapping onto a second
                         row rather than covering the outline's title row when that is too narrow. */}
                     <div
+                        ref={toolbarRef}
                         className="absolute top-3 right-3 z-20 flex flex-wrap items-center justify-end gap-2 rounded-md border border-edge-strong bg-surface-canvas/80 px-2 py-1"
                         style={{ maxWidth: CANVAS_CORNER_CHROME_MAX_WIDTH }}
                     >
@@ -771,7 +866,12 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             >
                                 <Magnet className="h-4 w-4" />
                             </SurfaceEditorToolbarSegButton>
-                            <SurfaceSnapSettingsTrigger stateService={stateService} detail={smartSnapDetail} />
+                            <SurfaceSnapSettingsTrigger
+                                stateService={stateService}
+                                detail={smartSnapDetail}
+                                gridSpacing={gridSpacing}
+                                gridStyle={gridStyle}
+                            />
                         </SurfaceEditorToolbarButtonGroup>
                         <SurfaceAlignTrigger
                             surfaceId={surface.id}
@@ -790,7 +890,26 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                                 safeAreaId={previewSafeAreaId}
                             />
                         )}
+                        {showsGameUiReferences ? (
+                            <SurfaceReferenceLayersTrigger
+                                stateService={stateService}
+                                candidates={referenceCandidates}
+                                enabledSlotIds={referenceSlotIds}
+                            />
+                        ) : null}
                         <div className="mx-1 h-6 w-px bg-fill" />
+                        {livePreviewSlotId ? (
+                            <SurfaceEditorToolbarButton
+                                onClick={handleShowInLivePreview}
+                                data-tip={storyPreviewCanShowSlot(livePreviewSlotId)
+                                    ? t("uiEditor.editor.showInLivePreview")
+                                    : t("uiEditor.editor.livePreviewShowsNoNotifications")}
+                                aria-label={t("uiEditor.editor.showInLivePreview")}
+                                disabled={!storyPreviewCanShowSlot(livePreviewSlotId)}
+                            >
+                                <MonitorPlay className="w-4 h-4" />
+                            </SurfaceEditorToolbarButton>
+                        ) : null}
                         <SurfaceEditorToolbarButton
                             onClick={handleStartCurrentSurface}
                             data-tip={isComponentEdit
@@ -848,7 +967,11 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             </div>
                         ) : null}
                         <div ref={canvasRef} className="relative h-full w-full" style={transformStyle}>
+                            {/* Other Game UI, in the order the game stacks it: what it draws under this
+                                surface goes first, what it draws over it after. */}
+                            {renderReferenceLayers(referencePlan.below)}
                             {surfaceContent}
+                            {renderReferenceLayers(referencePlan.above)}
                             {surfaceContent ? <SurfaceOffPageVeil designSize={surface.designSize} /> : null}
                             {/* Design-space reference frames, under the diagnostics and interaction layers. */}
                             {isComponentEdit ? null : (
@@ -868,15 +991,28 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                                 />
                             ) : null}
                         </div>
-                        {/* Outside the transformed node on purpose - this one is text. */}
-                        {isComponentEdit ? null : (
-                            <SurfacePreviewFramesReadout
+                        {/* Shown while it acts: smart snap on with Grid among its targets. Outside the
+                            transformed node so the lines stay one device pixel wide at any zoom. */}
+                        {smartSnapEnabled && smartSnapDetail.snapGrid ? (
+                            <SurfaceGridOverlay
                                 designSize={surface.designSize}
-                                aspectId={previewAspectId}
-                                safeAreaId={previewSafeAreaId}
-                                mobileOrientation={mobileOrientation}
-                                stageFit={stageFit}
+                                spacing={gridSpacing}
+                                style={gridStyle}
+                                viewport={viewport}
                             />
+                        ) : null}
+                        {/* Outside the transformed node on purpose - these are text. */}
+                        {isComponentEdit ? null : (
+                            <div className="pointer-events-none absolute bottom-3 right-3 z-20 flex flex-col items-end gap-1">
+                                <SurfaceReferenceLayersReadout layers={referenceLayers} />
+                                <SurfacePreviewFramesReadout
+                                    designSize={surface.designSize}
+                                    aspectId={previewAspectId}
+                                    safeAreaId={previewSafeAreaId}
+                                    mobileOrientation={mobileOrientation}
+                                    stageFit={stageFit}
+                                />
+                            </div>
                         )}
                     </div>
 

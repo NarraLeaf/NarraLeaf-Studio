@@ -587,10 +587,11 @@ export type LiveHistoryPort = {
      */
     forgetStoryScenes(storyId: StoryId): void;
     /**
-     * Throw away every Surface and blueprint stack.
+     * Throw away every Surface, component definition and blueprint stack.
      *
      * {@link forgetStoryScenes}' counterpart, and the same danger one document along: each entry in
-     * them is a whole-Surface or whole-blueprint snapshot of a document only this author ever had.
+     * them is a whole-Surface, whole-definition or whole-blueprint snapshot of a document only this
+     * author ever had.
      * One applied - during a session or after it - would put the screen back the way it was before
      * anybody else joined, deleting everything they have added since, with nothing on either machine
      * reporting it.
@@ -598,6 +599,10 @@ export type LiveHistoryPort = {
      * ⚠ **Not scoped to one Surface, unlike the story's.** A session opens on one story, so only its
      * scenes are at risk; the interface is one document with every Surface in it, and every stack
      * over it is about to become historical.
+     *
+     * The interface's library-level steps on the project's stack go too (`HistoryEntryTag.UILibrary`):
+     * taking back a page or a component this author added would, after a session, remove whatever the
+     * room built inside it. The rest of the project's stack is left to its owners.
      */
     forgetInterfaceEditors(): void;
 };

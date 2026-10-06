@@ -118,11 +118,15 @@ yarn stop
 ### Checks
 
 ```bash
-yarn lint          # typecheck, five projects
-yarn lint:oxc      # oxlint, type-aware
-yarn style:ratchet # design-system debt counter
-yarn test
+yarn verify            # everything CI's verify gate checks, then the whole test suite
+yarn verify --checks   # everything but the tests, in under a minute
 ```
+
+`yarn verify` runs `scripts/verify.mjs`, which is also what CI runs its checks through, so
+the two cannot drift apart: the five typechecks (`yarn lint`), oxlint (`yarn lint:oxc`), the
+design-system debt counter (`yarn style:ratchet`), the generated script and plugin API
+declarations, the starter-template translations and the game runtime bundle, then `yarn test`.
+Each of those still runs on its own by the name in brackets.
 
 `yarn lint:oxc` runs the same type-check `yarn lint` does, through the TypeScript 7
 preview oxlint type-checks with, and adds the lint rules on top. Everything in the

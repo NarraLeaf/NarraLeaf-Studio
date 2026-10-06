@@ -83,6 +83,7 @@ describe("sidecar preflight", () => {
                 externalLinks: [],
                 network: [],
                 widgetText: {},
+                structs: [],
                 sidecars: sidecars.map(sidecar => ({
                     kind: "executable",
                     transport: "stdio-jsonl",
@@ -576,6 +577,7 @@ describe("plugin build config preflight", () => {
                 externalLinks: [],
                 network: [],
                 widgetText: {},
+                structs: [],
             },
             permissions: [],
         };

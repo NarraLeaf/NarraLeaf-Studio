@@ -15,6 +15,13 @@
 | Before Surface Exit | `blueprint.event.head.beforeSurfaceExit` | **已实现**。Surface 退出动画开始之前触发；Surface 蓝图和仍挂载存活的元素私有蓝图可监听。 |
 | After Surface Enter | `blueprint.event.head.afterSurfaceEnter` | **已实现**。Surface 进入动画结束之后触发；Surface 蓝图和仍挂载存活的元素私有蓝图可监听。 |
 | On Key Down | `blueprint.event.head.keyDown` | **已实现**。运行时窗口指定键按下时触发；卡片 `Key` 字段使用键盘绑定浮窗，显示当前绑定并支持单键或 `Ctrl` / `Alt` / `Shift` / `Meta` 组合键；单键兼容 `KeyboardEvent.key` 大小写不敏感匹配；仅输出 `then`。 |
+| On Gamepad Button Down | `blueprint.event.head.gamepadButtonDown` | **已实现**。标准 mapping 手柄指定按键按下；Inspector 从 17 个 Xbox 规范名里选；Global / Surface / 控件蓝图可用。 |
+| On Gamepad Button Up | `blueprint.event.head.gamepadButtonUp` | **已实现**。同上，抬起。 |
+| Any Gamepad Button Down | `blueprint.event.head.anyGamepadButtonDown` | **已实现**。任意手柄按键按下，输出 `button`。 |
+| Any Gamepad Button Up | `blueprint.event.head.anyGamepadButtonUp` | **已实现**。任意手柄按键抬起，输出 `button`。 |
+| Is Gamepad Connected | `blueprint.input.isGamepadConnected` | **已实现**。是否有标准 mapping 手柄连接。 |
+| Is Gamepad Button Held | `blueprint.input.isGamepadButtonHeld` | **已实现**。指定规范按键是否按住。 |
+| Get Gamepad Axis | `blueprint.input.getGamepadAxis` | **已实现**。第一只标准手柄的 LeftX/LeftY/RightX/RightY，死区 0.18。 |
 | On Key Up | `blueprint.event.head.keyUp` | **已实现**。运行时窗口指定键抬起时触发；卡片 `Key` 字段使用键盘绑定浮窗，显示当前绑定并支持单键或 `Ctrl` / `Alt` / `Shift` / `Meta` 组合键；单键兼容 `KeyboardEvent.key` 大小写不敏感匹配；仅输出 `then`。 |
 | Any Key Down | `blueprint.event.head.anyKeyDown` | **已实现**。运行时窗口任意键按下时触发；Global 蓝图、当前 active Surface 蓝图和已挂载控件私有蓝图都会收到；输出 `key` 和修改键。 |
 | Any Key Up | `blueprint.event.head.anyKeyUp` | **已实现**。运行时窗口任意键抬起时触发；Global 蓝图、当前 active Surface 蓝图和已挂载控件私有蓝图都会收到；输出 `key` 和修改键。 |
@@ -206,7 +213,7 @@
 | Array Unique | `blueprint.collection.arrayUnique` | **已实现**。按值去重，保留首次出现的顺序。 |
 | Array Range | `blueprint.collection.arrayRange` | **已实现**。由起点、个数、步长生成整数序列；步长 0 读作 1。 |
 | Array Sort By Key | `blueprint.collection.arraySort` | **已实现**。按记录的某个属性排序；数字按数字比，其余按文本比，缺值排在最后，同键保持原顺序。 |
-| Array Filter By Key | `blueprint.collection.arrayFilter` | **已实现**。保留某属性等于给定值的记录。 |
+| Array Filter By Key | `blueprint.collection.arrayFilter` | **已实现**。保留某属性等于给定值的记录。数组的元素是已知结构时，卡片上的「键」是该结构字段的下拉，「值」的类型随所选字段变。 |
 | Array Find By Key | `blueprint.collection.arrayFind` | **已实现**。按属性查第一条记录，输出条目与下标。 |
 | Array Map | `blueprint.collection.arrayMap` | **planned/disabled**。保留稳定 ID，映射表达式模型后续设计，不注册 palette/runtime。 |
 | Array Slice | `blueprint.collection.arraySlice` | **已实现**。截取数组片段。 |
@@ -431,7 +438,7 @@ Element 版节点与 Slider/List 一样，放置后需要手动把 Element Liter
 | Get List Item Index | `blueprint.list.getItemIndex` | **已实现**。读取当前 List item 下标。 |
 | Get List Item Count | `blueprint.list.getItemCount` | **已实现**。读取当前 List item 总数。 |
 | Get List Item Key | `blueprint.list.getItemKey` | **已实现**。读取当前 List item key。 |
-| Get Item Field | `blueprint.list.getItemField` | **已实现**。读取当前 List item 的某个已声明字段；字段从下拉里选，存的是字段 id。取代 `Get List Item Props` + `Get JSON Field` 那条两级组合。 |
+| Get Field | `blueprint.list.getItemField` | **已实现**（原名 Get Item Field，类型 id 未改）。读取一个结构的某个字段，字段从下拉里选，存的是字段 id；输出引脚的类型随所选字段变。`object` 连着时读连进来的值（结局、历史条目、存档条目等引擎形状），第一次连上就把结构记在节点上（`struct` 参数），断开后保留，只接同一结构；在列表行里不连 `object` 时读当前行。取代 `Get List Item Props` + `Get JSON Field` 那条两级组合。 |
 | Get List Length | `blueprint.list.getLength` / `blueprint.element.list.getLength` | **已实现**。当前运行时内容的条数。 |
 | Get Item At | `blueprint.list.getItemAt` / `blueprint.element.list.getItemAt` | **已实现**。取指定下标的条目，越界返回 null。 |
 | Find Item By Field | `blueprint.list.findItemByField` / `blueprint.element.list.findItemByField` | **已实现**。按字段查第一条，输出下标、条目与是否找到。 |

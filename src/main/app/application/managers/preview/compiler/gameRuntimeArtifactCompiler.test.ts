@@ -275,6 +275,7 @@ describe("game runtime artifact compiler", () => {
                 externalLinks: [],
                 network: [],
                 widgetText: {},
+                structs: [],
             },
             permissions: [],
         };
@@ -977,6 +978,7 @@ describe("game runtime artifact compiler", () => {
                 externalLinks: [],
                 network: [],
                 widgetText: {},
+                structs: [],
             },
             permissions: [],
         };
@@ -1729,6 +1731,7 @@ async function writeSidecarPlugin(input: {
             externalLinks: [],
             network: [],
             widgetText: {},
+            structs: [],
         },
         permissions: [],
     };
@@ -1776,6 +1779,7 @@ function buildConfigManifest(
             externalLinks: [],
             network: [],
             widgetText: {},
+            structs: [],
         },
         permissions: [],
     };

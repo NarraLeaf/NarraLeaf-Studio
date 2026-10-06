@@ -119,6 +119,7 @@ import type { ShippedContentAuditReport } from "@/buildWorker/compileWorkerProto
 // Relative, not `@/`: the alias is resolved by esbuild and tsc but not by
 // vitest, so a value import through it fails only under test.
 import { asarUnpackedPath } from "../../../../buildWorker/asarUnpackedPath";
+import { watchOutputGrowth } from "./outputGrowth";
 import { electronLanguagesForGame } from "../../../../buildWorker/electronLanguages";
 import { createAssetOverlay, OVERLAY_DESCRIPTOR_ENTRY, type ReaderBuildOptions } from "@narraleaf/bindings";
 import { formatBytes } from "@shared/utils/formatBytes";
@@ -177,11 +178,13 @@ import type {
     GameBuildWorkerWindowsSigning,
 } from "@/buildWorker/protocol";
 import { currentDownloadRewrites } from "../downloadRewrites";
+import { envForDownloadWorker } from "../downloadProxy";
 import { DownloadTaskBridge } from "../tasks/downloadTasks";
 import { BuilderDownloadWatcher } from "./builderDownloadLog";
 import { collectVariantContentFindings } from "./variantContentPreflight";
 import { collectProgressCarryFindings } from "./progressCarryPreflight";
 import { gameThirdPartyNotices, THIRD_PARTY_NOTICES_FILENAME } from "./thirdPartyNotices";
+import { packagingThreadPoolSize } from "../../../../buildWorker/buildLanes";
 
 type BuildSession = {
     id: string;
@@ -229,6 +232,12 @@ type BuildSession = {
      * is to look at when it is the step that failed.
      */
     codecScratch: string[];
+    /**
+     * When this run last showed that it was getting somewhere: a line on its log, a count in a step,
+     * or the package it is writing grown on disk. Read by a command-line build whose workspace has
+     * been quiet a long time, to tell a build that is busy from one that has stopped.
+     */
+    lastActivityAt: number;
 };
 
 /**
@@ -602,6 +611,22 @@ export class GameBuildManager {
 
     public getStatus(projectPath: string): GameBuildStateSnapshot {
         return this.sessions.get(this.projectKey(projectPath))?.snapshot ?? { status: "idle", progress: null };
+    }
+
+    /**
+     * When the build of this project last showed it was getting somewhere, or null when no build of
+     * it is running.
+     *
+     * More than its log: a step that counts what it has done, and a packaging step that is writing a
+     * file, are both progress without a line. The second is the one that matters - an archiver
+     * compressing gigabytes says nothing for as long as it takes.
+     */
+    public lastActivity(projectPath: string): number | null {
+        const session = this.sessions.get(this.projectKey(projectPath));
+        if (!session || session.snapshot.status === "done" || session.snapshot.status === "error") {
+            return null;
+        }
+        return session.lastActivityAt;
     }
 
     /**
@@ -1025,6 +1050,7 @@ export class GameBuildManager {
             assetReport: null,
             assetCompression: null,
             codecScratch: [],
+            lastActivityAt: Date.now(),
         };
         this.sessions.set(key, session);
         // Another Studio having the project is refused the same way and for a kindred reason: the
@@ -1125,6 +1151,7 @@ export class GameBuildManager {
             assetReport: null,
             assetCompression: null,
             codecScratch: [],
+            lastActivityAt: Date.now(),
         };
         this.sessions.set(key, session);
         const refusedPatch = refuseDistrustedOperation(this.app, normalizedProjectPath, "patch export")
@@ -3382,7 +3409,7 @@ export class GameBuildManager {
         return unpackedPath;
     }
 
-    private runWorker(session: BuildSession, config: GameBuildWorkerConfig): Promise<string[]> {
+    private async runWorker(session: BuildSession, config: GameBuildWorkerConfig): Promise<string[]> {
         // The build.electronMirror setting drives only the large Electron dist
         // download (via electronDownload.mirror in the config). The separate
         // NSIS/AppImage/7za toolchain download reads ELECTRON_BUILDER_BINARIES_MIRROR,
@@ -3391,6 +3418,7 @@ export class GameBuildManager {
         // which travels in the config and which the worker turns into that variable
         // around packaging (withBinariesMirrorEnv); with the setting empty, whatever
         // the host's environment says is inherited here and used as before.
+        const downloadEnv = await envForDownloadWorker(process.env);
         return new Promise<string[]>((resolve, reject) => {
             if (session.cancelled) {
                 reject(new Error("Build cancelled"));
@@ -3413,8 +3441,12 @@ export class GameBuildManager {
                 // exported one, so this assignment cannot override a host that has deliberately
                 // pointed every electron-builder on it somewhere shared.
                 env: {
-                    ...process.env,
+                    ...downloadEnv,
                     ELECTRON_BUILDER_CACHE: electronBuilderCacheRoot(this.app.getCacheRootDir()),
+                    // A zip is compressed in pieces on zlib's thread pool (see parallelZip), which has
+                    // four threads unless this says otherwise before the worker starts. An author who
+                    // has set it themselves keeps their value.
+                    UV_THREADPOOL_SIZE: process.env.UV_THREADPOOL_SIZE ?? String(packagingThreadPoolSize()),
                 },
             });
             session.worker = worker;
@@ -3425,12 +3457,18 @@ export class GameBuildManager {
             // observe from the inside. See builderDownloadLog.ts.
             const downloads = new DownloadTaskBridge(this.app.getTaskScheduler(), session.id);
             const watcher = new BuilderDownloadWatcher(event => downloads.accept(event));
+            // The packaging step's long silences are an archiver or an installer compiler writing
+            // one big file, and the file growing is the only sign of it. See lastActivity.
+            const stopWatchingOutput = watchOutputGrowth(config.outputDir, () => {
+                session.lastActivityAt = Date.now();
+            });
             let settled = false;
             const settle = (fn: () => void) => {
                 if (settled) {
                     return;
                 }
                 settled = true;
+                stopWatchingOutput();
                 session.worker = null;
                 // A killed worker sends no closing line for whatever it was in the middle of
                 // fetching, so the end of the packaging step is what closes those - otherwise a
@@ -3778,7 +3816,8 @@ export class GameBuildManager {
     }
 
     /**
-     * Images, through a hidden Chromium window.
+     * Images, through hidden Chromium windows - as many as the machine has cores
+     * to encode in; see `optimizeProjectImages`.
      *
      * Never fatal. This is an improvement on a build that already works, so a
      * codec window that will not open - a headless host, a broken GPU sandbox -
@@ -3794,7 +3833,7 @@ export class GameBuildManager {
                 projectPath,
                 cacheDir: path.join(this.app.getCacheRootDir(), CacheNamespace.OptimizedImages),
                 config,
-                openCodec: () => openWebImageCodec(path.join(this.app.getUserDataDir(), "build-codec")),
+                openCodec: pages => openWebImageCodec(path.join(this.app.getUserDataDir(), "build-codec"), { pages }),
                 log: (level, message) => this.emit(session, { level, source: "Build", message }),
                 cancelled: () => session.cancelled,
                 onProgress: (done, total) => this.reportProgress(session, { done, total, unit: "file" }),
@@ -4081,6 +4120,7 @@ export class GameBuildManager {
      */
     private reportProgress(session: BuildSession, progress: StudioTaskProgress | null): void {
         session.snapshot = { ...session.snapshot, progress };
+        session.lastActivityAt = Date.now();
     }
 
     /** The variant this run resolved to, kept for the record it will leave behind. */
@@ -4146,6 +4186,7 @@ export class GameBuildManager {
     }
 
     private emit(session: BuildSession, payload: DevModeConsoleLogPayload): void {
+        session.lastActivityAt = Date.now();
         emitWorkspaceConsoleLog(this.app, session.projectPath, payload);
     }
 

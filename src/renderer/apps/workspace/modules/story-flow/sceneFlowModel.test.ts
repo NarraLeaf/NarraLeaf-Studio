@@ -480,6 +480,43 @@ describe("buildSceneFlowGraph branch topology", () => {
         expect(graph.branchEdges).toHaveLength(0);
     });
 
+    it("marks an arm that ends the story as an ending rather than as continuing", () => {
+        // `/if` with three arms, each ending the story: the run stops at the row, so "continues"
+        // told the author the opposite of what the game does.
+        const ending = (id: string, name: string, parentId: string): StoryBlock =>
+            ({ id, kind: "control", parentId, childrenIds: [], payload: { control: "ending", name } }) as StoryBlock;
+        const graph = buildSceneFlowGraph(document([
+            scene("a", "Last light", [
+                { id: "c1", kind: "control", parentId: null, childrenIds: ["if1", "else1"], payload: { control: "condition" } } as StoryBlock,
+                conditionBranchBlock("if1", ["e1"], "if", "affection >= 35", "c1"),
+                ending("e1", "Festival for two", "if1"),
+                conditionBranchBlock("else1", ["e2"], "else", undefined, "c1"),
+                ending("e2", "", "else1"),
+            ]),
+        ], "a"));
+
+        expect(graph.branches.map(branch => branch.endings)).toEqual([["Festival for two"], [""]]);
+        expect(graph.branches.map(branch => branch.fallsThrough)).toEqual([false, false]);
+    });
+
+    it("words a graph condition the way the row's own chip does", () => {
+        const graph = buildSceneFlowGraph(document([
+            scene("a", "Last light", [
+                { id: "c1", kind: "control", parentId: null, childrenIds: ["if1"], payload: { control: "condition" } } as StoryBlock,
+                {
+                    id: "if1",
+                    kind: "control",
+                    parentId: "c1",
+                    childrenIds: [],
+                    payload: { control: "conditionBranch", branch: "if", condition: { kind: "blueprint", blueprintId: "bp" } },
+                } as StoryBlock,
+            ]),
+        ], "a"));
+
+        // Not the exported script's `<graph condition>` placeholder.
+        expect(graph.branches[0].label).toBe("Graph condition");
+    });
+
     /**
      * The story is only readable if the map says which counter the fork asks about.
      *

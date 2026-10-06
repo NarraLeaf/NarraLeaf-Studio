@@ -20,7 +20,14 @@ import {
     BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_GAME_START_STORY,
+    BLUEPRINT_NODE_TYPE_GAME_GET_ENDINGS,
+    BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST,
+    BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+    BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SET_ITEMS,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIRST,
+    BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
     BLUEPRINT_NODE_TYPE_LOG,
+    BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_NETWORK_FETCH,
     BLUEPRINT_NODE_TYPE_PAGE_GO,
 } from "@shared/types/blueprint/graph";
@@ -679,6 +686,83 @@ const FIXTURES: Record<RegisteredLintRuleId, Case[]> = {
             }),
         }),
     }],
+    "blueprint/field-missing": [{
+        context: () => createTestLintContext({
+            blueprintDocument: blueprints({
+                [PAGE_OWNER]: {
+                    click: {
+                        nodes: {
+                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK, params: {} },
+                            endings: { id: "endings", type: BLUEPRINT_NODE_TYPE_GAME_GET_ENDINGS, params: {} },
+                            first: { id: "first", type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIRST, params: {} },
+                            read: {
+                                id: "read",
+                                type: BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
+                                params: { struct: "nl.ending", field: "title" },
+                            },
+                            log: { id: "log", type: BLUEPRINT_NODE_TYPE_LOG, params: {} },
+                        },
+                        edges: [
+                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "log", port: "in" } },
+                            { from: { nodeId: "endings", port: "endings" }, to: { nodeId: "first", port: "array" } },
+                            { from: { nodeId: "first", port: "item" }, to: { nodeId: "read", port: "object" } },
+                            { from: { nodeId: "read", port: "value" }, to: { nodeId: "log", port: "value" } },
+                        ],
+                    } as unknown as BlueprintGraphIr,
+                },
+            }),
+        }),
+    }],
+
+    "blueprint/page-param-missing": [{
+        context: () => {
+            const blueprintDocument = blueprints({
+                [PAGE_OWNER]: {
+                    click: {
+                        nodes: {
+                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK, params: {} },
+                            read: { id: "read", type: BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM, params: { paramId: "gone" } },
+                            log: { id: "log", type: BLUEPRINT_NODE_TYPE_LOG, params: {} },
+                        },
+                        edges: [
+                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "log", port: "in" } },
+                            { from: { nodeId: "read", port: "value" }, to: { nodeId: "log", port: "value" } },
+                        ],
+                    } as unknown as BlueprintGraphIr,
+                },
+            });
+            // The page a blueprint belongs to is read off its owner, which the helper leaves out.
+            (blueprintDocument.blueprints.bp0 as { owner?: unknown }).owner = { kind: "surfaceMain", surfaceId: MAIN_APP_SURFACE_ID };
+            return createTestLintContext({ uiDocument: onePage(), blueprintDocument });
+        },
+    }],
+    "blueprint/list-shape-mismatch": [{
+        context: () => createTestLintContext({
+            uiDocument: onePage(element({ id: "endings", type: "nl.list", props: { itemStructId: "nl.ending" } })),
+            blueprintDocument: blueprints({
+                [PAGE_OWNER]: {
+                    click: {
+                        nodes: {
+                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK, params: {} },
+                            saves: { id: "saves", type: BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST, params: {} },
+                            list: {
+                                id: "list",
+                                type: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+                                params: { surfaceId: MAIN_APP_SURFACE_ID, elementId: "endings", elementType: "nl.list" },
+                            },
+                            fill: { id: "fill", type: BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SET_ITEMS, params: {} },
+                        },
+                        edges: [
+                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "saves", port: "in" } },
+                            { from: { nodeId: "saves", port: "next" }, to: { nodeId: "fill", port: "in" } },
+                            { from: { nodeId: "saves", port: "entries" }, to: { nodeId: "fill", port: "items" } },
+                            { from: { nodeId: "list", port: "element" }, to: { nodeId: "fill", port: "list" } },
+                        ],
+                    } as unknown as BlueprintGraphIr,
+                },
+            }),
+        }),
+    }],
 
     // --- ui ---
     "ui/page-unreachable": [{
@@ -741,6 +825,75 @@ const FIXTURES: Record<RegisteredLintRuleId, Case[]> = {
                     } as Partial<UIElement> & { id: string; type: string }),
                 ],
                 extra: { structs: { s1: { id: "s1", fields: [{ id: "f-title", key: "title", type: "string" }] } } },
+            }),
+        }),
+    }],
+    "ui/page-prop-undeclared": [{
+        context: () => createTestLintContext({
+            uiDocument: onePage(element({
+                id: "rows",
+                type: "nl.list",
+                name: "Buttons",
+                props: { itemsBinding: { kind: "pageProp", key: "buttons" } },
+            })),
+        }),
+    }],
+    "ui/page-param-unknown": [{
+        context: () => createTestLintContext({
+            uiDocument: uiDocument({
+                surfaces: [
+                    { id: MAIN_APP_SURFACE_ID, name: "Title", rootElementId: "root" },
+                    {
+                        id: "confirm",
+                        name: "Confirm",
+                        rootElementId: "confirm-root",
+                        params: [{ id: "message", name: "message", type: "string" }],
+                    } as { id: string; name: string; rootElementId: string },
+                ],
+                elements: [
+                    element({ id: "root", type: "nl.root", childrenIds: ["embed"] }),
+                    element({
+                        id: "embed",
+                        type: UI_FRAME_ELEMENT_TYPE,
+                        name: "Embed",
+                        parentId: "root",
+                        props: { targetSurfaceId: "confirm", params: { question: "Quit?" } },
+                    }),
+                    element({ id: "confirm-root", type: "nl.root" }),
+                ],
+            }),
+        }),
+    }],
+    "ui/page-text-param-missing": [{
+        context: () => createTestLintContext({
+            uiDocument: onePage(element({
+                id: "message",
+                type: "nl.text",
+                name: "Message",
+                props: { text: "Sample" },
+                valueBindings: { text: { kind: "pageParam", paramId: "message" } },
+            } as Partial<UIElement> & { id: string; type: string })),
+        }),
+    }],
+    "ui/page-param-list-mismatch": [{
+        context: () => createTestLintContext({
+            uiDocument: uiDocument({
+                surfaces: [{
+                    id: MAIN_APP_SURFACE_ID,
+                    name: "Title",
+                    rootElementId: "root",
+                    params: [{ id: "buttons", name: "buttons", type: "string" }],
+                } as { id: string; name: string; rootElementId: string }],
+                elements: [
+                    element({ id: "root", type: "nl.root", childrenIds: ["rows"] }),
+                    element({
+                        id: "rows",
+                        type: "nl.list",
+                        name: "Buttons",
+                        parentId: "root",
+                        props: { itemsBinding: { kind: "pageProp", key: "buttons" } },
+                    }),
+                ],
             }),
         }),
     }],

@@ -106,6 +106,7 @@ Manifest 字段：
 | `buildDependencies` | `PluginBuildDependencyContribution[]` | 构建时下载/校验/缓存的外部二进制。 |
 | `buildConfig` | `PluginBuildConfigFieldContribution[]` | 构建前需要作者填写的值（如 Steam App ID）。**只能在 manifest 里静态声明，没有运行时注册 API**——构建过程中不执行任何插件代码。**不派生安装权限**：声明一个字段只是多一个待填的空格，插件不会因此获得任何能力。 |
 | `widgetText` | `Record<string, PluginWidgetTextContribution[]>` | 按 widget type 列出它哪些 prop 是玩家读的字。键必须在 `widgets` 里。宿主像对待内建文本与按钮一样对待这些 prop，见下面的 [控件里玩家读的字](#控件里玩家读的字widgettext)。**不派生安装权限**。 |
+| `structs` | `PluginStructContribution[]` | 插件节点交出的行的形状（id 必须以插件 ID 为前缀）。见下面的 [节点交出的行](#节点交出的行structs)。**不派生安装权限**。 |
 
 `buildConfig` 每个字段：
 
@@ -381,8 +382,8 @@ const unregister = app.services.localization.registerWords({
 - 列表变了就调用 `subscribe` 收到的 listener；插件卸载时登记自动收回。
 - 游戏里用 runtime 入口的 `app.game.locale.words(id, text)` 取回当前语言的字（要声明 `runtimeCapabilities: ["locale"]`）；
   菜单栏标签写 `words: id`，由游戏在画菜单时取译文，见 [runtime-api.md](./runtime-api.md#gamemenu)。
-- 作者选用翻译键的字跟着键翻译，不用再登记。让作者在「直接写」与「翻译键」之间选，用插件 UI 的 `ui.WordsField`：
-  与内建文本、按钮的同一个字段，值是 `{ text, key }`（`key` 为 `null` 表示直接写）。
+- 作者选用翻译键的字跟着键翻译，不用再登记。让作者在「直接输入」与「翻译键」之间选，用插件 UI 的 `ui.WordsField`：
+  与内建文本、按钮的同一个字段，值是 `{ text, key }`（`key` 为 `null` 表示直接输入）。
 
 ### 控件里玩家读的字（`widgetText`）
 
@@ -410,15 +411,15 @@ const unregister = app.services.localization.registerWords({
 
 声明之后，宿主按内建文本与按钮的同一套规矩处理这些字：
 
-- **属性面板**在「属性」页最上面加一个「内容」分组，每段字一个字段，与文本控件的同一个：「直接写」或「翻译键」二选一；
+- **属性面板**在「属性」页最上面加一个「内容」分组，每段字一个字段，与文本控件的同一个：「直接输入」或「翻译键」二选一；
   选翻译键时可以就地新建键、改键的源文本。**不要再为这些 prop 自己写字段**——宿主的字段就是它们的编辑入口。
-- **画布**上，用翻译键的字显示键的源文本；直接写的字照写的显示。
+- **画布**上，用翻译键的字显示键的源文本；直接输入的字按输入内容显示。
 - **游戏**里，`render` 收到的 `element.props.<prop>` 已经是玩家当前语言下的字：键的译文（没有译文时为键的源文本），
-  或者直接写的字的译文。**渲染器永远不用自己查键**，读 prop 即可；玩家在游戏里切换语言时控件随之重画。
+  或者直接输入的字的译文。**渲染器永远不用自己查键**，读 prop 即可；玩家在游戏里切换语言时控件随之重画。
   `keyProp` 是宿主的，渲染器不要读它来决定显示什么。
-- 直接写的字有自己的翻译单元 `ui:<元素 id>.<prop>`，与内建控件的字一样**自动进项目的译表与导出**（项目有第二种语言时），
+- 直接输入的字有自己的翻译单元 `ui:<元素 id>.<prop>`，与内建控件的字一样**自动进项目的译表与导出**（项目有第二种语言时），
   用翻译键的字跟着键走。项目检查报缺译文、指向不存在的键；字形检查也读这些字。
-- 删除翻译键、粘贴或导入指向本项目没有的键的控件时，这些 prop 与内建控件一样改为直接写，保留键的文字与译文。
+- 删除翻译键、粘贴或导入指向本项目没有的键的控件时，这些 prop 与内建控件一样改为「直接输入」，保留键的文字与译文。
 
 没有 `widgetText` 的插件与以前完全一样：prop 原样交给 `render`，Studio 不把它们当作玩家读的字。
 声明在 manifest 里而不是在注册时，是因为 studio 入口编辑这个控件、runtime 入口画这个控件，两边读的必须是同一份声明。
@@ -625,6 +626,51 @@ execute: async ctx => {
 ⚠ **`isPure: true` 的节点做不到这件事。** pure 节点没有 exec 引脚，宓主的执行器永远走不到它，
 `execute()` 根本不会被调用；pure 节点的输出由宓主自己的数据解析器产出，而那条链只认识内建节点类型。
 **产值节点一律写成 `isPure: false` 加 exec 引脚**，内建 Gallery 插件就是这么做的。
+
+### 节点交出的行（`structs`）
+
+节点交出一组记录（画廊条目、成就、商店货品）时，在 manifest 里声明这种记录的形状，再把输出引脚的类型写成它：
+
+```json
+"contributes": {
+  "blueprintNodes": ["acme.shop.getGoods"],
+  "structs": [
+    {
+      "id": "acme.shop.good",
+      "name": "Shop item",
+      "localized": { "zh": "商品", "ja": "商品" },
+      "fields": [
+        { "key": "id", "type": "string" },
+        { "key": "name", "type": "string" },
+        { "key": "price", "type": "number" },
+        { "key": "icon", "type": "image" },
+        { "key": "owned", "type": "boolean" }
+      ]
+    }
+  ]
+}
+```
+
+```ts
+{ id: "goods", kind: "output", semantic: "data", valueType: "array<struct:acme.shop.good>", label: "Goods" }
+```
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | `string` | 形状的 id，以插件 ID 为前缀。引脚类型里写 `struct:<id>`（一条）或 `array<struct:<id>>`（一组）。 |
+| `name` | `string` | 编辑器里这种形状的名字。 |
+| `localized` | `Record<string, string>` | 可选。`name` 的各语言写法，按 Studio 界面语言代码精确匹配。 |
+| `fields` | `{ key, type }[]` | 每行带的字段，按这个顺序显示。`type` 是 `string` / `number` / `boolean` / `image` / `color` / `json` 之一；同一个 `key` 不能出现两次。 |
+
+声明之后，插件交出的行与引擎自己的（结局、存档条目）同等对待：
+
+- 列表在「编辑内容」的「结构」里可以直接选这种形状，字段由插件提供、不可编辑，作者不用再照着文档手抄字段名。
+- 从这个引脚拖线时，菜单最上面列出每个字段；「获取字段」按字段名读，输出带字段的类型。
+- 「设置列表内容」收到缺少列表字段的行时，画布与项目检查都会报出来。
+- 字段的 id 就是 `key`：插件的行没有让作者改名的余地，也就不需要第二个名字。
+
+声明在 manifest 里而不是在注册时，是因为编辑器、运行中的游戏和命令行检查都要知道形状，三者都在执行插件代码之前就读 manifest。
+插件没有加载时（被禁用、未安装），用它形状的列表画不出字段，与它的节点一样不可用；项目的依赖提示会指出是哪个插件。
 
 ### 节点文字的翻译
 

@@ -358,8 +358,10 @@ describe("resolveElectronDistDirForApp", () => {
         const original = process.platform;
         Object.defineProperty(process, "platform", { value: "darwin" });
         try {
+            // Resolved, because the walk is `path.resolve` and `path` is the host's: on a Windows
+            // host the same four steps up come back with the drive letter in front.
             expect(resolveElectronDistDirForApp(app, "/repo/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"))
-                .toBe("/repo/node_modules/electron/dist");
+                .toBe(path.resolve("/repo/node_modules/electron/dist"));
         } finally {
             Object.defineProperty(process, "platform", { value: original });
         }

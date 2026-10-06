@@ -1,4 +1,5 @@
 import type { GameBuildPlatform } from "./gameBuild";
+import type { UIStructFieldType } from "./ui-editor/struct";
 import type {
     PluginIdentity,
     PluginInstallPermission,
@@ -392,6 +393,37 @@ export type PluginContributes = {
      * declaration only one of them made would be the half that drifts.
      */
     widgetText?: Record<string, PluginWidgetTextContribution[]>;
+    /**
+     * The shapes of the rows this plugin's nodes hand out, so a list can be given one and a field
+     * read from one by name.
+     *
+     * A node pin carrying them says `struct:<id>` or `array<struct:<id>>` - `Get Gallery` answers
+     * `array<struct:narraleaf.gallery.entry>` - and from then on the plugin's rows are what the
+     * engine's own are: a list picks the shape under Edit content and its fields are the plugin's
+     * and locked, Get Field offers them, and a list handed rows that lack them is reported.
+     *
+     * Declared in the manifest rather than at registration because the editor, the running game and
+     * the command-line checker all need the shape, and only the manifest is read by all three before
+     * any plugin code runs. Ids must start with the plugin id.
+     */
+    structs?: PluginStructContribution[];
+};
+
+/**
+ * One row shape a plugin hands out.
+ *
+ * A field's id is its key, as it is for the engine's own shapes: nothing about a plugin's row is the
+ * author's to rename, so there is no second name to keep stable.
+ */
+export type PluginStructContribution = {
+    /** Prefixed with the plugin id: `narraleaf.gallery.entry`. */
+    id: string;
+    /** What the editor calls the shape - "Gallery entry". */
+    name: string;
+    /** `name` per editor locale, matched exactly as `localized` names are. */
+    localized?: Record<string, string>;
+    /** In the order the rows are read: the list's content editor shows them in this order. */
+    fields: { key: string; type: UIStructFieldType }[];
 };
 
 /**

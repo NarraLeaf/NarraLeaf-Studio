@@ -1,6 +1,7 @@
 import { getCommandDef, listCommandDefs } from "./commands/registry";
 import type { PaletteActionCommand } from "./storyActionCommands";
 import { STORY_COMMAND_PINYIN } from "./storyCommandPinyin.generated";
+import { NO_ABBREVIATIONS, type StoryCommandAbbreviations } from "./storyCommandAbbreviations";
 
 /**
  * Fuzzy, multilingual matching for the command-name menu - shared by the `/` inline creator and the
@@ -45,13 +46,21 @@ function isSubsequence(needle: string, haystack: string): boolean {
  * initials, from the checked-in static table), so a Latin-alphabet author reaches "背景" by typing
  * "beijing" or "bj". They ride the same keyword tiers as the English tokens; the Chinese label itself
  * is matched separately by the parser's localized-token table, so both spellings resolve.
+ *
+ * The author's own abbreviations ride the keyword tiers too, and an exact one outranks everything:
+ * the line turns `/c` into this command the moment the word is finished, so the menu has to put the
+ * same command first under the same word, or Enter and the space would disagree about what `/c` is.
  */
-function scoreCommand(command: PaletteActionCommand, query: string): number | null {
+function scoreCommand(command: PaletteActionCommand, query: string, abbreviations: readonly string[]): number | null {
+    if (abbreviations.includes(query)) {
+        return 110;
+    }
     const pinyin = STORY_COMMAND_PINYIN[command.id];
     const keywords = new Set<string>([
         ...(KEYWORDS_BY_COMMAND_ID.get(command.id.toLowerCase()) ?? []),
         ...(command.aliases ?? []).map(alias => alias.toLowerCase()),
         ...(pinyin ? [pinyin.full, pinyin.initials] : []),
+        ...abbreviations,
     ]);
     const slashed = new Set([...keywords].map(keyword => (keyword.startsWith("/") ? keyword : `/${keyword}`)));
     const texts = [command.label, command.id, command.detail, command.nlrCapability ?? ""].map(text => text.toLowerCase());
@@ -81,17 +90,39 @@ function scoreCommand(command: PaletteActionCommand, query: string): number | nu
  * Commands matching `query`, most relevant first. The input order (the palette's own grouping) is kept
  * for ties and returned as-is for an empty query. Pass commands already localized - the label is
  * matched as given, which is what lets a translated label answer a query in the author's language.
+ *
+ * `abbreviations` is the author's live list (`liveAbbreviations`), the same one the line expands, so
+ * every surface that searches commands agrees on what an abbreviation finds.
  */
-export function searchActionCommands(commands: readonly PaletteActionCommand[], rawQuery: string): PaletteActionCommand[] {
+export function searchActionCommands(
+    commands: readonly PaletteActionCommand[],
+    rawQuery: string,
+    abbreviations: StoryCommandAbbreviations = NO_ABBREVIATIONS,
+): PaletteActionCommand[] {
     const query = rawQuery.trim().toLowerCase();
     if (!query) {
         return [...commands];
     }
+    const wordsById = abbreviationWordsById(abbreviations);
     return commands
-        .map((command, index) => ({ command, index, score: scoreCommand(command, query) }))
+        .map((command, index) => ({ command, index, score: scoreCommand(command, query, wordsById.get(command.id) ?? []) }))
         .filter((entry): entry is { command: PaletteActionCommand; index: number; score: number } => entry.score !== null)
         .sort((left, right) => right.score - left.score || left.index - right.index)
         .map(entry => entry.command);
+}
+
+/** Spec id → its abbreviations: the scorer asks per command, the list is stored per word. */
+function abbreviationWordsById(abbreviations: StoryCommandAbbreviations): ReadonlyMap<string, readonly string[]> {
+    const byId = new Map<string, string[]>();
+    for (const [word, commandId] of abbreviations) {
+        const words = byId.get(commandId);
+        if (words) {
+            words.push(word);
+        } else {
+            byId.set(commandId, [word]);
+        }
+    }
+    return byId;
 }
 
 /** The lowest {@link scoreCommand} tier a plugin action's command word may match at: a label prefix. */
@@ -119,7 +150,7 @@ export function findPluginActionsByCommandWord(
         return [];
     }
     return pluginCommands
-        .map((command, index) => ({ command, index, score: scoreCommand(command, word) }))
+        .map((command, index) => ({ command, index, score: scoreCommand(command, word, []) }))
         .filter((entry): entry is { command: PaletteActionCommand; index: number; score: number } =>
             entry.score !== null && entry.score >= COMMAND_WORD_MIN_SCORE)
         .sort((left, right) => right.score - left.score || left.index - right.index)

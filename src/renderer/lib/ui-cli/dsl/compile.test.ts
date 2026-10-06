@@ -303,7 +303,13 @@ describe("a component's text parameters", () => {
     });
 
     it("refuses a parameter binding outside a component, on a string parameter, or on a prop that is not words", () => {
-        expect(codes(`${MINIMAL}        T: nl.text @0,0 10x10\n            bind text = param label\n`)).toContain("ui.param_outside_component");
+        // On a page the binding reads the page's own parameters, and this page declares none.
+        expect(codes(`${MINIMAL}        T: nl.text @0,0 10x10\n            bind text = param label\n`)).toContain("ui.param_not_text");
+        expect(codes(`surface "Box" id=box slot=dialog size=800x600
+    Root: nl.root @0,0 800x600
+        T: nl.text @0,0 10x10
+            bind text = param label
+`)).toContain("ui.param_outside_component");
         expect(codes(COMPONENT.replace("bind text = param label", "bind text = param target"))).toContain("ui.param_not_text");
         expect(codes(COMPONENT.replace("bind text = param label", "bind text = param gone"))).toContain("ui.param_not_text");
         expect(codes(COMPONENT.replace("Label: nl.text id=nav-label @0,0 400x80\n            text = \"Sample\"\n            bind text = param label", "Art: nl.image id=nav-art @0,0 400x80\n            bind imageFill.assetId = param label")))
@@ -320,5 +326,75 @@ describe("a component's text parameters", () => {
 
     it("refuses a param type that is neither string nor text", () => {
         expect(() => parseUiFile(COMPONENT.replace("type=text", "type=words"))).toThrow(/string or text/);
+    });
+});
+
+describe("a page's parameters", () => {
+    const PAGE = `surface "Confirm" id=confirm kind=appSurface size=800x600
+    param message "message" = ""
+    param count "count" type=number = 3
+    param rows "buttons" type=json = []
+    param loud "loud" type=boolean
+    Root: nl.root @0,0 800x600
+`;
+
+    it("reads each param line as a declaration, typed, in order", () => {
+        const result = compile(PAGE);
+        expect(result.diagnostics).toEqual([]);
+        expect((result.surfaces[0].surface as { params?: unknown }).params).toEqual([
+            { id: "message", name: "message", type: "string", defaultValue: "" },
+            { id: "count", name: "count", type: "number", defaultValue: 3 },
+            { id: "rows", name: "buttons", type: "json", defaultValue: [] },
+            { id: "loud", name: "loud", type: "boolean" },
+        ]);
+    });
+
+    it("refuses what the editor would not take", () => {
+        expect(codes(PAGE.replace('param loud "loud" type=boolean', 'param loud "loud" type=date'))).toContain("ui.page_param_type");
+        expect(codes(PAGE.replace('param loud "loud" type=boolean', 'param "two words" "x"'))).toContain("ui.page_param_id");
+        expect(codes(PAGE.replace('param loud "loud" type=boolean', 'param other "message"'))).toContain("ui.page_param_duplicate");
+        expect(codes(PAGE.replace('type=number = 3', 'type=number = "three"'))).toContain("ui.page_param_default");
+    });
+
+    it("refuses a param on a Game UI", () => {
+        expect(codes(`surface "Box" id=box slot=dialog size=800x600
+    param message "message"
+    Root: nl.root @0,0 800x600
+`)).toContain("ui.page_param_on_game_ui");
+    });
+
+    it("reads a text param, and a list with the shape of its rows", () => {
+        const result = compile(`surface "Confirm" id=confirm kind=appSurface size=800x600
+    param message "message" type=text = "Are you sure?"
+    param rows "buttons" type=list struct=nl.confirmButton
+    Root: nl.root @0,0 800x600
+`);
+        expect(result.diagnostics).toEqual([]);
+        expect((result.surfaces[0].surface as { params?: unknown }).params).toEqual([
+            { id: "message", name: "message", type: "text", defaultValue: "Are you sure?" },
+            { id: "rows", name: "buttons", type: "list", struct: "nl.confirmButton" },
+        ]);
+    });
+
+    it("refuses a row shape on anything but a list, and warns about one it does not know", () => {
+        expect(codes(PAGE.replace('param loud "loud" type=boolean', 'param loud "loud" type=json struct=nl.confirmButton')))
+            .toContain("ui.page_param_struct");
+        expect(compile(PAGE.replace('param loud "loud" type=boolean', 'param loud "loud" type=list struct=nl.nothing'))
+            .diagnostics.map(item => `${item.severity} ${item.code}`)).toEqual(["warning ui.page_param_struct"]);
+        expect(codes(PAGE.replace('type=json = []', 'type=list = {"a":1}'))).toContain("ui.page_param_default");
+    });
+
+    it("binds a text on the page to one of the page's text params", () => {
+        const page = (type: string) => `surface "Confirm" id=confirm kind=appSurface size=800x600
+    param message "message" type=${type} = ""
+    Root: nl.root @0,0 800x600
+        Message: nl.text id=msg @0,0 400x80
+            text = "Sample"
+            bind text = param message
+`;
+        const result = compile(page("text"));
+        expect(result.diagnostics).toEqual([]);
+        expect(result.surfaces[0].elements.msg?.valueBindings).toEqual({ text: { kind: "pageParam", paramId: "message" } });
+        expect(codes(page("string"))).toContain("ui.param_not_text");
     });
 });

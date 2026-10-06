@@ -9,7 +9,8 @@
  * read "Global count: 5" on the page behind the overlay while the overlay's own `Set Text` said 7.
  *
  * Pinned here for every kind of variable a binding can reach - a global blueprint's and a page's
- * through `Get Var`, an element's, a persistent one and a saved one through a Fn the binding calls -
+ * through `Get Var`, a saved one through `Get Saved Var` in the binding itself, an element's, a
+ * persistent one and a saved one through a Fn the binding calls -
  * on two surfaces drawn through the real tree, with each write made by a graph on a host other than
  * the one drawing the binding, as a game makes them.
  *
@@ -94,6 +95,7 @@ const SHOWS = {
     element: "element-text",
     persistent: "persistent-text",
     saved: "saved-text",
+    savedDirect: "saved-direct-text",
     stamp: "stamp-text",
     overlayGlobal: "overlay-text",
 } as const;
@@ -131,7 +133,7 @@ function rootOf(surfaceId: string, childrenIds: string[]): UIElement {
     };
 }
 
-const pageTexts = [SHOWS.global, SHOWS.page, SHOWS.element, SHOWS.persistent, SHOWS.saved, SHOWS.stamp];
+const pageTexts = [SHOWS.global, SHOWS.page, SHOWS.element, SHOWS.persistent, SHOWS.saved, SHOWS.savedDirect, SHOWS.stamp];
 
 const document: UIDocument = {
     schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
@@ -220,6 +222,21 @@ function showsVariable(textId: string, surfaceId: string, variableRef: string): 
     });
 }
 
+/** A value blueprint for one text: `Init -> Get Saved Var -> Return Value`, with no Fn in between. */
+function showsSavedVariable(textId: string, savedVariableId: string): Blueprint {
+    return blueprintOn(`bp-value-${textId}`, { kind: "widgetValue", surfaceId: PAGE, elementId: textId, propPath: "text" }, {
+        init: graphOf({
+            nodes: {
+                head: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT },
+                read: { type: BLUEPRINT_NODE_TYPE_SAVED_GET, params: { savedVariableId } },
+                ret: { type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE },
+            },
+            exec: ["head", "read", "ret"],
+            data: [["read", "value", "ret", "value"]],
+        }),
+    });
+}
+
 /** A value blueprint for one text: `Init -> Call Fn -> Return Value` fed by what the Fn returns. */
 function showsFnResult(textId: string, fnRef: string): Blueprint {
     return blueprintOn(`bp-value-${textId}`, { kind: "widgetValue", surfaceId: PAGE, elementId: textId, propPath: "text" }, {
@@ -296,6 +313,7 @@ const blueprints: readonly Blueprint[] = [
     showsFnResult(SHOWS.element, createBlueprintFnRef(BUTTON_BP, "readMark")),
     showsFnResult(SHOWS.persistent, createBlueprintFnRef(PAGE_BP, "readSetting")),
     showsFnResult(SHOWS.saved, createBlueprintFnRef(PAGE_BP, "readAffection")),
+    showsSavedVariable(SHOWS.savedDirect, AFFECTION),
     showsFnResult(SHOWS.stamp, createBlueprintFnRef(PAGE_BP, "stampFn")),
 ];
 
@@ -505,6 +523,7 @@ describe("a prop bound to a variable", () => {
         expect(game.shown(SHOWS.element)).toBe("unmarked");
         expect(game.shown(SHOWS.persistent)).toBe("off");
         expect(game.shown(SHOWS.saved)).toBe("1");
+        expect(game.shown(SHOWS.savedDirect)).toBe("1");
         expect(game.errors).toEqual([]);
     });
 
@@ -573,7 +592,7 @@ describe("a prop bound to a variable", () => {
         expect(game.errors).toEqual([]);
     });
 
-    it("follows a saved variable the playthrough writes, read through a Fn", async () => {
+    it("follows a saved variable the playthrough writes, read through a Fn and read directly", async () => {
         game = runningGame();
         await settle();
 
@@ -583,6 +602,7 @@ describe("a prop bound to a variable", () => {
         await settle();
 
         expect(game.shown(SHOWS.saved)).toBe("3");
+        expect(game.shown(SHOWS.savedDirect)).toBe("3");
         expect(game.errors).toEqual([]);
     });
 });

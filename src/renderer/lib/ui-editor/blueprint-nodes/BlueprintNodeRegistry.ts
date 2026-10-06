@@ -16,9 +16,11 @@ import {
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS,
+    BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING,
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING,
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING,
+    BLUEPRINT_NODE_TYPE_SAVED_GET,
     resolveBlueprintEventHeadTypesForUiSlot,
 } from "@shared/types/blueprint/graph";
 import { contributedWidgetNamesHead } from "@shared/types/ui-editor/contributedWidgets";
@@ -135,6 +137,14 @@ export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeGr
     if (def.type === BLUEPRINT_NODE_TYPE_DATA_MEMO) {
         return !def.isLatent;
     }
+    // An exec node too, and a read: a HUD showing a saved variable is the commonest thing a binding
+    // on a Game UI screen does. The read is recorded, so a write from the story or a screen runs the
+    // binding again, and with no playthrough it reports the default rather than throwing. Its write
+    // half stays out - a binding re-runs whenever what it read changes, and a write there is one the
+    // player never asked for.
+    if (def.type === BLUEPRINT_NODE_TYPE_SAVED_GET) {
+        return !def.isLatent;
+    }
     if (def.category === "Flow") {
         return !def.isLatent &&
             def.type !== BLUEPRINT_NODE_TYPE_FLOW_DELAY &&
@@ -145,6 +155,8 @@ export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeGr
     }
     if (
         def.type === BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS ||
+        // A text showing what its page was opened with is the reason a page declares parameters.
+        def.type === BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM ||
         def.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING ||
         def.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING ||
         def.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING

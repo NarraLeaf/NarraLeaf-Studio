@@ -98,6 +98,26 @@ export const blueprint = {
         targetTooltip: "Target: {label} ({type})",
         fromPin: "Create from pin",
         connectEmpty: "No nodes can connect to this pin.",
+        fieldsCategory: "Fields",
+        readField: "Get {field}",
+        filterByField: "Filter by {field}",
+        sortByField: "Sort by {field}",
+        findByField: "Find by {field}",
+    },
+    /** The names a struct type goes by on a pin, in the add-node menu and in a diagnostic. */
+    struct: {
+        any: "Struct",
+        listRow: "List row",
+        arrayOf: "{name} list",
+        choiceItem: "Choice",
+        notificationItem: "Notification",
+        nvlItem: "NVL line",
+        historyEntry: "History entry",
+        saveEntry: "Save entry",
+        confirmButton: "Confirm button",
+        ending: "Ending",
+        language: "Language",
+        voiceLanguage: "Voice language",
     },
     diagnostics: {
         empty: "No diagnostics.",
@@ -116,7 +136,7 @@ export const blueprint = {
         },
         interaction: {
             hiddenEvents: "Element “{name}” is not visible but still has interaction bindings",
-            hiddenEventsHint: "Remove the events, or make the element visible. A hidden element receives no input.",
+            hiddenEventsHint: "Remove the events, make the element visible, or show it from a blueprint. A hidden element receives no input.",
             opaqueEvents: "Element “{name}” is nearly invisible (opacity) but has interaction bindings",
             opaqueEventsHint: "Players may not see this control. Check it in Dev Mode.",
             smallHit: "Element “{name}” has a small hit area with interactions",
@@ -177,6 +197,11 @@ export const blueprint = {
             variableIdInvalid: "Node \"{node}\": pick a variable.",
             persistentVariableIdInvalid: "Node \"{node}\": pick a persistent variable.",
             savedVariableIdInvalid: "Node \"{node}\": pick a saved variable.",
+            fieldMissing: "\"{node}\": {struct} has no field \"{field}\".",
+            fieldUnpicked: "Node \"{node}\": pick a field.",
+            keyNotAField: "\"{node}\": {struct} has no field \"{key}\". No item matches.",
+            listShapeMismatch: "\"{node}\": {struct} does not match this list's fields. Fields that differ show empty.",
+            pageParamMissing: "\"{node}\": the page does not declare this param.",
         },
         fn: {
             nameMissing: "Fn \"{node}\": set a function name.",
@@ -484,6 +509,7 @@ export const blueprint = {
         editValue: "Edit value on card",
         removeOutput: "Remove output pin",
         jsonFieldName: "JSON object field name",
+        readsRow: "Current row",
     },
     comment: {
         color: {
@@ -579,6 +605,7 @@ export const blueprint = {
         unnamedInputAction: "Unnamed action",
         // Same job as the character stand-in above, for an action the project no longer declares.
         missingInputAction: "Missing action",
+        missingField: "Missing field “{field}”",
     },
     script: {
         fileLabel: "Script file",
@@ -819,6 +846,8 @@ export const blueprint = {
         height: "Height",
         held: "Held",
         device: "Device",
+        connected: "Connected",
+        axis: "Axis",
         hide: "Hide",
         holdFinalValue: "Hold final value",
         id: "Id",
@@ -890,6 +919,7 @@ export const blueprint = {
         page: "Page",
         pageProps: "Page props",
         param: "Param",
+        parameter: "Parameter",
         persistent: "Persistent",
         pointer: "Pointer",
         center: "Center",
@@ -1251,7 +1281,7 @@ export const blueprint = {
         getLineHeight: "Get Line Height",
         findItemByField: "Find Item By Field",
         getItemAt: "Get Item At",
-        getItemField: "Get Item Field",
+        getField: "Get Field",
         getListContent: "Get List Content",
         getListLength: "Get List Length",
         setItemFieldAt: "Set Item Field At",
@@ -1313,6 +1343,9 @@ export const blueprint = {
         isLayerMounted: "Is Layer Mounted",
         isActionHeld: "Is Action Held",
         getInputDevice: "Get Input Device",
+        isGamepadConnected: "Is Gamepad Connected",
+        isGamepadButtonHeld: "Is Gamepad Button Held",
+        getGamepadAxis: "Get Gamepad Axis",
         showConfirm: "Show Confirm",
         memo: "Memo",
         clearPage: "Clear Page",
@@ -1411,6 +1444,10 @@ export const blueprint = {
         onAction: "On Action",
         onKeyDown: "On Key Down",
         onKeyUp: "On Key Up",
+        onGamepadButtonDown: "On Gamepad Button Down",
+        onGamepadButtonUp: "On Gamepad Button Up",
+        anyGamepadButtonDown: "Any Gamepad Button Down",
+        anyGamepadButtonUp: "Any Gamepad Button Up",
         onPreferenceChanged: "On Preference Changed",
         openLink: "Open Link",
         openScreenshotsFolder: "Open Screenshots Folder",
@@ -1567,6 +1604,7 @@ export const blueprint = {
      */
     nodeDescription: {
         getComponentParam: "The value this placement sets for the chosen parameter, or the parameter's default when it sets none. A Text parameter that reads from a translation key gives the key's name; Translation Key Text gives its words.",
+        getPageParam: "The value the page was opened with for the chosen param, or the param's default when it was given none. Params are declared in the page's properties.",
         compareEqual: "True when A and B are the same value of the same type. The number 1 and the text \"1\" are not equal.",
         compareNotEqual: "True when A and B differ in value or in type. The number 1 and the text \"1\" count as different.",
         compareGreaterThan: "True when A is greater than B. Both sides are compared as numbers; a side that cannot be read as a number gives false.",
@@ -1586,6 +1624,7 @@ export const blueprint = {
         translationKeyText: "A translation key's text in the player's current language, or its source text when that language has no translation. A key that does not exist gives its name. The same text as Get Text, and also usable in Blueprint Value and functions. A Blueprint Value that shows it updates when the player changes language.",
         format: "Replaces the placeholders in Template with values: {0}, {1} and so on with the items of an array, {name} with the field of that name in an object. A placeholder with no value becomes empty. A translated template comes from Translation Key Text.",
         formatText: "Replaces {0}, {1} and so on in Text with the items of Values. Format does the same, also fills {name} from an object, and can be used in Blueprint Value and functions.",
+        getField: "One field of the struct wired into Object, picked from that struct's fields. Inside a list row, leave Object unwired to read the row. Use Get JSON Field for an object whose fields are not declared.",
     },
     // A live session leaves the blueprint document writable. What the canvas gains is a mark
     // saying who else is inside a node.

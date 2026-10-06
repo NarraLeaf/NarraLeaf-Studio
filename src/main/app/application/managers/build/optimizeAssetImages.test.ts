@@ -510,3 +510,130 @@ describe("optimizeProjectImages", () => {
         });
     });
 });
+
+/** Ids for a library of several images, in the order they are written to it. */
+const LIBRARY = [
+    "1b2c3d4e-5f60-4718-8a9b-0c1d2e3f4a50",
+    "2c3d4e5f-6071-4829-9bac-1d2e3f4a5b61",
+    "3d4e5f60-7182-493a-acbd-2e3f4a5b6c72",
+    "4e5f6071-8293-4a4b-bdce-3f4a5b6c7d83",
+];
+
+/** The library above, each image with bytes of its own so that none share a cache entry. */
+function distinctLibrary(): Record<string, { bytes: Buffer }> {
+    return Object.fromEntries(LIBRARY.map((id, index) => [id, { bytes: pngBytes(40_000 + index * 100) }]));
+}
+
+/**
+ * A codec that takes a while over each image and counts how many encodes it was given at once.
+ *
+ * `delayFor` decides how long each image takes, by its size, which is how a test makes the first
+ * image in the library finish last.
+ */
+function timedCodec(delayFor: (bytes: Buffer) => number = () => 20) {
+    let running = 0;
+    const seen = { peak: 0, opened: 0, pagesAskedFor: [] as number[], closed: 0 };
+    const codec: WebImageCodec = {
+        async encode(request): Promise<WebImageEncodeResult | null> {
+            running += 1;
+            seen.peak = Math.max(seen.peak, running);
+            await new Promise(resolve => setTimeout(resolve, delayFor(request.bytes)));
+            running -= 1;
+            return { bytes: Buffer.alloc(Math.round(request.bytes.length * 0.5), 0x77), verifiedLossless: true };
+        },
+        async close() {
+            seen.closed += 1;
+        },
+    };
+    return {
+        seen,
+        openCodec: async (pages: number) => {
+            seen.opened += 1;
+            seen.pagesAskedFor.push(pages);
+            // Opening takes a moment, so lanes reaching their first encode together are all
+            // waiting on it at once - the case where each could otherwise start one of its own.
+            await new Promise(resolve => setTimeout(resolve, 10));
+            return codec;
+        },
+    };
+}
+
+describe("optimizeProjectImages, several images at once", () => {
+    const base = () => ({ projectPath, cacheDir, config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION, log });
+
+    it("encodes images side by side, from one codec opened for that many", async () => {
+        await writeLibrary(distinctLibrary());
+        const codec = timedCodec();
+        const result = await optimizeProjectImages({ ...base(), openCodec: codec.openCodec, lanes: 4 });
+
+        expect(result.converted).toBe(LIBRARY.length);
+        expect(codec.seen.peak).toBeGreaterThan(1);
+        expect(codec.seen.opened).toBe(1);
+        expect(codec.seen.pagesAskedFor).toEqual([4]);
+        expect(codec.seen.closed).toBe(1);
+    });
+
+    it("hands the compile its images in library order, whichever finishes first", async () => {
+        await writeLibrary(distinctLibrary());
+        const slowest = pngBytes(40_000).length;
+        const codec = timedCodec(bytes => (bytes.length === slowest ? 80 : 5));
+        const result = await optimizeProjectImages({ ...base(), openCodec: codec.openCodec, lanes: 4 });
+
+        expect(Object.keys(result.images)).toEqual(LIBRARY);
+    });
+
+    it("encodes two entries with the same bytes once, and ships that encode for both", async () => {
+        // An import made twice is one cache entry. Side by side, both would miss the cache and both
+        // would write the same file; one at a time, the second finds the first one's result.
+        await writeLibrary({ [LIBRARY[0]]: { bytes: pngBytes() }, [LIBRARY[1]]: { bytes: pngBytes() } });
+        const codec = timedCodec();
+        const result = await optimizeProjectImages({ ...base(), openCodec: codec.openCodec, lanes: 4 });
+
+        expect(result).toMatchObject({ converted: 2, reused: 1, keptOriginal: 0 });
+        expect(result.images[LIBRARY[0]].path).toBe(result.images[LIBRARY[1]].path);
+    });
+
+    it("runs one image at a time when each would take the whole memory budget", async () => {
+        await writeLibrary(distinctLibrary());
+        const codec = timedCodec();
+        // Smaller than any one of these images is expected to hold, so each runs alone - which is
+        // the answer for an image too large for the budget, rather than refusing to encode it.
+        const result = await optimizeProjectImages({ ...base(), openCodec: codec.openCodec, lanes: 4, memoryBudget: 1 });
+
+        expect(result.converted).toBe(LIBRARY.length);
+        expect(codec.seen.peak).toBe(1);
+    });
+
+    it("closes the codec when an encode fails, and reports the failure", async () => {
+        await writeLibrary(distinctLibrary());
+        let closed = 0;
+        const failing: WebImageCodec = {
+            async encode() {
+                await new Promise(resolve => setTimeout(resolve, 5));
+                throw new Error("renderer gone");
+            },
+            async close() {
+                closed += 1;
+            },
+        };
+        await expect(optimizeProjectImages({ ...base(), openCodec: async () => failing, lanes: 4 }))
+            .rejects.toThrow("renderer gone");
+        expect(closed).toBe(1);
+    });
+
+    it("gives the same answer one image at a time as several at once", async () => {
+        await writeLibrary(distinctLibrary());
+        const serial = await optimizeProjectImages({
+            ...base(), cacheDir: path.join(cacheDir, "serial"), openCodec: timedCodec().openCodec, lanes: 1,
+        });
+        const parallel = await optimizeProjectImages({
+            ...base(), cacheDir: path.join(cacheDir, "parallel"), openCodec: timedCodec().openCodec, lanes: 4,
+        });
+
+        const shape = (result: typeof serial) => ({
+            ...result,
+            images: Object.fromEntries(Object.entries(result.images).map(([id, image]) => [id, { ...image, path: path.basename(image.path) }])),
+        });
+        expect(shape(parallel)).toEqual(shape(serial));
+    });
+});

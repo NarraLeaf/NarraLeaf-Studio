@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { BookOpen, Check, ChevronDown, ChevronRight, Code, FileText, Filter, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Rows3, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { BookOpen, Check, ChevronDown, ChevronRight, Code, FileText, Filter, Image as ImageIcon, MonitorPlay, Plus, Rows3, Trash2 } from "lucide-react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
@@ -10,7 +10,6 @@ import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName
 import { useCommandTranslation, useTranslation } from "@/lib/i18n";
 import { getDefById, localizedCommandToken } from "./commands/registry";
 import type { EditorComponentProps } from "../../types";
-import { PanelPosition } from "../../../registry/types";
 import { Services } from "@/lib/workspace/services/services";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
@@ -24,10 +23,10 @@ import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { useAssetFieldNotice } from "@/lib/workspace/hooks/useAssetFieldNotice";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import type { StorySceneEditorTabPayload } from "./storySceneEditorTabId";
-import { StoryActionCreatorPanel } from "./StoryActionCreatorPanel";
 import {
     STORY_ACTION_CREATE_REQUEST_EVENT,
     STORY_ACTION_CREATOR_PANEL_ID,
+    takePendingStoryActionCreateRequest,
     type StoryActionCreateRequestDetail,
 } from "./storyActionCreatorEvents";
 import { STORY_MOTION_PANEL_ID } from "../../story-motion";
@@ -46,7 +45,13 @@ import {
     type StoryBlockSelection,
 } from "./storySelection";
 import { stopVoiceAudition } from "./voiceAudition";
-import { STORY_DENSITY_METRICS, StoryEditorTextStyleProvider, storyEditorRootStyle } from "./storyEditorTextStyle";
+import {
+    STORY_DENSITY_METRICS,
+    StoryEditorTextStyleProvider,
+    storyEditorRootStyle,
+    storyGutterWidth,
+    useStoryEditorTextFontSize,
+} from "./storyEditorTextStyle";
 import { useStoryRowHighlight } from "@/apps/workspace/hooks/useStoryRowHighlight";
 import { useProjectDistrusted } from "@/apps/workspace/hooks/useProjectDistrusted";
 import { StoryRowActionsContext, type StoryRowActions } from "./storyRowActions";
@@ -93,21 +98,23 @@ import { narralangUiEnabled } from "../narralang/narralangUi";
 import { subscribeStoryRowHighlight } from "./storyRowHighlightBus";
 import { ResizableHandle } from "@/apps/workspace/components/ui/ResizableHandle";
 import { StoryScenePreviewPane } from "./preview/StoryScenePreviewPane";
-import { StoryScenePreviewFloat } from "./preview/StoryScenePreviewFloat";
 import { useStoryScenePreviewController } from "./preview/useStoryScenePreviewController";
 import { STORY_CONSOLE_CHANNEL } from "./preview/storyPreviewConsole";
 import {
-    createDefaultStoryPreviewFloatRect,
-    DEFAULT_STORY_SCENE_PREVIEW_PANE_STATE,
-    getStoryScenePreviewPaneState,
-    patchStoryScenePreviewPaneState,
     STORY_PREVIEW_PANE_DEFAULT_WIDTH,
     STORY_PREVIEW_PANE_MAX_FRACTION,
     STORY_PREVIEW_PANE_MIN_WIDTH,
-    type StoryScenePreviewFloatRect,
     type StoryScenePreviewPaneMode,
-    type StoryScenePreviewPaneState,
 } from "./preview/storyScenePreviewSessionStore";
+import {
+    dragStoryPreviewDockWidth,
+    resolveStoryPreviewDockLayout,
+    storyScriptMinWidth,
+    STORY_PREVIEW_STACK_MAX_FRACTION,
+} from "./preview/storyPreviewDockLayout";
+import { useStoryPreviewDockStacked } from "./preview/useStoryPreviewDockStacked";
+import { getStoryPreviewHub, useStoryPreviewLayout } from "./preview/storyPreviewHub";
+import { createDefaultStoryPreviewFloatRect, readRectInArea } from "./preview/storyPreviewFloatGeometry";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 /**
@@ -196,6 +203,9 @@ const ROW_VERTICAL_PADDING_PX = 8;
 
 /** "No drag in progress", as one shared value — a fresh `new Set()` would re-render every row. */
 const EMPTY_DRAG_GROUP: Set<StoryBlockId> = new Set();
+
+/** The docked preview under the script: never more than its share of the body's height. */
+const STACKED_PREVIEW_STYLE: CSSProperties = { maxHeight: `${STORY_PREVIEW_STACK_MAX_FRACTION * 100}%` };
 
 const SCENE_FIELD_LABEL_CLASS = "mb-1 block text-2xs font-medium text-fg-subtle";
 const SCENE_TEXT_FIELD_CLASS = "w-full rounded-md border border-edge bg-surface-raised px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-primary/50";
@@ -744,46 +754,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         catalogPrefix: "story.",
     });
 
-    // Side panels are global (keyed by fixed ids), so only the visible scene tab may own them —
-    // otherwise several kept-alive scene tabs would fight over the same registration. Gate on `active`.
-    useEffect(() => {
-        if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
-            return;
-        }
-        const uiService = editor.context.services.get<UIService>(Services.UI);
-        const unregister = uiService.panels.register({
-            id: STORY_ACTION_CREATOR_PANEL_ID,
-            title: t("story.commandManual.title"),
-            icon: <ListPlus className="w-4 h-4" />,
-            position: PanelPosition.Right,
-            component: StoryActionCreatorPanel,
-            defaultVisible: false,
-            order: 10,
-            payload: {
-                tabId,
-                storyId: payload.storyId,
-                sceneId: payload.sceneId,
-            },
-        });
-        return () => {
-            uiService.panels.hide(STORY_ACTION_CREATOR_PANEL_ID);
-            unregister();
-        };
-    }, [active, editor.context, editor.isInitialized, payload?.sceneId, payload?.storyId, tabId, t]);
-
-    useEffect(() => {
-        if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
-            return;
-        }
-        const uiService = editor.context.services.get<UIService>(Services.UI);
-        uiService.panels.updatePayload(STORY_ACTION_CREATOR_PANEL_ID, {
-            tabId,
-            storyId: payload.storyId,
-            sceneId: payload.sceneId,
-            storyName: editor.document?.name,
-            sceneName: editor.scene?.name,
-        });
-    }, [active, editor.context, editor.document?.name, editor.isInitialized, editor.scene?.name, payload?.sceneId, payload?.storyId, tabId]);
+    // The command manual is not registered here: it stays on the rail for as long as any scene is
+    // open, which no single tab can know (see `StoryCommandManualDock`).
 
     /**
      * The Variables panel is a static module (see `modules/story-variables`) - it exists whether or
@@ -1275,17 +1247,29 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         };
     }, [active, editor.context, tabId]);
 
+    // Inserts asked for from the command manual. The manual stays open while this tab is behind
+    // another editor, and brings the tab forward before it asks - so the request can arrive while the
+    // scene is still loading, or before this tab was mounted at all. Whatever cannot be acted on yet
+    // is left pending and taken up here once the scene is ready.
+    const sceneReady = editor.isInitialized && Boolean(editor.scene);
     useEffect(() => {
+        if (sceneReady) {
+            const pending = takePendingStoryActionCreateRequest(tabId);
+            if (pending) {
+                editor.createActionFromSidebar(pending);
+            }
+        }
         const handleCreateRequest = (event: Event) => {
             const detail = (event as CustomEvent<StoryActionCreateRequestDetail>).detail;
-            if (detail?.tabId !== tabId) {
+            if (detail?.tabId !== tabId || !sceneReady) {
                 return;
             }
+            event.preventDefault();
             editor.createActionFromSidebar(detail.commandId);
         };
         window.addEventListener(STORY_ACTION_CREATE_REQUEST_EVENT, handleCreateRequest);
         return () => window.removeEventListener(STORY_ACTION_CREATE_REQUEST_EVENT, handleCreateRequest);
-    }, [editor.createActionFromSidebar, tabId]);
+    }, [editor.createActionFromSidebar, sceneReady, tabId]);
 
     // Silence any voice audition this tab started when it loses focus or closes — the app-wide player
     // otherwise plays the take to its end after the author has switched tabs or closed the project (#6).
@@ -1334,6 +1318,10 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // Last element focused inside this editor, to restore keyboard focus that display:none blurred.
     const lastFocusedRef = useRef<HTMLElement | null>(null);
     const prevActiveRef = useRef(active);
+    const activeRef = useRef(active);
+    activeRef.current = active;
+    /** A row the floating preview stepped to while this tab was hidden, to bring into view on return. */
+    const revealOnShowRef = useRef<StoryBlockId | null>(null);
     const handledDeepLinkRef = useRef<string | null>(null);
 
     useLayoutEffect(() => {
@@ -1448,6 +1436,13 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         if (el && liveScrollTopRef.current != null && Math.abs(el.scrollTop - liveScrollTopRef.current) > 1) {
             el.scrollTop = liveScrollTopRef.current;
         }
+        // The cursor moved while the tab was hidden (a press on the floating preview): the page the
+        // author left may no longer hold it, so it is brought back into reach - as the step it was.
+        const steppedTo = revealOnShowRef.current;
+        revealOnShowRef.current = null;
+        if (steppedTo !== null && steppedTo === editorRef.current.activeBlockId) {
+            editorRef.current.revealRow({ kind: "row", blockId: steppedTo }, "step");
+        }
         const target = lastFocusedRef.current;
         if (target && target.isConnected) {
             window.requestAnimationFrame(() => {
@@ -1538,20 +1533,44 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         });
     }, [active, payload?.storyId, payload?.sceneId, scrollContainerRef]);
 
-    // Live preview pane: layout state persists globally (one workbench preference, not per-scene).
-    const [previewPane, setPreviewPane] = useState<StoryScenePreviewPaneState | null>(null);
-    useEffect(() => {
-        if (panelStateService && previewPane === null) {
-            setPreviewPane(getStoryScenePreviewPaneState(panelStateService));
-        }
-    }, [panelStateService, previewPane]);
+    // Live preview pane: one layout for the whole workspace (per project, not per scene), shared with
+    // every other scene tab and with the floating window, which the workspace draws.
+    const previewHub = useMemo(
+        () => (editor.context && editor.isInitialized ? getStoryPreviewHub(editor.context) : null),
+        [editor.context, editor.isInitialized],
+    );
+    const previewPane = useStoryPreviewLayout(previewHub);
     const previewOpen = previewPane?.open === true;
     const previewWidth = previewPane?.width ?? STORY_PREVIEW_PANE_DEFAULT_WIDTH;
     const previewMode: StoryScenePreviewPaneMode = previewPane?.mode ?? "dock";
-    const previewFloat = previewPane?.float ?? null;
     const previewWidthRef = useRef(previewWidth);
     previewWidthRef.current = previewWidth;
     const editorBodyRef = useRef<HTMLDivElement | null>(null);
+    // The body also as state, for the one reader that has to start watching it when it appears:
+    // the tab draws a loading view first, and the preview layout can be known before the body is.
+    const [editorBody, setEditorBody] = useState<HTMLDivElement | null>(null);
+    const attachEditorBody = useCallback((element: HTMLDivElement | null) => {
+        editorBodyRef.current = element;
+        setEditorBody(element);
+    }, []);
+    const previewDocked = previewOpen && previewMode === "dock";
+    // The script keeps a readable width and the docked preview gives way to it: narrower than its
+    // stored width first, then under the script instead of beside it (see `storyPreviewDockLayout`).
+    const scriptFontSize = useStoryEditorTextFontSize(editor.density);
+    const scriptMinWidth = storyScriptMinWidth({
+        fontSize: scriptFontSize,
+        gutterWidth: storyGutterWidth(editor.visibleRows.length),
+    });
+    const scriptMinWidthRef = useRef(scriptMinWidth);
+    scriptMinWidthRef.current = scriptMinWidth;
+    const previewStacked = useStoryPreviewDockStacked(editorBody, previewDocked, scriptMinWidth);
+    const previewBesideScript = previewDocked && !previewStacked;
+    // Only beside the preview: alone, or with the preview under it, the script has the body's whole
+    // width, and a floor wider than a narrow editor group would push its words out of sight.
+    const scriptColumnStyle = useMemo<CSSProperties | undefined>(
+        () => (previewBesideScript ? { minWidth: scriptMinWidth } : undefined),
+        [previewBesideScript, scriptMinWidth],
+    );
 
     const script = useNarralangScript(editor.scene ?? null, editor.document ?? null, scriptOpen);
     /**
@@ -1577,64 +1596,87 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         scriptOpen && scriptEditable,
     );
 
+    // Opening the preview from this tab, or popping it out of this tab, is about this tab's scene:
+    // the floating window takes it as the scene to show whatever the author focused before.
     const togglePreview = useCallback(() => {
-        setPreviewPane(current => {
-            const base = current ?? DEFAULT_STORY_SCENE_PREVIEW_PANE_STATE;
-            const next = { ...base, open: !base.open };
-            if (panelStateService) {
-                patchStoryScenePreviewPaneState(panelStateService, { open: next.open });
-            }
-            return next;
-        });
-    }, [panelStateService]);
+        if (!previewHub) {
+            return;
+        }
+        const open = !previewHub.getLayout().open;
+        if (open) {
+            previewHub.noteFocused(tabId);
+        }
+        previewHub.patchLayout({ open });
+    }, [previewHub, tabId]);
 
     // Switch the (open) pane between docked and picture-in-picture. Popping out for the first time
-    // seeds a bottom-right float placement from the editor body's current size.
+    // places the window over the bottom-right corner of this editor.
     const setPreviewMode = useCallback((mode: StoryScenePreviewPaneMode) => {
-        setPreviewPane(current => {
-            const base = current ?? DEFAULT_STORY_SCENE_PREVIEW_PANE_STATE;
-            const el = editorBodyRef.current;
-            const float = mode === "float" && base.float === null
-                ? createDefaultStoryPreviewFloatRect(el ? { width: el.clientWidth, height: el.clientHeight } : null)
-                : base.float;
-            const next = { ...base, open: true, mode, float };
-            if (panelStateService) {
-                patchStoryScenePreviewPaneState(panelStateService, { open: true, mode, float });
-            }
-            return next;
-        });
-    }, [panelStateService]);
+        if (!previewHub) {
+            return;
+        }
+        previewHub.noteFocused(tabId);
+        const layout = previewHub.getLayout();
+        if (mode === "float" && layout.float === null) {
+            const area = previewHub.getArea();
+            const areaBox = area?.getBoundingClientRect();
+            const bounds = areaBox && areaBox.width >= 1 && areaBox.height >= 1
+                ? { width: Math.floor(areaBox.width), height: Math.floor(areaBox.height) }
+                : null;
+            previewHub.patchLayout({
+                open: true,
+                mode,
+                float: createDefaultStoryPreviewFloatRect(bounds, readRectInArea(editorBodyRef.current, area)),
+            });
+            return;
+        }
+        previewHub.patchLayout({ open: true, mode });
+    }, [previewHub, tabId]);
 
-    // Persist float geometry once a drag/resize settles (called on pointer-up, not per frame).
-    const commitPreviewFloat = useCallback((float: StoryScenePreviewFloatRect) => {
-        setPreviewPane(current => {
-            if (!current) {
-                return current;
-            }
-            const next = { ...current, float };
-            if (panelStateService) {
-                patchStoryScenePreviewPaneState(panelStateService, { float });
-            }
-            return next;
-        });
-    }, [panelStateService]);
+    /**
+     * The width the pane is drawn at when a drag of its edge begins, and how far the drag may take
+     * it. Taken from the drawn width rather than the stored one: while the script is holding the
+     * pane narrower than the author left it, a drag starts from where the edge is on screen, and a
+     * drag toward the script that cannot move it writes nothing - the stored width stays the
+     * author's, to come back to when there is room.
+     */
+    const previewDragRef = useRef<{ width: number; maxWidth: number } | null>(null);
+    const handlePreviewDragStart = useCallback(() => {
+        const body = editorBodyRef.current;
+        const layout = body
+            ? resolveStoryPreviewDockLayout({
+                bodyWidth: body.getBoundingClientRect().width,
+                storedWidth: previewWidthRef.current,
+                scriptMinWidth: scriptMinWidthRef.current,
+            })
+            : null;
+        previewDragRef.current = layout?.kind === "side"
+            // Whole pixels, as the stored width is: a drag that cannot move the edge then lands on
+            // the width it started from and writes nothing.
+            ? { width: Math.floor(layout.previewWidth), maxWidth: layout.maxPreviewWidth }
+            : null;
+    }, []);
+    const handlePreviewDragEnd = useCallback(() => {
+        previewDragRef.current = null;
+    }, []);
 
-    // The handle sits on the pane's left edge: dragging right shrinks the pane. Returns the
-    // unconsumed delta so ResizableHandle keeps its anchor aligned with the divider when clamped.
+    // The handle sits on the pane's left edge: dragging right shrinks the pane, and dragging left
+    // stops where the script reaches its minimum. Returns the unconsumed delta so ResizableHandle
+    // keeps its anchor aligned with the divider when clamped.
     const handlePreviewResize = useCallback((delta: number): number => {
-        const width = previewWidthRef.current;
-        const containerWidth = editorBodyRef.current?.clientWidth ?? width * 2;
-        const maxWidth = Math.max(STORY_PREVIEW_PANE_MIN_WIDTH, containerWidth * STORY_PREVIEW_PANE_MAX_FRACTION);
-        const nextWidth = Math.round(Math.min(maxWidth, Math.max(STORY_PREVIEW_PANE_MIN_WIDTH, width - delta)));
+        const drag = previewDragRef.current;
+        if (!drag) {
+            return -delta;
+        }
+        const width = drag.width;
+        const nextWidth = dragStoryPreviewDockWidth(width, delta, drag.maxWidth);
         if (nextWidth !== width) {
+            drag.width = nextWidth;
             previewWidthRef.current = nextWidth;
-            setPreviewPane(current => ({ ...(current ?? DEFAULT_STORY_SCENE_PREVIEW_PANE_STATE), width: nextWidth }));
-            if (panelStateService) {
-                patchStoryScenePreviewPaneState(panelStateService, { width: nextWidth });
-            }
+            previewHub?.patchLayout({ width: nextWidth });
         }
         return (width - nextWidth) - delta;
-    }, [panelStateService]);
+    }, [previewHub]);
 
     // Register the "Story" console channel while this scene editor is mounted, so the shared bottom
     // console shows a Story tab that the preview writes its diagnostics/warnings to. Ref-counted in
@@ -1648,6 +1690,22 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         return consoleService.registerChannel(STORY_CONSOLE_CHANNEL);
     }, [editor.context]);
 
+    // A click on the preview steps the cursor the way the Dev Mode play head moves it above: a plain
+    // row-select with no mouse event behind it, which is a step - the row is brought into view, the
+    // filter is left alone, and keyboard focus stays where the author's keys reach the rows.
+    //
+    // The floating window steps this tab while another editor is in front of it. A hidden tab has no
+    // viewport to move, so the step is remembered and the row is brought into view when the tab is
+    // shown again (see the hidden-to-shown restore above).
+    const stepPreviewTo = useCallback((blockId: StoryBlockId) => {
+        if (!activeRef.current) {
+            revealOnShowRef.current = blockId;
+        }
+        editorRef.current.selectRow(blockId);
+    }, []);
+    const isRowShown = useCallback((blockId: StoryBlockId) => rowIndexOfRef.current(blockId) >= 0, []);
+    // The docked pane belongs to this tab; the floating window belongs to the workspace and runs a
+    // preview of its own, so this one stands down while the preview floats.
     const preview = useStoryScenePreviewController({
         context: editor.context,
         document: editor.document,
@@ -1655,8 +1713,33 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         sceneId: payload?.sceneId ?? null,
         activeBlockId: editor.activeBlockId,
         active,
-        open: previewOpen,
+        open: previewOpen && previewMode === "dock",
+        onStepTo: stepPreviewTo,
+        isRowShown,
     });
+
+    // Lend the floating window what it needs from this tab while the tab is mounted, and tell it where
+    // the cursor is - it follows the cursor of the scene it shows, whether or not this tab is in front.
+    const previewStoryId = payload?.storyId;
+    const previewSceneId = payload?.sceneId;
+    useEffect(() => {
+        if (!previewHub || !previewStoryId || !previewSceneId) {
+            return;
+        }
+        return previewHub.registerTab({
+            tabId,
+            storyId: previewStoryId,
+            sceneId: previewSceneId,
+            stepTo: stepPreviewTo,
+            isRowShown,
+            editorBody: () => editorBodyRef.current,
+        });
+    }, [isRowShown, previewHub, previewSceneId, previewStoryId, stepPreviewTo, tabId]);
+    useEffect(() => {
+        if (previewHub && previewSceneId) {
+            previewHub.publishCursor(previewSceneId, editor.activeBlockId);
+        }
+    }, [editor.activeBlockId, previewHub, previewSceneId]);
 
     // A row's ▶ launches the real game in Dev Mode, entering at that row — this is where the
     // interactive "play from here" lives now (the live preview stays a frozen state view). The
@@ -2325,11 +2408,17 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 />
             ) : null}
 
-            <div ref={editorBodyRef} className="relative flex min-h-0 flex-1 flex-row">
+            {/* A row while the preview sits beside the script, a column while it sits under it. Only
+                the direction changes between the two, so nothing in either column remounts - the
+                preview's game least of all. */}
+            <div ref={attachEditorBody} className={`relative flex min-h-0 flex-1 ${previewStacked ? "flex-col" : "flex-row"}`}>
             {/* Hidden, not unmounted — see `scriptOpen`. The layout classes go with it rather than
                 sitting under a `hidden` that overrides them, so the column has no size to contribute
                 while the script has the body. */}
-            <div className={scriptOpen ? "hidden" : "relative flex min-h-0 min-w-0 flex-1 flex-col"}>
+            <div
+                className={scriptOpen ? "hidden" : "relative flex min-h-0 min-w-0 flex-1 flex-col"}
+                style={scriptOpen ? undefined : scriptColumnStyle}
+            >
             {/* The prose surface. Sunken without a wallpaper; with one, it keeps a plate only if the
                 author turned on the editor background in the background dialog, at the opacity set
                 there. `.nl-editor-surface` is the one rule the reading surfaces share. */}
@@ -2607,43 +2696,56 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             {/* Mounted only while it is on: a Monaco instance and the print behind it are not things
                 a scene tab should be carrying around for an author who never asked for the script. */}
             {scriptOpen ? (
-                <NarralangScriptView
-                    text={script.text}
-                    rows={script.rows}
-                    ready={script.ready}
-                    editable={scriptEditable}
-                    readOnlyReason={scriptReadOnlyReason}
-                    commit={scriptCommit.commit}
-                    breakMerge={scriptCommit.breakMerge}
-                />
-            ) : null}
-            {previewOpen && previewMode === "dock" ? (
-                <>
-                    <ResizableHandle
-                        direction="horizontal"
-                        onResize={handlePreviewResize}
-                        className="w-1 shrink-0 border-r-2 border-transparent bg-fill-subtle"
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col" style={scriptColumnStyle}>
+                    <NarralangScriptView
+                        text={script.text}
+                        rows={script.rows}
+                        ready={script.ready}
+                        editable={scriptEditable}
+                        readOnlyReason={scriptReadOnlyReason}
+                        commit={scriptCommit.commit}
+                        breakMerge={scriptCommit.breakMerge}
                     />
-                    <div style={{ width: previewWidth }} className="min-h-0 shrink-0 border-l border-edge">
+                </div>
+            ) : null}
+            {previewDocked ? (
+                <>
+                    {previewStacked ? null : (
+                        <ResizableHandle
+                            key="seam"
+                            direction="horizontal"
+                            onResize={handlePreviewResize}
+                            onDragStart={handlePreviewDragStart}
+                            onDragEnd={handlePreviewDragEnd}
+                            className="w-1 shrink-0 border-r-2 border-transparent bg-fill-subtle"
+                        />
+                    )}
+                    {/* Beside the script: the stored width as a flex basis, so the browser narrows the
+                        pane as the body narrows, never below either column's minimum - the same
+                        rule `resolveStoryPreviewDockLayout` states. Under it: full width, as tall as
+                        its stage at that width, at most half the body. */}
+                    <div
+                        key="pane"
+                        style={previewStacked ? STACKED_PREVIEW_STYLE : {
+                            flex: `0 1 ${previewWidth}px`,
+                            minWidth: STORY_PREVIEW_PANE_MIN_WIDTH,
+                            maxWidth: `${STORY_PREVIEW_PANE_MAX_FRACTION * 100}%`,
+                        }}
+                        className={previewStacked ? "min-h-0 shrink-0 border-t border-edge" : "min-h-0 border-l border-edge"}
+                        data-story-preview-dock={previewStacked ? "stack" : "side"}
+                    >
                         <StoryScenePreviewPane
                             controller={preview}
                             onClose={togglePreview}
                             mode="dock"
                             onToggleFloat={() => setPreviewMode("float")}
+                            stageAspectRatio={previewStacked ? preview.designSize.width / preview.designSize.height : undefined}
                         />
                     </div>
                 </>
             ) : null}
-            {previewOpen && previewMode === "float" ? (
-                <StoryScenePreviewFloat
-                    controller={preview}
-                    containerRef={editorBodyRef}
-                    initialRect={previewFloat ?? createDefaultStoryPreviewFloatRect(null)}
-                    onClose={togglePreview}
-                    onToggleDock={() => setPreviewMode("dock")}
-                    onCommit={commitPreviewFloat}
-                />
-            ) : null}
+            {/* The floating window is not drawn here: it belongs to the workspace, which draws it
+                over the whole content area (`StoryScenePreviewFloatHost`). */}
             </div>
             {/* Opens already parsed, writes nothing until it is confirmed, and leaves the document
                 (and the cast) untouched on cancel. It is a paste affordance and has no menu entry. */}

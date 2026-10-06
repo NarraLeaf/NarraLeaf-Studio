@@ -27,6 +27,9 @@ import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome
 import { i18nStore, useTranslation } from "@/lib/i18n";
 import { useFloatingLayer, useHostDocument, useHostWindow } from "@/lib/components/layout";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
+import { findUIElementSurfaceId } from "@shared/types/ui-editor/frame";
+import { getUIPageParams } from "@shared/types/ui-editor/pageParams";
+import type { UIAppSurface } from "@shared/types/ui-editor/document";
 import { uiStructFieldLabel, type UIStructDef, type UIStructField } from "@shared/types/ui-editor/struct";
 import { ListContentModal } from "./ListContentModal";
 import { PageAnimationEditor } from "@/lib/ui-editor/widget-modules/shared/page-animation/PageAnimationEditor";
@@ -822,6 +825,7 @@ function ListContentField(props: CustomFieldProps<UIInspectorData>) {
                 items={current.items}
                 generateFieldId={() => data.documentService.generateId()}
                 onFieldsChange={next => data.documentService.setListItemStructFields(element.id, next)}
+                onShapeChange={shapeId => data.documentService.setListItemStructShape(element.id, shapeId)}
                 onItemsChange={next => patchListProps(data, { items: next })}
             />
         </div>
@@ -854,6 +858,20 @@ function ListItemAnimationField(props: CustomFieldProps<UIInspectorData>) {
             }
         />
     );
+}
+
+/**
+ * The page this list is drawn on, or null for a list in a component definition.
+ *
+ * Read off the project's document: in a component editor the inspector's own document is a view of
+ * the definition, where the list's surface is the editor's and no page at all. A component is drawn
+ * on whichever page places it, so it has no one page's parameters to choose from.
+ */
+function listPageSurface(data: UIInspectorData): UIAppSurface | null {
+    const document = data.documentService.getPageDocument();
+    const surfaceId = findUIElementSurfaceId(document, data.element.id);
+    const surface = surfaceId ? document.surfaces.find(item => item.id === surfaceId) : null;
+    return surface?.kind === "appSurface" ? surface : null;
 }
 
 export function createListInspector(ctx: InspectorContext) {
@@ -961,14 +979,45 @@ export function createListInspector(ctx: InspectorContext) {
                                 getValue: (d: D) => getLiveListProps(d).itemsBinding?.key ?? "",
                                 setValue: (_d: D, v: string) => patchItemsBinding({ key: v }),
                             }),
-                            // Same control, its own label: a page prop is named by whoever opened the
-                            // page, so calling it a state key would send the author looking for a store.
+                            // On a page, the parameters the page declares, picked rather than typed:
+                            // the same names the nodes that open the page grow inputs for, so the
+                            // list and whoever opens the page cannot spell one differently. A name
+                            // the page does not declare stays listed, marked, so the field still
+                            // shows what is stored.
+                            defineField<D, any>({
+                                id: "list.itemsBindingPageParam",
+                                type: "select",
+                                label: t("widgets.list.pageParam"),
+                                hidden: (d: D) =>
+                                    getLiveListProps(d).itemsBinding?.kind !== "pageProp" || listPageSurface(d) === null,
+                                options: (d: D) => {
+                                    const declared = getUIPageParams(listPageSurface(d)).map(param => ({
+                                        value: param.name,
+                                        label: param.name,
+                                    }));
+                                    const current = getLiveListProps(d).itemsBinding?.key ?? "";
+                                    const stale = current && !declared.some(option => option.value === current)
+                                        ? [{ value: current, label: current, secondaryLabel: t("widgets.list.pageParamUndeclared") }]
+                                        : [];
+                                    return [
+                                        { value: "", label: declared.length > 0 ? t("common.none") : t("widgets.list.noPageParams") },
+                                        ...declared,
+                                        ...stale,
+                                    ];
+                                },
+                                getValue: (d: D) => getLiveListProps(d).itemsBinding?.key ?? "",
+                                setValue: (_d: D, v: string | number) => patchItemsBinding({ key: String(v) }),
+                            }),
+                            // In a component, typed: the page is whichever one places it. Its own
+                            // label, because a page prop is named by whoever opened the page, and
+                            // calling it a state key would send the author looking for a store.
                             defineField<D, any>({
                                 id: "list.itemsBindingPropName",
                                 type: "text",
                                 label: t("widgets.list.propName"),
                                 placeholder: t("widgets.list.propNamePlaceholder"),
-                                hidden: (d: D) => getLiveListProps(d).itemsBinding?.kind !== "pageProp",
+                                hidden: (d: D) =>
+                                    getLiveListProps(d).itemsBinding?.kind !== "pageProp" || listPageSurface(d) !== null,
                                 getValue: (d: D) => getLiveListProps(d).itemsBinding?.key ?? "",
                                 setValue: (_d: D, v: string) => patchItemsBinding({ key: v }),
                             }),

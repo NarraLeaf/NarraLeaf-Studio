@@ -277,7 +277,8 @@ describe.each(ROOT_NAMES)("a component whose root is called %s", rootName => {
 
         createComponentDocumentServiceAdapter(base, "card").updateElementLayout("frame", { width: 500, height: 360 });
 
-        expect(writes).toEqual([["card", "frame", { width: 500, height: 360 }]]);
+        // The trailing options are the write's own (`skipHistory`), passed on as the editor gave them.
+        expect(writes).toEqual([["card", "frame", { width: 500, height: 360 }, {}]]);
     });
 });
 

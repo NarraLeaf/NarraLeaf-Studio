@@ -127,6 +127,16 @@ export function SceneFlowBranchNode({ data, isConnectable }: NodeProps) {
                         {t("story.flow.branch.fallsThrough")}
                     </span>
                 )}
+                {arm.endings.length > 0 && (
+                    <span
+                        className="shrink-0 text-fg-subtle"
+                        data-tip={t("story.flow.branch.endsTitle", {
+                            names: arm.endings.map(name => name || t("story.flow.route.endingUnnamed")).join(" · "),
+                        })}
+                    >
+                        {t("story.flow.branch.ends")}
+                    </span>
+                )}
             </div>
 
             {/* Keyed by the arm's own id, so the edges the model attributed to this arm start on

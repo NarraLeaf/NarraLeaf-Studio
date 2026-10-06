@@ -7,6 +7,9 @@ import { buildUIFrameGraph, findUIFrameHost } from "@shared/types/ui-editor/fram
 import { normalizeUIPageAnimationSettings, type UIPageAnimationSettings } from "@shared/types/ui-editor/pageAnimation";
 import { PageAnimationEditor } from "@/lib/ui-editor/widget-modules/shared/page-animation/PageAnimationEditor";
 import { i18nStore, translate, useTranslation } from "@/lib/i18n";
+import { FieldLabel } from "@/lib/components/elements";
+import { PageParamValueInput } from "@/apps/workspace/modules/properties/PageParamsEditor";
+import { getUIPageParams, uiPageParamDefaultValue } from "@shared/types/ui-editor/pageParams";
 import { getFrameProps, type FrameWidgetProps } from "./helpers";
 
 const NO_PAGE_VALUE = "__nl-frame-no-page__";
@@ -32,6 +35,62 @@ const FrameParamsBlueprintValueField = createBlueprintValueField({
         }),
     getLiteralValue: ({ liveElement }) => getFrameProps(liveElement).params,
 });
+
+/** The page this Page widget shows, read off the project's document (see {@link pageOptions}). */
+function frameTargetSurface(data: UIInspectorData) {
+    const targetSurfaceId = getFrameProps(data.element).targetSurfaceId;
+    return targetSurfaceId
+        ? data.documentService.getPageDocument().surfaces.find(surface => surface.id === targetSurfaceId) ?? null
+        : null;
+}
+
+/** Whether the widget's params come from a value blueprint rather than from what is written here. */
+function frameParamsBound(data: UIInspectorData): boolean {
+    const live = data.documentService.getDocument().elements[data.element.id] ?? data.element;
+    return live.valueBindings?.params?.kind === "blueprintValue";
+}
+
+/** True when the page shown declares parameters and the widget gives them from this inspector. */
+function framePageParamsShown(data: UIInspectorData): boolean {
+    return !frameParamsBound(data) && getUIPageParams(frameTargetSurface(data)).length > 0;
+}
+
+/**
+ * The values this widget gives the page it shows: one field per parameter the page declares, each
+ * showing the page's default until the widget gives its own.
+ *
+ * Stored where they always were, in the widget's `params`, under each parameter's name - the props
+ * the page is drawn with - so a value the widget gives is exactly what `Get Page Param` reads there.
+ */
+function FramePageParamsField({ data }: CustomFieldProps<UIInspectorData>) {
+    const live = data.documentService.getDocument().elements[data.element.id] ?? data.element;
+    const given = getFrameProps(live).params;
+    const params = getUIPageParams(frameTargetSurface(data));
+    return (
+        <div className="space-y-2">
+            {params.map(param => (
+                <div key={param.id}>
+                    <FieldLabel as="div">{param.name}</FieldLabel>
+                    <PageParamValueInput
+                        type={param.type}
+                        value={Object.prototype.hasOwnProperty.call(given, param.name) ? given[param.name] : undefined}
+                        placeholder={uiPageParamDefaultValue(param)}
+                        ariaLabel={param.name}
+                        onCommit={next => {
+                            const nextParams = { ...given };
+                            if (next === null) {
+                                delete nextParams[param.name];
+                            } else {
+                                nextParams[param.name] = next;
+                            }
+                            patchFrameProps(data, { params: nextParams });
+                        }}
+                    />
+                </div>
+            ))}
+        </div>
+    );
+}
 
 function FrameAnimationField({ data }: CustomFieldProps<UIInspectorData>) {
     const { t } = useTranslation();
@@ -142,10 +201,21 @@ export function createFrameInspector(ctx: InspectorContext) {
                         },
                     }),
                     defineField<D, any>({
+                        id: "frame.pageParams",
+                        type: "custom",
+                        label: t("widgets.frame.params"),
+                        component: FramePageParamsField,
+                        hidden: (data: D) => !framePageParamsShown(data),
+                    }),
+                    // The whole props object, as JSON or from a value blueprint: what a page that
+                    // declares nothing is given, and the way to compute every value at once. Not
+                    // offered beside the fields above, which edit the same object one value at a time.
+                    defineField<D, any>({
                         id: "frame.params",
                         type: "custom",
                         label: t("widgets.frame.props"),
                         component: FrameParamsBlueprintValueField,
+                        hidden: (data: D) => framePageParamsShown(data),
                     }),
                     defineField<D, any>({
                         id: "section.frameAnimation",
