@@ -3840,7 +3840,7 @@
         {
           "id": "track",
           "name": "トラック",
-          "type": "string",
+          "type": "audioTrack",
           "defaultValue": "bgm"
         }
       ],
@@ -49751,7 +49751,7 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-10-06T02:53:08.046Z"
+    "updatedAt": "2026-10-06T22:17:58.638Z"
   },
   "structs": {},
   "entrySurfaceId": "5107c0a1-0000-4000-8000-000000000500"

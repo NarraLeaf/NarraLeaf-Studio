@@ -8,9 +8,19 @@
  * also no focused-control claim: v1 has no focus ring on the pad, so A always raises its action
  * rather than "pressing" a Tab-focused button.
  *
- * Each edge gets its own `createEventPropagationControl()`. There is no DOM event to hang one on.
- * Dispatch is a serial queue so a second press that arrives while the first graph is still running
- * cannot overtake it.
+ * After the owner, the controls: every mounted widget with a gamepad head on a drawing that holds
+ * the keys (`gamepadControls`). That is the order a key goes in - the global, then the owner, then the
+ * controls listening on `window` - and like a key, a press carries one event control the whole way,
+ * so a handler that stops it anywhere keeps it from everything after: a global head that stops a press
+ * keeps it from the owner and from every control. There is no DOM event to hang that control on, so
+ * each edge makes its own and hands it along.
+ *
+ * Who hears a press is settled before any of its graphs run, as a key's is: the owner is read then,
+ * and the controls listening then are the ones it is handed to, so a layer the global's graph opens
+ * does not also hear the press that opened it. Dispatch is a serial queue so a second press that
+ * arrives while the first graph is still running cannot overtake it; the controls are started rather
+ * than waited for, as a key's listeners are, so a control's graph that waits on something does not
+ * hold up the next press.
  *
  * Installed only from GameApp (Dev Mode / preview / exported runtime). The editor canvas never
  * starts the tracker, so widget heads there stay quiet even if they subscribe.
@@ -25,6 +35,7 @@ import {
     dispatchSurfaceBlueprintEvent,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
 import { createEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
+import { captureGamepadControls } from "@/lib/ui-editor/runtime/input/gamepadControls";
 import { noteInputDevice } from "@/lib/ui-editor/runtime/input/inputDeviceState";
 import { getSharedInputHoldTracker } from "@/lib/ui-editor/runtime/input/inputHoldState";
 import {
@@ -117,6 +128,11 @@ async function dispatchGamepadToOwner(
     }
 }
 
+/**
+ * One press or release, all the way through: the global blueprint's gamepad heads and - for a press -
+ * the input actions the button is bound to, then the keyboard owner's heads and actions, then the
+ * controls (see the module comment).
+ */
 export async function dispatchGameGamepad(
     input: GameGamepadDispatch,
     edge: UIGamepadButtonEdge,
@@ -125,6 +141,7 @@ export async function dispatchGameGamepad(
     const payload = { button: edge.button };
     const eventControl = createEventPropagationControl();
     const owner = input.readKeyboardOwner();
+    const controls = captureGamepadControls();
     const raisesActions = edge.type === "down";
     const raisedActions = raisesActions
         ? resolveGlobalInputActionPayloads({
@@ -147,22 +164,22 @@ export async function dispatchGameGamepad(
     if (raisesActions && !eventControl.isPropagationStopped()) {
         await answerGlobalInputActions(input, raisedActions, eventControl);
     }
-    if (!owner || eventControl.isPropagationStopped()) {
-        return;
+    if (owner && !eventControl.isPropagationStopped()) {
+        await dispatchGamepadToOwner(input, owner, eventName, payload, eventControl, raisesActions, edge.button);
+        const engineNvl = "stage" in owner ? owner.engineNvl : null;
+        if (engineNvl && !eventControl.isPropagationStopped()
+            && raisedActions.some(action => engineNvl.actionIds.has(action.actionId))) {
+            await engineNvl.advance();
+        }
     }
-    await dispatchGamepadToOwner(input, owner, eventName, payload, eventControl, raisesActions, edge.button);
-    const engineNvl = "stage" in owner ? owner.engineNvl : null;
-    if (engineNvl && !eventControl.isPropagationStopped()
-        && raisedActions.some(action => engineNvl.actionIds.has(action.actionId))) {
-        await engineNvl.advance();
-    }
+    controls(edge, eventControl);
 }
 
 /**
  * Start the shared gamepad tracker and dispatch its edges until the returned function is called.
  *
- * Widget heads subscribe to the same tracker separately (`EditorNodeWrapper`); they do not start
- * it. Stopping here is what keeps the editor canvas quiet.
+ * Widget heads are handed their presses from here (`gamepadControls`); nothing else starts the
+ * tracker, and nothing else hands them a press, which is what keeps the editor canvas quiet.
  */
 export function listenForGamepads(input: GameGamepadDispatch): () => void {
     const tracker = getSharedGamepadTracker();
