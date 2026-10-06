@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
     DEFAULT_LOCKED_NAME_MASK,
@@ -762,5 +763,46 @@ describe("the words the author writes, for translation", () => {
         expect(localized.groups[0]?.name).toBe("[group.g1.name] Chapter one");
         expect(localized.settings.lockedNameMask).toBe("[lockedNameMask] Locked");
         expect(localized.items[0]?.hidden).toBe(true);
+    });
+});
+
+/**
+ * The row shapes the manifest declares (`contributes.structs`) are what a list given one draws from and
+ * what a blueprint reads by name, so they have to be the rows the nodes hand out - key for key, type
+ * for type. A field added to a row and not to the manifest is a field no list can show.
+ */
+describe("the row shapes the manifest declares", () => {
+    const manifest = JSON.parse(readFileSync(new URL("./manifest.json", import.meta.url), "utf8")) as {
+        contributes: { structs: { id: string; fields: { key: string; type: string }[] }[] };
+    };
+    const shape = (id: string) => manifest.contributes.structs.find(struct => struct.id === id)!;
+    const typeOf = (value: unknown): string =>
+        typeof value === "boolean" ? "boolean"
+            : typeof value === "number" ? "number"
+            : typeof value === "string" ? "string"
+            : "image";
+    const sample = artwork({
+        id: "art",
+        variants: [{ id: "art.v.1", name: "Day", imageAssetId: "asset-day" }],
+    });
+    const store = storeOf({ items: [sample], groups: [{ id: "g1", name: "Chapter 1" }] });
+
+    it.each([
+        ["narraleaf.gallery.entry", () => projectGalleryEntries(store, new Set(["art.v.1"]))[0]!],
+        ["narraleaf.gallery.variant", () => projectGalleryVariants(store, sample, new Set(["art.v.1"]))[0]!],
+    ])("%s names every field of the row, with its type", (id, row) => {
+        const value = row() as unknown as Record<string, unknown>;
+        expect(shape(id).fields.map(field => field.key).sort()).toEqual(Object.keys(value).sort());
+        for (const field of shape(id).fields) {
+            expect(field.type, `${id}.${field.key}`).toBe(typeOf(value[field.key]));
+        }
+    });
+
+    it("declares a group as the three fields Get Gallery Groups hands out", () => {
+        expect(shape("narraleaf.gallery.group").fields).toEqual([
+            { key: "index", type: "number" },
+            { key: "id", type: "string" },
+            { key: "name", type: "string" },
+        ]);
     });
 });

@@ -48,7 +48,10 @@ import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
 import { useStarredStoryCommands } from "./useStarredStoryCommands";
 import { STARRED_ICON_COLOR } from "./storyActionCreatorFavorites";
 import { getCommandDef, getDefById, localizedCommandToken } from "./commands/registry";
-import { localizeCommandVerb } from "./storyCommandSpelling";
+import { expandCommandAbbreviation, localizeCommandVerb } from "./storyCommandSpelling";
+import { abbreviationsOf, NO_ABBREVIATIONS, type StoryCommandAbbreviations } from "./storyCommandAbbreviations";
+import { useStoryCommandAbbreviations } from "./useStoryCommandAbbreviations";
+import { MenuShortcut } from "@/lib/components/elements/MenuShortcut";
 import { completionFor, defaultHighlights, getCommandCursor, type StoryCommandCursor } from "./storyCommandCursor";
 import { getCommandCandidates, hasCandidateSource, type StoryCommandCandidate } from "./storyCommandCandidates";
 import { parseCommandLine } from "./storyCommandParser";
@@ -2190,6 +2193,9 @@ export function InsertRow(props: {
      * slot object on every keystroke cannot invalidate the lists memoized against it.
      */
     const scopeName = props.mode.slot.characterScope?.name ?? null;
+    // The author's abbreviations that still expand: the line replaces them once the word is finished,
+    // and the menu ranks and prints the same list, so the two always agree on what `/c` is.
+    const { live: abbreviations } = useStoryCommandAbbreviations();
     const actionOptions = useMemo<PaletteActionCommand[]>(
         () => {
             const all = [
@@ -2202,9 +2208,9 @@ export function InsertRow(props: {
                 // A plugin action carries the label its own language pack already resolved.
                 ...pluginCommands,
             ];
-            return searchActionCommands(scopeName === null ? all : characterScopedActions(all), chooserQuery);
+            return searchActionCommands(scopeName === null ? all : characterScopedActions(all), chooserQuery, abbreviations);
         },
-        [chooserQuery, ct, pluginCommands, props.commandContext, scopeName],
+        [abbreviations, chooserQuery, ct, pluginCommands, props.commandContext, scopeName],
     );
     // The browse is the sidebar's projection, not a second catalogue: same `accepts` classification.
     // Handed over undeduped, because the menu's category column needs both readings of it —
@@ -2232,7 +2238,7 @@ export function InsertRow(props: {
         () => getSpeakerCandidates(props.characters, props.tempSpeakers, chooserQuery),
         [chooserQuery, props.characters, props.tempSpeakers],
     );
-    const actionMenu = useActionCommandMenuState(actionOptions, chooserQuery, sidebarGroups, starredCommands);
+    const actionMenu = useActionCommandMenuState(actionOptions, chooserQuery, sidebarGroups, starredCommands, abbreviations);
     const characterMenu = useCharacterPickerState(characterOptions);
     const textStyle = useStoryEditorTextStyle();
 
@@ -2408,8 +2414,11 @@ export function InsertRow(props: {
                         const typedCaret = event.target.selectionStart ?? typed.length;
                         // The verb settles into the command language the moment it is finished, so a
                         // hand-typed `@show` reads as the `@显示` the menu, the ghost and the committed
-                        // row all say. Almost every keystroke returns null and takes the plain path.
-                        const respelled = localizeCommandVerb(typed, typedCaret, props.slashAtAlias);
+                        // row all say - and one of the author's own abbreviations (`/c`) becomes the
+                        // command it stands for, in that same spelling. Almost every keystroke returns
+                        // null and takes the plain path.
+                        const respelled = expandCommandAbbreviation(typed, typedCaret, props.slashAtAlias, abbreviations)
+                            ?? localizeCommandVerb(typed, typedCaret, props.slashAtAlias);
                         if (!respelled) {
                             setCaret(typedCaret);
                             setLineValue(typed);
@@ -2542,6 +2551,7 @@ export function InsertRow(props: {
                         starred={actionMenu.starred}
                         starredIds={starredIds}
                         onToggleStarred={toggleStarred}
+                        abbreviations={abbreviations}
                         stops={actionMenu.stops}
                         category={actionMenu.category}
                         reachable={actionMenu.reachable}
@@ -2762,6 +2772,7 @@ function useActionCommandMenuState(
     query: string,
     allGroups: readonly StoryCommandSidebarGroup[],
     starredCommands: readonly PaletteActionCommand[],
+    abbreviations: StoryCommandAbbreviations = NO_ABBREVIATIONS,
 ) {
     const browse = query.trim() === "";
     const [category, setCategory] = useState<MenuCategory>(ALL_MENU_CATEGORY);
@@ -2783,9 +2794,9 @@ function useActionCommandMenuState(
             return scoped;
         }
         return scoped
-            .map(entry => ({ ...entry, commands: searchActionCommands(entry.commands, query) }))
+            .map(entry => ({ ...entry, commands: searchActionCommands(entry.commands, query, abbreviations) }))
             .filter(entry => entry.commands.length > 0);
-    }, [allGroups, browse, category, query]);
+    }, [abbreviations, allGroups, browse, category, query]);
 
     /**
      * Which categories the current query can still reach, so the column can dim the ones it cannot.
@@ -2794,14 +2805,14 @@ function useActionCommandMenuState(
     const reachable = useMemo<ReadonlySet<MenuCategory>>(() => {
         const reached = new Set<MenuCategory>();
         for (const entry of allGroups) {
-            const hits = browse ? entry.commands : searchActionCommands(entry.commands, query);
+            const hits = browse ? entry.commands : searchActionCommands(entry.commands, query, abbreviations);
             if (hits.length > 0) {
                 reached.add(ALL_MENU_CATEGORY);
                 reached.add(entry.group.category);
             }
         }
         return reached;
-    }, [allGroups, browse, query]);
+    }, [abbreviations, allGroups, browse, query]);
 
     // The rows the menu shows, in the order the highlight walks them: the ranked flat list under 全部
     // with a query, the section projection everywhere else.
@@ -2816,10 +2827,20 @@ function useActionCommandMenuState(
     }, [options, ranked, sections, starred]);
     const [activeKey, setActiveKey] = useState<string | null>(null);
     const activeStop = stops.find(stop => stop.key === activeKey) ?? stops[0] ?? null;
+    /**
+     * The row an exact abbreviation names. A typed filter otherwise keeps the highlight wherever it
+     * already was, but `/c` is a word the line will turn into one particular command on the next space,
+     * so Enter has to take that command too - the highlight goes to it whenever the rows change.
+     */
+    const abbreviatedCommandId = abbreviations.get(query.trim().toLowerCase()) ?? null;
+    const abbreviatedKey = abbreviatedCommandId === null
+        ? null
+        : stops.find(stop => stop.command.id === abbreviatedCommandId)?.key ?? null;
 
     useEffect(() => {
-        setActiveKey(current => stops.some(stop => stop.key === current) ? current : stops[0]?.key ?? null);
-    }, [stops]);
+        setActiveKey(current => abbreviatedKey
+            ?? (stops.some(stop => stop.key === current) ? current : stops[0]?.key ?? null));
+    }, [abbreviatedKey, stops]);
 
     const selectKey = (key: string) => {
         setActiveKey(key);
@@ -2862,7 +2883,8 @@ function useActionCommandMenuState(
 }
 
 /**
- * One command in the `/` menu, with the star that adds it to (or takes it out of) the starred rows.
+ * One command in the `/` menu, with the star that adds it to (or takes it out of) the starred rows,
+ * and the author's abbreviations for it printed where a menu prints a shortcut.
  *
  * The star is drawn on the highlighted row, and stays drawn on a starred one, where it is also the mark
  * that says so. It sits beside the row rather than inside it, and takes its gesture on `mousedown` with
@@ -2873,6 +2895,7 @@ function ActionCommandMenuRow(props: {
     stop: StoryCommandMenuStop;
     active: boolean;
     starred: boolean;
+    abbreviations: readonly string[];
     onHighlight: (key: string) => void;
     onChoose: (commandId: string) => void;
     onToggleStarred: (commandId: string) => void;
@@ -2903,6 +2926,7 @@ function ActionCommandMenuRow(props: {
                     <span className="block truncate text-sm text-fg">{command.label}</span>
                     {command.detail ? <span className="block truncate text-2xs text-fg-subtle">{command.detail}</span> : null}
                 </span>
+                <MenuShortcut of={props.abbreviations.join("  ")} />
             </button>
             {props.active || props.starred ? (
                 <span className="pointer-events-none absolute inset-y-0 right-1 flex items-center">
@@ -2972,6 +2996,8 @@ function ActionCommandMenu(props: {
     starred: readonly StoryCommandMenuStop[];
     starredIds: ReadonlySet<string>;
     onToggleStarred: (commandId: string) => void;
+    /** The author's live abbreviations, printed at the end of the rows they name. */
+    abbreviations: StoryCommandAbbreviations;
     stops: readonly StoryCommandMenuStop[];
     category: MenuCategory;
     reachable: ReadonlySet<MenuCategory>;
@@ -3059,6 +3085,7 @@ function ActionCommandMenu(props: {
                         stop={stop}
                         active={stop.key === props.activeKey}
                         starred={props.starredIds.has(stop.command.id)}
+                        abbreviations={abbreviationsOf(stop.command.id, props.abbreviations)}
                         onHighlight={props.onHighlight}
                         onChoose={props.onChoose}
                         onToggleStarred={props.onToggleStarred}
@@ -3080,6 +3107,7 @@ function ActionCommandMenu(props: {
                                 stop={stop}
                                 active={stop.key === props.activeKey}
                                 starred
+                                abbreviations={abbreviationsOf(stop.command.id, props.abbreviations)}
                                 onHighlight={props.onHighlight}
                                 onChoose={props.onChoose}
                                 onToggleStarred={props.onToggleStarred}
@@ -3113,6 +3141,7 @@ function ActionCommandMenu(props: {
                                         stop={{ key, group: entry.group, command }}
                                         active={key === props.activeKey}
                                         starred={props.starredIds.has(command.id)}
+                                        abbreviations={abbreviationsOf(command.id, props.abbreviations)}
                                         onHighlight={props.onHighlight}
                                         onChoose={props.onChoose}
                                         onToggleStarred={props.onToggleStarred}

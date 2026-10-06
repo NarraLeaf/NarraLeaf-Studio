@@ -104,6 +104,73 @@ A node from a plugin nobody bundles is still unknown here, as it is in the edito
 type, which is what decides its event heads. `--all` includes nodes kept for old
 graphs but hidden from the palette. `--json` on any of these.
 
+## Structs: what is inside an ending
+
+Some pins carry a value whose fields the engine fixes: `Get Endings` hands out endings, `Get History`
+history entries, `List Auto Saves` save entries. Their type says so - `array<struct:nl.ending>` - and
+`node` lists the fields of every shape its pins carry:
+
+```sh
+node project/app/blueprint.js node blueprint.game.getEndings
+node project/app/blueprint.js structs                 # every shape the engine and bundled plugins hand out
+```
+
+A plugin declares the shapes its nodes hand out in its manifest (`contributes.structs`); the bundled
+Gallery's `Get Gallery` answers `array<struct:narraleaf.gallery.entry>`, and those shapes are listed
+beside the engine's. A list that shows such rows names the shape as its item struct.
+
+The array nodes pass the item type along (`Array Filter By Key` on endings gives endings, `Array
+First` gives one ending), and `check` follows the wires the way the canvas does. A field is then read
+with Get Field (`blueprint.list.getItemField`), which names the struct it reads and the field:
+
+```
+    first: blueprint.collection.arrayFirst
+    name: blueprint.list.getItemField
+        struct = nl.ending
+        field = name
+
+    endings.endings -> first.array
+    first.item -> name.object
+```
+
+`struct` is the node's own record of what it reads, set by the first struct wired in; a file writes
+it beside `field`. For the engine's shapes a field is named by its key. Left unwired inside a list
+row, Get Field reads the row instead - write no `struct` then, and name the field by the id the list
+gives it. A field the shape does not have, and an array node's `key` that names no field of its
+items, are reported by `check`.
+
+Items, events and contents of a list are typed by that list's shape: `Item Click`'s `item`, `Get Item
+At`, `Get List Content` - the list wired into the node's `list` pin, or the list the graph belongs to.
+`Set List Content` and the other nodes that take rows report rows lacking a field the list declares
+(`node.list_shape_mismatch`). Pins whose type a field picks - `Get Property` by `property`, `On
+Preference Changed` by `preferenceKey` - say so under `typed by` in `node`.
+
+## Pages that take parameters
+
+A page may declare the values it is opened with - in its properties in Studio, with `param` lines in
+a `.ui` file - and `targets` lists them after the page's owner line, by id and type:
+
+```
+Confirm  owner=surfaceMain surface=b7c1f3ae-…  # params: message:string, buttons:json
+```
+
+`Go Page`, `Replace Page`, `Show Layer` and `Set Frame Page` grow one input per parameter of the
+page they pick, named `param_<id>`, in front of their `Page props` input. A literal is written like
+any other input's; given nothing, the page reads the parameter's default. `Get Page Param` names the
+one it reads by id and gives it in its declared type:
+
+```
+    open: blueprint.page.go surfaceId=<surfaceId>
+        param_message = "Leave without saving?"
+    count: blueprint.frame.getParam
+        paramId = count
+```
+
+The inputs belong to the page picked in the node's own field. A page that arrives on the
+`surfaceId` wire instead is opened with `Page props` alone. `check` reports a `Get Page Param`
+whose parameter the page no longer declares (`node.page_param_missing`), and an input left wired
+after its parameter was removed is the ordinary `edge.port_mismatch`.
+
 ## Finding a project's surfaces, components and elements
 
 An owner line needs ids. This prints them, already spelled as owner fields:

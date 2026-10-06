@@ -258,7 +258,7 @@ export function BlueprintLayerPreview({
             ) : null}
             {showGraphName && model?.graphName ? (
                 <div className="pointer-events-none absolute bottom-2 left-2 max-w-[calc(100%-16px)] truncate text-2xs text-fg-subtle">
-                    {model.graphName}
+                    {model.graphNameKey ? t(model.graphNameKey) : model.graphName}
                 </div>
             ) : null}
         </div>

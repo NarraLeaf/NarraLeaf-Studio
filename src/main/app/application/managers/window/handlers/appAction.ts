@@ -28,6 +28,7 @@ import { getMainLocale } from "../../../i18n";
 import { collectLogArchiveFiles, encodeLogArchive } from "../../../logging/logArchive";
 import { windowProjectPath } from "../../../utils/windowProject";
 import { THIRD_PARTY_NOTICES_FILENAME } from "../../build/thirdPartyNotices";
+import { studioFetch } from "../../downloadProxy";
 
 export class AppPlatformInfoHandler extends IPCHandler<IPCEventType.getPlatform> {
     readonly name = IPCEventType.getPlatform;
@@ -807,7 +808,7 @@ export class AppProbeDownloadSourceHandler extends IPCHandler<IPCEventType.appPr
             return this.success({ reachable: false, error: "not https" });
         }
         try {
-            const response = await fetch(parsed.toString(), {
+            const response = await studioFetch(parsed.toString(), {
                 method: "HEAD",
                 redirect: "follow",
                 signal: AbortSignal.timeout(AppProbeDownloadSourceHandler.TIMEOUT_MS),

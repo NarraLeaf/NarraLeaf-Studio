@@ -8,6 +8,7 @@ import type {
     CompileWorkerReadPayloadReply,
     ShippedContentAuditReport,
 } from "./compileWorkerProtocol";
+import { buildLaneCount, SEALED_PROBE_LANE_CEILING } from "./buildLanes";
 import { setDownloadReporter } from "./downloadReporting";
 import { setStepProgressReporter } from "./stepProgress";
 
@@ -58,6 +59,9 @@ setStepProgressReporter(progress => send({ type: "progress", progress }));
  * (see project/build/build-main.js) and a static import would make esbuild pull it into this bundle,
  * where those aliases mean something else. A missing bundle is a Studio defect and throws - a check
  * that quietly did not run would be worse than one that was never written.
+ *
+ * With threads to prove a sealed package's entries on, because this is the bundled audit and a
+ * thread can run it: reading back every entry of a protected package is the long part of the audit.
  */
 async function auditShippedContent(
     appDir: string,
@@ -65,9 +69,15 @@ async function auditShippedContent(
 ): Promise<ShippedContentAuditReport> {
     const modulePath = path.join(__dirname, "contentAudit.js");
     const audit = require(modulePath) as {
-        runShippedContentAudit(appDir: string, supportBinaryPath?: string): Promise<ShippedContentAuditReport>;
+        runShippedContentAudit(
+            appDir: string,
+            supportBinaryPath?: string,
+            options?: { probeThreads?: number },
+        ): Promise<ShippedContentAuditReport>;
     };
-    return await audit.runShippedContentAudit(appDir, supportBinaryPath ?? undefined);
+    return await audit.runShippedContentAudit(appDir, supportBinaryPath ?? undefined, {
+        probeThreads: buildLaneCount(SEALED_PROBE_LANE_CEILING),
+    });
 }
 
 parentPort.on("message", event => {

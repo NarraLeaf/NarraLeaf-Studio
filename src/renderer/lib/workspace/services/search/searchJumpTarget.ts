@@ -77,9 +77,10 @@ export type SearchJumpTarget =
     | { kind: "storyMotion"; animationId: string }
     /**
      * A page of Project settings - the panel's sub-pages - and, with `part`, the part of it to scroll
-     * into view: `fonts` is the project's font stack on the Design page.
+     * into view: `fonts` is the project's font stack on the Design page, `letterbox` the letterbox
+     * settings on the Settings page.
      */
-    | { kind: "projectPage"; page: "app" | "game" | "design" | "project" | "runtimes" | "settings"; part?: "fonts" }
+    | { kind: "projectPage"; page: "app" | "game" | "design" | "project" | "runtimes" | "settings"; part?: "fonts" | "letterbox" }
     /**
      * A story's own row in the Story panel's list, selected and scrolled into view - the place a story
      * is renamed or deleted, and the one way into a story whose document cannot be opened.

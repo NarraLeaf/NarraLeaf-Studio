@@ -41,7 +41,7 @@ export function SurfaceActions({
     // bundle into the interface document, and one adds a copied interface to it.
     const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
     return (
-        <div className="px-2 mt-2 space-y-1.5">
+        <div className="shrink-0 px-2 mt-2 space-y-1.5">
             <div className="flex gap-2">
                 <button
                     type="button"

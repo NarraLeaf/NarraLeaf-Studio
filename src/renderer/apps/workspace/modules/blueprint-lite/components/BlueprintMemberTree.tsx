@@ -6,6 +6,7 @@ import type {
 } from "@shared/types/blueprint/document";
 import { listBlueprintEventIds } from "@shared/blueprint/blueprintEventOrder";
 import { listScriptLayers } from "@shared/blueprint/blueprintLayers";
+import { factoryLayerNameKey } from "@shared/types/ui-editor/ownerLabels";
 import { BlueprintLayerKindBadge } from "./BlueprintLayerKindBadge";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
@@ -62,6 +63,15 @@ type VariableGroup = {
     accentClass: string;
     emptyText: string;
 };
+
+/**
+ * A layer's name as this panel shows it and starts a rename from: a layer Studio seeded reads as the
+ * title of the event that starts it (see `factoryLayerNameKey`), any other as its own name.
+ */
+function shownLayerName(id: string, name: string | undefined, t: UseTranslation["t"]): string | undefined {
+    const key = factoryLayerNameKey(id, name);
+    return key ? t(key) : name;
+}
 
 function countForGraph(
     diagnostics: BlueprintGraphEditorDiagnostic[],
@@ -816,7 +826,7 @@ export function BlueprintMemberTree({
     const finishLayerRename = (id: string, name: string | null, endedByKey: boolean) => {
         setRenamingLayerId(null);
         const next = name?.trim() ?? "";
-        if (next && next !== (events[id]?.name ?? "")) {
+        if (next && next !== (shownLayerName(id, events[id]?.name, t) ?? "")) {
             // The same write the rename dialog makes, so it lands on the blueprint's undo stack.
             localBp.renameEventGraph(blueprintId, id, next);
         }
@@ -877,7 +887,7 @@ export function BlueprintMemberTree({
                     }
                     // Empty rather than the id when a layer has no name: the field is what the
                     // rename starts from, and starting it from a UUID invites naming it that.
-                    const cur = events[id]?.name ?? "";
+                    const cur = shownLayerName(id, events[id]?.name, t) ?? "";
                     void inputDialog
                         .show({
                             title: t("blueprint.memberTree.renameLayerTitle"),
@@ -887,7 +897,9 @@ export function BlueprintMemberTree({
                             maxLength: 120,
                         })
                         .then(name => {
-                            if (name != null) {
+                            // Confirming the name as shown keeps the stored one, so a seeded layer
+                            // is not renamed to the words it was only being shown with.
+                            if (name != null && name !== cur) {
                                 localBp.renameEventGraph(blueprintId, id, name);
                             }
                         });
@@ -971,7 +983,7 @@ export function BlueprintMemberTree({
                                 return (
                                     <li key={id} className="flex items-center gap-1.5">
                                         <LayerNameField
-                                            initialName={events[id]?.name ?? ""}
+                                            initialName={shownLayerName(id, events[id]?.name, t) ?? ""}
                                             ariaLabel={t("blueprint.memberTree.renameLayerTitle")}
                                             placeholder={t("blueprint.memberTree.layerNamePlaceholder")}
                                             onDone={(name, endedByKey) => finishLayerRename(id, name, endedByKey)}
@@ -1015,7 +1027,7 @@ export function BlueprintMemberTree({
                                             and the file is what the author opens. */}
                                         {script
                                             ? script.scriptRef.slice(script.scriptRef.lastIndexOf("/") + 1)
-                                            : events[id]?.name ?? t("blueprint.memberTree.unnamedEvent")}
+                                            : shownLayerName(id, events[id]?.name, t) ?? t("blueprint.memberTree.unnamedEvent")}
                                         {errors > 0 ? (
                                             <span className="ml-1 text-danger">{t("blueprint.memberTree.errorBadge", { count: errors })}</span>
                                         ) : warnings > 0 ? (

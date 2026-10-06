@@ -177,15 +177,115 @@ type PageResponse =
     | { ok: false; message: string };
 
 /**
- * Start a codec window. `scratchDir` is where the page file is written; it is
- * Studio's own storage, never the project, because this file is a property of
- * the running Studio rather than of anything the author made.
+ * Start the codec: one hidden window now, and up to `pages` of them as the work calls for them.
+ *
+ * Each window is a renderer process of its own, so each encodes on its own cores, and an `encode`
+ * that finds every window busy opens another rather than queueing - until there are `pages`, after
+ * which it waits for the first to come free. How many encodes run at once is the caller's to decide
+ * by how many it asks for at once; the pool only makes sure each has a page to run in. A caller that
+ * awaits one image at a time gets one window, exactly as before.
+ *
+ * The first window opens here, before this resolves, so a host that cannot open one at all - no GPU
+ * sandbox, a headless machine - finds out at the same point it always did. A later window that will
+ * not open stops the pool growing and nothing else: the windows already open carry on.
+ *
+ * `scratchDir` is where the page file is written; it is Studio's own storage, never the project,
+ * because this file is a property of the running Studio rather than of anything the author made.
+ * Every window loads the same file.
  */
-export async function openWebImageCodec(scratchDir: string): Promise<WebImageCodec> {
+export async function openWebImageCodec(
+    scratchDir: string,
+    options: { pages?: number } = {},
+): Promise<WebImageCodec> {
+    const capacity = Math.max(1, Math.floor(options.pages ?? 1));
     await fs.mkdir(scratchDir, { recursive: true });
     const pagePath = path.join(scratchDir, CODEC_PAGE_FILENAME);
     await fs.writeFile(pagePath, CODEC_PAGE_SOURCE, "utf-8");
 
+    type CodecPage = { window: BrowserWindow; busy: boolean };
+    const pages: CodecPage[] = [];
+    const waiting: Array<(page: CodecPage) => void> = [];
+    let opening = 0;
+    let growthStopped = false;
+    let closed = false;
+
+    try {
+        pages.push({ window: await openCodecWindow(pagePath), busy: false });
+    } catch (error) {
+        await fs.rm(pagePath, { force: true }).catch(() => undefined);
+        throw error;
+    }
+
+    const acquire = async (): Promise<CodecPage> => {
+        const idle = pages.find(page => !page.busy);
+        if (idle) {
+            idle.busy = true;
+            return idle;
+        }
+        if (!growthStopped && pages.length + opening < capacity) {
+            opening += 1;
+            try {
+                const window = await openCodecWindow(pagePath);
+                if (closed) {
+                    window.destroy();
+                    throw new Error("The web image codec has been closed");
+                }
+                const page = { window, busy: true };
+                pages.push(page);
+                return page;
+            } catch (error) {
+                if (closed) {
+                    throw error;
+                }
+                // A machine that ran out of room for another renderer still has the ones it
+                // opened; this encode waits its turn on them like any other.
+                growthStopped = true;
+            } finally {
+                opening -= 1;
+            }
+        }
+        return new Promise(resolve => {
+            waiting.push(resolve);
+        });
+    };
+    const release = (page: CodecPage): void => {
+        const next = waiting.shift();
+        if (next) {
+            // Handed straight on, still marked busy, so no other caller can take it in between.
+            next(page);
+            return;
+        }
+        page.busy = false;
+    };
+
+    return {
+        async encode(request: WebImageEncodeRequest): Promise<WebImageEncodeResult | null> {
+            if (closed) {
+                throw new Error("The web image codec has been closed");
+            }
+            const page = await acquire();
+            try {
+                return await encodeIn(page.window, request);
+            } finally {
+                release(page);
+            }
+        },
+        async close(): Promise<void> {
+            if (closed) {
+                return;
+            }
+            closed = true;
+            for (const page of pages) {
+                if (!page.window.isDestroyed()) {
+                    page.window.destroy();
+                }
+            }
+            await fs.rm(pagePath, { force: true }).catch(() => undefined);
+        },
+    };
+}
+
+async function openCodecWindow(pagePath: string): Promise<BrowserWindow> {
     const window = new BrowserWindow({
         show: false,
         webPreferences: {
@@ -206,37 +306,25 @@ export async function openWebImageCodec(scratchDir: string): Promise<WebImageCod
         window.destroy();
         throw error;
     }
+    return window;
+}
 
-    let closed = false;
+async function encodeIn(
+    window: BrowserWindow,
+    request: WebImageEncodeRequest,
+): Promise<WebImageEncodeResult | null> {
+    const call = `window.__nlWebImageEncode(${JSON.stringify(request.bytes.toString("base64"))},`
+        + `${JSON.stringify(request.sourceType)},${request.lossless},${request.quality ?? 100},`
+        + `${request.resizeTo ? JSON.stringify(request.resizeTo) : "null"})`;
+    const response = await window.webContents.executeJavaScript(call, true) as PageResponse;
+    if (!response?.ok) {
+        // A decode or encode failure is about this one image (a format
+        // Chromium will not take, a size past the canvas ceiling), never
+        // about the build. The caller keeps the original and moves on.
+        return null;
+    }
     return {
-        async encode(request: WebImageEncodeRequest): Promise<WebImageEncodeResult | null> {
-            if (closed) {
-                throw new Error("The web image codec has been closed");
-            }
-            const call = `window.__nlWebImageEncode(${JSON.stringify(request.bytes.toString("base64"))},`
-                + `${JSON.stringify(request.sourceType)},${request.lossless},${request.quality ?? 100},`
-                + `${request.resizeTo ? JSON.stringify(request.resizeTo) : "null"})`;
-            const response = await window.webContents.executeJavaScript(call, true) as PageResponse;
-            if (!response?.ok) {
-                // A decode or encode failure is about this one image (a format
-                // Chromium will not take, a size past the canvas ceiling), never
-                // about the build. The caller keeps the original and moves on.
-                return null;
-            }
-            return {
-                bytes: Buffer.from(response.bytes),
-                verifiedLossless: response.verifiedLossless === true,
-            };
-        },
-        async close(): Promise<void> {
-            if (closed) {
-                return;
-            }
-            closed = true;
-            if (!window.isDestroyed()) {
-                window.destroy();
-            }
-            await fs.rm(pagePath, { force: true }).catch(() => undefined);
-        },
+        bytes: Buffer.from(response.bytes),
+        verifiedLossless: response.verifiedLossless === true,
     };
 }

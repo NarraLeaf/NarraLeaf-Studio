@@ -751,7 +751,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "Runs when the player presses a row. Going back undoes everything after that line, so Show Confirm asks first; its question and its two answers are localization keys, looked up by the three Get Text nodes on the execution wire. On the first answer, Restore From History takes the story back to the pressed line (Get Item Field reads the row's id) and Go back closes this page over it. The second answer leaves the log as it was.",
+                      "text": "Runs when the player presses a row. Going back undoes everything after that line, so Show Confirm asks first; its question and its two answers are localization keys, looked up by the three Get Text nodes on the execution wire. On the first answer, Restore From History takes the story back to the pressed line (Get Field reads the row's id) and Go back closes this page over it. The second answer leaves the log as it was.",
                       "width": 1100,
                       "height": 130
                     },
@@ -10408,7 +10408,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "The Message text is bound to this blueprint (Blueprint Value). Show Confirm opens this page with the question in its page props, under message: Get Page Props reads them when the page appears, Get JSON Field takes message out, and Return Value hands it to the text.",
+                      "text": "The Message text is bound to this blueprint (Blueprint Value). This page declares two params in its properties, message and buttons, and Show Confirm opens it with the question as message: Get Page Param reads it when the page appears, and Return Value hands it to the text.",
                       "width": 760,
                       "height": 130
                     },
@@ -10430,25 +10430,11 @@
                       }
                     }
                   },
-                  "props": {
-                    "id": "props",
-                    "type": "blueprint.page.getProps",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": -313
-                      }
-                    }
-                  },
                   "question": {
                     "id": "question",
-                    "type": "blueprint.data.jsonGet",
+                    "type": "blueprint.frame.getParam",
                     "params": {
-                      "__inlineLiteralPins": [
-                        "path"
-                      ],
-                      "path": "message"
+                      "paramId": "message"
                     },
                     "meta": {
                       "editorLayout": {
@@ -10482,18 +10468,8 @@
                   },
                   {
                     "from": {
-                      "nodeId": "props",
-                      "port": "props"
-                    },
-                    "to": {
                       "nodeId": "question",
-                      "port": "json"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "question",
-                      "port": "result"
+                      "port": "value"
                     },
                     "to": {
                       "nodeId": "give",
@@ -11240,7 +11216,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "Item Click runs for the row that was pressed, and Get Item Field reads that row's auto save. Over a running game the Confirm page asks first, because loading leaves the game the player is in, and the auto save loads only on the first answer. With no game running there is nothing to lose, so it loads at once.",
+                      "text": "Item Click runs for the row that was pressed, and Get Field reads that row's auto save. Over a running game the Confirm page asks first, because loading leaves the game the player is in, and the auto save loads only on the first answer. With no game running there is nothing to lose, so it loads at once.",
                       "width": 1100,
                       "height": 110
                     },
@@ -11626,7 +11602,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "The Blueprint Value of the row's Auto time text. It runs for each row the list draws: Get Item Field reads that row's auto save, and what Return Value gives back is what the text shows.",
+                      "text": "The Blueprint Value of the row's Auto time text. It runs for each row the list draws: Get Field reads that row's auto save, and what Return Value gives back is what the text shows.",
                       "width": 828,
                       "height": 110
                     },
@@ -24365,6 +24341,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-10-04T21:55:42.306Z"
+    "updatedAt": "2026-10-06T01:46:17.153Z"
   }
 }

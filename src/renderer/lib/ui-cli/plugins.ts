@@ -42,6 +42,7 @@ import { sanitizePluginWidgetDeclaration } from "@/lib/plugins/pluginWidgetGuard
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import { uiTextSitesFromPluginDeclaration, type UITextSite } from "@shared/types/ui-editor/textSource";
+import { registerPluginUIStructs } from "@shared/types/ui-editor/builtinStructs";
 import type { PluginWidgetTextContribution } from "@shared/types/plugins";
 import { validatePluginManifest } from "@shared/utils/pluginManifest";
 
@@ -225,6 +226,12 @@ export function loadCliPlugin(dirArg: string): LoadedCliPlugin {
         throw new CliPluginError(`${path.join(dir, "manifest.json")} names no plugin id.`);
     }
     const name = typeof manifest.name === "string" && manifest.name ? manifest.name : id;
+    // The row shapes the plugin declares, so a list given one checks against its fields here as it
+    // does in Studio. From the manifest, which a runtime-only plugin has too.
+    const validated = validatePluginManifest(manifest);
+    if (validated.ok) {
+        registerPluginUIStructs(validated.manifest.id, validated.manifest.contributes.structs);
+    }
     const entry = typeof manifest.entries?.studio === "string" ? manifest.entries.studio : "";
     if (!entry) {
         // A runtime-only plugin contributes no widget modules to the editor, so it has nothing to say
@@ -262,9 +269,8 @@ export function loadCliPlugin(dirArg: string): LoadedCliPlugin {
     }
 
     const declared = Array.isArray(manifest.contributes?.widgets) ? (manifest.contributes.widgets as unknown[]) : [];
-    // Which props are words, as Studio reads them: through its own validator, so a declaration it
+    // Which props are words, as Studio reads them: through its own validator (read above), so a declaration it
     // refuses at install is not one this tool answers from either.
-    const validated = validatePluginManifest(manifest);
     let widgetText: Record<string, PluginWidgetTextContribution[]> = {};
     if (validated.ok) {
         widgetText = validated.manifest.contributes.widgetText;

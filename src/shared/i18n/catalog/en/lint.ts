@@ -874,6 +874,30 @@ export const lint = {
                 + "- A widget outside every list: move it back into a list's Item template, where Field can be "
                 + "changed, or delete it.",
         },
+        uiPagePropUndeclared: {
+            title: "Undeclared page param",
+            description: "A list showing a page prop the page does not declare as a param",
+            message: "This list shows the page prop \"{name}\", which the page does not declare as a param",
+            help:
+                "A list whose runtime items come from a page prop names a prop the page does not list under "
+                + "Params in its properties. The nodes and Page widgets that open the page give a value for "
+                + "each declared param and none for this one, so the list shows no rows in the game.\n"
+                + "\n"
+                + "- Declare a param with this name under Params in the page's properties.\n"
+                + "- Or pick one of the page's params in the list's Content section.",
+        },
+        uiPageParamUnknown: {
+            title: "Unknown page param",
+            description: "A Page widget giving a value the page it shows does not declare",
+            message: "This Page widget gives \"{name}\", which the page it shows does not declare",
+            help:
+                "The page this widget shows declares its params, and the widget gives a value under a name "
+                + "that is not one of them, usually because the param was renamed or removed on the page. "
+                + "The value reaches nothing, and the param it was meant for reads its default.\n"
+                + "\n"
+                + "- Give the value again under the param's current name, in the widget's Params.\n"
+                + "- Or remove it from the widget's props.",
+        },
         uiComponentParamMissing: {
             title: "Missing text parameter",
             description: "A widget in a component showing a parameter the component does not declare as text",
@@ -978,6 +1002,50 @@ export const lint = {
                 + "\n"
                 + "- Wire a value into the pin, or type one on the card.\n"
                 + "- If the node should not run, disconnect it from the chain or delete it.",
+        },
+        blueprintFieldMissing: {
+            title: "Field not in shape",
+            description: "A node that names a field the value it reads does not have",
+            message: "{node}: {struct} has no field {field}",
+            help:
+                "A Get Field node names a field that the struct it reads does not have, or the Key of Array "
+                + "Filter By Key, Array Sort By Key or Array Find By Key names a field the items do not have. "
+                + "This happens after a list's field is deleted, or when a key is typed by hand. Only nodes "
+                + "that will run are checked, and only where the shape of the value is known.\n"
+                + "\n"
+                + "When the node runs, it reads nothing: Get Field gives an empty value, Filter By Key keeps "
+                + "no items, and Sort By Key leaves the order as it was.\n"
+                + "\n"
+                + "- Pick the field again from the node's Field list.\n"
+                + "- On an array node, pick the key from the Key list on the card.",
+        },
+        blueprintPageParamMissing: {
+            title: "Missing page param",
+            description: "Get Page Param reading a param the page does not declare",
+            message: "{node} reads a param the page does not declare",
+            help:
+                "A Get Page Param node names a param that the page its blueprint belongs to does not "
+                + "declare: the param was removed, or the node was copied from another page's blueprint. "
+                + "Only nodes that will run are checked.\n"
+                + "\n"
+                + "The node reads nothing.\n"
+                + "\n"
+                + "- Pick one of the page's params on the node.\n"
+                + "- Or declare the param again under Params in the page's properties.",
+        },
+        blueprintListShapeMismatch: {
+            title: "List fields do not match",
+            description: "Rows of another shape given to a list",
+            message: "{node}: {struct} does not match the list's fields",
+            help:
+                "Set List Content, Append List Item or another list node is given rows that lack fields the list "
+                + "declares, or carry them as another type - for example saves wired into a list whose Struct is "
+                + "Ending. Only nodes that will run are checked, and only where both shapes are known.\n"
+                + "\n"
+                + "The list draws each row from its own fields, so the fields the rows do not carry show empty.\n"
+                + "\n"
+                + "- Set the list's Struct, under Edit content, to the shape wired in.\n"
+                + "- Or wire in rows of the list's shape.",
         },
         blueprintStartSceneForeign: {
             title: "Scene from another story",

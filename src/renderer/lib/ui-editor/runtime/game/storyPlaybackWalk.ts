@@ -145,7 +145,11 @@ class PlanBuilder {
         if (this.stopped) {
             return false;
         }
-        if (isInertKind(block)) {
+        // A disabled row is compiled out with everything under it (see `compileBlockCore`), so play
+        // passes it by. That includes a disabled jump, `/ending` or `/quit`: taken as the row it
+        // would be if enabled, it ended the walk at a row that never runs, and everything after it
+        // was left out of the tail.
+        if (block.disabled || isInertKind(block)) {
             return true;
         }
         if (block.kind === "jump") {

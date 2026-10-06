@@ -271,6 +271,9 @@ export async function addStarterTitlePage(context: WorkspaceContext): Promise<Ad
         graphs: lifted.payload.graphs,
         placement: IMPORT_PLACEMENT_FROM_SOURCE,
         textKeys: templateTextKeys(content.localizationKeys),
+        // The import is the middle of this flow: the entry page moves to it and the blank page goes
+        // after it, and a step that took back only the import would leave neither page.
+        history: false,
     });
     const surface = imported.importedSurfaces[0];
     if (!surface) {

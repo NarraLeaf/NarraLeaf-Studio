@@ -19,7 +19,7 @@ import {
     uiElementTypeAcceptsUserChildren,
     type UIElement,
 } from "@shared/types/ui-editor/document";
-import { BUILTIN_UI_STRUCTS } from "@shared/types/ui-editor/builtinStructs";
+import { listEngineUIStructIds, resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { UI_STAGE_SLOT_IDS } from "@shared/types/ui-editor/stageSlots";
 import type { UIStructDef } from "@shared/types/ui-editor/struct";
 import { getWidgetLogicApi, type WidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
@@ -482,9 +482,12 @@ export function queryWidgets(query: WidgetQuery): WidgetSummary[] {
     });
 }
 
-/** The struct shapes that ship with Studio, which a list may name without declaring anything. */
+/**
+ * The struct shapes a list may name without declaring anything: the engine's, then those of the
+ * plugins this run knows - the bundled ones and any `--plugin`.
+ */
 export function listBuiltinStructs(): UIStructDef[] {
-    return Object.values(BUILTIN_UI_STRUCTS);
+    return listEngineUIStructIds().flatMap(id => resolveUIStruct(null, id) ?? []);
 }
 
 // ---------------------------------------------------------------------------

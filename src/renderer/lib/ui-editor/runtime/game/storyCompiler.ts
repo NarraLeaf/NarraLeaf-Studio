@@ -863,6 +863,12 @@ export type StagePreviewCompileInput = {
     /** Fires synchronously immediately after the target's own statements complete. */
     onAfterTarget: () => void;
     /**
+     * Fires when an option of a menu target is picked, in place of that option's branch. The preview
+     * holds one row; a pick there asks to see the branch, and the host answers by moving to it.
+     * Absent, a pick plays the branch as the game does.
+     */
+    onChoiceTaken?: (optionBlockId: StoryBlockId) => void;
+    /**
      * Continuous playback ("play from here"). Instead of playing the target's own action and
      * holding on the resulting frame, compile the whole execution tail from the target onwards —
      * the rest of its branch, then everything after it in the scene (see collectStoryPlaybackPlan).
@@ -2114,7 +2120,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
     } else {
         const targetBlock = input.targetBlockId ? scene.blocks[input.targetBlockId] : undefined;
         if (targetBlock) {
-            let own = await compilePreviewTargetOwnStatements(ctx, targetBlock);
+            let own = await compilePreviewTargetOwnStatements(ctx, targetBlock, input.onChoiceTaken);
             if (snapshot.nvl && own.length > 0) {
                 own = [previewScene.nvl({ duration: 0 } as any, own as any)];
             }
@@ -3053,7 +3059,11 @@ async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Prom
  * their full body so the row previews as the real construct - e.g. a choice target renders its
  * menu and holds.
  */
-async function compilePreviewTargetOwnStatements(ctx: SceneCompileContext, block: StoryBlock): Promise<NlrStatement[]> {
+async function compilePreviewTargetOwnStatements(
+    ctx: SceneCompileContext,
+    block: StoryBlock,
+    onChoiceTaken?: (optionBlockId: StoryBlockId) => void,
+): Promise<NlrStatement[]> {
     if (block.kind === "jump") {
         // Jumping would leave the previewed scene; hold at the pre-jump state instead.
         diagnostic(ctx, "warning", block.id, say("story.compile.flow.previewHoldsAtJump"));
@@ -3061,7 +3071,7 @@ async function compilePreviewTargetOwnStatements(ctx: SceneCompileContext, block
     }
     if (block.kind === "nodeAction") {
         if (block.payload.action === "choice") {
-            return compileChoice(ctx, block);
+            return compileChoice(ctx, block, onChoiceTaken);
         }
         if (block.payload.action === "choiceOption") {
             // Normally normalized to the parent choice upstream; preview the option's branch state.
@@ -3110,7 +3120,7 @@ async function compilePreviewTargetOwnStatements(ctx: SceneCompileContext, block
 async function compileNodeAction(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "nodeAction" }>): Promise<NlrStatement[]> {
     if (block.payload.action === "narration") {
         const segment = block.payload.text;
-        if (!segment.value.trim() && !segmentHasInterpolation(segment) && !segmentHasEvent(segment)) {
+        if (isSilentStoryLine(segment)) {
             return [];
         }
         const voiceConfig = voiceConfigForLine(ctx, segment.textId);
@@ -3119,8 +3129,7 @@ async function compileNodeAction(ctx: SceneCompileContext, block: Extract<StoryB
     }
 
     if (block.payload.action === "dialogue") {
-        const text = block.payload.text.value;
-        if (!text.trim() && !segmentHasInterpolation(block.payload.text) && !segmentHasEvent(block.payload.text)) {
+        if (isSilentStoryLine(block.payload.text)) {
             return [];
         }
         const character = getCharacter(ctx, block.payload.characterId, block.payload.speakerName);
@@ -3283,6 +3292,14 @@ function buildLocalizedSentencePrompt(ctx: SceneCompileContext, segment: StoryTe
     return [new Word((resolveDynamic as unknown) as any)];
 }
 
+/**
+ * True when a line of narration or dialogue compiles to nothing: no words, no interpolation and no
+ * reveal-time event. Play never stops on such a row, so anything asking where play stops asks here.
+ */
+export function isSilentStoryLine(segment: StoryTextSegment): boolean {
+    return !segment.value.trim() && !segmentHasInterpolation(segment) && !segmentHasEvent(segment);
+}
+
 /** True when a segment carries an inline interpolation run (so an empty plain value is intentional). */
 function segmentHasInterpolation(segment: StoryTextSegment): boolean {
     return Boolean(segment.rich?.some(run => "interpolation" in run));
@@ -3407,7 +3424,10 @@ function buildStoryActionScriptInput(
         sceneFnCatalog: ctx.sceneFnCatalog,
         sceneVariables: ctx.sceneVariables,
         savedVariables: ctx.savedVariables,
-        savedNamespace: SAVED_PERSISTENT_NAMESPACE,
+        // The name the engine registered the namespace under, which is not the one it was created
+        // with: a `Persistent` prefixes its own. Read off the live object for the reason
+        // `resolveVariableSlot` gives - the prefix is the engine's to change.
+        savedNamespace: DevTools.getNamespaceName(ctx.savedPersistent),
         persistence: ctx.persistence,
         devtools: ctx.devtools,
         onDiagnostic,
@@ -4927,7 +4947,16 @@ async function resolveWeatherClip(
     return url;
 }
 
-async function compileChoice(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "nodeAction" }>): Promise<NlrStatement[]> {
+/**
+ * `onOptionTaken` is the stage preview's: an option it is handed answers with that callback instead
+ * of playing its branch. The preview is a still of one row, so a pick there is a request to look at
+ * the branch, which the host answers by moving to it.
+ */
+async function compileChoice(
+    ctx: SceneCompileContext,
+    block: Extract<StoryBlock, { kind: "nodeAction" }>,
+    onOptionTaken?: (optionBlockId: StoryBlockId) => void,
+): Promise<NlrStatement[]> {
     if (block.payload.action !== "choice") {
         return [];
     }
@@ -4961,10 +4990,12 @@ async function compileChoice(ctx: SceneCompileContext, block: Extract<StoryBlock
             //
             // Named after the option rather than left to the menu row's pass, so what an option
             // records does not depend on how many options come before it.
-            action: [
-                nameRowInternals(ctx, markStoryVisitedStatement(ctx.visitedPersistent, STORY_VISITED_OPTIONS_KEY, option.id), option.id),
-                ...await compileBlockList(ctx, option.childrenIds),
-            ] as any,
+            action: (onOptionTaken
+                ? [previewMarker(() => onOptionTaken(option.id))]
+                : [
+                    nameRowInternals(ctx, markStoryVisitedStatement(ctx.visitedPersistent, STORY_VISITED_OPTIONS_KEY, option.id), option.id),
+                    ...await compileBlockList(ctx, option.childrenIds),
+                ]) as any,
             config: {
                 hidden: conditionToLambda(ctx, option.payload.hiddenWhen, option.id),
                 disabled: conditionToLambda(ctx, option.payload.disabledWhen, option.id),

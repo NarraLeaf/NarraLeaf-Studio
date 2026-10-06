@@ -213,7 +213,7 @@
 | Array Unique | `blueprint.collection.arrayUnique` | **已实现**。按值去重，保留首次出现的顺序。 |
 | Array Range | `blueprint.collection.arrayRange` | **已实现**。由起点、个数、步长生成整数序列；步长 0 读作 1。 |
 | Array Sort By Key | `blueprint.collection.arraySort` | **已实现**。按记录的某个属性排序；数字按数字比，其余按文本比，缺值排在最后，同键保持原顺序。 |
-| Array Filter By Key | `blueprint.collection.arrayFilter` | **已实现**。保留某属性等于给定值的记录。 |
+| Array Filter By Key | `blueprint.collection.arrayFilter` | **已实现**。保留某属性等于给定值的记录。数组的元素是已知结构时，卡片上的「键」是该结构字段的下拉，「值」的类型随所选字段变。 |
 | Array Find By Key | `blueprint.collection.arrayFind` | **已实现**。按属性查第一条记录，输出条目与下标。 |
 | Array Map | `blueprint.collection.arrayMap` | **planned/disabled**。保留稳定 ID，映射表达式模型后续设计，不注册 palette/runtime。 |
 | Array Slice | `blueprint.collection.arraySlice` | **已实现**。截取数组片段。 |
@@ -438,7 +438,7 @@ Element 版节点与 Slider/List 一样，放置后需要手动把 Element Liter
 | Get List Item Index | `blueprint.list.getItemIndex` | **已实现**。读取当前 List item 下标。 |
 | Get List Item Count | `blueprint.list.getItemCount` | **已实现**。读取当前 List item 总数。 |
 | Get List Item Key | `blueprint.list.getItemKey` | **已实现**。读取当前 List item key。 |
-| Get Item Field | `blueprint.list.getItemField` | **已实现**。读取当前 List item 的某个已声明字段；字段从下拉里选，存的是字段 id。取代 `Get List Item Props` + `Get JSON Field` 那条两级组合。 |
+| Get Field | `blueprint.list.getItemField` | **已实现**（原名 Get Item Field，类型 id 未改）。读取一个结构的某个字段，字段从下拉里选，存的是字段 id；输出引脚的类型随所选字段变。`object` 连着时读连进来的值（结局、历史条目、存档条目等引擎形状），第一次连上就把结构记在节点上（`struct` 参数），断开后保留，只接同一结构；在列表行里不连 `object` 时读当前行。取代 `Get List Item Props` + `Get JSON Field` 那条两级组合。 |
 | Get List Length | `blueprint.list.getLength` / `blueprint.element.list.getLength` | **已实现**。当前运行时内容的条数。 |
 | Get Item At | `blueprint.list.getItemAt` / `blueprint.element.list.getItemAt` | **已实现**。取指定下标的条目，越界返回 null。 |
 | Find Item By Field | `blueprint.list.findItemByField` / `blueprint.element.list.findItemByField` | **已实现**。按字段查第一条，输出下标、条目与是否找到。 |

@@ -12,6 +12,8 @@ import type { Edge, Node } from "@xyflow/react";
 import { listBlueprintEventIds, listBlueprintFunctionIds } from "@shared/blueprint/blueprintEventOrder";
 import { readBlueprintCommentSize } from "@shared/blueprint/blueprintCommentGeometry";
 import type { BlueprintGraphIr, BlueprintGraphNode } from "@shared/types/blueprint/document";
+import type { TranslationKey } from "@shared/i18n";
+import { factoryLayerNameKey } from "@shared/types/ui-editor/ownerLabels";
 import { resolveBlueprintCommentColorKey } from "@/lib/ui-editor/blueprint-comment-colors";
 import type { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
@@ -42,6 +44,8 @@ export type MiniPreviewNodeData = {
 
 export type BlueprintLayerPreviewModel = {
     graphName: string | null;
+    /** Set when the layer still has the name Studio seeded it with; shown in place of `graphName`. */
+    graphNameKey?: TranslationKey;
     /**
      * Why there is nothing to draw. `script` is not an absence: the slot has logic, written as a
      * file rather than as a graph, and {@link scriptFileName} names it.
@@ -284,7 +288,11 @@ export function resolveFirstBlueprintLayerPreview(
         };
     }
     if (eventLayer) {
-        return buildPreviewModel(eventLayer.graph, eventLayer.name, nodeCatalog);
+        const graphNameKey = factoryLayerNameKey(eventId ?? "", eventLayer.name);
+        return {
+            ...buildPreviewModel(eventLayer.graph, eventLayer.name, nodeCatalog),
+            ...(graphNameKey ? { graphNameKey } : {}),
+        };
     }
 
     const functionId = listBlueprintFunctionIds(graphs)[0];

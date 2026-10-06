@@ -11,8 +11,12 @@ import type {
 } from "./types";
 import { BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN, BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES } from "./types";
 import {
+    BLUEPRINT_NODE_PARAM_FIELD_STRUCT,
+    BLUEPRINT_NODE_PARAM_INFERRED_PIN_TYPES,
     BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+    BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
+    BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
     BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
@@ -22,6 +26,8 @@ import {
 } from "@shared/types/blueprint/graph";
 import { blueprintElementValueType } from "@shared/types/blueprint/valueTypes";
 import { getActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
+import { UI_STRUCT_VALUE_TYPE_ANY, uiStructValueType } from "@shared/types/ui-editor/struct";
+import { getActiveUIPageParams, uiPageParamBlueprintValueType } from "@shared/types/ui-editor/pageParams";
 
 /**
  * What a save-schema pin id starts with.
@@ -249,9 +255,175 @@ function withSaveSchemaPins(def: BlueprintNodeDef, basePins: BlueprintNodePinDef
 }
 
 /**
+ * What a page-parameter pin id starts with.
+ *
+ * An underscore rather than the save fields' colon, because a `.bp` file writes a literal into an
+ * input as `<pin> = <value>` and reads a colon before the `=` as a node declaration.
+ */
+const PAGE_PARAM_PIN_PREFIX = "param_";
+
+/** The input one declared page parameter is given through. Stable across renames - the id never moves. */
+export function uiPageParamPinId(paramId: string): string {
+    return `${PAGE_PARAM_PIN_PREFIX}${paramId}`;
+}
+
+/** The parameter id behind a page-parameter input, or null when the pin is not one. */
+export function uiPageParamIdFromPin(pinId: string): string | null {
+    return pinId.startsWith(PAGE_PARAM_PIN_PREFIX) ? pinId.slice(PAGE_PARAM_PIN_PREFIX.length) : null;
+}
+
+/** The pin a node that opens a page keeps for props nobody declared; declared inputs go in front of it. */
+const RAW_PAGE_PROPS_PIN = "props";
+
+/**
+ * The inputs of a node that opens a page, with one more per parameter the picked page declares.
+ *
+ * Optional, all of them: a parameter given nothing reads its declared default on the other side, so
+ * an input left empty is a choice rather than a mistake. A kind an author can type into the card -
+ * a string, a number, a tick box - gets the card field, so a confirm's question is written on the
+ * node that asks it rather than on a String node wired in.
+ *
+ * In front of the node's own `props` input, which stays: it is how a page is handed something it
+ * does not declare, and how a graph written before the page declared anything keeps working.
+ */
+function withPageParamPins(
+    def: BlueprintNodeDef,
+    basePins: BlueprintNodePinDef[],
+    params: Record<string, unknown> | undefined,
+): BlueprintNodePinDef[] {
+    const cfg = def.pageParamPins;
+    if (!cfg) {
+        return basePins;
+    }
+    const declared = getActiveUIPageParams(readParamString(params, cfg.surfaceParam));
+    if (declared.length === 0) {
+        return basePins;
+    }
+    const paramPins: BlueprintNodePinDef[] = declared.map(param => {
+        const valueType = uiPageParamBlueprintValueType(param.type);
+        return {
+            id: uiPageParamPinId(param.id),
+            kind: "input",
+            semantic: "data",
+            valueType,
+            label: param.name,
+            optional: true,
+            allowInlineLiteral: (BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES as readonly string[]).includes(valueType),
+        };
+    });
+    const rawIndex = basePins.findIndex(pin => pin.kind === "input" && pin.id === RAW_PAGE_PROPS_PIN);
+    const at = rawIndex >= 0 ? rawIndex : basePins.filter(pin => pin.kind === "input").length;
+    const inputs = basePins.filter(pin => pin.kind === "input");
+    const outputs = basePins.filter(pin => pin.kind !== "input");
+    return [...inputs.slice(0, at), ...paramPins, ...inputs.slice(at), ...outputs];
+}
+
+/**
+ * `Get Page Param` reads a parameter picked from the page's declarations; its typed `key` input is
+ * what it read by before a page could declare any.
+ *
+ * Kept for a node that has not picked one, so a graph that read a prop by its typed name still does,
+ * and gone once one is picked - the picked parameter is the answer, and a second way to name it on
+ * the same card would only be a way for the two to disagree.
+ */
+function withPageParamReaderKeyPin(
+    def: BlueprintNodeDef,
+    pins: BlueprintNodePinDef[],
+    params: Record<string, unknown> | undefined,
+): BlueprintNodePinDef[] {
+    if (def.type !== BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM || !readParamString(params, "paramId")) {
+        return pins;
+    }
+    return pins.filter(pin => !(pin.kind === "input" && pin.id === "key"));
+}
+
+/**
+ * The pin types the editor worked out from the wires, read off the params.
+ *
+ * An input that gains a type an author can type into the card gains the card field too: once
+ * `Filter By Key` knows its `key` names a boolean, its `value` is a tick box rather than a wire
+ * hanging off a Boolean node. The runtime already reads an unwired input from the params, so the
+ * field needs nothing new to take effect.
+ */
+function readInferredPinTypes(params: Record<string, unknown> | undefined): Record<string, string> {
+    const raw = params?.[BLUEPRINT_NODE_PARAM_INFERRED_PIN_TYPES];
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        return {};
+    }
+    const out: Record<string, string> = {};
+    for (const [pinId, valueType] of Object.entries(raw as Record<string, unknown>)) {
+        if (typeof valueType === "string" && valueType.trim()) {
+            out[pinId] = valueType.trim();
+        }
+    }
+    return out;
+}
+
+function withInferredPinTypes(
+    def: BlueprintNodeDef,
+    pins: BlueprintNodePinDef[],
+    params: Record<string, unknown> | undefined,
+): BlueprintNodePinDef[] {
+    const inferred = readInferredPinTypes(params);
+    if (Object.keys(inferred).length === 0) {
+        return pins;
+    }
+    // A pin the card already edits through a param of the same key (Set Property's value) keeps
+    // that one editor rather than gaining a second beside it.
+    const editedOnCard = new Set((def.inspectorParams ?? []).map(spec => spec.key));
+    return pins.map(pin => {
+        const valueType = pin.semantic === "data" ? inferred[pin.id] : undefined;
+        if (!valueType || valueType === pin.valueType) {
+            return pin;
+        }
+        const literal =
+            pin.kind === "input" &&
+            !editedOnCard.has(pin.id) &&
+            (BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES as readonly string[]).includes(valueType);
+        return { ...pin, valueType, ...(literal ? { allowInlineLiteral: true } : {}) };
+    });
+}
+
+/** The input a field reader reads its struct from. */
+export const BLUEPRINT_FIELD_READER_INPUT_PIN = "object";
+
+/**
+ * Get Field's `object` input takes the struct the node was pointed at, and keeps it.
+ *
+ * Read from a persisted param rather than worked out from the wire, which is the difference between
+ * this and the array nodes: a reader knows which field it reads, and a field only means something in
+ * one shape. Unwired, it is still that shape's reader - offered only that shape when it is wired
+ * again - rather than a node that forgets what it was for.
+ *
+ * The same param decides whether the input is required. An unpinned reader may be left unwired to
+ * read the list row it sits in; a pinned one reads its shape from the wire or nothing, so an unwired
+ * one is an ordinary missing input - reported by the canvas, the project check and the running game
+ * in the one sentence they share (`requiredInputPins.ts`).
+ */
+function withFieldReaderInputType(def: BlueprintNodeDef, pins: BlueprintNodePinDef[], params: Record<string, unknown> | undefined): BlueprintNodePinDef[] {
+    if (def.type !== BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD) {
+        return pins;
+    }
+    const structId = readParamString(params, BLUEPRINT_NODE_PARAM_FIELD_STRUCT);
+    const valueType = structId ? uiStructValueType(structId) : UI_STRUCT_VALUE_TYPE_ANY;
+    return pins.map(pin =>
+        pin.kind === "input" && pin.id === BLUEPRINT_FIELD_READER_INPUT_PIN
+            ? { ...pin, valueType, optional: !structId }
+            : pin,
+    );
+}
+
+/**
  * Effective pin defs for execution / validation: exec inputs, fixed data inputs, dynamic data inputs, outputs.
  */
 export function resolveEffectiveBlueprintNodePins(
+    def: BlueprintNodeDef,
+    params?: Record<string, unknown>,
+): BlueprintNodePinDef[] {
+    return withInferredPinTypes(def, withFieldReaderInputType(def, resolveDeclaredBlueprintNodePins(def, params), params), params);
+}
+
+function resolveDeclaredBlueprintNodePins(
     def: BlueprintNodeDef,
     params?: Record<string, unknown>,
 ): BlueprintNodePinDef[] {
@@ -314,6 +486,12 @@ export function resolveEffectiveBlueprintNodePins(
     }
     if (def.saveSchemaPins) {
         return withSaveSchemaPins(def, typedBasePins);
+    }
+    if (def.pageParamPins) {
+        return withPageParamPins(def, typedBasePins, params);
+    }
+    if (def.type === BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM) {
+        return withPageParamReaderKeyPin(def, typedBasePins, params);
     }
     const cfg = def.dynamicInputPins;
     if (!cfg || !params) {

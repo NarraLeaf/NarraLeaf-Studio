@@ -83,7 +83,7 @@ function listItemProps(item: unknown): Record<string, unknown> {
  * Item Render: the list's own event, raised once for each row as it is drawn.
  *
  * It carries the row the way Item Click does - its scope and its drawing's key - because a handler
- * answering "this row is being drawn" is asking about that row. Without them `Get Item Field` read
+ * answering "this row is being drawn" is asking about that row. Without them `Get Field` read
  * nothing, and a write to the row's own label went to the label's template, which no row draws: the
  * one event built for per-row decoration could not decorate a row.
  */
@@ -525,7 +525,7 @@ export function ListRenderer(props: WidgetRendererProps) {
                     ...extra,
                 },
                 // The row is carried, not only described: a handler answering a click on a row is
-                // asking about that row, so Get Item Field resolves there exactly as it does while
+                // asking about that row, so Get Field resolves there exactly as it does while
                 // the row is being drawn. Without it the only way to read the row that was clicked
                 // was to pull the item off the payload and index into it by hand.
                 { listItemScope: scope, instanceKey: buildUIListItemInstanceKey(outerInstanceKey, element.id, scope.key) },

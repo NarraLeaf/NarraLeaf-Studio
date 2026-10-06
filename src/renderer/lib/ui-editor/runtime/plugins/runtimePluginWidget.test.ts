@@ -80,6 +80,7 @@ async function writeWidgetPlugin(id: string): Promise<RuntimePluginDescriptor> {
             externalLinks: [],
             network: [],
             widgetText: {},
+            structs: [],
         },
         permissions: [],
     };

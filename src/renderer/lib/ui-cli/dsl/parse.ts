@@ -194,10 +194,33 @@ function parseSurface(line: SourceLine, tokens: string[], body: SourceLine[]): U
         settings: [],
         answers: [],
         slots: [],
+        params: [],
         root: null,
     };
     for (const item of blockItems(body)) {
         const itemTokens = tokensOf(item.line);
+        if (itemTokens[0] === "param") {
+            // `param message "Message" = ""`, `param count "Count" type=number = 3` - id, the name the
+            // page's props carry the value under, its kind, and the default.
+            const id = readString(itemTokens[1] ?? "", item.line);
+            const eq = itemTokens.indexOf("=");
+            const head = eq >= 0 ? itemTokens.slice(2, eq) : itemTokens.slice(2);
+            const isFlag = (token: string) => /^[A-Za-z]+=/.test(token);
+            const flags = readFlags(head.filter(isFlag), item.line);
+            for (const key of Object.keys(flags)) {
+                if (key !== "type") {
+                    throw new UiParseError(`a param takes type= and nothing else, got "${key}=".`, item.line.number);
+                }
+            }
+            statement.params.push({
+                line: item.line.number,
+                id,
+                name: readString(head.find(token => !isFlag(token)) ?? id, item.line),
+                type: flags.type ?? "string",
+                ...(eq >= 0 ? { defaultValue: readJs(itemTokens[eq + 1] ?? '""', item.line) } : {}),
+            });
+            continue;
+        }
         if (itemTokens[0] === "setting" && itemTokens[2] === "=") {
             statement.settings.push(readAssignment(item.line, itemTokens.slice(1)));
             continue;

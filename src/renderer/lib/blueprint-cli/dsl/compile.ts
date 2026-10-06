@@ -9,6 +9,11 @@
  * Comments in English per project convention.
  */
 
+import {
+    buildBlueprintStructTypeContext,
+    withInferredBlueprintStructTypes,
+} from "@/lib/workspace/services/ui-editor/blueprint/graphStructTypeInference";
+import type { UIStructDef } from "@shared/types/ui-editor/struct";
 import type {
     Blueprint,
     BlueprintDocument,
@@ -74,6 +79,11 @@ export type BpCompileOptions = {
      * `BlueprintGraphContextInput`.
      */
     uiElements?: Readonly<Record<string, UIElement>>;
+    /**
+     * The document's list shapes, by id. A field reader inside a list row reads the row, and which
+     * fields a row has is the list's shape - without this such a reader's output stays untyped.
+     */
+    uiStructs?: Readonly<Record<string, UIStructDef>>;
 };
 
 export type BpCompileResult = {
@@ -293,6 +303,9 @@ function compileGraph(
 
     const edges: BlueprintGraphEdge[] = [];
     const usedInputs = new Map<string, number>();
+    // Judged once every edge is in: an array node's output is typed by what feeds it, so whether a
+    // wire out of it fits is only known when the wire into it has been read too.
+    const pairings: { from: { nodeId: string; port: string }; to: { nodeId: string; port: string }; line: number }[] = [];
     const pushEdge = (
         fromRef: BpEndpointAst,
         toRef: BpEndpointAst,
@@ -306,30 +319,7 @@ function compileGraph(
         if (!from || !to) {
             return;
         }
-        const sourceAst = declared.get(from.nodeId) as BpNodeAst;
-        const targetAst = declared.get(to.nodeId) as BpNodeAst;
-        if (
-            !isValidBlueprintPinConnection({
-                sourceType: sourceAst.type,
-                sourcePort: from.port,
-                targetType: targetAst.type,
-                targetPort: to.port,
-                sourceParams: params.get(from.nodeId),
-                targetParams: params.get(to.nodeId),
-            })
-        ) {
-            // A warning, and the edge is kept. The canvas refuses to DRAW a pairing like this, but a
-            // document that already holds one loads and runs, and the editor's own validator reports
-            // it as a warning - the shipped skeleton contains one (an integer index feeding a json
-            // Result). Refusing here would mean this tool could not write back a project Studio ships.
-            diagnostics.push({
-                severity: "warning",
-                code: "compile.incompatible_pins",
-                line,
-                message: `${from.nodeId}.${from.port} would not be drawable onto ${to.nodeId}.${to.port}.`,
-                hint: describePinPair(sourceAst.type, from.port, targetAst.type, to.port, params),
-            });
-        }
+        pairings.push({ from, to, line });
         const targetPin = catalogFor(to.nodeId, declared, params).pins.find(
             pin => pin.id === to.port && pin.kind === "input",
         );
@@ -359,6 +349,55 @@ function compileGraph(
     }
     for (const edge of ast.edges) {
         pushEdge(edge.from, edge.to, edge.line);
+    }
+
+    const typed = withInferredBlueprintStructTypes(
+        {
+            nodes: Object.fromEntries(
+                [...declared].map(([id, nodeAst]) => [id, { id, type: nodeAst.type, params: params.get(id) ?? {} }]),
+            ),
+            edges,
+        },
+        buildBlueprintStructTypeContext({
+            uiDocument: options.uiElements ? { elements: options.uiElements, structs: { ...(options.uiStructs ?? {}) } } : null,
+            widgetElement: "elementId" in owner ? options.uiElements?.[owner.elementId] : undefined,
+            owner,
+            isComponentDefinitionGraph: anchorComponentId(owner) !== null,
+        }),
+    );
+    const typedParams = new Map(Object.entries(typed.nodes ?? {}).map(([id, node]) => [id, node.params ?? {}]));
+    for (const { from, to, line } of pairings) {
+        const sourceAst = declared.get(from.nodeId) as BpNodeAst;
+        const targetAst = declared.get(to.nodeId) as BpNodeAst;
+        if (
+            !isValidBlueprintPinConnection({
+                sourceType: sourceAst.type,
+                sourcePort: from.port,
+                targetType: targetAst.type,
+                targetPort: to.port,
+                sourceParams: typedParams.get(from.nodeId),
+                targetParams: typedParams.get(to.nodeId),
+            })
+        ) {
+            // A warning, and the edge is kept. The canvas refuses to DRAW a pairing like this, but a
+            // document that already holds one loads and runs, and the editor's own validator reports
+            // it as a warning - the shipped skeleton contains one (an integer index feeding a json
+            // Result). Refusing here would mean this tool could not write back a project Studio ships.
+            diagnostics.push({
+                severity: "warning",
+                code: "compile.incompatible_pins",
+                line,
+                message: `${from.nodeId}.${from.port} would not be drawable onto ${to.nodeId}.${to.port}.`,
+                hint: describePinPair(
+                    sourceAst.type,
+                    from.port,
+                    targetAst.type,
+                    to.port,
+                    typedParams.get(from.nodeId),
+                    typedParams.get(to.nodeId),
+                ),
+            });
+        }
     }
 
     const placements = autoLayout(
@@ -439,7 +478,10 @@ function compileParams(
     }
 
     const entry = blueprintNodeRegistry.resolveCatalogEntryForNode(nodeAst.type, raw);
-    const paramKeys = new Set((entry.inspectorParams ?? []).map(item => item.key));
+    const paramKeys = new Set([
+        ...(entry.inspectorParams ?? []).map(item => item.key),
+        ...(definition.storedParams ?? []),
+    ]);
     const dataInputs = new Map(
         entry.pins.filter(pin => pin.kind === "input" && pin.semantic === "data").map(pin => [pin.id, pin]),
     );
@@ -666,13 +708,13 @@ function describePinPair(
     sourcePort: string,
     targetType: string,
     targetPort: string,
-    params: Map<string, Record<string, unknown>>,
+    sourceParams: Record<string, unknown> | undefined,
+    targetParams: Record<string, unknown> | undefined,
 ): string {
-    void params;
-    const source = blueprintNodeRegistry.resolveCatalogEntry(sourceType).pins.find(
+    const source = blueprintNodeRegistry.resolveCatalogEntryForNode(sourceType, sourceParams).pins.find(
         pin => pin.id === sourcePort && pin.kind === "output",
     );
-    const target = blueprintNodeRegistry.resolveCatalogEntry(targetType).pins.find(
+    const target = blueprintNodeRegistry.resolveCatalogEntryForNode(targetType, targetParams).pins.find(
         pin => pin.id === targetPort && pin.kind === "input",
     );
     const describe = (pin: typeof source): string =>

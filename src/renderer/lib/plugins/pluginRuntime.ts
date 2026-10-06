@@ -1,3 +1,4 @@
+import { registerPluginUIStructs } from "@shared/types/ui-editor/builtinStructs";
 import { getInterface } from "@/lib/app/bridge";
 import { createPluginPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import * as React from "react";
@@ -624,6 +625,10 @@ export function createPluginApp(
         track(disposer);
         return disposer;
     };
+    // The row shapes the plugin's nodes hand out. Read off the manifest rather than registered by
+    // the plugin, because the running game and the command-line checker need them too and neither
+    // runs this entry; held for exactly as long as the plugin is.
+    track(registerPluginUIStructs(descriptor.plugin.id, descriptor.manifest.contributes.structs));
     // One cleanup that disposes every disposer from a registerMany call (LIFO).
     const combine = (disposers: PluginCleanup[]): PluginCleanup => () => {
         for (const disposer of disposers.splice(0).reverse()) {

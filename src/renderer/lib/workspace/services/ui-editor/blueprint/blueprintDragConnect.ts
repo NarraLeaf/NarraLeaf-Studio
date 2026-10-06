@@ -115,14 +115,14 @@ export function pickBlueprintDragConnectTargetPin(
                       targetType: entry.type,
                       targetPort: pin.id,
                       sourceParams: source.params,
-                      targetParams: {},
+                      targetParams: entry.preset?.params ?? {},
                   })
                 : isValidBlueprintPinConnection({
                       sourceType: entry.type,
                       sourcePort: pin.id,
                       targetType: source.nodeType,
                       targetPort: source.handleId,
-                      sourceParams: {},
+                      sourceParams: entry.preset?.params ?? {},
                       targetParams: source.params,
                   });
         if (ok) {

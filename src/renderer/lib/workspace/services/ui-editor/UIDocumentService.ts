@@ -27,7 +27,9 @@ import {
     isUIComponentTextParam,
     type UIComponentParam,
     type UIElementValueBinding,
+    type UIPageParam,
 } from "@shared/types/ui-editor/document";
+import { getUIPageParams, normalizeUIPageParams, setActiveUIPageParams } from "@shared/types/ui-editor/pageParams";
 import { entrySurfacePointerMisses, isEntrySurface, resolveEntrySurface } from "@shared/types/ui-editor/entrySurface";
 import { buildUIComponentEditorSurfaceId, buildUIComponentSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
 import { foldLegacyImageProps, UI_IMAGE_ELEMENT_TYPE } from "@shared/types/ui-editor/legacyImageProps";
@@ -76,7 +78,18 @@ import { LocalBlueprintService } from "./LocalBlueprintService";
 import { UIEditorHistoryService, cloneUIHistoryDocument } from "./UIEditorHistoryService";
 import type { TranslationKey } from "@shared/i18n";
 import { HistoryService } from "../history/HistoryService";
-import { projectHistoryScope } from "../history/historyScopes";
+import type { HistoryLabel } from "../history/historyModel";
+import { HistoryEntryTag, projectHistoryScope } from "../history/historyScopes";
+import type { UIGraphService } from "./UIGraphService";
+import {
+    captureUILibraryRecords,
+    insertUILibraryRecords,
+    isEmptyUILibraryRecords,
+    removeUILibraryBlueprints,
+    removeUILibraryRecords,
+    restoreUILibraryBlueprints,
+    type UILibraryRecords,
+} from "./uiLibraryRecords";
 import { UIDocumentContentRevisions } from "./uiDocumentContentRevisions";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
@@ -163,9 +176,15 @@ import {
     UI_STRUCT_ID_CHOICE_ITEM,
     UI_STRUCT_ID_NOTIFICATION_ITEM,
     UI_STRUCT_ID_NVL_ITEM,
+    resolveUIStruct,
 } from "@shared/types/ui-editor/builtinStructs";
-import type { UIStructField } from "@shared/types/ui-editor/struct";
-import { applyUIStructFieldsForOwner, pruneUIStructs } from "@shared/types/ui-editor/structLibrary";
+import { coerceItemToStruct, type UIStructField } from "@shared/types/ui-editor/struct";
+import {
+    applyUIStructFieldsForOwner,
+    applyUIStructShapeForOwner,
+    pruneUIStructs,
+    remapUIListFieldIds,
+} from "@shared/types/ui-editor/structLibrary";
 import {
     dedupeUIInputBindings,
     normalizeUIInputActionLibrary,
@@ -725,6 +744,23 @@ export function resolveImportedSurfacePlacement(
         : { kind: "appSurface" };
 }
 
+/**
+ * What the Edit menu calls the step an import leaves: the page it added, or how many, and the
+ * definitions only when no page came - a template's components arrive to serve its pages.
+ */
+function describeImportStep(surfaces: readonly UISurface[], components: readonly UIComponentDefinition[]): HistoryLabel {
+    if (surfaces.length === 1) {
+        return { key: "uiEditor.history.importSurface" as TranslationKey, params: { name: surfaces[0].name } };
+    }
+    if (surfaces.length > 1) {
+        return { key: "uiEditor.history.importSurfaces" as TranslationKey, params: { count: surfaces.length } };
+    }
+    if (components.length === 1) {
+        return { key: "uiEditor.history.importComponent" as TranslationKey, params: { name: components[0].name } };
+    }
+    return { key: "uiEditor.history.importComponents" as TranslationKey, params: { count: components.length } };
+}
+
 /** One template's fetched documents plus a resolved placement, ready to import.
  * `assetIdMap` maps the template's original asset ids to the ids they were
  * ingested under in this project; empty/undefined for asset-free templates. */
@@ -745,6 +781,13 @@ export type ImportTemplateBundleInput = {
      * take those translations.
      */
     translations?: CarriedTranslations;
+    /**
+     * Whether the import is one step on the project's undo stack, which takes back every page and
+     * definition it added. On unless a caller's own flow goes on to change more than the import did
+     * - the starter title page also moves the entry page and removes the blank one, and a step that
+     * took back only its middle would leave the project with neither page.
+     */
+    history?: boolean;
 };
 
 export class UIDocumentService extends Service<UIDocumentService> implements IUIDocumentService {
@@ -776,6 +819,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const localizationService = ctx.services.get<LocalizationService>(Services.Localization);
         await depend([filesystemService, projectService, uuidService, localizationService]);
         await registerAutoSaver(ctx, depend, "uiDocument", "workspace.shell.save.stores.uiDocument", this.autoSaver);
+        // The pages' declared parameters are what the nodes that open a page grow inputs from, and
+        // pin resolution reads them from the shared table rather than from this service. Every
+        // route a document arrives or changes by announces it here, the first load included.
+        this.events.on("documentChanged", document => setActiveUIPageParams(document.surfaces));
 
         await this.ensureDocumentDir();
         await this.load();
@@ -1054,7 +1101,16 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
-    public updateElementLayouts(layoutPatches: Record<string, Partial<UILayout>>): void {
+    /**
+     * Write several elements' layouts as one change: one `documentChanged` and one undo step.
+     *
+     * `mergeKey` folds this step into the previous one when that carried the same key and was
+     * recorded within the merge window - how a run of arrow-key nudges stays a single undo.
+     */
+    public updateElementLayouts(
+        layoutPatches: Record<string, Partial<UILayout>>,
+        options: { mergeKey?: string } = {},
+    ): void {
         const elementIds = Object.keys(layoutPatches);
         if (elementIds.length === 0) {
             return;
@@ -1079,7 +1135,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 normalizeFlowChildLayout(document, element);
             });
         }, {
-            history: surfaceId ? { surfaceId } : false,
+            history: surfaceId ? { surfaceId, mergeKey: options.mergeKey } : false,
         });
     }
 
@@ -1349,6 +1405,75 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }, {
             history: surfaceId ? { surfaceId } : false,
         });
+    }
+
+    /**
+     * {@link setListItemStructFields} for a list inside a component definition, one step in the
+     * definition's own history.
+     *
+     * The library's rules are the document's, not the page's: a shape another list names - on a page
+     * or in any definition - is forked rather than reshaped (`applyUIStructFieldsForOwner` walks the
+     * definitions too), and the pruning that follows counts what definitions name.
+     */
+    public setComponentListItemStructFields(componentId: string, elementId: string, fields: readonly UIStructField[]): void {
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        this.mutateDocument(document => {
+            const component = (document.components ?? []).find(item => item.id === componentId);
+            const element = component?.elements[elementId];
+            if (!component || !element || isLinkedUIComponentElement(element)) {
+                return;
+            }
+            const currentStructId = (element.props as Record<string, unknown> | undefined)?.itemStructId;
+            const applied = applyUIStructFieldsForOwner({
+                document,
+                ownerElementId: elementId,
+                currentStructId: typeof currentStructId === "string" ? currentStructId : null,
+                fields,
+                generateId: () => uuidService.generate(),
+            });
+            element.props = {
+                ...(element.props ?? {}),
+                itemStructId: applied.structId,
+            };
+            component.updatedAt = new Date().toISOString();
+            document.structs = pruneUIStructs({ ...document, structs: applied.structs });
+        }, { history: this.componentHistory(componentId) });
+    }
+
+    /**
+     * Give one list one of the engine's shapes, or (`null`) a shape of its own again.
+     *
+     * One step: the pointer, the rows read into the new shape, the list's key field and its item
+     * template's field bindings moved to the field of the same name, and the library pruned. Undo takes
+     * all of it back, the library included (`UIEditorHistoryService` slices the shapes a page names).
+     */
+    public setListItemStructShape(elementId: string, shapeId: string | null): void {
+        const surfaceId = this.getElementSurfaceId(elementId);
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        this.mutateDocument(document => {
+            const element = document.elements[elementId];
+            if (!element || isLinkedUIComponentElement(element)) {
+                return;
+            }
+            applyListItemStructShape(document, document.elements, element, shapeId, () => uuidService.generate());
+        }, {
+            history: surfaceId ? { surfaceId } : false,
+        });
+    }
+
+    /** {@link setListItemStructShape} for a list inside a component definition, in its own history. */
+    public setComponentListItemStructShape(componentId: string, elementId: string, shapeId: string | null): void {
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        this.mutateDocument(document => {
+            const component = (document.components ?? []).find(item => item.id === componentId);
+            const element = component?.elements[elementId];
+            if (!component || !element || isLinkedUIComponentElement(element)) {
+                return;
+            }
+            if (applyListItemStructShape(document, component.elements, element, shapeId, () => uuidService.generate())) {
+                component.updatedAt = new Date().toISOString();
+            }
+        }, { history: this.componentHistory(componentId) });
     }
 
     /** What the gestures of this project mean, keyed by id. */
@@ -1964,6 +2089,127 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
     }
 
+    /**
+     * Where an edit to a component definition is recorded: the definition's own undo stack, named by
+     * the component editor's surface id (`UIEditorHistoryService` maps that to the definition's
+     * scope). One stack per definition, so undoing in one component tab never touches another
+     * definition or any page - and an instance on a page draws the definition from the library each
+     * time, so putting the definition back puts every placement back with it.
+     */
+    private componentHistory(componentId: string, mergeKey?: string): UIDocumentMutationHistoryOptions {
+        return { surfaceId: buildUIComponentEditorSurfaceId(componentId), mergeKey };
+    }
+
+    private getGraphService(): UIGraphService | null {
+        try {
+            return this.getContext().services.get<UIGraphService>(Services.UIGraph);
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * One step on the project's undo stack, for an operation on the library as a whole - adding,
+     * copying, deleting or importing pages and definitions.
+     *
+     * The project's stack rather than any editor's, for the reason {@link reorderSurfaces} gives:
+     * these are made from the rail, and that is the stack Ctrl+Z and the Edit menu reach from there
+     * (`resolveWorkspaceUndoScope`). A definition's own stack holds edits *inside* it, and a deleted
+     * definition has no tab to press Ctrl+Z in.
+     *
+     * Each step is a command over whole records, not a snapshot of the library: whichever direction
+     * runs reads the records as they stand at that moment and writes them back exactly, and nothing
+     * else in the library is touched. Tagged, so a live session drops these steps with the interface
+     * editors' stacks (`LiveSessionService`): taking back an addition after a session would remove
+     * whatever the room built inside it.
+     */
+    private pushLibraryStep(label: HistoryLabel, step: { undo: () => void; redo: () => void }): void {
+        let history: HistoryService;
+        try {
+            history = this.getContext().services.get<HistoryService>(Services.History);
+        } catch {
+            return;
+        }
+        history.pushCommand(projectHistoryScope(), { label, ...step, tag: HistoryEntryTag.UILibrary });
+    }
+
+    /**
+     * Take pages and definitions out of the project, and return them as they stood.
+     *
+     * Empty when nothing left this copy of the document - ids it does not hold, or an operation sink
+     * that took the gesture: inside a live session the removal arrives as an effect later, the
+     * lifecycle sweep collects the blueprints then, and undo is the session's.
+     */
+    private takeLibraryRecords(ids: { surfaceIds?: readonly string[]; componentIds?: readonly string[] }): UILibraryRecords {
+        const graph = this.getGraphService();
+        const records = captureUILibraryRecords(this.getDocument(), graph?.getDocument().blueprintDocument ?? null, ids);
+        if (isEmptyUILibraryRecords(records)) {
+            return records;
+        }
+        this.mutateDocument(document => removeUILibraryRecords(document, records), { history: false });
+        const document = this.getDocument();
+        const stillHere =
+            records.surfaces.some(record => document.surfaces.some(surface => surface.id === record.surface.id))
+            || records.components.some(record => (document.components ?? []).some(component => component.id === record.component.id));
+        if (stillHere) {
+            return { surfaces: [], components: [] };
+        }
+        // The sweep that followed the write has already collected them where it is wired; this makes
+        // the two documents agree where it is not, and writes nothing when there is nothing left.
+        const left = [...records.surfaces, ...records.components].some(record =>
+            Object.keys(record.blueprint.ownerRecords).some(key => graph?.getDocument().blueprintDocument.ownerRecords[key]));
+        if (graph && left) {
+            graph.applyGraphMutation(next => {
+                removeUILibraryBlueprints(next.blueprintDocument, records);
+                assertValidBlueprintDocument(next.blueprintDocument);
+            });
+        }
+        return records;
+    }
+
+    /**
+     * Put records {@link takeLibraryRecords} returned back where they stood.
+     *
+     * Blueprints first: the sweep that follows the document write gives a widget with no blueprint a
+     * fresh, empty one, and it must find each record's own already in place.
+     */
+    private putLibraryRecords(records: UILibraryRecords): void {
+        if (isEmptyUILibraryRecords(records)) {
+            return;
+        }
+        this.getGraphService()?.applyGraphMutation(document => {
+            restoreUILibraryBlueprints(document.blueprintDocument, records);
+            assertValidBlueprintDocument(document.blueprintDocument);
+        });
+        this.mutateDocument(document => insertUILibraryRecords(document, records), { history: false });
+    }
+
+    /**
+     * Leave the step that takes back pages and definitions an operation just added.
+     *
+     * Nothing is recorded when none of them is in this copy of the document, which is what an
+     * operation sink taking the gesture looks like (the reasoning {@link reorderSurfaces} gives).
+     */
+    private recordLibraryAddition(
+        ids: { surfaceIds: readonly string[]; componentIds: readonly string[] },
+        label: HistoryLabel,
+    ): void {
+        const document = this.getDocument();
+        const arrived =
+            ids.surfaceIds.some(id => document.surfaces.some(surface => surface.id === id))
+            || ids.componentIds.some(id => (document.components ?? []).some(component => component.id === id));
+        if (!arrived) {
+            return;
+        }
+        let held: UILibraryRecords = { surfaces: [], components: [] };
+        this.pushLibraryStep(label, {
+            undo: () => {
+                held = this.takeLibraryRecords(ids);
+            },
+            redo: () => this.putLibraryRecords(held),
+        });
+    }
+
     private getElementSurfaceId(elementId: string): string | null {
         const document = this.getDocument();
         let currentId: string | null = elementId;
@@ -2009,7 +2255,31 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     }
 
     private migrateIfNeeded(document: UIDocument): UIDocument {
-        return this.normalizeLegacyImageProps(this.normalizeInputModel(this.migrateSchemaVersion(document)));
+        return this.normalizePageParams(
+            this.normalizeLegacyImageProps(this.normalizeInputModel(this.migrateSchemaVersion(document))),
+        );
+    }
+
+    /**
+     * Every page's declared parameters, in the shape this build reads (`normalizeUIPageParams`).
+     *
+     * A normalizer for the reason {@link normalizeInputModel} is one: an empty list and no list mean
+     * the same thing, so a page that declares none keeps its record as short as it was. A Game UI's
+     * are dropped - the player mounts it with nothing, so nothing could ever fill them.
+     */
+    private normalizePageParams(document: UIDocument): UIDocument {
+        for (const surface of document.surfaces) {
+            if (!("params" in surface)) {
+                continue;
+            }
+            const params = surface.kind === "appSurface" ? normalizeUIPageParams(surface.params) : [];
+            if (params.length > 0) {
+                (surface as { params?: UIPageParam[] }).params = params;
+            } else {
+                delete (surface as { params?: unknown }).params;
+            }
+        }
+        return document;
     }
 
     /**
@@ -2560,6 +2830,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             label: { key: "uiEditor.history.moveSurface" as TranslationKey, params: { name } },
             undo: () => this.applySurfaceOrder(before),
             redo: () => this.applySurfaceOrder(after),
+            tag: HistoryEntryTag.UILibrary,
         });
     }
 
@@ -2593,6 +2864,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             label: { key: "uiEditor.history.setEntryPage" as TranslationKey, params: { name: target.name } },
             undo: () => this.applyEntrySurface(before),
             redo: () => this.applyEntrySurface(after),
+            tag: HistoryEntryTag.UILibrary,
         });
     }
 
@@ -2954,6 +3226,18 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             input.translations,
             mapCopiedUIComponentDefaultUnits(sourceDocument.components ?? [], componentIdMap),
         );
+        if (input.history !== false) {
+            // One step for everything the bundle added: its pages and its definitions, with their
+            // blueprints. Files the caller brought into the asset library first, and the translations
+            // filed above, stay in the project - undoing leaves them unused, and redoing finds them.
+            this.recordLibraryAddition(
+                {
+                    surfaceIds: importedSurfaces.map(surface => surface.id),
+                    componentIds: importedComponents.map(component => component.id),
+                },
+                describeImportStep(importedSurfaces, importedComponents),
+            );
+        }
         return { importedSurfaces, skippedSlots, importedComponents };
     }
 
@@ -3238,6 +3522,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             ? remapSurfaceDuplicateReferenceValue(cloneJson(sourceSurface.settings), remapContext)
             : undefined;
 
+        const sourcePageParams = getUIPageParams(sourceSurface);
         const newSurface: UISurface = placement.kind === "stageSurface"
             ? {
                 id: newSurfaceId,
@@ -3257,6 +3542,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 designSize,
                 rootElementId: newRootElementId,
                 settings: createDefaultPageSurfaceSettings(remappedSettings),
+                // What the page is opened with comes along with it: the lists on it and the graphs
+                // copied beside it read those names, and the nodes that open it grow inputs from them.
+                ...(sourcePageParams.length > 0 ? { params: sourcePageParams } : {}),
             };
 
         localBp?.applyBlueprintMutation(bpDoc => {
@@ -3386,9 +3674,19 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         this.mutateDocument(document => {
             document.components = [...(document.components ?? []), component];
         }, { history: false });
+        this.recordLibraryAddition(
+            { surfaceIds: [], componentIds: [component.id] },
+            { key: "uiEditor.history.createComponent" as TranslationKey, params: { name: component.name } },
+        );
         return component;
     }
 
+    /**
+     * A new definition made of copies of elements on a page, with the logic they carry.
+     *
+     * The page is not changed, so the step that takes this back is the library's - the project's
+     * stack, the one {@link createEmptyComponent} uses - rather than the page's.
+     */
     public createComponentFromElements(surfaceId: string, elementIds: string[], name?: string): UIComponentDefinition | null {
         const document = this.getDocument();
         const effectiveRootId = resolveSurfaceRootElementId(document, surfaceId);
@@ -3579,9 +3877,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 }
             });
         }
+        this.recordLibraryAddition(
+            { surfaceIds: [], componentIds: [component.id] },
+            { key: "uiEditor.history.createComponent" as TranslationKey, params: { name: component.name } },
+        );
         return component;
     }
 
+    /** Recorded in the definition's own undo stack, as a page's name is in the page's. */
     public renameComponent(componentId: string, name: string): void {
         const nextName = name.trim();
         if (!nextName) {
@@ -3594,7 +3897,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }
             component.name = nextName;
             component.updatedAt = new Date().toISOString();
-        }, { history: false });
+        }, { history: this.componentHistory(componentId, `component:${componentId}:name`) });
     }
 
     /**
@@ -3603,7 +3906,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
      * Instances keep values for ids that survive: a param is identified by `id`, so renaming one in
      * the inspector does not unset it anywhere. Values for ids that were removed are left on their
      * instances rather than swept - re-adding a param by the same id is how an author undoes a
-     * deletion, and sweeping would make that a data loss with no warning.
+     * deletion, and sweeping would make that a data loss with no warning. That is also why undoing
+     * this - one step in the definition's own stack - needs nothing from the instances: their values
+     * were never touched, so the restored declaration finds them where it left them.
      */
     public setComponentParams(componentId: string, params: UIComponentParam[]): void {
         this.mutateDocument(document => {
@@ -3627,7 +3932,61 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     return true;
                 });
             component.updatedAt = new Date().toISOString();
-        }, { history: false });
+        }, { history: this.componentHistory(componentId) });
+    }
+
+    /**
+     * Replace the parameters a page declares.
+     *
+     * A parameter is identified by `id`, so the nodes that open the page and the `Get Page Param`
+     * nodes that read it keep pointing at it through a rename. What reads it by name - the key its
+     * value travels under - is followed in the same step where it lives on the page itself: a list on
+     * the page bound to the old name is bound to the new one. Anything elsewhere that names it (a Page
+     * widget on another page giving it a value, a script) is left alone, because this page's undo must
+     * not reach into another page; the project check reports those.
+     *
+     * A removed parameter's values are not swept from anywhere, as a component's are not: re-adding it
+     * is how an author takes a deletion back.
+     */
+    public setPageParams(surfaceId: string, params: UIPageParam[]): void {
+        const surface = this.getDocument().surfaces.find(item => item.id === surfaceId);
+        if (!surface || surface.kind !== "appSurface") {
+            return;
+        }
+        const before = normalizeUIPageParams(surface.params);
+        const next = normalizeUIPageParams(params);
+        const renamed = new Map<string, string>();
+        for (const param of next) {
+            const previous = before.find(item => item.id === param.id);
+            if (previous && previous.name !== param.name) {
+                renamed.set(previous.name, param.name);
+            }
+        }
+        this.mutateDocument(document => {
+            const target = document.surfaces.find(item => item.id === surfaceId);
+            if (!target || target.kind !== "appSurface") {
+                return;
+            }
+            if (next.length > 0) {
+                target.params = next;
+            } else {
+                delete target.params;
+            }
+            if (renamed.size === 0) {
+                return;
+            }
+            for (const elementId of collectSubtreeElementIds(document, target.rootElementId)) {
+                const element = document.elements[elementId];
+                const binding = element?.props?.itemsBinding as { kind?: unknown; key?: unknown } | undefined;
+                if (!element || !isListLikeWidgetType(element.type) || binding?.kind !== "pageProp" || typeof binding.key !== "string") {
+                    continue;
+                }
+                const nextKey = renamed.get(binding.key);
+                if (nextKey !== undefined) {
+                    element.props = { ...element.props, itemsBinding: { ...binding, key: nextKey } };
+                }
+            }
+        }, { history: { surfaceId } });
     }
 
     /**
@@ -3693,17 +4052,67 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
+    /**
+     * Remove definitions from the library, as one step on the project's undo stack.
+     *
+     * Placements of them on pages are left as they are, and draw as missing until the definition is
+     * back or they are replaced. Undo puts each definition back at its place in the library with its
+     * widgets' blueprints and the item shapes its lists name, and every placement draws it again.
+     */
     public deleteComponents(componentIds: string[]): void {
-        const ids = new Set(componentIds);
-        if (ids.size === 0) {
+        const ids = [...new Set(componentIds)];
+        if (ids.length === 0) {
             return;
         }
-        this.mutateDocument(document => {
-            document.components = (document.components ?? []).filter(component => !ids.has(component.id));
-        }, { history: false });
+        let held = this.takeLibraryRecords({ componentIds: ids });
+        if (isEmptyUILibraryRecords(held)) {
+            return;
+        }
+        const label: HistoryLabel = held.components.length === 1
+            ? { key: "uiEditor.history.deleteComponent" as TranslationKey, params: { name: held.components[0].component.name } }
+            : { key: "uiEditor.history.deleteComponents" as TranslationKey, params: { count: held.components.length } };
+        this.pushLibraryStep(label, {
+            undo: () => this.putLibraryRecords(held),
+            redo: () => {
+                held = this.takeLibraryRecords({ componentIds: ids });
+            },
+        });
     }
 
+    /** One copy of a definition; see {@link duplicateComponents}. */
     public duplicateComponent(componentId: string): UIComponentDefinition | null {
+        return this.duplicateComponents([componentId])[0] ?? null;
+    }
+
+    /**
+     * A copy of each definition, added to the end of the library, as one step on the project's undo
+     * stack. The copies' translations are written in the background and are not part of the step:
+     * undoing leaves them unused, and redoing finds them again (`carryCopiedTranslations`).
+     */
+    public duplicateComponents(componentIds: readonly string[]): UIComponentDefinition[] {
+        const copies: UIComponentDefinition[] = [];
+        // The step is named after what was copied, not after the copy: "duplicate component Save slot".
+        const sourceNames: string[] = [];
+        for (const componentId of componentIds) {
+            const name = this.getComponent(componentId)?.name;
+            const copy = this.copyComponent(componentId);
+            if (copy && name !== undefined) {
+                copies.push(copy);
+                sourceNames.push(name);
+            }
+        }
+        if (copies.length > 0) {
+            this.recordLibraryAddition(
+                { surfaceIds: [], componentIds: copies.map(copy => copy.id) },
+                copies.length === 1
+                    ? { key: "uiEditor.history.duplicateComponent" as TranslationKey, params: { name: sourceNames[0] } }
+                    : { key: "uiEditor.history.duplicateComponents" as TranslationKey, params: { count: copies.length } },
+            );
+        }
+        return copies;
+    }
+
+    private copyComponent(componentId: string): UIComponentDefinition | null {
         const source = this.getComponent(componentId);
         if (!source) {
             return null;
@@ -3804,30 +4213,77 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         return component;
     }
 
+    /**
+     * One element of a definition's layout, as `updateElementLayout` is one of a page's: an undo step
+     * of its own, folded into the previous one when that wrote the same fields of the same element
+     * within the merge window - so typing a number into the inspector is one step, not one a key.
+     * `skipHistory` is for the write a gesture makes on its way to the one it records.
+     */
     public updateComponentElementLayout(
         componentId: string,
         elementId: string,
         layoutPatch: Partial<UILayout>,
+        options: { skipHistory?: boolean } = {},
     ): void {
+        const patchKeys = Object.keys(layoutPatch).sort();
         this.mutateDocument(document => {
             const component = (document.components ?? []).find(item => item.id === componentId);
-            const element = component?.elements[elementId];
-            if (!component || !element) {
+            if (component) {
+                this.writeComponentElementLayout(component, elementId, layoutPatch);
+            }
+        }, {
+            history: options.skipHistory
+                ? false
+                : this.componentHistory(componentId, `layout:${elementId}:${patchKeys.join(",")}`),
+        });
+    }
+
+    /**
+     * Several elements of one definition as one change: one `documentChanged` and one undo step, as
+     * `updateElementLayouts` is on a page - a drag of three elements is undone by one Ctrl+Z.
+     * `mergeKey` folds the step into the previous one when that carried the same key and was
+     * recorded within the merge window, which is how a run of arrow-key nudges stays one undo.
+     */
+    public updateComponentElementLayouts(
+        componentId: string,
+        layoutPatches: Record<string, Partial<UILayout>>,
+        options: { mergeKey?: string } = {},
+    ): void {
+        if (Object.keys(layoutPatches).length === 0) {
+            return;
+        }
+        this.mutateDocument(document => {
+            const component = (document.components ?? []).find(item => item.id === componentId);
+            if (!component) {
                 return;
             }
-            element.layout = roundUILayoutGeometryFields({
-                ...element.layout,
-                ...layoutPatch,
-            });
-            component.updatedAt = new Date().toISOString();
-            if (component.rootElementId === elementId) {
-                component.previewMeta = {
-                    ...(component.previewMeta ?? {}),
-                    width: Math.max(1, Math.abs(element.layout.width)),
-                    height: Math.max(1, Math.abs(element.layout.height)),
-                };
+            for (const [elementId, layoutPatch] of Object.entries(layoutPatches)) {
+                this.writeComponentElementLayout(component, elementId, layoutPatch);
             }
-        }, { history: false });
+        }, { history: this.componentHistory(componentId, options.mergeKey) });
+    }
+
+    private writeComponentElementLayout(
+        component: UIComponentDefinition,
+        elementId: string,
+        layoutPatch: Partial<UILayout>,
+    ): void {
+        const element = component.elements[elementId];
+        if (!element) {
+            return;
+        }
+        element.layout = roundUILayoutGeometryFields({
+            ...element.layout,
+            ...layoutPatch,
+        });
+        component.updatedAt = new Date().toISOString();
+        if (component.rootElementId === elementId) {
+            component.previewMeta = {
+                ...(component.previewMeta ?? {}),
+                width: Math.max(1, Math.abs(element.layout.width)),
+                height: Math.max(1, Math.abs(element.layout.height)),
+            };
+        }
     }
 
     /**
@@ -3857,7 +4313,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 }
             }
             component.updatedAt = new Date().toISOString();
-        }, { history: false });
+        }, { history: this.componentHistory(componentId) });
     }
 
     /**
@@ -3890,13 +4346,16 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 ...propsPatch,
             };
             component.updatedAt = new Date().toISOString();
-        }, { history: false });
+        }, {
+            history: this.componentHistory(componentId, `props:${elementId}:${Object.keys(propsPatch).sort().join(",")}`),
+        });
     }
 
     public updateComponentElementAnimation(
         componentId: string,
         elementId: string,
         animation: UIPageAnimationSettings | null,
+        options: { mergeKey?: string } = {},
     ): void {
         this.mutateDocument(document => {
             const component = (document.components ?? []).find(item => item.id === componentId);
@@ -3906,7 +4365,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }
             applyElementAnimation(element, animation);
             component.updatedAt = new Date().toISOString();
-        }, { history: false });
+        }, { history: this.componentHistory(componentId, options.mergeKey ?? `animation:${elementId}`) });
     }
 
     public updateComponentElementExtra(
@@ -3925,7 +4384,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 ...extraPatch,
             };
             component.updatedAt = new Date().toISOString();
-        }, { history: false });
+        }, {
+            history: this.componentHistory(componentId, `extra:${elementId}:${Object.keys(extraPatch).sort().join(",")}`),
+        });
     }
 
     public renameComponentElement(componentId: string, elementId: string, name: string): void {
@@ -3941,7 +4402,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }
             element.name = trimmed;
             component.updatedAt = new Date().toISOString();
-        }, { history: false });
+        }, { history: this.componentHistory(componentId) });
     }
 
     public reorderComponentChildren(componentId: string, parentId: string, orderedChildIds: string[]): void {
@@ -3959,7 +4420,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             parent.childrenIds = ordered;
             normalizeFlowChildLayouts({ ...document, elements: component.elements }, ordered);
             component.updatedAt = new Date().toISOString();
-        }, { history: false });
+        }, { history: this.componentHistory(componentId) });
     }
 
     public deleteComponentElements(componentId: string, elementIds: string[]): void {
@@ -3997,7 +4458,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 delete component.elements[id];
             }
             component.updatedAt = new Date().toISOString();
-        }, { history: false });
+        }, { history: this.componentHistory(componentId) });
     }
 
     public moveComponentElements(
@@ -4055,7 +4516,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             applyPlannedMove(liveVirtualDocument, planned.plan);
             normalizeFlowChildLayouts(liveVirtualDocument, elementIds);
             liveComponent.updatedAt = new Date().toISOString();
-        }, { history: false });
+        }, { history: this.componentHistory(componentId) });
         return { ok: true };
     }
 
@@ -4084,7 +4545,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 lifted.push(...(applyUngroupContainer(view, surfaceId, containerId) ?? []));
             }
             liveComponent.updatedAt = new Date().toISOString();
-        }, { history: false });
+        }, { history: this.componentHistory(componentId) });
         return lifted;
     }
 
@@ -4112,7 +4573,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }
             applyGroupElements(componentAsDocument(doc, liveComponent, surfaceId), plan, group);
             liveComponent.updatedAt = new Date().toISOString();
-        }, { history: false });
+        }, { history: this.componentHistory(componentId) });
         return group.id;
     }
 
@@ -4195,7 +4656,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             ]);
             component.updatedAt = new Date().toISOString();
             created = cloneJson(elementWithChildren);
-        }, { history: false });
+        }, { history: this.componentHistory(componentId) });
         return created;
     }
 
@@ -4277,7 +4738,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 : [...withoutMoved, ...newRootIds];
             normalizeFlowChildLayouts({ ...doc, elements: liveComponent.elements }, newRootIds);
             liveComponent.updatedAt = new Date().toISOString();
-        }, { history: false });
+        }, { history: this.componentHistory(componentId) });
         this.adoptArrivingTranslations(
             textArrival.converted
                 .filter(site => elementIdMap[site.elementId])
@@ -6136,4 +6597,32 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }
         }
     }
+}
+
+/**
+ * The shared half of the two `set...ListItemStructShape` methods: `elements` is the table the list
+ * lives in. Answers whether anything changed.
+ */
+function applyListItemStructShape(
+    document: UIDocument,
+    elements: Record<string, UIElement>,
+    element: UIElement,
+    shapeId: string | null,
+    generateId: () => string,
+): boolean {
+    const props = (element.props ?? {}) as Record<string, unknown>;
+    const currentStructId = typeof props.itemStructId === "string" ? props.itemStructId : null;
+    const applied = applyUIStructShapeForOwner({ document, currentStructId, shapeId, generateId });
+    if (applied.structId === currentStructId) {
+        return false;
+    }
+    const struct = resolveUIStruct({ structs: applied.structs }, applied.structId);
+    element.props = {
+        ...props,
+        itemStructId: applied.structId,
+        ...(Array.isArray(props.items) ? { items: props.items.map(item => coerceItemToStruct(struct, item)) } : {}),
+    };
+    remapUIListFieldIds(elements, element.id, applied.fieldIds);
+    document.structs = pruneUIStructs({ ...document, structs: applied.structs });
+    return true;
 }

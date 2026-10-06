@@ -49,6 +49,7 @@ Page分类具有：
 - Page节点
 - `Go Page` 页面导航尾节点，可选传入 Page props；选择 `None` 会清除当前顶层 Page 叠层，游戏状态中打开的 Page 会叠加在游戏舞台之上
 - `Get Page Props` 读取当前 Page props；Global 蓝图不可用
+- `Get Page Param` 按下拉读取当前 Page 声明的一个参数，输出声明的类型；可用于 Blueprint Value，Global 蓝图不可用
 - `Is Surface Exiting` / `Is Surface Entering` / `Is Surface Transitioning` 读取当前 Surface 进退场状态；可用于 Blueprint Value，Global 蓝图不可用
 - `Quit` 退出当前应用运行时；在 Studio Dev Mode 中停止 Dev Mode 会话，不终止 Studio 主进程
 - `Keep Window Open` 取消玩家发出的窗口关闭请求；只在 `On Window Close Requested` 事件图里有意义，其他地方执行会报蓝图执行错误

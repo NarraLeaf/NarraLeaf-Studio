@@ -1,13 +1,27 @@
 import type { UIDocument, UIStageSlotId, UIStageSurface } from "@shared/types/ui-editor/document";
 
+function stageSurfacesForSlot(document: UIDocument, slotId: UIStageSlotId): UIStageSurface[] {
+    return document.surfaces.filter((surface): surface is UIStageSurface =>
+        surface.kind === "stageSurface" && surface.mount.slotId === slotId
+    );
+}
+
+/**
+ * The surface a game draws in a slot: the first one in document order that names it.
+ *
+ * The same answer {@link findStageSurfaceForSlot} gives, without its warning, for a reader that asks on
+ * every render - the UI editor showing what the game would put beside the surface being edited.
+ */
+export function selectStageSurfaceForSlot(document: UIDocument, slotId: UIStageSlotId): UIStageSurface | null {
+    return stageSurfacesForSlot(document, slotId)[0] ?? null;
+}
+
 export function findStageSurfaceForSlot(
     document: UIDocument,
     slotId: UIStageSlotId,
     logLabel: string,
 ): UIStageSurface | null {
-    const matches = document.surfaces.filter((surface): surface is UIStageSurface =>
-        surface.kind === "stageSurface" && surface.mount.slotId === slotId
-    );
+    const matches = stageSurfacesForSlot(document, slotId);
     if (matches.length > 1) {
         console.warn(
             `[${logLabel}][GameUI] Multiple active surfaces found for slot "${slotId}". ` +

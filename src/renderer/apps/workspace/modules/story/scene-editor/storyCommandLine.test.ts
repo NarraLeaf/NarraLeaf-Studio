@@ -511,6 +511,42 @@ describe("projectStoryCommandLine", () => {
         expect(comparable(build(line.source))).toEqual(comparable(empty));
     });
 
+    /**
+     * `/inc`, `/dec` and `/toggle` store the assignment they stand for, and the row reads back as the
+     * command that was typed. It read `/set gold gold + (5)`: the author typed the shorthand and was
+     * shown that it did not survive, on every row of a scene built from choices that add to a counter.
+     */
+    it("reads an increment back as the shorthand it was typed as", () => {
+        expect(project("/inc gold")).toBe("/inc gold");
+        expect(project("/inc gold 5")).toBe("/inc gold 5");
+        expect(project("/dec gold 2")).toBe("/dec gold 2");
+        // Typed longhand it stays longhand, because the line has to parse back to the row it came from.
+        expect(project("/set gold gold + 5")).toBe("/set gold gold + 5");
+        // A step that is an expression of its own prints as the assignment it is.
+        expect(project("/inc gold gold")).toBe("/set gold gold + (gold)");
+
+        i18nStore.setLocale("zh");
+        expect(project("/inc gold 5")).toBe("/增加 gold 5");
+    });
+
+    it("moves an increment's read along with its write when the row picks another variable", () => {
+        const context: StoryCommandContext = {
+            ...CONTEXT,
+            variables: [
+                ...CONTEXT.variables,
+                { name: "silver", ref: { scope: "saved", variableId: "var_silver" }, valueType: "number", defaultValue: 0 },
+            ],
+        };
+        const lookups: StoryCommandLineLookups = { ...LOOKUPS, commandContext: context, projectVariableName: () => "silver" };
+        const block = build("/inc gold 5", context);
+        const edit = projectStoryCommandLine(block, lookups)!.edits.find(entry => entry.value === "scene:var_gold")!;
+        const moved = { ...block, payload: edit.apply("saved:var_silver") } as StoryBlock;
+
+        // `silver = gold + (5)` would read as an increment of one variable assigning another.
+        expect(projectStoryCommandLine(moved, lookups)!.source).toBe("/inc silver 5");
+        expect(comparable(moved)).toEqual(comparable(build("/inc silver 5", context)));
+    });
+
     it("retypes from the row the way the inspector retypes", () => {
         // One rule for the zero value a retype leaves behind, or `hp: boolean = 100` — a variable whose
         // own line contradicts itself.
@@ -659,6 +695,11 @@ describe("projectStoryCommandLine", () => {
             "/wait 1.5",
             "/wait click",
             "/set gold 100",
+            "/set gold gold + 5",
+            "/inc gold",
+            "/inc gold 5",
+            "/dec gold 2",
+            "/inc gold gold",
             "/jump 'Chapter 2' t=fade d=0.6",
             "/jump 'Chapter 2' return",
             "/jump 'Chapter 2' return t=fade d=0.6",

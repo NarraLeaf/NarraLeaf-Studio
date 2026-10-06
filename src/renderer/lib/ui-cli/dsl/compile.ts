@@ -19,6 +19,8 @@ import type { UIInputActionDef } from "@shared/types/ui-editor/inputAction";
 import type { UIStructDef, UIStructFieldType } from "@shared/types/ui-editor/struct";
 import { UI_STRUCT_FIELD_TYPES } from "@shared/types/ui-editor/struct";
 import { UI_STAGE_SLOT_IDS } from "@shared/types/ui-editor/stageSlots";
+import { isUIPageParamId, isUIPageParamType, UI_PAGE_PARAM_TYPES } from "@shared/types/ui-editor/pageParams";
+import type { UIPageParam } from "@shared/types/ui-editor/document";
 import { uiTextSiteOf, uiTextSitesOf, type UITextSite } from "@shared/types/ui-editor/textSource";
 import { LEGACY_UI_TEXT_UNIT_PROP } from "@shared/types/ui-editor/textSourceMigration";
 import {
@@ -268,6 +270,7 @@ class CompileContext {
                 })),
             }
             : {};
+        const params = this.pageParams(statement);
         const surface: UISurface = statement.surfaceKind === "stageSurface"
             ? {
                 id: surfaceId,
@@ -299,6 +302,7 @@ class CompileContext {
                 rootElementId: rootId,
                 ...settings,
                 ...actions,
+                ...(params.length > 0 ? { params } : {}),
             };
 
         this.surfaces.push({
@@ -308,6 +312,77 @@ class CompileContext {
                 .filter(element => !elements[element.id])
                 .map(element => ({ id: element.id, name: element.name ?? element.type })),
         });
+    }
+
+    /**
+     * A page's `param` lines as the parameters it declares.
+     *
+     * The same rules the editor keeps: ids are plain words (they become part of the inputs of every
+     * node that opens the page) and unique, names are unique - two values under one key would be one
+     * value - and a default is of the declared kind. A Game UI declares none: the player opens it
+     * with nothing.
+     */
+    private pageParams(statement: Extract<UiStatement, { kind: "surface" }>): UIPageParam[] {
+        if (statement.surfaceKind === "stageSurface") {
+            for (const param of statement.params) {
+                this.report(
+                    "error",
+                    "ui.page_param_on_game_ui",
+                    `"${param.id}": a Game UI declares no params - the player opens it with nothing.`,
+                    param.line,
+                );
+            }
+            return [];
+        }
+        const out: UIPageParam[] = [];
+        for (const param of statement.params) {
+            if (!isUIPageParamId(param.id)) {
+                this.report(
+                    "error",
+                    "ui.page_param_id",
+                    `"${param.id}" cannot be a param id.`,
+                    param.line,
+                    "Letters, digits, _ and - only: the id becomes part of the inputs of every node that opens the page.",
+                );
+                continue;
+            }
+            if (!isUIPageParamType(param.type)) {
+                this.report(
+                    "error",
+                    "ui.page_param_type",
+                    `"${param.type}" is not a page param type.`,
+                    param.line,
+                    `Types: ${UI_PAGE_PARAM_TYPES.join(", ")}.`,
+                );
+                continue;
+            }
+            const name = param.name.trim();
+            if (!name || out.some(other => other.id === param.id || other.name === name)) {
+                this.report(
+                    "error",
+                    "ui.page_param_duplicate",
+                    `"${param.id}" repeats the id or the name of a param above it, or has no name.`,
+                    param.line,
+                );
+                continue;
+            }
+            if (param.defaultValue !== undefined && !pageParamDefaultFits(param.type, param.defaultValue)) {
+                this.report(
+                    "error",
+                    "ui.page_param_default",
+                    `The default of "${param.id}" is not a ${param.type}.`,
+                    param.line,
+                );
+                continue;
+            }
+            out.push({
+                id: param.id,
+                name,
+                type: param.type,
+                ...(param.defaultValue === undefined ? {} : { defaultValue: param.defaultValue }),
+            });
+        }
+        return out;
     }
 
     // -----------------------------------------------------------------------
@@ -906,6 +981,20 @@ function applyAssignments(base: Record<string, unknown>, assignments: readonly U
         cursor[assignment.path[assignment.path.length - 1]] = assignment.value;
     }
     return out;
+}
+
+/** Whether a `param` line's default is a value of the kind it declares. */
+function pageParamDefaultFits(type: UIPageParam["type"], value: unknown): boolean {
+    switch (type) {
+        case "string":
+            return typeof value === "string";
+        case "number":
+            return typeof value === "number" && Number.isFinite(value);
+        case "boolean":
+            return typeof value === "boolean";
+        default:
+            return true;
+    }
 }
 
 function structuredCloneish<T>(value: T): T {

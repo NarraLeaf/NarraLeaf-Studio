@@ -73,8 +73,23 @@ export function uiStructValueType(structId: UIStructId | null | undefined): stri
     return safe ? `${UI_STRUCT_VALUE_TYPE_PREFIX}${safe}` : "json";
 }
 
+/**
+ * A pin that takes a struct of any shape.
+ *
+ * What a field reader's input is before anything has told it which shape it reads: it takes the
+ * first struct wired into it and keeps that shape from then on. It does not take untyped `json` -
+ * a reader offers fields from a list, and a value whose fields nobody declared has no list to offer.
+ */
+export const UI_STRUCT_VALUE_TYPE_ANY = `${UI_STRUCT_VALUE_TYPE_PREFIX}*` as const;
+
+/** True for `struct:<id>` and for the any-struct pin. */
+export function isUIStructValueType(valueType: string | undefined): boolean {
+    return valueType?.startsWith(UI_STRUCT_VALUE_TYPE_PREFIX) === true;
+}
+
+/** The struct id a pin type names; null for the any-struct pin and for everything that is not a struct. */
 export function uiStructIdFromValueType(valueType: string | undefined): UIStructId | null {
-    if (!valueType?.startsWith(UI_STRUCT_VALUE_TYPE_PREFIX)) {
+    if (!valueType?.startsWith(UI_STRUCT_VALUE_TYPE_PREFIX) || valueType === UI_STRUCT_VALUE_TYPE_ANY) {
         return null;
     }
     const id = valueType.slice(UI_STRUCT_VALUE_TYPE_PREFIX.length).trim();

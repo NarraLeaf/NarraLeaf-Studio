@@ -1012,7 +1012,8 @@ describe("built-in blueprint nodes", () => {
         expect(types.has(BLUEPRINT_NODE_TYPE_GAME_HISTORY_RESTORE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_GAME_HISTORY_UNDO_LAST)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(true);
-        expect(frameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)?.hideInPalette).toBe(true);
+        // In the palette since a page declares its parameters: it is how one is read.
+        expect(frameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)?.hideInPalette).toBeFalsy();
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_EMIT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE)).toBe(true);
@@ -5980,7 +5981,7 @@ describe("built-in blueprint nodes", () => {
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(true);
-        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(false);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(true);
 
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK)).toBe(true);
@@ -6008,7 +6009,7 @@ describe("built-in blueprint nodes", () => {
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(true);
-        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(false);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(true);
 
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS)).toBe(true);
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS)).toBe(true);
@@ -6065,7 +6066,7 @@ describe("built-in blueprint nodes", () => {
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(true);
-        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(false);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE)).toBe(true);
         const frameSetPageEntry = blueprintNodeRegistry
             .listPaletteEntries({
@@ -6419,6 +6420,28 @@ describe("built-in blueprint nodes", () => {
                 },
             ),
         ).toBe(-8);
+
+        // Size is the Vector2D its pin says - x the width, y the height - and keeps the two names a
+        // graph may already read it by.
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        getSize: { type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY, params: { property: "size" } },
+                    },
+                    edges: [],
+                },
+                "getSize",
+                "value",
+                { property: "size" },
+                undefined,
+                0,
+                {
+                    hostAdapter,
+                    executionOwner: { surfaceId: "surface", elementId: "self", blueprintId: "bp" },
+                },
+            ),
+        ).toEqual({ x: 100, y: 50, width: 100, height: 50 });
 
         expect(
             resolveDataPinValue(
@@ -8365,12 +8388,25 @@ describe("Saved variables outside a story", () => {
         }
     });
 
-    it("keeps both out of a Blueprint Value graph, where a write would feed itself", () => {
+    it("lets a Blueprint Value read one, and keeps the write out, where it would feed itself", () => {
         registerCoreBlueprintNodes();
-        for (const type of [BLUEPRINT_NODE_TYPE_SAVED_GET, BLUEPRINT_NODE_TYPE_SAVED_SET]) {
-            const def = storyVariableBlueprintNodes.find(entry => entry.type === type)!;
-            expect(isBlueprintNodeAllowedInBlueprintValueGraph(def)).toBe(false);
-        }
+        const read = storyVariableBlueprintNodes.find(entry => entry.type === BLUEPRINT_NODE_TYPE_SAVED_GET)!;
+        const write = storyVariableBlueprintNodes.find(entry => entry.type === BLUEPRINT_NODE_TYPE_SAVED_SET)!;
+        // A HUD bound to a saved variable reads it directly; the read is tracked, so the binding
+        // follows the next write (`boundVariablesFollowWrites.test.tsx`).
+        expect(isBlueprintNodeAllowedInBlueprintValueGraph(read)).toBe(true);
+        expect(isBlueprintNodeAllowedInBlueprintValueGraph(write)).toBe(false);
+
+        const valuePaletteTypes = new Set(
+            listBlueprintNodePaletteEntries({
+                graphKind: "event",
+                owner: { kind: "widgetValue", surfaceId: "surface", elementId: "text", propPath: "text" },
+                widgetElementType: "nl.text",
+                isBlueprintValueGraph: true,
+            }).map(entry => entry.type),
+        );
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_SAVED_GET)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_SAVED_SET)).toBe(false);
     });
 
     it("reads the running playthrough through the host, and reports when there is none", async () => {

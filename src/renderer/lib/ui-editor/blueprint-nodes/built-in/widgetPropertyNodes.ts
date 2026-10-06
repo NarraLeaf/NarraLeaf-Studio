@@ -50,6 +50,7 @@ import { BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE } from "../frameTargetSur
 import { normalizeBlueprintElementRefValue } from "./elementRefUtils";
 import { resolveNodeInput } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
+import { readOpenedPageProps } from "./pageParamProps";
 import { WIDGET_OWN_GRAPH_OWNER_KINDS } from "../types";
 
 const READ_GRAPH_KINDS = ["event", "function", "macro"] as const;
@@ -178,8 +179,18 @@ function toRecordValue(raw: unknown): Record<string, unknown> {
     return raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
 }
 
-function readOptionalFramePropsPatch(ctx: Parameters<BlueprintNodeDef["execute"]>[0]): { params?: Record<string, unknown> } {
-    const props = readPin(ctx, "props");
+/**
+ * The params `Set Frame Page` writes: its `props` input with the picked page's declared parameters
+ * laid over it (`readOpenedPageProps`), or nothing at all when neither was given - which leaves the
+ * widget's own params as they were, as it always did.
+ */
+function readOptionalFramePropsPatch(
+    ctx: Parameters<BlueprintNodeDef["execute"]>[0],
+    targetSurfaceId: string | null,
+): { params?: Record<string, unknown> } {
+    const props = targetSurfaceId
+        ? readOpenedPageProps(ctx, targetSurfaceId, ctx.params.targetSurfaceId)
+        : readPin(ctx, "props");
     return props === undefined ? {} : { params: toRecordValue(props) };
 }
 
@@ -224,10 +235,12 @@ function writeNode(input: {
     category?: string;
     hideInPalette?: boolean;
     inspectorParams?: BlueprintNodeDef["inspectorParams"];
+    pageParamPins?: BlueprintNodeDef["pageParamPins"];
     execute: BlueprintNodeDef["execute"];
 }): BlueprintNodeDef {
     const elementTarget = input.mode === "element";
     return {
+        ...(input.pageParamPins ? { pageParamPins: input.pageParamPins } : {}),
         type: input.type,
         displayName: input.displayName,
         category: input.category ?? (elementTarget ? "Element" : input.target.label),
@@ -662,6 +675,7 @@ function frameNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[] 
             pins: [optionalJsonIn("props", "Page props")],
             target,
             mode,
+            pageParamPins: { surfaceParam: "targetSurfaceId" },
             inspectorParams: [
                 {
                     key: "targetSurfaceId",
@@ -672,11 +686,12 @@ function frameNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[] 
                 },
             ],
             execute: async ctx => {
+                const targetSurfaceId = toNullableString(readPin(ctx, "targetSurfaceId"));
                 await requireHostApi(ctx).widget.setFrameProperties(
                     resolveTargetElementId(ctx, target, mode),
                     {
-                        targetSurfaceId: toNullableString(readPin(ctx, "targetSurfaceId")),
-                        ...readOptionalFramePropsPatch(ctx),
+                        targetSurfaceId,
+                        ...readOptionalFramePropsPatch(ctx, targetSurfaceId),
                     },
                 );
                 return { nextPort: "next" };

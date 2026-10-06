@@ -57,7 +57,12 @@ export type ShippedContentAuditResult = {
  * hides: the audit must not grow a second opinion about which of the two it is looking at.
  */
 export type ShippedArtifactReader = {
-    /** True when the entry is present with content. Throws only on an unexpected read failure. */
+    /**
+     * True when the entry is present with content. Throws only on an unexpected read failure.
+     *
+     * Asked about every entry at once, so an implementation that reads bytes bounds how many it
+     * holds itself.
+     */
     entryExists(relativePath: string): Promise<boolean>;
     /**
      * Where this package keeps an asset's bytes, or null when it has no way to say.
@@ -317,35 +322,37 @@ export async function auditShippedContent(input: {
         ...collectSurfaceAssetDemands(pack.bundle.ui.uidoc),
         ...collectProjectFontDemands(pack),
     ];
-    const failures: ShippedContentAuditFailure[] = [];
     const checked = new Set<string>();
-    for (const demand of demands) {
+    // Every entry asked about at once and answered in demand order: the reader decides how many it
+    // works on together, and the failures read the same however the answers arrive.
+    const outcomes = await Promise.all(demands.map(async (demand): Promise<ShippedContentAuditFailure | null> => {
         if (checked.has(demand.assetId)) {
-            continue;
+            return null;
         }
         checked.add(demand.assetId);
         const entryName = reader.resolveEntryName(demand.assetId);
         if (!entryName) {
-            failures.push({ assetId: demand.assetId, origin: demand.origin, reason: "missing" });
-            continue;
+            return { assetId: demand.assetId, origin: demand.origin, reason: "missing" };
         }
         try {
             if (!await reader.entryExists(entryName)) {
-                failures.push({
+                return {
                     assetId: demand.assetId,
                     origin: demand.origin,
                     reason: "unreadable",
                     detail: entryName,
-                });
+                };
             }
         } catch (error) {
-            failures.push({
+            return {
                 assetId: demand.assetId,
                 origin: demand.origin,
                 reason: "unreadable",
                 detail: error instanceof Error ? error.message : String(error),
-            });
+            };
         }
-    }
+        return null;
+    }));
+    const failures = outcomes.filter((outcome): outcome is ShippedContentAuditFailure => outcome !== null);
     return { checkedAssetCount: checked.size, failures, storyErrors: story.storyErrors };
 }

@@ -8,6 +8,7 @@ import { BlueprintNodeCatalogService } from "../ui-editor/BlueprintNodeCatalogSe
 import { VoiceService } from "../voice/VoiceService";
 import { CharacterService } from "../core/CharacterService";
 import { BrandService } from "../brand/BrandService";
+import { ProjectService } from "../core/ProjectService";
 import { AssetsService } from "../core/AssetsService";
 import { AssetSetService } from "../assets/AssetSetService";
 import { resolveAssetSetContents, type AssetSet, type AssetSetCandidate } from "@shared/types/assetSet";
@@ -16,6 +17,8 @@ import {
     buildReferenceIndex,
     extractBlueprintAssetReferences,
     extractCharacterAssetReferences,
+    extractLetterboxReferences,
+    PROJECT_LETTERBOX_TARGET,
     extractPluginDataAssetReferences,
     extractProjectFontReferences,
     extractStoryAnimationAssetReferences,
@@ -37,7 +40,8 @@ import { BLUEPRINT_SET_LEGAL_PARAM_KEYS } from "@shared/build/blueprintAssetSlot
 import { parsePluginStore, pluginStoreNamespace } from "@shared/utils/pluginStorage";
 import { FsRejectErrorCode } from "@shared/types/os";
 import { getInterface } from "@/lib/app/bridge";
-import { i18nStore } from "@/lib/i18n/store";
+import { i18nStore, translate } from "@/lib/i18n/store";
+import { normalizeLetterboxConfiguration } from "@shared/types/letterbox";
 import { pluginDisplayName } from "@shared/utils/pluginDisplayText";
 import { workspacePluginSession } from "@/lib/plugins/workspacePluginSession";
 import { ServiceAssetsService } from "../core/ServiceAssetsService";
@@ -101,6 +105,7 @@ const PLUGIN_SLICE_LOCATION = "Plugins";
  *  - voice (per locale): `VoiceService.onDocumentChanged`
  *  - character: `CharacterService.subscribe`
  *  - design: `BrandService.onFontsChanged` (the project's default font stack)
+ *  - project settings: `ProjectService.onConfigChanged` (the letterbox picture, in `.nlproj`)
  *  - plugin: the data enabled plugins publish into the game, re-read when a plugin writes one of
  *    its stores or starts or stops in this window, and re-matched when the library gains or loses
  *    an asset
@@ -144,6 +149,7 @@ export class ReferenceService extends Service<ReferenceService> {
      */
     private sliceSetReferences = new Map<string, AssetReference[]>();
     private designReferences: AssetReference[] = [];
+    private projectSettingsReferences: AssetReference[] = [];
     /**
      * The published plugin stores as last read, held so the library can change under them without a
      * second read: which of their ids count is decided against the library at the time of asking.
@@ -321,6 +327,7 @@ export class ReferenceService extends Service<ReferenceService> {
                 ...this.uiReferences,
                 ...this.characterReferences,
                 ...this.designReferences,
+                ...this.projectSettingsReferences,
                 ...this.pluginReferences,
             );
             this.indexCache = buildReferenceIndex(all);
@@ -353,6 +360,7 @@ export class ReferenceService extends Service<ReferenceService> {
         this.uiReferences = [];
         this.characterReferences = [];
         this.designReferences = [];
+        this.projectSettingsReferences = [];
         this.pluginStores = [];
         this.pluginReferences = [];
         this.storyVariableWrites.clear();
@@ -471,6 +479,7 @@ export class ReferenceService extends Service<ReferenceService> {
         this.rebuildUISlice();
         this.rebuildCharacterSlice();
         this.rebuildDesignSlice();
+        this.rebuildProjectSettingsSlice();
         await this.rebuildPluginSlice();
         this.rebuildAssetNameSlice();
         this.subscribe();
@@ -540,7 +549,33 @@ export class ReferenceService extends Service<ReferenceService> {
                 });
             }),
             ...this.subscribeToPluginData(),
+            ...this.subscribeToProjectSettings(),
         );
+    }
+
+    /**
+     * Every manifest write and re-read, whoever made it. Rebuilt and announced only when the answer
+     * moved: most writes to `.nlproj` are about something else entirely, and every open "used by" list
+     * re-renders on an announcement.
+     */
+    private subscribeToProjectSettings(): Array<() => void> {
+        let projectService: ProjectService;
+        try {
+            projectService = this.getContext().services.get<ProjectService>(Services.Project);
+        } catch {
+            return [];
+        }
+        return [
+            projectService.onConfigChanged(() => {
+                this.scheduleRebuild("projectSettings", () => {
+                    const before = this.projectSettingsReferences.map(reference => reference.assetId).join(",");
+                    this.rebuildProjectSettingsSlice();
+                    if (this.projectSettingsReferences.map(reference => reference.assetId).join(",") !== before) {
+                        this.emitChanged();
+                    }
+                });
+            }),
+        ];
     }
 
     /**
@@ -948,6 +983,33 @@ export class ReferenceService extends Service<ReferenceService> {
             this.characterReferences = [];
             this.sliceSetReferences.set("character", []);
             this.setSliceGaps("character", [{ reason: "sliceFailed", slice: "character", location: CHARACTER_SLICE_LOCATION }]);
+        }
+    }
+
+    /**
+     * Project settings slice: the letterbox picture, which `.nlproj` names and no document does.
+     *
+     * Guarded like the design slice, and narrowed the same way on failure: this slice can only hold a
+     * picture, so a manifest it could not read casts no doubt on any sound or typeface.
+     */
+    private rebuildProjectSettingsSlice(): void {
+        try {
+            const projectService = this.getContext().services.get<ProjectService>(Services.Project);
+            this.projectSettingsReferences = extractLetterboxReferences(
+                normalizeLetterboxConfiguration(projectService.getProjectConfig().app?.letterbox),
+                translate("project.settings.letterboxImageTitle"),
+            );
+            this.setSliceGaps("projectSettings", []);
+        } catch (error) {
+            console.warn("[ReferenceService] Failed to scan the project settings:", error);
+            this.projectSettingsReferences = [];
+            this.setSliceGaps("projectSettings", [{
+                reason: "sliceFailed",
+                slice: "projectSettings",
+                location: translate("project.group.letterbox"),
+                affects: ["image"],
+                target: PROJECT_LETTERBOX_TARGET,
+            }]);
         }
     }
 

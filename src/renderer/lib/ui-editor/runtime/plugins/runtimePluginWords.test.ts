@@ -35,7 +35,7 @@ async function loadPlugin(source: string[], capabilities: PluginRuntimeCapabilit
     const contributes = {
         blueprintNodes: [], widgets: [], tests: [], reservedSaveIds: [], runtimeData: [], locales: [],
         runtimeCapabilities: capabilities, sidecars: [], buildDependencies: [], buildConfig: [],
-        externalLinks: [], network: [], widgetText: {},
+        externalLinks: [], network: [], widgetText: {}, structs: [],
     } satisfies NormalizedPluginManifestV2["contributes"];
     const descriptor: RuntimePluginDescriptor = {
         plugin: { id, name: id, version: "1.0.0" },

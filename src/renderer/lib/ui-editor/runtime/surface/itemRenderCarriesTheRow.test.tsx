@@ -4,7 +4,7 @@
  *
  * The one event a list has for per-row decoration used to be raised with the row's data in its
  * payload and nothing else: no row scope and no drawing key. So a handler could not read the row
- * with `Get Item Field` - it read nothing - and a write to the row's own label was addressed to the
+ * with `Get Field` - it read nothing - and a write to the row's own label was addressed to the
  * label's template, which no row draws. Item Click, Item Hover and Selection Changed have always
  * carried both; this was the one that did not.
  *

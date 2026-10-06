@@ -258,7 +258,7 @@ const NODE_TITLE_KEYS: Record<string, TranslationKey> = {
     "Get List Item Count": "blueprint.node.getListItemCount",
     "Get List Item Index": "blueprint.node.getListItemIndex",
     "Get Item At": "blueprint.node.getItemAt",
-    "Get Item Field": "blueprint.node.getItemField",
+    "Get Field": "blueprint.node.getField",
     "Get List Item Key": "blueprint.node.getListItemKey",
     "Get List Length": "blueprint.node.getListLength",
     "Find Item By Field": "blueprint.node.findItemByField",

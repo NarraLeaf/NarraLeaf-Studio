@@ -84,6 +84,26 @@ export const blueprint = {
         targetTooltip: "目标：{label}（{type}）",
         fromPin: "从引脚创建",
         connectEmpty: "没有可从该引脚连接的节点",
+        fieldsCategory: "字段",
+        readField: "获取 {field}",
+        filterByField: "按 {field} 筛选",
+        sortByField: "按 {field} 排序",
+        findByField: "按 {field} 查找",
+    },
+    /** 结构类型在引脚、添加节点菜单与诊断中的名称。 */
+    struct: {
+        any: "结构",
+        listRow: "列表行",
+        arrayOf: "{name}列表",
+        choiceItem: "选项",
+        notificationItem: "通知",
+        nvlItem: "NVL 行",
+        historyEntry: "历史记录条目",
+        saveEntry: "存档条目",
+        confirmButton: "确认按钮",
+        ending: "结局",
+        language: "语言",
+        voiceLanguage: "语音语言",
     },
     diagnostics: {
         empty: "无诊断信息",
@@ -102,7 +122,7 @@ export const blueprint = {
         },
         interaction: {
             hiddenEvents: "元素“{name}”不可见，但仍存在交互绑定",
-            hiddenEventsHint: "移除事件或让元素可见；运行时可能永远无法接收输入",
+            hiddenEventsHint: "移除事件、让元素可见，或在蓝图中显示该元素；隐藏的元素不接收输入",
             opaqueEvents: "元素“{name}”几乎不可见（不透明度），但存在交互绑定",
             opaqueEventsHint: "用户可能看不到该控件；在开发者模式中确认",
             smallHit: "元素“{name}”的点击区域很小，但存在交互绑定",
@@ -163,6 +183,11 @@ export const blueprint = {
             variableIdInvalid: "节点“{node}”：选择变量",
             persistentVariableIdInvalid: "节点“{node}”：选择持久变量",
             savedVariableIdInvalid: "节点“{node}”：选择存档变量",
+            fieldMissing: "“{node}”：{struct}没有字段“{field}”",
+            fieldUnpicked: "节点“{node}”：选择字段",
+            keyNotAField: "“{node}”：{struct}没有字段“{key}”，不会匹配任何项",
+            listShapeMismatch: "“{node}”：连入的{struct}与该列表的字段不一致，不一致的字段显示为空",
+            pageParamMissing: "“{node}”：页面没有声明这个参数",
         },
         fn: {
             nameMissing: "函数“{node}”：设置函数名称",
@@ -291,11 +316,11 @@ export const blueprint = {
         listLabel: "图层模板",
         blank: {
             title: "空白图层",
-            description: "空画布，或运行自己的脚本",
+            description: "空白画布，或运行自定义脚本",
         },
         library: {
             title: "更多模板",
-            description: "按分类浏览适用于这个蓝图的全部模板",
+            description: "按分类浏览适用于该蓝图的全部模板",
         },
     },
     /** 模板库：适用于当前蓝图的全部模板，按分类列出。 */
@@ -306,7 +331,7 @@ export const blueprint = {
         categoriesLabel: "分类",
         search: "搜索模板",
         emptyFiltered: "没有匹配的模板",
-        empty: "没有适用于这个蓝图的模板",
+        empty: "没有适用于该蓝图的模板",
         add: "添加",
         back: "返回",
         openDetail: "查看详情",
@@ -439,6 +464,7 @@ export const blueprint = {
         editValue: "在卡片上编辑值",
         removeOutput: "移除输出端口",
         jsonFieldName: "JSON 对象字段名称",
+        readsRow: "当前行",
     },
     comment: {
         color: {
@@ -531,6 +557,7 @@ export const blueprint = {
         missingCharacter: "角色已缺失",
         unnamedInputAction: "未命名意图",
         missingInputAction: "意图已缺失",
+        missingField: "字段“{field}”已缺失",
     },
     script: {
         fileLabel: "脚本文件",
@@ -1195,7 +1222,7 @@ export const blueprint = {
         getLineHeight: "获取行高",
         findItemByField: "按字段查找条目",
         getItemAt: "取指定条目",
-        getItemField: "获取条目字段",
+        getField: "获取字段",
         getListContent: "获取列表内容",
         getListLength: "获取列表长度",
         setItemFieldAt: "设置条目字段",
@@ -1513,6 +1540,7 @@ export const blueprint = {
     },
     nodeDescription: {
         getComponentParam: "当前放置处为所选参数设置的值；未设置时为参数的默认值。使用翻译键的「文字」参数得到键名，其文字由「翻译键文本」取得",
+        getPageParam: "打开页面时为所选参数传入的值；未传入时为参数的默认值。参数在页面属性中声明",
         compareEqual: "A 与 B 类型相同且值相同时为真。数字 1 与文本“1”不相等",
         compareNotEqual: "A 与 B 的值或类型不同时为真。数字 1 与文本“1”视为不同",
         compareGreaterThan: "A 大于 B 时为真。两边按数字比较；任一边无法读作数字时结果为假",
@@ -1532,6 +1560,7 @@ export const blueprint = {
         translationKeyText: "翻译键在玩家当前语言中的文本；该语言没有译文时为源文本。不存在的键得到键名本身。与「获取文本」结果相同，并且可用于蓝图值与函数。显示它的蓝图值会在玩家切换语言时更新",
         format: "把模板中的占位符替换为值：{0}、{1} 等取数组的各项，{name} 取对象中同名的字段；没有对应值的占位符替换为空。翻译过的模板可取自「翻译键文本」",
         formatText: "把文本中的 {0}、{1} 等替换为值列表的各项。「格式化」作用相同，还能用对象填写 {name}，并且可用于蓝图值与函数",
+        getField: "读取连接到「对象」的结构中的一个字段，字段从该结构的字段中选择。在列表行中不连接「对象」时，读取当前行。字段未声明的对象用「获取 JSON 字段」读取",
     },
     live: {
         nodeClaimed: "{name} 正在编辑该节点",

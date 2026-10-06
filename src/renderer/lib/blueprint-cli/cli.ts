@@ -18,6 +18,7 @@ import * as path from "node:path";
 import { listScriptLayers } from "@shared/blueprint/blueprintLayers";
 import type { Blueprint } from "@shared/types/blueprint/document";
 import type { UIElement } from "@shared/types/ui-editor/document";
+import { getUIPageParams } from "@shared/types/ui-editor/pageParams";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes";
 import { builtInPluginOwnerOf, registerBuiltInPluginBlueprintNodes } from "./builtinPluginNodes";
 import { ownerRefToIndexKey } from "@services/ui-editor/blueprint/ownerKeys";
@@ -27,7 +28,9 @@ import {
     describeNode,
     formatNodeDetail,
     formatNodeList,
+    formatStructList,
     knownWidgetElementTypes,
+    listBuiltinStructs,
     listNodeCategories,
     queryNodes,
     resolveNodeType,
@@ -41,6 +44,7 @@ import {
     applyBlueprints,
     assertWritableSchema,
     loadSaveSchema,
+    loadPageParams,
     ProjectIoError,
     elementTypeResolver,
     readUiDocumentTargets,
@@ -69,6 +73,7 @@ const USAGE = `blueprint - query the node catalogue, write blueprints as text, c
   nodes [search words]        List node types. --category --graph-kind --owner --widget --all --limit
   node <type|name>            Everything about one node type: pins, fields, scope.
   categories                  Node categories and how many nodes each holds.
+  structs                     The shapes the engine hands out (an ending, a history entry) and their fields.
 
   targets [search]            Surfaces and elements of a project, for owner= lines. Needs --project.
   list [search]               Blueprints a project holds. Needs --project. --with-graphs
@@ -128,6 +133,7 @@ const COMMANDS: Record<string, CommandSpec> = {
     },
     node: { flags: {}, run: commandNode },
     categories: { flags: {}, run: commandCategories },
+    structs: { flags: {}, run: commandStructs },
     targets: { flags: { project: "string" }, run: commandTargets },
     list: { flags: { project: "string", "with-graphs": "boolean" }, run: commandList },
     show: {
@@ -252,6 +258,16 @@ function commandCategories(args: Args, io: CliIo): number {
     return 0;
 }
 
+function commandStructs(args: Args, io: CliIo): number {
+    const structs = listBuiltinStructs();
+    if (args.flags.json === true) {
+        io.out(JSON.stringify(structs, null, 2));
+        return 0;
+    }
+    io.out(formatStructList(structs).join("\n"));
+    return 0;
+}
+
 // ---------------------------------------------------------------------------
 // Project
 // ---------------------------------------------------------------------------
@@ -279,7 +295,15 @@ function commandTargets(args: Args, io: CliIo): number {
         if (!wanted(surface.name) && elements.length === 0) {
             continue;
         }
-        lines.push(`${surface.name}  owner=surfaceMain surface=${surface.id}`);
+        // A page's declared parameters, as a node that opens it names its inputs (`param_<id>`) and
+        // `Get Page Param` names the one it reads (`paramId = <id>`).
+        const pageParams = getUIPageParams({ kind: surface.kind === "stageSurface" ? "stageSurface" : "appSurface", params: surface.params })
+            .map(param => `${param.id}${param.name === param.id ? "" : ` "${param.name}"`}:${param.type}`);
+        lines.push(
+            `${surface.name}  owner=surfaceMain surface=${surface.id}`
+                // After a `#`, as a label: what follows the owner fields is copied into a `.bp` file without it.
+                + (pageParams.length > 0 ? `  # params: ${pageParams.join(", ")}` : ""),
+        );
         for (const element of elements) {
             lines.push(
                 `    ${element.path}  [${element.type}]  owner=widgetMain surface=${surface.id} `
@@ -377,6 +401,7 @@ function commandList(args: Args, io: CliIo): number {
 function commandShow(args: Args, io: CliIo): number {
     const projectDir = requireProject(args);
     loadSaveSchema(projectDir);
+    loadPageParams(projectDir);
     const file = readUiGraphs(projectDir);
     const wanted = stringFlag(args, "blueprint");
     const ownerKey = stringFlag(args, "owner");
@@ -422,6 +447,7 @@ function commandCheck(args: Args, io: CliIo): number {
     const projectDir = stringFlag(args, "project") ? requireProject(args) : null;
     if (projectDir) {
         loadSaveSchema(projectDir);
+        loadPageParams(projectDir);
     }
     const variables = projectDir ? readVariableRegistry(projectDir) : { persistent: [], saved: [] };
 
@@ -436,6 +462,7 @@ function commandCheck(args: Args, io: CliIo): number {
             savedVariables: variables.saved,
             resolveWidgetElement: widgetElementResolver(targets),
             uiElements: targets.raw as Readonly<Record<string, UIElement>>,
+            uiStructs: targets.structs,
             assetNameContext: readAssetNameContext(projectDir),
         });
         io.out(
@@ -462,6 +489,7 @@ function commandCheck(args: Args, io: CliIo): number {
         uiElements: projectDir
             ? readUiDocumentTargets(projectDir).raw as Readonly<Record<string, UIElement>>
             : undefined,
+        uiStructs: projectDir ? readUiDocumentTargets(projectDir).structs : undefined,
         assetNameContext: projectDir ? readAssetNameContext(projectDir) : undefined,
     });
     io.out(
@@ -483,6 +511,7 @@ function commandFormat(args: Args, io: CliIo): number {
         // Save nodes grow a pin for every field the project's saves carry, and a card is only
         // sized right with those pins on it.
         loadSaveSchema(projectDir);
+        loadPageParams(projectDir);
     }
     const resolved = resolveBlueprintFile(given, { forWriting: false });
     const source = readTextFile(resolved);
@@ -494,6 +523,7 @@ function commandFormat(args: Args, io: CliIo): number {
                   existing: readUiGraphs(projectDir).blueprintDocument,
                   resolveElementType: elementTypeResolver(targets),
                   uiElements: targets.raw as Readonly<Record<string, UIElement>>,
+                  uiStructs: targets.structs,
               }
             : {},
     });
@@ -536,6 +566,7 @@ function commandApply(args: Args, io: CliIo): number {
     }
     const projectDir = requireProject(args);
     loadSaveSchema(projectDir);
+    loadPageParams(projectDir);
     const resolved = resolveBlueprintFile(given, { forWriting: false });
     const source = readTextFile(resolved);
     const file = readUiGraphs(projectDir);
@@ -548,6 +579,7 @@ function commandApply(args: Args, io: CliIo): number {
         resolveElementType: elementTypeResolver(readUiDocumentTargets(projectDir)),
         resolveWidgetElement: widgetElementResolver(readUiDocumentTargets(projectDir)),
         uiElements: readUiDocumentTargets(projectDir).raw as Readonly<Record<string, UIElement>>,
+        uiStructs: readUiDocumentTargets(projectDir).structs,
         assetNameContext: readAssetNameContext(projectDir),
     });
     const report = formatDiagnostics(result.diagnostics, {

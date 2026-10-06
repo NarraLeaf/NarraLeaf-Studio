@@ -58,6 +58,7 @@ beforeEach(() => {
                 <button id="stopped" data-tip="Frozen" disabled></button>
             </div>
             <button id="own-side" data-tip="Below" data-tip-side="bottom"></button>
+            <button id="dock" data-tip="Toggle left sidebar" data-tip-shortcut="Ctrl+Shift+B"></button>
         </div>
     `;
     stop = startTooltipTracking(document, next => {
@@ -74,6 +75,20 @@ afterEach(() => {
 });
 
 const el = (id: string) => document.getElementById(id) as HTMLElement;
+
+describe("tooltip shortcut", () => {
+    it("carries the chord a control declares beside its words", () => {
+        move(el("dock"));
+        vi.advanceTimersByTime(DELAY);
+        expect(shown).toEqual({ anchor: el("dock"), text: "Toggle left sidebar", side: "top", shortcut: "Ctrl+Shift+B" });
+    });
+
+    it("adds nothing for a control without one", () => {
+        move(el("lonely"));
+        vi.advanceTimersByTime(DELAY);
+        expect(shown && "shortcut" in shown).toBe(false);
+    });
+});
 
 describe("tooltip delay", () => {
     it("waits before showing", () => {

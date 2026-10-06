@@ -414,6 +414,9 @@ export const story = {
             // through too, and so does one that simply plays a line and rejoins the scene.
             fallsThrough: "continues",
             fallsThroughTitle: "No jump of its own; the scene continues past the fork",
+            // An arm holding an /ending row: the story stops there instead of rejoining the scene.
+            ends: "ends",
+            endsTitle: "The story ends in this branch: {names}",
             forkCount: {
                 one: "{count} branch",
                 other: "{count} branches",
@@ -973,6 +976,15 @@ export const story = {
         appliesTo: "Also filed under",
         star: "Star",
         unstar: "Unstar",
+        abbreviations: "Your abbreviations",
+        addAbbreviation: "Add abbreviation",
+        removeAbbreviation: "Remove {word}",
+        abbreviationPlaceholder: "Abbreviation",
+        abbreviationSpace: "An abbreviation cannot contain spaces.",
+        abbreviationCharacter: "Quotes, =, /, @ and # cannot be used.",
+        abbreviationBuiltIn: "Already a spelling of {command}.",
+        abbreviationTaken: "Already your abbreviation for {command}.",
+        abbreviationShadowed: "Now a spelling of {command}. This abbreviation has no effect.",
         type: {
             image: "Image asset",
             audio: "Audio asset",
@@ -1122,7 +1134,7 @@ export const story = {
         openPreview: "Open live preview",
         closePreview: "Close live preview",
         title: "Live Preview",
-        dock: "Dock to sidebar",
+        dock: "Dock in the scene editor",
         pip: "Picture-in-picture",
         selectRow: "Select a story row to preview its stage state.",
         failed: "Preview failed",

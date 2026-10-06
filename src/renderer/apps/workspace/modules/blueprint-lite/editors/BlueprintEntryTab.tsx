@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent } from "react";
 import { MotionConfig } from "motion/react";
 import { getActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { useTranslation, type UseTranslation } from "@/lib/i18n";
@@ -43,12 +43,29 @@ import type { StoryDocument } from "@shared/types/story";
 import { listSceneIdsInDocumentOrder, listStoryEndings } from "@shared/types/story";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getUIComponentParams } from "@shared/types/ui-editor/document";
+import {
+    getActiveUIPageParams,
+    getActiveUIPageParamsRevision,
+    subscribeActiveUIPageParams,
+} from "@shared/types/ui-editor/pageParams";
+import { BLUEPRINT_PAGE_PARAM_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/frameNodes";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
+import { isFactoryStoryBlueprintName, ownerLabelKey } from "@shared/types/ui-editor/ownerLabels";
 import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemContext";
 import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { uiStructFieldLabel } from "@shared/types/ui-editor/struct";
-import { BLUEPRINT_LIST_ITEM_FIELD_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/listNodes";
+import {
+    BLUEPRINT_LIST_ITEM_FIELD_OPTIONS_SOURCE,
+    BLUEPRINT_STRUCT_FIELD_OPTIONS_SOURCE,
+} from "@/lib/ui-editor/blueprint-nodes/built-in/listNodes";
+import {
+    analyzeBlueprintStructTypes,
+    buildBlueprintStructTypeContext,
+    pageSurfaceIdOf,
+    pinBlueprintFieldReaderStruct,
+} from "@/lib/workspace/services/ui-editor/blueprint/graphStructTypeInference";
+import { blueprintValueTypeForVariable } from "@/lib/workspace/services/ui-editor/blueprint/graphVariableTypeInference";
 import {
     BLUEPRINT_INPUT_ACTION_OPTIONS_SOURCE,
     listBlueprintInputActionOptions,
@@ -123,8 +140,12 @@ import type {
     BlueprintMagicElementRefPaletteEntry,
     BlueprintNodeEditorCatalogEntry,
 } from "@/lib/ui-editor/blueprint-nodes/types";
-import { BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN } from "@/lib/ui-editor/blueprint-nodes/types";
 import {
+    BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN,
+    blueprintPinLiteralOptionsSource,
+} from "@/lib/ui-editor/blueprint-nodes/types";
+import {
+    BLUEPRINT_NODE_PARAM_FIELD,
     BLUEPRINT_NODE_PARAM_FN_REF,
     BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
     BLUEPRINT_NODE_PARAMS_FN_SIGNATURE_SNAPSHOT,
@@ -138,6 +159,7 @@ import {
     BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
     BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER,
+    BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
     readBlueprintFnSignatureSnapshot,
 } from "@shared/types/blueprint/graph";
 import {
@@ -620,6 +642,14 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const [storyDocumentsById, setStoryDocumentsById] = useState<Record<string, StoryDocument>>({});
     const [storyLibraryRevision, setStoryLibraryRevision] = useState(0);
     const [dynamicSelectOptionsRevision, setDynamicSelectOptionsRevision] = useState(0);
+    // The pages' declared parameters: the nodes that open a page grow an input per parameter of the
+    // page they name, and `Get Page Param` picks one, so a parameter added or renamed in the page's
+    // inspector has to reach the cards of a blueprint that is already open.
+    const pageParamsRevision = useSyncExternalStore(
+        subscribeActiveUIPageParams,
+        getActiveUIPageParamsRevision,
+        getActiveUIPageParamsRevision,
+    );
     // The `characters` source is reactive: renaming or deleting a character while a blueprint tab is
     // open has to be visible in the picker, otherwise a stale list is the only evidence the author
     // ever sees that the reference they are about to pick no longer exists.
@@ -705,6 +735,22 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         anchorElementId(bp.owner) !== null && payload.elementId
             ? uiDocument.elements[payload.elementId]
             : undefined;
+    /** The shapes this graph's pins are typed with: the document's lists, and the row in scope. */
+    const structTypeContext = useMemo(
+        () =>
+            buildBlueprintStructTypeContext({
+                uiDocument: blueprintDocumentService.getDocument(),
+                widgetElement,
+                owner: bp.owner,
+                isComponentDefinitionGraph,
+                savedVariables: localBp.listSavedVariables(),
+            }),
+        // `uiDocumentRevision` stands in for the document read through the service, `registryRevision`
+        // for the variable table read through the blueprint service, and `pageParamsRevision` for the
+        // pages' parameters, read through their shared table.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [blueprintDocumentService, bp.owner, isComponentDefinitionGraph, uiDocumentRevision, registryRevision, pageParamsRevision, widgetElement],
+    );
     const widgetLogicEvents = useMemo(() => {
         const t = widgetElement?.type;
         return t ? widgetModuleRegistry.get(t)?.logicApi?.events : undefined;
@@ -1142,6 +1188,9 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             }
             const id = uuid.generate();
             const node = createGraphNodeForPalette(entry.type, id);
+            if (entry.preset) {
+                node.params = { ...(node.params ?? {}), ...entry.preset.params };
+            }
             if (entry.magicElementRef) {
                 node.params = {
                     ...(node.params ?? {}),
@@ -1234,6 +1283,9 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             }
             const id = uuid.generate();
             const node = createGraphNodeForPalette(entry.type, id);
+            if (entry.preset) {
+                node.params = { ...(node.params ?? {}), ...entry.preset.params };
+            }
             if (entry.magicElementRef) {
                 node.params = {
                     ...(node.params ?? {}),
@@ -1261,6 +1313,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                               targetHandle: connect.existingHandleId,
                           };
                 draft.edges = applyBlueprintIrConnection(draft, wiring);
+                pinBlueprintFieldReaderStruct(draft, wiring, structTypeContext);
                 if (entry.magicElementRef) {
                     draft.edges = applyBlueprintIrConnection(draft, {
                         source: entry.magicElementRef.sourceNodeId,
@@ -1277,7 +1330,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             }
             return id;
         },
-        [editor.graphView, localBp, payload.blueprintId, uuid],
+        [editor.graphView, localBp, payload.blueprintId, structTypeContext, uuid],
     );
 
     const onBindElementLiteral = useCallback(
@@ -1811,6 +1864,9 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         const currentDocument = blueprintDocumentService.getDocument();
         const out: Record<string, Record<string, BlueprintInspectorParamSelectOption[]>> = {};
 
+        // The fields each struct-typed node can name, from the same pass the canvas types its pins with.
+        const structTypes = analyzeBlueprintStructTypes(activeIr, structTypeContext);
+
         /**
          * Which list one field picker is asking about.
          *
@@ -1845,6 +1901,31 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                         unnamedLabel: t("blueprint.options.unnamedInputAction"),
                         missingLabel: () => t("blueprint.options.missingInputAction"),
                     }),
+                };
+                continue;
+            }
+            if (node.type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD) {
+                const picked = String(node.params?.[BLUEPRINT_NODE_PARAM_FIELD] ?? "").trim();
+                const options: BlueprintInspectorParamSelectOption[] = (structTypes.get(node.id)?.struct?.fields ?? []).map(field => ({
+                    value: field.id,
+                    label: uiStructFieldLabel(field),
+                }));
+                // The field this node names and its shape no longer has. Kept in the list for the
+                // reason a deleted character is: an empty picker reads as never having been set.
+                if (picked && !options.some(option => option.value === picked)) {
+                    options.push({ value: picked, label: t("blueprint.options.missingField", { field: picked }) });
+                }
+                out[node.id] = { [BLUEPRINT_STRUCT_FIELD_OPTIONS_SOURCE]: options };
+                continue;
+            }
+            const keyPin = def?.elementTypeFlow?.keyPin;
+            const keyedStruct = keyPin ? structTypes.get(node.id)?.struct : null;
+            if (keyPin && keyedStruct) {
+                out[node.id] = {
+                    [blueprintPinLiteralOptionsSource(keyPin)]: keyedStruct.fields.map(field => ({
+                        value: field.key,
+                        label: uiStructFieldLabel(field),
+                    })),
                 };
                 continue;
             }
@@ -1910,6 +1991,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         editor.graphView,
         ir,
         revision,
+        structTypeContext,
         t,
         uiDocumentRevision,
         widgetElement,
@@ -1949,7 +2031,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 id: variable.id,
                 name: variable.name,
                 value: variable.id,
-                valueType: variable.valueType,
+                valueType: blueprintValueTypeForVariable(variable.valueType),
             }));
     }, [localBp, registryRevision]);
 
@@ -1960,7 +2042,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 id: variable.id,
                 name: variable.name,
                 value: variable.id,
-                valueType: variable.valueType,
+                valueType: blueprintValueTypeForVariable(variable.valueType),
             }));
     }, [localBp, registryRevision]);
 
@@ -2107,6 +2189,15 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 label: param.name.trim() || param.id,
             }));
         }
+        // The parameters of the page this blueprint belongs to, for `Get Page Param`. Ids, not names,
+        // for the same reason.
+        const pageSurfaceId = pageSurfaceIdOf(bp.owner);
+        if (pageSurfaceId) {
+            opts[BLUEPRINT_PAGE_PARAM_OPTIONS_SOURCE] = getActiveUIPageParams(pageSurfaceId).map(param => ({
+                value: param.id,
+                label: param.name,
+            }));
+        }
         if (isWidgetEventGraph(bp.owner) && payload.surfaceId) {
             const surface = uiDocument.surfaces.find(s => s.id === payload.surfaceId);
             if (surface) {
@@ -2147,6 +2238,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         appTagRevision,
         nodeCatalog,
         dynamicSelectOptionsRevision,
+        pageParamsRevision,
         doc,
         bp.owner,
         t,
@@ -2291,7 +2383,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const header = (
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
             <span className="text-sm font-semibold text-fg">{t("blueprint.header.title")}</span>
-            <span className="truncate font-mono text-2xs text-fg-muted">{bp.name}</span>
+            {/* A story blueprint nobody has named yet carries an English placeholder; its kind
+                is what the Blueprint Overview and the function lists call it too. */}
+            <span className="truncate font-mono text-2xs text-fg-muted">
+                {isFactoryStoryBlueprintName(bp.name) ? t(ownerLabelKey(bp.owner.kind)) : bp.name}
+            </span>
         </div>
     );
 
@@ -2345,6 +2441,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                         currentBlueprintId={payload.blueprintId}
                         resolveCallableFnSignature={resolveCallableFnSignature}
                         onCreateGroupFrame={onCreateGroupFrame}
+                        structTypeContext={structTypeContext}
                     />
                 </div>
             </div>

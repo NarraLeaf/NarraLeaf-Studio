@@ -7,6 +7,7 @@ import type { BlueprintPaletteContext } from "@/lib/ui-editor/blueprint-nodes/ty
 import {
     AppWindow,
     Box,
+    Braces,
     Bug,
     CornerUpRight,
     Database,
@@ -23,6 +24,7 @@ import {
 } from "lucide-react";
 import {
     BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID,
+    BLUEPRINT_ADD_NODE_FIELDS_CATEGORY_ID,
     blueprintAddNodeEntryKey,
     buildBlueprintAddNodeCategories,
     filterPreparedBlueprintAddNodeEntries,
@@ -74,6 +76,11 @@ type Props = {
     connectMode?: boolean;
     /** Short tag for the dragged pin shown in the connect-mode chip (e.g. "exec", "string"). */
     connectSourceLabel?: string;
+    /**
+     * Entries listed ahead of the catalogue, in a group of their own that the menu opens on: the
+     * fields of a dragged struct (see `structFieldPaletteEntries.ts`).
+     */
+    leadingEntries?: readonly PaletteEntry[];
 };
 
 type CategoryVisual = {
@@ -113,9 +120,18 @@ function getCategoryVisual(categoryId: string): CategoryVisual {
             return { icon: Bug, color: "#bd97a3" };
         case BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID:
             return { icon: Settings2, color: "#a8adb5" };
+        case BLUEPRINT_ADD_NODE_FIELDS_CATEGORY_ID:
+            return { icon: Braces, color: "#96b8a0" };
         default:
             return { icon: Settings2, color: "#9aa3ad" };
     }
+}
+
+/** A category chip's words: the menu's own group by its own name, a node category by the catalogue's. */
+function addNodeCategoryLabel(category: string, t: ReturnType<typeof useTranslation>["t"]): string {
+    return category === BLUEPRINT_ADD_NODE_FIELDS_CATEGORY_ID
+        ? t("blueprint.addNode.fieldsCategory")
+        : resolveBlueprintCategoryLabel(category, t);
 }
 
 export function BlueprintAddNodeMenu({
@@ -129,6 +145,7 @@ export function BlueprintAddNodeMenu({
     entryFilter,
     connectMode = false,
     connectSourceLabel,
+    leadingEntries,
 }: Props) {
     const { t } = useTranslation();
     // The menu is portalled into, positioned against and keyed off the window it is drawn in.
@@ -154,13 +171,14 @@ export function BlueprintAddNodeMenu({
         initialFocus: inputRef,
     });
 
+    const openOnFields = Boolean(leadingEntries?.length);
     useEffect(() => {
         if (open) {
             setQuery("");
-            setActiveCategoryId(BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID);
+            setActiveCategoryId(openOnFields ? BLUEPRINT_ADD_NODE_FIELDS_CATEGORY_ID : BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID);
             setActiveFlatIndex(-1);
         }
-    }, [open]);
+    }, [open, openOnFields]);
 
     useEffect(() => {
         setActiveFlatIndex(-1);
@@ -171,8 +189,9 @@ export function BlueprintAddNodeMenu({
 
     const entries = useMemo(() => {
         const all = nodeCatalog.listPaletteEntries(paletteContext);
-        return entryFilter ? all.filter(entryFilter) : all;
-    }, [nodeCatalog, paletteContext, entryFilter]);
+        const listed = entryFilter ? all.filter(entryFilter) : all;
+        return leadingEntries?.length ? [...leadingEntries, ...listed] : listed;
+    }, [nodeCatalog, paletteContext, entryFilter, leadingEntries]);
 
     const categories = useMemo(() => buildBlueprintAddNodeCategories(entries), [entries]);
     const categoryRow = useCategoryRowScroll([open, categories]);
@@ -211,7 +230,7 @@ export function BlueprintAddNodeMenu({
         let folded: ReturnType<typeof prepareBlueprintAddNodeEntries> | null = null;
         return () => (folded ??= prepareBlueprintAddNodeEntries(entries, {
             title: displayName => resolveBlueprintNodeTitle(displayName, t),
-            category: category => resolveBlueprintCategoryLabel(category, t),
+            category: category => addNodeCategoryLabel(category, t),
             categoryAliases: blueprintCategoryFormerLabels,
         }));
     }, [entries, t]);
@@ -454,7 +473,7 @@ export function BlueprintAddNodeMenu({
                                         onClick={() => setActiveCategoryId(category.id)}
                                     >
                                         <Icon className="h-3.5 w-3.5 shrink-0" style={{ color: visual.color }} aria-hidden />
-                                        <span>{resolveBlueprintCategoryLabel(category.label, t)}</span>
+                                        <span>{addNodeCategoryLabel(category.label, t)}</span>
                                         <span className="text-2xs text-fg-subtle">{category.count}</span>
                                     </button>
                                 );
@@ -539,9 +558,12 @@ const BlueprintAddNodeRow = memo(function BlueprintAddNodeRow(props: {
     const visual = getCategoryVisual(props.entry.category);
     const Icon = visual.icon;
     const magicRef = props.entry.magicElementRef;
-    const categoryLabel = resolveBlueprintCategoryLabel(props.entry.category, t);
-    const nodeTitle = resolveBlueprintNodeTitle(props.entry.displayName, t);
-    const subtitle = magicRef
+    const categoryLabel = addNodeCategoryLabel(props.entry.category, t);
+    // A preset's title is already in the author's language: it is built from a field name.
+    const nodeTitle = props.entry.preset ? props.entry.preset.title : resolveBlueprintNodeTitle(props.entry.displayName, t);
+    const subtitle = props.entry.preset
+        ? props.entry.preset.subtitle
+        : magicRef
         ? `${categoryLabel} -> ${magicRef.label}`
         : categoryLabel;
     // What the node does is the one thing the row cannot show; its type id is already on the right

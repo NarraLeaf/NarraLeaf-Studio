@@ -38,6 +38,8 @@ const BRIDGE_SERVICE = "lib/workspace/services/ui-editor/UIRuntimeBridgeService.
 const EXEMPT: Record<string, string> = {
     "apps/workspace/modules/ui-editor/editors/UISurfaceEditorTab.tsx":
         "the editing canvas — the page being drawn, and the component editor's root",
+    "apps/workspace/modules/ui-editor/editors/SurfaceReferenceLayer.tsx":
+        "other Game UI drawn on the editing canvas as a reference, where the game draws it",
     "apps/workspace/modules/blueprint-lite/editors/BlueprintEntryTab.tsx":
         "a blueprint node's element preview — the widget itself, shown where it is wired up",
 };

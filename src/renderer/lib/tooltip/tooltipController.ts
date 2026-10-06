@@ -32,6 +32,18 @@ export const TOOLTIP_ATTRIBUTE = "data-tip";
 export const TOOLTIP_GROUP_ATTRIBUTE = "data-tip-group";
 
 /**
+ * The key that does what the control does, printed after its words in the bubble.
+ *
+ * A control with a shortcut is where the shortcut is found: the author is already pointing at the
+ * thing, and a bubble that names it without its key leaves the keyboard to be discovered somewhere
+ * else, or never. It is a separate attribute rather than part of `data-tip` so the bubble can set it
+ * apart from the words, the way a menu row does, and so the words stay the same in every language
+ * while the chord follows the platform and the author's own bindings. Write it already formatted
+ * (`useShortcutLabels`), never as a catalog default, or a rebound key goes on showing the old one.
+ */
+export const TOOLTIP_SHORTCUT_ATTRIBUTE = "data-tip-shortcut";
+
+/**
  * Which way a tooltip opens, read from the element or from the nearest ancestor that declares one -
  * so a strip states it once for everything in it.
  *
@@ -59,6 +71,8 @@ export interface TooltipTarget {
     anchor: HTMLElement;
     text: string;
     side: TooltipSide;
+    /** The chord from {@link TOOLTIP_SHORTCUT_ATTRIBUTE}, when the element declares one. */
+    shortcut?: string;
 }
 
 type Publish = (target: TooltipTarget | null) => void;
@@ -88,6 +102,12 @@ export function tooltipTextOf(element: Element | null): string | null {
     }
     const text = element.getAttribute(TOOLTIP_ATTRIBUTE);
     return text ? text : null;
+}
+
+/** The chord an element declares beside its tooltip, or null when it declares none. */
+export function tooltipShortcutOf(element: Element | null): string | null {
+    const shortcut = element instanceof HTMLElement ? element.getAttribute(TOOLTIP_SHORTCUT_ATTRIBUTE) : null;
+    return shortcut ? shortcut : null;
 }
 
 /** The nearest ancestor (or self) that declares a tooltip. */
@@ -152,7 +172,8 @@ export function startTooltipTracking(doc: Document, publish: Publish): () => voi
         if (group) {
             hotGroup = group;
         }
-        publish({ anchor: element, text, side: resolveTooltipSide(element) });
+        const shortcut = tooltipShortcutOf(element);
+        publish({ anchor: element, text, side: resolveTooltipSide(element), ...(shortcut ? { shortcut } : {}) });
     };
 
     /** Hide, and forget where the pointer was, so re-entering the same element shows again. */

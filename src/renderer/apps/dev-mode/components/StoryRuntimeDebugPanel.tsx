@@ -44,6 +44,7 @@ import {
     buildStorySceneBlockIndex,
     formatStoryVariableDeltaChip,
     formatStoryVariableRangeChip,
+    formatStoryVariableValue,
     listDeclaredStoryVariables,
     projectExecutionContext,
     projectSceneTimeline,
@@ -129,7 +130,7 @@ function useBundleVariableRegistry(bundle: DevModeBundle): {
 
 type StoryRuntimeDebugPanelProps = {
     storyRuntime: GameAppStoryRuntimeBridge;
-    /** App-level persistent store (the "Persis" scope), shared with UI blueprints. */
+    /** App-level persistent store (the persistent scope), shared with UI blueprints. */
     scopeBridge: ScopeStoreBridge;
     bundle: DevModeBundle;
     /** The project this window is running, for the one affordance that leaves it: open a row in Studio. */
@@ -137,13 +138,6 @@ type StoryRuntimeDebugPanelProps = {
     className?: string;
     /** Dock/float mode toggle + title-bar drag, owned by DevModeContent. */
     chrome?: DevModePanelChrome;
-};
-
-const SCOPE_LABEL: Record<StoryRuntimeVariableScope, string> = {
-    // Editor command-token vocabulary (/local, /var, /persis).
-    scene: "Local",
-    saved: "Var",
-    persistent: "Persis",
 };
 
 /** Coalesce the play-head stream to at most one re-read per frame. */
@@ -615,7 +609,8 @@ function VariablesTab(props: {
                 }
                 return (
                     <div key={scope}>
-                        <h3 className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">{SCOPE_LABEL[scope]}</h3>
+                        {/* The scope's name as a declaration row and the scene flow's variable picker give it. */}
+                        <h3 className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">{t(`story.badge.declare.${scope}`)}</h3>
                         <ul className="space-y-1">
                             {scopeRows.map(row => (
                                 <li key={`${scope}:${row.variable.id}`} className="flex items-center gap-2">
@@ -626,6 +621,7 @@ function VariablesTab(props: {
                                         valueType={row.variable.valueType}
                                         value={row.value}
                                         live={row.live}
+                                        scenes={document.scenes}
                                         onCommit={value => writeValue(row.variable, value)}
                                     />
                                 </li>
@@ -642,9 +638,10 @@ function VariableValueEditor(props: {
     valueType: StoryVariableValueType;
     value: unknown;
     live: boolean;
+    scenes: Record<StorySceneId, StoryScene>;
     onCommit: (value: StoryLiteralValue) => void;
 }): ReactNode {
-    const { valueType, value, live, onCommit } = props;
+    const { valueType, value, live, scenes, onCommit } = props;
 
     if (valueType === "boolean") {
         return (
@@ -657,7 +654,7 @@ function VariableValueEditor(props: {
         );
     }
     return (
-        <VariableTextEditor valueType={valueType} value={value} live={live} onCommit={onCommit} />
+        <VariableTextEditor valueType={valueType} value={value} live={live} scenes={scenes} onCommit={onCommit} />
     );
 }
 
@@ -665,10 +662,11 @@ function VariableTextEditor(props: {
     valueType: StoryVariableValueType;
     value: unknown;
     live: boolean;
+    scenes: Record<StorySceneId, StoryScene>;
     onCommit: (value: StoryLiteralValue) => void;
 }): ReactNode {
-    const { valueType, value, live, onCommit } = props;
-    const initial = useMemo(() => formatEditableValue(valueType, value), [valueType, value]);
+    const { valueType, value, live, scenes, onCommit } = props;
+    const initial = useMemo(() => formatStoryVariableValue(valueType, value, scenes), [valueType, value, scenes]);
     const [draft, setDraft] = useState(initial);
     const [invalid, setInvalid] = useState(false);
     const focusedRef = useRef(false);
@@ -682,6 +680,12 @@ function VariableTextEditor(props: {
     }, [initial]);
 
     const commit = useCallback(() => {
+        // Leaving the field untouched writes nothing: the cell may be showing a scene's name for a
+        // stored scene reference, and writing that text back would replace the reference.
+        if (draft === initial) {
+            setInvalid(false);
+            return;
+        }
         const parsed = parseEditableValue(valueType, draft);
         if (!parsed.ok) {
             setInvalid(true);
@@ -689,7 +693,7 @@ function VariableTextEditor(props: {
         }
         setInvalid(false);
         onCommit(parsed.value);
-    }, [draft, onCommit, valueType]);
+    }, [draft, initial, onCommit, valueType]);
 
     return (
         <input
@@ -721,20 +725,6 @@ function VariableTextEditor(props: {
             }}
         />
     );
-}
-
-function formatEditableValue(valueType: StoryVariableValueType, value: unknown): string {
-    if (value === undefined || value === null) {
-        return "";
-    }
-    if (valueType === "json") {
-        try {
-            return JSON.stringify(value);
-        } catch {
-            return String(value);
-        }
-    }
-    return String(value);
 }
 
 function parseEditableValue(

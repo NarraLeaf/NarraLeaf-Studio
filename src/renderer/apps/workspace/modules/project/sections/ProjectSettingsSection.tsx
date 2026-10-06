@@ -26,6 +26,7 @@ import { SettingRow, SettingShell, SettingStack } from "./settingRows";
 import { NetworkAllowlistField } from "./NetworkAllowlistField";
 import { NumberField } from "./NumberField";
 import { ProjectSigningSection } from "./ProjectSigningSection";
+import { ProjectLetterboxSection } from "./ProjectLetterboxSection";
 import { useConfigSlice } from "./useConfigSlice";
 import { SettingsGroup } from "../components/SettingsGroup";
 import {
@@ -629,6 +630,10 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                     />
                 </SettingStack>
             </SettingsGroup>
+
+            {/* Directly above Mobile, whose screen fit decides whether there are bars at all: a phone
+                set to crop has none, and every other screen of another shape shows these. */}
+            <ProjectLetterboxSection {...props} />
 
             {/* Neither security nor size, and a heading of its own rather than filed under whichever
                 of the two it is closer to. The phone-only questions land here. */}

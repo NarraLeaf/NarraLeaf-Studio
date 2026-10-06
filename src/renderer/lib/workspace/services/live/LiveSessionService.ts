@@ -21,7 +21,7 @@ import { CharacterService } from "../core/CharacterService";
 import { VcsCallError, VersionControlService } from "../core/VersionControlService";
 import { WorkspaceFreezeService } from "../core/WorkspaceFreezeService";
 import { HistoryService } from "../history/HistoryService";
-import { HistoryScopeKind, historyScopeParts, isHistoryScopeOf } from "../history/historyScopes";
+import { HistoryEntryTag, HistoryScopeKind, historyScopeParts, isHistoryScopeOf, projectHistoryScope } from "../history/historyScopes";
 import { AssetsService } from "../core/AssetsService";
 import { AssetSetService } from "../assets/AssetSetService";
 import { AudioTrackService } from "../audio/AudioTrackService";
@@ -797,9 +797,14 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                         && historyScopeParts(scopeId)[0] === storyId);
                 },
                 forgetInterfaceEditors: () => {
-                    ctx.services.get<HistoryService>(Services.History).clearMatching(scopeId =>
+                    const history = ctx.services.get<HistoryService>(Services.History);
+                    history.clearMatching(scopeId =>
                         isHistoryScopeOf(scopeId, HistoryScopeKind.UISurface)
+                        || isHistoryScopeOf(scopeId, HistoryScopeKind.UIComponent)
                         || isHistoryScopeOf(scopeId, HistoryScopeKind.Blueprint));
+                    // And the interface's steps on the project's stack - pages and definitions added,
+                    // copied, deleted, imported or reordered - leaving that stack's other owners theirs.
+                    history.dropTagged(projectHistoryScope(), HistoryEntryTag.UILibrary);
                 },
             },
             now: () => Date.now(),

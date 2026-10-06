@@ -342,6 +342,9 @@ export const story = {
             // ただ 1 行喋ってシーンに戻る枝も素通りする。
             fallsThrough: "続く",
             fallsThroughTitle: "自分では飛ばない。分かれ目の先へシーンが続く",
+            // /ending 行を持つ分岐。ストーリーはここで終わり、シーンには戻らない。
+            ends: "エンディング",
+            endsTitle: "この分岐でストーリーが終わる：{names}",
             forkCount: {
                 other: "{count} 本の枝",
             },
@@ -867,6 +870,15 @@ export const story = {
         appliesTo: "この分類にも入る",
         star: "お気に入りに入れる",
         unstar: "お気に入りから外す",
+        abbreviations: "自分の略語",
+        addAbbreviation: "略語を追加",
+        removeAbbreviation: "{word} を削除",
+        abbreviationPlaceholder: "略語",
+        abbreviationSpace: "略語に空白は使えない",
+        abbreviationCharacter: "引用符、=、/、@、# は使えない",
+        abbreviationBuiltIn: "すでに「{command}」の綴りになっている",
+        abbreviationTaken: "すでに「{command}」の略語になっている",
+        abbreviationShadowed: "この綴りは「{command}」のものになったため、この略語は効かない",
         type: {
             image: "画像アセット",
             audio: "音声アセット",
@@ -1007,7 +1019,7 @@ export const story = {
         openPreview: "実況プレビューを開く",
         closePreview: "実況プレビューを閉じる",
         title: "実況プレビュー",
-        dock: "サイドバーに収める",
+        dock: "シーンエディタに収める",
         pip: "ピクチャインピクチャ",
         selectRow: "舞台の状態を見るには、ストーリーの行を選ぶ",
         failed: "プレビューに失敗",

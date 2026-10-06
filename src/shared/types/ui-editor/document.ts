@@ -30,8 +30,14 @@ import { getUISwitchChildSlot } from "./switch";
  * `componentParam` value binding a text or a button inside the definition shows it through. A Studio
  * that reads v12 would draw every placement with the definition's sample words and translate none of
  * them, and it refuses v13 already, so they carry no version of their own.
+ *
+ * v14: a page declares the values it is opened with (`UIAppSurface.params`, `pageParams.ts`). Nothing
+ * is converted - a page without declarations reads exactly as before - but an older Studio has no
+ * reading for one: the nodes that open such a page would show inputs it does not know as broken
+ * wires, and a game it built would open the page without the values. So it must refuse the document
+ * rather than load it and quietly lose them.
  */
-export const UI_DOCUMENT_SCHEMA_VERSION = 13 as const;
+export const UI_DOCUMENT_SCHEMA_VERSION = 14 as const;
 
 /**
  * The oldest UI document version this build can read.
@@ -130,7 +136,44 @@ export type UIAppSurface = {
      * whether what it just did leaves anything for the surface behind to do.
      */
     actions?: UISurfaceActionEnablement[];
+    /** The values this page is opened with, in author order. See {@link UIPageParam}. */
+    params?: UIPageParam[];
 };
+
+/**
+ * A value whoever opens a page hands it, declared on the page.
+ *
+ * The page's counterpart of a component's parameter ({@link UIComponentParam}): placing a page - in a
+ * Page widget, or by opening it - is the same act as placing a component, and both say up front what
+ * the placement supplies. One contract read from both ends. The page declares what it takes; the
+ * nodes that open it by name (`Go Page`, `Replace Page`, `Show Layer`, `Set Frame Page`) grow one typed
+ * input per declaration, a Page widget's inspector one field, and `Get Page Param` reads one back
+ * from a dropdown. Before this, the two ends met on a key typed into both, which nothing checked.
+ *
+ * Only a page declares them. A Game UI is mounted by the player, which opens it with nothing.
+ *
+ * `id` is what blueprints point at - the inputs of the nodes that open the page and the `Get Page
+ * Param` that reads it - so renaming a parameter unpoints nothing. `name` is the key the page's props
+ * carry the value under, and so what everything that reads props by name sees: a script's
+ * `getPageProps()`, a list bound to a page prop, `Get Page Props`, and `Show Confirm`, which opens its
+ * page with `message` and `buttons`. Names are unique on a page; ids are unique on a page.
+ */
+export type UIPageParam = {
+    id: string;
+    name: string;
+    type: UIPageParamType;
+    /**
+     * What the page reads when whoever opened it gave nothing for this name, in the declared type.
+     * Absent reads as the type's empty value (`uiPageParamDefaultValue`).
+     */
+    defaultValue?: unknown;
+};
+
+/**
+ * What a page parameter holds. The four kinds a blueprint pin, a props object and an inspector field
+ * all have a spelling for; `json` is anything else - a list's rows, a record.
+ */
+export type UIPageParamType = "string" | "number" | "boolean" | "json";
 
 export type UIStageSurface = {
     id: UISurfaceId;
