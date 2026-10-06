@@ -46716,7 +46716,7 @@
         "visible": true
       },
       "props": {
-        "itemStructId": "extra.galleryEntry",
+        "itemStructId": "narraleaf.gallery.entry",
         "itemKeyFieldId": "id",
         "repeatDirection": "horizontal",
         "repeatWrap": true,
@@ -46890,7 +46890,7 @@
         "visible": false
       },
       "props": {
-        "itemStructId": "extra.galleryEntry",
+        "itemStructId": "narraleaf.gallery.entry",
         "itemKeyFieldId": "id",
         "repeatDirection": "horizontal",
         "repeatWrap": true,
@@ -47064,7 +47064,7 @@
         "visible": false
       },
       "props": {
-        "itemStructId": "extra.galleryEntry",
+        "itemStructId": "narraleaf.gallery.entry",
         "itemKeyFieldId": "id",
         "repeatDirection": "vertical",
         "repeatWrap": false,
@@ -47228,7 +47228,7 @@
         "visible": false
       },
       "props": {
-        "itemStructId": "extra.galleryEntry",
+        "itemStructId": "narraleaf.gallery.entry",
         "itemKeyFieldId": "id",
         "repeatDirection": "vertical",
         "repeatWrap": false,
@@ -49722,64 +49722,8 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-10-04T21:33:57.807Z"
+    "updatedAt": "2026-10-06T00:31:04.822Z"
   },
-  "structs": {
-    "extra.galleryEntry": {
-      "id": "extra.galleryEntry",
-      "fields": [
-        {
-          "id": "id",
-          "key": "id",
-          "type": "string"
-        },
-        {
-          "id": "name",
-          "key": "name",
-          "type": "string"
-        },
-        {
-          "id": "image",
-          "key": "image",
-          "type": "image"
-        },
-        {
-          "id": "unlocked",
-          "key": "unlocked",
-          "type": "boolean"
-        },
-        {
-          "id": "locked",
-          "key": "locked",
-          "type": "boolean"
-        },
-        {
-          "id": "audioAssetId",
-          "key": "audioAssetId",
-          "type": "string"
-        },
-        {
-          "id": "storyId",
-          "key": "storyId",
-          "type": "string"
-        },
-        {
-          "id": "sceneId",
-          "key": "sceneId",
-          "type": "string"
-        },
-        {
-          "id": "startBlockId",
-          "key": "startBlockId",
-          "type": "string"
-        },
-        {
-          "id": "coverVariantId",
-          "key": "coverVariantId",
-          "type": "string"
-        }
-      ]
-    }
-  },
+  "structs": {},
   "entrySurfaceId": "5107c0a1-0000-4000-8000-000000000500"
 }

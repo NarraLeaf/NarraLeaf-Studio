@@ -33,6 +33,8 @@ import {
     RUNTIME_UNLOCKED_KEY,
 } from "../../../builtin-plugins/gallery/catalog";
 import { createGalleryBlueprintNodes } from "../../../builtin-plugins/gallery/nodes";
+import { registerBuiltInPluginStructs } from "@/lib/blueprint-cli/builtinPluginNodes";
+import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 
 const TEMPLATE = path.join(process.cwd(), "resources/templates/skeleton/content/editor/ui");
 const document = JSON.parse(fs.readFileSync(path.join(TEMPLATE, "uidoc.json"), "utf-8")) as UIDocument;
@@ -119,6 +121,12 @@ function registerGalleryNodes(): void {
     }
 }
 
+/** The shape the grid's rows have: the one the gallery plugin declares, which the grid names. */
+function galleryEntryShape() {
+    registerBuiltInPluginStructs();
+    return resolveUIStruct(document, "narraleaf.gallery.entry")!;
+}
+
 /** The CG grid's row for one artwork, projected by the catalog exactly as `Get Gallery` hands it over. */
 function rowFor(artworkId: string): UIListItemScope {
     const store = normalizeGalleryStore(CATALOG);
@@ -130,7 +138,7 @@ function rowFor(artworkId: string): UIListItemScope {
         index,
         count: rows.length,
         key: artworkId,
-        struct: document.structs!["extra.galleryEntry"]!,
+        struct: galleryEntryShape(),
         selected: false,
     };
 }
