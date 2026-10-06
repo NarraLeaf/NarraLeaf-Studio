@@ -51,7 +51,7 @@ import {
 } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
-import { EDITOR_BUILTIN_FONT_VIRTUAL_GROUP, getBuiltinEditorFontDisplayName } from "@/lib/ui-editor/fonts/builtinVirtualEditorFonts";
+import { editorBuiltinFontVirtualGroup, getBuiltinEditorFontDisplayName } from "@/lib/ui-editor/fonts/builtinVirtualEditorFonts";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
@@ -110,14 +110,6 @@ const SWATCH_BOX_CLASS = "inline-flex h-5 w-5 shrink-0 items-center justify-cent
  */
 const SPECIMEN_BOX_CLASS = "inline-flex h-6 w-9 shrink-0 items-center justify-center rounded-md"
     + " ring-1 ring-inset ring-edge-strong text-xs text-fg";
-
-/**
- * What the font picker offers besides the library: the system stacks, which need no font file.
- *
- * Deliberately not the project-default row `FontAssetField` shows - this is the surface the project
- * default is built on, and offering it here would be a stack pointing at itself.
- */
-const FONT_PICKER_VIRTUAL_GROUPS = [EDITOR_BUILTIN_FONT_VIRTUAL_GROUP];
 
 /**
  * Clamps that keep this subtree from widening the panel.
@@ -359,6 +351,14 @@ function FontStackGroup({ service }: { service: BrandService | null }) {
     const { context } = useWorkspace();
     const freeze = useFreezeGuard(brandDocumentFreezeScope());
     const [fonts, setFonts] = useState<ProjectFontEntry[]>([]);
+    /**
+     * What the font picker offers besides the library: the system stacks, which need no font file.
+     * Rebuilt with `t` so the generic stacks are named in the interface's current language.
+     *
+     * Deliberately not the project-default row `FontAssetField` shows - this is the surface the project
+     * default is built on, and offering it here would be a stack pointing at itself.
+     */
+    const pickerVirtualGroups = useMemo(() => [editorBuiltinFontVirtualGroup()], [t]);
     const [pickerOpen, setPickerOpen] = useState(false);
     const addRef = useRef<HTMLDivElement | null>(null);
     const { locales, sourceLocale } = useProjectLocales(context);
@@ -483,7 +483,7 @@ function FontStackGroup({ service }: { service: BrandService | null }) {
             <AssetSelector
                 visible={pickerOpen}
                 assetType={AssetType.Font}
-                virtualGroups={FONT_PICKER_VIRTUAL_GROUPS}
+                virtualGroups={pickerVirtualGroups}
                 virtualGroupsPlacement="before"
                 anchorRef={addRef}
                 title={t("brand.fonts.add")}
