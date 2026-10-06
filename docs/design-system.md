@@ -208,6 +208,7 @@ Phase 2 新增(用来替换各处手写模式):
 - **一个控件**：`data-tip="重新加载"`。共享组件（`Button` / `ToolbarButton` / `Input` …）把 rest props 铺到 DOM,所以属性直接穿过去,不用改组件签名。
 - **一排控件**：把这排原有的 wrapper 换成 `<TooltipGroup className="…">`（[lib/tooltip](../src/renderer/lib/tooltip)）。组内**延迟只付一次**——第一条等满延迟,之后指针移到组内任何一个都立即出,离开这排就冷却。**不要在既有 wrapper 外面再套一层**,那正是属性写法要避免的多余盒子。
 - **纯图标控件**：`data-tip` 不再是可访问名的兜底,自己写 `aria-label`。已有可见文字的控件**不要**再补 `aria-label`（会盖掉可见名）。
+- **有快捷键的控件**：再写 `data-tip-shortcut`,气泡在文字后面用淡色印出键位。值取 `useShortcutLabels()` 格式化好的结果（`shortcuts.forBinding("<目录 id>")`）,它跟平台、也跟作者的改键;**不要**写目录里的默认键,也不要把键位拼进 `data-tip` 的文字里。
 - **禁用控件**：照写 `data-tip`。指针事件根本到不了禁用控件,提示是靠命中测试解析出来的。
 - 延迟是**一个全局值**（设置 → 外观 → 提示延迟,默认 500ms）。「立即」只由 `TooltipGroup` 的热链给出,没有逐处的 instant 开关。
 - **方向**：默认向上、没地方就翻下面。贴边的一条轨（侧栏图标列）要**朝里开**——左轨 `side="right"`、右轨 `side="left"`、底轨 `side="top"`,在 `TooltipGroup` 上写一次,组内所有控件继承；单个控件可写 `data-tip-side`。方向是意向不是保证,那一侧放不下就翻到对面。
