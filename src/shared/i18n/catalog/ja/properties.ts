@@ -200,6 +200,7 @@ export const properties = {
         unknown: "使われているかどうか分からない",
         unknownDetail: "{location} を読めなかった",
         unknownComputed: "{location} のアセット名は実行時に組み立てられる",
+        defaultFonts: "既定のフォント",
         count: {
             other: "参照 {count} 件",
         },

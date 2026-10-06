@@ -199,6 +199,7 @@ export const properties = {
         unknown: "无法确定使用情况",
         unknownDetail: "{location} 无法读取",
         unknownComputed: "{location} 的资产名称在运行时拼出",
+        defaultFonts: "默认字体",
         count: {
             one: "{count} 处引用",
             other: "{count} 处引用",
