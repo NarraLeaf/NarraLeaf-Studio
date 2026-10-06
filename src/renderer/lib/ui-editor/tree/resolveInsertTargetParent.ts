@@ -1,5 +1,6 @@
 import type { UIDocument, UIElement, UIElementId, UILayout } from "@shared/types/ui-editor/document";
 import { isUIFlowLayoutParentElement, uiElementTypeAcceptsUserChildren } from "@shared/types/ui-editor/document";
+import { isComponentEditorVirtualRootId } from "@/lib/ui-editor/componentEditorRoot";
 import { getElementSurfaceTopLeft, surfaceRectToParentLocalLayout } from "@/lib/ui-editor/layout/elementSurfaceGeometry";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { collectSubtreeElementIds } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
@@ -11,8 +12,42 @@ export type InsertTargetResolution = {
     source: InsertTargetResolutionSource;
 };
 
-export function isValidUIInsertParent(element: UIElement | undefined): boolean {
-    return element != null && uiElementTypeAcceptsUserChildren(element.type);
+/**
+ * Whether an author's new elements can be put in `element`.
+ *
+ * A component editor's made-up root answers for the definition's root, because that is where the
+ * editor stores what is put in it (`ComponentDocumentServiceAdapter.mapParentId`). A definition made
+ * from a single text input has a text input for a root, so its editor has nowhere to put anything;
+ * the made-up root itself, an `nl.root`, would otherwise say yes to every insert and the definition
+ * would refuse each one.
+ */
+export function isValidUIInsertParent(document: UIDocument, element: UIElement | undefined): boolean {
+    if (element == null) {
+        return false;
+    }
+    if (isComponentEditorVirtualRootId(element.id)) {
+        const definitionRootId = element.childrenIds.length === 1 ? element.childrenIds[0] : undefined;
+        const definitionRoot = definitionRootId ? document.elements[definitionRootId] : undefined;
+        return definitionRoot != null && uiElementTypeAcceptsUserChildren(definitionRoot.type);
+    }
+    return uiElementTypeAcceptsUserChildren(element.type);
+}
+
+/**
+ * The element that refuses new elements on this surface, or null when the surface takes them.
+ *
+ * Only a component editor's surface can refuse: a page's root always takes children. What refuses is
+ * the definition's own root - the element the author sees as the component's frame - so its type is
+ * what a greyed-out insert names.
+ */
+export function resolveSurfaceInsertRefusal(document: UIDocument, surfaceId: string): UIElement | null {
+    const rootId = resolveSurfaceRootElementId(document, surfaceId);
+    const root = rootId ? document.elements[rootId] : undefined;
+    if (!root || isValidUIInsertParent(document, root)) {
+        return null;
+    }
+    const definitionRootId = isComponentEditorVirtualRootId(root.id) ? root.childrenIds[0] : undefined;
+    return (definitionRootId ? document.elements[definitionRootId] : undefined) ?? root;
 }
 
 /**
@@ -34,7 +69,7 @@ export function resolveNearestInsertParentInSurface(
             return null;
         }
         const el: UIElement | undefined = document.elements[cur];
-        if (isValidUIInsertParent(el)) {
+        if (isValidUIInsertParent(document, el)) {
             return cur;
         }
         cur = el?.parentId ?? null;
@@ -68,7 +103,7 @@ export function resolveInsertTargetParent(
                 return null;
             }
             const el: UIElement | undefined = document.elements[cur];
-            if (isValidUIInsertParent(el)) {
+            if (isValidUIInsertParent(document, el)) {
                 return cur;
             }
             cur = el?.parentId ?? null;

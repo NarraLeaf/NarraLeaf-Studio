@@ -4,7 +4,7 @@ export const defaultDoc = {
     rootName: "根节点",
     componentName: "组件",
     pageName: "页面",
-    pageCopy: "{name} 副本",
+    nameCopy: "{name} 副本",
     speaker: "说话人",
     dialog: {
         interactionLayer: "对白交互图层",

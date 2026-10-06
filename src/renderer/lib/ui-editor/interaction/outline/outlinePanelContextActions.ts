@@ -19,6 +19,7 @@ import type { UIEditorStateService } from "@services/ui-editor/UIEditorStateServ
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
+import { translate } from "@/lib/i18n";
 
 const ROOT_WIDGET_TYPE = "nl.root";
 
@@ -145,7 +146,7 @@ export function createOutlinePanelMenuActions(params: {
                     : "Component";
             const component = documentService.createComponentFromElements(surfaceId, menuSel.elementIds, fallbackName);
             if (component) {
-                uiService?.showNotification(`Added "${component.name}" to Component Library`, "success");
+                uiService?.showNotification(translate("uiEditor.contextMenu.addedToComponentLibrary", { name: component.name }), "success");
             }
         },
         expandAllBranches: () => {

@@ -1,7 +1,8 @@
 import type { Blueprint, BlueprintDocument, BlueprintPrivateOwnerRecord } from "@shared/types/blueprint/document";
 import type { TranslationKey } from "@shared/i18n";
 import { ownerKeyBelongsToComponent, ownerKeyBelongsToSurface } from "@shared/blueprint/ownerKey";
-import type { UIComponentDefinition, UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
+import type { UIComponentDefinition, UIDocument, UIElement, UILayout, UISurface } from "@shared/types/ui-editor/document";
+import { getUIComponentLink } from "@shared/types/ui-editor/document";
 import {
     buildUIComponentEditorSurfaceId,
     readUIComponentEditorSurfaceComponentId,
@@ -12,7 +13,7 @@ import { collectSubtreeElementIds } from "./uiDocumentTreeMove";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { EventEmitter } from "../ui/EventEmitter";
 import { HistoryService } from "../history/HistoryService";
-import { DEFAULT_HISTORY_LIMIT, DEFAULT_MERGE_WINDOW_MS, type HistoryScopeId } from "../history/historyModel";
+import { DEFAULT_HISTORY_LIMIT, DEFAULT_MERGE_WINDOW_MS, type HistoryLabel, type HistoryScopeId } from "../history/historyModel";
 import {
     HistoryScopeKind,
     historyScopeSubject,
@@ -51,7 +52,29 @@ export type UIEditorComponentDocumentSnapshot = {
     component: UIComponentDefinition | null;
     /** The library shapes the definition's elements name; see {@link captureNamedUIStructs}. */
     structs?: Record<string, UIStructDef>;
+    /**
+     * Where each placement of the definition stood, by element id - only in the two snapshots of an
+     * edit that moved them along with the definition.
+     *
+     * The exception to "the record and nothing else": making an element the root changes the
+     * definition's size, and each placement is given a new box so it keeps drawing what it drew
+     * (`promoteElementToComponentRoot`). Taking that step back has to give the boxes back with the
+     * record, or every placement would draw the old definition squeezed into the new box. Absent on
+     * every other step, so no other undo touches a page.
+     */
+    placements?: Record<string, UILayout>;
 };
+
+/** Where every placement of `componentId` on the project's pages stands, for a snapshot's `placements`. */
+export function captureUIComponentPlacements(document: UIDocument, componentId: string): Record<string, UILayout> {
+    const out: Record<string, UILayout> = {};
+    for (const element of Object.values(document.elements)) {
+        if (getUIComponentLink(element)?.componentId === componentId) {
+            out[element.id] = cloneBlueprint(element.layout);
+        }
+    }
+    return out;
+}
 
 /**
  * The shapes in the document's library that these elements name.
@@ -133,6 +156,8 @@ export type UIEditorHistoryRecordOptions = {
     after: UIEditorHistorySnapshot;
     mergeKey?: string;
     mergeWindowMs?: number;
+    /** What the step is called in the Edit menu, when it is more than an edit to the surface. */
+    label?: HistoryLabel;
 };
 
 export type UIEditorHistoryEvents = {
@@ -302,6 +327,13 @@ export function applyUIDocumentComponentSnapshot(
     }
     next.components = components;
     restoreNamedUIStructs(next, target.structs);
+    for (const [elementId, layout] of Object.entries(target.placements ?? {})) {
+        const placement = next.elements[elementId];
+        // Still a placement of this definition: one unlinked since keeps the box it has now.
+        if (placement && getUIComponentLink(placement)?.componentId === target.componentId) {
+            placement.layout = cloneBlueprint(layout);
+        }
+    }
     return next;
 }
 
@@ -424,13 +456,23 @@ export class UIEditorHistoryService
         }
     }
 
-    public captureSnapshot(surfaceId: string): UIEditorHistorySnapshot {
+    /**
+     * The slice of the two documents `surfaceId` undoes.
+     *
+     * `withPlacements` adds where the definition's placements stand, for a component editor's step
+     * that moves them along with the definition (see `UIEditorComponentDocumentSnapshot.placements`).
+     */
+    public captureSnapshot(surfaceId: string, options: { withPlacements?: boolean } = {}): UIEditorHistorySnapshot {
         const uidoc = this.getContext().services.get<UIDocumentService>(Services.UIDocument);
         const graph = this.getContext().services.get<UIGraphService>(Services.UIGraph);
         const componentId = readUIComponentEditorSurfaceComponentId(surfaceId);
         if (componentId) {
+            const document = uidoc.getDocument();
             return {
-                document: captureUIDocumentComponentSnapshot(uidoc.getDocument(), componentId),
+                document: {
+                    ...captureUIDocumentComponentSnapshot(document, componentId),
+                    ...(options.withPlacements ? { placements: captureUIComponentPlacements(document, componentId) } : {}),
+                },
                 blueprint: captureBlueprintComponentSnapshot(graph.getDocument().blueprintDocument, componentId),
             };
         }
@@ -443,7 +485,7 @@ export class UIEditorHistoryService
     public record(options: UIEditorHistoryRecordOptions): void {
         this.ensureScope(options.surfaceId);
         this.history().pushSnapshot<UIEditorHistorySnapshot>(uiEditorHistoryScope(options.surfaceId), {
-            label: { key: "workspace.history.entry.surfaceEdit" as TranslationKey },
+            label: options.label ?? { key: "workspace.history.entry.surfaceEdit" as TranslationKey },
             before: options.before,
             after: options.after,
             mergeKey: options.mergeKey,

@@ -127,6 +127,8 @@ type ProjectMember =
     | "moveComponentElements"
     | "ungroupComponentContainers"
     | "groupComponentElements"
+    | "promoteComponentElementToRoot"
+    | "wrapComponentRoot"
     | "createComponentElement"
     | "pasteComponentClipboardPayload"
     | "setComponentListItemStructFields"
@@ -198,6 +200,8 @@ export class ComponentDocumentServiceAdapter implements UIDocumentServiceSurface
     public readonly moveComponentElements = this.project("moveComponentElements");
     public readonly ungroupComponentContainers = this.project("ungroupComponentContainers");
     public readonly groupComponentElements = this.project("groupComponentElements");
+    public readonly promoteComponentElementToRoot = this.project("promoteComponentElementToRoot");
+    public readonly wrapComponentRoot = this.project("wrapComponentRoot");
     public readonly createComponentElement = this.project("createComponentElement");
     public readonly pasteComponentClipboardPayload = this.project("pasteComponentClipboardPayload");
     public readonly setComponentListItemStructFields = this.project("setComponentListItemStructFields");
