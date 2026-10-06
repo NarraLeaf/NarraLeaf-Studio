@@ -31,7 +31,7 @@ describe("proxyUrlFromPac", () => {
 });
 
 describe("worker env", () => {
-    it("strips proxy variables so a shell cannot leak into a direct build", () => {
+    it("strips proxy variables so the system proxy replaces a shell's", () => {
         const stripped = stripProxyEnv({
             PATH: "/bin",
             HTTP_PROXY: "http://127.0.0.1:9",
@@ -87,7 +87,8 @@ describe("studioFetch", () => {
 });
 
 describe("envForDownloadWorker", () => {
-    it("strips proxy variables when the switch is off", async () => {
+    it("leaves a shell's proxy alone when the switch is off", async () => {
+        // Off is what builds did before the switch existed: an exported HTTPS_PROXY reached them.
         setUseSystemProxySource(() => false);
         try {
             const env = await envForDownloadWorker({
@@ -95,7 +96,7 @@ describe("envForDownloadWorker", () => {
                 HTTP_PROXY: "http://127.0.0.1:9",
             });
             expect(env.PATH).toBe("/bin");
-            expect(env.HTTP_PROXY).toBeUndefined();
+            expect(env.HTTP_PROXY).toBe("http://127.0.0.1:9");
         } finally {
             setUseSystemProxySource(null);
         }

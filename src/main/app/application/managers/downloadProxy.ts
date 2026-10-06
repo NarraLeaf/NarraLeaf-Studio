@@ -8,10 +8,11 @@ import { USE_SYSTEM_PROXY_KEY } from "@shared/types/downloadSource";
  * operating system already has - the one the author's browser is using - without an address to
  * type. The default session is left alone; windows do not start talking to the network.
  *
- * The build worker is a separate process and cannot see that session. It receives HTTP_PROXY
+ * The build worker is a separate process and cannot see that session. On, it receives HTTP_PROXY
  * (and friends) derived from `session.resolveProxy`, the same way download rewrites already
- * travel in the worker config. Off, those variables are stripped so a shell that launched
- * Studio does not quietly proxy a build the author asked to go direct.
+ * travel in the worker config. Off, it inherits Studio's environment untouched, as it did before
+ * the switch existed: an author who exported HTTPS_PROXY in the shell that launched Studio has
+ * builds that download through it, and a switch they never touched must not take that away.
  *
  * Read through a callback rather than cached: Settings can flip the switch between two
  * downloads, and the next one has to honour it.
@@ -72,7 +73,7 @@ export function proxyUrlFromPac(pac: string): string | null {
     return `http://${hostPort}`;
 }
 
-/** Drop proxy variables so a forked worker cannot inherit a shell's proxy. */
+/** Drop proxy variables, so the system proxy replaces a shell's rather than mixing with it. */
 export function stripProxyEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     const next: NodeJS.ProcessEnv = { ...env };
     for (const key of PROXY_ENV_KEYS) {
@@ -95,14 +96,14 @@ export function applyProxyUrlToEnv(env: NodeJS.ProcessEnv, proxyUrl: string): No
 }
 
 /**
- * Environment for a process that downloads. Off: no proxy variables. On: the system proxy
- * for `https://github.com/`, which is where Studio's own archives live.
+ * Environment for a process that downloads. Off: the base environment, untouched. On: the system
+ * proxy for `https://github.com/`, which is where Studio's own archives live.
  */
 export async function envForDownloadWorker(base: NodeJS.ProcessEnv): Promise<NodeJS.ProcessEnv> {
-    const stripped = stripProxyEnv(base);
     if (!currentUseSystemProxy()) {
-        return stripped;
+        return base;
     }
+    const stripped = stripProxyEnv(base);
     const pac = await resolveSystemPac("https://github.com/");
     const proxyUrl = pac ? proxyUrlFromPac(pac) : null;
     return proxyUrl ? applyProxyUrlToEnv(stripped, proxyUrl) : stripped;
