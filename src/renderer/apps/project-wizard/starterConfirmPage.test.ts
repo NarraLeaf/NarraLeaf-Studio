@@ -18,17 +18,13 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
     BLUEPRINT_NODE_TYPE_DATA_MEMO,
-    BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
-    BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
     BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_LAYER_CLOSE_SELF,
     BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
-    BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS,
-    BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
 } from "@shared/types/blueprint/graph";
 import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
@@ -49,7 +45,7 @@ type Surface = {
     rootElementId: string;
     settings?: Record<string, unknown>;
     actions?: { actionId: string }[];
-    params?: { id: string; name: string; type: string }[];
+    params?: { id: string; name: string; type: string; struct?: string }[];
 };
 type InputAction = { id: string; bindings: { kind: string; key?: string }[] };
 type GraphNode = { id: string; type: string; params?: Record<string, unknown> };
@@ -227,34 +223,33 @@ describe("the Confirm page in the starter template", () => {
 
     /**
      * The two names `Show Confirm` opens the page with are the page's own declarations, so the
-     * nodes and pickers that name them read them off the page rather than off a convention.
+     * nodes and pickers that name them read them off the page rather than off a convention: the
+     * message is words a player reads, and the buttons are rows of the engine's confirm-button shape,
+     * the same shape the list draws.
      */
     it("declares the message and the buttons it is opened with", () => {
-        expect(confirm.params?.map(param => [param.name, param.type])).toEqual([
-            ["message", "string"],
-            ["buttons", "json"],
+        expect(confirm.params?.map(param => [param.name, param.type, param.struct])).toEqual([
+            ["message", "text", undefined],
+            ["buttons", "list", "nl.confirmButton"],
         ]);
     });
 
     /**
-     * The message is not a row's own data - it belongs to the whole layer - so it is read from the
-     * page by a graph: the declared parameter, picked rather than typed.
+     * The message is not a row's own data - it belongs to the whole layer - so it is the page's own
+     * text parameter, shown by the text directly: no graph, as a row's field needs none.
      */
     it("draws its message from the parameter the layer was shown with", () => {
         const text = pageElements().filter(element => element.type === "nl.text")[0]!;
         // Blank on the element, so nothing is left on screen when the binding is what speaks.
         expect(text.props?.text).toBe("");
-        const blueprint = blueprints.find(
-            candidate => candidate.owner.kind === "widgetValue" && candidate.owner.elementId === text.id,
-        )!;
-        expect(blueprint.owner.propPath).toBe("text");
-        const { byType, wired } = onlyGraph(blueprint);
-        const read = byType(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)!;
-        const value = byType(BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE)!;
-        expect(byType(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT)).toBeDefined();
         const message = confirm.params?.find(param => param.name === "message");
-        expect(read.params?.paramId).toBe(message?.id);
-        expect(wired({ nodeId: read.id, port: "value" }, { nodeId: value.id, port: "value" })).toBe(true);
+        expect(text.valueBindings?.text).toEqual({ kind: "pageParam", paramId: message?.id });
+        // And no blueprint left behind saying the same thing a second time.
+        expect(
+            blueprints.some(
+                candidate => candidate.owner.kind === "widgetValue" && candidate.owner.elementId === text.id,
+            ),
+        ).toBe(false);
     });
 
     /**

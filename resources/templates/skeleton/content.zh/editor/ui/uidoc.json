@@ -294,14 +294,14 @@
         {
           "id": "message",
           "name": "message",
-          "type": "string",
+          "type": "text",
           "defaultValue": ""
         },
         {
           "id": "buttons",
           "name": "buttons",
-          "type": "json",
-          "defaultValue": []
+          "type": "list",
+          "struct": "nl.confirmButton"
         }
       ]
     },
@@ -40448,9 +40448,8 @@
       },
       "valueBindings": {
         "text": {
-          "kind": "blueprintValue",
-          "blueprintId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e78",
-          "valueType": "string"
+          "kind": "pageParam",
+          "paramId": "message"
         }
       }
     },
@@ -49736,7 +49735,7 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-10-06T01:45:41.212Z"
+    "updatedAt": "2026-10-06T02:53:08.046Z"
   },
   "structs": {},
   "entrySurfaceId": "5107c0a1-0000-4000-8000-000000000500"

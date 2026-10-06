@@ -10385,117 +10385,6 @@
         },
         "bindings": {}
       },
-      "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e78": {
-        "id": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e78",
-        "name": "消息",
-        "owner": {
-          "kind": "widgetValue",
-          "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
-          "elementId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e73",
-          "propPath": "text"
-        },
-        "graphs": {
-          "eventIds": [
-            "init"
-          ],
-          "events": {
-            "init": {
-              "id": "init",
-              "name": "显示问题",
-              "graph": {
-                "nodes": {
-                  "note": {
-                    "id": "note",
-                    "type": "blueprint.flow.comment",
-                    "params": {
-                      "text": "「消息」文本绑定到这个蓝图（蓝图值）。本页面在属性中声明了 message 和 buttons 两个参数，「询问确认」打开本页面时把问题传给 message：页面出现时「获取页面参数」读取它，「返回值」把它交给文本。",
-                      "width": 760,
-                      "height": 130
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": -600
-                      }
-                    }
-                  },
-                  "appear": {
-                    "id": "appear",
-                    "type": "blueprint.event.head.init",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": -430
-                      }
-                    }
-                  },
-                  "question": {
-                    "id": "question",
-                    "type": "blueprint.frame.getParam",
-                    "params": {
-                      "paramId": "message"
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 260,
-                        "y": -313
-                      }
-                    }
-                  },
-                  "give": {
-                    "id": "give",
-                    "type": "blueprint.data.returnValue",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 550,
-                        "y": -430
-                      }
-                    }
-                  }
-                },
-                "edges": [
-                  {
-                    "from": {
-                      "nodeId": "appear",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "give",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "question",
-                      "port": "value"
-                    },
-                    "to": {
-                      "nodeId": "give",
-                      "port": "value"
-                    }
-                  }
-                ],
-                "meta": {
-                  "graphKind": "event"
-                }
-              }
-            }
-          },
-          "functionIds": [],
-          "functions": {}
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {},
-        "meta": {
-          "valueType": "string"
-        }
-      },
       "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e77": {
         "id": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e77",
         "name": "按钮组",
@@ -24183,9 +24072,6 @@
       "widgetMain:b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70:b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e74": {
         "blueprintId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e77"
       },
-      "widgetValue:b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70:b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e73:text": {
-        "blueprintId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e78"
-      },
       "widgetMain:b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70:b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e72": {
         "blueprintId": "e1e632f7-8d1a-4e5e-b6c3-43d51f1a467a"
       },
@@ -24341,6 +24227,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-10-06T01:46:17.153Z"
+    "updatedAt": "2026-10-06T02:53:16.828Z"
   }
 }
