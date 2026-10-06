@@ -37,7 +37,10 @@ import { audioTracksToBusDeclarations } from "@/lib/ui-editor/runtime/app/audioB
 import { createDialogClickTargets } from "@/lib/ui-editor/runtime/app/dialogClickTargets";
 import { readNlrCharacterName } from "@/lib/ui-editor/runtime/app/nlrDialogReaders";
 import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrackService";
-import type { StoryPersistenceBridge } from "@/lib/ui-editor/runtime/game/storyCompiler";
+import type { CompiledNlrStory, StoryPersistenceBridge } from "@/lib/ui-editor/runtime/game/storyCompiler";
+import { copyDeclaredSavedDefaults, readSavedVariableForScreen } from "@/lib/ui-editor/runtime/app/savedVariableReads";
+import { announceSavedVariableWrites } from "@/lib/ui-editor/runtime/app/savedVariableWrites";
+import { announceBlueprintStateWrite, EVERY_SAVED_STATE_KEY } from "@/lib/ui-editor/blueprint-runtime/blueprintStateWrites";
 import { mapCharacterStoreEntriesToSummaries } from "@shared/utils/characterSummaries";
 import { resolveDefaultCharacterAvatarAssetId } from "@shared/utils/characterAvatar";
 import { toBlueprintImageAsset, type BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
@@ -50,10 +53,16 @@ import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalB
 import { SaveSchemaService } from "@/lib/workspace/services/saves/SaveSchemaService";
 import { VariableRegistryService } from "@/lib/workspace/services/variables/VariableRegistryService";
 import { buildPersistentRuntimeTable, buildSavedRuntimeTable } from "@shared/variables/variableRegistryModel";
+import { declaredSavedDefaults } from "@shared/variables/mergedPersistentView";
+import type { StoryLiteralValue } from "@shared/types/story";
 import type { TranslationKey } from "@shared/i18n";
 import { useGameUiEditBursts } from "./useGameUiEditBursts";
 
 const PREVIEW_BUNDLE_ID = "workspace-story-preview";
+
+/** The part of a session's compile that says where its saved variables live. */
+type PreviewSavedVariables = Pick<CompiledNlrStory, "savedNamespaceName" | "savedVariables">;
+
 /**
  * The one Game UI slot a press reaches in the preview. A press anywhere else on the stage steps the
  * story editor to the next line, so the rest of the game's own controls stay out of its way.
@@ -76,6 +85,14 @@ export type StoryPreviewGame = {
      * settled.
      */
     advance: () => Promise<void>;
+    /**
+     * Tell the Game UI that this session's saved variables were just rebuilt by `newGame()`.
+     *
+     * The engine builds the story's namespaces from scratch on a new game and reports none of it, so
+     * a screen that read a saved variable before the game started (an on-stage widget lays out before
+     * the story runs) would keep showing the default instead of the value the stage was posed with.
+     */
+    afterNewGame: () => void;
 };
 
 export type StoryPreviewGameUiHost = {
@@ -99,6 +116,11 @@ export type StoryPreviewGameUiHost = {
         getLiveGame: () => LiveGame | null;
         /** Invert a dialog-avatar URL back to its asset id, from this compile's own inverse. */
         resolveAvatarAssetId?: (url: string) => string | null;
+        /**
+         * Where this session's story keeps its saved variables. `Get Saved Var` on a screen reads
+         * the session's own store through it, the way a running game's screen does.
+         */
+        compiled: PreviewSavedVariables;
     }) => StoryPreviewGame;
 };
 
@@ -250,6 +272,15 @@ export function useStoryPreviewGameUi(input: {
         };
     }, [core]);
 
+    /**
+     * What a saved variable reads as on a screen with no session to ask - before the session's game
+     * has started, or for an id its story does not declare. The registry's defaults, copied once per
+     * bundle for the reason `copyDeclaredSavedDefaults` gives.
+     */
+    const declaredSavedDefaultsByBundle = useMemo((): Readonly<Record<string, StoryLiteralValue | null>> => (
+        bundle ? copyDeclaredSavedDefaults(declaredSavedDefaults({ ui: bundle.ui })) : {}
+    ), [bundle]);
+
     const blueprintDocument = bundle?.ui.localBlueprints;
 
     // Parity with the Dev Mode host: this mirror is what `Get Character` reads, and the dialog
@@ -263,10 +294,12 @@ export function useStoryPreviewGameUi(input: {
         requireLiveGame: (asker: TranslationKey | null) => LiveGame;
         getLiveGame: () => LiveGame | null;
         resolveAvatarAssetId?: (url: string) => string | null;
+        compiled: PreviewSavedVariables;
     }): StoryPreviewGame => {
         if (!bundle) {
             throw new Error("Story preview: bundle is not ready");
         }
+        const savedDefaults = declaredSavedDefaultsByBundle;
         const activeCore: BlueprintRuntimeCore | null = core;
         choiceMenus.clear();
         currentDialogNametagRef.current = null;
@@ -343,9 +376,21 @@ export function useStoryPreviewGameUi(input: {
             onIsTextRead: undefined,
             onClearTextRead: undefined,
             onIsSceneVisited: undefined,
-            // The preview settles one scene's stage; there is no playthrough behind it, so a
-            // saved variable has no value to report and nowhere to be written.
-            onGetSavedVariable: () => ({ value: null, found: false }),
+            // The session's story holds the saved variables as they stand at the previewed row -
+            // its namespace is seeded with the values the stage snapshot walked to - so a screen
+            // reads them out of that store exactly as a running game's screen does, and a
+            // dialogue box showing a counter shows the number the game would.
+            onGetSavedVariable: variableId => {
+                const liveGame = gameInput.getLiveGame();
+                return readSavedVariableForScreen({
+                    variableId,
+                    compiled: gameInput.compiled,
+                    storable: liveGame ? () => liveGame.getStorable() : null,
+                    declaredDefaults: savedDefaults,
+                });
+            },
+            // A screen's write is refused: every previewed row is a new session, so nothing written
+            // here would last past the next one.
             onSetSavedVariable: () => {
                 throw new Error("Set Saved Var: game runtime is not available");
             },
@@ -450,6 +495,9 @@ export function useStoryPreviewGameUi(input: {
         }
 
         const wireLiveGame = (liveGame: LiveGame): (() => void) => {
+            // Parity with the Dev Mode host: the target row's own `/set` lands in the store after
+            // the screens have laid out, and a value binding showing that variable has to hear it.
+            const savedWrites = announceSavedVariableWrites(liveGame.getStorable(), gameInput.compiled);
             const token = liveGame.onCharacterPrompt(({ character }) => {
                 const nametag = readNlrCharacterName(character);
                 currentDialogNametagRef.current = nametag;
@@ -462,6 +510,7 @@ export function useStoryPreviewGameUi(input: {
                 );
             });
             return () => {
+                savedWrites.cancel();
                 token.cancel();
                 currentDialogNametagRef.current = null;
                 activeCore?.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, null);
@@ -479,8 +528,11 @@ export function useStoryPreviewGameUi(input: {
         const advance = async (): Promise<void> => {
             await liveGameCallbacks.onNext();
         };
-        return { game, onStageNode: slots.onStageNode, wireLiveGame, advance };
-    }, [bundle, characterTable, core, designSize.height, designSize.width, rendererRegistry, widgetRuntimeStore]);
+        const afterNewGame = (): void => {
+            announceBlueprintStateWrite(EVERY_SAVED_STATE_KEY);
+        };
+        return { game, onStageNode: slots.onStageNode, wireLiveGame, advance, afterNewGame };
+    }, [bundle, characterTable, core, declaredSavedDefaultsByBundle, designSize.height, designSize.width, rendererRegistry, widgetRuntimeStore]);
 
     return {
         ready: Boolean(bundle && core),

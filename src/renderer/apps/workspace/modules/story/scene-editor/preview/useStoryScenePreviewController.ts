@@ -103,6 +103,8 @@ type PreviewRun = {
     targetBlockId: string | null;
     /** The game's own advance on this session's line (see `StoryPreviewGame.advance`). */
     advance: () => Promise<void>;
+    /** See `StoryPreviewGame.afterNewGame`; called after every `newGame()` on this session. */
+    afterNewGame: () => void;
     /**
      * A press was handed to the line to finish it. If the line had finished by the time it landed,
      * the press settled it instead and the story ran past the target - which is the press moving on.
@@ -447,6 +449,7 @@ export function useStoryScenePreviewController(input: {
         setPhase("starting");
         try {
             run.liveGame.newGame();
+            run.afterNewGame();
         } catch (error) {
             failRun(run.runId, error instanceof Error ? error.message : String(error));
             return;
@@ -554,6 +557,7 @@ export function useStoryScenePreviewController(input: {
                 },
                 getLiveGame: () => findRunBySessionId(sessionId)?.liveGame ?? null,
                 resolveAvatarAssetId: url => compiled.avatarAssetIdByUrl.get(url) ?? null,
+                compiled,
             });
             // The preview's Image widgets resolve avatar ids through the same synchronous table the
             // packaged runtime uses, so a swap here costs a map read rather than an asset fetch.
@@ -584,6 +588,7 @@ export function useStoryScenePreviewController(input: {
                 arrived: false,
                 targetBlockId,
                 advance: previewGame.advance,
+                afterNewGame: previewGame.afterNewGame,
                 advanceRequested: false,
             };
             pendingRunRef.current = run;
@@ -734,6 +739,7 @@ export function useStoryScenePreviewController(input: {
             // frame. Its markers are idempotent and its reveal gate is already resolved.
             try {
                 liveGame.newGame();
+                run.afterNewGame();
             } catch (error) {
                 failRun(run.runId, error instanceof Error ? error.message : String(error));
             }
