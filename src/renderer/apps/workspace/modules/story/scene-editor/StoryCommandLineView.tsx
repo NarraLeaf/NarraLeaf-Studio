@@ -5,6 +5,7 @@ import { useWorkspace } from "@/apps/workspace/context";
 import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName";
 import { useHideParamNames } from "@/apps/workspace/hooks/useHideParamNames";
 import { useCommandTranslation } from "@/lib/i18n";
+import { audioTrackDisplayName } from "@shared/types/audioTrack";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Character } from "@/lib/workspace/services/character/Character";
@@ -107,6 +108,9 @@ export function StoryCommandLineProvider({ slashAtAlias, commandContext, childre
     children: ReactNode;
 }) {
     const tracks = useProjectAudioTracks();
+    // A seeded track is named in the command language, as the rest of the line is - the same word a
+    // typed line resolves (`buildStoryCommandContext`).
+    const { t: commandT } = useCommandTranslation();
     // Read here rather than threaded from the controller: nothing but the rows below this provider
     // wants it, and this is the one place that already resolves per-tab preferences for all of them.
     const hideParamNames = useHideParamNames();
@@ -130,7 +134,10 @@ export function StoryCommandLineProvider({ slashAtAlias, commandContext, childre
         trigger: slashAtAlias ? ALT_ACTION_TRIGGER : ACTION_TRIGGER,
         hideParamNames,
         projectVariableName: (scope, variableId) => projectVariableNames.get(storyVariableRefKey({ scope, variableId })) ?? null,
-        audioTrackName: trackId => tracks.find(track => track.id === trackId)?.name ?? null,
+        audioTrackName: trackId => {
+            const track = tracks.find(entry => entry.id === trackId);
+            return track ? audioTrackDisplayName(track, commandT) : null;
+        },
         // Read through the service on every call rather than off a snapshot: an asset rename does not
         // touch the story document, so nothing here would be told to rebuild a captured table. Asset
         // sets are asked second, because a row may name one and it reads as the set's own name.
@@ -157,7 +164,7 @@ export function StoryCommandLineProvider({ slashAtAlias, commandContext, childre
         // The same reading, for the page a `/quit` row lands on.
         surfaceName: surfaceId => commandContext?.surfaces.find(page => page.id === surfaceId)?.name ?? null,
         commandContext,
-    }), [assets, commandContext, hideParamNames, slashAtAlias, tracks]);
+    }), [assets, commandContext, commandT, hideParamNames, slashAtAlias, tracks]);
     return <StoryCommandLineContext.Provider value={value}>{children}</StoryCommandLineContext.Provider>;
 }
 

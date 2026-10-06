@@ -27,7 +27,7 @@ import {
     type UIComponentDefinition,
     type UIComponentParam,
 } from "@shared/types/ui-editor/document";
-import type { ProjectAudioTrack } from "@shared/types/audioTrack";
+import { audioTrackDisplayName, type ProjectAudioTrack } from "@shared/types/audioTrack";
 import { useProjectAudioTracks } from "@/lib/ui-editor/widget-modules/shared/sound/useProjectAudioTracks";
 // SectionCard is missing from the elements barrel, so it comes from its own module.
 import { FieldLabel, IconButton, Input } from "@/lib/components/elements";
@@ -277,7 +277,7 @@ function audioTrackOptions(
     stored: string,
     t: ReturnType<typeof useTranslation>["t"],
 ): { value: string; label: string }[] {
-    const options = tracks.map(track => ({ value: track.id, label: track.name }));
+    const options = tracks.map(track => ({ value: track.id, label: audioTrackDisplayName(track, t) }));
     if (!tracks.some(track => track.id === stored)) {
         // A track that has been deleted, or none chosen yet: said in words, never as the stored id.
         options.unshift({
@@ -334,11 +334,13 @@ function AudioTrackParamValueField({
     const inherit = {
         value: TRACK_PARAM_INHERIT,
         label: t("storyInspector.audio.trackDefault", {
-            name: defaultTrack?.name ?? t(param.defaultValue ? "properties.componentParams.trackMissing" : "properties.componentParams.trackNone"),
+            name: defaultTrack
+                ? audioTrackDisplayName(defaultTrack, t)
+                : t(param.defaultValue ? "properties.componentParams.trackMissing" : "properties.componentParams.trackNone"),
         }),
     };
     const own = typeof supplied === "string" && supplied ? supplied : null;
-    const options = [inherit, ...(own ? audioTrackOptions(tracks, own, t) : tracks.map(track => ({ value: track.id, label: track.name })))];
+    const options = [inherit, ...audioTrackOptions(tracks, own ?? "", t).filter(option => own || option.value !== "")];
     return (
         <div>
             <FieldLabel as="div">{label}</FieldLabel>

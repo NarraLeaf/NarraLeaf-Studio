@@ -454,6 +454,12 @@ export const project = {
             other: "{count} tracks under it move to {parent}.",
         },
         // The player's own volume sliders, which alias onto the three seeded buses.
+        // The three seeded tracks, shown by these words while they keep the names they were created with.
+        builtinName: {
+            bgm: "Music",
+            sound: "SFX",
+            voice: "Voice",
+        },
         slider: {
             bgm: "Music volume",
             sound: "SFX volume",

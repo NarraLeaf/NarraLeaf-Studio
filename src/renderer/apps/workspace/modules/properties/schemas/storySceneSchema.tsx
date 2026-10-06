@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { Image as ImageIcon, Trash2 } from "lucide-react";
 import type { StoryScene, StorySceneBgm, StorySceneUpdate } from "@shared/types/story";
 import { hasClipMarkers, normalizeAudioClipRegion } from "@shared/types/audio";
-import { resolveAudioTrack } from "@shared/types/audioTrack";
+import { audioTrackDisplayName, resolveAudioTrack } from "@shared/types/audioTrack";
 import { audioBusStatusLine } from "@/lib/story/audioBusStatus";
 import type { Translator } from "@shared/i18n";
 import { useTranslation } from "@/lib/i18n";
@@ -179,8 +179,8 @@ function SceneBackgroundMusicField({ data }: CustomFieldProps<StorySceneEditorCo
         data.onUpdateScene({ bgm: { ...bgm, ...next } });
     };
     const trackOptions = [
-        { value: "", label: t("storyInspector.audio.trackDefault", { name: resolveAudioTrack(tracks, undefined, "bgm").name }) },
-        ...tracks.map(entry => ({ value: entry.id, label: entry.name })),
+        { value: "", label: t("storyInspector.audio.trackDefault", { name: audioTrackDisplayName(resolveAudioTrack(tracks, undefined, "bgm"), t) }) },
+        ...tracks.map(entry => ({ value: entry.id, label: audioTrackDisplayName(entry, t) })),
     ];
 
     return (
