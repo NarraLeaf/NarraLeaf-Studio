@@ -37,9 +37,11 @@ import {
     BLUEPRINT_NODE_PARAM_INFERRED_PIN_TYPES,
     BLUEPRINT_NODE_PARAM_INFERRED_READS_ROW,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
+    BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_SAVED_GET,
     BLUEPRINT_NODE_TYPE_SAVED_SET,
 } from "@shared/types/blueprint/graph";
+import { getActiveUIPageParam, uiPageParamBlueprintValueType } from "@shared/types/ui-editor/pageParams";
 import { blueprintArrayElementType, blueprintArrayValueType } from "@shared/types/blueprint/valueTypes";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
@@ -73,6 +75,11 @@ export type BlueprintStructTypeInferenceContext = {
     rowStruct?: UIStructDef | null;
     /** A saved variable's declared type as a pin type, by variable id; unknown ids answer nothing. */
     savedVariableType?: (variableId: string) => string | undefined;
+    /**
+     * A parameter of the page this graph belongs to, by id, as a pin type - what `Get Page Param`
+     * reads. Unknown ids, and a graph that belongs to no page, answer nothing.
+     */
+    pageParamType?: (paramId: string) => string | undefined;
     /**
      * The shape a list's rows have, by the list's element id - or, given null, of the list this graph
      * belongs to. `undefined` when there is no such list to ask, `null` when it declares no shape.
@@ -128,7 +135,11 @@ function isSavedVariableNodeType(type: string): boolean {
 
 /** True for the node types this pass has an opinion about. */
 export function isBlueprintStructTypedNodeType(type: string): boolean {
-    if (type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD || isSavedVariableNodeType(type)) {
+    if (
+        type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD
+        || type === BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM
+        || isSavedVariableNodeType(type)
+    ) {
         return true;
     }
     const def = blueprintNodeRegistry.get(type);
@@ -295,6 +306,12 @@ export function analyzeBlueprintStructTypes(
         return valueType ? { pinTypes: { value: valueType }, struct: null, structId: null } : EMPTY_INFO;
     };
 
+    const analyzePageParamReader = (node: BlueprintGraphNode): BlueprintNodeStructTypes => {
+        const paramId = readParamString(node.params, "paramId");
+        const valueType = paramId ? ctx.pageParamType?.(paramId) : undefined;
+        return valueType ? { pinTypes: { value: valueType }, struct: null, structId: null } : EMPTY_INFO;
+    };
+
     const analyzeListRowNode = (
         node: BlueprintGraphNode,
         spec: NonNullable<BlueprintNodeDef["listRowTypes"]>,
@@ -343,6 +360,9 @@ export function analyzeBlueprintStructTypes(
         }
         if (isSavedVariableNodeType(node.type)) {
             return analyzeSavedVariableNode(node);
+        }
+        if (node.type === BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM) {
+            return analyzePageParamReader(node);
         }
         const def = blueprintNodeRegistry.get(node.type);
         if (def?.elementTypeFlow) {
@@ -470,8 +490,19 @@ export function buildBlueprintStructTypeContext(input: {
             : document ? row !== null : true,
         rowStruct: row?.structId ? resolveStruct(row.structId) : null,
         savedVariableType: variableId => savedTypes.get(variableId),
+        pageParamType: paramId => {
+            const param = getActiveUIPageParam(pageSurfaceIdOf(input.owner), paramId);
+            return param ? uiPageParamBlueprintValueType(param.type) : undefined;
+        },
         listRowStructId,
     };
+}
+
+/** The page a blueprint belongs to, for the owners that belong to one; null for the rest. */
+export function pageSurfaceIdOf(owner: BlueprintOwnerRef | undefined): string | null {
+    return owner?.kind === "surfaceMain" || owner?.kind === "widgetMain" || owner?.kind === "widgetValue"
+        ? owner.surfaceId
+        : null;
 }
 
 /**

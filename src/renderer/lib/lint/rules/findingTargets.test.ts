@@ -27,6 +27,7 @@ import {
     BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIRST,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
     BLUEPRINT_NODE_TYPE_LOG,
+    BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_NETWORK_FETCH,
     BLUEPRINT_NODE_TYPE_PAGE_GO,
 } from "@shared/types/blueprint/graph";
@@ -713,6 +714,28 @@ const FIXTURES: Record<RegisteredLintRuleId, Case[]> = {
         }),
     }],
 
+    "blueprint/page-param-missing": [{
+        context: () => {
+            const blueprintDocument = blueprints({
+                [PAGE_OWNER]: {
+                    click: {
+                        nodes: {
+                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK, params: {} },
+                            read: { id: "read", type: BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM, params: { paramId: "gone" } },
+                            log: { id: "log", type: BLUEPRINT_NODE_TYPE_LOG, params: {} },
+                        },
+                        edges: [
+                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "log", port: "in" } },
+                            { from: { nodeId: "read", port: "value" }, to: { nodeId: "log", port: "value" } },
+                        ],
+                    } as unknown as BlueprintGraphIr,
+                },
+            });
+            // The page a blueprint belongs to is read off its owner, which the helper leaves out.
+            (blueprintDocument.blueprints.bp0 as { owner?: unknown }).owner = { kind: "surfaceMain", surfaceId: MAIN_APP_SURFACE_ID };
+            return createTestLintContext({ uiDocument: onePage(), blueprintDocument });
+        },
+    }],
     "blueprint/list-shape-mismatch": [{
         context: () => createTestLintContext({
             uiDocument: onePage(element({ id: "endings", type: "nl.list", props: { itemStructId: "nl.ending" } })),
@@ -802,6 +825,42 @@ const FIXTURES: Record<RegisteredLintRuleId, Case[]> = {
                     } as Partial<UIElement> & { id: string; type: string }),
                 ],
                 extra: { structs: { s1: { id: "s1", fields: [{ id: "f-title", key: "title", type: "string" }] } } },
+            }),
+        }),
+    }],
+    "ui/page-prop-undeclared": [{
+        context: () => createTestLintContext({
+            uiDocument: onePage(element({
+                id: "rows",
+                type: "nl.list",
+                name: "Buttons",
+                props: { itemsBinding: { kind: "pageProp", key: "buttons" } },
+            })),
+        }),
+    }],
+    "ui/page-param-unknown": [{
+        context: () => createTestLintContext({
+            uiDocument: uiDocument({
+                surfaces: [
+                    { id: MAIN_APP_SURFACE_ID, name: "Title", rootElementId: "root" },
+                    {
+                        id: "confirm",
+                        name: "Confirm",
+                        rootElementId: "confirm-root",
+                        params: [{ id: "message", name: "message", type: "string" }],
+                    } as { id: string; name: string; rootElementId: string },
+                ],
+                elements: [
+                    element({ id: "root", type: "nl.root", childrenIds: ["embed"] }),
+                    element({
+                        id: "embed",
+                        type: UI_FRAME_ELEMENT_TYPE,
+                        name: "Embed",
+                        parentId: "root",
+                        props: { targetSurfaceId: "confirm", params: { question: "Quit?" } },
+                    }),
+                    element({ id: "confirm-root", type: "nl.root" }),
+                ],
             }),
         }),
     }],

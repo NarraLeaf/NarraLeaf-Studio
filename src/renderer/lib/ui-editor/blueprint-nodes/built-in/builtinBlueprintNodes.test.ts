@@ -1009,7 +1009,8 @@ describe("built-in blueprint nodes", () => {
         expect(types.has(BLUEPRINT_NODE_TYPE_GAME_HISTORY_RESTORE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_GAME_HISTORY_UNDO_LAST)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(true);
-        expect(frameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)?.hideInPalette).toBe(true);
+        // In the palette since a page declares its parameters: it is how one is read.
+        expect(frameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)?.hideInPalette).toBeFalsy();
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_EMIT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE)).toBe(true);
@@ -5977,7 +5978,7 @@ describe("built-in blueprint nodes", () => {
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(true);
-        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(false);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(true);
 
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK)).toBe(true);
@@ -6005,7 +6006,7 @@ describe("built-in blueprint nodes", () => {
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(true);
-        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(false);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(true);
 
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS)).toBe(true);
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS)).toBe(true);
@@ -6062,7 +6063,7 @@ describe("built-in blueprint nodes", () => {
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(true);
-        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(false);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE)).toBe(true);
         const frameSetPageEntry = blueprintNodeRegistry
             .listPaletteEntries({

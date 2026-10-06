@@ -37,6 +37,10 @@ import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutio
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { requireHostApi } from "./hostApi";
 import { resolveNodeInput } from "./graphParamResolvers";
+import { readOpenedPageProps } from "./pageParamProps";
+
+/** Dynamic select source id for the parameters the page a blueprint belongs to declares. */
+export const BLUEPRINT_PAGE_PARAM_OPTIONS_SOURCE = "pageParams";
 
 const execIn: BlueprintNodePinDef = { id: "in", kind: "input", semantic: "exec", label: "In" };
 const execNext: BlueprintNodePinDef = { id: "next", kind: "output", semantic: "exec", label: "Next" };
@@ -57,7 +61,10 @@ function toFullscreenMode(raw: unknown): FullscreenMode {
 
 async function goToSurface(ctx: Parameters<BlueprintNodeDef["execute"]>[0], surfaceId: unknown) {
     const targetSurfaceId = String(surfaceId ?? "").trim();
-    await requireHostApi(ctx).navigation.openSurface(targetSurfaceId, readPin(ctx, "props"));
+    await requireHostApi(ctx).navigation.openSurface(
+        targetSurfaceId,
+        readOpenedPageProps(ctx, targetSurfaceId, ctx.params.surfaceId),
+    );
     return { nextPort: undefined };
 }
 
@@ -99,6 +106,8 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
                 optional: true,
             },
         ],
+        // One input per parameter the picked page declares, in front of `Page props`.
+        pageParamPins: { surfaceParam: "surfaceId" },
         inspectorParams: [
             {
                 key: "surfaceId",
@@ -146,6 +155,7 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
                 optional: true,
             },
         ],
+        pageParamPins: { surfaceParam: "surfaceId" },
         inspectorParams: [
             {
                 key: "surfaceId",
@@ -162,7 +172,10 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
                     ctx.node.id,
                 );
             }
-            await requireHostApi(ctx).navigation.replaceSurface(targetSurfaceId, readPin(ctx, "props"));
+            await requireHostApi(ctx).navigation.replaceSurface(
+                targetSurfaceId,
+                readOpenedPageProps(ctx, targetSurfaceId, ctx.params.surfaceId),
+            );
             return { nextPort: undefined };
         },
     },
@@ -675,14 +688,22 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
         },
     },
     {
+        // The reading end of a page's parameters: one picked from what the page this graph belongs
+        // to declares, typed as declared, with the declared default when whoever opened the page gave
+        // nothing for it. A page shown in a Page widget reads the widget's values the same way.
+        //
+        // Pure, so a value binding can use it as well as an event graph: a text showing a confirm's
+        // question is `Get Page Param -> Return Value`. The `key` input is what it read by before
+        // pages declared anything, and stays for a node that picks nothing (see
+        // `withPageParamReaderKeyPin`).
         type: BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
         displayName: "Get Page Param",
+        description: "blueprint.nodeDescription.getPageParam",
         category: "App",
-        keywords: ["page", "frame", "param", "input"],
+        keywords: ["page", "frame", "param", "parameter", "props", "input", "argument"],
         graphKinds: ["event", "macro"],
-        hideInPalette: true,
         isPure: true,
-        scope: { ownerKinds: ["surfaceMain", "widgetMain"] },
+        scope: { ownerKinds: ["surfaceMain", "widgetMain", "widgetValue"] },
         pins: [
             {
                 id: "key",
@@ -693,6 +714,15 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
                 allowInlineLiteral: true,
             },
             { id: "value", kind: "output", semantic: "data", valueType: "json", label: "Value" },
+        ],
+        inspectorParams: [
+            {
+                key: "paramId",
+                label: "Param",
+                kind: "select",
+                dynamicOptionsSource: BLUEPRINT_PAGE_PARAM_OPTIONS_SOURCE,
+                emptyOptionLabel: "None",
+            },
         ],
         execute: () => ({}),
     },

@@ -322,3 +322,38 @@ describe("a component's text parameters", () => {
         expect(() => parseUiFile(COMPONENT.replace("type=text", "type=words"))).toThrow(/string or text/);
     });
 });
+
+describe("a page's parameters", () => {
+    const PAGE = `surface "Confirm" id=confirm kind=appSurface size=800x600
+    param message "message" = ""
+    param count "count" type=number = 3
+    param rows "buttons" type=json = []
+    param loud "loud" type=boolean
+    Root: nl.root @0,0 800x600
+`;
+
+    it("reads each param line as a declaration, typed, in order", () => {
+        const result = compile(PAGE);
+        expect(result.diagnostics).toEqual([]);
+        expect((result.surfaces[0].surface as { params?: unknown }).params).toEqual([
+            { id: "message", name: "message", type: "string", defaultValue: "" },
+            { id: "count", name: "count", type: "number", defaultValue: 3 },
+            { id: "rows", name: "buttons", type: "json", defaultValue: [] },
+            { id: "loud", name: "loud", type: "boolean" },
+        ]);
+    });
+
+    it("refuses what the editor would not take", () => {
+        expect(codes(PAGE.replace('param loud "loud" type=boolean', 'param loud "loud" type=date'))).toContain("ui.page_param_type");
+        expect(codes(PAGE.replace('param loud "loud" type=boolean', 'param "two words" "x"'))).toContain("ui.page_param_id");
+        expect(codes(PAGE.replace('param loud "loud" type=boolean', 'param other "message"'))).toContain("ui.page_param_duplicate");
+        expect(codes(PAGE.replace('type=number = 3', 'type=number = "three"'))).toContain("ui.page_param_default");
+    });
+
+    it("refuses a param on a Game UI", () => {
+        expect(codes(`surface "Box" id=box slot=dialog size=800x600
+    param message "message"
+    Root: nl.root @0,0 800x600
+`)).toContain("ui.page_param_on_game_ui");
+    });
+});

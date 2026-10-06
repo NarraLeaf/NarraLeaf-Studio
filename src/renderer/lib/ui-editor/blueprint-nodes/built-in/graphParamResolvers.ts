@@ -395,6 +395,7 @@ import type { BlueprintInputActionHostApi } from "./inputActionNodes";
 import type { BehaviorGraphValueExecution, BehaviorNodeExecutionContext } from "../../behavior-graph/BehaviorNodeRegistry";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import { findItemIndexByField, readUIStructFieldValue } from "@shared/types/ui-editor/struct";
+import { coerceUIPageParamValue, getActiveUIPageParam, uiPageParamDefaultValue } from "@shared/types/ui-editor/pageParams";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { blueprintNodeRegistry } from "../BlueprintNodeRegistry";
@@ -1576,8 +1577,34 @@ function resolveFrameNodeOutput(
     if (!api) {
         return undefined;
     }
+    const paramId = String(params.paramId ?? "").trim();
+    if (paramId) {
+        return readPickedPageParam(paramId, api, runtime);
+    }
     const key = toBlueprintString(resolveInput(graph, nodeId, "key", params, blueprintLocals, depth, runtime)).trim();
     return key ? api.frame.getParam(key) : null;
+}
+
+/**
+ * `Get Page Param` with a parameter picked: the value under the parameter's current name, in its
+ * declared type, or its default when the page was given nothing for it.
+ *
+ * The page is the one this host draws - whose props `frame.getParam` reads - rather than the
+ * graph's owner record, so a page drawn inside a Page widget reads the widget's values. A parameter
+ * the page no longer declares reads as null; the canvas and the project check say which one.
+ */
+function readPickedPageParam(
+    paramId: string,
+    api: NonNullable<NonNullable<UIHostAdapter["blueprintRuntime"]>["hostApi"]>,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    const surfaceId = runtime?.hostAdapter?.blueprintRuntime?.surfaceId ?? runtime?.executionOwner?.surfaceId;
+    const param = getActiveUIPageParam(surfaceId, paramId);
+    if (!param) {
+        return null;
+    }
+    const value = api.frame.getParam(param.name);
+    return value === null || value === undefined ? uiPageParamDefaultValue(param) : coerceUIPageParamValue(param.type, value);
 }
 
 /**

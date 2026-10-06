@@ -18,6 +18,7 @@ import * as path from "node:path";
 import { listScriptLayers } from "@shared/blueprint/blueprintLayers";
 import type { Blueprint } from "@shared/types/blueprint/document";
 import type { UIElement } from "@shared/types/ui-editor/document";
+import { getUIPageParams } from "@shared/types/ui-editor/pageParams";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes";
 import { builtInPluginOwnerOf, registerBuiltInPluginBlueprintNodes } from "./builtinPluginNodes";
 import { ownerRefToIndexKey } from "@services/ui-editor/blueprint/ownerKeys";
@@ -43,6 +44,7 @@ import {
     applyBlueprints,
     assertWritableSchema,
     loadSaveSchema,
+    loadPageParams,
     ProjectIoError,
     elementTypeResolver,
     readUiDocumentTargets,
@@ -293,7 +295,14 @@ function commandTargets(args: Args, io: CliIo): number {
         if (!wanted(surface.name) && elements.length === 0) {
             continue;
         }
-        lines.push(`${surface.name}  owner=surfaceMain surface=${surface.id}`);
+        // A page's declared parameters, as a node that opens it names its inputs (`param_<id>`) and
+        // `Get Page Param` names the one it reads (`paramId = <id>`).
+        const pageParams = getUIPageParams({ kind: surface.kind === "stageSurface" ? "stageSurface" : "appSurface", params: surface.params })
+            .map(param => `${param.id}${param.name === param.id ? "" : ` "${param.name}"`}:${param.type}`);
+        lines.push(
+            `${surface.name}  owner=surfaceMain surface=${surface.id}`
+                + (pageParams.length > 0 ? `  (params: ${pageParams.join(", ")})` : ""),
+        );
         for (const element of elements) {
             lines.push(
                 `    ${element.path}  [${element.type}]  owner=widgetMain surface=${surface.id} `
@@ -391,6 +400,7 @@ function commandList(args: Args, io: CliIo): number {
 function commandShow(args: Args, io: CliIo): number {
     const projectDir = requireProject(args);
     loadSaveSchema(projectDir);
+    loadPageParams(projectDir);
     const file = readUiGraphs(projectDir);
     const wanted = stringFlag(args, "blueprint");
     const ownerKey = stringFlag(args, "owner");
@@ -436,6 +446,7 @@ function commandCheck(args: Args, io: CliIo): number {
     const projectDir = stringFlag(args, "project") ? requireProject(args) : null;
     if (projectDir) {
         loadSaveSchema(projectDir);
+        loadPageParams(projectDir);
     }
     const variables = projectDir ? readVariableRegistry(projectDir) : { persistent: [], saved: [] };
 
@@ -499,6 +510,7 @@ function commandFormat(args: Args, io: CliIo): number {
         // Save nodes grow a pin for every field the project's saves carry, and a card is only
         // sized right with those pins on it.
         loadSaveSchema(projectDir);
+        loadPageParams(projectDir);
     }
     const resolved = resolveBlueprintFile(given, { forWriting: false });
     const source = readTextFile(resolved);
@@ -553,6 +565,7 @@ function commandApply(args: Args, io: CliIo): number {
     }
     const projectDir = requireProject(args);
     loadSaveSchema(projectDir);
+    loadPageParams(projectDir);
     const resolved = resolveBlueprintFile(given, { forWriting: false });
     const source = readTextFile(resolved);
     const file = readUiGraphs(projectDir);

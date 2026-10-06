@@ -9,6 +9,7 @@ import {
 import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { setActiveProjectFonts } from "@shared/typography/projectFonts";
 import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
+import { setActiveUIPageParams } from "@shared/types/ui-editor/pageParams";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import { GLOBAL_MAIN_OWNER_KEY } from "@shared/blueprint/ownerKey";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
@@ -114,6 +115,8 @@ function useRuntimePack(): {
                 setActiveBrandPalette(nextPack.bundle.brand ?? BUILTIN_BRAND_COLORS);
                 setActiveProjectFonts(nextPack.bundle.fonts ?? []);
                 setActiveSaveSchemaFields(nextPack.bundle.ui.saveSchema ?? []);
+                // The nodes that open a page hand it its declared parameters, read from here.
+                setActiveUIPageParams(nextPack.bundle.ui.uidoc.surfaces);
                 setPack(nextPack);
                 setError(null);
                 // After the palette, so the phase this closes is the one the next paint can already

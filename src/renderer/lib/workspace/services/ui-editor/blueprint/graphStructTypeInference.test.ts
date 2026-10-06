@@ -37,7 +37,9 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
     BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST,
     BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS,
+    BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
 } from "@shared/types/blueprint/graph";
+import { setActiveUIPageParams } from "@shared/types/ui-editor/pageParams";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { UIStructDef } from "@shared/types/ui-editor/struct";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
@@ -482,6 +484,71 @@ describe("saved variables", () => {
                 targetParams: {},
             }),
         ).toBe(true);
+    });
+});
+
+describe("page parameters", () => {
+    const PAGE_OWNER = { kind: "surfaceMain" as const, surfaceId: "confirm" };
+
+    function withConfirmParams(run: () => void): void {
+        setActiveUIPageParams([
+            {
+                id: "confirm",
+                kind: "appSurface",
+                params: [
+                    { id: "message", name: "message", type: "string" },
+                    { id: "count", name: "count", type: "number" },
+                ],
+            },
+        ]);
+        try {
+            run();
+        } finally {
+            setActiveUIPageParams([]);
+        }
+    }
+
+    it("types Get Page Param by the parameter the page declares, a number as a float", () => {
+        withConfirmParams(() => {
+            const ir = graph(
+                {
+                    count: { type: BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM, params: { paramId: "count" } },
+                    message: { type: BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM, params: { paramId: "message" } },
+                    gone: { type: BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM, params: { paramId: "gone" } },
+                },
+                [],
+            );
+            const typed = withInferredBlueprintStructTypes(ir, buildBlueprintStructTypeContext({ owner: PAGE_OWNER }));
+            const out = (nodeId: string) =>
+                blueprintNodeRegistry
+                    .resolveCatalogEntryForNode(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM, typed.nodes![nodeId]!.params)
+                    .pins.find(pin => pin.id === "value")?.valueType;
+            expect(out("count")).toBe("float");
+            expect(out("message")).toBe("string");
+            expect(out("gone")).toBe("json");
+            // A graph that belongs to no page has no declaration to type it by.
+            const elsewhere = withInferredBlueprintStructTypes(ir, buildBlueprintStructTypeContext({ owner: { kind: "globalMain" } }));
+            expect(elsewhere).toBe(ir);
+        });
+    });
+
+    it("says when the page no longer declares the parameter a reader picked", () => {
+        withConfirmParams(() => {
+            const ir = graph(
+                {
+                    head: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK },
+                    read: { type: BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM, params: { paramId: "gone" } },
+                    kept: { type: BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM, params: { paramId: "message" } },
+                    log: { type: BLUEPRINT_NODE_TYPE_LOG },
+                },
+                ["head.then -> log.in", "read.value -> log.value"],
+            );
+            const codes = (owner: Parameters<typeof validateBlueprintGraphIr>[1]["blueprintOwner"]) =>
+                validateBlueprintGraphIr(ir, { blueprintId: "bp", graphKind: "event", graphId: "main", blueprintOwner: owner })
+                    .filter(finding => finding.code === "node.page_param_missing")
+                    .map(finding => (finding.target as { nodeId?: string }).nodeId);
+            expect(codes(PAGE_OWNER)).toEqual(["read"]);
+        });
     });
 });
 

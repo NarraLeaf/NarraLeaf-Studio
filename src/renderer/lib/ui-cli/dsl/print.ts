@@ -16,6 +16,7 @@ import type {
     UISurface,
 } from "@shared/types/ui-editor/document";
 import { getUIComponentLink, isUIComponentTextParam } from "@shared/types/ui-editor/document";
+import { getUIPageParams } from "@shared/types/ui-editor/pageParams";
 import { uiTextSitesOf } from "@shared/types/ui-editor/textSource";
 import { printValue } from "../../blueprint-cli/dsl/values";
 import { PARAM_KEY_SUFFIX, propAssignmentKey } from "./parse";
@@ -107,6 +108,14 @@ export function printSurface(
         lines.push(
             `${INDENT}answers ${answer.actionId}`
                 + (answer.consume === undefined ? "" : ` consume=${answer.consume}`),
+        );
+    }
+    // The type is written unless it is a string, as a component's is; the default when there is one.
+    for (const param of getUIPageParams(surface)) {
+        lines.push(
+            `${INDENT}param ${param.id} ${printValue(param.name)}`
+                + (param.type === "string" ? "" : ` type=${param.type}`)
+                + (param.defaultValue === undefined ? "" : ` = ${printValue(param.defaultValue)}`),
         );
     }
     if (surface.kind === "stageSurface") {

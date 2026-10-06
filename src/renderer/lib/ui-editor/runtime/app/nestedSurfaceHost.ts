@@ -36,6 +36,7 @@ import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostA
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 import type { NestedSurfaceRuntime } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
+import { withUIPageParamDefaults } from "@shared/types/ui-editor/pageParams";
 import type { AmbientSurfaceTargets } from "./ambientSurfaceEvents";
 import {
     buildGameHostApiOptions,
@@ -75,6 +76,9 @@ export function createNestedSurfaceHost(inputs: NestedSurfaceHostInputs): Nested
     return {
         createHostAdapter: input => {
             const runtimeScopeId = input.runtimeScopeId;
+            // The widget's values over the defaults the page declares, as a page opened by name
+            // reads them (`buildPageHostAdapterBundle`).
+            const pageProps = withUIPageParamDefaults(input.targetSurface, input.params);
             let nestedHostAdapter: UIHostAdapter | null = null;
             const hostApi = createDevModeBlueprintHostApi(buildGameHostApiOptions(capabilities, {
                 document: bundle.ui.uidoc,
@@ -82,7 +86,7 @@ export function createNestedSurfaceHost(inputs: NestedSurfaceHostInputs): Nested
                 emit: event => core.debug.emit(event),
                 activeSurfaceId: input.targetSurface.id,
                 runtimeScopeId,
-                pageProps: input.params,
+                pageProps,
                 // Inherited rather than decided: a frame is drawn inside a surface, so whether it is
                 // over a running game is that surface's answer, not one of its own - a page's, from
                 // how it was pushed, or a Game UI slot's, which is always yes.
@@ -93,7 +97,7 @@ export function createNestedSurfaceHost(inputs: NestedSurfaceHostInputs): Nested
                 widgetPatches: inputs.widgetPatches,
                 resolveHostAdapter: () => nestedHostAdapter,
                 frame: {
-                    params: input.params,
+                    params: pageProps,
                     // Through the frame's own dispatch, so it lands in the drawing the frame is in:
                     // a frame in a list row hears its page as that row, not as nobody.
                     emit: async (eventName, data) => {
@@ -132,7 +136,7 @@ export function createNestedSurfaceHost(inputs: NestedSurfaceHostInputs): Nested
             debug: core.debug,
             coalescer: core.bindingDebugCoalescer,
             globalState,
-            pageProps: input.params,
+            pageProps: withUIPageParamDefaults(input.targetSurface, input.params),
         }),
         mountSurface: input => {
             const surfaceStore = core.scopeBridge.getSurfaceStore(input.runtimeScopeId);
