@@ -9,6 +9,11 @@ export type LocalizationEditorTabPayload = {
      * same row twice two requests rather than one - see {@link nextTableRevealToken}.
      */
     reveal?: { unitId: string; storyId?: string; token: number };
+    /**
+     * Open on the language's orphans - its translations whose line is no longer in the game - as a
+     * project check finding about them asks. `token` as for {@link reveal}.
+     */
+    orphans?: { token: number };
 };
 
 /** Stable per-locale tab id so re-opening focuses the existing tab instead of duplicating it. */

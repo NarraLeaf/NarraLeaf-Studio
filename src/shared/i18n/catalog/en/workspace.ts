@@ -141,6 +141,24 @@ export const workspace = {
             statusReviewed: "Reviewed",
             statusStale: "To review",
             findPlaceholder: "Find in translations",
+            orphans: {
+                source: "Orphan translations ({count})",
+                summary: {
+                    one: "{count} translation belongs to a line that is not in the game",
+                    other: "{count} translations belong to lines that are not in the game",
+                },
+                none: "No orphan translations",
+                disabledLine: "Disabled line",
+                deletedLine: "Deleted line",
+                delete: "Delete",
+                deleteAll: "Delete all",
+                deleteConfirm: {
+                    one: "Delete {count} orphan translation?",
+                    other: "Delete {count} orphan translations?",
+                },
+                deleteDetail: "This cannot be undone. A line that is enabled or restored later needs translating again.",
+                unknown: "A story cannot be read, so orphan translations are not listed.",
+            },
         },
         live: {
             // On the mark a line wears while somebody else is translating it. A person is named:
@@ -241,6 +259,21 @@ export const workspace = {
             notePlaceholder: "Note…",
             dropHint: "Drop audio to assign",
             findPlaceholder: "Find in lines",
+            orphans: {
+                source: "Orphan voice ({count})",
+                summary: {
+                    one: "{count} recording is linked to a line that is not in the game",
+                    other: "{count} recordings are linked to lines that are not in the game",
+                },
+                none: "No orphan voice",
+                removeAll: "Remove all",
+                removeConfirm: {
+                    one: "Remove {count} orphan recording?",
+                    other: "Remove {count} orphan recordings?",
+                },
+                removeDetail: "The audio files stay in the asset library. A line that is enabled or restored later needs its audio assigned again.",
+                unknown: "A story cannot be read, so orphan voice is not listed.",
+            },
         },
     },
     // The one notice after a project's interface document is upgraded to v13: the widgets whose

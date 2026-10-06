@@ -73,6 +73,8 @@ import {
     useTranslationClaimHold,
 } from "./localizationLiveSession";
 import { useTranslationExchange } from "./translationExchange";
+import { ORPHANS_SOURCE_VALUE, OrphanUnitList, useStoryTextLineIndex, type OrphanUnitRow } from "./OrphanUnits";
+import { orphanTranslationUnitIds } from "@/lib/lint/rules/text/textSegments";
 import { AddKeyRow, ReviewRow, TranslateRow, type InlineEditing, type TranslationTableRow } from "./TranslationRows";
 
 type EditorMode = "translate" | "review";
@@ -136,7 +138,7 @@ function isPendingReview(state: LocalizationUnitState): boolean {
 
 export function LocalizationEditorTab({ tabId, payload, active }: EditorComponentProps<LocalizationEditorTabPayload | undefined>) {
     const { context, isInitialized } = useWorkspace();
-    const { t, locale: editorLocale } = useTranslation();
+    const { t, tn, locale: editorLocale } = useTranslation();
     const locale = payload?.locale ?? "";
 
     const localizationService = useMemo(
@@ -261,7 +263,7 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
             const entries = storyService.listStories();
             setStories(entries);
             setSourceValue(current => {
-                if (current === UI_SOURCE_VALUE) {
+                if (current === UI_SOURCE_VALUE || current === ORPHANS_SOURCE_VALUE) {
                     return current;
                 }
                 if (current && entries.some(entry => entry.id === current)) {
@@ -293,7 +295,8 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
     // names), or the merged interface-text source (UI widget texts followed
     // by the named-key registry).
     useEffect(() => {
-        if (!localizationService || !sourceValue) {
+        // The orphans are not rows of any source: they are drawn by their own list below.
+        if (!localizationService || !sourceValue || sourceValue === ORPHANS_SOURCE_VALUE) {
             setRows([]);
             return;
         }
@@ -430,6 +433,20 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
             unsubscribe();
         };
     }, [localizationService, locale, localeInProject]);
+
+    /**
+     * This language's orphans: its translations of story lines that are not in the game.
+     *
+     * Counted against every story, the way `localization/orphan` counts them, so the finding that
+     * opens this list and the list agree. Null until every story has been read, and while one cannot
+     * be - see `StoryTextLineIndex`.
+     */
+    const lineIndex = useStoryTextLineIndex(storyService);
+    const orphanUnitIds = useMemo(
+        () => (lineIndex.kind === "ready" && locDocument ? orphanTranslationUnitIds(locDocument.units, lineIndex.live) : null),
+        [lineIndex, locDocument],
+    );
+    const showingOrphans = sourceValue === ORPHANS_SOURCE_VALUE;
 
     // Flush pending translation writes when the tab goes to the background.
     useEffect(() => {
@@ -660,6 +677,14 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [revealToken]);
 
+    /** A project check finding about this language's orphans opens the table on them. */
+    const orphansToken = payload?.orphans?.token ?? null;
+    useEffect(() => {
+        if (orphansToken !== null) {
+            setSourceValue(ORPHANS_SOURCE_VALUE);
+        }
+    }, [orphansToken]);
+
     /**
      * A filter change is a different page, so the scroll position from the old one does not survive it.
      *
@@ -875,12 +900,51 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
         }
     }, [localizationService, uiService, t]);
 
+    /**
+     * Delete orphaned translations, after asking: nothing in the table can bring one back, and a line
+     * restored or enabled later is untranslated again.
+     */
+    const handleRemoveOrphans = useCallback(async (unitIds: string[]) => {
+        if (!localizationService || !uiService || unitIds.length === 0 || importFreeze.frozen) {
+            return;
+        }
+        const confirmed = await uiService.showConfirm(
+            tn("workspace.localization.table.orphans.deleteConfirm", unitIds.length),
+            t("workspace.localization.table.orphans.deleteDetail"),
+        );
+        if (!confirmed) {
+            return;
+        }
+        try {
+            localizationService.applyUnitEdits(locale, { set: {}, remove: unitIds });
+        } catch (error) {
+            uiService.showError(error instanceof Error ? error : String(error));
+        }
+    }, [localizationService, uiService, importFreeze.frozen, locale, t, tn]);
+
+    const orphanRows = useMemo<OrphanUnitRow[]>(() => {
+        if (!orphanUnitIds || lineIndex.kind !== "ready") {
+            return [];
+        }
+        return orphanUnitIds.map(unitId => {
+            const line = lineIndex.lines.get(unitId);
+            return { unitId, ...(line ? { line } : {}), content: locDocument?.units[unitId]?.target ?? "" };
+        });
+    }, [orphanUnitIds, lineIndex, locDocument]);
+
     const sourceOptions: SelectOption[] = useMemo(
         () => [
             ...stories.map(entry => ({ value: entry.id, label: entry.name })),
             { value: UI_SOURCE_VALUE, label: t("workspace.localization.table.sourceUi") },
+            // Listed while there is something to list, and while it is the page on screen.
+            ...((orphanUnitIds?.length ?? 0) > 0 || showingOrphans
+                ? [{
+                    value: ORPHANS_SOURCE_VALUE,
+                    label: t("workspace.localization.table.orphans.source", { count: orphanUnitIds?.length ?? 0 }),
+                }]
+                : []),
         ],
-        [stories, t],
+        [stories, t, orphanUnitIds, showingOrphans],
     );
 
     const modeOptions: { key: EditorMode; label: string; icon: React.ReactNode }[] = [
@@ -950,7 +1014,7 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
                             className="w-44"
                         />
                     </div>
-                    {mode === "translate" ? (
+                    {showingOrphans ? null : mode === "translate" ? (
                         <Select
                             options={filterOptions}
                             value={filter}
@@ -969,7 +1033,7 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
                             className="w-32"
                         />
                     )}
-                    <div className="flex items-center rounded-md bg-surface-sunken p-0.5">
+                    <div className={cn("flex items-center rounded-md bg-surface-sunken p-0.5", showingOrphans && "hidden")}>
                         {modeOptions.map(option => (
                             <button
                                 key={option.key}
@@ -1025,7 +1089,29 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
                 onFocusCapture={handleFocusCapture}
                 onBlurCapture={handleBlurCapture}
             >
-                {stories.length === 0 && sourceValue !== UI_SOURCE_VALUE ? (
+                {showingOrphans ? (
+                    lineIndex.kind === "unreadable" ? (
+                        <EmptyMessage icon={<MessageSquareText className="h-5 w-5" />} text={t("workspace.localization.table.orphans.unknown")} />
+                    ) : orphanRows.length === 0 ? (
+                        lineIndex.kind === "loading" ? null : (
+                            <EmptyMessage icon={<CheckCircle2 className="h-5 w-5 text-success" />} text={t("workspace.localization.table.orphans.none")} />
+                        )
+                    ) : (
+                        <OrphanUnitList
+                            rows={orphanRows}
+                            frozen={importFreeze.frozen}
+                            frozenReason={importFreeze.reason}
+                            onRemove={unitIds => void handleRemoveOrphans(unitIds)}
+                            strings={{
+                                summary: tn("workspace.localization.table.orphans.summary", orphanRows.length),
+                                disabledLine: t("workspace.localization.table.orphans.disabledLine"),
+                                deletedLine: t("workspace.localization.table.orphans.deletedLine"),
+                                removeOne: t("workspace.localization.table.orphans.delete"),
+                                removeAll: t("workspace.localization.table.orphans.deleteAll"),
+                            }}
+                        />
+                    )
+                ) : stories.length === 0 && sourceValue !== UI_SOURCE_VALUE ? (
                     <EmptyMessage icon={<BookOpenText className="h-5 w-5" />} text={t("workspace.localization.table.noStories")} />
                 ) : rows.length === 0 && !showKeysExtras ? (
                     // Interface text: nothing here is marked for localization, and nothing in this
