@@ -34,7 +34,7 @@ export const componentBlueprintNodes: BlueprintNodeDef[] = [
         inspectorParams: [
             {
                 key: "paramId",
-                label: "Param",
+                label: "Parameter",
                 kind: "select",
                 dynamicOptionsSource: BLUEPRINT_COMPONENT_PARAM_OPTIONS_SOURCE,
                 emptyOptionLabel: "None",

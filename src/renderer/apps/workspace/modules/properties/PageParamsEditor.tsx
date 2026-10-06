@@ -224,7 +224,8 @@ export function SurfacePageParamsField({ data }: CustomFieldProps<SceneEditorCon
                                 <div className="flex min-w-0 flex-1 items-center">
                                     <Select
                                         size="sm"
-                                        className="w-full"
+                                        className="min-w-0 flex-1"
+                                        fullWidth
                                         value={param.struct ?? ANY_ROW_SHAPE}
                                         options={
                                             param.struct && !shapeOptions.some(option => option.value === param.struct)

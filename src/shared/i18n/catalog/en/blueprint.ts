@@ -917,6 +917,7 @@ export const blueprint = {
         page: "Page",
         pageProps: "Page props",
         param: "Param",
+        parameter: "Parameter",
         persistent: "Persistent",
         pointer: "Pointer",
         center: "Center",

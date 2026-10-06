@@ -861,6 +861,7 @@ export const blueprint = {
         page: "ページ",
         pageProps: "ページのプロパティ",
         param: "引数",
+        parameter: "パラメータ",
         persistent: "永続",
         pointer: "カーソル",
         center: "中心",

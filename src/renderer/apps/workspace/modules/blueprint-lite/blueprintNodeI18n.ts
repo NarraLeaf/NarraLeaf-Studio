@@ -833,6 +833,7 @@ const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
     "Page": "blueprint.port.page",
     "Page props": "blueprint.port.pageProps",
     "Param": "blueprint.port.param",
+    "Parameter": "blueprint.port.parameter",
     "Persistent": "blueprint.port.persistent",
     "Pointer": "blueprint.port.pointer",
     "Position": "blueprint.port.position",

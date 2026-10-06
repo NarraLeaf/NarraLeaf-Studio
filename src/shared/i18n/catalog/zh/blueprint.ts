@@ -859,6 +859,7 @@ export const blueprint = {
         page: "页面",
         pageProps: "页面属性",
         param: "参数",
+        parameter: "参数",
         persistent: "持久",
         pointer: "指针",
         center: "中心",
