@@ -82,8 +82,10 @@ function input(overrides: Partial<UITextMigrationInput> = {}): UITextMigrationIn
 const BOUND = { kind: "blueprintValue" as const, blueprintId: "bp", valueType: "string" as const };
 
 describe("the v13 document version", () => {
-    it("is what this build writes, over the same floor", () => {
-        expect(UI_DOCUMENT_SCHEMA_VERSION).toBe(UI_TEXT_SOURCES_SCHEMA_VERSION);
+    it("is at or under what this build writes, over the same floor", () => {
+        // v14 (page parameters) came after it and converted nothing, so the v13 step still runs for
+        // every document older than v13 and for no other.
+        expect(UI_DOCUMENT_SCHEMA_VERSION).toBeGreaterThanOrEqual(UI_TEXT_SOURCES_SCHEMA_VERSION);
         expect(UI_DOCUMENT_MIN_SUPPORTED_VERSION).toBe(10);
     });
 

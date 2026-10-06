@@ -281,6 +281,8 @@ export type NodeDetail = {
         valueTypeOptions?: readonly string[];
     };
     saveSchemaPins?: { kind: "input" | "output" };
+    /** Grows an input per parameter of the page picked in this field (`pageParamPins` on the definition). */
+    pageParamPins?: { surfaceParam: string };
     magicElementTarget?: unknown;
     /** Params the node keeps that are not inspector fields (`storedParams` on the definition). */
     storedParams?: readonly string[];
@@ -337,6 +339,7 @@ export function describeNode(type: string, params?: Record<string, unknown>): No
         })),
         dynamicPins: def.dynamicInputPins ? describeDynamicPins(def.dynamicInputPins) : undefined,
         saveSchemaPins: def.saveSchemaPins,
+        pageParamPins: def.pageParamPins,
         magicElementTarget: def.magicElementTarget,
         storedParams: def.storedParams,
         paramPinTypes: def.paramPinTypes,
@@ -560,6 +563,14 @@ export function formatNodeDetail(detail: NodeDetail): string {
             "  extra pins",
             `    One ${detail.saveSchemaPins.kind} pin per field in the project's save schema, `
                 + "named field:<fieldId>.",
+        );
+    }
+    if (detail.pageParamPins) {
+        lines.push(
+            "",
+            "  extra pins",
+            `    One input per parameter the page picked in ${detail.pageParamPins.surfaceParam} declares, `
+                + "named param_<paramId>; `targets` lists each page's params.",
         );
     }
     return lines.join("\n");

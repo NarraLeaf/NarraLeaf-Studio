@@ -128,6 +128,7 @@ describe("UIDocumentService page parameters", () => {
     it("reads a stored document's parameters through the normaliser, and drops a Game UI's", () => {
         const service = createService();
         const stored: UIDocument = JSON.parse(JSON.stringify(service.getDocument()));
+        const rootElementId = stored.surfaces[0]!.rootElementId;
         stored.surfaces[0] = { ...stored.surfaces[0]!, params: [MESSAGE, { id: "bad id", name: "x", type: "string" }] } as never;
         stored.surfaces.push({
             id: "dialog",
@@ -135,7 +136,7 @@ describe("UIDocumentService page parameters", () => {
             host: "player",
             kind: "stageSurface",
             designSize: { width: 1280, height: 720 },
-            rootElementId: stored.surfaces[0]!.rootElementId,
+            rootElementId,
             mount: { kind: "slot", slotId: "dialog" },
             params: [MESSAGE],
         } as never);

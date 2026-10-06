@@ -301,7 +301,8 @@ function commandTargets(args: Args, io: CliIo): number {
             .map(param => `${param.id}${param.name === param.id ? "" : ` "${param.name}"`}:${param.type}`);
         lines.push(
             `${surface.name}  owner=surfaceMain surface=${surface.id}`
-                + (pageParams.length > 0 ? `  (params: ${pageParams.join(", ")})` : ""),
+                // After a `#`, as a label: what follows the owner fields is copied into a `.bp` file without it.
+                + (pageParams.length > 0 ? `  # params: ${pageParams.join(", ")}` : ""),
         );
         for (const element of elements) {
             lines.push(
