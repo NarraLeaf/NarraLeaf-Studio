@@ -200,16 +200,17 @@ function parseSurface(line: SourceLine, tokens: string[], body: SourceLine[]): U
     for (const item of blockItems(body)) {
         const itemTokens = tokensOf(item.line);
         if (itemTokens[0] === "param") {
-            // `param message "Message" = ""`, `param count "Count" type=number = 3` - id, the name the
-            // page's props carry the value under, its kind, and the default.
+            // `param message "Message" = ""`, `param count "Count" type=number = 3`,
+            // `param rows "Rows" type=list struct=nl.confirmButton` - id, the name the page's props
+            // carry the value under, its kind (and a list's row shape), and the default.
             const id = readString(itemTokens[1] ?? "", item.line);
             const eq = itemTokens.indexOf("=");
             const head = eq >= 0 ? itemTokens.slice(2, eq) : itemTokens.slice(2);
             const isFlag = (token: string) => /^[A-Za-z]+=/.test(token);
             const flags = readFlags(head.filter(isFlag), item.line);
             for (const key of Object.keys(flags)) {
-                if (key !== "type") {
-                    throw new UiParseError(`a param takes type= and nothing else, got "${key}=".`, item.line.number);
+                if (key !== "type" && key !== "struct") {
+                    throw new UiParseError(`a page param takes type= and struct=, got "${key}=".`, item.line.number);
                 }
             }
             statement.params.push({
@@ -217,6 +218,7 @@ function parseSurface(line: SourceLine, tokens: string[], body: SourceLine[]): U
                 id,
                 name: readString(head.find(token => !isFlag(token)) ?? id, item.line),
                 type: flags.type ?? "string",
+                ...(flags.struct !== undefined ? { struct: flags.struct } : {}),
                 ...(eq >= 0 ? { defaultValue: readJs(itemTokens[eq + 1] ?? '""', item.line) } : {}),
             });
             continue;
@@ -495,7 +497,7 @@ function readBinding(line: SourceLine, tokens: string[]): UiBindingLine {
         return {
             line: line.number,
             propPath,
-            source: { kind: "componentParam", paramId: readString(tokens[4] ?? "", line) },
+            source: { kind: "param", paramId: readString(tokens[4] ?? "", line) },
         };
     }
     throw new UiParseError(`a binding source is "blueprint", "field" or "param", got "${source ?? ""}".`, line.number);

@@ -26,7 +26,11 @@ export type UiBindingLine = {
     source:
         | { kind: "blueprintValue"; blueprintId: string; valueType?: string }
         | { kind: "listItemField"; fieldId: string }
-        | { kind: "componentParam"; paramId: string };
+        /**
+         * `= param <id>`: a text parameter of whatever the element belongs to - the component whose
+         * block it is in, or the page it is on. The compiler knows which.
+         */
+        | { kind: "param"; paramId: string };
 };
 
 export type UiComponentLinkLine = {
@@ -64,10 +68,10 @@ export type UiSurfaceStatement = {
     slots: { line: number; id: string; name: string; rootElementId?: string }[];
     /**
      * The page's declared parameters (`UIPageParam`), as written. `type` is checked by the compiler,
-     * which has somewhere to report a page parameter on a Game UI; `defaultValue` is absent when the
-     * line gives none.
+     * which has somewhere to report a page parameter on a Game UI; `struct` is a list's row shape;
+     * `defaultValue` is absent when the line gives none.
      */
-    params: { line: number; id: string; name: string; type: string; defaultValue?: unknown }[];
+    params: { line: number; id: string; name: string; type: string; struct?: string; defaultValue?: unknown }[];
     root: UiElementNode | null;
 };
 

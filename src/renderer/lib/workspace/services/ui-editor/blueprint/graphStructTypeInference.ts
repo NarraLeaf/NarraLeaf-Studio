@@ -36,12 +36,13 @@ import {
     BLUEPRINT_NODE_PARAM_FIELD_STRUCT,
     BLUEPRINT_NODE_PARAM_INFERRED_PIN_TYPES,
     BLUEPRINT_NODE_PARAM_INFERRED_READS_ROW,
+    BLUEPRINT_NODE_PARAM_INFERRED_TARGET_WIRED,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_SAVED_GET,
     BLUEPRINT_NODE_TYPE_SAVED_SET,
 } from "@shared/types/blueprint/graph";
-import { getActiveUIPageParam, uiPageParamBlueprintValueType } from "@shared/types/ui-editor/pageParams";
+import { getActiveUIPageParam, getActiveUIPageParams, uiPageParamPinType } from "@shared/types/ui-editor/pageParams";
 import { blueprintArrayElementType, blueprintArrayValueType } from "@shared/types/blueprint/valueTypes";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
@@ -59,7 +60,7 @@ import {
 } from "@shared/types/ui-editor/struct";
 import { readBlueprintElementRefParams } from "@/lib/ui-editor/blueprint-nodes/built-in/elementRefUtils";
 import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
-import { BLUEPRINT_FIELD_READER_INPUT_PIN } from "@/lib/ui-editor/blueprint-nodes/effectivePins";
+import { BLUEPRINT_FIELD_READER_INPUT_PIN, uiPageParamPinId } from "@/lib/ui-editor/blueprint-nodes/effectivePins";
 import type { BlueprintNodeDef } from "@/lib/ui-editor/blueprint-nodes/types";
 import { blueprintValueTypeForVariable } from "./graphVariableTypeInference";
 
@@ -116,6 +117,8 @@ export type BlueprintNodeStructTypes = {
     keyWired?: boolean;
     /** For a list node: rows of another shape wired into one of its row inputs, and their type. */
     rowMismatch?: { pin: string; givenStructId: string; givenType: string };
+    /** For a node that opens a page: its `Page` input is wired, so the page is the wire's. */
+    targetWired?: boolean;
 };
 
 const EMPTY_INFO: BlueprintNodeStructTypes = Object.freeze({ pinTypes: {}, struct: null, structId: null });
@@ -143,7 +146,7 @@ export function isBlueprintStructTypedNodeType(type: string): boolean {
         return true;
     }
     const def = blueprintNodeRegistry.get(type);
-    return Boolean(def?.elementTypeFlow || def?.paramPinTypes || def?.listRowTypes);
+    return Boolean(def?.elementTypeFlow || def?.paramPinTypes || def?.listRowTypes || def?.pageParamPins);
 }
 
 /** The pin a list node is told which list to act on through; see `listNodes.ts`. */
@@ -166,12 +169,15 @@ function withPinTypeStamp(
     params: Record<string, unknown> | undefined,
     pinTypes: Record<string, string>,
     readsRow = false,
+    targetWired = false,
 ): Record<string, unknown> | undefined {
     const hasTypes = Object.keys(pinTypes).length > 0;
     const hasStamp =
         params !== undefined &&
-        (BLUEPRINT_NODE_PARAM_INFERRED_PIN_TYPES in params || BLUEPRINT_NODE_PARAM_INFERRED_READS_ROW in params);
-    if (!hasTypes && !readsRow && !hasStamp) {
+        (BLUEPRINT_NODE_PARAM_INFERRED_PIN_TYPES in params
+            || BLUEPRINT_NODE_PARAM_INFERRED_READS_ROW in params
+            || BLUEPRINT_NODE_PARAM_INFERRED_TARGET_WIRED in params);
+    if (!hasTypes && !readsRow && !targetWired && !hasStamp) {
         return params;
     }
     const next = { ...(params ?? {}) };
@@ -184,6 +190,11 @@ function withPinTypeStamp(
         next[BLUEPRINT_NODE_PARAM_INFERRED_READS_ROW] = true;
     } else {
         delete next[BLUEPRINT_NODE_PARAM_INFERRED_READS_ROW];
+    }
+    if (targetWired) {
+        next[BLUEPRINT_NODE_PARAM_INFERRED_TARGET_WIRED] = true;
+    } else {
+        delete next[BLUEPRINT_NODE_PARAM_INFERRED_TARGET_WIRED];
     }
     return next;
 }
@@ -214,7 +225,7 @@ export function analyzeBlueprintStructTypes(
             return undefined;
         }
         const info = infoFor(node);
-        const params = withPinTypeStamp(node.params, info.pinTypes);
+        const params = withPinTypeStamp(node.params, info.pinTypes, false, info.targetWired === true);
         const entry = blueprintNodeRegistry.resolveCatalogEntryForNode(node.type, params);
         return entry.pins.find(pin => pin.id === port && pin.kind === "output")?.valueType;
     };
@@ -306,6 +317,26 @@ export function analyzeBlueprintStructTypes(
         return valueType ? { pinTypes: { value: valueType }, struct: null, structId: null } : EMPTY_INFO;
     };
 
+    /**
+     * A node that opens a page: whether its `Page` input is wired, and the shape of the rows each list
+     * parameter of the picked page takes. Read from the published declarations, as the pins are.
+     */
+    const analyzePageParamWriter = (
+        node: BlueprintGraphNode,
+        spec: NonNullable<BlueprintNodeDef["pageParamPins"]>,
+    ): BlueprintNodeStructTypes => {
+        if (incoming.has(`${node.id}\0${spec.surfaceParam}`)) {
+            return { pinTypes: {}, struct: null, structId: null, targetWired: true };
+        }
+        const pinTypes: Record<string, string> = {};
+        for (const param of getActiveUIPageParams(readParamString(node.params, spec.surfaceParam))) {
+            if (param.type === "list") {
+                pinTypes[uiPageParamPinId(param.id)] = uiPageParamPinType(param);
+            }
+        }
+        return Object.keys(pinTypes).length > 0 ? { pinTypes, struct: null, structId: null } : EMPTY_INFO;
+    };
+
     const analyzePageParamReader = (node: BlueprintGraphNode): BlueprintNodeStructTypes => {
         const paramId = readParamString(node.params, "paramId");
         const valueType = paramId ? ctx.pageParamType?.(paramId) : undefined;
@@ -365,6 +396,9 @@ export function analyzeBlueprintStructTypes(
             return analyzePageParamReader(node);
         }
         const def = blueprintNodeRegistry.get(node.type);
+        if (def?.pageParamPins) {
+            return analyzePageParamWriter(node, def.pageParamPins);
+        }
         if (def?.elementTypeFlow) {
             return analyzeArrayNode(node);
         }
@@ -423,7 +457,9 @@ export function applyBlueprintStructTypes(
     const nextNodes: Record<string, BlueprintGraphNode> = {};
     for (const [nodeId, node] of Object.entries(nodes)) {
         const info = analysis.get(nodeId);
-        const params = info ? withPinTypeStamp(node.params, info.pinTypes, info.readerSource === "row") : node.params;
+        const params = info
+            ? withPinTypeStamp(node.params, info.pinTypes, info.readerSource === "row", info.targetWired === true)
+            : node.params;
         if (params !== node.params) {
             changed = true;
             nextNodes[nodeId] = { ...node, params };
@@ -492,7 +528,7 @@ export function buildBlueprintStructTypeContext(input: {
         savedVariableType: variableId => savedTypes.get(variableId),
         pageParamType: paramId => {
             const param = getActiveUIPageParam(pageSurfaceIdOf(input.owner), paramId);
-            return param ? uiPageParamBlueprintValueType(param.type) : undefined;
+            return param ? uiPageParamPinType(param) : undefined;
         },
         listRowStructId,
     };

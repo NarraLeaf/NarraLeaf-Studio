@@ -44,7 +44,11 @@ import {
 } from "@shared/types/ui-editor/textSourceMigration";
 import { readUITextSite, uiTextSitesOf, uiTextUnitId } from "@shared/types/ui-editor/textSource";
 import { findUIComponentHoldingElement } from "@shared/types/ui-editor/componentTextParams";
-import { mapCopiedUIComponentDefaultUnits, mapCopiedUITextUnits } from "@shared/types/ui-editor/textUnitCopies";
+import {
+    mapCopiedUIComponentDefaultUnits,
+    mapCopiedUIPageDefaultUnits,
+    mapCopiedUITextUnits,
+} from "@shared/types/ui-editor/textUnitCopies";
 import type { LocalizationUnit } from "@shared/types/localization";
 import type { LocalizationService } from "../localization/LocalizationService";
 import {
@@ -1636,6 +1640,35 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
      * field id. Switching between them therefore goes through the clear, which is why it runs here.
      */
     public setElementListItemFieldBinding(elementId: string, propPath: string, fieldId: string | null): void {
+        const id = fieldId?.trim();
+        this.setElementPlainValueBinding(elementId, propPath, id ? { kind: "listItemField", fieldId: id } : null);
+    }
+
+    /**
+     * Show one of its page's text parameters in the words of an element on that page, or (`null`)
+     * stop showing one. The page's counterpart of `setElementComponentParamBinding`: an element on a
+     * Game UI, which declares no parameters, is left alone.
+     */
+    public setElementPageParamBinding(elementId: string, propPath: string, paramId: string | null): void {
+        const surfaceId = this.getElementSurfaceId(elementId);
+        const surface = surfaceId ? this.getDocument().surfaces.find(item => item.id === surfaceId) : undefined;
+        if (surface?.kind !== "appSurface") {
+            return;
+        }
+        const id = paramId?.trim();
+        this.setElementPlainValueBinding(elementId, propPath, id ? { kind: "pageParam", paramId: id } : null);
+    }
+
+    /**
+     * Bind one prop of one element on a surface to something that needs no blueprint - a field of its
+     * list row, a text parameter of its page - or (`null`) unbind it. A Blueprint Value the prop was
+     * bound to is torn down on the way (`clearElementBlueprintValueBinding`).
+     */
+    private setElementPlainValueBinding(
+        elementId: string,
+        propPath: string,
+        binding: Extract<UIElementValueBinding, { kind: "listItemField" | "pageParam" }> | null,
+    ): void {
         const surfaceId = this.getElementSurfaceId(elementId);
         if (isLinkedUIComponentElement(this.getDocument().elements[elementId])) {
             return;
@@ -1649,8 +1682,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             if (!element) {
                 return;
             }
-            const id = fieldId?.trim();
-            if (!id) {
+            if (!binding) {
                 if (!element.valueBindings) {
                     return;
                 }
@@ -1662,7 +1694,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }
             element.valueBindings = {
                 ...(element.valueBindings ?? {}),
-                [propPath]: { kind: "listItemField", fieldId: id },
+                [propPath]: binding,
             };
         }, {
             history: surfaceId ? { surfaceId } : false,
@@ -3080,8 +3112,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }
             normalizeFlowChildLayouts(document, Object.keys(duplicatedElements));
         });
-        // The copies' own words, translated as the originals' are.
-        this.carryCopiedTranslations(sourceDocument.elements, elementIdMap, [], undefined);
+        // The copies' own words, translated as the originals' are, and the page's parameter defaults.
+        this.carryCopiedTranslations(
+            sourceDocument.elements,
+            elementIdMap,
+            [],
+            undefined,
+            mapCopiedUIPageDefaultUnits([sourceSurface], { [sourceSurface.id]: duplicatedSurface.id }),
+        );
 
         return duplicatedSurface;
     }
@@ -3224,7 +3262,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             arrivedIds,
             arrivals,
             input.translations,
-            mapCopiedUIComponentDefaultUnits(sourceDocument.components ?? [], componentIdMap),
+            new Map([
+                ...mapCopiedUIComponentDefaultUnits(sourceDocument.components ?? [], componentIdMap),
+                ...mapCopiedUIPageDefaultUnits(sourceDocument.surfaces, surfaceIdMap),
+            ]),
         );
         if (input.history !== false) {
             // One step for everything the bundle added: its pages and its definitions, with their

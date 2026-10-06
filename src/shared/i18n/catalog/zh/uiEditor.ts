@@ -176,6 +176,7 @@ export const uiEditor = {
         wordsFromRowField: "此文字来自列表行字段“{field}”",
         wordsFromBlueprintValue: "此文字由蓝图值“{name}”决定",
         wordsFromComponentParam: "此文字来自组件参数“{param}”，在各放置处设置",
+        wordsFromPageParam: "此文字来自页面参数“{param}”，由打开页面时传入",
     },
     editor: {
         componentNotFound: "未找到组件",

@@ -111,20 +111,47 @@ function checkPageParams(compiled: UiCompileResult, existing: UIDocument | null)
         pages.set(surface.surface.id, surface.surface);
     }
     const out: BpDiagnostic[] = [];
+    const resolveStruct = (structId: string) => compiled.structs[structId] ?? resolveUIStruct(existing, structId);
     const visit = (pool: Record<string, UIElement>, page: (typeof compiled.surfaces)[number]["surface"] | null) => {
         for (const element of Object.values(pool)) {
             const props = (element.props ?? {}) as Record<string, unknown>;
             const binding = props.itemsBinding as { kind?: unknown; key?: unknown } | undefined;
-            if (page?.kind === "appSurface" && isListLikeWidgetType(element.type) && binding?.kind === "pageProp"
+            const shown = page?.kind === "appSurface" && isListLikeWidgetType(element.type) && binding?.kind === "pageProp"
                 && typeof binding.key === "string" && binding.key.trim()
-                && !getUIPageParams(page).some(param => param.name === binding.key)) {
+                ? binding.key
+                : null;
+            const param = shown && page ? getUIPageParams(page).find(candidate => candidate.name === shown) : undefined;
+            if (shown && page && !param) {
                 out.push({
                     severity: "warning",
                     code: "ui.page_prop_undeclared",
-                    message: `"${elementPath(pool, element)}" shows page prop "${binding.key}", which page "${page.name}" does not declare.`,
+                    message: `"${elementPath(pool, element)}" shows page prop "${shown}", which page "${page.name}" does not declare.`,
                     hint: "Declare it with a `param` line in the page's block: the nodes and Page widgets that open the "
                         + "page give a value only for the params it declares.",
                 });
+            } else if (param && param.type !== "list" && param.type !== "json") {
+                out.push({
+                    severity: "warning",
+                    code: "ui.page_param_list_mismatch",
+                    message: `"${elementPath(pool, element)}" shows page param "${param.name}", which is a ${param.type}, not a list.`,
+                    hint: `Declare it as \`param ${param.id} ${param.name} type=list struct=<shape>\`.`,
+                });
+            } else if (param?.type === "list" && param.struct) {
+                const listStructId = typeof props.itemStructId === "string" ? props.itemStructId.trim() : "";
+                const listStruct = listStructId ? resolveStruct(listStructId) : null;
+                const rowStruct = resolveStruct(param.struct);
+                const missing = listStruct && rowStruct
+                    ? listStruct.fields.filter(field => !rowStruct.fields.some(row => row.key === field.key && row.type === field.type))
+                    : [];
+                if (missing.length > 0) {
+                    out.push({
+                        severity: "warning",
+                        code: "ui.page_param_list_mismatch",
+                        message: `"${elementPath(pool, element)}" draws ${missing.map(field => `${field.key}:${field.type}`).join(", ")}, `
+                            + `which the rows of page param "${param.name}" (${param.struct}) do not carry.`,
+                        hint: "Give the list the param's row shape (`itemStructId`), or give the param one whose rows carry every field the list draws.",
+                    });
+                }
             }
             if (element.type !== "nl.frame") {
                 continue;

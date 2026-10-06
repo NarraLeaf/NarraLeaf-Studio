@@ -864,6 +864,39 @@ const FIXTURES: Record<RegisteredLintRuleId, Case[]> = {
             }),
         }),
     }],
+    "ui/page-text-param-missing": [{
+        context: () => createTestLintContext({
+            uiDocument: onePage(element({
+                id: "message",
+                type: "nl.text",
+                name: "Message",
+                props: { text: "Sample" },
+                valueBindings: { text: { kind: "pageParam", paramId: "message" } },
+            } as Partial<UIElement> & { id: string; type: string })),
+        }),
+    }],
+    "ui/page-param-list-mismatch": [{
+        context: () => createTestLintContext({
+            uiDocument: uiDocument({
+                surfaces: [{
+                    id: MAIN_APP_SURFACE_ID,
+                    name: "Title",
+                    rootElementId: "root",
+                    params: [{ id: "buttons", name: "buttons", type: "string" }],
+                } as { id: string; name: string; rootElementId: string }],
+                elements: [
+                    element({ id: "root", type: "nl.root", childrenIds: ["rows"] }),
+                    element({
+                        id: "rows",
+                        type: "nl.list",
+                        name: "Buttons",
+                        parentId: "root",
+                        props: { itemsBinding: { kind: "pageProp", key: "buttons" } },
+                    }),
+                ],
+            }),
+        }),
+    }],
     "ui/component-param-missing": [{
         context: () => createTestLintContext({
             uiDocument: {

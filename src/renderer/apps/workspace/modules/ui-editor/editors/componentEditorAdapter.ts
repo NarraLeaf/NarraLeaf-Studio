@@ -485,6 +485,15 @@ export class ComponentDocumentServiceAdapter implements UIDocumentServiceSurface
         );
     }
 
+    /**
+     * A page's text parameter, which a definition's elements cannot show: they are on no page, and
+     * are drawn wherever the component is placed. The inspector does not offer it here; a caller that
+     * asks anyway changes nothing.
+     */
+    public setElementPageParamBinding(_elementId: string, _propPath: string, _paramId: string | null): void {
+        return;
+    }
+
     public reorderChildren(parentId: string, orderedChildIds: string[]): void {
         const actualParentId = this.mapParentId(parentId);
         if (!actualParentId) {

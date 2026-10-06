@@ -1388,3 +1388,86 @@ describe("ui/page-param-unknown", () => {
         expect(findings.map(finding => finding.messageParams)).toEqual([{ name: "question" }]);
     });
 });
+
+describe("ui/page-text-param-missing", () => {
+    const bound = (paramId: string) => element({
+        id: "msg",
+        type: "nl.text",
+        parentId: "root",
+        props: { text: "Sample" },
+        valueBindings: { text: { kind: "pageParam", paramId } },
+    });
+    const declaring = (document: UIDocument, params: unknown[]) => ({
+        ...document,
+        surfaces: document.surfaces.map(surface => ({ ...surface, params })),
+    }) as UIDocument;
+
+    it("says nothing for a text showing one of its page's text params", async () => {
+        const document = declaring(onePage(bound("message")), [{ id: "message", name: "message", type: "text" }]);
+        expect(await run("ui/page-text-param-missing", createTestLintContext({ uiDocument: document }))).toEqual([]);
+    });
+
+    it("reports a param the page does not declare, or declares as something other than text", async () => {
+        for (const params of [[], [{ id: "message", name: "message", type: "string" }]]) {
+            const findings = await run("ui/page-text-param-missing", createTestLintContext({ uiDocument: declaring(onePage(bound("message")), params) }));
+            expect(findings.map(finding => finding.messageKey)).toEqual(["lint.rule.uiPageTextParamMissing.message"]);
+        }
+    });
+
+    it("reports a text inside a component bound to a page param, which no page opens it with", async () => {
+        const document = {
+            ...onePage(),
+            components: [{
+                id: "nav",
+                name: "Nav item",
+                rootElementId: "nav-root",
+                elements: {
+                    "nav-root": element({ id: "nav-root", type: "nl.container", childrenIds: ["nav-label"] }),
+                    "nav-label": element({
+                        id: "nav-label",
+                        type: "nl.text",
+                        parentId: "nav-root",
+                        valueBindings: { text: { kind: "pageParam", paramId: "message" } },
+                    }),
+                },
+            }],
+        } as unknown as UIDocument;
+        const findings = await run("ui/page-text-param-missing", createTestLintContext({ uiDocument: document }));
+        expect(findings.map(finding => finding.messageKey)).toEqual(["lint.rule.uiPageTextParamMissing.messageOutside"]);
+    });
+});
+
+describe("ui/page-param-list-mismatch", () => {
+    const list = (structId?: string) => element({
+        id: "rows",
+        type: "nl.list",
+        parentId: "root",
+        props: { itemsBinding: { kind: "pageProp", key: "buttons" }, ...(structId ? { itemStructId: structId } : {}) },
+    });
+    const declaring = (document: UIDocument, params: unknown[]) => ({
+        ...document,
+        surfaces: document.surfaces.map(surface => ({ ...surface, params })),
+    }) as UIDocument;
+    const findingsFor = async (document: UIDocument) =>
+        (await run("ui/page-param-list-mismatch", createTestLintContext({ uiDocument: document })))
+            .map(finding => [finding.messageKey, finding.messageParams]);
+
+    it("says nothing for rows of the shape the list draws, rows of no declared shape, or rows that carry more", async () => {
+        const rows = (type: string, struct?: string) => [{ id: "buttons", name: "buttons", type, ...(struct ? { struct } : {}) }];
+        expect(await findingsFor(declaring(onePage(list("nl.confirmButton")), rows("list", "nl.confirmButton")))).toEqual([]);
+        expect(await findingsFor(declaring(onePage(list("nl.confirmButton")), rows("list")))).toEqual([]);
+        expect(await findingsFor(declaring(onePage(list("nl.confirmButton")), rows("json")))).toEqual([]);
+        expect(await findingsFor(declaring(onePage(list("nl.notificationItem")), rows("list", "nl.notificationItem")))).toEqual([]);
+    });
+
+    it("reports a param that is not a list, and rows that lack a field the list draws", async () => {
+        expect(await findingsFor(declaring(onePage(list("nl.confirmButton")), [{ id: "buttons", name: "buttons", type: "string" }])))
+            .toEqual([["lint.rule.uiPageParamListMismatch.messageNotList", { name: "buttons" }]]);
+        // A choice row carries a confirm button's text, index and disabled, and a voice id besides -
+        // but not its id, which the confirm-button list draws.
+        const shape = await findingsFor(declaring(onePage(list("nl.confirmButton")), [{ id: "buttons", name: "buttons", type: "list", struct: "nl.choiceItem" }]));
+        expect(shape).toHaveLength(1);
+        expect(shape[0]![0]).toBe("lint.rule.uiPageParamListMismatch.message");
+        expect((shape[0]![1] as { fields: string }).fields).toContain("id");
+    });
+});

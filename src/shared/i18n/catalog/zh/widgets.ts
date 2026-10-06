@@ -71,6 +71,7 @@ export const widgets = {
         removeBinding: "移除",
         hintBlueprintValue: "仅在编辑器中显示，游戏中显示蓝图值的结果",
         hintComponentParam: "仅在编辑组件时显示，各放置处显示为该参数设置的值",
+        hintPageParam: "仅在编辑页面且参数默认值为空时显示。游戏中显示打开页面时传入的文字，未传入时显示默认值",
     },
     textWriters: {
         title: "游戏中由以下蓝图写入",

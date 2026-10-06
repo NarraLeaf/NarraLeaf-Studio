@@ -13,6 +13,7 @@ import { BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN, BLUEPRINT_PIN_INLIN
 import {
     BLUEPRINT_NODE_PARAM_FIELD_STRUCT,
     BLUEPRINT_NODE_PARAM_INFERRED_PIN_TYPES,
+    BLUEPRINT_NODE_PARAM_INFERRED_TARGET_WIRED,
     BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
@@ -285,6 +286,14 @@ const RAW_PAGE_PROPS_PIN = "props";
  *
  * In front of the node's own `props` input, which stays: it is how a page is handed something it
  * does not declare, and how a graph written before the page declared anything keeps working.
+ *
+ * None while the node's `Page` input is wired (stamped by the editor's typing pass): the page it
+ * opens is then the wire's, which may declare other parameters or none, and the node gives it its
+ * `props` input alone (`readOpenedPageProps`). Inputs for the page picked on the card would be
+ * inputs that do nothing.
+ *
+ * A list is declared as `json`; the shape of its rows comes on top as a worked-out type, so a wire
+ * that carried rows before the page said what they hold is not refused.
  */
 function withPageParamPins(
     def: BlueprintNodeDef,
@@ -292,7 +301,7 @@ function withPageParamPins(
     params: Record<string, unknown> | undefined,
 ): BlueprintNodePinDef[] {
     const cfg = def.pageParamPins;
-    if (!cfg) {
+    if (!cfg || params?.[BLUEPRINT_NODE_PARAM_INFERRED_TARGET_WIRED] === true) {
         return basePins;
     }
     const declared = getActiveUIPageParams(readParamString(params, cfg.surfaceParam));

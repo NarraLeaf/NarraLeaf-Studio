@@ -149,6 +149,8 @@ export type LintRuleId =
     | "ui/component-param-missing"
     | "ui/page-prop-undeclared"
     | "ui/page-param-unknown"
+    | "ui/page-text-param-missing"
+    | "ui/page-param-list-mismatch"
     | "ui/gesture-answered-twice"
     | "ui/list-text-untranslated"
     | "ui/localization-key-missing"

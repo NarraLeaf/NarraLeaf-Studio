@@ -898,6 +898,37 @@ export const lint = {
                 + "- Give the value again under the param's current name, in the widget's Params.\n"
                 + "- Or remove it from the widget's props.",
         },
+        uiPageTextParamMissing: {
+            title: "Missing page text param",
+            description: "A text on a page showing a param the page does not declare as text",
+            message: "This shows a page param the page does not declare as text, so the game shows no words here",
+            messageOutside: "This shows a page param but is not on a page, so the game shows no words here",
+            help:
+                "A text or button shows a param, chosen under Page param, that the page does not declare as a "
+                + "Text param: it was removed or changed to another type, or the widget was copied from another "
+                + "page. A widget that is not on a page - inside a component, on a Game UI - has no page params "
+                + "to show.\n"
+                + "\n"
+                + "The game shows no words there, while the page's canvas still draws the widget's sample text.\n"
+                + "\n"
+                + "- In the page's Params, add a Text param, or set the param's Type to Text.\n"
+                + "- Select the widget and choose a Text param under Page param, or No param to show the widget's own words.",
+        },
+        uiPageParamListMismatch: {
+            title: "List not matching its page param",
+            description: "A list showing a page param that is not a list, or whose rows lack fields the list draws",
+            messageNotList: "This list shows the page param \"{name}\", which is not a list",
+            message: "This list shows the page param \"{name}\", whose rows lack fields the list draws: {fields}",
+            help:
+                "A list whose runtime items come from a page param reads one whose Type is neither List nor JSON, "
+                + "or whose Row struct lacks fields the list's content declares (same name and type).\n"
+                + "\n"
+                + "If the param is not a list, the list shows no rows in the game. If fields are missing, the "
+                + "widgets in the Item template bound to them show the value they were authored with in every row.\n"
+                + "\n"
+                + "- In the page's Params, set the param's Type to List and pick the Row struct the list uses.\n"
+                + "- Or, in the list's Edit content, set Struct to the param's row struct.",
+        },
         uiComponentParamMissing: {
             title: "Missing text parameter",
             description: "A widget in a component showing a parameter the component does not declare as text",

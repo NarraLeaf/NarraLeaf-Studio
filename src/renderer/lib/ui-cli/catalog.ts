@@ -149,6 +149,7 @@ function textSiteNotes(type: string): string[] {
         }
         if (site.valueBinding === "offered") {
             notes.push(componentParamWordsNote(TEXT_SITE_NOUNS[type] ?? type, site.textProp));
+            notes.push(pageParamWordsNote(TEXT_SITE_NOUNS[type] ?? type, site.textProp));
         }
     }
     return notes;
@@ -166,6 +167,20 @@ function componentParamWordsNote(widget: string, stringProp: string): string {
         + "directly are translated through the placement's own unit (`ui:<placementId>.param.<paramId>`), "
         + "a default through the component's (`ui:<componentId>.param.<paramId>`). The "
         + `${widget}'s own \`${stringProp}\` is then sample text, drawn only while the component itself is edited.`;
+}
+
+/**
+ * How a widget on a page shows words whoever opens the page gives it: a text parameter of the page,
+ * bound the same way.
+ */
+function pageParamWordsNote(widget: string, stringProp: string): string {
+    return `On a page, the same \`bind ${stringProp} = param <paramId>\` shows one of the page's text `
+        + "parameters (`param <paramId> <name> type=text = <default>` in the page's block): the words the page "
+        + "was opened with - a node's `param_<paramId>` input, a Page widget's value - or else the default, "
+        + "translated through the page's own unit (`ui:<surfaceId>.param.<paramId>`). Words a Page widget "
+        + "gives are translated through the widget's (`ui:<frameId>.param.<name>`); words given by a node are "
+        + `shown as given. The ${widget}'s own \`${stringProp}\` is sample text, drawn on the page's canvas while `
+        + "the default is empty.";
 }
 
 /**

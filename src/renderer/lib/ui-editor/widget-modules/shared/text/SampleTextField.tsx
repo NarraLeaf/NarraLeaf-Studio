@@ -74,6 +74,8 @@ export function createSampleTextField(config: SampleTextFieldConfig) {
                 data.documentService.setElementListItemFieldBinding(live.id, propPath, null);
             } else if (binding?.kind === "componentParam") {
                 data.documentService.setElementComponentParamBinding(live.id, propPath, null);
+            } else if (binding?.kind === "pageParam") {
+                data.documentService.setElementPageParamBinding(live.id, propPath, null);
             }
         };
 

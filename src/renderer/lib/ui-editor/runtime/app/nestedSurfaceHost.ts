@@ -37,6 +37,7 @@ import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBluep
 import type { NestedSurfaceRuntime } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { withUIPageParamDefaults } from "@shared/types/ui-editor/pageParams";
+import { resolveUIPageTextParams } from "@shared/types/ui-editor/pageTextParams";
 import type { AmbientSurfaceTargets } from "./ambientSurfaceEvents";
 import {
     buildGameHostApiOptions,
@@ -137,6 +138,11 @@ export function createNestedSurfaceHost(inputs: NestedSurfaceHostInputs): Nested
             coalescer: core.bindingDebugCoalescer,
             globalState,
             pageProps: withUIPageParamDefaults(input.targetSurface, input.params),
+            // The widget's words are its own, translated through its unit.
+            pageTexts: resolveUIPageTextParams(input.targetSurface, input.params, {
+                opened: true,
+                giverId: input.frameElement.id,
+            }),
         }),
         mountSurface: input => {
             const surfaceStore = core.scopeBridge.getSurfaceStore(input.runtimeScopeId);

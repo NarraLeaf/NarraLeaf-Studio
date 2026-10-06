@@ -110,11 +110,13 @@ export function printSurface(
                 + (answer.consume === undefined ? "" : ` consume=${answer.consume}`),
         );
     }
-    // The type is written unless it is a string, as a component's is; the default when there is one.
+    // The type is written unless it is a string, as a component's is; a list's row shape; the
+    // default when there is one.
     for (const param of getUIPageParams(surface)) {
         lines.push(
             `${INDENT}param ${param.id} ${printValue(param.name)}`
                 + (param.type === "string" ? "" : ` type=${param.type}`)
+                + (param.struct ? ` struct=${printValue(param.struct)}` : "")
                 + (param.defaultValue === undefined ? "" : ` = ${printValue(param.defaultValue)}`),
         );
     }
@@ -204,7 +206,7 @@ export function printElementTree(
         lines.push(
             binding.kind === "blueprintValue"
                 ? `${inner}bind ${propPath} = blueprint ${printValue(binding.blueprintId)} valueType=${binding.valueType}`
-                : binding.kind === "componentParam"
+                : binding.kind === "componentParam" || binding.kind === "pageParam"
                     ? `${inner}bind ${propPath} = param ${printValue(binding.paramId)}`
                     : `${inner}bind ${propPath} = field ${printValue(binding.fieldId)}`,
         );

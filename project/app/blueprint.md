@@ -151,13 +151,15 @@ A page may declare the values it is opened with - in its properties in Studio, w
 a `.ui` file - and `targets` lists them after the page's owner line, by id and type:
 
 ```
-Confirm  owner=surfaceMain surface=b7c1f3ae-…  # params: message:string, buttons:json
+Confirm  owner=surfaceMain surface=b7c1f3ae-…  # params: message:text, buttons:list<nl.confirmButton>
 ```
 
 `Go Page`, `Replace Page`, `Show Layer` and `Set Frame Page` grow one input per parameter of the
 page they pick, named `param_<id>`, in front of their `Page props` input. A literal is written like
-any other input's; given nothing, the page reads the parameter's default. `Get Page Param` names the
-one it reads by id and gives it in its declared type:
+any other input's; given nothing, the page reads the parameter's default. A `text` parameter is a
+string on the pin, and a `list` one carries rows of the shape it declares (`array<struct:<id>>`) - a
+promise added on top of `json`, so a wire that carried rows before the page said what they hold is
+not refused. `Get Page Param` names the one it reads by id and gives it in its declared type:
 
 ```
     open: blueprint.page.go surfaceId=<surfaceId>
@@ -166,10 +168,15 @@ one it reads by id and gives it in its declared type:
         paramId = count
 ```
 
-The inputs belong to the page picked in the node's own field. A page that arrives on the
-`surfaceId` wire instead is opened with `Page props` alone. `check` reports a `Get Page Param`
-whose parameter the page no longer declares (`node.page_param_missing`), and an input left wired
-after its parameter was removed is the ordinary `edge.port_mismatch`.
+The inputs belong to the page picked in the node's own field. While the `surfaceId` input is wired
+the node has none of them: the page that arrives on the wire is opened with `Page props` alone, and a
+`param_<id>` line under such a node names an input it does not have. `check` reports a `Get Page
+Param` whose parameter the page no longer declares (`node.page_param_missing`), and an input left
+wired after its parameter was removed - or after the page input was wired - is the ordinary
+`edge.port_mismatch`.
+
+A text on the page does not need `Get Page Param` to show a `text` parameter: `bind text = param
+<id>` in the page's `.ui` block shows it with no blueprint, translated (see `ui.md`).
 
 ## Finding a project's surfaces, components and elements
 

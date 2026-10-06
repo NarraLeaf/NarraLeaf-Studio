@@ -196,6 +196,7 @@ export const uiEditor = {
         wordsFromRowField: "These words come from the list row field “{field}”.",
         wordsFromBlueprintValue: "These words come from the blueprint value “{name}”.",
         wordsFromComponentParam: "These words come from the component parameter “{param}”, set on each placement.",
+        wordsFromPageParam: "These words come from the page param “{param}”, given when the page is opened.",
     },
     editor: {
         componentNotFound: "Component not found",

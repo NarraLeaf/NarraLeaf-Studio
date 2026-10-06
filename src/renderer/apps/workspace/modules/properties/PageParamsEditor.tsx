@@ -3,7 +3,8 @@
  * any of their kinds - a declared default here, a Page widget's value in the widget's inspector.
  *
  * The page's counterpart of `ComponentParamsEditor`, and laid out the same way: one row per
- * parameter, its name and kind on the first line and its default under them.
+ * parameter, its name and kind on the first line and its default under them - or, for a list, the
+ * shape of its rows, since a list starts empty.
  *
  * Comments in English per project convention.
  */
@@ -21,6 +22,8 @@ import {
     uiPageParamDefaultValue,
 } from "@shared/types/ui-editor/pageParams";
 import type { TranslationKey } from "@shared/i18n";
+import { listEngineUIStructIds } from "@shared/types/ui-editor/builtinStructs";
+import { blueprintStructName } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
 import { DraftInput } from "./ComponentParamsEditor";
 import type { CustomFieldProps } from "./framework/types";
 import type { SceneEditorContext } from "./schemas/sceneSchema";
@@ -28,14 +31,19 @@ import { interfaceDocumentFreezeScope } from "../ui-editor/uiLiveSession";
 
 const TYPE_LABEL_KEYS: Record<UIPageParamType, TranslationKey> = {
     string: "properties.pageParams.typeString",
+    text: "properties.pageParams.typeText",
     number: "properties.pageParams.typeNumber",
     boolean: "properties.pageParams.typeBoolean",
+    list: "properties.pageParams.typeList",
     json: "properties.pageParams.typeJson",
 };
 
+/** The row-shape option that declares none. */
+const ANY_ROW_SHAPE = "";
+
 /** A value as the text field for its kind shows it. */
 function formatPageParamValue(type: UIPageParamType, value: unknown): string {
-    if (type === "json") {
+    if (type === "json" || type === "list") {
         return value === undefined ? "" : JSON.stringify(value);
     }
     return value === undefined || value === null ? "" : String(value);
@@ -45,12 +53,13 @@ function formatPageParamValue(type: UIPageParamType, value: unknown): string {
  * What the text field for a kind gives back, or `undefined` when it gives nothing usable.
  *
  * A number that does not read as one and JSON that does not parse are not values, so the field puts
- * back what it held rather than storing them. An empty field is the empty string for a string - a
- * value, as it is everywhere else in the inspector - and nothing for the other kinds.
+ * back what it held rather than storing them, and neither is JSON that is not a list for a list. An
+ * empty field is the empty string for a string or a text - a value, as it is everywhere else in the
+ * inspector - and nothing for the other kinds.
  */
 function parsePageParamValue(type: UIPageParamType, text: string): { value: unknown } | null | undefined {
     const trimmed = text.trim();
-    if (type === "string") {
+    if (type === "string" || type === "text") {
         return { value: text };
     }
     if (!trimmed) {
@@ -61,7 +70,8 @@ function parsePageParamValue(type: UIPageParamType, text: string): { value: unkn
         return Number.isFinite(parsed) ? { value: parsed } : undefined;
     }
     try {
-        return { value: JSON.parse(trimmed) as unknown };
+        const value = JSON.parse(trimmed) as unknown;
+        return type === "list" && !Array.isArray(value) ? undefined : { value };
     } catch {
         return undefined;
     }
@@ -145,12 +155,28 @@ export function SurfacePageParamsField({ data }: CustomFieldProps<SceneEditorCon
     };
     const retype = (param: UIPageParam, type: UIPageParamType) => {
         // The default follows the kind - "3" becomes 3, anything a number cannot hold the empty value.
-        const { defaultValue: _previous, ...rest } = param;
-        const carried = param.defaultValue === undefined ? undefined : coerceUIPageParamValue(type, param.defaultValue);
+        // A list starts empty, and only a list has a row shape.
+        const { defaultValue: _previous, struct: _struct, ...rest } = param;
+        const carried =
+            type === "list" || param.defaultValue === undefined
+                ? undefined
+                : coerceUIPageParamValue(type, param.defaultValue);
         patchParam(param.id, { ...rest, type, ...(carried === undefined ? {} : { defaultValue: carried }) });
+    };
+    const reshape = (param: UIPageParam, struct: string) => {
+        const { struct: _previous, ...rest } = param;
+        patchParam(param.id, struct ? { ...rest, struct } : rest);
     };
 
     const typeOptions = UI_PAGE_PARAM_TYPES.map(type => ({ value: type, label: t(TYPE_LABEL_KEYS[type]) }));
+    // The shapes the engine and loaded plugins declare - the ones a node hands rows of out. A list's
+    // own shape has no name to offer it by.
+    const shapeOptions = [
+        { value: ANY_ROW_SHAPE, label: t("properties.pageParams.anyShape") },
+        ...listEngineUIStructIds()
+            .map(id => ({ value: id, label: blueprintStructName(id, t) }))
+            .sort((a, b) => a.label.localeCompare(b.label)),
+    ];
 
     return (
         <div className="space-y-2">
@@ -190,23 +216,47 @@ export function SurfacePageParamsField({ data }: CustomFieldProps<SceneEditorCon
                                 <X className="h-3 w-3" aria-hidden />
                             </button>
                         </div>
-                        <div className="mt-2 flex items-center gap-2 border-t border-edge-subtle pt-2">
-                            <span className="w-20 shrink-0 text-2xs text-fg-muted">
-                                {t("properties.pageParams.default")}
-                            </span>
-                            <div className="flex min-w-0 flex-1 items-center">
-                                <PageParamValueInput
-                                    type={param.type}
-                                    value={uiPageParamDefaultValue(param)}
-                                    ariaLabel={t("properties.pageParams.default")}
-                                    disabled={freeze.frozen}
-                                    onCommit={next => {
-                                        const { defaultValue: _previous, ...rest } = param;
-                                        patchParam(param.id, next === null ? rest : { ...rest, defaultValue: next });
-                                    }}
-                                />
+                        {param.type === "list" ? (
+                            <div className="mt-2 flex items-center gap-2 border-t border-edge-subtle pt-2">
+                                <span className="w-20 shrink-0 text-2xs text-fg-muted">
+                                    {t("properties.pageParams.rowShape")}
+                                </span>
+                                <div className="flex min-w-0 flex-1 items-center">
+                                    <Select
+                                        size="sm"
+                                        className="w-full"
+                                        value={param.struct ?? ANY_ROW_SHAPE}
+                                        options={
+                                            param.struct && !shapeOptions.some(option => option.value === param.struct)
+                                                ? [...shapeOptions, { value: param.struct, label: blueprintStructName(param.struct, t) }]
+                                                : shapeOptions
+                                        }
+                                        portalMenu
+                                        ariaLabel={t("properties.pageParams.rowShape")}
+                                        disabled={freeze.frozen}
+                                        onChange={value => reshape(param, String(value))}
+                                    />
+                                </div>
                             </div>
-                        </div>
+                        ) : (
+                            <div className="mt-2 flex items-center gap-2 border-t border-edge-subtle pt-2">
+                                <span className="w-20 shrink-0 text-2xs text-fg-muted">
+                                    {t("properties.pageParams.default")}
+                                </span>
+                                <div className="flex min-w-0 flex-1 items-center">
+                                    <PageParamValueInput
+                                        type={param.type}
+                                        value={uiPageParamDefaultValue(param)}
+                                        ariaLabel={t("properties.pageParams.default")}
+                                        disabled={freeze.frozen}
+                                        onCommit={next => {
+                                            const { defaultValue: _previous, ...rest } = param;
+                                            patchParam(param.id, next === null ? rest : { ...rest, defaultValue: next });
+                                        }}
+                                    />
+                                </div>
+                            </div>
+                        )}
                     </div>
                 ))
             )}

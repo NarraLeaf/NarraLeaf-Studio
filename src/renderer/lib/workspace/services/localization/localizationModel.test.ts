@@ -367,4 +367,45 @@ describe("extractUiTranslationRows", () => {
             ]);
         });
     });
+
+    describe("a page's text parameter", () => {
+        const withPageParams = {
+            surfaces: [
+                { id: "title", name: "Title", kind: "appSurface", rootElementId: "root" },
+                {
+                    id: "confirm",
+                    name: "Confirm",
+                    kind: "appSurface",
+                    rootElementId: "confirm-root",
+                    params: [
+                        { id: "message", name: "message", type: "text", defaultValue: "Are you sure?" },
+                        { id: "hint", name: "hint", type: "text", defaultValue: "Shown nowhere" },
+                    ],
+                },
+            ],
+            elements: {
+                root: { id: "root", type: "nl.root", parentId: null, childrenIds: ["embed"], layout: {} },
+                embed: {
+                    id: "embed",
+                    type: "nl.frame",
+                    name: "Embedded confirm",
+                    parentId: "root",
+                    childrenIds: [],
+                    layout: {},
+                    props: { targetSurfaceId: "confirm", params: { message: "Leave the game?", hint: "Not shown" } },
+                },
+                "confirm-root": { id: "confirm-root", type: "nl.root", parentId: null, childrenIds: ["msg", "again"], layout: {} },
+                msg: { ...text("msg", { text: "Sample" }, { text: { kind: "pageParam", paramId: "message" } }), parentId: "confirm-root" },
+                again: { ...text("again", { text: "Sample" }, { text: { kind: "pageParam", paramId: "message" } }), parentId: "confirm-root" },
+            },
+        } as unknown as UIDocument;
+
+        it("lists a default once under the page, a Page widget's words under the widget, and no sample", () => {
+            const rows = extractUiTranslationRows(withPageParams);
+            expect(rows.map(row => [row.unitId, row.sourceText, row.groupName, row.elementName])).toEqual([
+                ["ui:embed.param.message", "Leave the game?", "Title", "Embedded confirm › message"],
+                ["ui:confirm.param.message", "Are you sure?", "Confirm", "Confirm › message"],
+            ]);
+        });
+    });
 });

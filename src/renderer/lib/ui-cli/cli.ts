@@ -315,7 +315,7 @@ function commandSurfaces(args: Args, io: CliIo): number {
         const answers = (surface.actions ?? []).map(action => action.actionId).join(", ");
         // A page's parameters, as the nodes that open it name their inputs and `param` lines spell them.
         const pageParams = getUIPageParams(surface)
-            .map(param => `${param.id}${param.type === "string" ? "" : `:${param.type}`}`)
+            .map(param => `${param.id}${param.type === "string" ? "" : `:${param.type}`}${param.struct ? `<${param.struct}>` : ""}`)
             .join(" ");
         const wholeSurface = matches(surface.name, surface.id);
         const elements = collectTree(document.elements, surface.rootElementId)

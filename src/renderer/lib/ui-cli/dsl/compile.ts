@@ -19,8 +19,14 @@ import type { UIInputActionDef } from "@shared/types/ui-editor/inputAction";
 import type { UIStructDef, UIStructFieldType } from "@shared/types/ui-editor/struct";
 import { UI_STRUCT_FIELD_TYPES } from "@shared/types/ui-editor/struct";
 import { UI_STAGE_SLOT_IDS } from "@shared/types/ui-editor/stageSlots";
-import { isUIPageParamId, isUIPageParamType, UI_PAGE_PARAM_TYPES } from "@shared/types/ui-editor/pageParams";
+import {
+    isUIPageParamId,
+    isUIPageParamType,
+    isUIPageTextParam,
+    UI_PAGE_PARAM_TYPES,
+} from "@shared/types/ui-editor/pageParams";
 import type { UIPageParam } from "@shared/types/ui-editor/document";
+import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { uiTextSiteOf, uiTextSitesOf, type UITextSite } from "@shared/types/ui-editor/textSource";
 import { LEGACY_UI_TEXT_UNIT_PROP } from "@shared/types/ui-editor/textSourceMigration";
 import {
@@ -242,6 +248,8 @@ class CompileContext {
             : [];
         const matcher = new PathMatcher(previousElements, this.existing?.elements ?? {});
         const elements: Record<string, UIElement> = {};
+        // Read first: a text on the page may show one of them.
+        const params = this.pageParams(statement);
         const rootId = this.element(statement.root, {
             scope: surfaceId,
             parentId: null,
@@ -252,6 +260,7 @@ class CompileContext {
             stageSlot: statement.slotId,
             inListTemplate: false,
             rowFromPlacement: false,
+            pageParams: statement.surfaceKind === "appSurface" ? params : undefined,
         });
 
         const designSize = statement.designSize ?? previous?.designSize ?? { width: 1920, height: 1080 };
@@ -268,7 +277,6 @@ class CompileContext {
                 })),
             }
             : {};
-        const params = this.pageParams(statement);
         const surface: UISurface = statement.surfaceKind === "stageSurface"
             ? {
                 id: surfaceId,
@@ -373,10 +381,31 @@ class CompileContext {
                 );
                 continue;
             }
+            const struct = param.struct?.trim();
+            if (struct && param.type !== "list") {
+                this.report(
+                    "error",
+                    "ui.page_param_struct",
+                    `"${param.id}" names a row shape, but only a list has rows.`,
+                    param.line,
+                    `Write \`type=list struct=${struct}\`, or drop \`struct=\`.`,
+                );
+                continue;
+            }
+            if (struct && !this.structs[struct] && !resolveUIStruct(this.existing ?? null, struct)) {
+                this.report(
+                    "warning",
+                    "ui.page_param_struct",
+                    `"${param.id}": no shape "${struct}" is known here.`,
+                    param.line,
+                    "An engine shape (`node project/app/blueprint.js structs`), one a loaded plugin declares, or one of the project's.",
+                );
+            }
             out.push({
                 id: param.id,
                 name,
                 type: param.type,
+                ...(struct ? { struct } : {}),
                 ...(param.defaultValue === undefined ? {} : { defaultValue: param.defaultValue }),
             });
         }
@@ -466,6 +495,8 @@ class CompileContext {
             rowFromPlacement: boolean;
             /** Inside a component definition: the params it declares, which a binding may show. */
             componentParams?: readonly DeclaredParam[];
+            /** On a page: the params it declares, which a binding may show. */
+            pageParams?: readonly UIPageParam[];
         },
     ): string {
         const label = node.name ?? node.type;
@@ -564,6 +595,7 @@ class CompileContext {
             detail,
             context.inListTemplate || context.rowFromPlacement,
             context.componentParams ?? null,
+            context.pageParams ?? null,
         );
 
         const element: UIElement = {
@@ -827,6 +859,7 @@ class CompileContext {
         detail: ReturnType<typeof describeWidget>,
         inListTemplate: boolean,
         componentParams: readonly DeclaredParam[] | null,
+        pageParams: readonly UIPageParam[] | null,
     ): Record<string, UIElementValueBinding> {
         const out: Record<string, UIElementValueBinding> = {};
         for (const binding of node.bindings) {
@@ -871,7 +904,7 @@ class CompileContext {
                 out[binding.propPath] = { kind: "listItemField", fieldId: binding.source.fieldId };
                 continue;
             }
-            if (binding.source.kind === "componentParam") {
+            if (binding.source.kind === "param") {
                 const paramId = binding.source.paramId;
                 // A parameter's value is words: only the prop holding a widget's words shows one.
                 const site = uiTextSiteOf(node.type);
@@ -879,7 +912,7 @@ class CompileContext {
                     this.report(
                         "error",
                         "ui.prop_not_bindable",
-                        `"${binding.propPath}" on ${node.type} cannot show a component parameter.`,
+                        `"${binding.propPath}" on ${node.type} cannot show a parameter.`,
                         binding.line,
                         site?.role === "words"
                             ? `Only \`bind ${site.textProp} = param <paramId>\` reads one here.`
@@ -887,13 +920,31 @@ class CompileContext {
                     );
                     continue;
                 }
+                if (!componentParams && pageParams) {
+                    // On a page: one of the page's own, given by whatever opens it.
+                    const param = pageParams.find(candidate => candidate.id === paramId);
+                    if (!param || !isUIPageTextParam(param)) {
+                        this.report(
+                            "error",
+                            "ui.param_not_text",
+                            param
+                                ? `"${paramId}" is not a text parameter of the page, so nothing gives words for it.`
+                                : `The page declares no parameter "${paramId}".`,
+                            binding.line,
+                            `Declare it on the page as \`param ${paramId} <name> type=text\`.`,
+                        );
+                        continue;
+                    }
+                    out[binding.propPath] = { kind: "pageParam", paramId };
+                    continue;
+                }
                 if (!componentParams) {
                     this.report(
                         "error",
                         "ui.param_outside_component",
-                        `"${binding.propPath}" is bound to parameter "${paramId}", but this element is not inside a component definition.`,
+                        `"${binding.propPath}" is bound to parameter "${paramId}", but this element is neither inside a component definition nor on a page.`,
                         binding.line,
-                        "A parameter is given by each placement of a component, so only an element inside the component's own block reads one.",
+                        "A parameter is given by each placement of a component, or by whatever opens a page. A Game UI is opened by the player, with nothing.",
                     );
                     continue;
                 }
@@ -985,7 +1036,10 @@ function applyAssignments(base: Record<string, unknown>, assignments: readonly U
 function pageParamDefaultFits(type: UIPageParam["type"], value: unknown): boolean {
     switch (type) {
         case "string":
+        case "text":
             return typeof value === "string";
+        case "list":
+            return Array.isArray(value);
         case "number":
             return typeof value === "number" && Number.isFinite(value);
         case "boolean":

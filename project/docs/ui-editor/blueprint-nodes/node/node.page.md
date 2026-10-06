@@ -4,7 +4,7 @@
 
 Page 节点用于切换 Page，以及 Page 组件和被嵌入 Page 之间的通信。当前 Page 可以读取自己的 Page props 和 Surface 进退场状态；没有传入 props 时读取 `{}`，读取缺失字段时得到 `null`。顶层 Page 没有父级 Page 组件时，发送事件不会触发父级事件。
 
-Page 可以在自己的属性面板「参数」里声明打开它时传入的值（`UIAppSurface.params`，每个参数有 id、名称、类型 `string` / `number` / `boolean` / `json` 和默认值）。名称就是该值在 Page props 里的键；id 供蓝图引用，改名不影响已连好的线。Page 的宿主在建立时把传入的 props 叠在声明的默认值之上，并把声明过的键转成声明的类型，所以 `Get Page Props`、`Get Page Param`、按 Page 属性绑定的列表和脚本读到的是同一份值。
+Page 可以在自己的属性面板「参数」里声明打开它时传入的值（`UIAppSurface.params`，每个参数有 id、名称、类型 `string` / `text` / `number` / `boolean` / `list` / `json` 和默认值；`list` 另有行结构 `struct`，没有默认值）。`text` 是玩家读到的文字：在引脚上是字符串，默认值会进译表，页面上的文本可在「页面参数」中直接绑定它（`pageParam` 值绑定），不经蓝图。`list` 的输入和 `Get Page Param` 的输出带行结构类型（`array<struct:<id>>`）。名称就是该值在 Page props 里的键；id 供蓝图引用，改名不影响已连好的线。Page 的宿主在建立时把传入的 props 叠在声明的默认值之上，并把声明过的键转成声明的类型，所以 `Get Page Props`、`Get Page Param`、按 Page 属性绑定的列表和脚本读到的是同一份值。
 
 `blueprint.page.go` 面向运行时 Page 导航并可传入 Page props；`blueprint.page.getProps` 读取当前 Page props；`blueprint.page.isSurfaceExiting` / `blueprint.page.isSurfaceEntering` / `blueprint.page.isSurfaceTransitioning` 读取当前 Surface 过渡状态；`blueprint.page.quit` 退出当前应用运行时；`blueprint.app.keepWindowOpen` 取消玩家发出的窗口关闭请求；`blueprint.frame.emit` 面向被嵌入 Page 的通信上下文；`nl.frame` 组件自己的目标 Page 和 params 读写方法记录在 `node.widget.md`。
 
@@ -15,7 +15,7 @@ Page 可以在自己的属性面板「参数」里声明打开它时传入的值
 通过 Host navigation 打开节点参数中选择的目标 Page，使用运行时的页面切换流程。`Page` 下拉可以选择 `None`，此时会关闭当前顶层 Page 叠层，用于清除正在展示的 Page。未进入游戏时，它切换 Dev Mode 的应用 Page；`Start Game` 或 `Load Save` 进入游戏状态后，它会把目标 Page 作为 UI 叠层打开在游戏舞台之上，并继续使用同一套 Page 进退场动画、Surface 生命周期和控件蓝图运行时。它是执行尾节点，没有后续执行出口。
 - `in` - 执行入口
 - `Page` - 节点参数，目标 Page surface id；选择 `None` 时清除当前顶层 Page 叠层
-- `param_<id>` - 所选 Page 声明的每个参数各一个可选输入，类型按声明，位于 `props` 之前；未连接也未填写时不传，目标 Page 读到默认值。只属于下拉所选的 Page：`Page` 引脚连线给出别的 Page 时，这些输入不参与
+- `param_<id>` - 所选 Page 声明的每个参数各一个可选输入，类型按声明，位于 `props` 之前；未连接也未填写时不传，目标 Page 读到默认值。只属于下拉所选的 Page：`Page` 引脚连线时卡片上不显示这些输入，连线给出的 Page 只收到 `props`
 - `props` - 可选 `json` 输入，作为目标 Page 的 Page props；已声明参数的输入按名称覆盖其中同名字段；都未给出时传入 `{}`
 
 `Replace Page`、`Show Layer` 与 `Set Frame Page` 以同样方式长出参数输入。
@@ -70,6 +70,8 @@ Page 可以在自己的属性面板「参数」里声明打开它时传入的值
 `blueprint.frame.getParam` - 读取 Page 参数
 
 从下拉中选择蓝图所属 Page 声明的参数，按参数当前的名称读取，并按声明的类型输出；打开 Page 时没有传入该参数时输出默认值。所选参数已不在 Page 的声明中时输出 `null`，画布显示 `node.page_param_missing`，项目检查报告 `blueprint/page-param-missing`。通过 `nl.frame` 嵌入时读取 frame 的 `params`。该节点是 pure 节点，可用于 Page、Widget 和 Blueprint Value 运行上下文。
+
+`text` 参数读到的是传入的文字，未传入时是默认值的原文（不翻译）；要按玩家语言显示，在文本的「页面参数」中直接绑定该参数。
 
 未选择参数时显示旧的 `key` 输入，按 key 读取单个字段，兼容声明参数之前写的图；选择参数后 `key` 输入不再出现。
 - `Param` - 节点参数，参数 id

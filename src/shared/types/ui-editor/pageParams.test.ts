@@ -7,7 +7,9 @@ import {
     nextUIPageParamId,
     normalizeUIPageParams,
     setActiveUIPageParams,
+    uiPageParamBlueprintValueType,
     uiPageParamDefaultValue,
+    uiPageParamPinType,
     withUIPageParamDefaults,
 } from "./pageParams";
 
@@ -82,6 +84,25 @@ describe("page parameter values", () => {
         // A page that declares nothing reads its props untouched.
         const given = { a: 1 };
         expect(withUIPageParamDefaults({ kind: "appSurface" }, given)).toBe(given);
+    });
+
+    it("reads a text as a string, and a list as rows of the shape it names", () => {
+        expect(coerceUIPageParamValue("text", 3)).toBe("3");
+        expect(coerceUIPageParamValue("list", { a: 1 })).toEqual([]);
+        expect(coerceUIPageParamValue("list", [{ a: 1 }])).toEqual([{ a: 1 }]);
+        expect(uiPageParamDefaultValue({ type: "list" })).toEqual([]);
+        expect(uiPageParamBlueprintValueType("text")).toBe("string");
+        // Declared wide, typed narrow: a wire that carried rows before the page named their shape stays.
+        expect(uiPageParamBlueprintValueType("list")).toBe("json");
+        expect(uiPageParamPinType({ type: "list", struct: "nl.confirmButton" })).toBe("array<struct:nl.confirmButton>");
+        expect(uiPageParamPinType({ type: "list" })).toBe("array");
+        expect(normalizeUIPageParams([
+            { id: "rows", name: "rows", type: "list", struct: " nl.confirmButton " },
+            { id: "words", name: "words", type: "text", struct: "nl.confirmButton", defaultValue: 4 },
+        ])).toEqual([
+            { id: "rows", name: "rows", type: "list", struct: "nl.confirmButton" },
+            { id: "words", name: "words", type: "text", defaultValue: "4" },
+        ]);
     });
 
     it("names a new parameter after the first id that is free", () => {

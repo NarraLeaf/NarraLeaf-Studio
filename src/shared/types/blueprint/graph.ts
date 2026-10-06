@@ -1610,6 +1610,12 @@ export const BLUEPRINT_NODE_PARAM_INFERRED_PIN_TYPES = "__pinTypes" as const;
  * which shows the row as what its input carries; never authored and never read at run time.
  */
 export const BLUEPRINT_NODE_PARAM_INFERRED_READS_ROW = "__readsRow" as const;
+/**
+ * A node that opens a page, whose `Page` input is wired: the page it opens is the wire's, so the
+ * inputs for the parameters of the page picked on the card are not shown. Stamped beside the pin
+ * types; never authored and never read at run time.
+ */
+export const BLUEPRINT_NODE_PARAM_INFERRED_TARGET_WIRED = "__targetWired" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_GET_LENGTH = "blueprint.list.getLength" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_AT = "blueprint.list.getItemAt" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_SET_ITEM_FIELD_AT = "blueprint.list.setItemFieldAt" as const;

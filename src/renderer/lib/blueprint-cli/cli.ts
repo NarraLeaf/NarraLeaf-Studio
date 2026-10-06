@@ -298,7 +298,8 @@ function commandTargets(args: Args, io: CliIo): number {
         // A page's declared parameters, as a node that opens it names its inputs (`param_<id>`) and
         // `Get Page Param` names the one it reads (`paramId = <id>`).
         const pageParams = getUIPageParams({ kind: surface.kind === "stageSurface" ? "stageSurface" : "appSurface", params: surface.params })
-            .map(param => `${param.id}${param.name === param.id ? "" : ` "${param.name}"`}:${param.type}`);
+            .map(param => `${param.id}${param.name === param.id ? "" : ` "${param.name}"`}:${param.type}`
+                + (param.struct ? `<${param.struct}>` : ""));
         lines.push(
             `${surface.name}  owner=surfaceMain surface=${surface.id}`
                 // After a `#`, as a label: what follows the owner fields is copied into a `.bp` file without it.

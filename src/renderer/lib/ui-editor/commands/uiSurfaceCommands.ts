@@ -1,5 +1,5 @@
 import { listUITextKeysNamed } from "@shared/types/ui-editor/textSourceMigration";
-import { listUIComponentDefaultUnits, listUITextOwnUnits } from "@shared/types/ui-editor/textUnitCopies";
+import { listUIComponentDefaultUnits, listUIPageDefaultUnits, listUITextOwnUnits } from "@shared/types/ui-editor/textUnitCopies";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { getInterface } from "@/lib/app/bridge";
@@ -225,6 +225,7 @@ function publishUiSurfaceClipboard(
                 ...listUITextOwnUnits(component.elements).map(unit => unit.unitId),
                 ...listUIComponentDefaultUnits(component),
             ]),
+            ...payload.document.surfaces.flatMap(surface => listUIPageDefaultUnits(surface)),
         ]);
         const published: UISurfaceClipboardPayload = {
             ...payload,

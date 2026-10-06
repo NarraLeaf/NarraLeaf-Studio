@@ -9,6 +9,8 @@ import {
     type UIElementValueBindingValueType,
 } from "@shared/types/ui-editor/document";
 import { findUIComponentHoldingElement } from "@shared/types/ui-editor/componentTextParams";
+import { findUIElementSurfaceId } from "@shared/types/ui-editor/frame";
+import { getUIPageParams, isUIPageTextParam } from "@shared/types/ui-editor/pageParams";
 import type { CustomFieldProps } from "@/apps/workspace/modules/properties/framework/types";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useBlueprintDocumentRevision } from "@/apps/workspace/modules/blueprint-lite/hooks/useBlueprintDocumentRevision";
@@ -153,6 +155,67 @@ export function ComponentParamBindingRow(props: {
                 onChange={value => {
                     const paramId = String(value) || null;
                     data.documentService.setElementComponentParamBinding(liveElement.id, propPath, paramId);
+                    props.onBound?.(paramId);
+                }}
+            />
+        </div>
+    );
+}
+
+/**
+ * The row that shows one of its page's text parameters in the words of an element on that page - the
+ * page's counterpart of {@link ComponentParamBindingRow}, laid out the same way and for the same
+ * reason above the source choice.
+ *
+ * Offered only on a page that declares a text parameter, or on an element already bound to one. A
+ * definition's elements are on no page, and a Game UI declares no parameters, so neither offers it.
+ */
+export function PageParamBindingRow(props: {
+    data: UIInspectorData;
+    liveElement: UIElement;
+    propPath: string;
+    disabled?: boolean;
+    /** Told after a pick lands, with the param id (null when unbound). */
+    onBound?: (paramId: string | null) => void;
+}): ReactNode {
+    const { t } = useTranslation();
+    const { data, liveElement, propPath } = props;
+    const document = data.documentService.getDocument();
+    const surfaceId = findUIElementSurfaceId(document, liveElement.id);
+    if (!surfaceId || parseComponentEditorSurfaceId(surfaceId)) {
+        return null;
+    }
+    const surface = document.surfaces.find(candidate => candidate.id === surfaceId);
+    const textParams = getUIPageParams(surface).filter(isUIPageTextParam);
+    const binding = liveElement.valueBindings?.[propPath];
+    const current = binding?.kind === "pageParam" ? binding.paramId : "";
+    if (textParams.length === 0 && !current) {
+        return null;
+    }
+    const label = t("properties.pageParams.bindLabel");
+    const options = [
+        { value: "", label: t("properties.pageParams.bindNone") },
+        ...textParams.map(param => ({ value: param.id, label: param.name })),
+        ...(current && !textParams.some(param => param.id === current)
+            ? [{ value: current, label: t("properties.pageParams.bindMissing") }]
+            : []),
+    ];
+
+    return (
+        <div className="flex items-center gap-2">
+            <span className="shrink-0 text-xs font-medium text-fg-muted">{label}</span>
+            <Select
+                size="sm"
+                className="min-w-0 flex-1"
+                value={current}
+                options={options}
+                portalMenu
+                fullWidth
+                ariaLabel={label}
+                disabled={props.disabled}
+                onChange={value => {
+                    const paramId = String(value) || null;
+                    data.documentService.setElementPageParamBinding(liveElement.id, propPath, paramId);
                     props.onBound?.(paramId);
                 }}
             />

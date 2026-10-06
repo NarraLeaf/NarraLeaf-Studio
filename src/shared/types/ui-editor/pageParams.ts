@@ -8,16 +8,30 @@
  * Comments in English per project convention.
  */
 
+import { blueprintArrayValueType } from "../blueprint/valueTypes";
 import type { UIPageParam, UIPageParamType, UISurface } from "./document";
+import { uiStructValueType } from "./struct";
 
 /** The kinds a page parameter may be, in the order an inspector offers them. */
-export const UI_PAGE_PARAM_TYPES: readonly UIPageParamType[] = ["string", "number", "boolean", "json"];
+export const UI_PAGE_PARAM_TYPES: readonly UIPageParamType[] = ["string", "text", "number", "boolean", "list", "json"];
 
 export function isUIPageParamType(value: unknown): value is UIPageParamType {
     return typeof value === "string" && (UI_PAGE_PARAM_TYPES as readonly string[]).includes(value);
 }
 
-/** The blueprint pin type a parameter of this kind is carried on. */
+/** True for a parameter whose value is words a player reads (`type: "text"`). */
+export function isUIPageTextParam(param: Pick<UIPageParam, "type"> | null | undefined): boolean {
+    return param?.type === "text";
+}
+
+/**
+ * The blueprint pin type an input that gives a parameter of this kind is declared with.
+ *
+ * Text is a string on a pin. A list is declared as `json`, the type anything that hands out rows
+ * already carries; the shape of its rows is what the editor works out on top
+ * ({@link uiPageParamPinType}), which adds a promise without refusing a wire that carried rows
+ * before the page said what they hold.
+ */
 export function uiPageParamBlueprintValueType(type: UIPageParamType): "string" | "float" | "boolean" | "json" {
     switch (type) {
         case "number":
@@ -25,10 +39,22 @@ export function uiPageParamBlueprintValueType(type: UIPageParamType): "string" |
         case "boolean":
             return "boolean";
         case "json":
+        case "list":
             return "json";
         default:
             return "string";
     }
+}
+
+/**
+ * The type a parameter's value is known to have on a pin: a list's rows as `array<struct:<id>>`, or
+ * a plain `array` when the rows have no declared shape; every other kind as it is declared.
+ */
+export function uiPageParamPinType(param: Pick<UIPageParam, "type" | "struct">): string {
+    if (param.type === "list") {
+        return blueprintArrayValueType(param.struct ? uiStructValueType(param.struct) : undefined);
+    }
+    return uiPageParamBlueprintValueType(param.type);
 }
 
 /**
@@ -43,6 +69,7 @@ export function uiPageParamBlueprintValueType(type: UIPageParamType): "string" |
 export function coerceUIPageParamValue(type: UIPageParamType, raw: unknown): unknown {
     switch (type) {
         case "string":
+        case "text":
             if (typeof raw === "string") {
                 return raw;
             }
@@ -65,6 +92,8 @@ export function coerceUIPageParamValue(type: UIPageParamType, raw: unknown): unk
                 return raw.trim().toLowerCase() === "true";
             }
             return typeof raw === "number" ? raw !== 0 : false;
+        case "list":
+            return Array.isArray(raw) ? raw : [];
         default:
             return raw === undefined ? null : raw;
     }
@@ -80,7 +109,8 @@ export function uiPageParamDefaultValue(param: Pick<UIPageParam, "type" | "defau
  *
  * Every entry is kept to the shape this build reads: an id and a name, both trimmed and both unique
  * on the page - the first of two wins - a known type (an unknown one reads as `string`, the kind that
- * holds anything a text field gives), and a default in that type. An entry without an id or a name
+ * holds anything a text field gives), a row shape for a list and for nothing else, and a default in
+ * that type. An entry without an id or a name
  * is dropped: the id is what a node points at and the name is the key the value travels under, so
  * either one missing leaves nothing to read it by. So is one whose id is not a plain word
  * ({@link isUIPageParamId}).
@@ -116,10 +146,12 @@ export function normalizeUIPageParams(raw: unknown): UIPageParam[] {
         ids.add(id);
         names.add(name);
         const type = isUIPageParamType(record.type) ? record.type : "string";
+        const struct = type === "list" && typeof record.struct === "string" ? record.struct.trim() : "";
         out.push({
             id,
             name,
             type,
+            ...(struct ? { struct } : {}),
             ...(record.defaultValue === undefined ? {} : { defaultValue: coerceUIPageParamValue(type, record.defaultValue) }),
         });
     }

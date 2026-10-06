@@ -144,4 +144,66 @@ describe("UIDocumentService page parameters", () => {
         expect((loaded.surfaces[0] as { params?: unknown }).params).toEqual([MESSAGE]);
         expect("params" in loaded.surfaces[1]!).toBe(false);
     });
+
+    it("keeps a list's row shape, and only a list's", () => {
+        const service = createService();
+        service.setPageParams(MAIN_APP_SURFACE_ID, [
+            { id: "rows", name: "rows", type: "list", struct: "nl.confirmButton" },
+            { id: "words", name: "words", type: "text", struct: "nl.confirmButton", defaultValue: "Sure?" },
+        ]);
+        const surface = service.getDocument().surfaces.find(item => item.id === MAIN_APP_SURFACE_ID) as { params?: unknown };
+        expect(surface.params).toEqual([
+            { id: "rows", name: "rows", type: "list", struct: "nl.confirmButton" },
+            { id: "words", name: "words", type: "text", defaultValue: "Sure?" },
+        ]);
+    });
+
+    it("binds a text on a page to one of its parameters, and unbinds it, in the page's undo history", () => {
+        const service = createService();
+        const document = service.getDocument();
+        const rootId = document.surfaces[0]!.rootElementId;
+        document.elements[rootId]!.childrenIds.push("msg");
+        document.elements.msg = {
+            id: "msg",
+            type: "nl.text",
+            parentId: rootId,
+            childrenIds: [],
+            layout: { x: 0, y: 0, width: 10, height: 10 },
+            props: { text: "Sample" },
+        };
+        service.setElementPageParamBinding("msg", "text", "message");
+        expect(service.getDocument().elements.msg!.valueBindings).toEqual({ text: { kind: "pageParam", paramId: "message" } });
+        service.setElementPageParamBinding("msg", "text", null);
+        expect(service.getDocument().elements.msg!.valueBindings).toBeUndefined();
+    });
+
+    it("leaves a text on a Game UI alone: nothing opens one with words", () => {
+        const service = createService();
+        const document = service.getDocument();
+        document.surfaces.push({
+            id: "dialog",
+            name: "Dialog",
+            host: "player",
+            kind: "stageSurface",
+            designSize: { width: 1280, height: 720 },
+            rootElementId: "dialog-root",
+            mount: { kind: "slot", slotId: "dialog" },
+        } as never);
+        document.elements["dialog-root"] = {
+            id: "dialog-root",
+            type: "nl.root",
+            parentId: null,
+            childrenIds: ["line"],
+            layout: { x: 0, y: 0, width: 10, height: 10 },
+        };
+        document.elements.line = {
+            id: "line",
+            type: "nl.text",
+            parentId: "dialog-root",
+            childrenIds: [],
+            layout: { x: 0, y: 0, width: 10, height: 10 },
+        };
+        service.setElementPageParamBinding("line", "text", "message");
+        expect(service.getDocument().elements.line!.valueBindings).toBeUndefined();
+    });
 });

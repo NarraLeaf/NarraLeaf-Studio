@@ -38,6 +38,9 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST,
     BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS,
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
+    BLUEPRINT_NODE_TYPE_LITERAL_JSON,
+    BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+    BLUEPRINT_NODE_TYPE_PAGE_GO,
 } from "@shared/types/blueprint/graph";
 import { setActiveUIPageParams } from "@shared/types/ui-editor/pageParams";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
@@ -498,6 +501,7 @@ describe("page parameters", () => {
                 params: [
                     { id: "message", name: "message", type: "string" },
                     { id: "count", name: "count", type: "number" },
+                    { id: "buttons", name: "buttons", type: "list", struct: "nl.confirmButton" },
                 ],
             },
         ]);
@@ -548,6 +552,59 @@ describe("page parameters", () => {
                     .filter(finding => finding.code === "node.page_param_missing")
                     .map(finding => (finding.target as { nodeId?: string }).nodeId);
             expect(codes(PAGE_OWNER)).toEqual(["read"]);
+        });
+    });
+
+    it("types a list parameter by the shape of its rows, on both ends, without refusing untyped rows", () => {
+        withConfirmParams(() => {
+            const ir = graph(
+                {
+                    read: { type: BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM, params: { paramId: "buttons" } },
+                    go: { type: BLUEPRINT_NODE_TYPE_PAGE_GO, params: { surfaceId: "confirm" } },
+                    rows: { type: BLUEPRINT_NODE_TYPE_LITERAL_JSON, params: { value: [] } },
+                },
+                [],
+            );
+            const typed = withInferredBlueprintStructTypes(ir, buildBlueprintStructTypeContext({ owner: PAGE_OWNER }));
+            const typeOf = (nodeId: string, pinId: string) => {
+                const node = typed.nodes![nodeId]!;
+                return blueprintNodeRegistry.resolveCatalogEntryForNode(node.type, node.params).pins.find(pin => pin.id === pinId)?.valueType;
+            };
+            expect(typeOf("read", "value")).toBe("array<struct:nl.confirmButton>");
+            expect(typeOf("go", "param_buttons")).toBe("array<struct:nl.confirmButton>");
+            // Rows of no declared shape still go in: the type is a promise added, not a wire refused.
+            expect(isValidBlueprintPinConnection({
+                sourceType: BLUEPRINT_NODE_TYPE_LITERAL_JSON,
+                sourcePort: "value",
+                targetType: BLUEPRINT_NODE_TYPE_PAGE_GO,
+                targetPort: "param_buttons",
+                sourceParams: typed.nodes!.rows!.params,
+                targetParams: typed.nodes!.go!.params,
+            })).toBe(true);
+        });
+    });
+
+    it("grows no parameter inputs while the Page input is wired", () => {
+        withConfirmParams(() => {
+            const ir = graph(
+                {
+                    go: { type: BLUEPRINT_NODE_TYPE_PAGE_GO, params: { surfaceId: "confirm" } },
+                    page: { type: BLUEPRINT_NODE_TYPE_LITERAL_STRING, params: { value: "confirm" } },
+                },
+                ["page.value -> go.surfaceId"],
+            );
+            const typed = withInferredBlueprintStructTypes(ir, buildBlueprintStructTypeContext({ owner: PAGE_OWNER }));
+            const inputs = blueprintNodeRegistry
+                .resolveCatalogEntryForNode(BLUEPRINT_NODE_TYPE_PAGE_GO, typed.nodes!.go!.params)
+                .pins.filter(pin => pin.kind === "input")
+                .map(pin => pin.id);
+            expect(inputs).toEqual(["in", "surfaceId", "props"]);
+            const unwired = withInferredBlueprintStructTypes(graph({ go: { type: BLUEPRINT_NODE_TYPE_PAGE_GO, params: { surfaceId: "confirm" } } }, []),
+                buildBlueprintStructTypeContext({ owner: PAGE_OWNER }));
+            expect(blueprintNodeRegistry
+                .resolveCatalogEntryForNode(BLUEPRINT_NODE_TYPE_PAGE_GO, unwired.nodes!.go!.params)
+                .pins.filter(pin => pin.kind === "input")
+                .map(pin => pin.id)).toEqual(["in", "surfaceId", "param_message", "param_count", "param_buttons", "props"]);
         });
     });
 });

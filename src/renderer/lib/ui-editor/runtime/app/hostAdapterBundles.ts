@@ -29,6 +29,7 @@
 
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { withUIPageParamDefaults } from "@shared/types/ui-editor/pageParams";
+import { resolveUIPageTextParams } from "@shared/types/ui-editor/pageTextParams";
 import type { DevModeBundle } from "@shared/types/devMode";
 import {
     createDevModeBlueprintHostApi,
@@ -108,6 +109,8 @@ export function buildPageHostAdapterBundle(
             subscribe: listener => core.scopeBridge.subscribeGlobals(listener),
         },
         pageProps,
+        // From the props as given: a value given and a default are translated differently.
+        pageTexts: resolveUIPageTextParams(surface, entry.props, { opened: true }),
     };
     return { hostAdapter, bindingContext, runtimeScopeId };
 }

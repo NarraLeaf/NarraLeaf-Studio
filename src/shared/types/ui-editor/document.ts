@@ -36,6 +36,12 @@ import { getUISwitchChildSlot } from "./switch";
  * reading for one: the nodes that open such a page would show inputs it does not know as broken
  * wires, and a game it built would open the page without the values. So it must refuse the document
  * rather than load it and quietly lose them.
+ *
+ * Text and list parameters arrived in the same version (`pageTextParams.ts`): a parameter of `type:
+ * "text"`, whose default is words translated like an element's own, and the `pageParam` value binding a
+ * text or a button on the page shows it through; and `type: "list"` with the shape of its rows
+ * (`UIPageParam.struct`). A Studio that reads v13 refuses v14 already, so they carry no version of
+ * their own.
  */
 export const UI_DOCUMENT_SCHEMA_VERSION = 14 as const;
 
@@ -163,6 +169,13 @@ export type UIPageParam = {
     name: string;
     type: UIPageParamType;
     /**
+     * For a `list`: the shape each row has, as a struct id (an engine shape such as `nl.confirmButton`,
+     * a plugin's, or one of the project's). It types the value on both ends - the inputs that give it
+     * and `Get Page Param` - and a list on the page bound to it is checked against it. Absent for
+     * every other type, and for a list of rows of no declared shape.
+     */
+    struct?: string;
+    /**
      * What the page reads when whoever opened it gave nothing for this name, in the declared type.
      * Absent reads as the type's empty value (`uiPageParamDefaultValue`).
      */
@@ -170,10 +183,16 @@ export type UIPageParam = {
 };
 
 /**
- * What a page parameter holds. The four kinds a blueprint pin, a props object and an inspector field
- * all have a spelling for; `json` is anything else - a list's rows, a record.
+ * What a page parameter holds.
+ *
+ * - `string`, `number`, `boolean`: a value, as a blueprint pin carries it.
+ * - `text`: words a player reads. A string on every pin, but its default is translated like an
+ *   element's own words, and a text or a button on the page can show it directly through a
+ *   `pageParam` value binding - the page's counterpart of a component's text parameter.
+ * - `list`: rows, each of the shape `UIPageParam.struct` names - what a list on the page draws.
+ * - `json`: anything else - a record, rows of no declared shape.
  */
-export type UIPageParamType = "string" | "number" | "boolean" | "json";
+export type UIPageParamType = "string" | "text" | "number" | "boolean" | "list" | "json";
 
 export type UIStageSurface = {
     id: UISurfaceId;
@@ -483,6 +502,20 @@ export type UIElementValueBinding =
      */
     | {
           kind: "componentParam";
+          paramId: string;
+      }
+    /**
+     * Show the value the page this element is on was opened with for one of its text parameters.
+     *
+     * The page's counterpart of `componentParam`, read the same way: no graph - the value is taken from
+     * the props the page was opened with (`resolveUIPageTextParams`), words given at the opening shown
+     * as given, the declared default translated through the page's own unit. Only a text parameter
+     * answers one, only a widget's words take one, and only on a page: a component's insides and a
+     * Game UI have no page parameters to show. The editing canvas, where the page has not been opened,
+     * draws the default, or the element's own words as sample text while the default is empty.
+     */
+    | {
+          kind: "pageParam";
           paramId: string;
       };
 

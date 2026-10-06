@@ -39,14 +39,15 @@ import {
 import { isListLikeWidgetType, isUIListItemTemplateChild } from "@shared/types/ui-editor/list";
 import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemContext";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
-import { getUIPageParams } from "@shared/types/ui-editor/pageParams";
-import { findUIStructField } from "@shared/types/ui-editor/struct";
+import { getUIPageParams, isUIPageTextParam } from "@shared/types/ui-editor/pageParams";
+import { findUIStructField, uiStructFieldLabel } from "@shared/types/ui-editor/struct";
 import { uiTextSampleCauseOf } from "@shared/types/ui-editor/textSample";
 import {
     listUIPlacementTextValues,
     uiComponentTextValueUnitBinding,
     uiTextComponentParamOf,
 } from "@shared/types/ui-editor/componentTextParams";
+import { listUIPageTextValues, uiTextPageParamOf } from "@shared/types/ui-editor/pageTextParams";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
 import { widgetPrivateBlueprintHasSlotHead } from "../../ui-editor/blueprint-runtime/widgetPrivateBlueprintHeads";
 import { blueprintNodeRegistry } from "../../ui-editor/blueprint-nodes/BlueprintNodeRegistry";
@@ -300,12 +301,14 @@ export function listWidgetTextFaces(element: UIElement): SurfaceTextFace[] {
  * A component placement on the page puts on screen the words it gives its component's text
  * parameters, drawn in the faces of each widget inside the definition that shows them; each of those
  * is a site too, under the placement's unit (`listUIPlacementTextValues`). A value that names a key
- * is the key's words, which are checked as keys.
+ * is the key's words, which are checked as keys. So are a page's text parameters: the default a text
+ * on the page shows, and the words a Page widget gives (`listUIPageTextValues`), each drawn in the
+ * faces of the texts that show it.
  */
 export function listSurfaceTextSites(document: UIDocument): SurfaceTextSite[] {
     const sites: SurfaceTextSite[] = [];
     for (const { surface, element } of listSurfaceElements(document)) {
-        for (const { value, shownBy } of listUIPlacementTextValues(document, element)) {
+        for (const { value, shownBy } of [...listUIPlacementTextValues(document, element), ...listUIPageTextValues(document, element)]) {
             if (value.key || !value.text.trim()) {
                 continue;
             }
@@ -366,12 +369,14 @@ export type InterfaceTextUnitSite = {
  *
  * What an instance does carry is the words it gives its component's text parameters, which a widget
  * inside the definition shows: each is read through the key it names or through the placement's own
- * unit (the definition's, for a default it falls back to), and listed under the placement.
+ * unit (the definition's, for a default it falls back to), and listed under the placement. A page's
+ * text parameters are read the same way (`listUIPageTextValues`): a default under the text that shows
+ * it, the words a Page widget gives under the widget.
  */
 export function listInterfaceTextUnitSites(document: UIDocument): InterfaceTextUnitSite[] {
     const sites: InterfaceTextUnitSite[] = [];
     const read = (element: UIElement, location: LintLocation, target: SearchJumpTarget): void => {
-        for (const { value } of listUIPlacementTextValues(document, element)) {
+        for (const { value } of [...listUIPlacementTextValues(document, element), ...listUIPageTextValues(document, element)]) {
             const binding = uiComponentTextValueUnitBinding(value);
             if (binding) {
                 sites.push({ element, location, target, literal: value.text, binding });
@@ -1016,6 +1021,121 @@ function runPageParamUnknown(ctx: LintContext): LintFinding[] {
 }
 
 // ---------------------------------------------------------------------------
+// ui/page-text-param-missing, ui/page-param-list-mismatch
+// ---------------------------------------------------------------------------
+
+/**
+ * A text or a button showing a page parameter its page does not declare as text.
+ *
+ * The game shows no words there - the page answers the binding, and has none to give - while the
+ * page's canvas goes on drawing the widget's sample words, so the page looks whole. It arises from
+ * removing the parameter, from changing its type, and from pasting the widget out of another page.
+ * A widget that is on no page - inside a component, on a Game UI - and shows one is the same finding:
+ * nothing opens it with words.
+ */
+function runPageTextParamMissing(ctx: LintContext): LintFinding[] {
+    const document = ctx.uiDocument;
+    if (!document) {
+        return [];
+    }
+    const findings: LintFinding[] = [];
+    for (const { surface, element } of listSurfaceElements(document)) {
+        const site = uiTextSiteOf(element.type);
+        const paramId = site ? uiTextPageParamOf(element, site) : null;
+        if (paramId === null) {
+            continue;
+        }
+        const declared = surface.kind === "appSurface"
+            && getUIPageParams(surface).some(param => param.id === paramId && isUIPageTextParam(param));
+        if (declared) {
+            continue;
+        }
+        findings.push({
+            ruleId: "ui/page-text-param-missing",
+            messageKey: surface.kind === "appSurface"
+                ? "lint.rule.uiPageTextParamMissing.message"
+                : "lint.rule.uiPageTextParamMissing.messageOutside",
+            location: surfaceLocation(surface, element),
+            target: surfaceTarget(surface, element),
+        });
+    }
+    for (const component of document.components ?? []) {
+        for (const element of Object.values(component.elements ?? {})) {
+            const site = uiTextSiteOf(element.type);
+            if (!site || uiTextPageParamOf(element, site) === null) {
+                continue;
+            }
+            findings.push({
+                ruleId: "ui/page-text-param-missing",
+                messageKey: "lint.rule.uiPageTextParamMissing.messageOutside",
+                location: componentLocation(component, element),
+                target: componentTarget(component, element),
+            });
+        }
+    }
+    return findings;
+}
+
+/**
+ * A list on a page showing a page parameter that cannot give it the rows it draws.
+ *
+ * Two ways: the parameter is not a list at all - a string, a number - so the list has nothing to draw
+ * and the game shows no rows; or it is a list whose row struct lacks fields the list draws (by name
+ * and type), so the widgets bound to them show what they were authored with in every row. Rows that
+ * carry more than the list draws are fine - the list shows what it draws - which is the same rule a
+ * blueprint's rows are held to (`blueprint/list-shape-mismatch`).
+ */
+function runPageParamListMismatch(ctx: LintContext): LintFinding[] {
+    const document = ctx.uiDocument;
+    if (!document) {
+        return [];
+    }
+    const findings: LintFinding[] = [];
+    for (const { surface, element } of listSurfaceElements(document)) {
+        if (surface.kind !== "appSurface" || !isListLikeWidgetType(element.type)) {
+            continue;
+        }
+        const props = elementProps(element);
+        const binding = props.itemsBinding as { kind?: unknown; key?: unknown } | undefined;
+        const name = binding?.kind === "pageProp" && typeof binding.key === "string" ? binding.key.trim() : "";
+        const param = name ? getUIPageParams(surface).find(candidate => candidate.name === name) : undefined;
+        if (!param) {
+            continue;
+        }
+        if (param.type !== "list" && param.type !== "json") {
+            findings.push({
+                ruleId: "ui/page-param-list-mismatch",
+                messageKey: "lint.rule.uiPageParamListMismatch.messageNotList",
+                messageParams: { name },
+                location: surfaceLocation(surface, element),
+                target: surfaceTarget(surface, element),
+            });
+            continue;
+        }
+        const listStructId = typeof props.itemStructId === "string" ? props.itemStructId.trim() : "";
+        const listStruct = listStructId ? resolveUIStruct(document, listStructId) : null;
+        const rowStruct = param.type === "list" && param.struct ? resolveUIStruct(document, param.struct) : null;
+        if (!listStruct || !rowStruct) {
+            continue;
+        }
+        const missing = listStruct.fields.filter(
+            field => !rowStruct.fields.some(candidate => candidate.key === field.key && candidate.type === field.type),
+        );
+        if (missing.length === 0) {
+            continue;
+        }
+        findings.push({
+            ruleId: "ui/page-param-list-mismatch",
+            messageKey: "lint.rule.uiPageParamListMismatch.message",
+            messageParams: { name, fields: missing.map(uiStructFieldLabel).join(", ") },
+            location: surfaceLocation(surface, element),
+            target: surfaceTarget(surface, element),
+        });
+    }
+    return findings;
+}
+
+// ---------------------------------------------------------------------------
 // ui/component-param-missing
 // ---------------------------------------------------------------------------
 
@@ -1458,6 +1578,24 @@ export const UI_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "warning",
         slug: "uiPageParamUnknown",
         run: ctx => runPageParamUnknown(ctx),
+    },
+    {
+        id: "ui/page-text-param-missing",
+        category: "ui",
+        // A warning, as the component's missing parameter is: the page draws, and what is missing is
+        // the words one widget was meant to show.
+        defaultSeverity: "warning",
+        slug: "uiPageTextParamMissing",
+        run: ctx => runPageTextParamMissing(ctx),
+    },
+    {
+        id: "ui/page-param-list-mismatch",
+        category: "ui",
+        // A warning, beside the undeclared page prop: the page draws, and what is lost is the rows -
+        // or a field of them - one list was meant to show.
+        defaultSeverity: "warning",
+        slug: "uiPageParamListMismatch",
+        run: ctx => runPageParamListMismatch(ctx),
     },
     {
         id: "ui/gesture-answered-twice",

@@ -74,6 +74,7 @@ export const widgets = {
         removeBinding: "Remove",
         hintBlueprintValue: "Shown in the editor only. The game shows the Blueprint Value's result.",
         hintComponentParam: "Shown while editing the component only. Each placement shows the value it sets for the parameter.",
+        hintPageParam: "Shown while editing the page, when the param's default is empty. In the game the page shows the text it is opened with, or the default.",
     },
     textWriters: {
         title: "Written in the game by",

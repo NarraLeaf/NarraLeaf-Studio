@@ -72,6 +72,7 @@ export const widgets = {
         removeBinding: "解除",
         hintBlueprintValue: "エディタでのみ表示。ゲームではブループリント値の結果を表示する",
         hintComponentParam: "コンポーネントの編集中のみ表示。置いたものでは、それぞれがパラメータに設定した値を表示する",
+        hintPageParam: "ページの編集中、パラメータの初期値が空のときのみ表示。ゲームでは、ページを開くときに渡されたテキスト、渡されなければ初期値を表示する",
     },
     textWriters: {
         title: "ゲーム中に書き込むブループリント",
