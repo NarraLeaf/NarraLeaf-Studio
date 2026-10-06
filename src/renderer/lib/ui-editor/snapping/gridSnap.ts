@@ -21,6 +21,19 @@ export const MAX_UI_EDITOR_GRID_SPACING = 1000;
  */
 export const UI_EDITOR_GRID_MIN_SCREEN_CELL_PX = 10;
 
+/**
+ * How the canvas draws the grid: full lines, or a dot at each grid point. Drawing only - snapping is
+ * the same either way, since a selection's top-left lands on a grid point whenever both axes snap.
+ */
+export type UIEditorGridStyle = "lines" | "dots";
+
+export const DEFAULT_UI_EDITOR_GRID_STYLE: UIEditorGridStyle = "lines";
+
+/** A stored grid style, or the default when there is none or it is not one. */
+export function normalizeUiEditorGridStyle(raw: unknown): UIEditorGridStyle {
+    return raw === "lines" || raw === "dots" ? raw : DEFAULT_UI_EDITOR_GRID_STYLE;
+}
+
 /** A stored or typed spacing, as a whole number of design pixels in range; `null` when it is not one. */
 export function normalizeUiEditorGridSpacing(raw: unknown): number | null {
     if (typeof raw !== "number" || !Number.isFinite(raw)) {

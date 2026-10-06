@@ -93,10 +93,14 @@ export function resizeStoryPreviewFloatRect(
  * Where a window opens the first time the preview is popped out: the bottom-right corner of the
  * scene editor it came from, so it appears over the rows it is previewing rather than across the
  * room. Without an editor to anchor to, the bottom-right corner of the whole area.
+ *
+ * `top-right` is for an editor whose own subject sits low - the UI editor showing a dialogue box -
+ * where the bottom corner would cover what the window is there to preview.
  */
 export function createDefaultStoryPreviewFloatRect(
     bounds: StoryPreviewFloatBounds | null,
     anchor: StoryScenePreviewFloatRect | null = null,
+    corner: "bottom-right" | "top-right" = "bottom-right",
 ): StoryScenePreviewFloatRect {
     const width = STORY_PREVIEW_FLOAT_DEFAULT_WIDTH;
     const height = STORY_PREVIEW_FLOAT_DEFAULT_HEIGHT;
@@ -112,7 +116,9 @@ export function createDefaultStoryPreviewFloatRect(
     const h = Math.min(height, frame.height);
     const placed = {
         x: Math.max(frame.x, frame.x + frame.width - w - STORY_PREVIEW_FLOAT_MARGIN),
-        y: Math.max(frame.y, frame.y + frame.height - h - STORY_PREVIEW_FLOAT_MARGIN),
+        y: corner === "top-right"
+            ? frame.y + Math.min(STORY_PREVIEW_FLOAT_MARGIN, Math.max(0, frame.height - h))
+            : Math.max(frame.y, frame.y + frame.height - h - STORY_PREVIEW_FLOAT_MARGIN),
         width: w,
         height: h,
     };

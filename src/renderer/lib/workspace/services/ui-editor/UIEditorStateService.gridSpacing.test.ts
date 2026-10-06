@@ -111,3 +111,31 @@ describe("UIEditorStateService grid spacing", () => {
         });
     });
 });
+
+describe("UIEditorStateService grid style", () => {
+    it("draws lines until the author picks dots", async () => {
+        const { service } = await bootService(projectStore(), new Map());
+        expect(service.getGridStyle()).toBe("lines");
+    });
+
+    it("keeps the style in Studio settings, so it follows the author to another project", async () => {
+        const globalSettings = new Map<string, unknown>();
+        const project = projectStore();
+        const first = await bootService(project, globalSettings);
+        const heard: string[] = [];
+        first.service.on("gridStyleChanged", style => heard.push(style));
+
+        first.service.setGridStyle("dots");
+        first.service.setGridStyle("dots");
+
+        expect(heard).toEqual(["dots"]);
+        expect(first.settingsService.set).toHaveBeenCalledTimes(1);
+        expect(project.setPanelState).not.toHaveBeenCalled();
+        expect((await bootService(projectStore(), globalSettings)).service.getGridStyle()).toBe("dots");
+    });
+
+    it("reads a damaged stored style as lines", async () => {
+        const globalSettings = new Map<string, unknown>([["uiEditor.grid.style", "hatched"]]);
+        expect((await bootService(projectStore(), globalSettings)).service.getGridStyle()).toBe("lines");
+    });
+});
