@@ -113,6 +113,22 @@ describe("collectStoryPlaybackPlan", () => {
         expect(ids(scene, "half")).toEqual(["b"]);
     });
 
+    it("passes a disabled row by, and a disabled jump does not end the walk", () => {
+        const disabled = (target: StoryBlock): StoryBlock => ({ ...target, disabled: true });
+        const scene = makeScene({
+            a: say("a"),
+            off: disabled(say("off")),
+            jump: disabled(block("jump", "jump", { targetSceneId: "scene-2" })),
+            ending: disabled(block("ending", "control", { control: "ending", endingId: "e" })),
+            b: say("b"),
+        }, ["a", "off", "jump", "ending", "b"]);
+        const plan = collectStoryPlaybackPlan(scene, "a");
+        expect(plan.steps.map(step => step.blockId)).toEqual(["a", "b"]);
+        expect(plan.stop).toEqual({ reason: "sceneEnd" });
+        // Started on a disabled row, play carries on from what follows it.
+        expect(ids(scene, "off")).toEqual(["b"]);
+    });
+
     it("marks steps inside an NVL container", () => {
         const scene = makeScene({
             nvl: block("nvl", "action", { action: "nvl" }, null, ["n1", "n2"]),

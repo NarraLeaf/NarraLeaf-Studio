@@ -22,6 +22,17 @@ function readParamString(params: Record<string, unknown> | undefined, key: strin
     return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
 
+/**
+ * A variable's declared type as a pin type.
+ *
+ * The project's variable table speaks the story's types, where a number is `number`; a pin calls the
+ * same thing `float`. Passed through untranslated, a number variable's pin matched no number pin at
+ * all - `Get Persistent` on a volume could not be wired into `+`.
+ */
+export function blueprintValueTypeForVariable(valueType: string | undefined): string | undefined {
+    return valueType === "number" ? "float" : valueType;
+}
+
 function findOptionValueType(
     rawValue: string | undefined,
     options: readonly BlueprintVariableTypeOption[] | undefined,
@@ -29,7 +40,7 @@ function findOptionValueType(
     if (!rawValue) {
         return undefined;
     }
-    return options?.find(option => option.value === rawValue)?.valueType;
+    return blueprintValueTypeForVariable(options?.find(option => option.value === rawValue)?.valueType);
 }
 
 function isBlueprintVariableRefNode(type: string): boolean {

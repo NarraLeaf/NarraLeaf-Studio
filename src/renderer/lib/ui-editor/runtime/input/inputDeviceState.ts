@@ -140,11 +140,8 @@ function getSharedInputDeviceTracker(): UIInputDeviceTracker {
 /**
  * The device the player is using right now.
  *
- * **The return type is the full four-value union even though `gamepad` is never returned today.**
- * This is the value domain of a blueprint pin, and a pin's enumeration can be narrowed after the
- * fact - every saved graph still switches on values that remain in the set - but it cannot be
- * widened, because a graph written against three values has no branch for a fourth. So the union is
- * declared at its eventual width and the producer catches up later.
+ * The return type is the four-value union `pointer` / `key` / `gamepad` / `touch`. Gamepad is
+ * produced by the pad poller calling {@link noteInputDevice} on each button edge.
  */
 export function readCurrentInputDevice(): UIInputActionSource {
     return getSharedInputDeviceTracker().read();

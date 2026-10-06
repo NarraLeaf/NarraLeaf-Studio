@@ -2,7 +2,7 @@
   "manifestVersion": 2,
   "id": "narraleaf.gallery",
   "name": "Gallery",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "description": "Author the EXTRA screens - CG gallery, scene recollection, music appreciation and voice extras - and drive them from blueprint graphs.",
   "localized": {
     "zh": {
@@ -43,6 +43,202 @@
       "store",
       "events",
       "locale"
+    ],
+    "structs": [
+      {
+        "id": "narraleaf.gallery.entry",
+        "name": "Gallery entry",
+        "localized": {
+          "zh": "画廊条目",
+          "ja": "ギャラリーの項目"
+        },
+        "fields": [
+          {
+            "key": "index",
+            "type": "number"
+          },
+          {
+            "key": "id",
+            "type": "string"
+          },
+          {
+            "key": "name",
+            "type": "string"
+          },
+          {
+            "key": "description",
+            "type": "string"
+          },
+          {
+            "key": "kind",
+            "type": "string"
+          },
+          {
+            "key": "groupId",
+            "type": "string"
+          },
+          {
+            "key": "groupName",
+            "type": "string"
+          },
+          {
+            "key": "unlocked",
+            "type": "boolean"
+          },
+          {
+            "key": "locked",
+            "type": "boolean"
+          },
+          {
+            "key": "variantCount",
+            "type": "number"
+          },
+          {
+            "key": "unlockedCount",
+            "type": "number"
+          },
+          {
+            "key": "image",
+            "type": "image"
+          },
+          {
+            "key": "assetId",
+            "type": "string"
+          },
+          {
+            "key": "thumbnail",
+            "type": "image"
+          },
+          {
+            "key": "thumbnailAssetId",
+            "type": "string"
+          },
+          {
+            "key": "coverVariantId",
+            "type": "string"
+          },
+          {
+            "key": "audioAssetId",
+            "type": "string"
+          },
+          {
+            "key": "durationSec",
+            "type": "number"
+          },
+          {
+            "key": "voiceUnitId",
+            "type": "string"
+          },
+          {
+            "key": "lineText",
+            "type": "string"
+          },
+          {
+            "key": "storyId",
+            "type": "string"
+          },
+          {
+            "key": "sceneId",
+            "type": "string"
+          },
+          {
+            "key": "startBlockId",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "id": "narraleaf.gallery.variant",
+        "name": "Gallery variant",
+        "localized": {
+          "zh": "画廊变体",
+          "ja": "ギャラリーのバリアント"
+        },
+        "fields": [
+          {
+            "key": "index",
+            "type": "number"
+          },
+          {
+            "key": "id",
+            "type": "string"
+          },
+          {
+            "key": "artworkId",
+            "type": "string"
+          },
+          {
+            "key": "name",
+            "type": "string"
+          },
+          {
+            "key": "unlocked",
+            "type": "boolean"
+          },
+          {
+            "key": "locked",
+            "type": "boolean"
+          },
+          {
+            "key": "image",
+            "type": "image"
+          },
+          {
+            "key": "assetId",
+            "type": "string"
+          },
+          {
+            "key": "thumbnail",
+            "type": "image"
+          },
+          {
+            "key": "thumbnailAssetId",
+            "type": "string"
+          },
+          {
+            "key": "isCover",
+            "type": "boolean"
+          },
+          {
+            "key": "audioAssetId",
+            "type": "string"
+          },
+          {
+            "key": "durationSec",
+            "type": "number"
+          },
+          {
+            "key": "voiceUnitId",
+            "type": "string"
+          },
+          {
+            "key": "lineText",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "id": "narraleaf.gallery.group",
+        "name": "Gallery group",
+        "localized": {
+          "zh": "画廊分组",
+          "ja": "ギャラリーのグループ"
+        },
+        "fields": [
+          {
+            "key": "index",
+            "type": "number"
+          },
+          {
+            "key": "id",
+            "type": "string"
+          },
+          {
+            "key": "name",
+            "type": "string"
+          }
+        ]
+      }
     ]
   },
   "permissions": []

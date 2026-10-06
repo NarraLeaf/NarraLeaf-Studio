@@ -30,8 +30,20 @@ import { getUISwitchChildSlot } from "./switch";
  * `componentParam` value binding a text or a button inside the definition shows it through. A Studio
  * that reads v12 would draw every placement with the definition's sample words and translate none of
  * them, and it refuses v13 already, so they carry no version of their own.
+ *
+ * v14: a page declares the values it is opened with (`UIAppSurface.params`, `pageParams.ts`). Nothing
+ * is converted - a page without declarations reads exactly as before - but an older Studio has no
+ * reading for one: the nodes that open such a page would show inputs it does not know as broken
+ * wires, and a game it built would open the page without the values. So it must refuse the document
+ * rather than load it and quietly lose them.
+ *
+ * Text and list parameters arrived in the same version (`pageTextParams.ts`): a parameter of `type:
+ * "text"`, whose default is words translated like an element's own, and the `pageParam` value binding a
+ * text or a button on the page shows it through; and `type: "list"` with the shape of its rows
+ * (`UIPageParam.struct`). A Studio that reads v13 refuses v14 already, so they carry no version of
+ * their own.
  */
-export const UI_DOCUMENT_SCHEMA_VERSION = 13 as const;
+export const UI_DOCUMENT_SCHEMA_VERSION = 14 as const;
 
 /**
  * The oldest UI document version this build can read.
@@ -130,7 +142,57 @@ export type UIAppSurface = {
      * whether what it just did leaves anything for the surface behind to do.
      */
     actions?: UISurfaceActionEnablement[];
+    /** The values this page is opened with, in author order. See {@link UIPageParam}. */
+    params?: UIPageParam[];
 };
+
+/**
+ * A value whoever opens a page hands it, declared on the page.
+ *
+ * The page's counterpart of a component's parameter ({@link UIComponentParam}): placing a page - in a
+ * Page widget, or by opening it - is the same act as placing a component, and both say up front what
+ * the placement supplies. One contract read from both ends. The page declares what it takes; the
+ * nodes that open it by name (`Go Page`, `Replace Page`, `Show Layer`, `Set Frame Page`) grow one typed
+ * input per declaration, a Page widget's inspector one field, and `Get Page Param` reads one back
+ * from a dropdown. Before this, the two ends met on a key typed into both, which nothing checked.
+ *
+ * Only a page declares them. A Game UI is mounted by the player, which opens it with nothing.
+ *
+ * `id` is what blueprints point at - the inputs of the nodes that open the page and the `Get Page
+ * Param` that reads it - so renaming a parameter unpoints nothing. `name` is the key the page's props
+ * carry the value under, and so what everything that reads props by name sees: a script's
+ * `getPageProps()`, a list bound to a page prop, `Get Page Props`, and `Show Confirm`, which opens its
+ * page with `message` and `buttons`. Names are unique on a page; ids are unique on a page.
+ */
+export type UIPageParam = {
+    id: string;
+    name: string;
+    type: UIPageParamType;
+    /**
+     * For a `list`: the shape each row has, as a struct id (an engine shape such as `nl.confirmButton`,
+     * a plugin's, or one of the project's). It types the value on both ends - the inputs that give it
+     * and `Get Page Param` - and a list on the page bound to it is checked against it. Absent for
+     * every other type, and for a list of rows of no declared shape.
+     */
+    struct?: string;
+    /**
+     * What the page reads when whoever opened it gave nothing for this name, in the declared type.
+     * Absent reads as the type's empty value (`uiPageParamDefaultValue`).
+     */
+    defaultValue?: unknown;
+};
+
+/**
+ * What a page parameter holds.
+ *
+ * - `string`, `number`, `boolean`: a value, as a blueprint pin carries it.
+ * - `text`: words a player reads. A string on every pin, but its default is translated like an
+ *   element's own words, and a text or a button on the page can show it directly through a
+ *   `pageParam` value binding - the page's counterpart of a component's text parameter.
+ * - `list`: rows, each of the shape `UIPageParam.struct` names - what a list on the page draws.
+ * - `json`: anything else - a record, rows of no declared shape.
+ */
+export type UIPageParamType = "string" | "text" | "number" | "boolean" | "list" | "json";
 
 export type UIStageSurface = {
     id: UISurfaceId;
@@ -440,6 +502,20 @@ export type UIElementValueBinding =
      */
     | {
           kind: "componentParam";
+          paramId: string;
+      }
+    /**
+     * Show the value the page this element is on was opened with for one of its text parameters.
+     *
+     * The page's counterpart of `componentParam`, read the same way: no graph - the value is taken from
+     * the props the page was opened with (`resolveUIPageTextParams`), words given at the opening shown
+     * as given, the declared default translated through the page's own unit. Only a text parameter
+     * answers one, only a widget's words take one, and only on a page: a component's insides and a
+     * Game UI have no page parameters to show. The editing canvas, where the page has not been opened,
+     * draws the default, or the element's own words as sample text while the default is empty.
+     */
+    | {
+          kind: "pageParam";
           paramId: string;
       };
 

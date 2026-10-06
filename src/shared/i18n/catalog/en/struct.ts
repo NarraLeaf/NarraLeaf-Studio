@@ -22,9 +22,14 @@ export const struct = {
         newName: "Field",
         none: "No fields",
         engineOwned: "This list receives its fields from the engine.",
+        pluginOwned: "This list receives its fields from a plugin.",
         picker: "Field",
         visiblePicker: "Visible from field",
         pickerEmpty: "No field",
+    },
+    shape: {
+        label: "Struct",
+        custom: "Custom",
     },
     row: {
         add: "Add row",

@@ -16,8 +16,9 @@
  * Comments in English per project convention.
  */
 
-import { isBuiltinUIStructId } from "./builtinStructs";
-import type { UIDocument, UIElement, UIElementId } from "./document";
+import { isBuiltinUIStructId, resolveUIStruct } from "./builtinStructs";
+import type { UIDocument, UIElement, UIElementId, UIElementValueBinding } from "./document";
+import { findOwningListItemTemplate } from "./listItemContext";
 import type { UIStructDef, UIStructField, UIStructId } from "./struct";
 import { normalizeUIStructDef, structsAreCompatible } from "./struct";
 
@@ -204,4 +205,107 @@ export function normalizeUIStructLibrary(value: unknown): Record<UIStructId, UIS
         out[key] = struct.id === key ? struct : { ...struct, id: key };
     }
     return out;
+}
+
+export type UIStructShapeApplication = {
+    /** The id the owner should now store. */
+    structId: UIStructId | null;
+    /** The replacement library table. */
+    structs: Record<UIStructId, UIStructDef>;
+    /**
+     * Each field of the old shape, by id, to the field of the same name in the new one. A field the
+     * new shape has no namesake for is absent, and what named it is left naming nothing.
+     */
+    fieldIds: Record<string, string>;
+};
+
+/**
+ * Point one owner at one of the engine's shapes, or (`null`) give it back a shape of its own.
+ *
+ * Picking an engine shape stores the engine's id rather than a copy: the engine fills those rows, so
+ * their fields are the engine's and the inspector shows them as such. Going back copies the engine's
+ * fields into a shape of the owner's own under the same ids, so everything that named a field keeps
+ * naming it and the author edits from there. An owner already on a shape of its own is left as it is.
+ *
+ * The owner's own prop is not written here, for the reason {@link applyUIStructFieldsForOwner} gives.
+ */
+export function applyUIStructShapeForOwner(input: {
+    document: Pick<UIDocument, "elements" | "components" | "structs">;
+    currentStructId: string | null | undefined;
+    shapeId: string | null;
+    generateId: () => string;
+}): UIStructShapeApplication {
+    const structs = { ...(input.document.structs ?? {}) };
+    const currentId = typeof input.currentStructId === "string" ? input.currentStructId.trim() : "";
+    const current = resolveUIStruct(input.document, currentId);
+    if (input.shapeId && isBuiltinUIStructId(input.shapeId)) {
+        const shape = resolveUIStruct(null, input.shapeId) as UIStructDef;
+        return { structId: input.shapeId, structs, fieldIds: fieldIdsByKey(current, shape) };
+    }
+    if (!current || !isBuiltinUIStructId(currentId)) {
+        return { structId: currentId || null, structs, fieldIds: {} };
+    }
+    const nextId = input.generateId();
+    structs[nextId] = { id: nextId, fields: current.fields.map(field => ({ ...field })) };
+    return {
+        structId: nextId,
+        structs,
+        fieldIds: Object.fromEntries(current.fields.map(field => [field.id, field.id])),
+    };
+}
+
+function fieldIdsByKey(from: UIStructDef | null, to: UIStructDef): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const field of from?.fields ?? []) {
+        const namesake = to.fields.find(candidate => candidate.key === field.key);
+        if (namesake) {
+            out[field.id] = namesake.id;
+        }
+    }
+    return out;
+}
+
+/**
+ * Rewrite what one list's rows name by field id after its shape changed: the list's own key field and
+ * every field binding in its item template.
+ *
+ * `elements` is the table the list lives in - a page's elements or one definition's. Mutates in place.
+ * A binding to a field `fieldIds` has no entry for is left as it was; the inspector and the project
+ * check both report a binding to a field the shape does not have.
+ */
+export function remapUIListFieldIds(
+    elements: Record<UIElementId, UIElement>,
+    listElementId: UIElementId,
+    fieldIds: Readonly<Record<string, string>>,
+): void {
+    const list = elements[listElementId];
+    if (!list) {
+        return;
+    }
+    // A key field the new shape has no namesake for goes back to keying rows by position, which is
+    // what an unset key means, rather than naming a field no row carries.
+    const keyFieldId = (list.props as Record<string, unknown> | undefined)?.itemKeyFieldId;
+    if (typeof keyFieldId === "string" && keyFieldId && fieldIds[keyFieldId] !== keyFieldId) {
+        const { itemKeyFieldId: _previous, ...rest } = (list.props ?? {}) as Record<string, unknown>;
+        list.props = fieldIds[keyFieldId] ? { ...rest, itemKeyFieldId: fieldIds[keyFieldId] } : rest;
+    }
+    for (const element of Object.values(elements)) {
+        if (!element.valueBindings || findOwningListItemTemplate({ elements }, element)?.listElementId !== listElementId) {
+            continue;
+        }
+        let changed = false;
+        const bindings: Record<string, UIElementValueBinding> = {};
+        for (const [path, binding] of Object.entries(element.valueBindings)) {
+            const next = binding.kind === "listItemField" ? fieldIds[binding.fieldId] : undefined;
+            if (next && binding.kind === "listItemField" && next !== binding.fieldId) {
+                bindings[path] = { ...binding, fieldId: next };
+                changed = true;
+            } else {
+                bindings[path] = binding;
+            }
+        }
+        if (changed) {
+            element.valueBindings = bindings;
+        }
+    }
 }

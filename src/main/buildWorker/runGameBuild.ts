@@ -1,9 +1,11 @@
+import fsPromises from "fs/promises";
 import path from "path";
 import { build, Platform, Arch, type AfterPackContext, type Configuration } from "electron-builder";
 import { perTargetFileSets } from "./perTargetPayload";
 import { installLinuxLauncher, LINUX_PROGRAM_SUFFIX } from "./linuxLauncher";
 import {
     currentGameBuildPlatform,
+    desktopArtifactFileName,
     gameBuildArtifactNamePattern,
     hostPackagesWithoutPlatformTools,
     type GameBuildArch,
@@ -29,6 +31,8 @@ import { runMobileRepack } from "./mobile/runMobileRepack";
 import { packageWebSite } from "./packageWebSite";
 import type { GameBuildWorkerConfig, GameBuildWorkerFuses, GameBuildWorkerTarget } from "./protocol";
 import { ensureWinCodeSignCache, withBinariesMirrorEnv } from "./winCodeSignCache";
+import { writeFolderZip } from "./desktopZip";
+import { withoutUpdateBlockmaps } from "./updateBlockmaps";
 
 /**
  * The electron-builder invocation behind a production game build. Pure with
@@ -112,7 +116,12 @@ export function builderConfiguration(
         // Always the smallest artifact. The level used to be the author's to pick, and it
         // was noise: it changes nothing a player sees, it does nothing at all for the web
         // and mobile outputs, and the fast setting only pays off on a build nobody ships.
+        // A zip gets 7-Zip's own highest level rather than electron-builder's reading of
+        // "maximum" - see withArchiveCompressionLevel.
         compression: "maximum",
+        // What "maximum" chooses for a disk image, said explicitly: the compression level
+        // set by withArchiveCompressionLevel would otherwise switch a dmg from bzip2 to zlib.
+        ...(target.platform === "macos" ? { dmg: { format: "UDBZ" as const } } : {}),
         ...(config.electronMirror
             ? { electronDownload: { mirror: config.electronMirror } }
             : {}),
@@ -336,21 +345,49 @@ async function packageDesktopTargets(config: GameBuildWorkerConfig, log: GameBui
             // installer does (rcedit lives in the same bundle).
             await ensureWinCodeSignCache(log, runConfig.electronBuilderBinariesMirror);
         }
+        // A zip Studio writes itself is left out of what electron-builder is asked for; it still
+        // lays the app out (a `dir` target, when nothing else is wanted) and the folder it leaves is
+        // what goes into the zip once it has signed what it signs.
+        const zipsItself = studioWritesZip(target);
+        const builderFormats = zipsItself ? target.formats.filter(format => format !== "zip") : target.formats;
+        const configuration = builderConfiguration(runConfig, target, log);
+        // A holder rather than a plain local: it is set inside the hook, which the compiler cannot follow.
+        const laidOut: { appOutDir: string | null } = { appOutDir: null };
+        const ownAfterPack = configuration.afterPack;
         const produced = await build({
             // Exactly one arch per target: a multi-arch NSIS request would be
             // folded into a single installer whose name drops the ${arch} macro,
             // which the dialog's artifact preview could not have predicted.
             targets: BUILDER_PLATFORMS[target.platform].createTarget(
-                target.formats.map(format => BUILDER_TARGET_NAMES[format]),
+                (builderFormats.length > 0 ? builderFormats : ["dir" as const]).map(format => BUILDER_TARGET_NAMES[format]),
                 BUILDER_ARCHS[target.arch],
             ),
             projectDir: appDir,
-            config: builderConfiguration(runConfig, target, log),
+            config: zipsItself
+                ? {
+                    ...configuration,
+                    afterPack: async context => {
+                        laidOut.appOutDir = context.appOutDir;
+                        if (typeof ownAfterPack === "function") {
+                            await ownAfterPack(context);
+                        }
+                    },
+                }
+                : configuration,
         });
-        return produced.map(artifact => path.resolve(artifact));
+        const artifacts = produced.map(artifact => path.resolve(artifact));
+        if (zipsItself) {
+            if (!laidOut.appOutDir) {
+                throw new Error(`electron-builder laid out no ${target.platform} app to zip`);
+            }
+            artifacts.push(await writeAppZip(runConfig, target, laidOut.appOutDir, log));
+        }
+        return artifacts;
     };
     await withBinariesMirrorEnv(config.electronBuilderBinariesMirror, () =>
         withNotarizationEnv(notarizationForTargets(config.targets), () =>
+        withArchiveCompressionLevel(() =>
+        withoutUpdateBlockmaps(() =>
         withSigntoolPath(signtoolPathForTargets(config.targets), async () => {
             for (const target of config.targets) {
                 log("info", `packaging ${target.platform} (${target.formats.join(", ")})`);
@@ -372,8 +409,99 @@ async function packageDesktopTargets(config: GameBuildWorkerConfig, log: GameBui
                 }
                 artifacts.push(...await runBuilder(config, target));
             }
-        })));
+        })))));
     return artifacts;
+}
+
+/**
+ * Whether this target's zip is written by Studio rather than by electron-builder.
+ *
+ * electron-builder hands a zip to 7-Zip, whose Deflate gives each file one thread, and a game's zip
+ * is two very large files - minutes on one core. Studio's writer compresses every file in pieces on
+ * all of them (see parallelZip), keeping the permission bits and the links a macOS bundle or a Linux
+ * app needs (see desktopZip). Every desktop platform: a macOS or Linux zip made on a machine of its
+ * own kind comes through here, and one made from Windows was always Studio's
+ * (packWithoutPlatformTools), on the same writer.
+ */
+export function studioWritesZip(target: Pick<GameBuildWorkerTarget, "platform" | "formats">): boolean {
+    return (target.platform === "windows" || target.platform === "macos" || target.platform === "linux")
+        && target.formats.includes("zip");
+}
+
+/** The laid-out app in `appOutDir` as the zip electron-builder's zip target would have named. */
+async function writeAppZip(
+    config: GameBuildWorkerConfig,
+    target: GameBuildWorkerTarget,
+    appOutDir: string,
+    log: GameBuildLogger,
+): Promise<string> {
+    const { version } = JSON.parse(await fsPromises.readFile(path.join(config.appDir as string, "package.json"), "utf8")) as {
+        version: string;
+    };
+    const file = path.join(config.outputDir, desktopArtifactFileName({
+        artifactBaseName: config.artifactBaseName,
+        version,
+        platform: target.platform,
+        arch: target.arch,
+        format: "zip",
+    }));
+    log("info", `writing the ${target.platform} zip, compressed on every core`);
+    if (target.platform === "macos") {
+        // The bundle itself is the archive's one folder, as electron-builder's zip has it: what a
+        // player double-clicks is `Game.app`, not a loose `Contents/`.
+        const bundle = await macAppBundle(appOutDir);
+        await writeFolderZip(path.join(appOutDir, bundle), file, { topFolder: bundle });
+    } else {
+        await writeFolderZip(appOutDir, file);
+    }
+    return file;
+}
+
+/** The one `.app` electron-builder laid out in `appOutDir`. */
+async function macAppBundle(appOutDir: string): Promise<string> {
+    const bundles = (await fsPromises.readdir(appOutDir, { withFileTypes: true }))
+        .filter(entry => entry.isDirectory() && entry.name.endsWith(".app"))
+        .map(entry => entry.name);
+    if (bundles.length !== 1) {
+        throw new Error(`expected one app bundle in ${appOutDir}, found ${bundles.length}`);
+    }
+    return bundles[0];
+}
+
+/**
+ * The level electron-builder's 7-Zip runs at, and the only way to set it.
+ *
+ * Left to `compression: "maximum"`, electron-builder adds `-mfb=258 -mpass=15` to every zip: fifteen
+ * optimising passes over each file, one thread per file. A game's zip is dominated by two files - the
+ * Electron executable, around 200 MB, and with asset protection on the sealed store, which is
+ * encrypted and so cannot shrink at all - and 7-Zip's Deflate does not split one file across threads.
+ * Measured on a real 500 MB project, those two passes held the zip for six and a half minutes on one
+ * core, to make the executable 7 KB smaller than 7-Zip's own highest level does in a third of the
+ * time, and to make the store not one byte smaller than it already was.
+ *
+ * No zip goes through 7-Zip any more (see studioWritesZip). The level stays set so that a zip that
+ * ever did again - a format added later, a target that bypasses studioWritesZip - is not handed back
+ * to fifteen passes.
+ *
+ * Level 9 is that highest level. It changes nothing else electron-builder writes: the installer's
+ * payload and the other archive formats are at 9 already, and a dmg keeps the format "maximum"
+ * gives it because {@link builderConfiguration} names that format rather than leaving it to be
+ * inferred from this variable.
+ */
+export const ARCHIVE_COMPRESSION_LEVEL = "9";
+
+export async function withArchiveCompressionLevel<T>(body: () => Promise<T>): Promise<T> {
+    const previous = process.env.ELECTRON_BUILDER_COMPRESSION_LEVEL;
+    process.env.ELECTRON_BUILDER_COMPRESSION_LEVEL = ARCHIVE_COMPRESSION_LEVEL;
+    try {
+        return await body();
+    } finally {
+        if (previous === undefined) {
+            delete process.env.ELECTRON_BUILDER_COMPRESSION_LEVEL;
+        } else {
+            process.env.ELECTRON_BUILDER_COMPRESSION_LEVEL = previous;
+        }
+    }
 }
 
 /**

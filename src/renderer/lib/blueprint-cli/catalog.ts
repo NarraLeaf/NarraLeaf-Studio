@@ -9,6 +9,11 @@
  * Comments in English per project convention.
  */
 
+import { BLUEPRINT_NODE_PARAM_FIELD_STRUCT } from "@shared/types/blueprint/graph";
+import { blueprintArrayElementType } from "@shared/types/blueprint/valueTypes";
+import { listEngineUIStructIds, resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
+import { uiStructIdFromValueType } from "@shared/types/ui-editor/struct";
+import { BLUEPRINT_STRUCT_FIELD_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/listNodes";
 import { createTranslator } from "@shared/i18n";
 import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import type { BlueprintGraphKind } from "@shared/types/blueprint/graph";
@@ -276,7 +281,22 @@ export type NodeDetail = {
         valueTypeOptions?: readonly string[];
     };
     saveSchemaPins?: { kind: "input" | "output" };
+    /**
+     * Grows an input per parameter of the page picked in this field (`pageParamPins` on the
+     * definition). `wirable`: the page can also arrive on an input of the same name, and then the
+     * node grows none.
+     */
+    pageParamPins?: { surfaceParam: string; wirable: boolean };
     magicElementTarget?: unknown;
+    /** Params the node keeps that are not inspector fields (`storedParams` on the definition). */
+    storedParams?: readonly string[];
+    /** Pins a field types by the option it picks (`paramPinTypes` on the definition). */
+    paramPinTypes?: { param: string; pins: readonly string[]; types: Readonly<Record<string, string>> };
+    /**
+     * The fields of every engine shape a pin of this node carries, so a file can name a field without
+     * anyone reading the source to find out what is in an ending.
+     */
+    structs?: { id: string; fields: { key: string; type: string }[] }[];
 };
 
 export function describeNode(type: string, params?: Record<string, unknown>): NodeDetail | null {
@@ -323,8 +343,46 @@ export function describeNode(type: string, params?: Record<string, unknown>): No
         })),
         dynamicPins: def.dynamicInputPins ? describeDynamicPins(def.dynamicInputPins) : undefined,
         saveSchemaPins: def.saveSchemaPins,
+        pageParamPins: def.pageParamPins
+            ? {
+                ...def.pageParamPins,
+                wirable: entry.pins.some(pin => pin.kind === "input" && pin.id === def.pageParamPins?.surfaceParam),
+            }
+            : undefined,
         magicElementTarget: def.magicElementTarget,
+        storedParams: def.storedParams,
+        paramPinTypes: def.paramPinTypes,
+        structs: describePinStructs(entry.pins.map(pin => pin.valueType)),
     };
+}
+
+/** The engine shapes named by these pin types, each once, in the order the pins name them. */
+function describePinStructs(valueTypes: readonly (string | undefined)[]): NodeDetail["structs"] {
+    const out: NonNullable<NodeDetail["structs"]> = [];
+    for (const valueType of valueTypes) {
+        const structId = uiStructIdFromValueType(blueprintArrayElementType(valueType) ?? valueType);
+        const struct = structId ? resolveUIStruct(null, structId) : null;
+        if (struct && !out.some(item => item.id === struct.id)) {
+            out.push({ id: struct.id, fields: struct.fields.map(field => ({ key: field.key, type: field.type })) });
+        }
+    }
+    return out.length > 0 ? out : undefined;
+}
+
+/** Every shape the engine owns, for `blueprint structs`. */
+export function listBuiltinStructs(): NonNullable<NodeDetail["structs"]> {
+    return listEngineUIStructIds().flatMap(id => resolveUIStruct(null, id) ?? []).map(struct => ({
+        id: struct.id,
+        fields: struct.fields.map(field => ({ key: field.key, type: field.type })),
+    }));
+}
+
+/** One shape per line: `nl.ending  endingId:string, name:string, ...`. */
+export function formatStructList(structs: NonNullable<NodeDetail["structs"]>, indent = ""): string[] {
+    const width = Math.max(...structs.map(struct => struct.id.length));
+    return structs.map(struct =>
+        `${indent}${struct.id.padEnd(width)}  ${struct.fields.map(field => `${field.key}:${field.type}`).join(", ")}`,
+    );
 }
 
 /**
@@ -453,7 +511,9 @@ export function formatNodeDetail(detail: NodeDetail): string {
         lines.push("", "  fields (write these as `key = value` under the node)");
         const width = Math.max(...detail.fields.map(field => field.key.length));
         for (const field of detail.fields) {
-            const source = field.optionsFrom
+            const source = field.optionsFrom === BLUEPRINT_STRUCT_FIELD_OPTIONS_SOURCE
+                ? "a field of the struct this node reads: its key for the engine's shapes, its id for a list's own"
+                : field.optionsFrom
                 ? `choose from the project's ${field.optionsFrom}`
                 : field.options
                   ? `one of: ${field.options.map(option => option.value).join(", ")}`
@@ -487,12 +547,42 @@ export function formatNodeDetail(detail: NodeDetail): string {
             lines.push(`    Value types by pin id go in "${dynamic.valueTypeParamKey}"${options}.`);
         }
     }
+    if (detail.storedParams?.length) {
+        lines.push("", "  kept by the node (write these too; nothing on the card edits them)");
+        for (const key of detail.storedParams) {
+            lines.push(
+                key === BLUEPRINT_NODE_PARAM_FIELD_STRUCT
+                    ? `    ${key}  the struct it reads, e.g. nl.ending; set by the first struct wired in (\`blueprint structs\`)`
+                    : `    ${key}`,
+            );
+        }
+    }
+    if (detail.paramPinTypes) {
+        const spec = detail.paramPinTypes;
+        lines.push("", `  typed by ${spec.param} (what ${spec.pins.join(", ")} carries for each option)`);
+        lines.push(`    ${Object.entries(spec.types).map(([option, valueType]) => `${option}:${valueType}`).join(", ")}`);
+    }
+    if (detail.structs?.length) {
+        lines.push("", "  structs (field:type)");
+        lines.push(...formatStructList(detail.structs, "    "));
+    }
     if (detail.saveSchemaPins) {
         lines.push(
             "",
             "  extra pins",
             `    One ${detail.saveSchemaPins.kind} pin per field in the project's save schema, `
                 + "named field:<fieldId>.",
+        );
+    }
+    if (detail.pageParamPins) {
+        lines.push(
+            "",
+            "  extra pins",
+            `    One input per parameter the page picked in ${detail.pageParamPins.surfaceParam} declares, `
+                + "named param_<paramId>; `targets` lists each page's params."
+                + (detail.pageParamPins.wirable
+                    ? ` None while a wire gives ${detail.pageParamPins.surfaceParam}: the page is then the wire's, opened with props alone.`
+                    : ""),
         );
     }
     return lines.join("\n");

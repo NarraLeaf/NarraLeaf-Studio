@@ -263,6 +263,8 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
             redo: () => void | Promise<void>;
             /** Reclaim anything the entry held once it can never run again; see `HistoryEntry.dispose`. */
             dispose?: () => void;
+            /** The family the entry belongs to, for {@link dropTagged}. */
+            tag?: string;
         },
     ): boolean {
         if (this.suppressionDepth > 0) {
@@ -280,9 +282,23 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
                 mergeKey: request.mergeKey,
                 now: Date.now(),
                 dispose: request.dispose,
+                tag: request.tag,
             }),
             request,
         );
+    }
+
+    /**
+     * Drop one family's command entries from a stack, keeping everything else on it.
+     *
+     * For a stack several owners share - the project's - when one owner's steps stop being safe to
+     * take back and the others' do not.
+     */
+    public dropTagged(scopeId: HistoryScopeId, tag: string): void {
+        const stack = this.stacks.get(scopeId);
+        if (stack && stack.dropWhere(entry => entry.tag === tag) > 0) {
+            this.events.emit("changed", { scopeId, cause: "clear" });
+        }
     }
 
     /**

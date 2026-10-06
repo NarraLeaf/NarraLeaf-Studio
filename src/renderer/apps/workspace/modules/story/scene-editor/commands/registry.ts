@@ -358,6 +358,23 @@ export function suggestCommandDef(token: string): StoryCommandDef | null {
 }
 
 /**
+ * The command a word is already a spelling of, in any locale: canonical token, English alias, spec
+ * id, or any language's label. `null` when the word belongs to no command.
+ *
+ * Wider than {@link getCommandDef}, which only reads the active command language, because the
+ * question here is whether a word is free for the author to claim for themselves (a personal
+ * abbreviation), and a word another locale already spells a command with is not: the day the author
+ * switches the command language, that word would start meaning the built-in command instead.
+ */
+export function commandOwningSpelling(word: string): StoryCommandDef | null {
+    const folded = word.trim().toLowerCase();
+    if (!folded) {
+        return null;
+    }
+    return getCommandDef(folded) ?? commandHints().spellings.get(folded) ?? null;
+}
+
+/**
  * Whether a description uses this word - as a word, where the script has words.
  *
  * A boundary check for a token written in letters and digits, so `set` does not match inside

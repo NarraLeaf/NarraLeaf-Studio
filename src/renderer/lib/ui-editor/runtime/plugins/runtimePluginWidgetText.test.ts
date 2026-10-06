@@ -59,6 +59,7 @@ async function loadBadgePlugin(
         externalLinks: [],
         network: [],
         widgetText: widgetText ? { [type]: widgetText } : {},
+        structs: [],
     } as NormalizedPluginManifestV2["contributes"];
     if (!widgetText) {
         // As a manifest packed by a Studio from before the declaration existed.

@@ -1,7 +1,7 @@
-import fs from "fs";
 import fsPromises from "fs/promises";
 import { parseZipIndex, readEntryBytes } from "../mobile/zipModel";
-import { writeZip, type ZipOutput, type ZipWriteEntry } from "../mobile/zipWriter";
+import type { ZipOutput } from "../mobile/zipWriter";
+import { writeParallelZip, type ArchiveItem } from "../parallelZip";
 import type { BundleEntry, BundleTree } from "../macBundle/bundleTree";
 
 /**
@@ -79,39 +79,29 @@ export class FileZipOutput implements ZipOutput {
 
 /**
  * Write a tree as a zip: paths in sorted order, so a parent directory always precedes what it holds
- * and identical trees make identical archives. Large payload files stream from disk.
+ * and identical trees make identical archives. Large payload files stream from disk, and every file
+ * is compressed on all cores (see parallelZip).
  */
 export async function writeTreeAsZip(tree: BundleTree, file: string, mtime: Date): Promise<void> {
     const output = await FileZipOutput.create(file);
     try {
         const paths = [...tree.keys()].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-        const entries = paths.map(path => zipEntryFor(path, tree.get(path) as BundleEntry));
-        await writeZip(output, entries, { mtime, allowZip64: true });
+        const items = paths.map(path => archiveItemFor(path, tree.get(path) as BundleEntry));
+        await writeParallelZip(output, items, { mtime });
     } finally {
         await output.close();
     }
 }
 
-function zipEntryFor(path: string, entry: BundleEntry): ZipWriteEntry {
+function archiveItemFor(path: string, entry: BundleEntry): ArchiveItem {
     switch (entry.kind) {
         case "directory":
-            return { name: `${path}/`, source: null, unixMode: entry.mode };
+            return { kind: "directory", name: `${path}/`, mode: entry.mode };
         case "symlink":
-            return {
-                name: path,
-                source: { kind: "buffer", data: Buffer.from(entry.target, "utf8") },
-                unixMode: entry.mode,
-                symlink: true,
-            };
+            return { kind: "symlink", name: path, target: entry.target, mode: entry.mode };
         case "file":
-            // Deflated whatever the extension says: the archive is a download, not something read in
-            // place, and the bulk of it is machine code that compresses well.
-            return { name: path, source: { kind: "buffer", data: entry.data }, unixMode: entry.mode, method: "deflate" };
+            return { kind: "file", name: path, mode: entry.mode, content: { kind: "memory", data: entry.data } };
         case "diskFile":
-            return {
-                name: path,
-                source: { kind: "stream", size: entry.size, open: () => fs.createReadStream(entry.path) },
-                unixMode: entry.mode,
-            };
+            return { kind: "file", name: path, mode: entry.mode, content: { kind: "disk", path: entry.path, size: entry.size } };
     }
 }

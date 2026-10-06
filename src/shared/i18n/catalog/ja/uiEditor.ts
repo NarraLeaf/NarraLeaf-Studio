@@ -34,6 +34,7 @@ export const uiEditor = {
         nvl: "全画面のノベルモードの履歴",
     },
     panel: {
+        interfaces: "インターフェース",
         interfaceType: "インターフェースの種類",
         createPage: "ページを作成",
         createGameUi: "ゲーム UI を作成",
@@ -70,6 +71,15 @@ export const uiEditor = {
     history: {
         moveSurface: "インターフェース {name} の移動",
         setEntryPage: "入口ページ {name} の設定",
+        createComponent: "コンポーネント {name} の作成",
+        duplicateComponent: "コンポーネント {name} の複製",
+        duplicateComponents: "{count} 個のコンポーネントの複製",
+        deleteComponent: "コンポーネント {name} の削除",
+        deleteComponents: "{count} 個のコンポーネントの削除",
+        importSurface: "インターフェース {name} の追加",
+        importSurfaces: "{count} 個のインターフェースの追加",
+        importComponent: "コンポーネント {name} の追加",
+        importComponents: "{count} 個のコンポーネントの追加",
     },
     inputActions: {
         title: "入力アクション",
@@ -104,6 +114,7 @@ export const uiEditor = {
             trackpad: "トラックパッド",
             touch: "タッチスクリーン",
             key: "キーボード",
+            gamepad: "ゲームパッド",
         },
         gesture: {
             click: "クリック",
@@ -168,6 +179,7 @@ export const uiEditor = {
         wordsFromRowField: "この文字はリスト行の項目「{field}」から来る",
         wordsFromBlueprintValue: "この文字はブループリント値「{name}」で決まる",
         wordsFromComponentParam: "この文字はコンポーネントのパラメータ「{param}」から来る。値は置いたものごとに設定する",
+        wordsFromPageParam: "この文字はページのパラメータ「{param}」から来る。ページを開くときに渡される",
     },
     editor: {
         componentNotFound: "コンポーネントが見つからない",
@@ -179,6 +191,9 @@ export const uiEditor = {
         selectTool: "選択ツール",
         panTool: "キャンバスを動かす",
         openInDevMode: "このインターフェースを開発モードで開く",
+        showInLivePreview: "このインターフェースを実況プレビューで見る",
+        livePreviewShowsNoNotifications: "実況プレビューには通知は表示されない",
+        livePreviewNoRow: "このインターフェースを表示する行がストーリーにない",
         componentDefinitionHint: "コンポーネントは定義として編集する",
         bindElement: "要素を結びつける",
         bindSelectHint: "このサーフェス上で要素を 1 つ選ぶ",
@@ -206,6 +221,11 @@ export const uiEditor = {
         canvasLayout: "キャンバスの基準線（端と中心）",
         elementBorders: "要素の枠（端と端）",
         elementLayout: "要素の配置（中心どうし）",
+        grid: "グリッド",
+        gridStyle: "グリッドの表示",
+        gridLines: "線",
+        gridDots: "点",
+        gridSize: "グリッドの間隔",
     },
     contextMenu: {
         pasteIntoContainer: "コンテナの中に貼り付け",
@@ -257,6 +277,12 @@ export const uiEditor = {
             bottom: "下",
             left: "左",
         },
+    },
+    reference: {
+        label: "ゲーム UI の参照",
+        heading: "ほかのゲーム UI",
+        none: "このプロジェクトにはほかのゲーム UI がない",
+        sizeDiffers: "サイズが異なる：{name} {width}×{height}",
     },
     crossProject: {
         pasted: {

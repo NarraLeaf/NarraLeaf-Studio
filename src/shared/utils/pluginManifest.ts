@@ -27,8 +27,10 @@ import {
     type PluginManifestV2,
     type PluginSidecarContribution,
     type PluginSidecarTargetContribution,
+    type PluginStructContribution,
     type PluginWidgetTextContribution,
 } from "../types/plugins";
+import { UI_STRUCT_FIELD_TYPES, type UIStructFieldType } from "../types/ui-editor/struct";
 
 export type PluginManifestValidationResult =
     | { ok: true; manifest: NormalizedPluginManifestV2 }
@@ -283,6 +285,7 @@ const CONTRIBUTES_KEYS = [
     "externalLinks",
     "network",
     "widgetText",
+    "structs",
 ] as const;
 
 /**
@@ -358,6 +361,7 @@ function validateContributes(value: unknown, pluginId: string): Required<PluginC
         externalLinks: [],
         network: [],
         widgetText: {},
+        structs: [],
     };
     if (value === undefined) {
         return empty;
@@ -455,6 +459,14 @@ function validateContributes(value: unknown, pluginId: string): Required<PluginC
             return patterns;
         }
         result.network = patterns;
+    }
+
+    if (value.structs !== undefined) {
+        const structs = validateStructContributions(value.structs, pluginId);
+        if (typeof structs === "string") {
+            return structs;
+        }
+        result.structs = structs;
     }
 
     if (value.widgetText !== undefined) {
@@ -1244,4 +1256,66 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function invalid(error: string): PluginManifestValidationResult {
     return { ok: false, error };
+}
+
+/**
+ * `contributes.structs`: the row shapes a plugin's nodes hand out.
+ *
+ * Ids are namespaced like every other contribution, so two plugins cannot name one shape; a field
+ * needs a key and one of the field types a list understands, and no key twice, because a field is
+ * found by its key.
+ */
+function validateStructContributions(value: unknown, pluginId: string): PluginStructContribution[] | string {
+    if (!Array.isArray(value)) {
+        return "Plugin contributes.structs must be an array";
+    }
+    const out: PluginStructContribution[] = [];
+    for (const entry of value) {
+        if (!isRecord(entry)) {
+            return "Plugin contributes.structs entries must be objects";
+        }
+        const id = typeof entry.id === "string" ? entry.id.trim() : "";
+        if (!id.startsWith(`${pluginId}.`)) {
+            return `Contributed struct must be prefixed with the plugin id: ${id || "(no id)"}`;
+        }
+        if (out.some(struct => struct.id === id)) {
+            return `Contributed struct is declared twice: ${id}`;
+        }
+        const name = typeof entry.name === "string" ? entry.name.trim() : "";
+        if (!name) {
+            return `Contributed struct ${id} needs a name`;
+        }
+        if (!Array.isArray(entry.fields) || entry.fields.length === 0) {
+            return `Contributed struct ${id} needs at least one field`;
+        }
+        const fields: PluginStructContribution["fields"] = [];
+        for (const field of entry.fields) {
+            const key = isRecord(field) && typeof field.key === "string" ? field.key.trim() : "";
+            const type = isRecord(field) ? field.type : undefined;
+            if (!key) {
+                return `Contributed struct ${id} has a field with no key`;
+            }
+            if (!(UI_STRUCT_FIELD_TYPES as readonly unknown[]).includes(type)) {
+                return `Contributed struct ${id} field ${key} has an unsupported type: ${String(type)}`;
+            }
+            if (fields.some(existing => existing.key === key)) {
+                return `Contributed struct ${id} declares field ${key} twice`;
+            }
+            fields.push({ key, type: type as UIStructFieldType });
+        }
+        const localized: Record<string, string> = {};
+        if (entry.localized !== undefined) {
+            if (!isRecord(entry.localized)) {
+                return `Contributed struct ${id} localized names must be an object`;
+            }
+            for (const [locale, text] of Object.entries(entry.localized)) {
+                if (!LOCALE_CODE_PATTERN.test(locale) || typeof text !== "string" || !text.trim()) {
+                    return `Contributed struct ${id} has an invalid localized name: ${locale}`;
+                }
+                localized[locale] = text.trim();
+            }
+        }
+        out.push({ id, name, ...(Object.keys(localized).length > 0 ? { localized } : {}), fields });
+    }
+    return out;
 }

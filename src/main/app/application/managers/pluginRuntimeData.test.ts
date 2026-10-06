@@ -28,6 +28,7 @@ function manifest(runtimeData: string[]): NormalizedPluginManifestV2 {
             externalLinks: [],
             network: [],
             widgetText: {},
+            structs: [],
         },
         permissions: [],
     };

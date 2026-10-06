@@ -1,6 +1,7 @@
 import { actionTrigger, toCanonicalCommandLine } from "./commandTrigger";
 import { getCommandDef, localizedCommandToken } from "./commands/registry";
 import { parseCommandLine } from "./storyCommandParser";
+import { abbreviatedCommand, type StoryCommandAbbreviations } from "./storyCommandAbbreviations";
 
 /**
  * Re-spell a line's verb in the command language, as it is typed.
@@ -62,7 +63,56 @@ export function localizeCommandVerb(value: string, caret: number, aliasEnabled: 
     if (getCommandDef(spelled)?.commandId !== line.def.commandId) {
         return null;
     }
+    return respell(value, caret, line.tokenSpan, spelled);
+}
+
+/**
+ * The line with an abbreviated verb replaced by the command's own spelling, or `null` when the verb
+ * is not one of the author's abbreviations (or not finished yet).
+ *
+ * The spelling written is the one {@link localizeCommandVerb} would settle on - `localizedCommandToken`
+ * - so `/c` lands as `/外观` in a Chinese command language and as `/char` in an English one, and the
+ * line reads exactly as if the author had picked the command from the menu.
+ *
+ * **Finished** means the caret has left the word: the space after `/c` while typing, or a click or
+ * arrow elsewhere before a later edit. A caret still at the end of the word is an author who may be
+ * typing `/cut`, and taking `/c` out from under them would make every command that starts with the
+ * abbreviation unreachable. `settle` drops that condition for the commit path, where the line is
+ * landing as it stands and nothing more is coming.
+ */
+export function expandCommandAbbreviation(
+    value: string,
+    caret: number,
+    aliasEnabled: boolean,
+    abbreviations: StoryCommandAbbreviations,
+    settle = false,
+): RespelledCommandLine | null {
+    if (abbreviations.size === 0 || actionTrigger(value, aliasEnabled) === null) {
+        return null;
+    }
+    const line = parseCommandLine(toCanonicalCommandLine(value, aliasEnabled));
+    // A verb the parser already resolves is never an abbreviation: built-in spellings always win.
+    if (line.kind !== "command" || !line.token || line.def) {
+        return null;
+    }
+    const def = abbreviatedCommand(line.token, abbreviations);
+    if (!def) {
+        return null;
+    }
     const { start, end } = line.tokenSpan;
+    if (!settle && caret >= start && caret <= end) {
+        return null;
+    }
+    const spelled = localizedCommandToken(def);
+    if (getCommandDef(spelled)?.commandId !== def.commandId) {
+        return null;
+    }
+    return respell(value, caret, line.tokenSpan, spelled);
+}
+
+/** Replace the verb at `span` with `spelled`, carrying the caret across the change. */
+function respell(value: string, caret: number, span: { start: number; end: number }, spelled: string): RespelledCommandLine {
+    const { start, end } = span;
     return {
         value: value.slice(0, start) + spelled + value.slice(end),
         // A caret inside the word just replaced lands after it - there is no character-for-character

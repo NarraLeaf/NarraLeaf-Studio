@@ -80,7 +80,8 @@ import type { SearchJumpTarget } from "../search/searchIndexModel";
  */
 
 /** Which kind of document holds the reference — drives grouping and the icon in the UI. */
-export type ReferenceSiteKind = "story" | "blueprint" | "uiElement" | "voice" | "character" | "design" | "plugin";
+export type ReferenceSiteKind = "story" | "blueprint" | "uiElement" | "voice" | "character" | "design"
+    | "projectSettings" | "plugin";
 
 export interface AssetReference {
     /** Stable unique id (React key, and the dedupe key when slices are merged). */
@@ -104,7 +105,7 @@ export interface AssetReference {
 
 /** The slices the index is assembled from; a gap names the one it came from. */
 export type ReferenceSliceKind = "story" | "storyAnimation" | "blueprint" | "ui" | "voice" | "character"
-    | "design" | "plugin";
+    | "design" | "projectSettings" | "plugin";
 
 /**
  * Why one site could not be turned into a reference.
@@ -270,6 +271,34 @@ export function extractProjectFontReferences(
         });
     });
     return references;
+}
+
+/** Project ▸ Settings, scrolled to the letterbox: where its picture is chosen. */
+export const PROJECT_LETTERBOX_TARGET: SearchJumpTarget = { kind: "projectPage", page: "settings", part: "letterbox" };
+
+/**
+ * The project's letterbox picture, as a reference.
+ *
+ * A slice of its own for the reason the font stack is one: it lives in `.nlproj`, outside every
+ * document the other slices walk, and a picture drawn around every screen of the game would
+ * otherwise read as unused - offered for deletion by the project check, and deleted without a word.
+ */
+export function extractLetterboxReferences(
+    letterbox: { image: { assetId: string } | null },
+    label: string,
+): AssetReference[] {
+    const assetId = letterbox.image?.assetId.trim() ?? "";
+    if (!isLibraryAssetId(assetId)) {
+        return [];
+    }
+    return [{
+        id: `projectSettings:letterbox:${assetId}`,
+        assetId,
+        kind: "projectSettings",
+        label,
+        field: "letterbox.image",
+        target: PROJECT_LETTERBOX_TARGET,
+    }];
 }
 
 /** Group references by asset id — the shape the panel queries. */

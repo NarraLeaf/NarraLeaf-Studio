@@ -34,6 +34,11 @@ export type SurfaceWarmupSource = {
     uidoc: UIDocument;
     /** The project's default font stack, which no widget names and every text widget inherits. */
     fontAssetIds: readonly string[];
+    /**
+     * The letterbox picture, which no surface names and which is on screen with the first one -
+     * beside it, on any screen of another shape. Absent reads as none.
+     */
+    letterboxAssetIds?: readonly string[];
     manifestIds: Set<string> | null;
     /**
      * The blueprints the interface runs, whose graphs name assets the UI document never mentions.
@@ -204,6 +209,13 @@ function collectProjectFontAssetIds(ctx: CollectContext, fontAssetIds: readonly 
     }
 }
 
+/** The letterbox picture: drawn around every screen, so it leads like the fonts do. */
+function collectLetterboxAssetIds(ctx: CollectContext, letterboxAssetIds: readonly string[] | undefined): void {
+    for (const assetId of letterboxAssetIds ?? []) {
+        addAssetId(ctx, assetId);
+    }
+}
+
 function collectSurfaceAssetIds(ctx: CollectContext, surfaceId: string): void {
     if (ctx.visitedSurfaces.has(surfaceId)) {
         return;
@@ -234,6 +246,7 @@ function newContext(source: SurfaceWarmupSource): CollectContext {
 export function collectSurfaceWarmupAssetIds(source: SurfaceWarmupSource, surfaceId: string): string[] {
     const ctx = newContext(source);
     collectProjectFontAssetIds(ctx, source.fontAssetIds);
+    collectLetterboxAssetIds(ctx, source.letterboxAssetIds);
     collectSurfaceAssetIds(ctx, surfaceId);
     return [...ctx.assetIds];
 }
@@ -246,6 +259,7 @@ export function collectWarmupAssetIds(source: SurfaceWarmupSource, firstSurfaceI
     const firstSurfaceAssetIds = collectSurfaceWarmupAssetIds(source, firstSurfaceId);
     const ctx = newContext(source);
     collectProjectFontAssetIds(ctx, source.fontAssetIds);
+    collectLetterboxAssetIds(ctx, source.letterboxAssetIds);
     for (const surface of source.uidoc.surfaces) {
         collectSurfaceAssetIds(ctx, surface.id);
     }

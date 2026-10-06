@@ -37,7 +37,10 @@ type MountOptions = {
     knownNodeTypes?: readonly string[];
     charactersFail?: boolean;
     /** Records what the service subscribes to, so a rescan trigger can be fired at it. */
-    hooks?: { setsChanged?: () => void; storyLoads?: string[] };
+    hooks?: { setsChanged?: () => void; storyLoads?: string[]; configChanged?: () => void };
+    /** `.nlproj` `app.letterbox`, read through the project service; a holder so a test can change it. */
+    letterbox?: { value: unknown };
+    projectConfigFails?: boolean;
     /** The project's default font stack, which is a reference site like any other. */
     projectFonts?: ReadonlyArray<{ assetId: string }>;
     designFails?: boolean;
@@ -163,6 +166,21 @@ function mount(options: MountOptions = {}): ReferenceService {
                                 return [];
                             },
                             subscribe: noop,
+                        };
+                    case Services.Project:
+                        return {
+                            getProjectConfig: () => {
+                                if (options.projectConfigFails) {
+                                    throw new Error("the project file is unreadable");
+                                }
+                                return { app: { letterbox: options.letterbox?.value } };
+                            },
+                            onConfigChanged: (handler: () => void) => {
+                                if (options.hooks) {
+                                    options.hooks.configChanged = handler;
+                                }
+                                return () => { };
+                            },
                         };
                     case Services.Brand:
                         return {
@@ -385,6 +403,62 @@ describe("the project design slice", () => {
                 affects: ["font"],
                 target: { kind: "projectPage", page: "design", part: "fonts" },
             },
+        ]);
+    });
+});
+
+/**
+ * The letterbox picture is named in `.nlproj` and nowhere else, so this slice is the only thing that
+ * stops the project check calling a picture drawn around every screen unused.
+ */
+describe("the project settings slice", () => {
+    const PICTURE = "6f0e8f7c-1d2b-4c3a-9e8f-7a6b5c4d3e2f";
+
+    it("reports the letterbox picture as a reference, pointing at the setting", async () => {
+        const service = mount({ letterbox: { value: { color: "#000000", image: { assetId: PICTURE, fillMode: "cover" } } } });
+        await service.ensureReady();
+
+        expect(service.getReferences(PICTURE)).toEqual([
+            expect.objectContaining({
+                assetId: PICTURE,
+                kind: "projectSettings",
+                field: "letterbox.image",
+                target: { kind: "projectPage", page: "settings", part: "letterbox" },
+            }),
+        ]);
+        expect(service.getIndexResult().complete).toBe(true);
+    });
+
+    it("follows the setting when the project file changes", async () => {
+        vi.useFakeTimers();
+        try {
+            const letterbox = { value: { color: "#000000", image: { assetId: PICTURE, fillMode: "cover" } } as unknown };
+            const hooks: { configChanged?: () => void } = {};
+            const service = mount({ letterbox, hooks });
+            await service.ensureReady();
+            expect(service.isReferenced(PICTURE)).toBe(true);
+
+            letterbox.value = { color: "#000000", image: null };
+            hooks.configChanged?.();
+            await vi.runAllTimersAsync();
+
+            expect(service.isReferenced(PICTURE)).toBe(false);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("reports a gap - narrowed to images - when the project file will not read", async () => {
+        const service = mount({ projectConfigFails: true });
+        await service.ensureReady();
+
+        expect(service.getIndexResult().gaps).toEqual([
+            expect.objectContaining({
+                reason: "sliceFailed",
+                slice: "projectSettings",
+                affects: ["image"],
+                target: { kind: "projectPage", page: "settings", part: "letterbox" },
+            }),
         ]);
     });
 });

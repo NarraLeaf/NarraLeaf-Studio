@@ -9,6 +9,7 @@ import {
 import type { SpellcheckRegistryEntry, SpellcheckRegistryIndex } from "@shared/types/spellcheckRegistry";
 import { resolveDownloadSource } from "@shared/utils/downloadSource";
 import { applyDownloadRewrite } from "../downloadRewrites";
+import { studioFetch } from "../downloadProxy";
 
 /**
  * Read-only client for the dictionary registry.
@@ -36,7 +37,7 @@ async function fetchWithTimeout(url: string): Promise<Response> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), SPELLCHECK_REGISTRY_FETCH_TIMEOUT_MS);
     try {
-        return await fetch(applyDownloadRewrite(url), { redirect: "follow", signal: controller.signal });
+        return await studioFetch(applyDownloadRewrite(url), { redirect: "follow", signal: controller.signal });
     } finally {
         clearTimeout(timer);
     }

@@ -1205,8 +1205,8 @@ export class LiveSession {
         // snapshot of a document only this author ever had, and one applied after the session would
         // put the scene back as it was before anybody else joined.
         this.deps.history.forgetStoryScenes(input.storyId);
-        // And every interface stack, for the same reason one document along: they hold whole-Surface
-        // and whole-blueprint snapshots of a document only this author ever had.
+        // And every interface stack, for the same reason one document along: they hold whole-Surface,
+        // whole-definition and whole-blueprint snapshots of a document only this author ever had.
         this.deps.history.forgetInterfaceEditors();
         // Flushes what is owed first, then refuses everything but this session's story document.
         // Every story into memory before anything is frozen or applied. A machine that never opened

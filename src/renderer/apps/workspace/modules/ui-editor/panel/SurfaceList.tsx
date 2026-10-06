@@ -28,6 +28,16 @@ import {
 /** The frame round every preview; its height is the layout's, set by the frame itself. */
 const PREVIEW_FRAME_CLASS = "overflow-hidden rounded-md border border-edge bg-surface-canvas";
 
+/**
+ * The list's own scroller, and the box its width is measured from.
+ *
+ * It takes what the Interfaces section has left under the switch and the create row, and nothing
+ * else: the section's height is the rail's to give (see `SectionStack`), and the floor that keeps a
+ * row of cards in view is the section's minimum. `overscroll-contain`, so a wheel that reaches the
+ * end of the list stops there instead of moving whatever is around it.
+ */
+const LIST_SCROLLER_CLASS = "min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2";
+
 type SurfaceListProps = {
     surfaces: UISurface[];
     /** The page the game starts on, which its card says. Resolved by the caller from the document. */
@@ -430,7 +440,7 @@ export function SurfaceList({
     // button is the row directly above this pane (SurfaceActions), so two lines saying there are no
     // pages and to press that button are the button described rather than offered.
     if (surfaces.length === 0 && !globalBlueprintCard) {
-        return <div ref={attachList} data-surface-list="" className="min-h-64 flex-1 overflow-y-auto px-2 py-2" />;
+        return <div ref={attachList} data-surface-list="" className={LIST_SCROLLER_CLASS} />;
     }
 
     const gridStyle: CSSProperties | undefined =
@@ -438,12 +448,10 @@ export function SurfaceList({
             ? { gridTemplateColumns: `repeat(${layout.columns}, minmax(0, 1fr))`, gap: SURFACE_LIST_GAP }
             : { gap: SURFACE_LIST_GAP };
 
-    // The floor is there because this list is what the panel is for: the component and input-action
-    // sections below it shrink before it does, and it keeps a card's worth of height even when they
-    // have nothing left to give. The grid is a box inside the scroller rather than the scroller
-    // itself, so the rows it adds grow the scroll height instead of being squeezed into the floor.
+    // The grid is a box inside the scroller rather than the scroller itself, so the rows it adds grow
+    // the scroll height instead of being squeezed into the height the section gives the list.
     return (
-        <div ref={attachList} data-surface-list={layout.mode} className="min-h-64 flex-1 overflow-y-auto px-2 py-2">
+        <div ref={attachList} data-surface-list={layout.mode} className={LIST_SCROLLER_CLASS}>
             <div className={layout.mode === "tiles" ? "grid content-start" : "flex flex-col"} style={gridStyle}>
                 {globalBlueprintCard ? (
                     <button

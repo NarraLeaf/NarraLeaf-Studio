@@ -39,3 +39,23 @@ const FACTORY_STORY_BLUEPRINT_NAMES: ReadonlySet<string> = new Set(["Story Actio
 export function isFactoryStoryBlueprintName(name: string | undefined): boolean {
     return name !== undefined && FACTORY_STORY_BLUEPRINT_NAMES.has(name);
 }
+
+/**
+ * The layers Studio seeds, by layer id: a Blueprint Value's `init` layer and a story blueprint's
+ * `onCall` layer, each named after the event that starts it.
+ *
+ * Stored English for the reason the factory blueprint names above are, so a surface that names a
+ * layer shows that event's own title instead - the words the event's card on the canvas already
+ * uses - for as long as the layer still has the name it was created with. A layer an author renamed,
+ * or one of their own that happens to share the id, keeps its name.
+ */
+const FACTORY_LAYER_NAMES: Readonly<Record<string, { name: string; key: TranslationKey }>> = {
+    init: { name: "Init", key: "blueprint.node.init" },
+    onCall: { name: "On Call", key: "blueprint.node.onCall" },
+};
+
+/** The key a seeded layer's name is shown with, or undefined for a name an author gave it. */
+export function factoryLayerNameKey(layerId: string, name: string | undefined): TranslationKey | undefined {
+    const factory = Object.prototype.hasOwnProperty.call(FACTORY_LAYER_NAMES, layerId) ? FACTORY_LAYER_NAMES[layerId] : undefined;
+    return factory && factory.name === name ? factory.key : undefined;
+}

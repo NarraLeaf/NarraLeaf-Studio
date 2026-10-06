@@ -127,7 +127,10 @@ import {
     BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE_OPTIONS,
     BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SIZE,
     BLUEPRINT_NODE_TYPE_INPUT_GET_DEVICE,
+    BLUEPRINT_NODE_TYPE_INPUT_GET_GAMEPAD_AXIS,
     BLUEPRINT_NODE_TYPE_INPUT_IS_ACTION_HELD,
+    BLUEPRINT_NODE_TYPE_INPUT_IS_GAMEPAD_BUTTON_HELD,
+    BLUEPRINT_NODE_TYPE_INPUT_IS_GAMEPAD_CONNECTED,
     BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
     BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
     BLUEPRINT_NODE_TYPE_LAYER_IS_MOUNTED,
@@ -227,6 +230,8 @@ import {
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_AT,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_COUNT,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
+    BLUEPRINT_NODE_PARAM_FIELD,
+    BLUEPRINT_NODE_PARAM_FIELD_STRUCT,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_INDEX,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_KEY,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS,
@@ -393,9 +398,12 @@ import type { BlueprintInputActionHostApi } from "./inputActionNodes";
 import type { BehaviorGraphValueExecution, BehaviorNodeExecutionContext } from "../../behavior-graph/BehaviorNodeRegistry";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import { findItemIndexByField, readUIStructFieldValue } from "@shared/types/ui-editor/struct";
+import { coerceUIPageParamValue, getActiveUIPageParam, uiPageParamDefaultValue } from "@shared/types/ui-editor/pageParams";
+import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { blueprintNodeRegistry } from "../BlueprintNodeRegistry";
 import {
+    BLUEPRINT_FIELD_READER_INPUT_PIN,
     readDynamicInputPinIds,
     readDynamicInputPinLabels,
     resolveEffectiveBlueprintNodePins,
@@ -1572,8 +1580,34 @@ function resolveFrameNodeOutput(
     if (!api) {
         return undefined;
     }
+    const paramId = String(params.paramId ?? "").trim();
+    if (paramId) {
+        return readPickedPageParam(paramId, api, runtime);
+    }
     const key = toBlueprintString(resolveInput(graph, nodeId, "key", params, blueprintLocals, depth, runtime)).trim();
     return key ? api.frame.getParam(key) : null;
+}
+
+/**
+ * `Get Page Param` with a parameter picked: the value under the parameter's current name, in its
+ * declared type, or its default when the page was given nothing for it.
+ *
+ * The page is the one this host draws - whose props `frame.getParam` reads - rather than the
+ * graph's owner record, so a page drawn inside a Page widget reads the widget's values. A parameter
+ * the page no longer declares reads as null; the canvas and the project check say which one.
+ */
+function readPickedPageParam(
+    paramId: string,
+    api: NonNullable<NonNullable<UIHostAdapter["blueprintRuntime"]>["hostApi"]>,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    const surfaceId = runtime?.hostAdapter?.blueprintRuntime?.surfaceId ?? runtime?.executionOwner?.surfaceId;
+    const param = getActiveUIPageParam(surfaceId, paramId);
+    if (!param) {
+        return null;
+    }
+    const value = api.frame.getParam(param.name);
+    return value === null || value === undefined ? uiPageParamDefaultValue(param) : coerceUIPageParamValue(param.type, value);
 }
 
 /**
@@ -1984,6 +2018,24 @@ function resolveInputActionNodeOutput(
         const device = hostApi?.input?.getDevice?.();
         return device ? String(device) : "pointer";
     }
+    if (nodeType === BLUEPRINT_NODE_TYPE_INPUT_IS_GAMEPAD_CONNECTED && portId === "connected") {
+        return hostApi?.input?.isGamepadConnected?.() === true;
+    }
+    if (nodeType === BLUEPRINT_NODE_TYPE_INPUT_IS_GAMEPAD_BUTTON_HELD && portId === "held") {
+        const button = String(params.button ?? "").trim();
+        if (!button) {
+            return false;
+        }
+        return hostApi?.input?.isGamepadButtonHeld?.(button) === true;
+    }
+    if (nodeType === BLUEPRINT_NODE_TYPE_INPUT_GET_GAMEPAD_AXIS && portId === "value") {
+        const axis = String(params.axis ?? "").trim();
+        if (!axis) {
+            return 0;
+        }
+        const value = hostApi?.input?.getGamepadAxis?.(axis);
+        return typeof value === "number" && Number.isFinite(value) ? value : 0;
+    }
     if (nodeType !== BLUEPRINT_NODE_TYPE_INPUT_IS_ACTION_HELD || portId !== "held") {
         return undefined;
     }
@@ -2183,6 +2235,17 @@ function resolveElementTextNodeOutput(
     return undefined;
 }
 
+/**
+ * A widget's size as the Vector2D its pins declare: `x` is the width and `y` the height.
+ *
+ * The host reports `{ width, height }`, and handed on as it was, a Vector2D reader such as Break
+ * Vector2D read neither key and answered 0 by 0. The two named keys stay alongside, so a graph that
+ * read the size by name through Get JSON Field before this keeps reading the same numbers.
+ */
+function displayableSizeValue(size: { width: number; height: number }): Record<string, number> {
+    return { x: size.width, y: size.height, width: size.width, height: size.height };
+}
+
 function resolveElementDisplayableNodeOutput(
     graph: DataPinGraph,
     nodeId: string,
@@ -2219,7 +2282,7 @@ function resolveElementDisplayableNodeOutput(
     if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_SIZE && portId === "size") {
         trackElementDependency(runtime, ref, "layout.width");
         trackElementDependency(runtime, ref, "layout.height");
-        return props.size;
+        return displayableSizeValue(props.size);
     }
     if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_BOUNDS && portId === "bounds") {
         trackElementDependency(runtime, ref, "layout.x");
@@ -2264,7 +2327,7 @@ function resolveElementDisplayableNodeOutput(
             case "size":
                 trackElementDependency(runtime, ref, "layout.width");
                 trackElementDependency(runtime, ref, "layout.height");
-                return props.size;
+                return displayableSizeValue(props.size);
             case "bounds":
                 trackElementDependency(runtime, ref, "layout.x");
                 trackElementDependency(runtime, ref, "layout.y");
@@ -2332,7 +2395,7 @@ function resolveSelfDisplayableNodeOutput(
         return props.position;
     }
     if (type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_SIZE && portId === "size") {
-        return props.size;
+        return displayableSizeValue(props.size);
     }
     if (type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS && portId === "bounds") {
         return props.bounds;
@@ -2369,7 +2432,7 @@ function resolveSelfDisplayableNodeOutput(
             case "position":
                 return props.position;
             case "size":
-                return props.size;
+                return displayableSizeValue(props.size);
             case "bounds":
                 return props.bounds;
             case "x":
@@ -3382,10 +3445,42 @@ function resolveSelfOutput(
         return runtime?.listItemScope?.key ?? "";
     }
     if (selfNode.type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD && portId === "value") {
-        // Read off the scope, not the list: the row being drawn is the whole context this node has,
-        // and it already carries the shape the list resolved for its own columns.
+        const fieldId = typeof selfNode.params?.[BLUEPRINT_NODE_PARAM_FIELD] === "string"
+            ? selfNode.params[BLUEPRINT_NODE_PARAM_FIELD]
+            : "";
+        const wired = graph.edges?.some(edge => edge.to.nodeId === nodeId && edge.to.port === BLUEPRINT_FIELD_READER_INPUT_PIN);
+        if (wired) {
+            const object = resolveDataPinValue(graph, nodeId, BLUEPRINT_FIELD_READER_INPUT_PIN, params, blueprintLocals, depth + 1, runtime);
+            // The engine's own shapes resolve here without a document; a list's own shape comes from
+            // the document the surface runs, or from the row in scope when it is that row's shape.
+            // The engine's field ids are their keys (`builtinStructs.ts`), which is also what makes
+            // the fallback below exact for them: a shape nothing here knows is read by the id the
+            // field was stored under.
+            const structId = typeof selfNode.params?.[BLUEPRINT_NODE_PARAM_FIELD_STRUCT] === "string"
+                ? selfNode.params[BLUEPRINT_NODE_PARAM_FIELD_STRUCT]
+                : null;
+            const struct = structId
+                ? resolveUIStruct(null, structId)
+                    ?? (runtime?.listItemScope?.struct?.id === structId ? runtime.listItemScope.struct : null)
+                    ?? runtime?.hostAdapter?.blueprintRuntime?.resolveStruct?.(structId)
+                    ?? null
+                : null;
+            const value = struct
+                ? readUIStructFieldValue(struct, fieldId, object)
+                : object && typeof object === "object" && !Array.isArray(object)
+                    ? (object as Record<string, unknown>)[fieldId]
+                    : undefined;
+            return value === undefined ? null : value;
+        }
+        // Pointed at a shape and since unwired: it reads that shape or nothing, never a row that
+        // happens to be in scope - the editor shows it as unconnected, and it behaves as it shows.
+        if (typeof selfNode.params?.[BLUEPRINT_NODE_PARAM_FIELD_STRUCT] === "string" && selfNode.params[BLUEPRINT_NODE_PARAM_FIELD_STRUCT]) {
+            return null;
+        }
+        // Unwired, the row being drawn is the struct. Read off the scope, not the list: the scope is
+        // the whole context this node has, and it already carries the shape the list resolved for
+        // its own columns.
         const scope = runtime?.listItemScope;
-        const fieldId = typeof selfNode.params?.field === "string" ? selfNode.params.field : "";
         const value = readUIStructFieldValue(scope?.struct ?? null, fieldId, scope?.item);
         return value === undefined ? null : value;
     }

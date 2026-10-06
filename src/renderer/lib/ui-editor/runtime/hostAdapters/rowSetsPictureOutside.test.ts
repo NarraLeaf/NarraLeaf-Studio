@@ -3,7 +3,7 @@
  * list.
  *
  * The gesture a CG screen is built from: `Item Click` reads the pressed row's picture with
- * `Get Item Field` and hands it to `Set Image Asset` on an image beside the list - here one inside a
+ * `Get Field` and hands it to `Set Image Asset` on an image beside the list - here one inside a
  * viewer the same press shows, which is how a viewer is usually built, and one standing on the page.
  * Two things have to be right for it to draw, and neither is visible in the graph: the write has to
  * land on the image the page draws rather than on the pressed row's copy of it, and the row's

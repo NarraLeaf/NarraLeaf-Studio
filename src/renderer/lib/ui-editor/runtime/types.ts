@@ -3,6 +3,7 @@ import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { BlueprintHostApiContractVersion } from "@shared/types/blueprint/hostApi";
 import type { UIDocument, UIComponentId, UISurfaceId, UIStageSlotId } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
+import type { UIStructDef } from "@shared/types/ui-editor/struct";
 import type { UIInputActionEventPayload } from "@shared/types/ui-editor/inputActionEvent";
 import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import type {
@@ -109,6 +110,14 @@ export type UIHostAdapterBlueprintRuntime = {
     dispatchSurfaceInputAction?: (payload: UIInputActionEventPayload) => Promise<void>;
     dispatchBroadcastEvent?: (eventName: string, data: unknown, sender?: string) => Promise<void>;
     getBroadcastListenerCount?: (eventName: string) => number;
+    /**
+     * A shape from the interface document this surface runs, by id; null for one it does not hold.
+     *
+     * What lets Get Field read a row of a list the author shaped: the engine's own shapes resolve
+     * anywhere, and a list's shape lives in the document. Optional because a host with no document to
+     * hand - an editor preview - leaves it out, and Get Field then reads only the engine's shapes.
+     */
+    resolveStruct?: (structId: string) => UIStructDef | null;
     /** Invoke a declared blueprint fn (Call Fn node); awaits the fn body and returns its Fn Return values. */
     invokeBlueprintFn?: (input: {
         fnRef: string;

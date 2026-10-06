@@ -16,6 +16,9 @@ import {
     BLUEPRINT_NODE_TYPE_LOCALIZATION_SET_LANGUAGE,
 } from "@shared/types/blueprint/graph";
 import { parseTranslatedText } from "@shared/utils/localizationText";
+import { blueprintArrayValueType } from "@shared/types/blueprint/valueTypes";
+import { UI_STRUCT_ID_LANGUAGE } from "@shared/types/ui-editor/builtinStructs";
+import { uiStructValueType } from "@shared/types/ui-editor/struct";
 import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef } from "../types";
@@ -336,7 +339,7 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
                 id: "value",
                 kind: "output",
                 semantic: "data",
-                valueType: "any",
+                valueType: blueprintArrayValueType(uiStructValueType(UI_STRUCT_ID_LANGUAGE)),
                 label: "Languages",
             },
         ],

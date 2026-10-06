@@ -751,7 +751,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "玩家按下某一行时运行。回到这一行会撤销它之后的所有内容，所以先用「询问确认」询问；问题和两个答案都是本地化键，由执行线上的三个「获取文本」查出。选择第一个答案时，「从历史恢复」把故事退回到按下的那一行（「获取条目字段」读取该行的 id），再由「返回上一页」关闭本页面。选择第二个答案则记录保持原样。",
+                      "text": "玩家按下某一行时运行。回到这一行会撤销它之后的所有内容，所以先用「询问确认」询问；问题和两个答案都是本地化键，由执行线上的三个「获取文本」查出。选择第一个答案时，「从历史恢复」把故事退回到按下的那一行（「获取字段」读取该行的 id），再由「返回上一页」关闭本页面。选择第二个答案则记录保持原样。",
                       "width": 1100,
                       "height": 130
                     },
@@ -10385,141 +10385,6 @@
         },
         "bindings": {}
       },
-      "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e78": {
-        "id": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e78",
-        "name": "消息",
-        "owner": {
-          "kind": "widgetValue",
-          "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
-          "elementId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e73",
-          "propPath": "text"
-        },
-        "graphs": {
-          "eventIds": [
-            "init"
-          ],
-          "events": {
-            "init": {
-              "id": "init",
-              "name": "显示问题",
-              "graph": {
-                "nodes": {
-                  "note": {
-                    "id": "note",
-                    "type": "blueprint.flow.comment",
-                    "params": {
-                      "text": "「消息」文本绑定到这个蓝图（蓝图值）。「询问确认」打开本页面时，把问题放在页面属性的 message 中：页面出现时「获取页面属性」读取页面属性，「获取 JSON 字段」取出 message，「返回值」把它交给文本。",
-                      "width": 760,
-                      "height": 130
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": -600
-                      }
-                    }
-                  },
-                  "appear": {
-                    "id": "appear",
-                    "type": "blueprint.event.head.init",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": -430
-                      }
-                    }
-                  },
-                  "props": {
-                    "id": "props",
-                    "type": "blueprint.page.getProps",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": -313
-                      }
-                    }
-                  },
-                  "question": {
-                    "id": "question",
-                    "type": "blueprint.data.jsonGet",
-                    "params": {
-                      "__inlineLiteralPins": [
-                        "path"
-                      ],
-                      "path": "message"
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 260,
-                        "y": -313
-                      }
-                    }
-                  },
-                  "give": {
-                    "id": "give",
-                    "type": "blueprint.data.returnValue",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 550,
-                        "y": -430
-                      }
-                    }
-                  }
-                },
-                "edges": [
-                  {
-                    "from": {
-                      "nodeId": "appear",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "give",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "props",
-                      "port": "props"
-                    },
-                    "to": {
-                      "nodeId": "question",
-                      "port": "json"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "question",
-                      "port": "result"
-                    },
-                    "to": {
-                      "nodeId": "give",
-                      "port": "value"
-                    }
-                  }
-                ],
-                "meta": {
-                  "graphKind": "event"
-                }
-              }
-            }
-          },
-          "functionIds": [],
-          "functions": {}
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {},
-        "meta": {
-          "valueType": "string"
-        }
-      },
       "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e77": {
         "id": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e77",
         "name": "按钮组",
@@ -11240,7 +11105,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "「项点击」针对被按下的那一行运行，「获取条目字段」读取该行的自动存档。游戏运行时会先在「确认」页面询问，因为加载会离开玩家正在进行的游戏，只有选择第一个答案才加载该自动存档。没有游戏运行时没有会丢失的进度，直接加载。",
+                      "text": "「项点击」针对被按下的那一行运行，「获取字段」读取该行的自动存档。游戏运行时会先在「确认」页面询问，因为加载会离开玩家正在进行的游戏，只有选择第一个答案才加载该自动存档。没有游戏运行时没有会丢失的进度，直接加载。",
                       "width": 1100,
                       "height": 110
                     },
@@ -11626,7 +11491,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "行内「自动存档时间」文字的蓝图值。列表每画一行就运行一次：「获取条目字段」读取该行的自动存档，「返回值」交回的内容就是文字显示的内容。",
+                      "text": "行内「自动存档时间」文字的蓝图值。列表每画一行就运行一次：「获取字段」读取该行的自动存档，「返回值」交回的内容就是文字显示的内容。",
                       "width": 828,
                       "height": 110
                     },
@@ -24207,9 +24072,6 @@
       "widgetMain:b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70:b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e74": {
         "blueprintId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e77"
       },
-      "widgetValue:b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70:b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e73:text": {
-        "blueprintId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e78"
-      },
       "widgetMain:b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70:b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e72": {
         "blueprintId": "e1e632f7-8d1a-4e5e-b6c3-43d51f1a467a"
       },
@@ -24365,6 +24227,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-10-04T21:55:42.306Z"
+    "updatedAt": "2026-10-06T02:53:16.828Z"
   }
 }

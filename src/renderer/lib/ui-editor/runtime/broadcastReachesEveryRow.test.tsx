@@ -5,7 +5,7 @@
  *
  * Such an event names nobody's drawing, and it used to run the widget's graph once as nobody. For a
  * widget drawn once, for the page, that is right and it still is. For a widget in a list row it
- * meant `Get Item Field` read nothing and `Set Property (self)` wrote to the template, which no row
+ * meant `Get Field` read nothing and `Set Property (self)` wrote to the template, which no row
  * draws: every node ran, the log was clean, no row changed. The answer is every row because every
  * row is a widget the player can see; a single page-level run is a run of a widget that is on screen
  * nowhere. That matches a key press, which each drawing already heard for itself.

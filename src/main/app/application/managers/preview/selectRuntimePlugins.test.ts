@@ -27,6 +27,7 @@ function manifest(id: string, version: string, blueprintNodes: string[] = [], wi
             externalLinks: [],
             network: [],
             widgetText: {},
+            structs: [],
         },
         permissions: [],
     };

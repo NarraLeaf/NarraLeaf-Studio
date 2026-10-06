@@ -15,6 +15,8 @@ import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { UIStructDef } from "@shared/types/ui-editor/struct";
 import { getUIComponentLink } from "@shared/types/ui-editor/document";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
+import { getUIPageParams } from "@shared/types/ui-editor/pageParams";
+import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
 import {
     buildUIFrameGraph,
     getUIFrameWidgetProps,
@@ -87,11 +89,97 @@ function checkCompiledAgainstProject(compiled: UiCompileResult, options: UiCheck
         }
         out.push(...checkDropped(component.dropped, component.component.name, blueprints));
     }
+    out.push(...checkPageParams(compiled, options.existing ?? null));
     if (options.existing) {
         out.push(...checkFramesAfterApply(compiled, options.existing));
     }
     if (compiled.documentEntry) {
         out.push(...checkEntryTarget(compiled, options.existing ?? null));
+    }
+    return out;
+}
+
+/**
+ * Page parameters read or given by name in the blocks this file writes: a list on a page showing a
+ * page prop the page does not declare, and a Page widget giving its page a name the page does not
+ * declare. The questions the project lint asks as `ui/page-prop-undeclared` and
+ * `ui/page-param-unknown`, against the pages as they will be once the file is applied.
+ */
+function checkPageParams(compiled: UiCompileResult, existing: UIDocument | null): BpDiagnostic[] {
+    const pages = new Map((existing?.surfaces ?? []).map(surface => [surface.id, surface]));
+    for (const surface of compiled.surfaces) {
+        pages.set(surface.surface.id, surface.surface);
+    }
+    const out: BpDiagnostic[] = [];
+    const resolveStruct = (structId: string) => compiled.structs[structId] ?? resolveUIStruct(existing, structId);
+    const visit = (pool: Record<string, UIElement>, page: (typeof compiled.surfaces)[number]["surface"] | null) => {
+        for (const element of Object.values(pool)) {
+            const props = (element.props ?? {}) as Record<string, unknown>;
+            const binding = props.itemsBinding as { kind?: unknown; key?: unknown } | undefined;
+            const shown = page?.kind === "appSurface" && isListLikeWidgetType(element.type) && binding?.kind === "pageProp"
+                && typeof binding.key === "string" && binding.key.trim()
+                ? binding.key
+                : null;
+            const param = shown && page ? getUIPageParams(page).find(candidate => candidate.name === shown) : undefined;
+            if (shown && page && !param) {
+                out.push({
+                    severity: "warning",
+                    code: "ui.page_prop_undeclared",
+                    message: `"${elementPath(pool, element)}" shows page prop "${shown}", which page "${page.name}" does not declare.`,
+                    hint: "Declare it with a `param` line in the page's block: the nodes and Page widgets that open the "
+                        + "page give a value only for the params it declares.",
+                });
+            } else if (param && param.type !== "list" && param.type !== "json") {
+                out.push({
+                    severity: "warning",
+                    code: "ui.page_param_list_mismatch",
+                    message: `"${elementPath(pool, element)}" shows page param "${param.name}", which is a ${param.type}, not a list.`,
+                    hint: `Declare it as \`param ${param.id} ${param.name} type=list struct=<shape>\`.`,
+                });
+            } else if (param?.type === "list" && param.struct) {
+                const listStructId = typeof props.itemStructId === "string" ? props.itemStructId.trim() : "";
+                const listStruct = listStructId ? resolveStruct(listStructId) : null;
+                const rowStruct = resolveStruct(param.struct);
+                const missing = listStruct && rowStruct
+                    ? listStruct.fields.filter(field => !rowStruct.fields.some(row => row.key === field.key && row.type === field.type))
+                    : [];
+                if (missing.length > 0) {
+                    out.push({
+                        severity: "warning",
+                        code: "ui.page_param_list_mismatch",
+                        message: `"${elementPath(pool, element)}" draws ${missing.map(field => `${field.key}:${field.type}`).join(", ")}, `
+                            + `which the rows of page param "${param.name}" (${param.struct}) do not carry.`,
+                        hint: "Give the list the param's row shape (`itemStructId`), or give the param one whose rows carry every field the list draws.",
+                    });
+                }
+            }
+            if (element.type !== "nl.frame") {
+                continue;
+            }
+            const frame = getUIFrameWidgetProps(element);
+            const target = frame.targetSurfaceId ? pages.get(frame.targetSurfaceId) : undefined;
+            const declared = getUIPageParams(target);
+            if (!target || declared.length === 0) {
+                continue;
+            }
+            for (const name of Object.keys(frame.params)) {
+                if (declared.some(param => param.name === name)) {
+                    continue;
+                }
+                out.push({
+                    severity: "warning",
+                    code: "ui.page_param_unknown",
+                    message: `"${elementPath(pool, element)}" gives "${name}" to page "${target.name}", which does not declare it.`,
+                    hint: `The page reads only the params it declares: ${declared.map(param => param.name).join(", ")}.`,
+                });
+            }
+        }
+    };
+    for (const surface of compiled.surfaces) {
+        visit(surface.elements, surface.surface);
+    }
+    for (const component of compiled.components) {
+        visit(component.component.elements ?? {}, null);
     }
     return out;
 }

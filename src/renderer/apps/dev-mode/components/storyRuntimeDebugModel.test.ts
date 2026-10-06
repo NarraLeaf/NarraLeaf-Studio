@@ -10,6 +10,7 @@ import {
     buildStorySceneBlockIndex,
     formatStoryVariableDeltaChip,
     formatStoryVariableRangeChip,
+    formatStoryVariableValue,
     listDeclaredStoryVariables,
     locatePlayHeadRow,
     projectExecutionContext,
@@ -536,5 +537,24 @@ describe("variable focus chips", () => {
         expect(formatStoryVariableRangeChip({ kind: "known", min: 4, max: 4 })).toBe("4");
         expect(formatStoryVariableRangeChip({ kind: "known", min: 0, max: 7 })).toBe("0\u20137");
         expect(formatStoryVariableRangeChip({ kind: "unknown" })).toBe("?");
+    });
+});
+
+describe("formatStoryVariableValue", () => {
+    const corridor = scene([], []);
+    const scenes = { [corridor.id]: corridor };
+
+    it("reads a stored scene reference as the scene's name, never its id", () => {
+        expect(formatStoryVariableValue("string", `scene:${corridor.id}`, scenes)).toBe("Scene 1");
+        const dangling = formatStoryVariableValue("string", "scene:0b6f1c2e-gone", scenes);
+        expect(dangling).not.toContain("0b6f1c2e");
+        expect(dangling).not.toBe("");
+    });
+
+    it("leaves every other value as it is stored", () => {
+        expect(formatStoryVariableValue("string", "the corridor", scenes)).toBe("the corridor");
+        expect(formatStoryVariableValue("number", 30, scenes)).toBe("30");
+        expect(formatStoryVariableValue("json", { place: `scene:${corridor.id}` }, scenes)).toBe(`{"place":"scene:${corridor.id}"}`);
+        expect(formatStoryVariableValue("string", null, scenes)).toBe("");
     });
 });

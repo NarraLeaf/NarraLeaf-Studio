@@ -13,6 +13,7 @@
 
 import fs from "fs/promises";
 import path from "path";
+import { isMainThread, parentPort, Worker, workerData } from "worker_threads";
 import { openAssetArchive, ASSET_ARCHIVE_FILENAME, ARCHIVE_READER_FILENAME } from "@narraleaf/bindings/read";
 import {
     GAME_RUNTIME_BUNDLE_PACK_ENTRY,
@@ -22,6 +23,35 @@ import {
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import { auditShippedContent, type ShippedArtifactReader, type ShippedContentAuditResult } from "./shippedContentAudit";
 import { collectSaveAnchors, diffSaveAnchors, type SaveAnchorDiff } from "./saveAnchors";
+import {
+    openSealedProbePool,
+    SEALED_PROBE_THREAD_DATA,
+    serveSealedProbes,
+    type ProbePort,
+    type ProbeThread,
+    type SealedProbeSpec,
+} from "./sealedEntryProbes";
+
+/*
+ * This bundle is also the program its own probe threads run. The audit starts them with this file
+ * and a spec in `workerData`, and a thread that finds one serves probes instead of auditing. A
+ * second entry point would be a second bundle to register, for twenty lines.
+ */
+const probeSpec = (workerData as Record<string, unknown> | null)?.[SEALED_PROBE_THREAD_DATA] as
+    | SealedProbeSpec
+    | undefined;
+if (!isMainThread && probeSpec && parentPort) {
+    void serveSealedProbes(probeSpec, parentPort as unknown as ProbePort);
+}
+
+export type ShippedContentAuditOptions = {
+    /**
+     * How many threads may prove a sealed package's entries at once. 0, the default, proves them
+     * here one after another - which is what anything but a bundled build gets, because a thread
+     * runs this file and only the bundled one is a program a thread can run.
+     */
+    probeThreads?: number;
+};
 
 async function fileHasContent(filePath: string): Promise<boolean> {
     try {
@@ -37,7 +67,7 @@ async function fileHasContent(filePath: string): Promise<boolean> {
  * otherwise. The decision is made by looking at the package, never by being told, so the audit reads
  * whatever was actually produced.
  */
-async function openArtifact(appDir: string, supportBinaryPath?: string): Promise<{
+async function openArtifact(appDir: string, supportBinaryPath: string | undefined, probeThreads: number): Promise<{
     pack: GameRuntimePackV1;
     reader: ShippedArtifactReader;
     close(): Promise<void>;
@@ -50,10 +80,8 @@ async function openArtifact(appDir: string, supportBinaryPath?: string): Promise
          * process can open; the old path stays as the answer for an installed
          * game, which is the other thing this is pointed at.
          */
-        const sealed = await openAssetArchive(
-            supportBinaryPath ?? path.join(appDir, ARCHIVE_READER_FILENAME),
-            bundlePath,
-        );
+        const binaryPath = supportBinaryPath ?? path.join(appDir, ARCHIVE_READER_FILENAME);
+        const sealed = await openAssetArchive(binaryPath, bundlePath);
         const pack = JSON.parse(
             Buffer.from(await sealed.read(GAME_RUNTIME_BUNDLE_PACK_ENTRY)).toString("utf-8"),
         ) as GameRuntimePackV1;
@@ -63,17 +91,27 @@ async function openArtifact(appDir: string, supportBinaryPath?: string): Promise
         // bundle id (see `resolveModelBundleKey`). Asking for `assets/{id}` finds nothing and would
         // fail the build for every package carrying a puppet character.
         const modelBundles = new Set(pack.assets.modelBundles ?? []);
+        // A sealed entry has to be read to be proven: the store answers no other question about
+        // it, and "the entry is where the id says" is the claim under test. Reading one is the
+        // expensive part of the audit, so it is spread over threads - see sealedEntryProbes.
+        const spec: SealedProbeSpec = { binaryPath, storePath: bundlePath };
+        const probes = openSealedProbePool({
+            threads: probeThreads,
+            spawn: () => new Worker(__filename, { workerData: { [SEALED_PROBE_THREAD_DATA]: spec } }) as unknown as ProbeThread,
+            fallback: async relativePath => (await sealed.read(relativePath)).byteLength > 0,
+        });
         return {
             pack,
             reader: {
-                // A sealed entry has to be read to be proven: the store answers no other question
-                // about it, and "the entry is where the id says" is the claim under test.
-                entryExists: async relativePath => (await sealed.read(relativePath)).byteLength > 0,
+                entryExists: relativePath => probes.exists(relativePath),
                 resolveEntryName: assetId => (modelBundles.has(assetId)
                     ? gameRuntimeBundleModelEntry(assetId)
                     : gameRuntimeBundleAssetEntry(assetId)),
             },
-            close: () => sealed.close(),
+            close: async () => {
+                await probes.close();
+                await sealed.close();
+            },
         };
     }
     const pack = JSON.parse(await fs.readFile(path.join(appDir, "pack.json"), "utf-8")) as GameRuntimePackV1;
@@ -92,8 +130,9 @@ async function openArtifact(appDir: string, supportBinaryPath?: string): Promise
 export async function runShippedContentAudit(
     appDir: string,
     supportBinaryPath?: string,
+    options: ShippedContentAuditOptions = {},
 ): Promise<ShippedContentAuditResult> {
-    const artifact = await openArtifact(appDir, supportBinaryPath);
+    const artifact = await openArtifact(appDir, supportBinaryPath, Math.max(0, Math.floor(options.probeThreads ?? 0)));
     try {
         return await auditShippedContent({ pack: artifact.pack, reader: artifact.reader });
     } finally {

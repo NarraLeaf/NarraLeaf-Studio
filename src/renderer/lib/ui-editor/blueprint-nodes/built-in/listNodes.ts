@@ -59,6 +59,8 @@ import {
     BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS,
     BLUEPRINT_NODE_TYPE_LIST_SET_SELECTED_INDEX,
     BLUEPRINT_NODE_TYPE_LIST_SET_SELECTED_ITEM,
+    BLUEPRINT_NODE_PARAM_FIELD,
+    BLUEPRINT_NODE_PARAM_FIELD_STRUCT,
 } from "@shared/types/blueprint/graph";
 import {
     BLUEPRINT_VALUE_TYPE_ARRAY,
@@ -68,6 +70,7 @@ import {
     coerceUIStructFieldValue,
     findUIStructField,
     sortItemsByField,
+    UI_STRUCT_VALUE_TYPE_ANY,
     type UIStructDef,
 } from "@shared/types/ui-editor/struct";
 import { UI_LIST_LIKE_WIDGET_TYPES } from "@shared/types/ui-editor/list";
@@ -75,6 +78,7 @@ import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import { widgetKindName } from "../widgetKindName";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
+import { BLUEPRINT_FIELD_READER_INPUT_PIN } from "../effectivePins";
 import { requireHostApi } from "./hostApi";
 import { resolveNodeInput } from "./graphParamResolvers";
 import { normalizeBlueprintElementRefValue } from "./elementRefUtils";
@@ -150,6 +154,57 @@ function fieldParam(label = "Field"): NonNullable<BlueprintNodeDef["inspectorPar
         dynamicOptionsSource: BLUEPRINT_LIST_ITEM_FIELD_OPTIONS_SOURCE,
     };
 }
+
+/**
+ * The id Get Field's picker fills its options from: the fields of whichever struct the node reads.
+ *
+ * Its own source rather than {@link BLUEPRINT_LIST_ITEM_FIELD_OPTIONS_SOURCE}, which asks about a list
+ * the node targets. This one asks about a shape, and the shape comes from the node itself - the
+ * struct it was pointed at, what is wired in, or the row it sits in (`graphStructTypeInference.ts`).
+ */
+export const BLUEPRINT_STRUCT_FIELD_OPTIONS_SOURCE = "structFields";
+
+/**
+ * Get Field: one field of a struct.
+ *
+ * The reader for every shape the editor knows - an ending, a backlog entry, a save, a list row - and
+ * the one way a field is read by name from a list of names rather than typed into a key. Its output
+ * takes the field's type, so a boolean field wires straight into a Branch.
+ *
+ * `object` is optional because a list row is the other place a struct can come from: left unwired
+ * inside a row, the node reads the row being drawn, which is what this node did before it read
+ * anything else. Unwired anywhere else it has nothing to read, and the validator says so.
+ */
+const getFieldNode: BlueprintNodeDef = {
+    type: BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
+    displayName: "Get Field",
+    description: "blueprint.nodeDescription.getField",
+    category: "Data",
+    keywords: ["field", "struct", "property", "read", "value", "item", "row", "column", "list", "break"],
+    graphKinds: [...READ_GRAPH_KINDS],
+    isPure: true,
+    pins: [
+        {
+            id: BLUEPRINT_FIELD_READER_INPUT_PIN,
+            kind: "input",
+            semantic: "data",
+            valueType: UI_STRUCT_VALUE_TYPE_ANY,
+            label: "Object",
+            optional: true,
+        },
+        out("value", "Value", "any"),
+    ],
+    inspectorParams: [
+        {
+            key: BLUEPRINT_NODE_PARAM_FIELD,
+            label: "Field",
+            kind: "select",
+            dynamicOptionsSource: BLUEPRINT_STRUCT_FIELD_OPTIONS_SOURCE,
+        },
+    ],
+    storedParams: [BLUEPRINT_NODE_PARAM_FIELD_STRUCT],
+    execute: () => ({}),
+};
 
 function readNode(input: {
     type: string;
@@ -345,7 +400,33 @@ async function sortListByField(ctx: Parameters<BlueprintNodeDef["execute"]>[0], 
     );
 }
 
-export const listBlueprintNodes: BlueprintNodeDef[] = [
+/** Which pins of the list nodes carry the list's rows; see `BlueprintNodeDef.listRowTypes`. */
+const ROWS_IN = { inputs: { items: "array" } } as const;
+const ROWS_OUT = { outputs: { items: "array" } } as const;
+const ROW_IN = { inputs: { item: "item" } } as const;
+const ROW_OUT = { outputs: { item: "item" } } as const;
+const LIST_ROW_TYPES: Readonly<Record<string, NonNullable<BlueprintNodeDef["listRowTypes"]>>> = {
+    [BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS]: ROWS_IN,
+    [BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SET_ITEMS]: ROWS_IN,
+    [BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS]: ROWS_OUT,
+    [BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_ITEMS]: ROWS_OUT,
+    [BLUEPRINT_NODE_TYPE_LIST_APPEND_ITEM]: ROW_IN,
+    [BLUEPRINT_NODE_TYPE_ELEMENT_LIST_APPEND_ITEM]: ROW_IN,
+    [BLUEPRINT_NODE_TYPE_LIST_INSERT_ITEM]: ROW_IN,
+    [BLUEPRINT_NODE_TYPE_ELEMENT_LIST_INSERT_ITEM]: ROW_IN,
+    [BLUEPRINT_NODE_TYPE_LIST_REMOVE_ITEM]: ROW_IN,
+    [BLUEPRINT_NODE_TYPE_ELEMENT_LIST_REMOVE_ITEM]: ROW_IN,
+    [BLUEPRINT_NODE_TYPE_LIST_SET_SELECTED_ITEM]: ROW_IN,
+    [BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SET_SELECTED_ITEM]: ROW_IN,
+    [BLUEPRINT_NODE_TYPE_LIST_GET_SELECTED_ITEM]: ROW_OUT,
+    [BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SELECTED_ITEM]: ROW_OUT,
+    [BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_AT]: ROW_OUT,
+    [BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_ITEM_AT]: ROW_OUT,
+    [BLUEPRINT_NODE_TYPE_LIST_FIND_ITEM_BY_FIELD]: ROW_OUT,
+    [BLUEPRINT_NODE_TYPE_ELEMENT_LIST_FIND_ITEM_BY_FIELD]: ROW_OUT,
+};
+
+const listBlueprintNodeDefs: BlueprintNodeDef[] = [
     writeNode({
         type: BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS,
         displayName: "Set List Content",
@@ -720,14 +801,7 @@ export const listBlueprintNodes: BlueprintNodeDef[] = [
         pins: [out("key", "Key", "string")],
         requiresListItemContext: true,
     }),
-    readNode({
-        type: BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
-        displayName: "Get Item Field",
-        keywords: ["list", "item", "field", "value", "read", "row", "column"],
-        pins: [out("value", "Value", "any")],
-        inspectorParams: [fieldParam()],
-        requiresListItemContext: true,
-    }),
+    getFieldNode,
     readNode({
         type: BLUEPRINT_NODE_TYPE_LIST_GET_LENGTH,
         displayName: "Get List Length",
@@ -847,3 +921,7 @@ export const listBlueprintNodes: BlueprintNodeDef[] = [
         execute: ctx => sortListByField(ctx, "element"),
     }),
 ];
+
+export const listBlueprintNodes: BlueprintNodeDef[] = listBlueprintNodeDefs.map(def =>
+    LIST_ROW_TYPES[def.type] ? { ...def, listRowTypes: LIST_ROW_TYPES[def.type] } : def,
+);

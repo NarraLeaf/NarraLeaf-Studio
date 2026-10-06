@@ -149,6 +149,16 @@ export function ownerKeyBelongsToSurface(key: string, surfaceId: string): boolea
 }
 
 /**
+ * Whether this key names a slot that belongs to one component definition: the private blueprint of
+ * one of its widgets. The component counterpart of {@link ownerKeyBelongsToSurface}, asked by
+ * decoding for the same reasons.
+ */
+export function ownerKeyBelongsToComponent(key: string, componentId: string): boolean {
+    const owner = decodeBlueprintOwnerKey(key);
+    return owner?.kind === "componentWidgetMain" && owner.componentId === componentId;
+}
+
+/**
  * Read a key written before every part was escaped, so the migration can rewrite it.
  *
  * **Right to left, because that is the end that is fixed.** The old form left ids raw, so a

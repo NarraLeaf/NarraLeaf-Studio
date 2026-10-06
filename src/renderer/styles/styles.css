@@ -1226,6 +1226,20 @@ input[type="radio"]:focus {
 }
 
 /*
+ * A seam that takes the keyboard (`ResizableHandle` with a `keyboardStep`, e.g. between two sections
+ * of a sidebar panel) shows focus the way it shows hover: a half-strength line and its bloom. Only
+ * for keyboard focus - a pointer press never focuses it.
+ */
+.nl-dock-divider:focus-visible {
+    outline: none;
+    background-color: rgb(var(--nl-primary) / 0.5);
+}
+
+.nl-dock-divider:focus-visible::after {
+    opacity: 1;
+}
+
+/*
  * Inline value / pause chips are contentEditable=false, so the browser draws no selection highlight
  * on them. When the rich-text editor flags a chip as selected (`data-selected`), give it a themed
  * highlight behind the whole chip, matching a text selection.

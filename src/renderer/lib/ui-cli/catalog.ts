@@ -19,7 +19,7 @@ import {
     uiElementTypeAcceptsUserChildren,
     type UIElement,
 } from "@shared/types/ui-editor/document";
-import { BUILTIN_UI_STRUCTS } from "@shared/types/ui-editor/builtinStructs";
+import { listEngineUIStructIds, resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { UI_STAGE_SLOT_IDS } from "@shared/types/ui-editor/stageSlots";
 import type { UIStructDef } from "@shared/types/ui-editor/struct";
 import { getWidgetLogicApi, type WidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
@@ -149,6 +149,7 @@ function textSiteNotes(type: string): string[] {
         }
         if (site.valueBinding === "offered") {
             notes.push(componentParamWordsNote(TEXT_SITE_NOUNS[type] ?? type, site.textProp));
+            notes.push(pageParamWordsNote(TEXT_SITE_NOUNS[type] ?? type, site.textProp));
         }
     }
     return notes;
@@ -166,6 +167,20 @@ function componentParamWordsNote(widget: string, stringProp: string): string {
         + "directly are translated through the placement's own unit (`ui:<placementId>.param.<paramId>`), "
         + "a default through the component's (`ui:<componentId>.param.<paramId>`). The "
         + `${widget}'s own \`${stringProp}\` is then sample text, drawn only while the component itself is edited.`;
+}
+
+/**
+ * How a widget on a page shows words whoever opens the page gives it: a text parameter of the page,
+ * bound the same way.
+ */
+function pageParamWordsNote(widget: string, stringProp: string): string {
+    return `On a page, the same \`bind ${stringProp} = param <paramId>\` shows one of the page's text `
+        + "parameters (`param <paramId> <name> type=text = <default>` in the page's block): the words the page "
+        + "was opened with - a node's `param_<paramId>` input, a Page widget's value - or else the default, "
+        + "translated through the page's own unit (`ui:<surfaceId>.param.<paramId>`). Words a Page widget "
+        + "gives are translated through the widget's (`ui:<frameId>.param.<name>`); words given by a node are "
+        + `shown as given. The ${widget}'s own \`${stringProp}\` is sample text, drawn on the page's canvas while `
+        + "the default is empty.";
 }
 
 /**
@@ -482,9 +497,12 @@ export function queryWidgets(query: WidgetQuery): WidgetSummary[] {
     });
 }
 
-/** The struct shapes that ship with Studio, which a list may name without declaring anything. */
+/**
+ * The struct shapes a list may name without declaring anything: the engine's, then those of the
+ * plugins this run knows - the bundled ones and any `--plugin`.
+ */
 export function listBuiltinStructs(): UIStructDef[] {
-    return Object.values(BUILTIN_UI_STRUCTS);
+    return listEngineUIStructIds().flatMap(id => resolveUIStruct(null, id) ?? []);
 }
 
 // ---------------------------------------------------------------------------

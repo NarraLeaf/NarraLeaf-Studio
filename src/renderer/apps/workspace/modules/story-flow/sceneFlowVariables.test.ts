@@ -561,6 +561,135 @@ describe("computeVariableRanges", () => {
 
         expect(rangesOf(story, "scene:var_hp")).toEqual({ a: "?", b: "3..3" });
     });
+
+    it("carries the options of a menu the run falls out of into the jump written after it", () => {
+        // The shape most scenes leave by: options that each say their piece and come back, then one
+        // jump on the spine. Dropping the options reported every one of them as never having run.
+        const story = document([
+            scene("a", "Corridor", [
+                affectionDecl,
+                choiceBlock("c1", ["o1", "o2"]),
+                choiceOptionBlock("o1", ["w1"], "留下", "c1"),
+                setExpressionBlock("w1", stepAst("+", 10), "好感 + (10)", "o1"),
+                choiceOptionBlock("o2", [], "先走", "c1"),
+                jumpBlock("j1", "b"),
+            ]),
+            scene("b", "Clubroom", [
+                choiceBlock("c2", ["o3", "o4"]),
+                choiceOptionBlock("o3", ["w3"], "真心", "c2"),
+                setExpressionBlock("w3", stepAst("+", 20), "好感 + (20)", "o3"),
+                choiceOptionBlock("o4", ["w4"], "热闹", "c2"),
+                setExpressionBlock("w4", stepAst("+", 10), "好感 + (10)", "o4"),
+                jumpBlock("j2", "c"),
+            ]),
+            scene("c", "Last light", []),
+        ], "a");
+
+        // One option of each menu runs, so `c` is 10..30 - not 0..40, which treating every option as
+        // "may have run" would give, and not 0..0.
+        expect(rangesOf(story)).toEqual({ a: "0..0", b: "0..10", c: "10..30" });
+    });
+
+    it("lets an if with no else pass untouched, and an if with one choose an arm", () => {
+        const ifWithout = conditionBranchBlock("if1", ["w1"], "if", "好感 >= 0", "cond1");
+        const story = document([
+            scene("a", "Opening", [
+                affectionDecl,
+                { id: "cond1", kind: "control", parentId: null, childrenIds: ["if1"], payload: { control: "condition" } } as StoryBlock,
+                ifWithout,
+                setExpressionBlock("w1", stepAst("+", 5), "好感 + (5)", "if1"),
+                jumpBlock("j1", "b"),
+            ]),
+            scene("b", "Hallway", [
+                { id: "cond2", kind: "control", parentId: null, childrenIds: ["if2", "else2"], payload: { control: "condition" } } as StoryBlock,
+                conditionBranchBlock("if2", ["w2"], "if", "好感 >= 3", "cond2"),
+                setExpressionBlock("w2", stepAst("+", 2), "好感 + (2)", "if2"),
+                conditionBranchBlock("else2", ["w3"], "else", undefined, "cond2"),
+                setExpressionBlock("w3", stepAst("-", 1), "好感 - (1)", "else2"),
+                jumpBlock("j2", "c"),
+            ]),
+            scene("c", "Street", []),
+        ], "a");
+
+        // `b`: the if may not run. `c`: exactly one arm of the if/else does, so no path keeps the
+        // value `b` arrived with: 0+2, 0-1, 5+2, 5-1.
+        expect(rangesOf(story)).toEqual({ a: "0..0", b: "0..5", c: "-1..7" });
+    });
+
+    it("joins a menu passed on the way into the arm that carries the jump", () => {
+        const story = document([
+            scene("a", "Crossroads", [
+                affectionDecl,
+                choiceBlock("c1", ["o1", "o2"]),
+                choiceOptionBlock("o1", ["w1"], "留下", "c1"),
+                setExpressionBlock("w1", stepAst("+", 10), "好感 + (10)", "o1"),
+                choiceOptionBlock("o2", [], "先走", "c1"),
+                choiceBlock("c2", ["o3", "o4"]),
+                choiceOptionBlock("o3", ["w3", "j1"], "跟她走", "c2"),
+                setExpressionBlock("w3", stepAst("+", 2), "好感 + (2)", "o3"),
+                jumpBlock("j1", "b", "o3"),
+                choiceOptionBlock("o4", ["j2"], "回家", "c2"),
+                jumpBlock("j2", "c", "o4"),
+            ]),
+            scene("b", "River", []),
+            scene("c", "Home", []),
+        ], "a");
+
+        expect(rangesOf(story)).toEqual({ a: "0..0", b: "2..12", c: "0..10" });
+    });
+
+    it("does not count rows written after the jump", () => {
+        // The run has left by the time they would run. Counting them shifted the arrival value, which
+        // a guard in the next scene then read as a number nobody arrives with.
+        const story = document([
+            scene("a", "Opening", [
+                affectionDecl,
+                jumpBlock("j1", "b"),
+                setExpressionBlock("w1", stepAst("+", 5), "好感 + (5)"),
+            ]),
+            scene("b", "Hallway", []),
+        ], "a");
+
+        expect(rangesOf(story)).toEqual({ a: "0..0", b: "0..0" });
+    });
+
+    it("keeps the order of a set and an add a fork puts around each other", () => {
+        // `if x { set 100 }` then `+1`: the add lands on whichever value the fork left, so the run
+        // arrives with 1 or 101. Applying the spine first and the fork second reported 1..100.
+        const story = document([
+            scene("a", "Opening", [
+                affectionDecl,
+                { id: "cond1", kind: "control", parentId: null, childrenIds: ["if1"], payload: { control: "condition" } } as StoryBlock,
+                conditionBranchBlock("if1", ["w1"], "if", "好感 >= 0", "cond1"),
+                setLiteralBlock("w1", 100, "if1"),
+                setExpressionBlock("w2", stepAst("+", 1), "好感 + (1)"),
+                jumpBlock("j1", "b"),
+            ]),
+            scene("b", "Hallway", []),
+        ], "a");
+
+        expect(rangesOf(story)).toEqual({ a: "0..0", b: "1..101" });
+    });
+
+    it("treats every write as possible where a goto makes row order unreadable", () => {
+        const story = document([
+            scene("a", "Opening", [
+                affectionDecl,
+                choiceBlock("c1", ["o1", "o2"]),
+                choiceOptionBlock("o1", ["w1"], "留下", "c1"),
+                setExpressionBlock("w1", stepAst("+", 10), "好感 + (10)", "o1"),
+                choiceOptionBlock("o2", ["g1"], "再来", "c1"),
+                { id: "g1", kind: "control", parentId: "o2", childrenIds: [], payload: { control: "goto", targetLabel: "top" } } as StoryBlock,
+                jumpBlock("j1", "b"),
+                setExpressionBlock("w2", stepAst("+", 1), "好感 + (1)"),
+            ]),
+            scene("b", "Hallway", []),
+        ], "a");
+
+        // The loop can take `留下` any number of times, but that is the cycle budget's question; one
+        // pass of "may have run" for every write, the rows after the jump included, is what holds.
+        expect(rangesOf(story)).toEqual({ a: "0..0", b: "0..11" });
+    });
 });
 
 describe("foldRouteVariableValue", () => {

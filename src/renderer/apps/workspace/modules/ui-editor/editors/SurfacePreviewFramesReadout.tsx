@@ -19,7 +19,8 @@ type Props = {
  * What the canvas reference frames currently say, in words and numbers.
  *
  * Mount **outside** the zoomed canvas node: everything the frames draw lives in design space and
- * scales with the zoom, which is fine for geometry and useless for text.
+ * scales with the zoom, which is fine for geometry and useless for text. It does not place itself:
+ * the editor stacks it in one corner with the other canvas readouts.
  *
  * This is not decoration. A device preset resolves to zero insets whenever the letterbox bars are
  * thicker than the notch, and "no inset" and "no preset" draw the same canvas — so without a line
@@ -58,7 +59,7 @@ export function SurfacePreviewFramesReadout({ designSize, aspectId, safeAreaId, 
     return (
         <div
             data-surface-preview-readout
-            className="pointer-events-none absolute bottom-3 right-3 z-20 rounded-md border border-edge-strong bg-surface-canvas/80 px-2 py-1 text-2xs tabular-nums text-fg-muted"
+            className="rounded-md border border-edge-strong bg-surface-canvas/80 px-2 py-1 text-2xs tabular-nums text-fg-muted"
         >
             {parts.join("  ·  ")}
         </div>

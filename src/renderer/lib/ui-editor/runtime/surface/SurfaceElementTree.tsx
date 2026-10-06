@@ -25,6 +25,7 @@ import {
     resolveUIComponentParams,
 } from "@shared/types/ui-editor/document";
 import { resolveUIComponentTextParams, type UIComponentTextValues } from "@shared/types/ui-editor/componentTextParams";
+import { resolveUIPageTextParams, type UIPageTextValues } from "@shared/types/ui-editor/pageTextParams";
 import { buildUIComponentInstanceKey } from "@shared/types/ui-editor/componentInstanceKey";
 import { buildUIComponentDocumentView } from "@shared/types/ui-editor/componentDocumentView";
 import { buildUIWidgetAddress } from "@shared/types/ui-editor/widgetAddress";
@@ -77,6 +78,7 @@ import { resolveWidgetPrivateBlueprintId } from "@/lib/ui-editor/blueprint-runti
 import {
     componentParamsKey,
     componentTextsKey,
+    pageTextsKey,
     isReusableElementType,
     resolveElementReuseCache,
     sameChildren,
@@ -108,6 +110,11 @@ export type SurfaceBlueprintBindingContext = {
      * is nothing to subscribe to.
      */
     pageProps?: Readonly<Record<string, unknown>>;
+    /**
+     * What the page's text parameters hold, worked out from the props it was opened with before its
+     * defaults were laid over them (`resolveUIPageTextParams`) - what a `pageParam` binding shows.
+     */
+    pageTexts?: UIPageTextValues;
 };
 
 export type NestedSurfaceRuntimeInput = {
@@ -161,6 +168,13 @@ export type SurfaceElementTreeProps = {
     /** Editor canvas: resolve appearance variant from inspector cache. */
     useAppearanceInspectorPreview?: boolean;
     blueprintBindingContext?: SurfaceBlueprintBindingContext | null;
+    /**
+     * What the page's text parameters hold, for a host that opened the page without a binding
+     * context - a Page widget on the editing canvas, which opens its page with the widget's values.
+     * A binding context's own answer wins; with neither, the page is drawn as on its own canvas,
+     * unopened.
+     */
+    pageTexts?: UIPageTextValues | null;
     widgetRuntimePatches?: Record<string, DevModeWidgetRuntimePatch>;
     nestedSurfaceRuntime?: NestedSurfaceRuntime;
     surfacePath?: string[];
@@ -451,6 +465,10 @@ function renderSurfaceElementTreeWithValueRuntime(
         widgetRuntimePatches,
     } = props;
     const editorChrome = props.editorChrome ?? true;
+    const pageTexts =
+        blueprintBindingContext?.pageTexts
+        ?? props.pageTexts
+        ?? resolveUIPageTextParams(surface, null, { opened: false });
     const tree = renderElementTree(
         rootElement,
         document,
@@ -473,6 +491,7 @@ function renderSurfaceElementTreeWithValueRuntime(
         props.animationPlan ?? null,
         reuse,
         props.pageDocument ?? document,
+        pageTexts,
     );
 
     return (
@@ -905,6 +924,15 @@ function NestedSurfaceInstance(props: {
         () => nestedSurfaceRuntime?.createBindingContext?.(runtimeInput) ?? null,
         [nestedSurfaceRuntime, runtimeInput],
     );
+    // The widget opens its page with its own values, on the editing canvas as in the game - where a
+    // binding context, built from the same values, answers first.
+    const pageTexts = useMemo(
+        () => resolveUIPageTextParams(runtimeInput.targetSurface, runtimeInput.params, {
+            opened: true,
+            giverId: runtimeInput.frameElement.id,
+        }),
+        [runtimeInput],
+    );
     const widgetRuntimePatches = nestedSurfaceRuntime?.getWidgetRuntimePatches?.(runtimeInput);
     const dispatchSurfaceTransitionEvent = (eventName: "beforeSurfaceExit" | "afterSurfaceEnter") => {
         surfaceTransitionStateRef.current =
@@ -1110,6 +1138,7 @@ function NestedSurfaceInstance(props: {
                 hostAdapter={hostAdapter}
                 useAppearanceInspectorPreview={useAppearanceInspectorPreview}
                 blueprintBindingContext={bindingContext}
+                pageTexts={pageTexts}
                 widgetRuntimePatches={widgetRuntimePatches}
                 nestedSurfaceRuntime={nestedSurfaceRuntime}
                 surfacePath={[...surfacePath, targetSurface.id]}
@@ -1382,6 +1411,8 @@ function renderLinkedComponentInstanceContent(input: {
                     componentAnimationPlan,
                     null,
                     input.pageDocument,
+                    // A definition's insides are on no page: a page's parameters are not theirs to show.
+                    null,
                 )}
             </div>
         </div>
@@ -1424,6 +1455,11 @@ function renderElementTree(
      * except where `document` is a view - a component definition's, or the component editor's.
      */
     pageDocument: UIDocument = document,
+    /**
+     * What the page this tree is drawn on gives its text parameters (`resolveUIPageTextParams`), or
+     * null inside a component placement, whose insides are on no page.
+     */
+    pageTexts: UIPageTextValues | null = null,
 ): ReactNode {
     const componentId = componentPath[componentPath.length - 1];
     const runtimePatch = widgetRuntimePatches?.[buildUIWidgetAddress(element.id, instanceKey)];
@@ -1448,6 +1484,7 @@ function renderElementTree(
         listItemScope ?? null,
         instanceKey,
         componentTexts,
+        pageTexts,
     );
     const renderer = rendererRegistry.get(merged.type);
     // Widgets that place their own children call `renderChildren` themselves - with slot ids, an
@@ -1543,6 +1580,7 @@ function renderElementTree(
                 // this walk and from data this walk cannot see - so what it places is never reused.
                 rendersOwnChildren ? null : reuse,
                 pageDocument,
+                pageTexts,
             );
         })
         .filter((node): node is ReactNode => node !== null);
@@ -1586,6 +1624,7 @@ function renderElementTree(
               blueprintLifecycleReady,
               componentParamsKey(componentParams),
               componentTextsKey(componentTexts),
+              pageTextsKey(pageTexts),
               animationPlan,
               pageDocument,
           ]

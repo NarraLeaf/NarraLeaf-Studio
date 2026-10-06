@@ -24,6 +24,7 @@ import { SurfaceBlueprintEntrySection } from "../blueprint/SurfaceBlueprintEntry
 import { SurfaceBackgroundImageField } from "../fields/SurfaceBackgroundImageField";
 import { SurfaceInputActionsField } from "../fields/SurfaceInputActionsField";
 import { SurfaceEntryPageField } from "../fields/SurfaceEntryPageField";
+import { SurfacePageParamsField } from "../PageParamsEditor";
 import { PageAnimationEditor } from "@/lib/ui-editor/widget-modules/shared/page-animation/PageAnimationEditor";
 import { normalizeUIPageAnimationSettings, type UIPageAnimationSettings } from "@shared/types/ui-editor/pageAnimation";
 import type { Translator } from "@shared/i18n";
@@ -200,6 +201,20 @@ export const scenePropertySchema = (t: TranslateFn) =>
                 });
             },
             hidden: data => !isGameUi(data.surface),
+        }),
+        defineField<SceneEditorContext, SectionFieldDefinition<SceneEditorContext>>({
+            id: "scene.params",
+            type: "section",
+            title: t("properties.pageParams.title"),
+            fields: [
+                defineField<SceneEditorContext, CustomFieldDefinition<SceneEditorContext>>({
+                    id: "scene.params.editor",
+                    type: "custom",
+                    component: SurfacePageParamsField,
+                }),
+            ],
+            // A Game UI is mounted by the player, which opens it with nothing.
+            hidden: data => isGameUi(data.surface),
         }),
         defineField<SceneEditorContext, SectionFieldDefinition<SceneEditorContext>>({
             id: "scene.input",

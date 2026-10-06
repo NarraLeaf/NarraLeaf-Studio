@@ -9,9 +9,9 @@ import {
 } from "@shared/types/gameBuild";
 import { adHocSignBundle } from "../macBundle/adhocSign";
 import type { BundleEntry } from "../macBundle/bundleTree";
-import { writeZip, type ZipWriteEntry } from "../mobile/zipWriter";
 import type { GameBuildWorkerConfig, GameBuildWorkerTarget } from "../protocol";
-import { FileZipOutput, readZipAsTree, writeTreeAsZip } from "./archive";
+import { readZipAsTree, writeTreeAsZip } from "./archive";
+import { writeFolderZip } from "../desktopZip";
 import { fetchElectronRelease } from "./electronRelease";
 import { LINUX_PROGRAM_SUFFIX } from "../linuxLauncher";
 import { writeAppImage } from "../linuxPackage/appImage";
@@ -101,7 +101,8 @@ async function packLinuxApp(input: {
             format,
         }));
         if (format === "zip") {
-            await writeFolderAsZip(appRoot, file);
+            // Permission bits from each file's content, because a Windows folder keeps none.
+            await writeFolderZip(appRoot, file, { fileMode: async absolute => linuxModeForContent(await readHead(absolute)) });
         } else {
             await writeLinuxAppImage({ config, target, log, appRoot, metadata, file });
         }
@@ -408,27 +409,3 @@ async function hashFile(file: string): Promise<{ sha1: Buffer; sha256: Buffer }>
     }
     return { sha1: sha1.digest(), sha256: sha256.digest() };
 }
-
-/** A folder laid out on this machine, as a zip whose permission bits come from each file's content. */
-async function writeFolderAsZip(root: string, file: string): Promise<void> {
-    const { directories, files } = await walkFolder(root);
-    const modes = new Map<string, number>();
-    for (const entry of files) {
-        modes.set(entry.relative, linuxModeForContent(await readHead(entry.absolute)));
-    }
-    const entries: ZipWriteEntry[] = [
-        ...directories.map(directory => ({ name: `${directory}/`, source: null, unixMode: 0o755 })),
-        ...files.map(entry => ({
-            name: entry.relative,
-            source: { kind: "stream" as const, size: entry.size, open: () => fs.createReadStream(entry.absolute) },
-            unixMode: modes.get(entry.relative),
-        })),
-    ].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-    const output = await FileZipOutput.create(file);
-    try {
-        await writeZip(output, entries, { mtime: new Date(), allowZip64: true });
-    } finally {
-        await output.close();
-    }
-}
-

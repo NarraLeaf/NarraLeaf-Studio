@@ -67,8 +67,8 @@ describe("lint messages that state a count", () => {
         expect(render("zh", readNeverWritten(3))).toBe("3 处条件判断读取了 trust，但没有任何地方给它赋值");
         expect(render("zh", translationOrphans(4))).toBe("4 条 ja 译文没有对应的行");
         expect(render("zh", recordingOrphans(4))).toBe("4 条 ja 录音没有对应的行");
-        expect(render("zh", glyph(2))).toBe("项目字体画不出“龘”（2 处）");
-        expect(render("zh", moreGlyphs(12))).toBe("日本語中另有 12 个字符项目字体画不出");
+        expect(render("zh", glyph(2))).toBe("项目字体无法绘制“龘”（2 处）");
+        expect(render("zh", moreGlyphs(12))).toBe("日本語中另有 12 个字符项目字体无法绘制");
         expect(render("ja", readNeverWritten(3))).toBe("trust を参照する条件が 3 件あるが、どこからも代入されていない");
         expect(render("ja", translationOrphans(4))).toBe("対応する行のない ja の翻訳が 4 件ある");
         expect(render("ja", recordingOrphans(4))).toBe("対応する行のない ja の録音が 4 件ある");

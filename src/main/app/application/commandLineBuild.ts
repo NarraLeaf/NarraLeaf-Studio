@@ -474,14 +474,27 @@ export class CommandLineBuildRun {
                 token?.cancel();
                 void run().then(resolve, resolve);
             };
-            const armDeadline = () => {
+            const armDeadline = (afterMs: number = silenceMs) => {
                 clearTimeout(deadline);
                 deadline = setTimeout(() => {
+                    // Quiet is not the same as stopped. A packaging step compressing a large game
+                    // says nothing for as long as that takes, and the build itself knows whether it
+                    // is still getting somewhere - its counts, and the package growing on disk. A
+                    // run is only abandoned once that has stopped too, for as long as the workspace
+                    // has been quiet.
+                    const lastActivity = this.app.getGameBuildManager().lastActivity(projectPath);
+                    const quietFor = lastActivity === null ? Infinity : Date.now() - lastActivity;
+                    if (quietFor < silenceMs) {
+                        end?.progress();
+                        armDeadline(silenceMs - quietFor);
+                        return;
+                    }
                     settle(() => this.finish(
                         "studio-failed",
-                        `The workspace said nothing for ${Math.round(silenceMs / 60000)} minutes, so the build was abandoned.`,
+                        `The workspace said nothing for ${Math.round(silenceMs / 60000)} minutes and the build `
+                            + "showed no other sign of progress, so the build was abandoned.",
                     ));
-                }, silenceMs);
+                }, afterMs);
             };
             armDeadline();
 

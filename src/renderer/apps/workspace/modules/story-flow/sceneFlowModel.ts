@@ -9,12 +9,14 @@
 import type {
     StoryBlock,
     StoryBlockId,
+    StoryConditionRef,
     StoryDocument,
     StoryScene,
     StorySceneId,
 } from "@shared/types/story";
 import { listSceneBlocksInDocumentOrder, listSceneIdsInDocumentOrder } from "@shared/types/story";
 import { reachableSceneIds } from "@shared/story/storyReachability";
+import { translate } from "@/lib/i18n";
 import { formatStoryConditionSummary, type ProjectVariableNames } from "../story/projection/storySceneProjection";
 
 /** Node box size. The layout and the node component must agree on these. */
@@ -176,6 +178,12 @@ export type SceneFlowBranchNodeModel = {
      * is a row of its own. Anything else would credit an option with an exit it does not take.
      */
     fallsThrough: boolean;
+    /**
+     * The names of the `/ending` rows this arm owns, in document order. An arm holding one ends the
+     * story at that row, so it does not fall through whatever its jumps say. A name may be empty: the
+     * row is an ending all the same.
+     */
+    endings: string[];
     danglingJumpCount: number;
     selfJumpCount: number;
 };
@@ -223,6 +231,29 @@ export type SceneFlowGraphOptions = {
 };
 
 /**
+ * An `if` arm's condition as the map words it.
+ *
+ * The exported-script reading for everything with text of its own, so a line and a row never word
+ * one `if` two ways. A graph condition and an empty one have no text, and the script's placeholders
+ * for them (`<graph condition>`) are not words for the interface: the map says what the row's own
+ * chip says.
+ */
+function armConditionLabel(
+    condition: StoryConditionRef | undefined,
+    scene: StoryScene,
+    document: StoryDocument | undefined,
+    variableNames: ProjectVariableNames | undefined,
+): string {
+    if (!condition) {
+        return translate("story.condition.summarySet");
+    }
+    if (condition.kind === "blueprint") {
+        return translate("story.condition.summaryGraph");
+    }
+    return formatStoryConditionSummary(condition, scene, document, variableNames);
+}
+
+/**
  * How the map words one arm — and, by returning null for everything else, the test for whether a
  * block *is* an arm.
  *
@@ -250,7 +281,7 @@ function describeArm(
         }
         return {
             kind: block.payload.branch === "elseIf" ? "conditionElseIf" : "condition",
-            label: formatStoryConditionSummary(block.payload.condition, scene, document, variableNames),
+            label: armConditionLabel(block.payload.condition, scene, document, variableNames),
         };
     }
     return null;
@@ -358,6 +389,7 @@ function collectSceneArms(
                 forkOrder: fork.order,
                 targets: [],
                 fallsThrough: true,
+                endings: [],
                 danglingJumpCount: 0,
                 selfJumpCount: 0,
             },
@@ -553,6 +585,16 @@ export function buildSceneFlowGraph(document: StoryDocument, options?: SceneFlow
         // Depth-first, so the forks this collapses into one edge are listed in the order the author
         // wrote them — which is what `SceneFlowEdgeModel.branches` promises the reader of the map.
         for (const block of listSceneBlocksInDocumentOrder(scene)) {
+            if (block.kind === "control" && block.payload.control === "ending") {
+                // Owned the way a jump is owned, by the nearest arm: an ending under a nested fork
+                // ends the story on that inner arm only, and the outer one still falls through.
+                const owner = liveBlockIds.has(block.id)
+                    ? resolveOwningArm(scene, block, document, options?.variableNames)
+                    : null;
+                const arm = owner ? armByBlockId.get(owner.block.id) : undefined;
+                arm?.node.endings.push(block.payload.name);
+                continue;
+            }
             if (block.kind !== "jump") {
                 continue;
             }
@@ -623,7 +665,7 @@ export function buildSceneFlowGraph(document: StoryDocument, options?: SceneFlow
             // the arm and carries on past the fork, which is exactly what falling through means.
             const leaves = Array.from(arm.jumpsByTarget.values())
                 .some(jumps => jumps.some(jump => !jump.returnable));
-            arm.node.fallsThrough = !leaves && arm.node.danglingJumpCount === 0;
+            arm.node.fallsThrough = !leaves && arm.node.danglingJumpCount === 0 && arm.node.endings.length === 0;
             branches.push(arm.node);
             for (const [target, jumps] of arm.jumpsByTarget) {
                 branchEdges.push({

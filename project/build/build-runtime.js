@@ -12,7 +12,7 @@ const { runtimeAliasPlugin } = require('./runtime-alias-plugin');
 const { thirdPartyNoticesPlugin } = require('./third-party-notices');
 
 const runtimeSourceDir = path.join(rootDir, 'src', 'runtime');
-const runtimeOutDir = path.join(rootDir, 'dist', 'runtime');
+const defaultRuntimeOutDir = path.join(rootDir, 'dist', 'runtime');
 const runtimeTsconfig = path.join(runtimeSourceDir, 'tsconfig.json');
 
 function runtimeHtml() {
@@ -68,7 +68,10 @@ function runtimeHtml() {
  * the very same config. In process it shares that warm context (see
  * postCss-plugin.js).
  *
- * @param {{ dev?: boolean }} options `dev` only turns sourcemaps on; see below.
+ * @param {{ dev?: boolean, outDir?: string }} options `dev` only turns sourcemaps on; see below.
+ *   `outDir` builds somewhere other than `dist/runtime`, for a check that only wants to know whether
+ *   the runtime still builds - `scripts/verify.mjs` - and must not pull the directory a running
+ *   `yarn dev` previews from out from under it.
  */
 async function buildRuntime(options = {}) {
     // The runtime is ALWAYS built as production, even under `--dev` / `yarn dev`.
@@ -77,6 +80,7 @@ async function buildRuntime(options = {}) {
     // development React/motion/narraleaf-react into "Production" games and tank
     // their frame rate. `--dev` only keeps sourcemaps on for readable stacks.
     const dev = options.dev ?? isDev();
+    const runtimeOutDir = options.outDir ?? defaultRuntimeOutDir;
     console.log(`[build-runtime] Building production runtime${dev ? ' (with sourcemaps)' : ''}...`);
 
     fs.rmSync(runtimeOutDir, { recursive: true, force: true });
@@ -257,7 +261,8 @@ function copyRuntimeSupportSidecar(runtimeOutDir) {
 module.exports = { buildRuntime };
 
 if (require.main === module) {
-    buildRuntime().catch(error => {
+    const outDirArg = process.argv.find(arg => arg.startsWith('--out-dir='));
+    buildRuntime({ outDir: outDirArg ? path.resolve(outDirArg.slice('--out-dir='.length)) : undefined }).catch(error => {
         console.error('[build-runtime] build failed:', error);
         process.exitCode = 1;
     });

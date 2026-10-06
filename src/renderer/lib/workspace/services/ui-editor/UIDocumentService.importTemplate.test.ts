@@ -251,6 +251,22 @@ describe("UIDocumentService.importTemplateBundle", () => {
         const image = doc.elements[rootChildId]!;
         expect((image.props as any).imageFill.assetId).toBe("project-asset-9");
     });
+
+    it("brings a page's parameters along with it, and drops them where it lands as a Game UI", () => {
+        const params = [{ id: "message", name: "message", type: "string", defaultValue: "" }];
+        const source = templateDocument();
+        source.surfaces[0] = { ...source.surfaces[0], params } as UISurface;
+
+        const page = createHarness().service.importTemplateBundle({ document: source, graphs: emptyGraphs, placement: { kind: "appSurface" } });
+        expect((page.importedSurfaces[0] as { params?: unknown }).params).toEqual(params);
+
+        const gameUi = createHarness().service.importTemplateBundle({
+            document: source,
+            graphs: emptyGraphs,
+            placement: { kind: "stageSurface", slotId: "dialog" },
+        });
+        expect("params" in gameUi.importedSurfaces[0]!).toBe(false);
+    });
 });
 
 describe("resolveImportedSurfacePlacement", () => {

@@ -4,7 +4,7 @@
  *
  * The definition's contents used to be rendered with no row at all, whatever the placement sat in.
  * A card placed in a gallery row therefore could not read the row it was in - a field binding inside
- * it drew the template's text on every row, and its graph's `Get Item Field` read nothing - and an
+ * it drew the template's text on every row, and its graph's `Get Field` read nothing - and an
  * event starting inside the card reached the row's own widgets on its way out without the row
  * either. A plain text in the same row read the row perfectly, which is what made it look like the
  * card was built wrong.
