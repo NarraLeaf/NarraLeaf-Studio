@@ -38,6 +38,7 @@ import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
 import type { Blueprint } from "@shared/types/blueprint/document";
+import type { UIDocument } from "@shared/types/ui-editor/document";
 import { listScenesInDocumentOrder } from "@shared/types/story";
 import {
     APP_TAG_OVERRIDE_KEYS,
@@ -141,7 +142,15 @@ async function loadMechanisms(context: WorkspaceContext): Promise<{
             }))
         : [];
 
-    const mechanisms = listUnreadableMechanisms({ blueprints, plugins });
+    let uiDocument: UIDocument | null = null;
+    try {
+        uiDocument = services.get<UIDocumentService>(Services.UIDocument).getDocument();
+    } catch {
+        // Named by blueprint alone, which is what the list shows without it.
+        uiDocument = null;
+    }
+
+    const mechanisms = listUnreadableMechanisms({ blueprints, plugins, uiDocument });
     if (mechanisms.length === 0) {
         // Nothing to declare, so nothing to read every story document for.
         return { mechanisms, scenes: [], surfaces, buildAxes };
