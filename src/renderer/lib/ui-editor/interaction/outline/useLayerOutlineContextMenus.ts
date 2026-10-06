@@ -5,6 +5,7 @@ import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import type { InputDialog } from "@/lib/components/dialogs";
 import { buildOutlineContextMenu } from "@/lib/ui-editor/context-menu/buildOutlineContextMenu";
 import { describeInsertRefusal, describeSurfaceInsertRefusal } from "@/lib/ui-editor/context-menu/insertRefusal";
+import { resolveComponentRootSwapMenuEntry } from "@/lib/ui-editor/context-menu/componentRootSwapMenu";
 import {
     resolveCanvasContextSelection,
     shouldApplyCanvasContextRetarget,
@@ -147,6 +148,7 @@ export function useLayerOutlineContextMenus(params: {
                 documentService,
                 insertParentIdForRow: insertParentId,
                 insertBlockedReason,
+                rootSwap: resolveComponentRootSwapMenuEntry({ document: doc, surfaceId, menuSelection: menuSel, documentService, stateService }),
                 canGroup,
                 canUngroup,
                 allowAddToComponentLibrary: allowAddSelectionToComponentLibrary,

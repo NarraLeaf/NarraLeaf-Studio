@@ -5,6 +5,7 @@ import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UiEditorArrangeOp } from "@/lib/ui-editor/commands/uiEditorArrange";
 import type { UiEditorAlignOp } from "@/lib/ui-editor/commands/uiEditorAlign";
+import type { ComponentRootSwapMenuEntry } from "./componentRootSwapMenu";
 
 /** User-triggered actions; callers wire to uiEditorCommands + UI state. */
 export type UiEditorContextMenuActions = {
@@ -46,6 +47,8 @@ export type BuildCanvasContextMenuInput = {
     allowAddToComponentLibrary?: boolean;
     /** Why Insert is greyed out (`describeSurfaceInsertRefusal`), or null when the surface takes new elements. */
     insertBlockedReason: string | null;
+    /** Set as Root Element or Wrap in Container, in a component's own editor (`resolveComponentRootSwapMenuEntry`). */
+    rootSwap?: ComponentRootSwapMenuEntry | null;
 };
 
 export type BuildOutlineContextMenuInput = {
@@ -76,6 +79,8 @@ export type BuildOutlineContextMenuInput = {
      * the row itself, or the surface's root, takes no new element (`describeInsertRefusal`).
      */
     insertBlockedReason: string | null;
+    /** Set as Root Element or Wrap in Container, in a component's own editor (`resolveComponentRootSwapMenuEntry`). */
+    rootSwap?: ComponentRootSwapMenuEntry | null;
 };
 
 export type BuildOutlineMenuResult = {

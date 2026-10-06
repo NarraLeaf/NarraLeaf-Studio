@@ -3,6 +3,7 @@ import { SELECTABLE_TARGET } from "@/lib/ui-editor/interaction/constants";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { buildCanvasContextMenu } from "@/lib/ui-editor/context-menu/buildCanvasContextMenu";
 import { describeSurfaceInsertRefusal } from "@/lib/ui-editor/context-menu/insertRefusal";
+import { resolveComponentRootSwapMenuEntry } from "@/lib/ui-editor/context-menu/componentRootSwapMenu";
 import {
     resolveCanvasContextSelection,
     shouldApplyCanvasContextRetarget,
@@ -132,6 +133,7 @@ export function useSurfaceCanvasContextMenu(params: {
                 canUngroup,
                 allowAddToComponentLibrary: allowAddSelectionToComponentLibrary,
                 insertBlockedReason: describeSurfaceInsertRefusal(doc, surface.id),
+                rootSwap: resolveComponentRootSwapMenuEntry({ document: doc, surfaceId: surface.id, menuSelection: menuSel, documentService, stateService }),
                 actions: {
                     hideMenu,
                     insertType: type => {

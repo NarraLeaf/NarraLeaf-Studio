@@ -94,6 +94,11 @@ import {
     restoreUILibraryBlueprints,
     type UILibraryRecords,
 } from "./uiLibraryRecords";
+import {
+    promoteElementToComponentRoot,
+    resolveComponentRootPromotionRefusal,
+    wrapComponentRootInContainer,
+} from "./componentRootSwap";
 import { UIDocumentContentRevisions } from "./uiDocumentContentRevisions";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
@@ -244,6 +249,10 @@ type UIDocumentMutationHistoryOptions =
           surfaceId: string;
           mergeKey?: string;
           mergeWindowMs?: number;
+          /** A component editor step that moves the definition's placements too; see `UIEditorComponentDocumentSnapshot.placements`. */
+          withPlacements?: boolean;
+          /** What the step is called in the Edit menu, when it is more than an edit to the surface. */
+          label?: HistoryLabel;
       }
     | false;
 
@@ -2081,7 +2090,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const historyOptions = options.history;
         const beforeHistory =
             historyService && historyOptions && this.historySuppressionDepth === 0
-                ? historyService.captureSnapshot(historyOptions.surfaceId)
+                ? historyService.captureSnapshot(historyOptions.surfaceId, { withPlacements: historyOptions.withPlacements })
                 : null;
         const document = this.getDocument();
         mutator(document);
@@ -2094,9 +2103,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             historyService.record({
                 surfaceId: historyOptions.surfaceId,
                 before: beforeHistory,
-                after: historyService.captureSnapshot(historyOptions.surfaceId),
+                after: historyService.captureSnapshot(historyOptions.surfaceId, { withPlacements: historyOptions.withPlacements }),
                 mergeKey: historyOptions.mergeKey,
                 mergeWindowMs: historyOptions.mergeWindowMs,
+                label: historyOptions.label,
             });
         }
     }
@@ -4620,6 +4630,79 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             liveComponent.updatedAt = new Date().toISOString();
         }, { history: this.componentHistory(componentId) });
         return group.id;
+    }
+
+    /**
+     * Make an element its definition's root, taking off the container it sat alone in.
+     *
+     * One step in the definition's history, and the one step there that reaches the pages: every
+     * placement is given the box the element took up inside it (`promoteElementToComponentRoot`), and
+     * taking the step back gives the boxes back with the definition.
+     */
+    public promoteComponentElementToRoot(componentId: string, elementId: string): boolean {
+        const component = this.getComponent(componentId);
+        const element = component?.elements[elementId];
+        if (!component || !element || resolveComponentRootPromotionRefusal(component.elements, component.rootElementId, elementId)) {
+            return false;
+        }
+        let promoted = false;
+        this.mutateDocument(document => {
+            promoted = promoteElementToComponentRoot(document, componentId, elementId);
+            const liveComponent = (document.components ?? []).find(item => item.id === componentId);
+            if (promoted && liveComponent) {
+                liveComponent.updatedAt = new Date().toISOString();
+            }
+        }, {
+            history: {
+                surfaceId: buildUIComponentEditorSurfaceId(componentId),
+                withPlacements: true,
+                label: { key: "uiEditor.history.setRootElement" as TranslationKey, params: { name: this.describeElementForHistory(element) } },
+            },
+        });
+        return promoted;
+    }
+
+    /**
+     * Put an empty container around a definition's root, as its new root. Returns the container's id.
+     *
+     * The container takes the root's size and draws nothing of its own, so the definition and every
+     * placement look as they did, and the root can now be given siblings.
+     */
+    public wrapComponentRoot(componentId: string): string | null {
+        const component = this.getComponent(componentId);
+        const root = component?.elements[component.rootElementId];
+        if (!component || !root) {
+            return null;
+        }
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const wrapper: UIElement = {
+            id: uuidService.generate(),
+            type: "nl.container",
+            name: translate("defaultDoc.rootName"),
+            parentId: null,
+            childrenIds: [],
+            layout: { x: 0, y: 0, width: root.layout.width, height: root.layout.height, opacity: 1, visible: true },
+            props: createGroupContainerProps(null),
+        };
+        this.mutateDocument(document => {
+            const liveComponent = (document.components ?? []).find(item => item.id === componentId);
+            if (!liveComponent) {
+                return;
+            }
+            wrapComponentRootInContainer(liveComponent, wrapper);
+            liveComponent.updatedAt = new Date().toISOString();
+        }, {
+            history: {
+                surfaceId: buildUIComponentEditorSurfaceId(componentId),
+                label: { key: "uiEditor.history.wrapRoot" as TranslationKey, params: { name: this.describeElementForHistory(root) } },
+            },
+        });
+        return this.getComponent(componentId)?.rootElementId === wrapper.id ? wrapper.id : null;
+    }
+
+    /** An element as an Edit menu step names it: its own name, or its widget's. */
+    private describeElementForHistory(element: UIElement): string {
+        return element.name?.trim() || widgetModuleRegistry.get(element.type)?.displayName || element.type;
     }
 
     public createComponentElement(

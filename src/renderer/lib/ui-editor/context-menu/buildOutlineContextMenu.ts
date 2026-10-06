@@ -3,6 +3,7 @@ import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEdito
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { buildInsertWidgetSubmenu } from "./insertWidgetMenuItems";
+import { componentRootSwapMenuItem } from "./componentRootSwapMenu";
 import { appendArrangeSubmenu } from "./appendArrangeSubmenu";
 import { appendAlignSubmenu } from "./appendAlignSubmenu";
 import type { BuildOutlineContextMenuInput } from "./types";
@@ -211,6 +212,8 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
             },
         );
     }
+
+    items.push(...componentRootSwapMenuItem(input.rootSwap, actions.hideMenu));
 
     if (input.allowAddToComponentLibrary !== false) {
         items.push({
