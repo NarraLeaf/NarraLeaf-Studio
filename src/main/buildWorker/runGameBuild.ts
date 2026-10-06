@@ -32,6 +32,7 @@ import { packageWebSite } from "./packageWebSite";
 import type { GameBuildWorkerConfig, GameBuildWorkerFuses, GameBuildWorkerTarget } from "./protocol";
 import { ensureWinCodeSignCache, withBinariesMirrorEnv } from "./winCodeSignCache";
 import { writeFolderZip } from "./desktopZip";
+import { withoutUpdateBlockmaps } from "./updateBlockmaps";
 
 /**
  * The electron-builder invocation behind a production game build. Pure with
@@ -386,6 +387,7 @@ async function packageDesktopTargets(config: GameBuildWorkerConfig, log: GameBui
     await withBinariesMirrorEnv(config.electronBuilderBinariesMirror, () =>
         withNotarizationEnv(notarizationForTargets(config.targets), () =>
         withArchiveCompressionLevel(() =>
+        withoutUpdateBlockmaps(() =>
         withSigntoolPath(signtoolPathForTargets(config.targets), async () => {
             for (const target of config.targets) {
                 log("info", `packaging ${target.platform} (${target.formats.join(", ")})`);
@@ -407,7 +409,7 @@ async function packageDesktopTargets(config: GameBuildWorkerConfig, log: GameBui
                 }
                 artifacts.push(...await runBuilder(config, target));
             }
-        }))));
+        })))));
     return artifacts;
 }
 
