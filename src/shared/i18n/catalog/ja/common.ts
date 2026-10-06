@@ -87,4 +87,14 @@ export const common = {
             other: "情報 {count} 件",
         },
     },
+    flowCanvas: {
+        nodeHelp: "Enter キーまたは Space キーでノードを選択、Delete キーで削除、Esc キーで取消",
+        movableNodeHelp: "Enter キーまたは Space キーでノードを選択、矢印キーで移動、Delete キーで削除、Esc キーで取消",
+        wireHelp: "Enter キーまたは Space キーで線を選択、Delete キーで削除、Esc キーで取消",
+        nodeMoved: "選択したノードを{direction}へ移動、位置 x {x}、y {y}",
+        up: "上",
+        down: "下",
+        left: "左",
+        right: "右",
+    },
 } satisfies LocaleNamespace<"common">;

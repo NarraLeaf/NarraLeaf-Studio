@@ -37,6 +37,7 @@ import { Check, EyeOff } from "lucide-react";
 import { ContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { ShortcutContextMenu } from "@/apps/workspace/components/ui/ShortcutContextMenu";
 import { useTranslation } from "@/lib/i18n";
+import { useFlowAriaLabels } from "@/lib/ui-editor/hooks/useFlowAriaLabels";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
 import { buildStructFieldPaletteEntries } from "../components/structFieldPaletteEntries";
@@ -648,6 +649,7 @@ function BlueprintFlowCanvasInner({
     // starts; see `components/ui/freezeGuard`.
     const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
     const { t, tn } = useTranslation();
+    const flowAriaLabels = useFlowAriaLabels();
     // Optional: the canvas also renders where there is no workspace provider (Dev Mode). Null there,
     // and the delete notice below simply does not fire.
     const workspace = useOptionalWorkspace();
@@ -2620,6 +2622,7 @@ function BlueprintFlowCanvasInner({
             {...{ [BLUEPRINT_CANVAS_ATTRIBUTE]: flowId }}
         >
             <ReactFlow
+                ariaLabelConfig={flowAriaLabels}
                 key={graphKey}
                 nodes={nodes}
                 edges={edges}
