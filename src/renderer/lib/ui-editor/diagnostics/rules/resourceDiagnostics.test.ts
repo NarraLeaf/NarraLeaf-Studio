@@ -70,6 +70,41 @@ describe("collectResourceDiagnostics", () => {
         ]);
     });
 
+    /**
+     * The three ways an image is handed its picture by the game, each from the starter template: a
+     * gallery tile bound to its row's picture, the viewer a blueprint fills with whichever picture was
+     * pressed, and the dialogue avatar that sets its own on every line. An empty field there is the
+     * design, so reporting it asks the author to pick a picture the game then replaces.
+     */
+    describe("an image that gets its picture at runtime", () => {
+        const pictureless = () => createImageElement({ fillType: "image", imageFill: { mode: "cover", assetId: null } });
+        const none = new Set<string>();
+
+        it("is not reported when its asset is bound", () => {
+            const element = {
+                ...pictureless(),
+                valueBindings: { "imageFill.assetId": { kind: "listItemField", fieldId: "image" } },
+            } as UIElement;
+
+            expect(collectResourceDiagnostics([element])).toEqual([]);
+        });
+
+        it("is not reported when a blueprint names it", () => {
+            expect(collectResourceDiagnostics([pictureless()], { named: new Set(["image-1"]), runningOwnBlueprint: none }))
+                .toEqual([]);
+        });
+
+        it("is not reported when its own blueprint runs something", () => {
+            expect(collectResourceDiagnostics([pictureless()], { named: none, runningOwnBlueprint: new Set(["image-1"]) }))
+                .toEqual([]);
+        });
+
+        it("is still reported when the blueprints are about another element", () => {
+            expect(collectResourceDiagnostics([pictureless()], { named: new Set(["other"]), runningOwnBlueprint: new Set(["other"]) }).map(d => d.id))
+                .toEqual(["res:image:image-1"]);
+        });
+    });
+
     it("warns when a video widget has no clip", () => {
         const element: UIElement = {
             id: "video-1",

@@ -174,9 +174,15 @@ import {
     UI_STRUCT_ID_CHOICE_ITEM,
     UI_STRUCT_ID_NOTIFICATION_ITEM,
     UI_STRUCT_ID_NVL_ITEM,
+    resolveUIStruct,
 } from "@shared/types/ui-editor/builtinStructs";
-import type { UIStructField } from "@shared/types/ui-editor/struct";
-import { applyUIStructFieldsForOwner, pruneUIStructs } from "@shared/types/ui-editor/structLibrary";
+import { coerceItemToStruct, type UIStructField } from "@shared/types/ui-editor/struct";
+import {
+    applyUIStructFieldsForOwner,
+    applyUIStructShapeForOwner,
+    pruneUIStructs,
+    remapUIListFieldIds,
+} from "@shared/types/ui-editor/structLibrary";
 import {
     dedupeUIInputBindings,
     normalizeUIInputActionLibrary,
@@ -1425,6 +1431,42 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             };
             component.updatedAt = new Date().toISOString();
             document.structs = pruneUIStructs({ ...document, structs: applied.structs });
+        }, { history: this.componentHistory(componentId) });
+    }
+
+    /**
+     * Give one list one of the engine's shapes, or (`null`) a shape of its own again.
+     *
+     * One step: the pointer, the rows read into the new shape, the list's key field and its item
+     * template's field bindings moved to the field of the same name, and the library pruned. Undo takes
+     * all of it back, the library included (`UIEditorHistoryService` slices the shapes a page names).
+     */
+    public setListItemStructShape(elementId: string, shapeId: string | null): void {
+        const surfaceId = this.getElementSurfaceId(elementId);
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        this.mutateDocument(document => {
+            const element = document.elements[elementId];
+            if (!element || isLinkedUIComponentElement(element)) {
+                return;
+            }
+            applyListItemStructShape(document, document.elements, element, shapeId, () => uuidService.generate());
+        }, {
+            history: surfaceId ? { surfaceId } : false,
+        });
+    }
+
+    /** {@link setListItemStructShape} for a list inside a component definition, in its own history. */
+    public setComponentListItemStructShape(componentId: string, elementId: string, shapeId: string | null): void {
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        this.mutateDocument(document => {
+            const component = (document.components ?? []).find(item => item.id === componentId);
+            const element = component?.elements[elementId];
+            if (!component || !element || isLinkedUIComponentElement(element)) {
+                return;
+            }
+            if (applyListItemStructShape(document, component.elements, element, shapeId, () => uuidService.generate())) {
+                component.updatedAt = new Date().toISOString();
+            }
         }, { history: this.componentHistory(componentId) });
     }
 
@@ -6467,4 +6509,32 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }
         }
     }
+}
+
+/**
+ * The shared half of the two `set...ListItemStructShape` methods: `elements` is the table the list
+ * lives in. Answers whether anything changed.
+ */
+function applyListItemStructShape(
+    document: UIDocument,
+    elements: Record<string, UIElement>,
+    element: UIElement,
+    shapeId: string | null,
+    generateId: () => string,
+): boolean {
+    const props = (element.props ?? {}) as Record<string, unknown>;
+    const currentStructId = typeof props.itemStructId === "string" ? props.itemStructId : null;
+    const applied = applyUIStructShapeForOwner({ document, currentStructId, shapeId, generateId });
+    if (applied.structId === currentStructId) {
+        return false;
+    }
+    const struct = resolveUIStruct({ structs: applied.structs }, applied.structId);
+    element.props = {
+        ...props,
+        itemStructId: applied.structId,
+        ...(Array.isArray(props.items) ? { items: props.items.map(item => coerceItemToStruct(struct, item)) } : {}),
+    };
+    remapUIListFieldIds(elements, element.id, applied.fieldIds);
+    document.structs = pruneUIStructs({ ...document, structs: applied.structs });
+    return true;
 }

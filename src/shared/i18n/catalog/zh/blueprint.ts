@@ -122,7 +122,7 @@ export const blueprint = {
         },
         interaction: {
             hiddenEvents: "元素“{name}”不可见，但仍存在交互绑定",
-            hiddenEventsHint: "移除事件或让元素可见；运行时可能永远无法接收输入",
+            hiddenEventsHint: "移除事件、让元素可见，或在蓝图中显示该元素；隐藏的元素不接收输入",
             opaqueEvents: "元素“{name}”几乎不可见（不透明度），但存在交互绑定",
             opaqueEventsHint: "用户可能看不到该控件；在开发者模式中确认",
             smallHit: "元素“{name}”的点击区域很小，但存在交互绑定",
@@ -186,6 +186,7 @@ export const blueprint = {
             fieldMissing: "“{node}”：{struct}没有字段“{field}”",
             fieldUnpicked: "节点“{node}”：选择字段",
             keyNotAField: "“{node}”：{struct}没有字段“{key}”，不会匹配任何项",
+            listShapeMismatch: "“{node}”：连入的{struct}与该列表的字段不一致，不一致的字段显示为空",
         },
         fn: {
             nameMissing: "函数“{node}”：设置函数名称",

@@ -335,7 +335,7 @@ describe("UIEditorHistoryService for a component definition", () => {
 
         const snapshot = captureUIDocumentComponentSnapshot(document, "slot");
 
-        expect(snapshot).toEqual({ componentId: "slot", component: definition("slot", "01") });
+        expect(snapshot).toEqual({ componentId: "slot", component: definition("slot", "01"), structs: {} });
     });
 
     it("puts a definition back in its own place in the library and touches nothing else", () => {
@@ -426,5 +426,55 @@ describe("UIEditorHistoryService for a component definition", () => {
     it("names the stack a component tab claims", () => {
         expect(uiEditorHistoryScope(SLOT_SURFACE)).toBe(uiComponentHistoryScope("slot"));
         expect(uiEditorHistoryScope("surface-a")).toBe(uiSurfaceHistoryScope("surface-a"));
+    });
+});
+
+/**
+ * A list's fields live in the document's library, not on the list. A page's undo has to carry the
+ * shapes its lists name, or renaming a field is a change no step records and changing a list's shape
+ * cannot be taken back without leaving it pointing at a shape the library has dropped.
+ */
+describe("UIEditorHistoryService and the shapes a page's lists name", () => {
+    function withList(structs: UIDocument["structs"], itemStructId: string): UIDocument {
+        const document = documentWithPositions(0, 0);
+        document.elements["root-a"] = { ...document.elements["root-a"]!, childrenIds: ["a", "list"] };
+        document.elements.list = {
+            id: "list",
+            type: "nl.list",
+            name: "list",
+            parentId: "root-a",
+            childrenIds: [],
+            layout: { x: 0, y: 0, width: 100, height: 100, visible: true, opacity: 1 },
+            props: { itemStructId },
+        };
+        document.structs = structs;
+        return document;
+    }
+    const OWN = { id: "own", fields: [{ id: "f1", key: "name", type: "string" as const }] };
+
+    it("records a renamed field as a step, and undo puts the old name back", () => {
+        const { history, uidoc } = createHarness(withList({ own: OWN }, "own"));
+        const before = history.captureSnapshot("surface-a");
+        uidoc.document = withList({ own: { id: "own", fields: [{ id: "f1", key: "title", type: "string" }] } }, "own");
+        history.record({ surfaceId: "surface-a", before, after: history.captureSnapshot("surface-a") });
+
+        expect(history.canUndo("surface-a")).toBe(true);
+        history.undo("surface-a");
+        expect(uidoc.document.structs?.own?.fields[0]?.key).toBe("name");
+    });
+
+    it("puts back the shape a list had before it took one of the engine's", () => {
+        const { history, uidoc } = createHarness(withList({ own: OWN }, "own"));
+        const before = history.captureSnapshot("surface-a");
+        uidoc.document = withList({}, "nl.ending");
+        history.record({ surfaceId: "surface-a", before, after: history.captureSnapshot("surface-a") });
+
+        history.undo("surface-a");
+        expect((uidoc.document.elements.list!.props as Record<string, unknown>).itemStructId).toBe("own");
+        expect(uidoc.document.structs?.own).toEqual(OWN);
+
+        history.redo("surface-a");
+        expect((uidoc.document.elements.list!.props as Record<string, unknown>).itemStructId).toBe("nl.ending");
+        expect(uidoc.document.structs?.own).toBeUndefined();
     });
 });

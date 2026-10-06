@@ -822,6 +822,7 @@ function ListContentField(props: CustomFieldProps<UIInspectorData>) {
                 items={current.items}
                 generateFieldId={() => data.documentService.generateId()}
                 onFieldsChange={next => data.documentService.setListItemStructFields(element.id, next)}
+                onShapeChange={shapeId => data.documentService.setListItemStructShape(element.id, shapeId)}
                 onItemsChange={next => patchListProps(data, { items: next })}
             />
         </div>
