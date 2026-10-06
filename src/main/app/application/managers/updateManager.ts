@@ -8,6 +8,7 @@ import {
     type UpdateStatus,
 } from "@shared/constants/update";
 import { applyDownloadRewrite } from "./downloadRewrites";
+import { studioFetch } from "./downloadProxy";
 import type { BaseApp } from "../baseApp";
 
 /** Where the check-only path reads the newest published release from. */
@@ -239,7 +240,7 @@ export class UpdateManager {
         this.setState({ status: "checking", error: undefined });
         try {
             const url = applyDownloadRewrite(GITHUB_LATEST_RELEASE_API, message => this.app.logger.info("[Update]", message));
-            const response = await fetch(url, {
+            const response = await studioFetch(url, {
                 headers: { Accept: "application/vnd.github+json" },
                 signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
             });

@@ -12,7 +12,7 @@ import {
 } from "@shared/constants/screenEffects";
 import { ZOOM_PERCENT_DEFAULT } from "@shared/constants/zoom";
 import { WINDOW_ICON_DEFAULT } from "@shared/constants/windowIcon";
-import { DownloadRewriteRule } from "@shared/types/downloadSource";
+import { DownloadRewriteRule, USE_SYSTEM_PROXY_KEY } from "@shared/types/downloadSource";
 import { SPELLCHECK_LANGUAGE_DEFAULT } from "@shared/types/spellcheck";
 import { PersistentState } from "@shared/utils/persistentState";
 import type { VcsServerSession, VcsSessionUse } from "@shared/types/vcs";
@@ -357,6 +357,12 @@ export interface GlobalStateType extends Record<string, any> {
      */
     "network.downloadRewrites": DownloadRewriteRule[];
     /**
+     * When true, Studio downloads follow this computer's proxy. Off (default) is
+     * direct: Node `fetch` as it always was. On, they go through Chromium's
+     * network stack in system-proxy mode. See downloadProxy.ts.
+     */
+    [USE_SYSTEM_PROXY_KEY]: boolean;
+    /**
      * Plugin store registry index URL; "" = the official NarraLeaf/Plugins index
      * (see @shared/constants/pluginRegistry). Read by the main process when the
      * launcher's Plugins store fetches or installs.
@@ -580,6 +586,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "build.electronBuilderBinariesMirror": "",
     "build.zigMirror": "",
     "network.downloadRewrites": [],
+    [USE_SYSTEM_PROXY_KEY]: false,
     "plugins.registryUrl": "",
     "uiTemplates.registryUrl": "",
     "project.defaultAuthor": "",

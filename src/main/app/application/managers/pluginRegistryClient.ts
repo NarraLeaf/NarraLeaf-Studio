@@ -14,6 +14,7 @@ import type {
 } from "@shared/types/pluginRegistry";
 import { parseZipIndex, readEntryBytes } from "../../../buildWorker/mobile/zipModel";
 import { applyDownloadRewrite } from "./downloadRewrites";
+import { studioFetch } from "./downloadProxy";
 import { resolveDownloadSource } from "@shared/utils/downloadSource";
 
 /**
@@ -44,7 +45,7 @@ async function fetchWithTimeout(url: string): Promise<Response> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), PLUGIN_REGISTRY_FETCH_TIMEOUT_MS);
     try {
-        return await fetch(applyDownloadRewrite(url), { redirect: "follow", signal: controller.signal });
+        return await studioFetch(applyDownloadRewrite(url), { redirect: "follow", signal: controller.signal });
     } finally {
         clearTimeout(timer);
     }

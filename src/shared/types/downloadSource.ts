@@ -18,6 +18,9 @@
 /** Global-state key holding the ordered rewrite list. */
 export const DOWNLOAD_REWRITES_KEY = "network.downloadRewrites";
 
+/** Global-state key: Studio downloads follow this computer's proxy. Off (default) is direct. */
+export const USE_SYSTEM_PROXY_KEY = "network.useSystemProxy";
+
 /** One prefix substitution. Order in the stored array is match order. */
 export type DownloadRewriteRule = {
     /**

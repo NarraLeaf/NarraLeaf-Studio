@@ -20,6 +20,7 @@ import { isSafeRelativeEntry } from "@shared/utils/pluginManifest";
 import { normalizeLocalizedTextPack } from "@shared/types/localizedText";
 import { resolveDownloadSource } from "@shared/utils/downloadSource";
 import { applyDownloadRewrite } from "./downloadRewrites";
+import { studioFetch } from "./downloadProxy";
 
 /**
  * Read-only client for the UI template store.
@@ -62,7 +63,7 @@ async function fetchWithTimeout(url: string): Promise<Response> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), UI_TEMPLATE_REGISTRY_FETCH_TIMEOUT_MS);
     try {
-        return await fetch(applyDownloadRewrite(url), { redirect: "follow", signal: controller.signal });
+        return await studioFetch(applyDownloadRewrite(url), { redirect: "follow", signal: controller.signal });
     } finally {
         clearTimeout(timer);
     }
