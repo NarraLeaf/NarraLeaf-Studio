@@ -59,9 +59,9 @@ describe("studioWritesZip", () => {
 
     it("takes a macOS or Linux zip too, and leaves their other formats alone", () => {
         expect(studioWritesZip({ platform: "macos", formats: ["dmg", "zip"] })).toBe(true);
-        expect(studioWritesZip({ platform: "linux", formats: ["AppImage", "zip"] })).toBe(true);
+        expect(studioWritesZip({ platform: "linux", formats: ["appimage", "zip"] })).toBe(true);
         expect(studioWritesZip({ platform: "macos", formats: ["dmg"] })).toBe(false);
-        expect(studioWritesZip({ platform: "linux", formats: ["deb"] })).toBe(false);
+        expect(studioWritesZip({ platform: "linux", formats: ["appimage"] })).toBe(false);
     });
 });
 
