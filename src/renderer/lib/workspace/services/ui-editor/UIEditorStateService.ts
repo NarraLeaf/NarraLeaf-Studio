@@ -17,7 +17,13 @@ import {
 import type { UITool } from "../../../ui-editor/editor/types";
 import type { ActiveSnapGuides, SmartSnapDetailSettings } from "../../../ui-editor/snapping/types";
 import { DEFAULT_SMART_SNAP_DETAIL_SETTINGS } from "../../../ui-editor/snapping/types";
-import { DEFAULT_UI_EDITOR_GRID_SPACING, normalizeUiEditorGridSpacing } from "../../../ui-editor/snapping/gridSnap";
+import {
+    DEFAULT_UI_EDITOR_GRID_SPACING,
+    DEFAULT_UI_EDITOR_GRID_STYLE,
+    normalizeUiEditorGridSpacing,
+    normalizeUiEditorGridStyle,
+    type UIEditorGridStyle,
+} from "../../../ui-editor/snapping/gridSnap";
 import type { PanelStateService } from "../core/PanelStateService";
 import { readUiEditorGridSpacing, writeUiEditorGridSpacing } from "./uiEditorGridPreference";
 import {
@@ -36,6 +42,12 @@ const SMART_SNAP_ENABLED_KEY = "uiEditor.smartSnap.enabled";
 
 /** Persisted: smart snap category toggles (element centers, edges, canvas). */
 const SMART_SNAP_DETAIL_KEY = "uiEditor.smartSnap.detail";
+
+/**
+ * Persisted: whether the canvas grid is drawn as lines or dots. A matter of taste rather than of the
+ * project's layout, so unlike the spacing it follows the author from project to project.
+ */
+const GRID_STYLE_KEY = "uiEditor.grid.style";
 
 /** Persisted: screen-ratio preview frame preset id for the surface canvas (null = off). Pure view state. */
 const PREVIEW_ASPECT_KEY = "uiEditor.preview.aspect";
@@ -98,6 +110,7 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
     private snapGuides: ActiveSnapGuides | null = null;
     /** Per-project editor preference, kept in the project's panel state store (`uiEditorGridPreference.ts`). */
     private gridSpacing = DEFAULT_UI_EDITOR_GRID_SPACING;
+    private gridStyle: UIEditorGridStyle = DEFAULT_UI_EDITOR_GRID_STYLE;
     private panelStateService: PanelStateService | null = null;
 
     /** Pure view state: screen-ratio preview frame preset id, `null` = off. Never touches the UIDocument. */
@@ -169,6 +182,8 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
 
         const detailStored = this.settingsService.getSync<unknown>(SMART_SNAP_DETAIL_KEY);
         this.smartSnapDetail = normalizeSmartSnapDetailSettings(detailStored);
+
+        this.gridStyle = normalizeUiEditorGridStyle(this.settingsService.getSync<unknown>(GRID_STYLE_KEY));
 
         // Validate against the known preset ids: a stale/garbage setting must fall back to "off"
         // rather than produce a broken frame on the canvas.
@@ -484,6 +499,26 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         this.gridSpacing = next;
         this.events.emit("gridSpacingChanged", next);
         writeUiEditorGridSpacing(this.panelStateService, next);
+    }
+
+    public getGridStyle(): UIEditorGridStyle {
+        return this.gridStyle;
+    }
+
+    /** Lines or dots. Drawing only, kept in Studio settings; snapping and the UI document are untouched. */
+    public setGridStyle(style: UIEditorGridStyle): void {
+        const next = normalizeUiEditorGridStyle(style);
+        if (next === this.gridStyle) {
+            return;
+        }
+        this.gridStyle = next;
+        this.events.emit("gridStyleChanged", next);
+        if (!this.settingsService) {
+            return;
+        }
+        void this.settingsService.set(GRID_STYLE_KEY, next).catch(err => {
+            console.warn("[UIEditorStateService] failed to persist grid style", err);
+        });
     }
 
     public getPreviewAspectId(): string | null {

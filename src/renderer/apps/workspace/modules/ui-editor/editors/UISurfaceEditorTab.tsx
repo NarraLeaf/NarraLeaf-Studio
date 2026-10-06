@@ -44,6 +44,7 @@ import {
     useSmartSnapEnabled,
     useSmartSnapDetailSettings,
     useGridSpacing,
+    useGridStyle,
     usePreviewAspectId,
     usePreviewSafeAreaId,
     usePreviewReferenceSlotIds,
@@ -169,6 +170,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
     const smartSnapEnabled = useSmartSnapEnabled(stateService);
     const smartSnapDetail = useSmartSnapDetailSettings(stateService);
     const gridSpacing = useGridSpacing(stateService);
+    const gridStyle = useGridStyle(stateService);
     const previewAspectId = usePreviewAspectId(stateService);
     const previewSafeAreaId = usePreviewSafeAreaId(stateService);
     const referenceSlotIds = usePreviewReferenceSlotIds(stateService);
@@ -825,7 +827,12 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             >
                                 <Magnet className="h-4 w-4" />
                             </SurfaceEditorToolbarSegButton>
-                            <SurfaceSnapSettingsTrigger stateService={stateService} detail={smartSnapDetail} gridSpacing={gridSpacing} />
+                            <SurfaceSnapSettingsTrigger
+                                stateService={stateService}
+                                detail={smartSnapDetail}
+                                gridSpacing={gridSpacing}
+                                gridStyle={gridStyle}
+                            />
                         </SurfaceEditorToolbarButtonGroup>
                         <SurfaceAlignTrigger
                             surfaceId={surface.id}
@@ -936,7 +943,12 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                         {/* Shown while it acts: smart snap on with Grid among its targets. Outside the
                             transformed node so the lines stay one device pixel wide at any zoom. */}
                         {smartSnapEnabled && smartSnapDetail.snapGrid ? (
-                            <SurfaceGridOverlay designSize={surface.designSize} spacing={gridSpacing} viewport={viewport} />
+                            <SurfaceGridOverlay
+                                designSize={surface.designSize}
+                                spacing={gridSpacing}
+                                style={gridStyle}
+                                viewport={viewport}
+                            />
                         ) : null}
                         {/* Outside the transformed node on purpose - these are text. */}
                         {isComponentEdit ? null : (

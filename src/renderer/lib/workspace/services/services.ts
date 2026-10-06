@@ -129,6 +129,7 @@ import type { ViewportTransform } from "../../ui-editor/geometry/types";
 import type { SurfaceViewportFit } from "../../ui-editor/geometry/fitViewport";
 import type { UITool } from "../../ui-editor/editor/types";
 import type { ActiveSnapGuides, SmartSnapDetailSettings } from "../../ui-editor/snapping/types";
+import type { UIEditorGridStyle } from "../../ui-editor/snapping/gridSnap";
 import type { SelectionState } from "./ui/UIStore";
 import type { DevModeEntry, DevModeStatus } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
@@ -1023,6 +1024,8 @@ interface UIEditorStateEvents {
     smartSnapDetailSettingsChanged: SmartSnapDetailSettings;
     /** The canvas grid spacing in design pixels (persisted per project). */
     gridSpacingChanged: number;
+    /** Whether the canvas grid is drawn as lines or dots (persisted in Studio settings). */
+    gridStyleChanged: UIEditorGridStyle;
     /** Ephemeral snap guide lines in surface space (viewport overlay). */
     snapGuidesChanged: ActiveSnapGuides | null;
     /** Screen-ratio preview frame preset id, `null` = off (pure view state, global settings). */
@@ -1106,6 +1109,9 @@ interface IUIEditorStateService extends IService {
      */
     getGridSpacing(): number;
     setGridSpacing(spacing: number): void;
+    /** How the canvas draws the grid, lines or dots. A Studio-wide drawing preference; snapping is unaffected. */
+    getGridStyle(): UIEditorGridStyle;
+    setGridStyle(style: UIEditorGridStyle): void;
     /**
      * Screen-ratio preview frame preset id (`null` = off). Pure view state: persisted in global
      * settings, never in the UIDocument, so toggling it cannot dirty the project.

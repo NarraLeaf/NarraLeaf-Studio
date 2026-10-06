@@ -5,6 +5,7 @@ import {
     nearestGridPoint,
     nearestGridValue,
     normalizeUiEditorGridSpacing,
+    normalizeUiEditorGridStyle,
     parseUiEditorGridSpacing,
     resolveGridDisplayStep,
     resolveGridTranslate,
@@ -183,5 +184,15 @@ describe("computeGridScreenLines", () => {
                 overlaySize: { width: 500, height: 500 },
             }),
         ).toBeNull();
+    });
+});
+
+describe("normalizeUiEditorGridStyle", () => {
+    it("keeps lines and dots, and reads anything else as lines", () => {
+        expect(normalizeUiEditorGridStyle("lines")).toBe("lines");
+        expect(normalizeUiEditorGridStyle("dots")).toBe("dots");
+        expect(normalizeUiEditorGridStyle(undefined)).toBe("lines");
+        expect(normalizeUiEditorGridStyle("Dots")).toBe("lines");
+        expect(normalizeUiEditorGridStyle(1)).toBe("lines");
     });
 });

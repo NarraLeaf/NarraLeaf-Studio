@@ -215,6 +215,9 @@ export const uiEditor = {
         elementBorders: "元素边框（边到边）",
         elementLayout: "元素布局（中心）",
         grid: "网格",
+        gridStyle: "网格样式",
+        gridLines: "网格线",
+        gridDots: "格点",
         gridSize: "网格间距",
     },
     contextMenu: {

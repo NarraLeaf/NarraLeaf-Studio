@@ -4,25 +4,33 @@ import { useTranslation } from "@/lib/i18n";
 import { Checkbox } from "@/lib/components/elements";
 import { Input } from "@/lib/components/elements/Input";
 import type { SmartSnapDetailSettings } from "@/lib/ui-editor/snapping/types";
-import { parseUiEditorGridSpacing } from "@/lib/ui-editor/snapping/gridSnap";
+import { parseUiEditorGridSpacing, type UIEditorGridStyle } from "@/lib/ui-editor/snapping/gridSnap";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { SurfaceEditorToolbarSegButton, SurfaceEditorToolbarSegSlot } from "./SurfaceEditorToolbarButtonGroup";
-import { SurfaceToolbarPopoverPanel, SurfaceToolbarPopoverSection, useSurfaceToolbarPopover } from "./SurfaceEditorToolbarPopover";
+import {
+    SurfaceToolbarPopoverPanel,
+    SurfaceToolbarPopoverRow,
+    SurfaceToolbarPopoverSection,
+    useSurfaceToolbarPopover,
+} from "./SurfaceEditorToolbarPopover";
 
 type Props = {
     stateService: UIEditorStateService;
     detail: SmartSnapDetailSettings;
     /** The project's grid spacing in design pixels, shown and edited in the panel. */
     gridSpacing: number;
+    /** Whether the canvas draws the grid as lines or dots. */
+    gridStyle: UIEditorGridStyle;
 };
 
 /**
- * Dropdown trigger + panel for per-category smart snap toggles, and the grid's spacing.
+ * Dropdown trigger + panel for per-category smart snap toggles, and the grid's style and spacing.
  *
  * The spacing is a section of its own rather than part of the Grid row, and stays editable with Grid
- * unticked: the snap-to-grid key uses it whether or not grid snapping is on.
+ * unticked: the snap-to-grid key uses it whether or not grid snapping is on. The style sits with it
+ * for the same reason - both describe the grid, not whether it is a snap target.
  */
-export function SurfaceSnapSettingsTrigger({ stateService, detail, gridSpacing }: Props) {
+export function SurfaceSnapSettingsTrigger({ stateService, detail, gridSpacing, gridStyle }: Props) {
     const { t } = useTranslation();
     const popover = useSurfaceToolbarPopover(detail);
     const [spacingDraft, setSpacingDraft] = useState(String(gridSpacing));
@@ -107,6 +115,20 @@ export function SurfaceSnapSettingsTrigger({ stateService, detail, gridSpacing }
                         {t("uiEditor.snap.grid")}
                     </Checkbox>
                 </div>
+                <SurfaceToolbarPopoverSection label={t("uiEditor.snap.gridStyle")}>
+                    <SurfaceToolbarPopoverRow
+                        label={t("uiEditor.snap.gridLines")}
+                        selected={gridStyle === "lines"}
+                        focusWhenSelected={false}
+                        onClick={() => stateService.setGridStyle("lines")}
+                    />
+                    <SurfaceToolbarPopoverRow
+                        label={t("uiEditor.snap.gridDots")}
+                        selected={gridStyle === "dots"}
+                        focusWhenSelected={false}
+                        onClick={() => stateService.setGridStyle("dots")}
+                    />
+                </SurfaceToolbarPopoverSection>
                 <SurfaceToolbarPopoverSection label={t("uiEditor.snap.gridSize")}>
                     <div className="flex items-center gap-1.5 px-3 pb-1 pt-0.5">
                         <div className="min-w-0 flex-1">

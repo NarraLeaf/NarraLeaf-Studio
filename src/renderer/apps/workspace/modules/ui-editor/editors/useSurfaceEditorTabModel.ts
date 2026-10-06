@@ -3,7 +3,11 @@ import type { UITool } from "@/lib/ui-editor/editor/types";
 import type { UIStageSlotId, UISurface } from "@shared/types/ui-editor/document";
 import type { SmartSnapDetailSettings } from "@/lib/ui-editor/snapping/types";
 import { DEFAULT_SMART_SNAP_DETAIL_SETTINGS } from "@/lib/ui-editor/snapping/types";
-import { DEFAULT_UI_EDITOR_GRID_SPACING } from "@/lib/ui-editor/snapping/gridSnap";
+import {
+    DEFAULT_UI_EDITOR_GRID_SPACING,
+    DEFAULT_UI_EDITOR_GRID_STYLE,
+    type UIEditorGridStyle,
+} from "@/lib/ui-editor/snapping/gridSnap";
 import { useUISurfaceEditorServices } from "@/apps/workspace/modules/ui-editor/editors/useUISurfaceEditorServices";
 
 export type ViewportTransform = {
@@ -90,6 +94,22 @@ export function useGridSpacing(stateService: EditorStateService | null | undefin
     }, [stateService]);
 
     return spacing;
+}
+
+/** Whether the canvas grid is drawn as lines or dots. A Studio-wide drawing preference. */
+export function useGridStyle(stateService: EditorStateService | null | undefined) {
+    const [style, setStyle] = useState<UIEditorGridStyle>(() => stateService?.getGridStyle() ?? DEFAULT_UI_EDITOR_GRID_STYLE);
+
+    useEffect(() => {
+        if (!stateService) {
+            setStyle(DEFAULT_UI_EDITOR_GRID_STYLE);
+            return undefined;
+        }
+        setStyle(stateService.getGridStyle());
+        return stateService.on("gridStyleChanged", setStyle);
+    }, [stateService]);
+
+    return style;
 }
 
 /** Screen-ratio preview frame preset id (`null` = off). Pure view state — never dirties the project. */

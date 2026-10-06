@@ -217,6 +217,9 @@ export const uiEditor = {
         elementBorders: "要素の枠（端と端）",
         elementLayout: "要素の配置（中心どうし）",
         grid: "グリッド",
+        gridStyle: "グリッドの表示",
+        gridLines: "線",
+        gridDots: "点",
         gridSize: "グリッドの間隔",
     },
     contextMenu: {

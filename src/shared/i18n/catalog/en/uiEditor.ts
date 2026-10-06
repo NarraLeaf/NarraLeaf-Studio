@@ -235,6 +235,9 @@ export const uiEditor = {
         elementBorders: "Element borders (edge to edge)",
         elementLayout: "Element layout (centers)",
         grid: "Grid",
+        gridStyle: "Grid style",
+        gridLines: "Lines",
+        gridDots: "Dots",
         gridSize: "Grid size",
     },
     contextMenu: {
