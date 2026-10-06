@@ -6263,7 +6263,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "One blueprint for the BGM, Sound effects and Voice rows of the Config page: each row is an instance of this component and names its track in the Audio track param (bgm, sound or voice), which Get Component Param reads for the instance being run. To add a slider for another track, place this component in a row and set Audio track to that track's id. The slider's 0–100 becomes the volume's 0 to 1 (divide by 100). Memo keeps the value because one output can feed only one input, and two nodes use it here.",
+                      "text": "One blueprint for the BGM, Sound effects and Voice rows of the Config page: each row is an instance of this component and picks its track from the list in the Audio track param, which Get Component Param reads for the instance being run. To add a slider for another track, place this component in a row and pick that track in Audio track. The slider's 0–100 becomes the volume's 0 to 1 (divide by 100). Memo keeps the value because one output can feed only one input, and two nodes use it here.",
                       "width": 1100,
                       "height": 160
                     },
@@ -19445,7 +19445,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "Runs each time this list is shown; a hidden list is not drawn, so its button on the left draws it again and it shows what is unlocked by then. Get Gallery hands over the CG entries of the Gallery panel (left rail), each row carrying its lock state, its picture and its name, masked while locked. A new project has none, so the list starts empty and Empty note says so. An Unlock Gallery node in the story unlocks an entry. The four lists run this same layer with their own Kind and empty text. They are not one component: Kind is picked on the node and has no pin, so a component param cannot set it, and each list lays out its rows differently.",
+                      "text": "Runs each time this list is shown; a hidden list is not drawn, so its button on the left draws it again and it shows what is unlocked by then. Get Gallery hands over the CG entries of the Gallery panel (left rail ▸ Collapsed panels), each row carrying its lock state, its picture and its name, masked while locked. A new project has none, so the list starts empty and Empty note says so. An entry is unlocked by an Unlock Gallery node in the blueprint of a Blueprint row in the story. The four lists run this same layer with their own Kind and empty text. They are not one component: Kind is picked on the node and has no pin, so a component param cannot set it, and each list lays out its rows differently.",
                       "width": 1100,
                       "height": 180
                     },
@@ -20468,7 +20468,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "Runs each time this list is shown; a hidden list is not drawn, so its button on the left draws it again and it shows what is unlocked by then. Get Gallery hands over the recollection entries of the Gallery panel (left rail), each row carrying its lock state, its picture and its name, masked while locked. A new project has none, so the list starts empty and Empty note says so. Reaching an entry's scene in the story unlocks it. The four lists run this same layer with their own Kind and empty text. They are not one component: Kind is picked on the node and has no pin, so a component param cannot set it, and each list lays out its rows differently.",
+                      "text": "Runs each time this list is shown; a hidden list is not drawn, so its button on the left draws it again and it shows what is unlocked by then. Get Gallery hands over the recollection entries of the Gallery panel (left rail ▸ Collapsed panels), each row carrying its lock state, its picture and its name, masked while locked. A new project has none, so the list starts empty and Empty note says so. Reaching an entry's scene in the story unlocks it. The four lists run this same layer with their own Kind and empty text. They are not one component: Kind is picked on the node and has no pin, so a component param cannot set it, and each list lays out its rows differently.",
                       "width": 1100,
                       "height": 180
                     },
@@ -21178,7 +21178,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "Runs each time this list is shown; a hidden list is not drawn, so its button on the left draws it again and it shows what is unlocked by then. Get Gallery hands over the music entries of the Gallery panel (left rail), each row carrying its lock state, its track and its name, masked while locked. A new project has none, so the list starts empty and Empty note says so. Playing a track in the story unlocks it. The four lists run this same layer with their own Kind and empty text. They are not one component: Kind is picked on the node and has no pin, so a component param cannot set it, and each list lays out its rows differently.",
+                      "text": "Runs each time this list is shown; a hidden list is not drawn, so its button on the left draws it again and it shows what is unlocked by then. Get Gallery hands over the music entries of the Gallery panel (left rail ▸ Collapsed panels), each row carrying its lock state, its track and its name, masked while locked. A new project has none, so the list starts empty and Empty note says so. Playing a track in the story unlocks it. The four lists run this same layer with their own Kind and empty text. They are not one component: Kind is picked on the node and has no pin, so a component param cannot set it, and each list lays out its rows differently.",
                       "width": 1100,
                       "height": 180
                     },
@@ -21816,7 +21816,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "Runs each time this list is shown; a hidden list is not drawn, so its button on the left draws it again and it shows what is unlocked by then. Get Gallery hands over the voice entries of the Gallery panel (left rail), each row carrying its lock state, its line and its name, masked while locked. A new project has none, so the list starts empty and Empty note says so. Hearing a line in the story unlocks it. The four lists run this same layer with their own Kind and empty text. They are not one component: Kind is picked on the node and has no pin, so a component param cannot set it, and each list lays out its rows differently.",
+                      "text": "Runs each time this list is shown; a hidden list is not drawn, so its button on the left draws it again and it shows what is unlocked by then. Get Gallery hands over the voice entries of the Gallery panel (left rail ▸ Collapsed panels), each row carrying its lock state, its line and its name, masked while locked. A new project has none, so the list starts empty and Empty note says so. Hearing a line in the story unlocks it. The four lists run this same layer with their own Kind and empty text. They are not one component: Kind is picked on the node and has no pin, so a component param cannot set it, and each list lays out its rows differently.",
                       "width": 1100,
                       "height": 180
                     },
@@ -24227,6 +24227,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-10-06T02:53:16.828Z"
+    "updatedAt": "2026-10-06T22:17:46.637Z"
   }
 }
