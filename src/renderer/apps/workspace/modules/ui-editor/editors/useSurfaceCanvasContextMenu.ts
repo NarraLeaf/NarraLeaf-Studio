@@ -205,16 +205,11 @@ export function useSurfaceCanvasContextMenu(params: {
                         if (!menuSel || menuSel.elementIds.length === 0) {
                             return;
                         }
-                        const primaryId = menuSel.primaryId ?? menuSel.elementIds[0];
-                        const primary = primaryId ? doc.elements[primaryId] : null;
-                        const fallbackName =
-                            menuSel.elementIds.length === 1
-                                ? primary?.name ?? primary?.type ?? "Component"
-                                : "Component";
+                        // No name passed: the service names it after the one element, or with the
+                        // catalog's word for a component when there are several or the one is unnamed.
                         const component = documentService.createComponentFromElements(
                             surface.id,
                             menuSel.elementIds,
-                            fallbackName,
                         );
                         if (component) {
                             uiService?.showNotification(translate("uiEditor.contextMenu.addedToComponentLibrary", { name: component.name }), "success");

@@ -22,10 +22,12 @@ import { isEntrySurface } from "@shared/types/ui-editor/entrySurface";
 import { buildUIComponentEditorSurfaceId, buildUIComponentSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
 import {
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
+    BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
     BLUEPRINT_NODE_TYPE_DATA_JSON_GET,
     BLUEPRINT_NODE_TYPE_DATA_NOT_NULL,
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
@@ -113,6 +115,8 @@ function createHarness(options: { withLocalBlueprint?: boolean; withHistory?: bo
         return id;
     };
     const localBlueprintService = {
+        ensureSurfaceMain: (surfaceId: string, displayName?: string) =>
+            createGraphBlueprint(`surface-main-${surfaceId}`, displayName ?? "Surface", { kind: "surfaceMain", surfaceId }),
         ensureWidgetMain: (surfaceId: string, elementId: string, displayName?: string) =>
             createGraphBlueprint(`widget-main-${elementId}`, displayName ?? "Widget", {
                 kind: "widgetMain",
@@ -523,6 +527,99 @@ describe("UIDocumentService surface creation", () => {
         expect(elementClickTargets).toEqual([interactionLayer.id]);
     });
 
+    it("answers the dialogue box's advance actions on a new NVL page, and a click on its list", () => {
+        const { service, blueprintDocument, createGraphBlueprint } = createHarness({ withLocalBlueprint: true });
+        const dialog = service.createSurface({
+            kind: "stageSurface",
+            host: "player",
+            name: "Dialogue",
+            stageMount: { kind: "slot", slotId: "dialog" },
+        }) as UIStageSurface;
+        // A project whose dialogue box reads on with "advance" (click, Space, Enter), as the starter
+        // project's does: the action is defined, enabled on the box, and answered there by Next.
+        (service as any).mutateDocument((document: any) => {
+            document.actions = {
+                advance: { id: "advance", name: "Advance", bindings: [{ kind: "pointer", gesture: "click" }, { kind: "key", key: "Enter" }] },
+                backlog: { id: "backlog", name: "Backlog", bindings: [{ kind: "pointer", gesture: "wheelUp" }] },
+            };
+            const box = document.surfaces.find((surface: any) => surface.id === dialog.id);
+            box.actions = [{ actionId: "advance" }, { actionId: "backlog" }];
+        });
+        const boxBlueprintId = createGraphBlueprint("dialog-main", "Dialogue", { kind: "surfaceMain", surfaceId: dialog.id });
+        blueprintDocument.blueprints[boxBlueprintId].graphs.events.advance = {
+            id: "advance",
+            name: "Advance",
+            graph: {
+                nodes: {
+                    pressed: { id: "pressed", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION, params: { [BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID]: "advance" } },
+                    next: { id: "next", type: BLUEPRINT_NODE_TYPE_GAME_NEXT, params: {} },
+                },
+                edges: [{ from: { nodeId: "pressed", port: "then" }, to: { nodeId: "next", port: "in" } }],
+            },
+        };
+
+        const nvl = service.createSurface({
+            kind: "stageSurface",
+            host: "player",
+            name: "NVL",
+            stageMount: { kind: "slot", slotId: "nvl" },
+        }) as UIStageSurface;
+
+        // The backlog action reaches no Next on the box, so the page does not take it up.
+        expect(service.getDocument().surfaces.find(surface => surface.id === nvl.id)?.actions).toEqual([{ actionId: "advance" }]);
+
+        const doc = service.getDocument();
+        const panel = doc.elements[doc.elements[nvl.rootElementId]!.childrenIds[1]!]!;
+        const list = doc.elements[panel.childrenIds[0]!]!;
+        // No widget answers a click of its own: the page's action does, so nothing reads on twice.
+        expect(blueprintDocument.blueprints[`widget-main-${panel.id}`]?.graphs.events.nvlNext).toBeUndefined();
+
+        const graph = blueprintDocument.blueprints[`surface-main-${nvl.id}`].graphs.events.nvlNext.graph;
+        const nodes = Object.values(graph.nodes) as any[];
+        const head = nodes.find((node: any) => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION);
+        const listClick = nodes.find((node: any) => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK);
+        const next = nodes.find((node: any) => node.type === BLUEPRINT_NODE_TYPE_GAME_NEXT);
+        expect(head.params[BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID]).toBe("advance");
+        // The list is a control, and the action stands down over one; a click on the lines is heard here.
+        expect(listClick.params).toMatchObject({ surfaceId: nvl.id, elementId: list.id, elementType: "nl.nvl.list" });
+        expect(nodes.some((node: any) =>
+            node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK || node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP
+        )).toBe(false);
+        const edges = graph.edges.map((edge: any) => `${edge.from.nodeId}.${edge.from.port}->${edge.to.nodeId}.${edge.to.port}`);
+        expect(edges.sort()).toEqual([
+            `${head.id}.then->${next.id}.in`,
+            `${listClick.id}.then->${next.id}.in`,
+        ].sort());
+    });
+
+    it("gives a new Game UI the project's palette rather than colours of its own", () => {
+        const { service } = createHarness({ withLocalBlueprint: true });
+        const colours: unknown[] = [];
+        for (const slotId of ["dialog", "choice", "notification", "nvl"] as const) {
+            const surface = service.createSurface({ kind: "stageSurface", host: "player", name: slotId, stageMount: { kind: "slot", slotId } });
+            const doc = service.getDocument();
+            const walk = (id: string) => {
+                const element = doc.elements[id]!;
+                // The colours that are drawn: a fill that is shown, a stroke that has width, a text's ink.
+                const props = (element.props ?? {}) as Record<string, unknown>;
+                const drawn = [
+                    props.fillVisible !== false ? props.backgroundColor : undefined,
+                    props.strokeVisible !== false && Number(props.borderWidth) > 0 ? props.borderColor : undefined,
+                    props.color,
+                ];
+                for (const value of drawn) {
+                    if (typeof value === "string" && value !== "transparent") {
+                        colours.push(value);
+                    }
+                }
+                element.childrenIds.forEach(walk);
+            };
+            walk(surface.rootElementId);
+        }
+        expect(colours.length).toBeGreaterThan(0);
+        expect(colours.filter(colour => !String(colour).startsWith("nlbrand:"))).toEqual([]);
+    });
+
     it("creates On-Stage Game UI as a bare transparent root", () => {
         const { service } = createHarness({ withLocalBlueprint: true });
 
@@ -764,6 +861,23 @@ describe("UIDocumentService surface creation", () => {
             { surfaceId: editorSurfaceId, mergeKey: undefined },
             { surfaceId: editorSurfaceId, mergeKey: `component:${component.id}:name` },
         ]);
+    });
+
+    it("leaves no undo step for a props write that asks to skip history, on a page or in a definition", () => {
+        // An inspector filling in the appearance keys an element predates writes the moment the
+        // element is selected; recorded, that step was the first thing Ctrl+Z took back, invisibly.
+        const { service, historyCalls } = createHarness({ withHistory: true });
+        const rootId = service.getDocument().surfaces[0]!.rootElementId;
+        const component = service.createEmptyComponent("Slot");
+        historyCalls.length = 0;
+
+        service.updateElementProps(rootId, { clipContent: true }, { skipHistory: true });
+        service.updateComponentElementProps(component.id, component.rootElementId, { clipContent: true }, { skipHistory: true });
+        expect(historyCalls).toEqual([]);
+        expect(service.getDocument().elements[rootId]!.props).toMatchObject({ clipContent: true });
+
+        service.updateElementProps(rootId, { clipContent: false });
+        expect(historyCalls).toEqual([{ surfaceId: MAIN_APP_SURFACE_ID, mergeKey: `props:${rootId}:clipContent` }]);
     });
 
     it("duplicates Pages with independent elements and private blueprints", () => {

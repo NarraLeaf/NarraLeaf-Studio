@@ -82,8 +82,8 @@ import { LocalBlueprintService } from "./LocalBlueprintService";
 import { UIEditorHistoryService, cloneUIHistoryDocument } from "./UIEditorHistoryService";
 import type { TranslationKey } from "@shared/i18n";
 import { HistoryService } from "../history/HistoryService";
-import type { HistoryLabel } from "../history/historyModel";
-import { HistoryEntryTag, projectHistoryScope } from "../history/historyScopes";
+import type { HistoryLabel, HistoryScopeId } from "../history/historyModel";
+import { HistoryEntryTag, projectHistoryScope, uiSurfaceHistoryScope } from "../history/historyScopes";
 import type { UIGraphService } from "./UIGraphService";
 import {
     captureUILibraryRecords,
@@ -124,6 +124,7 @@ import {
 } from "./uiDocumentTreeMove";
 import { createGroupContainerProps } from "@/lib/ui-editor/widget-modules/builtin/container/groupProps";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
+import { resolveDialogueAdvanceActionIds } from "@/lib/ui-editor/runtime/app/engineNvlKeys";
 import { parentTakesAddedElements } from "@/lib/ui-editor/tree/resolveAddTarget";
 import type { UIEditorClipboardPayload } from "@/lib/ui-editor/commands/uiEditorClipboard";
 import {
@@ -154,10 +155,12 @@ import { assertValidBlueprintDocument } from "./blueprint/documentValidation";
 import {
     BLUEPRINT_GRAPH_IR_META_KIND,
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
+    BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
     BLUEPRINT_NODE_TYPE_DATA_JSON_GET,
     BLUEPRINT_NODE_TYPE_DATA_NOT_NULL,
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
@@ -353,11 +356,18 @@ type NvlStageTemplate = {
     listId: UIElementId;
     nametagId: UIElementId;
     textsId: UIElementId;
+    /**
+     * The project's actions its dialogue box reads on with, which the NVL page answers too - see
+     * `UIDocumentService.configureDefaultNvlBlueprints`. Empty when the project has none.
+     */
+    advanceActionIds: string[];
 };
 
 /** One stage-slot creation template: authored elements plus post-insert blueprint seeding. */
 type StageSlotTemplate = {
     elements: Record<UIElementId, UIElement>;
+    /** The project actions the new surface answers, enabled on it as it is created. */
+    actions?: UISurfaceActionEnablement[];
     configure: (surfaceId: UISurfaceId) => void;
 };
 
@@ -537,6 +547,23 @@ function cloneBlueprintForSurfaceDuplicate(
     cloned.owner = owner;
     return cloned;
 }
+
+/**
+ * The colours the Game UI starters are drawn in: links into the project's palette (`nlbrand:`),
+ * the slots the Design page edits, rather than colours of their own. A starter made in a project
+ * whose palette is blue on dark comes out blue on dark, and changes with the palette afterwards.
+ */
+const STARTER_COLORS = {
+    /** A panel's fill: the dialogue box, the NVL page, a notification. */
+    panel: "nlbrand:container.background",
+    panelBorder: "nlbrand:container.border",
+    text: "nlbrand:text.primary",
+    /** The speaker's name. */
+    accent: "nlbrand:primary",
+    /** A choice, which is pressed like a button and so is dressed like one. */
+    option: "nlbrand:button.primary",
+    optionText: "nlbrand:button.text",
+} as const;
 
 function createContainerTemplateProps(overrides: Partial<ContainerWidgetProps>): ContainerWidgetProps {
     const props: ContainerWidgetProps = {
@@ -1152,7 +1179,16 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
-    public updateElementProps(elementId: string, propsPatch: Record<string, unknown>): void {
+    /**
+     * `skipHistory` is for bookkeeping writes nobody asked for - an inspector filling in the
+     * appearance keys an element predates, the moment it is selected. Recorded, that left an undo
+     * step behind every first selection, so Ctrl+Z after looking around a page did nothing visible.
+     */
+    public updateElementProps(
+        elementId: string,
+        propsPatch: Record<string, unknown>,
+        options: { skipHistory?: boolean } = {},
+    ): void {
         const surfaceId = this.getElementSurfaceId(elementId);
         this.mutateDocument(document => {
             const element = document.elements[elementId];
@@ -1171,7 +1207,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 normalizeFlowChildLayouts(document, element.childrenIds);
             }
         }, {
-            history: surfaceId
+            history: surfaceId && !options.skipHistory
                 ? {
                       surfaceId,
                       mergeKey: `props:${elementId}:${Object.keys(propsPatch).sort().join(",")}`,
@@ -2159,20 +2195,29 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
      * (`resolveWorkspaceUndoScope`). A definition's own stack holds edits *inside* it, and a deleted
      * definition has no tab to press Ctrl+Z in.
      *
+     * `scopeId` names another stack for the one library operation that is made from inside a page's
+     * editor - {@link createComponentFromElements}, from the canvas or the outline. The same rule
+     * puts that step on the page's stack: Ctrl+Z pressed where the gesture was made has to take it
+     * back, and on the project's stack it instead undid whatever the page's last edit had been.
+     *
      * Each step is a command over whole records, not a snapshot of the library: whichever direction
      * runs reads the records as they stand at that moment and writes them back exactly, and nothing
      * else in the library is touched. Tagged, so a live session drops these steps with the interface
      * editors' stacks (`LiveSessionService`): taking back an addition after a session would remove
-     * whatever the room built inside it.
+     * whatever the room built inside it. (A page's stack is cleared whole when a session starts.)
      */
-    private pushLibraryStep(label: HistoryLabel, step: { undo: () => void; redo: () => void }): void {
+    private pushLibraryStep(
+        label: HistoryLabel,
+        step: { undo: () => void; redo: () => void },
+        scopeId: HistoryScopeId = projectHistoryScope(),
+    ): void {
         let history: HistoryService;
         try {
             history = this.getContext().services.get<HistoryService>(Services.History);
         } catch {
             return;
         }
-        history.pushCommand(projectHistoryScope(), { label, ...step, tag: HistoryEntryTag.UILibrary });
+        history.pushCommand(scopeId, { label, ...step, tag: HistoryEntryTag.UILibrary });
     }
 
     /**
@@ -2235,6 +2280,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     private recordLibraryAddition(
         ids: { surfaceIds: readonly string[]; componentIds: readonly string[] },
         label: HistoryLabel,
+        scopeId?: HistoryScopeId,
     ): void {
         const document = this.getDocument();
         const arrived =
@@ -2249,7 +2295,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 held = this.takeLibraryRecords(ids);
             },
             redo: () => this.putLibraryRecords(held),
-        });
+        }, scopeId);
     }
 
     private getElementSurfaceId(elementId: string): string | null {
@@ -2783,6 +2829,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 ? this.createStageSlotTemplate(effectiveMount.slotId, rootElement, designSize)
                 : null;
         const templateElements = stageTemplate?.elements ?? {};
+        if (surface.kind === "stageSurface" && stageTemplate?.actions?.length) {
+            surface.actions = stageTemplate.actions;
+        }
 
         this.mutateDocument(document => {
             document.elements[rootElementId] = rootElement;
@@ -3735,8 +3784,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     /**
      * A new definition made of copies of elements on a page, with the logic they carry.
      *
-     * The page is not changed, so the step that takes this back is the library's - the project's
-     * stack, the one {@link createEmptyComponent} uses - rather than the page's.
+     * The page is not changed, but the step that takes this back goes on the page's stack all the
+     * same: it is made from the page's canvas or outline, and that is where Ctrl+Z and the Edit menu
+     * reach (`resolveWorkspaceUndoScope`). On the project's stack - the one {@link createEmptyComponent}
+     * uses, from the rail - Ctrl+Z right after it undid the page's previous edit and left the copy.
+     *
+     * `name` names the definition; without one it takes the element's name, or the catalog's word for
+     * a component when there are several elements or the one has no name.
      */
     public createComponentFromElements(surfaceId: string, elementIds: string[], name?: string): UIComponentDefinition | null {
         const document = this.getDocument();
@@ -3906,7 +3960,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
         const component: UIComponentDefinition = {
             id: componentId,
-            name: sanitizeComponentName(name, selectedTopElements.length === 1 ? (selectedTopElements[0].name ?? translate("defaultDoc.componentName")) : translate("defaultDoc.componentName")),
+            name: sanitizeComponentName(
+                name,
+                (selectedTopElements.length === 1 ? selectedTopElements[0].name?.trim() : "") || translate("defaultDoc.componentName"),
+            ),
             rootElementId,
             elements: componentElements,
             previewMeta: {
@@ -3928,9 +3985,12 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 }
             });
         }
+        // On the page's stack, not the project's: this is made from the page's canvas or outline, and
+        // Ctrl+Z there is what takes it back (see `pushLibraryStep`).
         this.recordLibraryAddition(
             { surfaceIds: [], componentIds: [component.id] },
             { key: "uiEditor.history.createComponent" as TranslationKey, params: { name: component.name } },
+            uiSurfaceHistoryScope(surfaceId),
         );
         return component;
     }
@@ -4385,10 +4445,12 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         this.setComponentElementValueBinding(component.id, elementId, propPath, id ? { kind: "componentParam", paramId: id } : null);
     }
 
+    /** `skipHistory` as {@link updateElementProps} takes it. */
     public updateComponentElementProps(
         componentId: string,
         elementId: string,
         propsPatch: Record<string, unknown>,
+        options: { skipHistory?: boolean } = {},
     ): void {
         this.mutateDocument(document => {
             const component = (document.components ?? []).find(item => item.id === componentId);
@@ -4402,7 +4464,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             };
             component.updatedAt = new Date().toISOString();
         }, {
-            history: this.componentHistory(componentId, `props:${elementId}:${Object.keys(propsPatch).sort().join(",")}`),
+            history: options.skipHistory
+                ? false
+                : this.componentHistory(componentId, `props:${elementId}:${Object.keys(propsPatch).sort().join(",")}`),
         });
     }
 
@@ -5464,14 +5528,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }),
             props: createContainerTemplateProps({
                 layoutKind: "free",
-                backgroundColor: "#0b0d12",
+                backgroundColor: STARTER_COLORS.panel,
                 fillOpacity: 0.78,
                 borderRadius: 8,
                 borderRadiusTL: 8,
                 borderRadiusTR: 8,
                 borderRadiusBL: 8,
                 borderRadiusBR: 8,
-                borderColor: "#f8fafc",
+                borderColor: STARTER_COLORS.panelBorder,
                 borderWidth: 1,
                 strokeOpacity: 0.18,
                 clipContent: true,
@@ -5558,7 +5622,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             props: createTextTemplateProps({
                 text: translate("defaultDoc.speaker"),
                 fontSize: 22,
-                color: "#f8d37a",
+                color: STARTER_COLORS.accent,
                 fontWeight: "600",
                 lineHeight: 1.2,
                 textVerticalAlign: "center",
@@ -5582,7 +5646,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             props: createTextTemplateProps({
                 text: translate("defaultDoc.dialog.sentenceText"),
                 fontSize: 24,
-                color: "#f8fafc",
+                color: STARTER_COLORS.text,
                 lineHeight: 1.45,
             }),
         };
@@ -5971,6 +6035,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 const template = this.createNvlStageTemplate(rootElement, designSize);
                 return {
                     elements: template.elements,
+                    actions: template.advanceActionIds.map(actionId => ({ actionId })),
                     configure: surfaceId => this.configureDefaultNvlBlueprints(surfaceId, template),
                 };
             }
@@ -6046,7 +6111,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 stackPaddingRight: 20,
                 stackPaddingBottom: 12,
                 stackPaddingLeft: 20,
-                backgroundColor: "#0b0d12",
+                backgroundColor: STARTER_COLORS.panel,
                 fillOpacity: 0.72,
                 borderRadius: 999,
                 borderRadiusTL: 999,
@@ -6077,7 +6142,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             props: createTextTemplateProps({
                 text: translate("defaultDoc.notification.messageText"),
                 fontSize: 20,
-                color: "#f8fafc",
+                color: STARTER_COLORS.text,
                 lineHeight: 1.3,
                 textVerticalAlign: "center",
             }),
@@ -6163,7 +6228,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 stackPaddingRight: 24,
                 stackPaddingBottom: 14,
                 stackPaddingLeft: 24,
-                backgroundColor: "#f8fafc",
+                backgroundColor: STARTER_COLORS.option,
                 fillOpacity: 0.92,
                 borderRadius: 8,
                 borderRadiusTL: 8,
@@ -6194,7 +6259,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             props: createTextTemplateProps({
                 text: translate("defaultDoc.choice.itemText"),
                 fontSize: 24,
-                color: "#0b0d12",
+                color: STARTER_COLORS.optionText,
                 lineHeight: 1.3,
                 textAlign: "center",
                 textVerticalAlign: "center",
@@ -6278,7 +6343,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }),
             props: createContainerTemplateProps({
                 layoutKind: "free",
-                backgroundColor: "#0b0d12",
+                backgroundColor: STARTER_COLORS.panel,
                 fillOpacity: 0.82,
                 borderRadius: 12,
                 borderRadiusTL: 12,
@@ -6335,7 +6400,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             props: createTextTemplateProps({
                 text: translate("defaultDoc.speaker"),
                 fontSize: 20,
-                color: "#f8d37a",
+                color: STARTER_COLORS.accent,
                 fontWeight: "600",
                 lineHeight: 1.2,
                 textVerticalAlign: "center",
@@ -6360,7 +6425,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             props: createTextTemplateProps({
                 text: translate("defaultDoc.nvl.entryText"),
                 fontSize: 22,
-                color: "#f8fafc",
+                color: STARTER_COLORS.text,
                 lineHeight: 1.5,
             }),
             extra: { listSlot: "itemTemplate" },
@@ -6379,7 +6444,27 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             listId,
             nametagId,
             textsId,
+            advanceActionIds: this.resolveDialogueAdvanceActionsForStarter(),
         };
+    }
+
+    /**
+     * The actions the project's dialogue box reads on with, as far as a new NVL page can follow them.
+     *
+     * Read from the box's graphs the way the engine's own NVL page reads them
+     * (`resolveDialogueAdvanceActionIds`), and kept to actions the project still defines - an
+     * enablement naming a missing one does nothing, and copying it onto a new surface would only
+     * carry the dead entry further.
+     */
+    private resolveDialogueAdvanceActionsForStarter(): string[] {
+        const localBp = this.getOptionalLocalBlueprintService();
+        if (!localBp) {
+            return [];
+        }
+        const document = this.getDocument();
+        const defined = normalizeUIInputActionLibrary(document.actions);
+        return [...resolveDialogueAdvanceActionIds(document, localBp.getBlueprintDocument())]
+            .filter(actionId => Boolean(defined[actionId]));
     }
 
     /** Value graph: `Init -> Return Value` fed by `Get List Item Props -> Get JSON Field(propsPath)`. */
@@ -6503,6 +6588,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
      * Panel (`nl.container`) because collection widgets like `nl.nvl.list` do not expose a
      * `Mouse Click` head; the panel's own Mouse Click plus Element Click on the interaction layer
      * and the list cover every click region.
+     *
+     * The page's wiring when the project has no action its dialogue box reads on with; see
+     * {@link createNvlActionNextGraph} for the one it gets when it has.
      */
     private createNvlNextGraph(
         surfaceId: UISurfaceId,
@@ -6579,6 +6667,64 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         };
     }
 
+    /**
+     * Event graph for an NVL page in a project whose dialogue box reads on with actions: each of
+     * those actions runs `Next`, and so does a click on the NVL list.
+     *
+     * The actions bring the keys, the gamepad and a click anywhere on the page that is not on a
+     * control - the same presses that read the box on. The list is the exception: it is a control,
+     * and an action stands down over a control (`pointerInputClaimedByControl`), so a click on the
+     * lines would otherwise do nothing. `Element Click` on the list hears exactly that click and no
+     * other, so no press reads on twice and no widget answers a gesture the page answers as well.
+     *
+     * On the surface's blueprint, because only a surface answers an action.
+     */
+    private createNvlActionNextGraph(
+        surfaceId: UISurfaceId,
+        actionIds: readonly string[],
+        listId: UIElementId,
+    ): BlueprintGraphIr {
+        const nextId = "nvl.next";
+        const listClickId = "nvl.next.listElementClick";
+        const nodes: Record<string, BlueprintGraphNode> = {
+            [nextId]: {
+                id: nextId,
+                type: BLUEPRINT_NODE_TYPE_GAME_NEXT,
+                params: {},
+                meta: { editorLayout: { x: 560, y: 220 } },
+            },
+            [listClickId]: {
+                id: listClickId,
+                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
+                params: {
+                    surfaceId,
+                    elementId: listId,
+                    elementType: NVL_LIST_WIDGET_TYPE,
+                },
+                // Below the action heads, clear of them: an Element Click card draws a preview of its element.
+                meta: { editorLayout: { x: 80, y: 80 + actionIds.length * 240 } },
+            },
+        };
+        const edges: NonNullable<BlueprintGraphIr["edges"]> = [
+            { from: { nodeId: listClickId, port: "then" }, to: { nodeId: nextId, port: "in" } },
+        ];
+        actionIds.forEach((actionId, index) => {
+            const headId = `nvl.next.action${index}`;
+            nodes[headId] = {
+                id: headId,
+                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
+                params: { [BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID]: actionId },
+                meta: { editorLayout: { x: 80, y: 40 + index * 240 } },
+            };
+            edges.push({ from: { nodeId: headId, port: "then" }, to: { nodeId: nextId, port: "in" } });
+        });
+        return {
+            nodes,
+            edges,
+            meta: { [BLUEPRINT_GRAPH_IR_META_KIND]: "event" },
+        };
+    }
+
     private configureDefaultNotificationBlueprints(template: NotificationStageTemplate): void {
         this.seedListItemTextValueBinding(
             template.itemTextId,
@@ -6624,6 +6770,32 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
 
         this.seedListItemTextValueBinding(template.nametagId, "nametag", translate("defaultDoc.nvl.nametag"), translate("defaultDoc.speaker"));
+
+        if (template.advanceActionIds.length > 0) {
+            // The dialogue box's own actions, answered on the page as the box answers them: a project
+            // whose box reads on with Enter reads its NVL page on with Enter. The surface enables
+            // them as it is created (`createStageSlotTemplate`).
+            const surfaceName = this.getDocument().surfaces.find(surface => surface.id === surfaceId)?.name;
+            const surfaceBlueprintId = localBp.ensureSurfaceMain(surfaceId, surfaceName);
+            localBp.applyBlueprintMutation(doc => {
+                const blueprint = doc.blueprints[surfaceBlueprintId];
+                if (!blueprint) {
+                    return;
+                }
+                blueprint.graphs.events = {
+                    ...(blueprint.graphs.events ?? {}),
+                    nvlNext: {
+                        id: "nvlNext",
+                        name: translate("defaultDoc.nvl.nextEvent"),
+                        graph: this.createNvlActionNextGraph(surfaceId, template.advanceActionIds, template.listId),
+                    },
+                };
+                if (Array.isArray(blueprint.graphs.eventIds) && !blueprint.graphs.eventIds.includes("nvlNext")) {
+                    blueprint.graphs.eventIds.push("nvlNext");
+                }
+            });
+            return;
+        }
 
         // Advancement graph hosted on the Panel (nl.container) - collection widgets like the NVL
         // List do not expose a Mouse Click head.

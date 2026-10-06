@@ -395,11 +395,15 @@ export class ComponentDocumentServiceAdapter implements UIDocumentServiceSurface
         return Object.keys(rest).length > 0 ? rest : null;
     }
 
-    public updateElementProps(elementId: string, propsPatch: Record<string, unknown>): void {
+    public updateElementProps(
+        elementId: string,
+        propsPatch: Record<string, unknown>,
+        options: { skipHistory?: boolean } = {},
+    ): void {
         if (this.isVirtualRoot(elementId)) {
             return;
         }
-        this.base.updateComponentElementProps(this.componentId, elementId, propsPatch);
+        this.base.updateComponentElementProps(this.componentId, elementId, propsPatch, options);
     }
 
     public updateElementExtra(elementId: string, extraPatch: Record<string, unknown>): void {
