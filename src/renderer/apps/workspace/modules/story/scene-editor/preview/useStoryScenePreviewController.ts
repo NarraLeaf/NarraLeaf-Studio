@@ -27,8 +27,14 @@ import { resolveChosenOptionStop, resolveNextPreviewStop, type StoryPreviewStepO
 import { STORY_CONSOLE_CHANNEL_ID } from "./storyPreviewConsole";
 import { needsRunningGame } from "@/lib/ui-editor/runtime/app/runtimeRefusals";
 import { RECOMPILE_DEBOUNCE_MS, storyPreviewRebuildDelay, type StoryPreviewRebuildInput } from "./storyPreviewRebuildSchedule";
+import { startVisibleWatchdog } from "./visibleWatchdog";
+import { translate } from "@/lib/i18n";
 
-/** Pre-posed state mounts within a few frames; anything longer means the marker never fired. */
+/**
+ * Pre-posed state mounts within a few frames; anything longer means the marker never fired. Counted
+ * only while the window is visible (see `startVisibleWatchdog`): a hidden window paints no frames, so
+ * the stage cannot pose there, and an author who switched away has not hit a defect.
+ */
 const STATE_SETTLE_TIMEOUT_MS = 5_000;
 const MAX_ISSUES = 20;
 
@@ -159,7 +165,8 @@ export function useStoryScenePreviewController(input: {
     const displayRunRef = useRef<PreviewRun | null>(null);
     /** The in-flight run building hidden beneath the display frame. */
     const pendingRunRef = useRef<PreviewRun | null>(null);
-    const settleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    /** Cancels the running settle deadline, if there is one. */
+    const settleWatchdogRef = useRef<(() => void) | null>(null);
     const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const blobResolverRef = useRef<WorkspaceBlobUrlResolver | null>(null);
     /** Last rebuild input; what changed since decides how long the rebuild waits. */
@@ -287,9 +294,9 @@ export function useStoryScenePreviewController(input: {
     }, []);
 
     const clearDriveTimers = useCallback(() => {
-        if (settleTimeoutRef.current !== null) {
-            clearTimeout(settleTimeoutRef.current);
-            settleTimeoutRef.current = null;
+        if (settleWatchdogRef.current !== null) {
+            settleWatchdogRef.current();
+            settleWatchdogRef.current = null;
         }
     }, []);
 
@@ -462,9 +469,10 @@ export function useStoryScenePreviewController(input: {
         }
         // The compiled story is pure state (instant seeds + injection script + gate + target); the
         // before-marker fires within the reveal wait. A miss means a compile/mount defect.
-        settleTimeoutRef.current = setTimeout(() => {
+        settleWatchdogRef.current = startVisibleWatchdog(() => {
+            settleWatchdogRef.current = null;
             if (!run.arrived) {
-                failRun(run.runId, "Preview stage did not settle in time.");
+                failRun(run.runId, translate("story.preview.settleTimeout"));
             }
         }, STATE_SETTLE_TIMEOUT_MS);
     }, [clearDriveTimers, failRun, setPhase]);
@@ -757,7 +765,7 @@ export function useStoryScenePreviewController(input: {
         if (!run || (run === displayRunRef.current && pendingRunRef.current !== null)) {
             // Teardown noise from a replaced session, or a stale frame kept only as the backdrop
             // while the next state builds - neither may fail the current run.
-            pushIssue({ level: "warning", message: `Previous preview session: ${error.message}` });
+            pushIssue({ level: "warning", message: translate("story.preview.previousSessionError", { message: error.message }) });
             return;
         }
         failRun(runIdRef.current, error.message);

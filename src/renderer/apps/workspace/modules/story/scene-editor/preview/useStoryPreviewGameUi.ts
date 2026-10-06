@@ -56,6 +56,7 @@ import { buildPersistentRuntimeTable, buildSavedRuntimeTable } from "@shared/var
 import { declaredSavedDefaults } from "@shared/variables/mergedPersistentView";
 import type { StoryLiteralValue } from "@shared/types/story";
 import type { TranslationKey } from "@shared/i18n";
+import { translate } from "@/lib/i18n";
 import { useGameUiEditBursts } from "./useGameUiEditBursts";
 
 const PREVIEW_BUNDLE_ID = "workspace-story-preview";
@@ -262,7 +263,9 @@ export function useStoryPreviewGameUi(input: {
             const message = (event as { message?: unknown }).message;
             onIssueRef.current?.({
                 level: "warning",
-                message: `Game UI blueprint error: ${typeof message === "string" ? message : "unknown error"}`,
+                message: translate("story.preview.gameUiBlueprintError", {
+                    message: typeof message === "string" ? message : "",
+                }),
             });
         }
     }, []);
