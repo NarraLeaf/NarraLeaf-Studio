@@ -1535,6 +1535,14 @@ declare module "@narraleaf/script" {
     	dispatchSurfaceInputAction?: (payload: UIInputActionEventPayload) => Promise<void>;
     	dispatchBroadcastEvent?: (eventName: string, data: unknown, sender?: string) => Promise<void>;
     	getBroadcastListenerCount?: (eventName: string) => number;
+    	/**
+    	 * A shape from the interface document this surface runs, by id; null for one it does not hold.
+    	 *
+    	 * What lets Get Field read a row of a list the author shaped: the engine's own shapes resolve
+    	 * anywhere, and a list's shape lives in the document. Optional because a host with no document to
+    	 * hand - an editor preview - leaves it out, and Get Field then reads only the engine's shapes.
+    	 */
+    	resolveStruct?: (structId: string) => UIStructDef | null;
     	/** Invoke a declared blueprint fn (Call Fn node); awaits the fn body and returns its Fn Return values. */
     	invokeBlueprintFn?: (input: {
     		fnRef: string;

@@ -114,8 +114,8 @@ export type UIHostAdapterBlueprintRuntime = {
      * A shape from the interface document this surface runs, by id; null for one it does not hold.
      *
      * What lets Get Field read a row of a list the author shaped: the engine's own shapes resolve
-     * anywhere, and a list's shape lives in the document. Not on the host API, which scripts see - a
-     * script reads a row by its keys and has no use for the table behind the inspector.
+     * anywhere, and a list's shape lives in the document. Optional because a host with no document to
+     * hand - an editor preview - leaves it out, and Get Field then reads only the engine's shapes.
      */
     resolveStruct?: (structId: string) => UIStructDef | null;
     /** Invoke a declared blueprint fn (Call Fn node); awaits the fn body and returns its Fn Return values. */

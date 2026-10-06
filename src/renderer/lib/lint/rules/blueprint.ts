@@ -909,7 +909,7 @@ function runFieldMissing(ctx: LintContext): LintFinding[] {
 function listTypedBlueprintGraphSites(ctx: LintContext): {
     site: ReturnType<typeof listBlueprintGraphSites>[number];
     typed: Map<string, BlueprintNodeStructTypes>;
-    live: Set<string>;
+    live: ReadonlySet<string>;
 }[] {
     registerCoreBlueprintNodes();
     const out: ReturnType<typeof listTypedBlueprintGraphSites> = [];
