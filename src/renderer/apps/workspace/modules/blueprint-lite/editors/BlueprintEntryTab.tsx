@@ -32,7 +32,10 @@ import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrac
 import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
 import type { DlcService } from "@/lib/workspace/services/dlc/DlcService";
 import { DLC_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/dlcNodes";
-import { BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/soundNodes";
+import {
+    BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE,
+    BLUEPRINT_SOUND_TRACK_OPTIONS_SOURCE,
+} from "@/lib/ui-editor/blueprint-nodes/built-in/soundNodes";
 import { BLUEPRINT_COMPONENT_PARAM_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/componentNodes";
 import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
@@ -40,6 +43,7 @@ import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEd
 import type { BlueprintEntryTabPayload } from "../blueprintEntryTabId";
 import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import type { StoryDocument } from "@shared/types/story";
+import { AUDIO_TRACK_ID_SOUND, audioTrackDisplayName, resolveAudioTrack } from "@shared/types/audioTrack";
 import { listSceneIdsInDocumentOrder, listStoryEndings } from "@shared/types/story";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getUIComponentParams } from "@shared/types/ui-editor/document";
@@ -2172,6 +2176,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 value: character.profile.getId(),
                 label: character.profile.getName().trim() || t("blueprint.options.unnamedCharacter"),
             }));
+        // The `Play Sound` Track picker and the track volume nodes'. Author order, built-ins first - the
+        // same order the project Audio surface shows, so the first row here is the one an author looks for.
+        const audioTracks = audioTrackService.listTracks();
+        const audioTrackOptions: BlueprintInspectorParamSelectOption[] = audioTracks
+            .map(track => ({ value: track.id, label: audioTrackDisplayName(track, t) }));
         const opts: Record<string, BlueprintInspectorParamSelectOption[]> = {
             surfaces: surfaceOptions,
             stories: storyOptions,
@@ -2184,11 +2193,18 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             [DLC_OPTIONS_SOURCE]: dlcService.list().map(dlc => ({ value: dlc.id, label: dlc.name })),
             characters: characterOptions,
             localizationKeys: localizationKeyOptions,
-            // The `Play Sound` Track picker. Author order, built-ins first - the same order the
-            // project Audio surface shows, so the first row here is the one an author looks for.
-            [BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE]: audioTrackService
-                .listTracks()
-                .map(track => ({ value: track.id, label: track.name })),
+            [BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE]: audioTrackOptions,
+            // `Play Sound`'s: the same rows under an empty one that names the track an unpicked
+            // sound plays on, worded as a sound row's Track field words it.
+            [BLUEPRINT_SOUND_TRACK_OPTIONS_SOURCE]: [
+                {
+                    value: "",
+                    label: t("storyInspector.audio.trackDefault", {
+                        name: audioTrackDisplayName(resolveAudioTrack(audioTracks, undefined, AUDIO_TRACK_ID_SOUND), t),
+                    }),
+                },
+                ...audioTrackOptions,
+            ],
             callableFns: listCallableBlueprintFnOptions({
                 blueprintDocument: doc,
                 uiDocument,

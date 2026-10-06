@@ -126,6 +126,22 @@ export const workspace = {
             statusReviewed: "已校对",
             statusStale: "待复查",
             findPlaceholder: "在译文中查找",
+            orphans: {
+                source: "孤立的译文（{count}）",
+                summary: {
+                    other: "{count} 条译文对应的行已不在游戏中",
+                },
+                none: "没有孤立的译文",
+                disabledLine: "已禁用的行",
+                deletedLine: "已删除的行",
+                delete: "删除",
+                deleteAll: "全部删除",
+                deleteConfirm: {
+                    other: "删除 {count} 条孤立的译文？",
+                },
+                deleteDetail: "删除后无法撤销；这些行再次启用或恢复后需重新翻译",
+                unknown: "有故事无法读取，暂不列出孤立的译文",
+            },
         },
         live: {
             entryClaimed: "{name} 正在翻译该行",
@@ -215,6 +231,19 @@ export const workspace = {
             notePlaceholder: "备注…",
             dropHint: "拖入音频以指派",
             findPlaceholder: "在台词中查找",
+            orphans: {
+                source: "孤立的语音（{count}）",
+                summary: {
+                    other: "{count} 条录音关联的行已不在游戏中",
+                },
+                none: "没有孤立的语音",
+                removeAll: "全部移除",
+                removeConfirm: {
+                    other: "移除 {count} 条孤立的语音？",
+                },
+                removeDetail: "音频文件仍保留在资产库中；这些行再次启用或恢复后需重新指派音频",
+                unknown: "有故事无法读取，暂不列出孤立的语音",
+            },
         },
     },
     textSourceMigration: {

@@ -21,6 +21,7 @@ export const storyVars = {
     },
     row: {
         nameAria: "変数名",
+        defaultName: "変数",
         defaultPlaceholder: "既定値",
         defaultAria: "既定値",
         delete: "変数を削除",

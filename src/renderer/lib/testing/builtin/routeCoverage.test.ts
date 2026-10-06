@@ -3,6 +3,7 @@ import type { BlueprintDocument, BlueprintOwnerRef } from "@shared/types/bluepri
 import { BLUEPRINT_NODE_TYPE_GAME_START_STORY } from "@shared/types/blueprint/graph";
 import { STORY_DOCUMENT_SCHEMA_VERSION, type StoryDocument } from "@shared/types/story";
 import type { UIDocument } from "@shared/types/ui-editor/document";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { PluginStoreReading } from "@shared/utils/pluginStorage";
 import { blueprint, document, element, graph, interfaceOf } from "@/lib/workspace/services/references/assetNameTestKit";
 import type { ServiceRegistry } from "@/lib/workspace/services/serviceRegistry";
@@ -80,21 +81,25 @@ function recollection(sceneFrom?: [string, string], extraNodes: { id: string; ty
     }));
 }
 
-function host(blueprintDocument: BlueprintDocument, pluginStores: PluginStoreReading[]): BuiltInTestHost {
+function host(
+    blueprintDocument: BlueprintDocument,
+    pluginStores: PluginStoreReading[],
+    options: { document?: StoryDocument; registry?: VariableRegistryEntry[] } = {},
+): BuiltInTestHost {
     const services = {
         get: (id: string) => {
             switch (id) {
                 case Services.Story:
                     return {
                         getLibraryIndex: () => ({ stories: [{ id: STORY, name: "Main" }] }),
-                        loadStory: async () => story(),
+                        loadStory: async () => options.document ?? story(),
                     };
                 case Services.UIGraph:
                     return { getDocument: () => ({ blueprintDocument }) };
                 case Services.UIDocument:
                     return { getDocument: () => extra };
                 case Services.VariableRegistry:
-                    return { listEntries: () => [] };
+                    return { listEntries: () => options.registry ?? [] };
                 case Services.ServiceAssets:
                     return { readPluginStores: async () => pluginStores };
                 default:
@@ -127,6 +132,76 @@ describe("narraleaf-studio:route-coverage", () => {
 
         expect(verdict.status).toBe("passed");
         expect(findings).toEqual([]);
+    });
+
+    it("names a condition branch nothing satisfies as a condition, not as an option", async () => {
+        const affection: VariableRegistryEntry = {
+            id: "affection",
+            name: "Affection",
+            scope: "saved",
+            storageKey: "affection",
+            valueType: "number",
+            defaultValue: 30,
+        };
+        // Each arm leaves for the closing scene on a jump of its own, so each is a route of its own.
+        const arm = (id: string, branch: "if" | "elseIf" | "else", value?: number) => ({
+            id,
+            kind: "control",
+            parentId: "fork",
+            childrenIds: [`${id}-jump`],
+            payload: value === undefined
+                ? { control: "conditionBranch", branch }
+                : {
+                    control: "conditionBranch",
+                    branch,
+                    condition: {
+                        kind: "expression",
+                        expression: {
+                            source: `Affection >= ${value}`,
+                            ast: {
+                                kind: "binary",
+                                op: ">=",
+                                left: { kind: "var", target: { scope: "saved", variableId: "affection" }, name: "Affection" },
+                                right: { kind: "literal", value },
+                            },
+                        },
+                    },
+                },
+        });
+        const document = story();
+        document.scenes.opening = {
+            ...document.scenes.opening,
+            rootBlockIds: ["fork", "j"],
+            blocks: {
+                ...document.scenes.opening.blocks,
+                fork: { id: "fork", kind: "control", parentId: null, childrenIds: ["never", "often", "else"], payload: { control: "condition" } },
+                never: arm("never", "if", 100),
+                often: arm("often", "elseIf", 10),
+                else: arm("else", "else"),
+                ...Object.fromEntries(["never", "often", "else"].map(id => [`${id}-jump`, {
+                    id: `${id}-jump`,
+                    kind: "jump",
+                    parentId: id,
+                    childrenIds: [],
+                    payload: { targetSceneId: "close" },
+                }])),
+            } as StoryDocument["scenes"][string]["blocks"],
+        };
+
+        const { verdict, findings } = await run(host(recollection(), [], { document, registry: [affection] }));
+
+        expect(findings).toEqual([expect.objectContaining({
+            severity: "warning",
+            message: { key: "test.builtin.routeCoverage.finding.conditionUnreachable", params: { condition: expect.stringContaining("Affection") } },
+            target: expect.objectContaining({ blockId: "never" }),
+        })]);
+        expect(verdict).toEqual({
+            status: "failed",
+            summary: {
+                key: "test.builtin.routeCoverage.summary.failed",
+                params: { scenes: 0, options: 0, conditions: 1, endings: 0 },
+            },
+        });
     });
 
     it("declines, naming the node, when the scene is put together while the game runs", async () => {

@@ -1,4 +1,6 @@
 import { APP_TAG_ID_RELEASE, RELEASE_APP_TAG } from "@shared/types/appTag";
+import { audioTrackDisplayName } from "@shared/types/audioTrack";
+import { translateCommand } from "@/lib/i18n";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { StoryDocument, StoryScene, StorySceneId } from "@shared/types/story";
 import { actionableSourceIdentity, displayableCreatorIdentity } from "@shared/types/story";
@@ -408,7 +410,13 @@ export function buildStoryCommandContext(input: {
         valueBlueprints: valueBlueprintRefs(input.blueprintDocument),
         // Order preserved from the service (built-ins first), so the completion menu leads with the
         // three tracks every project has rather than sorting them under a custom one.
-        audioTracks: (input.audioTracks ?? []).map(track => ({ id: track.id, name: track.name })),
+        // A seeded track is offered and printed by the command language's word for it while it
+        // keeps its factory name; the stored name still resolves, so `track=Music` typed before this
+        // keeps meaning the same track.
+        audioTracks: (input.audioTracks ?? []).map(track => {
+            const name = audioTrackDisplayName(track, translateCommand);
+            return name === track.name ? { id: track.id, name } : { id: track.id, name, aliases: [track.name] };
+        }),
         // The one scan, shared with the compiler's `goto` validation (§12.9) - not a completion-layer
         // special case, just another table this projection carries.
         labels: sceneLabelNames(input.scene),

@@ -127,12 +127,13 @@ import {
     AUDIO_TRACK_CHANNELS,
     AUDIO_TRACK_ID_VOICE,
     BUILTIN_AUDIO_TRACKS,
+    audioTrackDisplayName,
     resolveAudioTrack,
     resolveAudioTrackChain,
     resolveAudioTrackPlayback,
 } from "@shared/types/audioTrack";
 import { parseTranslatedRuns } from "@shared/utils/localizationText";
-import { resolveStoryAssetVariant, type StoryAssetVariants } from "@shared/types/story";
+import { resolveStoryAssetVariant, resolveStoryGroupRunMode, type StoryAssetVariants } from "@shared/types/story";
 import {
     composeStoryFilter,
     isEmptyStoryTransformProps,
@@ -4544,8 +4545,10 @@ function reportTrackConflict(
         return;
     }
     // A track id is not a name, and a track removed since the row was written has no name left.
-    const nameOf = (id: string): string => authoredNameOrNull(ctx.audioTracks.find(track => track.id === id)?.name)
-        ?? say("story.compile.media.removedTrack");
+    const nameOf = (id: string): string => {
+        const track = ctx.audioTracks.find(entry => entry.id === id);
+        return (track ? authoredNameOrNull(audioTrackDisplayName(track, translate)) : null) ?? say("story.compile.media.removedTrack");
+    };
     diagnostic(ctx, "warning", blockId, say("story.compile.media.trackConflict", {
         name: objectLabel(name),
         existing: nameOf(existing),
@@ -5285,7 +5288,7 @@ async function compileUnchainedGroupBody(ctx: SceneCompileContext, blockIds: rea
 
 async function compileControlGroup(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "control" }>): Promise<NlrStatement[]> {
     const payload = block.payload as Extract<StoryControlPayload, { control: "sequence" | "parallel" | "race" | "repeat" }>;
-    const mode = payload.mode ?? (payload.control === "parallel" ? "all" : payload.control === "race" ? "any" : "do");
+    const mode = resolveStoryGroupRunMode(payload);
     // Which of the two body shapes below this group hands the engine. `repeat` is decided by the row
     // and not by `mode`, in its counted form and in its `until` form alike, so it is tested first -
     // a stale `mode` on a repeat row never reaches the call.

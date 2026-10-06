@@ -5,7 +5,7 @@ import {
     type AssetSelectorVirtualGroup,
 } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import {
-    EDITOR_BUILTIN_FONT_VIRTUAL_GROUP,
+    editorBuiltinFontVirtualGroup,
     getBuiltinEditorFontDisplayName,
 } from "@/lib/ui-editor/fonts/builtinVirtualEditorFonts";
 import {
@@ -64,7 +64,7 @@ export function FontAssetField<TData extends UIInspectorData>({
                 t("properties.fontAsset.projectSection"),
                 t("properties.fontAsset.projectDefault"),
             ),
-            EDITOR_BUILTIN_FONT_VIRTUAL_GROUP,
+            editorBuiltinFontVirtualGroup(),
         ],
         [t],
     );

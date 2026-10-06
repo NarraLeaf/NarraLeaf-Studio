@@ -681,8 +681,11 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                                                 aria-haspopup="menu"
                                                 aria-expanded={menuOpen}
                                                 data-tip={t("workspace.voice.panel.more")} aria-label={t("workspace.voice.panel.more")}
-                                                className={`ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-subtle transition-opacity hover:bg-fill hover:text-fg focus-visible:opacity-100 group-hover:opacity-100 ${
-                                                    menuOpen ? "opacity-100" : "opacity-0"
+                                                // Always drawn: the recording scripts and the audio import are behind it,
+                                                // and a button that only appears under the pointer is one an author has
+                                                // to already know about to find.
+                                                className={`ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-md hover:bg-fill hover:text-fg ${
+                                                    menuOpen ? "bg-fill text-fg" : "text-fg-subtle"
                                                 }`}
                                                 onClick={event => {
                                                     event.stopPropagation();

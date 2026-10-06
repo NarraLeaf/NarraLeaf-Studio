@@ -228,7 +228,27 @@ export type LintLocation =
            */
           excerpt?: string;
       }
-    | { kind: "blueprint"; blueprintId: string; blueprintName?: string; graphId?: string; nodeId?: string }
+    | {
+          kind: "blueprint";
+          blueprintId: string;
+          blueprintName?: string;
+          graphId?: string;
+          nodeId?: string;
+          /**
+           * The name of the layer (or function graph) `graphId` is, as the author gave it; absent
+           * for one with no name.
+           *
+           * Not written by rules: `annotateBlueprintLocation` resolves it, with {@link nodeTitle},
+           * once for every rule. They are what tells two findings of one rule in one blueprint apart,
+           * the way `line` and `excerpt` do inside a scene.
+           */
+          layerName?: string;
+          /**
+           * The node's title as the node catalogue spells it (English), translated where the
+           * finding is drawn. Absent for a node the catalogue does not know.
+           */
+          nodeTitle?: string;
+      }
     | {
           kind: "surface";
           surfaceId: string;
@@ -277,9 +297,12 @@ export type LintFinding = {
      * name a node the author's canvas calls something else. A name here wins over the same name in
      * `messageParams`, which may carry the English as the fallback for a title with no entry.
      *
+     * A list of keys is a list of words - the platforms a file will not play on - each rendered and
+     * then joined the way the reader's locale writes a list (`lint.message.listSeparator`).
+     *
      * Every surface that renders a finding goes through {@link resolveLintMessageParams}.
      */
-    messageParamKeys?: Record<string, TranslationKey>;
+    messageParamKeys?: Record<string, TranslationKey | readonly TranslationKey[]>;
     /**
      * Params that are a count with its noun - "1 condition", "3 conditions" - spelled in the
      * reader's locale and in that locale's plural for the number.
@@ -351,7 +374,9 @@ export function resolveLintMessageParams(
     }
     const params: Record<string, string | number> = { ...finding.messageParams };
     for (const [name, key] of Object.entries(finding.messageParamKeys ?? {})) {
-        params[name] = translate(key);
+        params[name] = typeof key === "string"
+            ? translate(key)
+            : key.map(entry => translate(entry)).join(translate("lint.message.listSeparator"));
     }
     for (const [name, { key, count }] of Object.entries(finding.messageParamCounts ?? {})) {
         params[name] = translatePlural(key, count, finding.messageParams);

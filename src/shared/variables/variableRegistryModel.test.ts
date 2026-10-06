@@ -6,6 +6,7 @@ import {
     createEmptyVariableRegistry,
     listRegistryEntries,
     migrateVariableRegistryToLatest,
+    nextUnusedVariableName,
     normalizePersistentValueType,
     normalizeVariableRegistryScope,
 } from "./variableRegistryModel";
@@ -105,5 +106,19 @@ describe("listRegistryEntries / runtime tables", () => {
 
         const saved = buildSavedRuntimeTable(registry);
         expect(Object.keys(saved)).toEqual(["s"]);
+    });
+});
+
+describe("nextUnusedVariableName", () => {
+    it("takes the plain word while nothing uses it", () => {
+        expect(nextUnusedVariableName("变量", ["好感度", "真心"])).toBe("变量");
+    });
+
+    it("numbers past every name already taken, with no separator", () => {
+        expect(nextUnusedVariableName("变量", ["变量", "变量2", " 变量3 "])).toBe("变量4");
+    });
+
+    it("fills the first gap rather than counting the entries", () => {
+        expect(nextUnusedVariableName("Variable", ["Variable", "Variable3"])).toBe("Variable2");
     });
 });

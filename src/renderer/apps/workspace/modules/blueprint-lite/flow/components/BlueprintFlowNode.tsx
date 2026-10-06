@@ -1351,9 +1351,13 @@ function InspectorParamOnCard({
                   option.meta?.[spec.dynamicOptionsFilter!.optionMetaKey] === String(params[spec.dynamicOptionsFilter!.paramKey] ?? "")
               ))
             : rawSelectOptions;
+    // A list that carries its own empty entry says what an empty choice means (a sound with no track
+    // picked plays on SFX), so the generic one is not added in front of it.
     const selectComponentOptions: SelectOption[] | undefined = selectOptions
         ? [
-              { value: "", label: resolveBlueprintLabel(spec.emptyOptionLabel ?? "-", t) },
+              ...(selectOptions.some(opt => opt.value === "")
+                  ? []
+                  : [{ value: "", label: resolveBlueprintLabel(spec.emptyOptionLabel ?? "-", t) }]),
               ...selectOptions.map(opt => ({ value: opt.value, label: resolveBlueprintLabel(opt.label, t) })),
           ]
         : undefined;

@@ -70,6 +70,7 @@ describe("the .ui text format", () => {
                 params: [
                     { id: "label", name: "Label", type: "text", defaultValue: "项目" },
                     { id: "target", name: "Target", type: "string", defaultValue: "title" },
+                    { id: "track", name: "Track", type: "audioTrack", defaultValue: "bgm" },
                 ],
                 elements: {
                     "nav-root": { id: "nav-root", type: "nl.container", name: "Root", parentId: null, childrenIds: ["nav-label"], layout },
@@ -88,6 +89,7 @@ describe("the .ui text format", () => {
         } as unknown as UIDocument;
         const text = printUiDocument(document, { keyWords: new Map([["nav.title", "标题"]]) });
         expect(text).toContain("param label Label type=text = 项目");
+        expect(text).toContain("param track Track type=audioTrack = bgm");
         expect(text).toContain("bind text = param label");
         expect(text).toContain("component nav label.key=nav.title\n            # label words: 标题");
         const compiled = compileUiFile(parseUiFile(text), { existing: document });

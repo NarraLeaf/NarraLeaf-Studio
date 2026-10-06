@@ -7,7 +7,9 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
     BLUEPRINT_NODE_TYPE_SCENE_GET,
+    BLUEPRINT_NODE_TYPE_SOUND_PLAY,
 } from "@shared/types/blueprint/graph";
+import { BLUEPRINT_SOUND_TRACK_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/audioTrackParams";
 import { resolveBlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
 import { BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY } from "@/lib/ui-editor/blueprint-nodes/types";
@@ -119,6 +121,11 @@ vi.mock("@xyflow/react", () => ({
     useReactFlow: () => ({ getZoom: () => 1 }),
 }));
 
+// The asset picker on a sound card reads the workspace's assets; the cards here are rendered alone.
+vi.mock("@/apps/workspace/modules/assets/components/AssetSelector", () => ({
+    AssetSelector: () => null,
+}));
+
 /**
  * The freeze, stubbed at the hook rather than by standing up a workspace: this suite renders one
  * node with no provider around it, which is the point - a node card has to be renderable on its own.
@@ -174,6 +181,34 @@ describe("BlueprintFlowNode", () => {
         expect(renderBooleanLiteral(false)).toContain("False");
         expect(renderBooleanLiteral("true")).toContain("True");
         expect(renderBooleanLiteral(undefined)).not.toContain("True");
+    });
+
+    it("names the track an unpicked Play Sound plays on instead of showing a dash", () => {
+        registerCoreBlueprintNodes();
+        const catalog = resolveBlueprintNodeEditorCatalogEntry(BLUEPRINT_NODE_TYPE_SOUND_PLAY);
+        const markup = renderToStaticMarkup(
+            <BlueprintFlowNode
+                {...({
+                    selected: false,
+                    data: {
+                        catalog,
+                        nodeId: "play",
+                        params: {},
+                        dynamicSelectOptions: {
+                            [BLUEPRINT_SOUND_TRACK_OPTIONS_SOURCE]: [
+                                { value: "", label: "Default (SFX)" },
+                                { value: "bgm", label: "Music" },
+                                { value: "sound", label: "SFX" },
+                            ],
+                        },
+                        onPatchNodeParam: vi.fn(),
+                    },
+                } as any)}
+            />,
+        );
+
+        expect(markup).toContain("Default (SFX)");
+        expect(markup).not.toMatch(/>-</);
     });
 
     it("renders the Save Game Capture pin as an on-card true/false dropdown", () => {

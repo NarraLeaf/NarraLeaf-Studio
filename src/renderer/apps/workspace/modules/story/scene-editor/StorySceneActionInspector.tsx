@@ -10,6 +10,7 @@ import type {
     StoryDocument,
     StoryDisplayableTargetKind,
     StoryEndingPage,
+    StoryGroupKind,
     StoryLiteralValue,
     StoryScene,
     StorySceneId,
@@ -30,10 +31,14 @@ import {
     listScenesInDocumentOrder,
     normalizeStageObjectName,
     resolveDisplayableTargetRef,
+    resolveStoryGroupRunMode,
     resolveStoryLayerRef,
     savedVariableDefs,
     sceneLabelNames,
     sceneVariableDefs,
+    storyGroupKindOfMode,
+    storyGroupRunModeFor,
+    storyGroupWaits,
     storyPersistentDefs,
     storyTransitionKindOf,
     videoLeaveFadeMs,
@@ -44,7 +49,7 @@ import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { buildMergedVariableView } from "@shared/variables/mergedPersistentView";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
 import type { AudioTrackChannel, ProjectAudioTrack } from "@shared/types/audioTrack";
-import { resolveAudioTrack } from "@shared/types/audioTrack";
+import { audioTrackDisplayName, resolveAudioTrack } from "@shared/types/audioTrack";
 import { isBuiltinAppTagId, RELEASE_APP_TAG } from "@shared/types/appTag";
 import {
     onWeatherParamGrid,
@@ -1400,10 +1405,10 @@ function AudioActionEditor(props: {
         {
             value: "",
             label: t("storyInspector.audio.trackDefault", {
-                name: resolveAudioTrack(tracks, undefined, audioRowFallbackChannel(payload.operation)).name,
+                name: audioTrackDisplayName(resolveAudioTrack(tracks, undefined, audioRowFallbackChannel(payload.operation)), t),
             }),
         },
-        ...tracks.map(entry => ({ value: entry.id, label: entry.name })),
+        ...tracks.map(entry => ({ value: entry.id, label: audioTrackDisplayName(entry, t) })),
     ];
     const status = audioBusStatusLine(t, tracks, track.id, audioRowFallbackChannel(payload.operation));
 
@@ -3207,6 +3212,12 @@ function ControlPayloadFields(props: { document: StoryDocument; sceneId: StorySc
         const groupPayload = props.payload as Extract<StoryControlPayload, { control: "sequence" | "parallel" | "race" | "repeat" }>;
         const isRepeat = groupPayload.control === "repeat";
         const conditional = isRepeat && groupPayload.until !== undefined;
+        // What the group does, read the way the compiler reads it: a row's `mode` decides how it
+        // runs, so the fields show the kind of group and the wait that `mode` makes - never a
+        // `control` word the game does not follow. Every write below states both fields together.
+        const run = isRepeat ? null : resolveStoryGroupRunMode(groupPayload);
+        const kind = run ? storyGroupKindOfMode(run) : "repeat";
+        const waits = run ? storyGroupWaits(run) : true;
         return (
             <div className="grid grid-cols-1 gap-3">
                 <div className="nl-field-grid">
@@ -3218,26 +3229,32 @@ function ControlPayloadFields(props: { document: StoryDocument; sceneId: StorySc
                             { value: "race", label: t("storyInspector.control.race") },
                             { value: "repeat", label: t("storyInspector.control.repeat") },
                         ]}
-                        value={groupPayload.control}
+                        value={kind}
                         onChange={control => {
-                            const next = control as "sequence" | "parallel" | "race" | "repeat";
+                            const next = control as StoryGroupKind | "repeat";
                             // `until` belongs to `repeat` alone - a sequence that kept one would be a
-                            // field no path reads and every future reader has to explain away.
-                            props.onChange(next === "repeat" ? { ...groupPayload, control: next } : { ...groupPayload, control: next, until: undefined });
+                            // field no path reads and every future reader has to explain away. `mode`
+                            // is the same for `repeat`, whose body never reads it.
+                            props.onChange(next === "repeat"
+                                ? { ...groupPayload, control: next, mode: undefined }
+                                : { ...groupPayload, control: next, mode: storyGroupRunModeFor(next, waits), until: undefined });
                         }}
                     />
-                    <SelectField
-                        label={t("storyInspector.field.mode")}
-                        options={[
-                            { value: "do", label: t("storyInspector.control.mode.do") },
-                            { value: "doAsync", label: t("storyInspector.control.mode.doAsync") },
-                            { value: "all", label: t("storyInspector.control.mode.all") },
-                            { value: "allAsync", label: t("storyInspector.control.mode.allAsync") },
-                            { value: "any", label: t("storyInspector.control.mode.any") },
-                        ]}
-                        value={groupPayload.mode ?? "do"}
-                        onChange={mode => props.onChange({ ...groupPayload, mode: mode as "do" | "doAsync" | "all" | "allAsync" | "any" })}
-                    />
+                    {kind === "sequence" || kind === "parallel" ? (
+                        <SelectField
+                            label={t("storyInspector.control.rowsAfter")}
+                            options={[
+                                { value: "wait", label: t("storyInspector.control.rowsAfterWait") },
+                                { value: "start", label: t("storyInspector.control.rowsAfterStart") },
+                            ]}
+                            value={waits ? "wait" : "start"}
+                            onChange={value => props.onChange({
+                                ...groupPayload,
+                                control: kind,
+                                mode: storyGroupRunModeFor(kind, value === "wait"),
+                            })}
+                        />
+                    ) : null}
                     {isRepeat ? (
                         <SelectField
                             label={t("storyInspector.control.loopKind")}
