@@ -127,6 +127,7 @@ import {
     AUDIO_TRACK_CHANNELS,
     AUDIO_TRACK_ID_VOICE,
     BUILTIN_AUDIO_TRACKS,
+    audioTrackDisplayName,
     resolveAudioTrack,
     resolveAudioTrackChain,
     resolveAudioTrackPlayback,
@@ -4544,8 +4545,10 @@ function reportTrackConflict(
         return;
     }
     // A track id is not a name, and a track removed since the row was written has no name left.
-    const nameOf = (id: string): string => authoredNameOrNull(ctx.audioTracks.find(track => track.id === id)?.name)
-        ?? say("story.compile.media.removedTrack");
+    const nameOf = (id: string): string => {
+        const track = ctx.audioTracks.find(entry => entry.id === id);
+        return (track ? authoredNameOrNull(audioTrackDisplayName(track, translate)) : null) ?? say("story.compile.media.removedTrack");
+    };
     diagnostic(ctx, "warning", blockId, say("story.compile.media.trackConflict", {
         name: objectLabel(name),
         existing: nameOf(existing),

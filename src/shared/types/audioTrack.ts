@@ -25,6 +25,8 @@
  * Comments in English per project convention.
  */
 
+import type { TranslationKey } from "@shared/i18n";
+
 /** Persisted document version for `editor/audio-tracks.json`. Independent of every other document. */
 export const AUDIO_TRACK_SCHEMA_VERSION = 2 as const;
 
@@ -171,6 +173,37 @@ export function isBuiltinAudioTrackId(id: string): boolean {
 
 export function builtinAudioTrack(id: string): ProjectAudioTrack | undefined {
     return BUILTIN_AUDIO_TRACKS.find(track => track.id === id);
+}
+
+/** The interface words a seeded track is shown with while it keeps its factory name, by id. */
+const BUILTIN_AUDIO_TRACK_NAME_KEYS: Readonly<Record<string, TranslationKey>> = {
+    [AUDIO_TRACK_ID_BGM]: "project.audio.builtinName.bgm",
+    [AUDIO_TRACK_ID_SOUND]: "project.audio.builtinName.sound",
+    [AUDIO_TRACK_ID_VOICE]: "project.audio.builtinName.voice",
+};
+
+/**
+ * The key a track's name is shown with, or undefined for a name an author gave it.
+ *
+ * The three seeded tracks are stored with English factory names ("Music", "SFX", "Voice") - the
+ * same in every project, whatever its language - so a surface that names one shows the interface's
+ * word for it instead, for as long as it still carries the name it was created with. A track the
+ * author renamed, or one of their own that happens to share the name, keeps its name. The stored
+ * data never changes: this is how a name is drawn, the way `factoryLayerNameKey` draws a seeded
+ * blueprint layer.
+ */
+export function factoryAudioTrackNameKey(track: Pick<ProjectAudioTrack, "id" | "name">): TranslationKey | undefined {
+    const builtin = builtinAudioTrack(track.id);
+    return builtin && builtin.name === track.name.trim() ? BUILTIN_AUDIO_TRACK_NAME_KEYS[track.id] : undefined;
+}
+
+/** A track's name as the interface shows it: see {@link factoryAudioTrackNameKey}. */
+export function audioTrackDisplayName(
+    track: Pick<ProjectAudioTrack, "id" | "name">,
+    translate: (key: TranslationKey) => string,
+): string {
+    const key = factoryAudioTrackNameKey(track);
+    return key ? translate(key) : track.name;
 }
 
 export function normalizeAudioTrackChannel(value: unknown): AudioTrackChannel {

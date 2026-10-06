@@ -395,6 +395,12 @@ export const project = {
             other: "其下的 {count} 条音轨将移到 {parent}",
         },
         // 玩家自己的音量滑块，与三条内置总线一一对应。
+        // 三条内置音轨在保持出厂名称时以这组词显示；作者改名后显示作者的名称
+        builtinName: {
+            bgm: "音乐",
+            sound: "音效",
+            voice: "语音",
+        },
         slider: {
             bgm: "音乐音量",
             sound: "音效音量",

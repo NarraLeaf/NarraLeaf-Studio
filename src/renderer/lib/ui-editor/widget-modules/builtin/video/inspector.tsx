@@ -12,6 +12,7 @@ import type { InspectorContext, UIInspectorData } from "@/lib/ui-editor/widget-m
 import { i18nStore, useTranslation } from "@/lib/i18n";
 import { AssetPickerRow } from "@/lib/ui-editor/widget-modules/shared/assets/AssetPickerRow";
 import { useProjectAudioTracks } from "@/lib/ui-editor/widget-modules/shared/sound/useProjectAudioTracks";
+import { audioTrackDisplayName } from "@shared/types/audioTrack";
 import { getVideoProps, patchVideoProps } from "./helpers";
 
 /** Always read through the live document: a schema closure can outlive the props it captured. */
@@ -58,7 +59,7 @@ function VideoAudioTrackField(props: CustomFieldProps<UIInspectorData>) {
                 size="sm"
                 fullWidth
                 value={current.audioTrackId ?? ""}
-                options={tracks.map(track => ({ value: track.id, label: track.name }))}
+                options={tracks.map(track => ({ value: track.id, label: audioTrackDisplayName(track, t) }))}
                 placeholder={t("widgets.video.audioTrackDefault")}
                 onChange={value => patchVideo(props.data, { audioTrackId: value ? String(value) : null })}
             />

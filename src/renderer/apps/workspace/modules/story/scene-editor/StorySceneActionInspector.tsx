@@ -49,7 +49,7 @@ import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { buildMergedVariableView } from "@shared/variables/mergedPersistentView";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
 import type { AudioTrackChannel, ProjectAudioTrack } from "@shared/types/audioTrack";
-import { resolveAudioTrack } from "@shared/types/audioTrack";
+import { audioTrackDisplayName, resolveAudioTrack } from "@shared/types/audioTrack";
 import { isBuiltinAppTagId, RELEASE_APP_TAG } from "@shared/types/appTag";
 import {
     onWeatherParamGrid,
@@ -1405,10 +1405,10 @@ function AudioActionEditor(props: {
         {
             value: "",
             label: t("storyInspector.audio.trackDefault", {
-                name: resolveAudioTrack(tracks, undefined, audioRowFallbackChannel(payload.operation)).name,
+                name: audioTrackDisplayName(resolveAudioTrack(tracks, undefined, audioRowFallbackChannel(payload.operation)), t),
             }),
         },
-        ...tracks.map(entry => ({ value: entry.id, label: entry.name })),
+        ...tracks.map(entry => ({ value: entry.id, label: audioTrackDisplayName(entry, t) })),
     ];
     const status = audioBusStatusLine(t, tracks, track.id, audioRowFallbackChannel(payload.operation));
 

@@ -43,7 +43,7 @@ import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEd
 import type { BlueprintEntryTabPayload } from "../blueprintEntryTabId";
 import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import type { StoryDocument } from "@shared/types/story";
-import { AUDIO_TRACK_ID_SOUND, resolveAudioTrack } from "@shared/types/audioTrack";
+import { AUDIO_TRACK_ID_SOUND, audioTrackDisplayName, resolveAudioTrack } from "@shared/types/audioTrack";
 import { listSceneIdsInDocumentOrder, listStoryEndings } from "@shared/types/story";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getUIComponentParams } from "@shared/types/ui-editor/document";
@@ -2164,7 +2164,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         // same order the project Audio surface shows, so the first row here is the one an author looks for.
         const audioTracks = audioTrackService.listTracks();
         const audioTrackOptions: BlueprintInspectorParamSelectOption[] = audioTracks
-            .map(track => ({ value: track.id, label: track.name }));
+            .map(track => ({ value: track.id, label: audioTrackDisplayName(track, t) }));
         const opts: Record<string, BlueprintInspectorParamSelectOption[]> = {
             surfaces: surfaceOptions,
             stories: storyOptions,
@@ -2184,7 +2184,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 {
                     value: "",
                     label: t("storyInspector.audio.trackDefault", {
-                        name: resolveAudioTrack(audioTracks, undefined, AUDIO_TRACK_ID_SOUND).name,
+                        name: audioTrackDisplayName(resolveAudioTrack(audioTracks, undefined, AUDIO_TRACK_ID_SOUND), t),
                     }),
                 },
                 ...audioTrackOptions,
