@@ -28,6 +28,7 @@ import {
 } from "@shared/types/ui-editor/textSource";
 import { uiTextSampleCauseOf } from "@shared/types/ui-editor/textSample";
 import { listUIPlacementTextValues, uiComponentTextValueUnitBinding } from "@shared/types/ui-editor/componentTextParams";
+import { listUIPageTextValues } from "@shared/types/ui-editor/pageTextParams";
 import {
     countSegmentInterpolations,
     segmentHasMarkup,
@@ -297,6 +298,26 @@ export function extractUiTranslationRows(
                     ? `${component.name || element.name || element.type} › ${paramName}`
                     : `${element.name || component.name || element.type} › ${paramName}`,
                 groupName: value.origin === "default" ? component.name || groupName : groupName,
+                sourceText: binding.sourceText,
+            });
+        }
+        // A page's text parameters: the default the page's texts show, filed under the page as one row
+        // however many show it, and the words a Page widget gives, under the widget.
+        for (const { surfaceId, param, value } of listUIPageTextValues(document, element)) {
+            const binding = uiComponentTextValueUnitBinding(value);
+            if (binding?.kind !== "implicit" || paramUnits.has(binding.unitId)) {
+                continue;
+            }
+            paramUnits.add(binding.unitId);
+            const page = document.surfaces.find(surface => surface.id === surfaceId);
+            rows.push({
+                unitId: binding.unitId,
+                elementId: element.id,
+                prop: value.origin === "default" ? `param.${param.id}` : `param.${param.name}`,
+                elementName: value.origin === "default"
+                    ? `${page?.name || groupName} › ${param.name}`
+                    : `${element.name || element.type} › ${param.name}`,
+                groupName: value.origin === "default" ? page?.name || groupName : groupName,
                 sourceText: binding.sourceText,
             });
         }

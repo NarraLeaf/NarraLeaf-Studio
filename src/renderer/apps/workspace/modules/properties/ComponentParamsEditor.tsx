@@ -50,7 +50,7 @@ import { interfaceDocumentFreezeScope } from "../ui-editor/uiLiveSession";
  * Not a nicety here: `setComponentParams` trims what it stores, so a per-keystroke write would echo
  * "Save " back as "Save" and the author could never type a space into a param name at all.
  */
-function DraftInput({
+export function DraftInput({
     value,
     placeholder,
     disabled,

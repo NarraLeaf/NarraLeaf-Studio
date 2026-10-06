@@ -1,6 +1,12 @@
 import type { BlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/blueprint-nodes/types";
 
 export const BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID = "all";
+/**
+ * The group a drag off a struct pin opens on: one entry per field of what was dragged.
+ *
+ * A category id rather than a node category, so it sorts first and is named by the menu itself.
+ */
+export const BLUEPRINT_ADD_NODE_FIELDS_CATEGORY_ID = "__fields";
 
 export type BlueprintAddNodeCategory = {
     id: string;
@@ -23,6 +29,9 @@ const DOCUMENTED_CATEGORY_ORDER = [
 ] as const;
 
 function compareCategoryId(a: string, b: string): number {
+    if (a === BLUEPRINT_ADD_NODE_FIELDS_CATEGORY_ID || b === BLUEPRINT_ADD_NODE_FIELDS_CATEGORY_ID) {
+        return a === b ? 0 : a === BLUEPRINT_ADD_NODE_FIELDS_CATEGORY_ID ? -1 : 1;
+    }
     const ai = DOCUMENTED_CATEGORY_ORDER.indexOf(a as (typeof DOCUMENTED_CATEGORY_ORDER)[number]);
     const bi = DOCUMENTED_CATEGORY_ORDER.indexOf(b as (typeof DOCUMENTED_CATEGORY_ORDER)[number]);
     if (ai !== -1 || bi !== -1) {
@@ -54,6 +63,9 @@ export function buildBlueprintAddNodeCategories(
 }
 
 export function blueprintAddNodeEntryKey(entry: BlueprintNodeEditorCatalogEntry): string {
+    if (entry.preset) {
+        return `${entry.type}\0${entry.preset.key}`;
+    }
     const ref = entry.magicElementRef;
     if (!ref) {
         return entry.type;

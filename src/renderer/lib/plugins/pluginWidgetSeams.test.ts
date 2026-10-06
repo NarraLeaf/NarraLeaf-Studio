@@ -171,6 +171,8 @@ describe("a plugin widget's declared events", () => {
             "mouseClick",
             "keyDown",
             "keyUp",
+            "gamepadButtonDown",
+            "gamepadButtonUp",
             "onAnyBroadcast",
             "onBroadcast",
             "windowFullscreenChanged",

@@ -59,6 +59,13 @@ export function nextStoryRevealToken(): number {
     return revealTokenSeq;
 }
 
+const STORY_SCENE_EDITOR_TAB_ID_PREFIX = "story:scene:";
+
 export function getStorySceneEditorTabId(storyId: StoryId, sceneId: StorySceneId): string {
-    return `story:scene:${storyId}:${sceneId}`;
+    return `${STORY_SCENE_EDITOR_TAB_ID_PREFIX}${storyId}:${sceneId}`;
+}
+
+/** Whether an editor tab is a story scene editor, read off its id. */
+export function isStorySceneEditorTabId(tabId: string): boolean {
+    return tabId.startsWith(STORY_SCENE_EDITOR_TAB_ID_PREFIX);
 }

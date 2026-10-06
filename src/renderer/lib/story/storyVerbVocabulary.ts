@@ -1,4 +1,4 @@
-import type { StoryActionPayload } from "@shared/types/story";
+import { storyVariableRefKey, type StoryActionPayload, type StoryExpr } from "@shared/types/story";
 import type { TranslationKey } from "@shared/i18n";
 
 /**
@@ -149,9 +149,53 @@ export function storyVerbCommandId(payload: StoryActionPayload): CommandId | nul
         // stays its own (the engine addresses `story.camera` distinctly), and this is where the two
         // facts meet - one payload, the word an author would type for it.
         case "camera": return payload.operation === "reset" ? "reset" : "transform";
-        case "setVariable": return "set";
+        case "setVariable": return storyAssignmentShorthand(payload)?.commandId ?? "set";
         default: return null;
     }
+}
+
+/** The shorthand an assignment row was typed as. */
+export type StoryAssignmentShorthand =
+    | { commandId: "inc" | "dec"; step: number }
+    | { commandId: "toggle" };
+
+/**
+ * Which of `/inc`, `/dec` and `/toggle` wrote an assignment row, or `null` for a plain `/set`.
+ *
+ * None of the three has a payload of its own - each stores the assignment it stands for - so the
+ * verb is read off the stored expression. The test is the spelling the command writes, not merely
+ * the shape: `/inc gold 5` stores `gold + (5)`, and a row typed longhand as `/set gold gold + 5`
+ * keeps reading as the line its author typed. A line read back has to re-parse to the row it came
+ * from, which a longhand row printed as `/inc` would not.
+ *
+ * Only a numeric step reads back as `/inc` / `/dec`; a step that is itself an expression prints as
+ * the assignment it is.
+ */
+export function storyAssignmentShorthand(
+    payload: Extract<StoryActionPayload, { action: "setVariable" }>,
+): StoryAssignmentShorthand | null {
+    const expression = payload.expression;
+    if (!expression) {
+        return null;
+    }
+    const { ast, source } = expression;
+    const targetKey = storyVariableRefKey(payload.target);
+    const readsTarget = (node: StoryExpr): boolean => node.kind === "var" && storyVariableRefKey(node.target) === targetKey;
+    if (ast.kind === "unary" && ast.op === "!" && readsTarget(ast.operand) && source.startsWith("!")) {
+        return { commandId: "toggle" };
+    }
+    if (
+        ast.kind === "binary"
+        && (ast.op === "+" || ast.op === "-")
+        && readsTarget(ast.left)
+        && ast.right.kind === "literal"
+        && typeof ast.right.value === "number"
+        && Number.isFinite(ast.right.value)
+        && source.endsWith(` ${ast.op} (${String(ast.right.value)})`)
+    ) {
+        return { commandId: ast.op === "+" ? "inc" : "dec", step: ast.right.value };
+    }
+    return null;
 }
 
 /** The `story.command.*` key naming this payload's verb, or `null`. Resolve it in the COMMAND locale. */

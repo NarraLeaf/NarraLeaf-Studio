@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
-import { Keyboard, Mouse, Plus, Smartphone, Touchpad, X } from "lucide-react";
+import { Gamepad2, Keyboard, Mouse, Plus, Smartphone, Touchpad, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
     formatBlueprintKeyboardBindingFromEvent,
@@ -22,6 +22,7 @@ import {
     getInputBindingDevices,
     getInputBindingDevicesLabel,
     getInputBindingLabel,
+    GAMEPAD_BINDING_BUTTONS,
     getInputDeviceLabel,
     type InputBindingDevice,
     type TranslateFn,
@@ -43,6 +44,7 @@ const DEVICE_ICONS: Record<InputBindingDevice, LucideIcon> = {
     trackpad: Touchpad,
     touch: Smartphone,
     key: Keyboard,
+    gamepad: Gamepad2,
 };
 
 function isModifierOnlyEvent(event: KeyboardEvent): boolean {
@@ -50,7 +52,13 @@ function isModifierOnlyEvent(event: KeyboardEvent): boolean {
 }
 
 function bindingKey(binding: UIInputBinding): string {
-    return binding.kind === "pointer" ? `pointer:${binding.gesture}` : `key:${binding.key}`;
+    if (binding.kind === "pointer") {
+        return `pointer:${binding.gesture}`;
+    }
+    if (binding.kind === "gamepad") {
+        return `gamepad:${binding.button}`;
+    }
+    return `key:${binding.key}`;
 }
 
 /**
@@ -203,6 +211,22 @@ export function InputBindingList({ bindings, onChange, emptyLabel }: InputBindin
                         hideMenu();
                         setListening(true);
                     },
+                };
+            }
+            // Seventeen named buttons, listed rather than captured: the set is finite, and an
+            // author editing bindings should not need a pad plugged in.
+            if (device === "gamepad") {
+                return {
+                    ...row,
+                    submenu: GAMEPAD_BINDING_BUTTONS.map(button => ({
+                        id: `gamepad:${button}`,
+                        label: button,
+                        disabled: taken.has(`gamepad:${button}`),
+                        onClick: () => {
+                            hideMenu();
+                            addBinding({ kind: "gamepad", button });
+                        },
+                    })),
                 };
             }
             return {

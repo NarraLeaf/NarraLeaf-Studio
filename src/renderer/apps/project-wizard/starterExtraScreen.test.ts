@@ -108,6 +108,12 @@ function readTemplate(...segments: string[]): unknown {
 }
 
 const document = readTemplate("editor", "ui", "uidoc.json") as UIDoc;
+
+const GALLERY_ENTRY_SHAPE = "narraleaf.gallery.entry";
+
+function readGalleryManifest(): { contributes: { structs?: { id: string; fields: { key: string }[] }[] } } {
+    return JSON.parse(fs.readFileSync(path.join(process.cwd(), "src/builtin-plugins/gallery/manifest.json"), "utf-8"));
+}
 const blueprints = Object.values(
     (readTemplate("editor", "ui", "uigraphs.json") as {
         blueprintDocument: { blueprints: Record<string, Blueprint> };
@@ -318,8 +324,13 @@ describe("the starter template's EXTRA screen", () => {
     });
 
     it("reads each cell off its row, and leaves what a locked row withholds to the catalog", () => {
-        const struct = document.structs?.["extra.galleryEntry"];
-        expect(struct, "the screen declares the row shape Get Gallery hands over").toBeDefined();
+        // The lists take the row shape Get Gallery hands over as the plugin declares it, rather than
+        // a copy of it in the project that would drift from what the plugin sends.
+        const struct = (readGalleryManifest().contributes.structs ?? []).find(shape => shape.id === GALLERY_ENTRY_SHAPE);
+        expect(struct, "the gallery plugin declares its row shape").toBeDefined();
+        for (const { list } of SEGMENTS) {
+            expect(on(list, "nl.list").props?.itemStructId, list).toBe(GALLERY_ENTRY_SHAPE);
+        }
         const fields = new Set(struct!.fields.map(field => field.key));
         // Both halves of the lock state are declared: a row that is not unlocked is not necessarily
         // locked (a placeholder row on the canvas is neither), and a binding can only read a field,

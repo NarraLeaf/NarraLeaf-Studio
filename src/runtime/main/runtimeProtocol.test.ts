@@ -76,29 +76,31 @@ function createPack(): GameRuntimePackV1 {
     };
 }
 
+/**
+ * Resolved rather than joined, because `resolveInsideRoot` resolves: on Windows a rooted path
+ * with no drive comes back with the current drive in front, and the expectations have to be
+ * spelled the way the answers are.
+ */
+const APP_DIR = path.resolve(path.sep, "tmp", "preview", "app");
+
 describe("runtime protocol path resolution", () => {
     it("resolves static runtime paths inside the preview app directory", () => {
-        const appDir = path.join(path.sep, "tmp", "preview", "app");
-
-        expect(resolveRuntimeStaticPath(appDir, "/")).toBe(path.join(appDir, "index.html"));
-        expect(resolveRuntimeStaticPath(appDir, "/renderer.js")).toBe(path.join(appDir, "renderer.js"));
-        expect(resolveRuntimeStaticPath(appDir, "\\preload.js")).toBe(path.join(appDir, "preload.js"));
+        expect(resolveRuntimeStaticPath(APP_DIR, "/")).toBe(path.join(APP_DIR, "index.html"));
+        expect(resolveRuntimeStaticPath(APP_DIR, "/renderer.js")).toBe(path.join(APP_DIR, "renderer.js"));
+        expect(resolveRuntimeStaticPath(APP_DIR, "\\preload.js")).toBe(path.join(APP_DIR, "preload.js"));
     });
 
     it("rejects static and generic paths that escape the app directory", () => {
-        const appDir = path.join(path.sep, "tmp", "preview", "app");
-
-        expect(() => resolveInsideRoot(appDir, "../pack.json")).toThrow(/escapes runtime root/);
-        expect(() => resolveRuntimeStaticPath(appDir, "/../../outside.js")).toThrow(/escapes runtime root/);
+        expect(() => resolveInsideRoot(APP_DIR, "../pack.json")).toThrow(/escapes runtime root/);
+        expect(() => resolveRuntimeStaticPath(APP_DIR, "/../../outside.js")).toThrow(/escapes runtime root/);
     });
 
     it("resolves manifest assets and rejects missing or escaping entries", () => {
-        const appDir = path.join(path.sep, "tmp", "preview", "app");
         const pack = createPack();
 
-        expect(resolveRuntimeAssetPath(appDir, pack, "image")).toBe(path.join(appDir, "assets", "image.png"));
-        expect(() => resolveRuntimeAssetPath(appDir, pack, "missing")).toThrow(/Runtime asset not found/);
-        expect(() => resolveRuntimeAssetPath(appDir, pack, "unsafe")).toThrow(/escapes runtime root/);
+        expect(resolveRuntimeAssetPath(APP_DIR, pack, "image")).toBe(path.join(APP_DIR, "assets", "image.png"));
+        expect(() => resolveRuntimeAssetPath(APP_DIR, pack, "missing")).toThrow(/Runtime asset not found/);
+        expect(() => resolveRuntimeAssetPath(APP_DIR, pack, "unsafe")).toThrow(/escapes runtime root/);
     });
 });
 

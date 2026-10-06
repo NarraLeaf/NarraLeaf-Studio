@@ -142,16 +142,20 @@ export type UITextSource = "literal" | "key" | "blueprint";
  * words of its own or a value blueprint is a keyed one - whether or not the project has a source
  * language, because a key is shared words before it is a translation.
  *
- * Null for an element whose words are bound to a field of its list row or to a text parameter of its
- * component (and to no key): the row, or the placement, answers them, and none of the three is
- * offered.
+ * Null for an element whose words are bound to a field of its list row, to a text parameter of its
+ * component or to one of its page (and to no key): the row, the placement or the page's opening
+ * answers them, and none of the three is offered.
  */
 export function uiTextSourceOf(element: UIElement, site: UITextSite): UITextSource | null {
     const reading = readUITextSite(element, site);
     if (reading.key) {
         return "key";
     }
-    if (reading.binding?.kind === "listItemField" || reading.binding?.kind === "componentParam") {
+    if (
+        reading.binding?.kind === "listItemField"
+        || reading.binding?.kind === "componentParam"
+        || reading.binding?.kind === "pageParam"
+    ) {
         return null;
     }
     if (reading.binding?.kind === "blueprintValue") {

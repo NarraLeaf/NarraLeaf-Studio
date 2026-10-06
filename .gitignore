@@ -186,3 +186,14 @@ spike*.out
 # WebView2 SDK staged by project/build/prepare-installer-webview.js. Reproducible from the pinned
 # version and checksum in that script; the built plugin DLL beside it is what is committed.
 project/installer/webview2/.sdk/
+
+# Local agent instruction files and decision records. Not product docs.
+/AGENTS.md
+/CLAUDE.md
+/memory/
+
+# Local editor / agent working dirs. Not product files.
+/.claude/
+/.cline/
+/.codex/
+/.cursor/

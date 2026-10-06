@@ -121,6 +121,21 @@ const KEYBOARD_EVENTS: readonly WidgetLogicEventDef[] = [
     },
 ];
 
+const GAMEPAD_EVENTS: readonly WidgetLogicEventDef[] = [
+    {
+        id: "gamepadButtonDown",
+        displayName: "Gamepad button down",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.gamepadButtonDown", "blueprint.event.head.anyGamepadButtonDown"],
+    },
+    {
+        id: "gamepadButtonUp",
+        displayName: "Gamepad button up",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.gamepadButtonUp", "blueprint.event.head.anyGamepadButtonUp"],
+    },
+];
+
 const DISPLAYABLE_EVENTS: readonly WidgetLogicEventDef[] = [
     {
         id: "mouseClick",
@@ -177,6 +192,7 @@ const DISPLAYABLE_EVENTS: readonly WidgetLogicEventDef[] = [
         headNodeTypes: ["blueprint.event.head.rightClick"],
     },
     ...KEYBOARD_EVENTS,
+    ...GAMEPAD_EVENTS,
     {
         id: "focus",
         displayName: "Focus",
@@ -290,7 +306,8 @@ const WINDOW_EVENTS: readonly WidgetLogicEventDef[] = [
  * events. What a plugin widget with a blueprint is given without declaring them; see
  * `sanitizeContributedWidgetLogicApi`.
  */
-const AMBIENT_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [...KEYBOARD_EVENTS, ...BROADCAST_EVENTS, ...WINDOW_EVENTS];
+const AMBIENT_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [...KEYBOARD_EVENTS,
+    ...GAMEPAD_EVENTS, ...BROADCAST_EVENTS, ...WINDOW_EVENTS];
 
 const FRAME_EVENTS: readonly WidgetLogicEventDef[] = [
     INIT_EVENT,
@@ -304,6 +321,7 @@ const FRAME_EVENTS: readonly WidgetLogicEventDef[] = [
         headNodeTypes: ["blueprint.event.head.pageEvent"],
     },
     ...KEYBOARD_EVENTS,
+    ...GAMEPAD_EVENTS,
     ...BROADCAST_EVENTS,
     ...WINDOW_EVENTS,
 ];
@@ -332,6 +350,7 @@ const SLIDER_EVENTS: readonly WidgetLogicEventDef[] = [
         headNodeTypes: ["blueprint.event.head.sliderDragEnd"],
     },
     ...KEYBOARD_EVENTS,
+    ...GAMEPAD_EVENTS,
     ...BROADCAST_EVENTS,
     ...WINDOW_EVENTS,
 ];
@@ -366,6 +385,7 @@ const TEXT_INPUT_EVENTS: readonly WidgetLogicEventDef[] = [
         headNodeTypes: ["blueprint.event.head.blur"],
     },
     ...KEYBOARD_EVENTS,
+    ...GAMEPAD_EVENTS,
     ...BROADCAST_EVENTS,
     ...WINDOW_EVENTS,
 ];
@@ -397,7 +417,7 @@ const SWITCH_EVENTS: readonly WidgetLogicEventDef[] = [
         dispatchKind: "interaction",
         headNodeTypes: ["blueprint.event.head.switchTurnedOff"],
     },
-    // DISPLAYABLE_EVENTS already contains the keyboard pair - do not spread KEYBOARD_EVENTS again.
+    // DISPLAYABLE_EVENTS already contains the keyboard and gamepad pairs - do not spread them again.
     ...DISPLAYABLE_EVENTS,
     ...BROADCAST_EVENTS,
     ...WINDOW_EVENTS,
@@ -440,6 +460,7 @@ const COLLECTION_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
     SCROLL_EVENT,
     ...LIST_ITEM_EVENTS,
     ...KEYBOARD_EVENTS,
+    ...GAMEPAD_EVENTS,
     ...BROADCAST_EVENTS,
     ...WINDOW_EVENTS,
 ];

@@ -25,12 +25,30 @@ import {
 } from "@/lib/ui-editor/commands/uiEditorCommands";
 import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
 import { uiEditorAlign, type UiEditorAlignOp } from "@/lib/ui-editor/commands/uiEditorAlign";
+import {
+    UI_EDITOR_NUDGE_LARGE_STEP,
+    UI_EDITOR_NUDGE_STEP,
+    uiEditorNudge,
+} from "@/lib/ui-editor/commands/uiEditorNudge";
+import { uiEditorSnapSelectionToGrid } from "@/lib/ui-editor/commands/uiEditorGridSnap";
 import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
+import { openFloatingLayerCount } from "@/lib/components/layout/floatingLayer";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { UI_EDITOR_WRITABLE, type UIEditorReadOnly } from "./readOnlyInteraction";
 
 function isTypingInField(): boolean {
     return isEditableKeyboardTarget(document.activeElement);
+}
+
+/**
+ * Whether the bare arrow keys are free for the canvas.
+ *
+ * Not while a field has focus (a number box steps its own value, a text field moves its caret), and
+ * not while any popover, menu or dialog is open: the arrows walk its list, and the canvas behind it
+ * is not what the author is pointing them at.
+ */
+function areArrowKeysFreeForCanvas(): boolean {
+    return !isTypingInField() && openFloatingLayerCount(document) === 0;
 }
 
 function getUiSelection(stateService: UIEditorStateService, surfaceId: string): UIElementSelection | null {
@@ -305,6 +323,57 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
         undoOverride,
     ]);
 
+    // The keys that move the selection without a modifier: the arrows, one design pixel a press and
+    // ten with Shift, and R, which puts each selected element's top-left on the nearest grid point. A
+    // set of their own because they are live under a narrower condition than the rest (see
+    // `areArrowKeysFreeForCanvas`): a bare letter or arrow belongs to a field or an open menu first.
+    const nudgeKeybindings = useMemo<KeybindingDefinition[]>(() => {
+        if (!surfaceId) {
+            return [];
+        }
+        const canMoveSelection = (): boolean => {
+            if (readOnlyActive || !documentService || !stateService) {
+                return false;
+            }
+            // An image being cropped, or text being edited in place, on this canvas has the keys; the
+            // element's frame stays where it is until that ends.
+            return stateService.getInteractionOverride()?.surfaceId !== surfaceId;
+        };
+        const nudge = (dx: number, dy: number) => () => {
+            if (!canMoveSelection() || !documentService || !stateService) {
+                return;
+            }
+            uiEditorNudge(documentService, surfaceId, getUiSelection(stateService, surfaceId), dx, dy);
+        };
+        // The project's spacing whether or not grid snapping is switched on: the key is how a layout
+        // made without the grid is brought onto it.
+        const snapToGrid = () => {
+            if (!canMoveSelection() || !documentService || !stateService) {
+                return;
+            }
+            uiEditorSnapSelectionToGrid(
+                documentService,
+                surfaceId,
+                getUiSelection(stateService, surfaceId),
+                stateService.getGridSpacing(),
+            );
+        };
+        const step = UI_EDITOR_NUDGE_STEP;
+        const large = UI_EDITOR_NUDGE_LARGE_STEP;
+        // Literal ids and keys, for the reason the align bindings above spell theirs out.
+        return [
+            { id: "nudge-left", key: "arrowleft", handler: nudge(-step, 0) },
+            { id: "nudge-right", key: "arrowright", handler: nudge(step, 0) },
+            { id: "nudge-up", key: "arrowup", handler: nudge(0, -step) },
+            { id: "nudge-down", key: "arrowdown", handler: nudge(0, step) },
+            { id: "nudge-left-large", key: "shift+arrowleft", handler: nudge(-large, 0) },
+            { id: "nudge-right-large", key: "shift+arrowright", handler: nudge(large, 0) },
+            { id: "nudge-up-large", key: "shift+arrowup", handler: nudge(0, -large) },
+            { id: "nudge-down-large", key: "shift+arrowdown", handler: nudge(0, large) },
+            { id: "snap-to-grid", key: "r", handler: snapToGrid },
+        ];
+    }, [surfaceId, documentService, stateService, readOnlyActive]);
+
     const escapeHandler = useCallback(() => {
         if (!stateService || !surfaceId) {
             return;
@@ -335,6 +404,14 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
         keybindings,
         enabled: enabled && Boolean(surfaceId && documentService && localBlueprint && historyService && stateService),
         when: and(whenEditorFocused(tabId), fromGetter(() => !isTypingInField())),
+        idPrefix: `ui-surface-editor-${tabId}`,
+        catalogPrefix: "ui-editor.",
+    });
+
+    useKeybindings({
+        keybindings: nudgeKeybindings,
+        enabled: enabled && Boolean(surfaceId && documentService && stateService),
+        when: and(whenEditorFocused(tabId), fromGetter(areArrowKeysFreeForCanvas)),
         idPrefix: `ui-surface-editor-${tabId}`,
         catalogPrefix: "ui-editor.",
     });

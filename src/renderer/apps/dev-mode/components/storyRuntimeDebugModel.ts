@@ -14,9 +14,11 @@
 import type { StoryRowLookups } from "@/lib/story/storyRowProjection";
 import {
     getStoryContainerHeaderInfo,
+    getStorySceneName,
     projectStoryRow,
     storyContainerChain,
 } from "@/lib/story/storyRowProjection";
+import { parseSceneTranslationUnitId } from "@shared/types/localization";
 import type {
     SceneFlowDelta,
     SceneFlowRange,
@@ -731,4 +733,37 @@ export function formatStoryVariableRangeChip(range: SceneFlowRange): string {
         return UNKNOWN_CHIP;
     }
     return range.min === range.max ? String(range.min) : `${range.min}${EN_DASH}${range.max}`;
+}
+
+/**
+ * The text a variable's value cell shows.
+ *
+ * A string holding a scene reference (`scene:<id>`, which is what a scene stores into a place
+ * variable such as the Skeleton's `Location`) reads as that scene's name, as the same value does on
+ * the story row that wrote it: the id is never shown, and a reference to a deleted scene reads as
+ * the unknown scene. The cell does not round-trip the name back into a reference, so the panel only
+ * writes when the text was actually changed.
+ */
+export function formatStoryVariableValue(
+    valueType: StoryVariableValueType,
+    value: unknown,
+    scenes: Record<StorySceneId, StoryScene>,
+): string {
+    if (value === undefined || value === null) {
+        return "";
+    }
+    if (valueType === "json") {
+        try {
+            return JSON.stringify(value);
+        } catch {
+            return String(value);
+        }
+    }
+    if (typeof value === "string") {
+        const sceneId = parseSceneTranslationUnitId(value);
+        if (sceneId !== null) {
+            return getStorySceneName(scenes, sceneId);
+        }
+    }
+    return String(value);
 }

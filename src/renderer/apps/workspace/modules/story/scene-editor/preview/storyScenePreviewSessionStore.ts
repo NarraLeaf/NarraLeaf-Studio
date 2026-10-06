@@ -1,9 +1,12 @@
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 
-/** Docked into the split-pane, or popped out as a free-floating picture-in-picture window. */
+/** Docked into the scene editor, or popped out as a free-floating picture-in-picture window. */
 export type StoryScenePreviewPaneMode = "dock" | "float";
 
-/** Floating-window geometry, in editor-body-relative pixels. */
+/**
+ * Floating-window geometry, in pixels relative to the top-left corner of the workspace's content
+ * area - everything between the title bar and the status bar, docks included.
+ */
 export type StoryScenePreviewFloatRect = {
     x: number;
     y: number;
@@ -12,9 +15,19 @@ export type StoryScenePreviewFloatRect = {
 };
 
 /**
- * Persisted layout of the story editor's live-preview pane. One global key (not per-scene):
- * pane visibility, docked width, and picture-in-picture placement are a workbench preference
- * that applies to every scene editor.
+ * What a stored float rect is measured against.
+ *
+ * `workspace` is the content area above. `editorBody` is what builds before the window belonged to
+ * the workspace measured it against: the scene editor's body, which the window could not leave.
+ * Those builds wrote no frame at all, so a record without one is an editor-body rect; see
+ * `migrateEditorBodyStoryPreviewFloatRect`.
+ */
+export type StoryScenePreviewFloatFrame = "workspace" | "editorBody";
+
+/**
+ * Persisted layout of the story editor's live-preview pane. One per-project key (not per-scene):
+ * pane visibility, docked width, and picture-in-picture placement are a workbench preference that
+ * applies to every scene editor.
  */
 export type StoryScenePreviewPaneState = {
     open: boolean;
@@ -22,6 +35,7 @@ export type StoryScenePreviewPaneState = {
     mode: StoryScenePreviewPaneMode;
     /** Null until the pane has been popped out at least once. */
     float: StoryScenePreviewFloatRect | null;
+    floatFrame: StoryScenePreviewFloatFrame;
 };
 
 const STORY_PREVIEW_PANE_STATE_KEY = "story:editor:preview";
@@ -35,14 +49,13 @@ export const STORY_PREVIEW_FLOAT_MIN_WIDTH = 260;
 export const STORY_PREVIEW_FLOAT_MIN_HEIGHT = 180;
 export const STORY_PREVIEW_FLOAT_DEFAULT_WIDTH = 420;
 export const STORY_PREVIEW_FLOAT_DEFAULT_HEIGHT = 300;
-/** Gap kept between an auto-placed floating window and the editor body edge. */
-const STORY_PREVIEW_FLOAT_MARGIN = 24;
 
 export const DEFAULT_STORY_SCENE_PREVIEW_PANE_STATE: StoryScenePreviewPaneState = {
     open: false,
     width: STORY_PREVIEW_PANE_DEFAULT_WIDTH,
     mode: "dock",
     float: null,
+    floatFrame: "workspace",
 };
 
 function parseFloatRect(value: unknown): StoryScenePreviewFloatRect | null {
@@ -62,35 +75,27 @@ function parseFloatRect(value: unknown): StoryScenePreviewFloatRect | null {
     };
 }
 
-export function getStoryScenePreviewPaneState(panelState: PanelStateService): StoryScenePreviewPaneState {
-    const stored = panelState.getPanelState<Partial<StoryScenePreviewPaneState>>(STORY_PREVIEW_PANE_STATE_KEY);
+/** Read the stored record, filling in whatever an older build (or a hand edit) left out. */
+export function parseStoryScenePreviewPaneState(stored: Partial<StoryScenePreviewPaneState> | undefined): StoryScenePreviewPaneState {
+    const float = parseFloatRect(stored?.float);
     return {
         open: stored?.open === true,
         width: typeof stored?.width === "number" && Number.isFinite(stored.width)
             ? Math.max(STORY_PREVIEW_PANE_MIN_WIDTH, stored.width)
             : STORY_PREVIEW_PANE_DEFAULT_WIDTH,
         mode: stored?.mode === "float" ? "float" : "dock",
-        float: parseFloatRect(stored?.float),
+        float,
+        // Only a rect has a frame to be read in; with none there is nothing to carry over.
+        floatFrame: float === null || stored?.floatFrame === "workspace" ? "workspace" : "editorBody",
     };
+}
+
+export function getStoryScenePreviewPaneState(panelState: PanelStateService): StoryScenePreviewPaneState {
+    return parseStoryScenePreviewPaneState(
+        panelState.getPanelState<Partial<StoryScenePreviewPaneState>>(STORY_PREVIEW_PANE_STATE_KEY),
+    );
 }
 
 export function patchStoryScenePreviewPaneState(panelState: PanelStateService, patch: Partial<StoryScenePreviewPaneState>): void {
     panelState.setPanelState<Partial<StoryScenePreviewPaneState>>(STORY_PREVIEW_PANE_STATE_KEY, patch);
-}
-
-/** Auto-placement for a freshly popped-out window: anchored to the bottom-right of the editor body. */
-export function createDefaultStoryPreviewFloatRect(bounds: { width: number; height: number } | null): StoryScenePreviewFloatRect {
-    const width = STORY_PREVIEW_FLOAT_DEFAULT_WIDTH;
-    const height = STORY_PREVIEW_FLOAT_DEFAULT_HEIGHT;
-    if (!bounds || bounds.width < 1 || bounds.height < 1) {
-        return { x: STORY_PREVIEW_FLOAT_MARGIN, y: STORY_PREVIEW_FLOAT_MARGIN, width, height };
-    }
-    const w = Math.min(width, bounds.width);
-    const h = Math.min(height, bounds.height);
-    return {
-        x: Math.max(0, bounds.width - w - STORY_PREVIEW_FLOAT_MARGIN),
-        y: Math.max(0, bounds.height - h - STORY_PREVIEW_FLOAT_MARGIN),
-        width: w,
-        height: h,
-    };
 }

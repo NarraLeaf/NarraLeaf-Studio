@@ -359,7 +359,7 @@ export const documentDiff = {
         added: "新增音轨",
         removed: "删除音轨",
         renamed: "改名",
-        rerouted: "改为汇入别的音轨",
+        rerouted: "改为汇入其他音轨",
         reroutedToMaster: "改为直接汇入主输出",
         /** 一对值是滑杆自己的数字（百分数），不是存下来的 0 到 1。 */
         volume: "音量改动",
@@ -383,8 +383,8 @@ export const documentDiff = {
         renamed: "改名",
         defaultValue: "默认值改动",
         valueType: "类型改动",
-        scopeSaved: "现在是存档变量",
-        scopeGlobal: "现在是持久变量",
+        scopeSaved: "改为存档变量",
+        scopeGlobal: "改为持久变量",
         /** 值存在哪个键下。改名本来就设计成永远不动它。 */
         storageKey: "已经存下的值从此读不回来",
         description: "备注改动",

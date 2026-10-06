@@ -10,6 +10,7 @@
  * Comments in English per project convention.
  */
 
+import type { UIStructDef } from "@shared/types/ui-editor/struct";
 import type { Blueprint, BlueprintDocument, BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { anchorComponentId } from "@shared/blueprint/ownerShape";
@@ -52,6 +53,8 @@ export type CheckOptions = {
      * that the scope is out of reach.
      */
     uiElements?: Readonly<Record<string, UIElement>>;
+    /** The document's list shapes, by id, so a field reader in a list row is typed by its row. */
+    uiStructs?: Readonly<Record<string, UIStructDef>>;
     /**
      * The rest of the project an asset name can travel through: the interface (its lists and the
      * properties bound to a value) and what every story row writes into a variable.
@@ -82,6 +85,7 @@ export function checkBlueprintSource(source: string, options: CheckOptions = {})
         resolveWidgetElementType: options.resolveWidgetElementType,
         resolveElementType: options.resolveElementType,
         uiElements: options.uiElements,
+        uiStructs: options.uiStructs,
     });
     diagnostics.push(...compiled.diagnostics);
 
@@ -193,7 +197,9 @@ function validationOptions(owner: BlueprintOwnerRef, options: CheckOptions) {
         persistentVariables: options.persistentVariables,
         savedVariables: options.savedVariables,
         widgetElement: widget?.element as UIElement | undefined,
-        uiDocument: options.uiElements ? { elements: options.uiElements } : null,
+        uiDocument: options.uiElements
+            ? { elements: options.uiElements, structs: { ...(options.uiStructs ?? {}) } }
+            : null,
         widgetSurfaceId: widget?.surfaceId,
         // Told rather than derived from the owner inside the validator, because it is the same flag
         // the runtime bridge takes (`componentDefinitionMode`): a definition's graph addresses its

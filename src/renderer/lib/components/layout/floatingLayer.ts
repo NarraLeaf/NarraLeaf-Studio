@@ -578,7 +578,10 @@ export function useFloatingLayer(options: FloatingLayerOptions): void {
     }, [open, doc]);
 }
 
-/** Test seam: how many layers are open in `doc`. */
+/**
+ * How many layers are open in `doc`. Also how a page-wide shortcut on keys a layer would use - the
+ * UI editor's arrow-key nudge - stands aside while one is open.
+ */
 export function openFloatingLayerCount(doc: Document): number {
     return layers.filter(layer => layer.doc === doc).length;
 }

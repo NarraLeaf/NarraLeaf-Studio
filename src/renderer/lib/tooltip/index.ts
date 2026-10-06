@@ -1,6 +1,7 @@
 export {
     TOOLTIP_ATTRIBUTE,
     TOOLTIP_GROUP_ATTRIBUTE,
+    TOOLTIP_SHORTCUT_ATTRIBUTE,
     TOOLTIP_SIDE_ATTRIBUTE,
     TOOLTIP_SIDE_DEFAULT,
     getTooltipDelay,
@@ -8,6 +9,7 @@ export {
     resolveTooltipSide,
     setTooltipDelay,
     startTooltipTracking,
+    tooltipShortcutOf,
     tooltipTextOf,
 } from "./tooltipController";
 export type { TooltipSide, TooltipTarget } from "./tooltipController";

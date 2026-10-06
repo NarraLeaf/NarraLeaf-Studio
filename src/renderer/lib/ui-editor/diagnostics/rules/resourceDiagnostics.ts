@@ -15,6 +15,7 @@ import {
 import { DEFAULT_SYSTEM_INTERACTION_SIGNALS } from "@/lib/ui-editor/runtime/appearance/SystemInteractionState";
 import { getRectangleLikeProps, normalizeImageFill } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
 import { translate } from "@/lib/i18n";
+import type { ScriptedElements } from "../scriptedElements";
 import type { UISurfaceDiagnostic } from "../types";
 
 function imageFillMissingAsset(fill: ImageFill | undefined): boolean {
@@ -36,11 +37,33 @@ function getImageDiagnosticProps(el: UIElement) {
     });
 }
 
-export function collectResourceDiagnostics(elements: UIElement[]): UISurfaceDiagnostic[] {
+/** A value binding here hands the image its picture at runtime, whatever the editor holds. */
+const IMAGE_ASSET_BINDING_PATH = "imageFill.assetId";
+
+/**
+ * An image that gets its picture at runtime is not missing one.
+ *
+ * Three ways that happens: a value binding on the asset (a list row's picture, or a value
+ * blueprint), a blueprint that names the image and sets it (a viewer showing whichever picture was
+ * pressed), or the image's own blueprint setting it (the dialogue box's speaker avatar). In each the
+ * empty field in the editor is the design rather than an omission, and reporting it would leave the
+ * author a warning whose only fix is to fill in a picture the game then replaces.
+ */
+function imageGetsPictureAtRuntime(el: UIElement, scripted: ScriptedElements): boolean {
+    return Boolean(el.valueBindings?.[IMAGE_ASSET_BINDING_PATH])
+        || scripted.named.has(el.id)
+        || scripted.runningOwnBlueprint.has(el.id);
+}
+
+export function collectResourceDiagnostics(
+    elements: UIElement[],
+    /** Empty when the caller has no blueprint document. */
+    scripted: ScriptedElements = { named: new Set(), runningOwnBlueprint: new Set() },
+): UISurfaceDiagnostic[] {
     const out: UISurfaceDiagnostic[] = [];
     let drawablePuppets = 0;
     for (const el of elements) {
-        if (el.type === "nl.image") {
+        if (el.type === "nl.image" && !imageGetsPictureAtRuntime(el, scripted)) {
             const props = getImageDiagnosticProps(el);
             if (props.fillType !== "image") {
                 continue;

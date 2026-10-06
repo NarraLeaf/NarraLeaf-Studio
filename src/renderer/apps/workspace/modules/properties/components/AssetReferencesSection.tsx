@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BookOpen, Boxes, LayoutTemplate, Mic, Palette, Puzzle, Users } from "lucide-react";
+import { BookOpen, Boxes, LayoutTemplate, Mic, Palette, Puzzle, Settings2, Users } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
 import { Services } from "@/lib/workspace/services/services";
@@ -19,6 +19,7 @@ const KIND_ICON: Record<ReferenceSiteKind, typeof BookOpen> = {
     voice: Mic,
     character: Users,
     design: Palette,
+    projectSettings: Settings2,
     plugin: Puzzle,
 };
 
@@ -30,6 +31,7 @@ const KIND_ORDER: readonly ReferenceSiteKind[] = [
     "character",
     "voice",
     "design",
+    "projectSettings",
     // Last: a plugin's data is the author's too, but it is edited in the plugin's own panel rather
     // than anywhere the rows above jump to.
     "plugin",

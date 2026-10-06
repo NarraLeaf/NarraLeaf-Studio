@@ -194,8 +194,31 @@ export function areBlueprintElementValueTypesCompatible(
     return sourceType === targetType;
 }
 
+/**
+ * An array whose items are known to have one type, spelled `array<T>`.
+ *
+ * Only ever an output's type. The pins that take arrays stay plain `array` - a node that sorts or
+ * counts does not care what the items are - and the element type rides through them as far as the
+ * editor can follow the wires (see `graphStructTypeInference.ts`). The runtime never reads it: an
+ * array is an array once the graph runs, and this is purely what the editor can promise about one.
+ */
+export function blueprintArrayValueType(elementType: string | undefined): string {
+    const safe = elementType?.trim();
+    return safe ? `${BLUEPRINT_VALUE_TYPE_ARRAY}<${safe}>` : BLUEPRINT_VALUE_TYPE_ARRAY;
+}
+
+/** The `T` of `array<T>`, or undefined for a plain array and for anything that is not an array. */
+export function blueprintArrayElementType(valueType: string | undefined): string | undefined {
+    const prefix = `${BLUEPRINT_VALUE_TYPE_ARRAY}<`;
+    if (!valueType?.startsWith(prefix) || !valueType.endsWith(">")) {
+        return undefined;
+    }
+    const element = valueType.slice(prefix.length, -1).trim();
+    return element || undefined;
+}
+
 export function isBlueprintArrayValueType(valueType: string | undefined): boolean {
-    return valueType === BLUEPRINT_VALUE_TYPE_ARRAY;
+    return valueType === BLUEPRINT_VALUE_TYPE_ARRAY || blueprintArrayElementType(valueType) !== undefined;
 }
 
 export function isBlueprintImageAssetValueType(valueType: string | undefined): boolean {

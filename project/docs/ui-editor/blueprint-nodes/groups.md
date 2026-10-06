@@ -24,7 +24,7 @@ Blueprint Value 可用节点包括：
 
 `nl.slider.props.value` 使用 `float` Blueprint Value，返回值表示映射后的值而不是 0-1 normalized 值；运行时会按该 Slider 的 `min` / `max` / `step` clamp 和 snap。
 
-Blueprint Value 只允许安全的数据生产节点：`Init` / `On Flush` Head、安全的非 latent Flow、图内注释、纯 Data / Math / Time、本地变量读写、Element Literal，以及纯读取型 Text / Displayable / Slider / List / Widget Property / Page / Game 节点。Page 纯读取节点包括 `Get Page Props`、`Is Surface Exiting`、`Is Surface Entering` 与 `Is Surface Transitioning`；Game 纯读取节点包括 `Get Nametag`、`Get Notifications`、`Get Choice Count`、`Is NVL Mode`、`Is In Game`、`Is Game Overlay` 与 Game Preference Getter。当前核心目录不提供 global state 读写或可变 surface state 读写节点；Blueprint Value 也不允许 `Var` 声明、Widget 改写、Navigation、Persistent 变量读写、Broadcast、latent 节点、`Skip Delay` 这类运行时跳过节点和 TypeScript revision。
+Blueprint Value 只允许安全的数据生产节点：`Init` / `On Flush` Head、安全的非 latent Flow、图内注释、纯 Data / Math / Time、本地变量读写、Element Literal，以及纯读取型 Text / Displayable / Slider / List / Widget Property / Page / Game 节点。Page 纯读取节点包括 `Get Page Props`、`Get Page Param`、`Is Surface Exiting`、`Is Surface Entering` 与 `Is Surface Transitioning`；Game 纯读取节点包括 `Get Nametag`、`Get Notifications`、`Get Choice Count`、`Is NVL Mode`、`Is In Game`、`Is Game Overlay` 与 Game Preference Getter。当前核心目录不提供 global state 读写或可变 surface state 读写节点；Blueprint Value 也不允许 `Var` 声明、Widget 改写、Navigation、Persistent 变量读写、Broadcast、latent 节点、`Skip Delay` 这类运行时跳过节点和 TypeScript revision。
 
 ## Self 与 Element 方法节点
 
@@ -235,6 +235,9 @@ Input 节点组读取项目声明的输入操作词表。绑定写在词表和�
 Input 节点组默认具有：
 - `blueprint.input.isActionHeld` - 指定输入操作当前是否按住，纯节点
 - `blueprint.input.getDevice` - 玩家当前使用的输入设备，纯节点
+- `blueprint.input.isGamepadConnected` - 是否有标准手柄连接，纯节点
+- `blueprint.input.isGamepadButtonHeld` - 指定手柄按键是否按住，纯节点
+- `blueprint.input.getGamepadAxis` - 手柄摇杆轴向，纯节点
 
 ## List
 

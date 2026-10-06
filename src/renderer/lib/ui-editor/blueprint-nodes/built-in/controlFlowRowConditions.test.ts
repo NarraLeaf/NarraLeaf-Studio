@@ -6,7 +6,7 @@
  * a gallery grid, a scene board and a save list are all built on.
  *
  * It did not work. `If` and the first condition of `If Else` built their own resolve context out of
- * three of the five things an execution carries and left out the row, so `Get Item Field` feeding a
+ * three of the five things an execution carries and left out the row, so `Get Field` feeding a
  * condition read nothing and the gate never opened - while the very same node feeding the node
  * *after* the branch read the row perfectly, and `If Else`'s second condition (which went through a
  * different helper) worked as well. A gate that is always shut and a value that is always right,

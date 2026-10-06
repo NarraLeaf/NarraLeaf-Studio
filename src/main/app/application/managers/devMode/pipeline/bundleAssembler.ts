@@ -37,6 +37,7 @@ import {
 } from "@shared/types/localization";
 import type { DialogueConfiguration } from "@shared/types/dialogue";
 import { normalizeWindowConfiguration, type WindowConfiguration } from "@shared/types/appWindow";
+import { normalizeLetterboxConfiguration, type LetterboxConfiguration } from "@shared/types/letterbox";
 import { normalizeDialogueConfiguration } from "@shared/types/dialogue";
 import { normalizePreloadConfiguration } from "@shared/types/preload";
 import type { PreloadConfiguration } from "@shared/types/preload";
@@ -297,6 +298,7 @@ async function assembleBundle(context: DevModeBundleLoadContext): Promise<DevMod
     const dialogue = await loadDialogueConfiguration(context.projectPath);
     const preload = await loadPreloadConfiguration(context.projectPath);
     const window = await loadWindowConfiguration(context.projectPath);
+    const letterbox = await loadLetterboxConfiguration(context.projectPath);
     const vfx = await loadVfxConfiguration(context.projectPath);
     const gameVersion = await loadGameVersion(context.projectPath);
     const preferences = await loadPlayerPreferences(context.projectPath);
@@ -342,6 +344,7 @@ async function assembleBundle(context: DevModeBundleLoadContext): Promise<DevMod
         dialogue,
         preload,
         window,
+        letterbox,
         vfx,
         gameVersion,
         // Taken off the library this build actually ships, after the variant fold and any scene
@@ -1444,6 +1447,17 @@ export async function loadWindowConfiguration(projectPath: string): Promise<Wind
     const config = await readProjectConfigRecord(projectPath);
     const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
     return normalizeWindowConfiguration(app?.window);
+}
+
+/**
+ * Load what the game shows outside its stage from `.nlproj` `app.letterbox`. Dense like the ones
+ * above: every window with bars draws them, whether or not the author ever opened the setting.
+ * Exported for tests.
+ */
+export async function loadLetterboxConfiguration(projectPath: string): Promise<LetterboxConfiguration> {
+    const config = await readProjectConfigRecord(projectPath);
+    const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
+    return normalizeLetterboxConfiguration(app?.letterbox);
 }
 
 /**

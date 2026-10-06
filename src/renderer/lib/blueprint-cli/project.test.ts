@@ -66,7 +66,7 @@ describe("readUiDocumentTargets", () => {
     it("answers with nothing for a directory that holds no document", () => {
         const targets = readUiDocumentTargets(path.join(SKELETON_PROJECT, "does-not-exist"));
 
-        expect(targets).toEqual({ surfaces: [], components: [], elements: [], raw: {} });
+        expect(targets).toEqual({ surfaces: [], components: [], elements: [], raw: {}, structs: {} });
     });
 });
 

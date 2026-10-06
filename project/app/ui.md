@@ -94,6 +94,8 @@ nl.switch
     rightClick               interaction blueprint.event.head.rightClick
     keyDown                  interaction blueprint.event.head.keyDown, blueprint.event.head.anyKeyDown
     keyUp                    interaction blueprint.event.head.keyUp, blueprint.event.head.anyKeyUp
+    gamepadButtonDown        interaction blueprint.event.head.gamepadButtonDown, blueprint.event.head.anyGamepadButtonDown
+    gamepadButtonUp          interaction blueprint.event.head.gamepadButtonUp, blueprint.event.head.anyGamepadButtonUp
     focus                    interaction blueprint.event.head.focus
     blur                     interaction blueprint.event.head.blur
     onAnyBroadcast           interaction blueprint.event.head.onAnyBroadcast
@@ -190,10 +192,20 @@ text, drawn only while the component itself is edited. A blueprint's
 `Get Component Param` still reads the value as a string - a keyed value as the
 key's name.
 
+On a page the same line, `bind text = param <paramId>`, shows one of the page's
+own text parameters: the words the page was opened with. Words given by a node
+that opens it (its `param_<paramId>` input) are shown as given - a node gives
+words already in the player's language, from a `Get Text` - and words a Page
+widget gives are translated through the widget's unit,
+`ui:<frameId>.param.<name>`; given nothing, the page shows the parameter's
+default, translated through the page's unit, `ui:<surfaceId>.param.<paramId>`.
+The page's own canvas, which nothing opened, draws the default, and the
+element's own words - sample text - while the default is empty.
+
 `--json` on any of these.
 
 ```sh
-node project/app/ui.js structs                   # the list-item shapes Studio ships
+node project/app/ui.js structs                   # the list-item shapes Studio and its bundled plugins ship
 node project/app/ui.js structs --project <dir>   # and the ones this project declares
 ```
 
@@ -229,13 +241,17 @@ Title  appSurface  1920x1080  entry
     owner=surfaceMain surface=narraleaf-studio:main-surface
     Root / Title / Quit  [nl.button]  owner=widgetMain surface=narraleaf-studio:… element=281a47c0-…  # Quit
 
+Confirm  appSurface  1920x1080  answers dismiss  (params message:text buttons:list<nl.confirmButton>)
+    owner=surfaceMain surface=b7c1f3ae-…
+
 Save slot  component=d8d996da-…  (slot="1" mode="save")
     Save slot / Hit area  [nl.container]  owner=componentWidgetMain component=d8d996da-… element=5d138ead-…
 ```
 
 The `owner=` lines are the ones `blueprint apply` wants, and a `#` at the end of
 a line names the blueprints already hanging off that element. `entry` marks the
-page the game starts on.
+page the game starts on, and `params` lists the parameters a page declares, by
+id, with the type of any that is not a string and the row shape of a list.
 
 ## The text format
 
@@ -280,6 +296,24 @@ surface "Gallery" id=demo-gallery kind=appSurface size=1920x1080
   page. Under it, `setting <key> = <value>` writes surface settings and
   `answers <actionId> [consume=false]` says which of the project's actions this
   surface answers.
+- **`param <id> <name> [type=] [struct=] [= <default>]`** under a page declares a
+  value the page is opened with. `type=` is `string` (the default), `text`,
+  `number`, `boolean`, `list` or `json`, and the default is written in that type
+  (`= 3`, `= true`, `= "Sure?"`); left out, the page reads the type's empty value.
+  `text` is words a player reads: a string on every pin, but its default is
+  translated and a text on the page can show it with `bind text = param <id>`.
+  `list` is rows, and `struct=` names their shape - an engine shape such as
+  `nl.confirmButton`, a loaded plugin's, or the project's - which types the inputs
+  that give it and `Get Page Param`, and which a list on the page bound to it is
+  checked against. A list starts empty. The id is a plain word - letters,
+  digits, `_` and `-` - because it names an input on every node that opens the
+  page (`param_<id>` on `Go Page`, `Replace Page`, `Show Layer` and `Set Frame
+  Page`) and the parameter `Get Page Param` reads (`paramId = <id>`); the name
+  is the key the value travels under in the page's props, which is what a script,
+  a list bound to a page prop and `Show Confirm` (`message`, `buttons`) read. Ids
+  and names are unique on a page, and a Game UI declares none: the player opens
+  it with nothing. Like the rest of a surface block, the lines are the whole
+  list - a `param` the file leaves out is no longer declared.
 - **`component <name> [id=] [size=WxH]`** opens a component definition, with
   `param <id> <name> [type=text] = <default>` lines for the values each instance
   supplies. Without `type=` a param is a string, which a blueprint reads with
@@ -317,9 +351,11 @@ surface "Gallery" id=demo-gallery kind=appSurface size=1920x1080
   gallery cell, say. It reads a row's field and nothing else; a value blueprint
   for it is refused, because nothing would evaluate one.
   **`bind <prop> = param <paramId>`** shows a text parameter of the component
-  the element is inside, as each placement gives it. Only the prop holding a
-  text's or a button's words takes one, only inside a `component` block, and
-  only for a parameter declared `type=text`.
+  the element is inside, as each placement gives it - or, on a page, one of the
+  page's own, as whatever opened it gives it. Only the prop holding a text's or
+  a button's words takes one, only inside a `component` block or on a page, and
+  only for a parameter declared `type=text`. A Game UI has none: the player
+  opens it with nothing.
 - **`component <componentId> [param=value …]`** makes the element an instance of
   a component definition. A text parameter's value is either words,
   `label="Start"`, or a translation key, `label.key=menu.start` - one or the
@@ -442,13 +478,34 @@ A component's parameters are checked against what the component declares, in the
 file or in the project:
 
 - **`ui.param_outside_component`**, **`ui.param_not_text`** - a `bind … = param`
-  outside a component block, or naming a parameter the component does not declare
-  as `type=text`. Errors: no placement would give the widget any words.
+  on a Game UI, or naming a parameter the component (or, on a page, the page) does
+  not declare as `type=text`. Errors: nothing would give the widget any words.
 - **`ui.param_key_not_text`** - a placement names a key for a string parameter,
   which reads no key. An error.
 - **`ui.param_unknown`** - a placement gives a value to a parameter the component
   does not declare. A warning: the value is kept, and read again if a parameter by
   that id comes back.
+
+A page's parameters are checked where the file declares or names them:
+
+- **`ui.page_param_id`**, **`ui.page_param_type`**, **`ui.page_param_duplicate`**,
+  **`ui.page_param_default`** - an id that is not a plain word, a type other than
+  the six, an id or a name a line above already took, a default that is not of
+  the declared type. Errors: Studio would not keep the line as written.
+- **`ui.page_param_struct`** - `struct=` on a param that is not a `list` (an
+  error), or naming a shape nothing here knows (a warning: it may be a plugin's
+  that is not loaded).
+- **`ui.page_param_on_game_ui`** - a `param` line under a Game UI. An error.
+- **`ui.page_prop_undeclared`** - a list on a page shows a page prop the page does
+  not declare. A warning: nothing that opens the page is told to give it, so the
+  list shows no rows in the game.
+- **`ui.page_param_unknown`** - a Page widget gives the page it shows a name that
+  page does not declare, usually a parameter renamed on the page afterwards. A
+  warning: the value reaches nothing.
+- **`ui.page_param_list_mismatch`** - a list on a page shows a page param that is
+  not a `list` (or `json`), or whose rows lack a field the list draws, by name and
+  type. A warning: the list draws no rows, or draws those fields as authored in
+  every row. Rows that carry more than the list draws are fine.
 
 Three findings are notes rather than refusals, deliberately:
 

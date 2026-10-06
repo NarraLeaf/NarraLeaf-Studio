@@ -363,7 +363,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "uiSurfaces",
         section: "interface",
-        shortcuts: ["ui-editor.pan", "ui-editor.zoom", "ui-editor.select-inside", "ui-editor.edit-text", "ui-editor.suspend-snap"],
+        shortcuts: ["ui-editor.pan", "ui-editor.zoom", "ui-editor.select-inside", "ui-editor.edit-text", "ui-editor.suspend-snap", "ui-editor.snap-to-grid"],
         related: ["uiComponents", "blueprints", "inputActions"],
     },
     // Four topics rather than one card. The feature has four separate things an author has to know

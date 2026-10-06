@@ -28,6 +28,8 @@ export type UIHeldInputs = {
     keys: ReadonlySet<string>;
     /** `PointerEvent.button` numbers. */
     buttons: ReadonlySet<number>;
+    /** Canonical gamepad button names currently down. */
+    gamepadButtons: ReadonlySet<string>;
     /**
      * Gestures a recogniser has decided are happening right now.
      *
@@ -39,7 +41,7 @@ export type UIHeldInputs = {
 };
 
 /** Nobody is holding anything - what a host with no window to listen to reads. */
-export const NO_HELD_INPUTS: UIHeldInputs = { keys: new Set(), buttons: new Set(), gestures: new Set() };
+export const NO_HELD_INPUTS: UIHeldInputs = { keys: new Set(), buttons: new Set(), gestures: new Set(), gamepadButtons: new Set() };
 
 /**
  * The button whose press produces a gesture, for the gestures that are a press at all.
@@ -115,6 +117,9 @@ export function isInputBindingHeld(binding: UIInputBinding, held: UIHeldInputs):
         }
         return held.gestures.has(binding.gesture);
     }
+    if (binding.kind === "gamepad") {
+        return held.gamepadButtons.has(binding.button);
+    }
     for (const key of held.keys) {
         if (blueprintKeyboardBindingMatchesEvent(binding.key, heldKeyboardPayload(key, held.keys))) {
             return true;
@@ -142,6 +147,11 @@ export type UIInputHoldTracker = {
     holdGesture(gesture: UIInputPointerGesture, target: EventTarget | null): void;
     /** Every recognised gesture is over - the hand left the glass. */
     releaseGestures(): void;
+    /**
+     * Replace the held gamepad buttons. Written by the gamepad poller each union change; blur
+     * clearing the poller writes an empty set, which is harmless.
+     */
+    setGamepadButtons(buttons: ReadonlySet<string>): void;
     dispose(): void;
 };
 
@@ -159,6 +169,7 @@ export function createInputHoldTracker(view: Window | null | undefined): UIInput
     const pressTargets = new Map<number, EventTarget | null>();
     const gestures = new Set<UIInputPointerGesture>();
     const gestureTargets = new Map<UIInputPointerGesture, EventTarget | null>();
+    const gamepadButtons = new Set<string>();
 
     const forgetEverything = (): void => {
         keys.clear();
@@ -166,6 +177,7 @@ export function createInputHoldTracker(view: Window | null | undefined): UIInput
         pressTargets.clear();
         gestures.clear();
         gestureTargets.clear();
+        gamepadButtons.clear();
     };
 
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -233,7 +245,12 @@ export function createInputHoldTracker(view: Window | null | undefined): UIInput
     }
 
     return {
-        read: () => ({ keys: new Set(keys), buttons: new Set(buttons), gestures: new Set(gestures) }),
+        read: () => ({
+            keys: new Set(keys),
+            buttons: new Set(buttons),
+            gestures: new Set(gestures),
+            gamepadButtons: new Set(gamepadButtons),
+        }),
         readPressTarget: gesture => {
             // Where the press landed, by whichever route this gesture is held: a mouse button knows
             // its own press target, and a recognised gesture was given one when it was recognised.
@@ -254,6 +271,12 @@ export function createInputHoldTracker(view: Window | null | undefined): UIInput
         releaseGestures: () => {
             gestures.clear();
             gestureTargets.clear();
+        },
+        setGamepadButtons: next => {
+            gamepadButtons.clear();
+            for (const button of next) {
+                gamepadButtons.add(button);
+            }
         },
         dispose: () => {
             forgetEverything();

@@ -44,6 +44,7 @@ import {
     type BlueprintNodePinDef,
 } from "../types";
 import type { BlueprintAssetNameFlow } from "../types";
+import { blueprintArrayValueType } from "@shared/types/blueprint/valueTypes";
 import type { TranslationKey } from "@shared/i18n";
 
 const GRAPH_KINDS = ["event", "function", "macro"] as const;
@@ -315,7 +316,7 @@ export const stringBlueprintNodes: BlueprintNodeDef[] = [
         assetNames: "assembled",
         displayName: "Split",
         keywords: ["split", "array", "separator", "string"],
-        pins: [stringIn("value", "Value"), stringIn("separator", "Separator"), out("result", "Result", "json")],
+        pins: [stringIn("value", "Value"), stringIn("separator", "Separator"), out("result", "Result", blueprintArrayValueType("string"))],
     }),
     stringNode({
         type: BLUEPRINT_NODE_TYPE_STRING_JOIN,

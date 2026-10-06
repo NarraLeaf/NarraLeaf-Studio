@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { setActiveProjectFonts } from "@shared/typography/projectFonts";
 import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
+import { setActiveUIPageParams } from "@shared/types/ui-editor/pageParams";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import { getInterface } from "@/lib/app/bridge";
 import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
@@ -127,6 +128,9 @@ export function useDevModePayload(): UseDevModePayloadResult {
             // Same timing, same reason: a save node resolves its pins as it runs, so publishing in
             // an effect would let the first graph of a session see a schema with no fields in it.
             setActiveSaveSchemaFields(bundle.ui.saveSchema ?? []);
+            // And for the same reason: a node that opens a page reads the page's declared
+            // parameters as it runs.
+            setActiveUIPageParams(bundle.ui.uidoc.surfaces);
             setState(prev => ({
                 ...prev,
                 bundle,

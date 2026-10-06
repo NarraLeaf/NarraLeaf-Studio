@@ -19,6 +19,14 @@ import type { UIInputActionDef } from "@shared/types/ui-editor/inputAction";
 import type { UIStructDef, UIStructFieldType } from "@shared/types/ui-editor/struct";
 import { UI_STRUCT_FIELD_TYPES } from "@shared/types/ui-editor/struct";
 import { UI_STAGE_SLOT_IDS } from "@shared/types/ui-editor/stageSlots";
+import {
+    isUIPageParamId,
+    isUIPageParamType,
+    isUIPageTextParam,
+    UI_PAGE_PARAM_TYPES,
+} from "@shared/types/ui-editor/pageParams";
+import type { UIPageParam } from "@shared/types/ui-editor/document";
+import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { uiTextSiteOf, uiTextSitesOf, type UITextSite } from "@shared/types/ui-editor/textSource";
 import { LEGACY_UI_TEXT_UNIT_PROP } from "@shared/types/ui-editor/textSourceMigration";
 import {
@@ -199,7 +207,9 @@ class CompileContext {
             bindings: statement.bindings.map(binding =>
                 binding.kind === "pointer"
                     ? { kind: "pointer", gesture: binding.gesture as never }
-                    : { kind: "key", key: binding.key },
+                    : binding.kind === "gamepad"
+                      ? { kind: "gamepad", button: binding.button }
+                      : { kind: "key", key: binding.key },
             ),
         };
     }
@@ -240,6 +250,8 @@ class CompileContext {
             : [];
         const matcher = new PathMatcher(previousElements, this.existing?.elements ?? {});
         const elements: Record<string, UIElement> = {};
+        // Read first: a text on the page may show one of them.
+        const params = this.pageParams(statement);
         const rootId = this.element(statement.root, {
             scope: surfaceId,
             parentId: null,
@@ -250,6 +262,7 @@ class CompileContext {
             stageSlot: statement.slotId,
             inListTemplate: false,
             rowFromPlacement: false,
+            pageParams: statement.surfaceKind === "appSurface" ? params : undefined,
         });
 
         const designSize = statement.designSize ?? previous?.designSize ?? { width: 1920, height: 1080 };
@@ -297,6 +310,7 @@ class CompileContext {
                 rootElementId: rootId,
                 ...settings,
                 ...actions,
+                ...(params.length > 0 ? { params } : {}),
             };
 
         this.surfaces.push({
@@ -306,6 +320,98 @@ class CompileContext {
                 .filter(element => !elements[element.id])
                 .map(element => ({ id: element.id, name: element.name ?? element.type })),
         });
+    }
+
+    /**
+     * A page's `param` lines as the parameters it declares.
+     *
+     * The same rules the editor keeps: ids are plain words (they become part of the inputs of every
+     * node that opens the page) and unique, names are unique - two values under one key would be one
+     * value - and a default is of the declared kind. A Game UI declares none: the player opens it
+     * with nothing.
+     */
+    private pageParams(statement: Extract<UiStatement, { kind: "surface" }>): UIPageParam[] {
+        if (statement.surfaceKind === "stageSurface") {
+            for (const param of statement.params) {
+                this.report(
+                    "error",
+                    "ui.page_param_on_game_ui",
+                    `"${param.id}": a Game UI declares no params - the player opens it with nothing.`,
+                    param.line,
+                );
+            }
+            return [];
+        }
+        const out: UIPageParam[] = [];
+        for (const param of statement.params) {
+            if (!isUIPageParamId(param.id)) {
+                this.report(
+                    "error",
+                    "ui.page_param_id",
+                    `"${param.id}" cannot be a param id.`,
+                    param.line,
+                    "Letters, digits, _ and - only: the id becomes part of the inputs of every node that opens the page.",
+                );
+                continue;
+            }
+            if (!isUIPageParamType(param.type)) {
+                this.report(
+                    "error",
+                    "ui.page_param_type",
+                    `"${param.type}" is not a page param type.`,
+                    param.line,
+                    `Types: ${UI_PAGE_PARAM_TYPES.join(", ")}.`,
+                );
+                continue;
+            }
+            const name = param.name.trim();
+            if (!name || out.some(other => other.id === param.id || other.name === name)) {
+                this.report(
+                    "error",
+                    "ui.page_param_duplicate",
+                    `"${param.id}" repeats the id or the name of a param above it, or has no name.`,
+                    param.line,
+                );
+                continue;
+            }
+            if (param.defaultValue !== undefined && !pageParamDefaultFits(param.type, param.defaultValue)) {
+                this.report(
+                    "error",
+                    "ui.page_param_default",
+                    `The default of "${param.id}" is not a ${param.type}.`,
+                    param.line,
+                );
+                continue;
+            }
+            const struct = param.struct?.trim();
+            if (struct && param.type !== "list") {
+                this.report(
+                    "error",
+                    "ui.page_param_struct",
+                    `"${param.id}" names a row shape, but only a list has rows.`,
+                    param.line,
+                    `Write \`type=list struct=${struct}\`, or drop \`struct=\`.`,
+                );
+                continue;
+            }
+            if (struct && !this.structs[struct] && !resolveUIStruct(this.existing ?? null, struct)) {
+                this.report(
+                    "warning",
+                    "ui.page_param_struct",
+                    `"${param.id}": no shape "${struct}" is known here.`,
+                    param.line,
+                    "An engine shape (`node project/app/blueprint.js structs`), one a loaded plugin declares, or one of the project's.",
+                );
+            }
+            out.push({
+                id: param.id,
+                name,
+                type: param.type,
+                ...(struct ? { struct } : {}),
+                ...(param.defaultValue === undefined ? {} : { defaultValue: param.defaultValue }),
+            });
+        }
+        return out;
     }
 
     // -----------------------------------------------------------------------
@@ -391,6 +497,8 @@ class CompileContext {
             rowFromPlacement: boolean;
             /** Inside a component definition: the params it declares, which a binding may show. */
             componentParams?: readonly DeclaredParam[];
+            /** On a page: the params it declares, which a binding may show. */
+            pageParams?: readonly UIPageParam[];
         },
     ): string {
         const label = node.name ?? node.type;
@@ -489,6 +597,7 @@ class CompileContext {
             detail,
             context.inListTemplate || context.rowFromPlacement,
             context.componentParams ?? null,
+            context.pageParams ?? null,
         );
 
         const element: UIElement = {
@@ -752,6 +861,7 @@ class CompileContext {
         detail: ReturnType<typeof describeWidget>,
         inListTemplate: boolean,
         componentParams: readonly DeclaredParam[] | null,
+        pageParams: readonly UIPageParam[] | null,
     ): Record<string, UIElementValueBinding> {
         const out: Record<string, UIElementValueBinding> = {};
         for (const binding of node.bindings) {
@@ -796,7 +906,7 @@ class CompileContext {
                 out[binding.propPath] = { kind: "listItemField", fieldId: binding.source.fieldId };
                 continue;
             }
-            if (binding.source.kind === "componentParam") {
+            if (binding.source.kind === "param") {
                 const paramId = binding.source.paramId;
                 // A parameter's value is words: only the prop holding a widget's words shows one.
                 const site = uiTextSiteOf(node.type);
@@ -804,7 +914,7 @@ class CompileContext {
                     this.report(
                         "error",
                         "ui.prop_not_bindable",
-                        `"${binding.propPath}" on ${node.type} cannot show a component parameter.`,
+                        `"${binding.propPath}" on ${node.type} cannot show a parameter.`,
                         binding.line,
                         site?.role === "words"
                             ? `Only \`bind ${site.textProp} = param <paramId>\` reads one here.`
@@ -812,13 +922,31 @@ class CompileContext {
                     );
                     continue;
                 }
+                if (!componentParams && pageParams) {
+                    // On a page: one of the page's own, given by whatever opens it.
+                    const param = pageParams.find(candidate => candidate.id === paramId);
+                    if (!param || !isUIPageTextParam(param)) {
+                        this.report(
+                            "error",
+                            "ui.param_not_text",
+                            param
+                                ? `"${paramId}" is not a text parameter of the page, so nothing gives words for it.`
+                                : `The page declares no parameter "${paramId}".`,
+                            binding.line,
+                            `Declare it on the page as \`param ${paramId} <name> type=text\`.`,
+                        );
+                        continue;
+                    }
+                    out[binding.propPath] = { kind: "pageParam", paramId };
+                    continue;
+                }
                 if (!componentParams) {
                     this.report(
                         "error",
                         "ui.param_outside_component",
-                        `"${binding.propPath}" is bound to parameter "${paramId}", but this element is not inside a component definition.`,
+                        `"${binding.propPath}" is bound to parameter "${paramId}", but this element is neither inside a component definition nor on a page.`,
                         binding.line,
-                        "A parameter is given by each placement of a component, so only an element inside the component's own block reads one.",
+                        "A parameter is given by each placement of a component, or by whatever opens a page. A Game UI is opened by the player, with nothing.",
                     );
                     continue;
                 }
@@ -904,6 +1032,23 @@ function applyAssignments(base: Record<string, unknown>, assignments: readonly U
         cursor[assignment.path[assignment.path.length - 1]] = assignment.value;
     }
     return out;
+}
+
+/** Whether a `param` line's default is a value of the kind it declares. */
+function pageParamDefaultFits(type: UIPageParam["type"], value: unknown): boolean {
+    switch (type) {
+        case "string":
+        case "text":
+            return typeof value === "string";
+        case "list":
+            return Array.isArray(value);
+        case "number":
+            return typeof value === "number" && Number.isFinite(value);
+        case "boolean":
+            return typeof value === "boolean";
+        default:
+            return true;
+    }
 }
 
 function structuredCloneish<T>(value: T): T {

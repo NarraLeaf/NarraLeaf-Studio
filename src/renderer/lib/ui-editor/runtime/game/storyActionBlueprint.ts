@@ -79,6 +79,7 @@ export type CompileStoryActionScriptInput = {
     sceneFnCatalog: StoryActionFnCatalog;
     sceneVariables: Record<string, StorySceneVariableDefinition>;
     savedVariables: Record<string, StorySavedVariableDefinition>;
+    /** The saved variables' namespace as the engine registered it (`DevTools.getNamespaceName`). */
     savedNamespace: string;
     persistence?: StoryPersistenceBridgeLike;
     devtools?: StoryDevtoolsBridge;

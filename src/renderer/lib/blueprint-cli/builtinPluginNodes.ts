@@ -22,8 +22,12 @@
 
 import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes";
 import type { BlueprintNodeDef } from "@/lib/ui-editor/blueprint-nodes/types";
+import { registerPluginUIStructs } from "@shared/types/ui-editor/builtinStructs";
+import { validatePluginManifest } from "@shared/utils/pluginManifest";
 import { createGalleryBlueprintNodes } from "../../../builtin-plugins/gallery/nodes";
+import galleryManifest from "../../../builtin-plugins/gallery/manifest.json";
 import { createQuickSaveBlueprintNodes } from "../../../builtin-plugins/quick-save/nodes";
+import quickSaveManifest from "../../../builtin-plugins/quick-save/manifest.json";
 
 /** Plugin id to the node definitions it contributes, in the order the palette would show them. */
 export function listBuiltInPluginBlueprintNodes(): { pluginId: string; defs: BlueprintNodeDef[] }[] {
@@ -70,6 +74,21 @@ export function registerBuiltInPluginBlueprintNodes(): void {
             if (!blueprintNodeRegistry.get(def.type)) {
                 blueprintNodeRegistry.register(def);
             }
+        }
+    }
+    registerBuiltInPluginStructs();
+}
+
+/**
+ * The row shapes the bundled plugins declare (`contributes.structs`), read from their manifests
+ * through the same validator the plugin manager uses - so a pin typed `array<struct:...>` by a
+ * plugin's node resolves here as it does in Studio and in the game.
+ */
+export function registerBuiltInPluginStructs(): void {
+    for (const raw of [galleryManifest, quickSaveManifest] as unknown[]) {
+        const result = validatePluginManifest(raw);
+        if (result.ok) {
+            registerPluginUIStructs(result.manifest.id, result.manifest.contributes.structs);
         }
     }
 }

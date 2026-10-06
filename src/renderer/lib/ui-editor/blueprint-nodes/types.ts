@@ -28,6 +28,17 @@ export type BlueprintPinInlineLiteralValueType = (typeof BLUEPRINT_PIN_INLINE_LI
 
 /** Persisted on node.params: pin ids whose inline literal editor is expanded on the node card. */
 export const BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY = "__inlineLiteralPins" as const;
+
+/**
+ * The dynamic option source a pin's card field is offered values from, when it has one.
+ *
+ * A text pin whose value names one of a known set - an array node's key, once the items it keys are
+ * known to be endings - is drawn as a picker of that set rather than a text box, and still stores the
+ * same text. Keyed by pin so one node could offer more than one.
+ */
+export function blueprintPinLiteralOptionsSource(pinId: string): string {
+    return `pinLiteral:${pinId}`;
+}
 /**
  * Persisted on node.params: the node's pin shape as last resolved while its type was known.
  *
@@ -394,6 +405,16 @@ export type BlueprintNodeDeclaration = {
      * be as many copies as there are save nodes, drifting by hand.
      */
     saveSchemaPins?: { kind: "input" | "output" };
+    /**
+     * Grow one input per parameter the page this node opens declares (`UIPageParam`).
+     *
+     * The page is the one picked on the card, read from `params[surfaceParam]` - the key the node's
+     * page picker writes. Like {@link saveSchemaPins} the list comes from a project document rather
+     * than from the node, so every node that opens one page grows the same inputs, in the page's
+     * order, and renaming a parameter relabels all of them. The inputs belong to the picked page: a
+     * different page arriving on a wire is opened with the node's `props` input alone.
+     */
+    pageParamPins?: { surfaceParam: string };
     inspectorParams?: BlueprintInspectorParamDef[];
     role?: BlueprintNodeRole;
     /**
@@ -468,6 +489,71 @@ export type BlueprintNodeDef = BlueprintNodeDeclaration & {
      * published plugin type surface.
      */
     alternativeInputs?: readonly (readonly string[])[];
+    /**
+     * Params the node keeps that no inspector field edits.
+     *
+     * Get Field remembers the struct it reads this way: the shape is set by what is first wired in
+     * (or by the add-node menu that made it) and is shown on the card as the type of its input pin,
+     * not as a picker. Listed so a tool writing the node by hand knows the key is the node's own.
+     */
+    storedParams?: readonly string[];
+    /**
+     * Outputs whose type follows the items of an array input.
+     *
+     * The array nodes take any array and hand back the same items, so what comes out is whatever went
+     * in: `Array Filter By Key` fed endings answers endings, and `Array Get` on it answers one ending.
+     * Declared here and worked out by `graphStructTypeInference.ts`, which follows the wire into
+     * `input` and stamps the result into the node's params for {@link resolveEffectiveBlueprintNodePins}
+     * to read. The runtime never consults it.
+     *
+     * `keyPin` names a pin that holds a field name of those items, and `keyValuePins` the pins that
+     * then carry that field's value - `Filter By Key` compares `value` with the field `key` names, so
+     * once the field is known `value` takes its type, and a boolean field is ticked on the card rather
+     * than wired from a Boolean node.
+     *
+     * Not on {@link BlueprintNodeDeclaration}: plugins declare their nodes through that type, and
+     * which array nodes pass their items through is the host's own catalogue.
+     */
+    elementTypeFlow?: {
+        input: string;
+        outputs: Readonly<Record<string, "array" | "item">>;
+        keyPin?: string;
+        keyValuePins?: readonly string[];
+    };
+    /**
+     * Data pins whose type is chosen by one of the node's own select params.
+     *
+     * `Get Property` set to Position answers a Vector2D and set to Opacity a number; the pin is
+     * declared `any` because it has to carry both, and this says which one it carries for the option
+     * picked, so the card shows it and a Vector2D wire is offered where a Vector2D goes. An option
+     * missing from `types` leaves the declared type.
+     *
+     * Worked out by `graphStructTypeInference.ts` alongside the array nodes, so it has the same
+     * standing: it only adds connections. A wire that was valid against the declared `any` stays
+     * valid, and the runtime never reads it.
+     */
+    paramPinTypes?: {
+        param: string;
+        pins: readonly string[];
+        types: Readonly<Record<string, string>>;
+    };
+    /**
+     * Pins that carry the rows of the list this node acts on: one row (`item`) or all of them
+     * (`array`).
+     *
+     * Which list is the one wired into the node's `list` pin, or with none the list the graph belongs
+     * to - its own graph, or the item template it draws. A list that declares its rows' shape types
+     * these pins with it, so Item Click's `Item` on an ending list is an ending and its fields are on
+     * the menu. Inputs are compared with what is wired in, and a value of another shape is reported
+     * (`node.list_shape_mismatch`) - a Set List Content handed saves for a list of endings draws rows
+     * with nothing in them.
+     *
+     * Worked out in the editor like `elementTypeFlow`; the runtime never reads it.
+     */
+    listRowTypes?: {
+        outputs?: Readonly<Record<string, "item" | "array">>;
+        inputs?: Readonly<Record<string, "item" | "array">>;
+    };
     execute: BlueprintNodeExecuteFn;
 };
 
@@ -614,6 +700,17 @@ export type BlueprintNodeEditorCatalogEntry = {
     dynamicPinsGenerateOutputs?: boolean;
     /** Present when this palette entry was derived from a bound Element output. */
     magicElementRef?: BlueprintMagicElementRefPaletteEntry;
+    /**
+     * Present on an entry the add-node menu made for one field of a dragged struct: the node is
+     * created with these params already set, and the menu shows `title` instead of the node's name.
+     */
+    preset?: {
+        /** Tells two presets of one node type apart, for the menu's list keys. */
+        key: string;
+        params: Record<string, unknown>;
+        title: string;
+        subtitle: string;
+    };
 };
 
 export type { BehaviorNodeExecutionContext };

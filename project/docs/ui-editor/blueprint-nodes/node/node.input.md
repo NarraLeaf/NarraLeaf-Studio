@@ -34,6 +34,30 @@
 输出：
 - `device` - `string`，取值 `pointer` / `key` / `gamepad` / `touch`，与 `On Action` 的 `source` 引脚是同一套值，因此两边用同样的字面量去比。答的是玩家最近用的那件硬件，不是某条绑定能接受什么——只有前者能决定界面该印哪个词。宿主没有输入路由时（例如编辑器预览里根本没有人在操作）读作 `pointer`，而不是空值——作者不必为「设备读不出来」单写一条分支
 
+## Is Gamepad Connected
+
+`blueprint.input.isGamepadConnected` - 是否有标准 mapping 手柄连着
+
+纯节点。非标准手柄不算。
+
+- `connected` - `boolean`
+
+## Is Gamepad Button Held
+
+`blueprint.input.isGamepadButtonHeld` - 指定手柄按键当前是否按住
+
+卡片选一个规范按键名。未选时读 `false`；游戏窗口没有焦点或被隐藏时也读 `false`。
+
+- `held` - `boolean`
+
+## Get Gamepad Axis
+
+`blueprint.input.getGamepadAxis` - 读第一只标准手柄的摇杆轴
+
+`LeftX` / `LeftY` / `RightX` / `RightY`。死区 0.18 以内读 0。Y 轴不翻转。游戏窗口没有焦点或被隐藏时读 0。
+
+- `value` - `float`
+
 ## On Action
 
 `blueprint.event.head.action` 归在 Events 分类，说明见 `node.events.md`。

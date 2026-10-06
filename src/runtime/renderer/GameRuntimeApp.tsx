@@ -9,6 +9,7 @@ import {
 import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { setActiveProjectFonts } from "@shared/typography/projectFonts";
 import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
+import { setActiveUIPageParams } from "@shared/types/ui-editor/pageParams";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import { GLOBAL_MAIN_OWNER_KEY } from "@shared/blueprint/ownerKey";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
@@ -26,6 +27,8 @@ import { describeAssetResolutionFailure } from "@/lib/ui-editor/runtime/assetRes
 import { GameApp, type GameAppTestControls } from "@/lib/ui-editor/runtime/app/GameApp";
 import type { GameAppFrameContext, GameAppHost, GameAppSaveStore } from "@/lib/ui-editor/runtime/app/GameAppHost";
 import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
+import { GAME_STAGE_BASE_CLASS_NAME } from "@/lib/ui-editor/runtime/app/gameStageBase";
+import { StageLetterbox } from "@/lib/ui-editor/runtime/app/StageLetterbox";
 import { loadRuntimePlugins } from "@/lib/ui-editor/runtime/plugins/loadRuntimePlugins";
 import { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
 import { RuntimeCrashScreen } from "./RuntimeCrashScreen";
@@ -112,6 +115,8 @@ function useRuntimePack(): {
                 setActiveBrandPalette(nextPack.bundle.brand ?? BUILTIN_BRAND_COLORS);
                 setActiveProjectFonts(nextPack.bundle.fonts ?? []);
                 setActiveSaveSchemaFields(nextPack.bundle.ui.saveSchema ?? []);
+                // The nodes that open a page hand it its declared parameters, read from here.
+                setActiveUIPageParams(nextPack.bundle.ui.uidoc.surfaces);
                 setPack(nextPack);
                 setError(null);
                 // After the palette, so the phase this closes is the one the next paint can already
@@ -1046,6 +1051,7 @@ function GameRuntimeSession() {
         [pack?.viewport, pack?.mode],
     );
 
+    const letterbox = pack?.bundle.letterbox;
     const renderFrame = useCallback(
         (ctx: GameAppFrameContext) => (
             <StageViewportFrame
@@ -1053,16 +1059,17 @@ function GameRuntimeSession() {
                 onRenderScaleChange={setRenderScale}
                 fit={stageViewport.fit}
                 cropAnchor={stageViewport.cropAnchor}
-                outerClassName="bg-black text-white"
+                backdrop={<StageLetterbox config={letterbox} />}
+                outerClassName={GAME_STAGE_BASE_CLASS_NAME}
                 // Viewport units, not 100%: the runtime's #root has no fixed height, so height:100%
                 // would collapse to content height and shrink the stage (breaking downsampling).
                 outerStyle={{ width: "100vw", height: "100vh" }}
-                boxStyle={{ backgroundColor: getSurfaceBackgroundColor(ctx.activeSurface) }}
+                stageColor={getSurfaceBackgroundColor(ctx.activeSurface)}
             >
                 {ctx.children}
             </StageViewportFrame>
         ),
-        [stageViewport],
+        [stageViewport, letterbox],
     );
 
     /**

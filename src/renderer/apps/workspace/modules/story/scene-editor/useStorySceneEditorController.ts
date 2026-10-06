@@ -108,6 +108,8 @@ import { useProjectSurfaces } from "@/lib/story/useProjectSurfaces";
 import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
 import { syncEditorTabTitle } from "@/lib/workspace/services/ui/editorTabTitle";
 import { ACTION_TRIGGER, ALT_ACTION_TRIGGER, isActionCommandLine, toCanonicalCommandLine, toDisplayedCommandLine } from "./commandTrigger";
+import { expandCommandAbbreviation } from "./storyCommandSpelling";
+import { useStoryCommandAbbreviations } from "./useStoryCommandAbbreviations";
 import { projectStoryCommandLine } from "./storyCommandLine";
 import { noStoryRowCharacters } from "@/lib/story/storyRowProjection";
 import { dialogueActionCharacter } from "./storyCharacterActions";
@@ -211,6 +213,16 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     // the escape hatch for a Simplified-Chinese IME, which types "、" for the "/" key. Defaults on for
     // a Simplified-Chinese device; the user can override it in Settings (Editor).
     const slashAtAlias = useSlashAtAlias();
+    /**
+     * The author's command abbreviations. The line replaces one as soon as its word is finished; these
+     * are for the lines that land before that happens (`/c` and straight to Enter), so that no row and
+     * no invalid row's source ever holds a word only this author's list can read.
+     */
+    const { live: commandAbbreviations } = useStoryCommandAbbreviations();
+    const settleAbbreviation = useCallback(
+        (line: string) => expandCommandAbbreviation(line, line.length, slashAtAlias, commandAbbreviations, true)?.value ?? line,
+        [commandAbbreviations, slashAtAlias],
+    );
     /**
      * Whether this scene's own document may not be written. Read here as well as in the tab because
      * two of the controller's entry points are simultaneously the way to READ a row and the way to
@@ -2331,8 +2343,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         // Canonicalize before it lands: an "@" trigger is a per-user input convenience, so the persisted
         // source keeps the "/" form every reader (and the build) understands, whatever this author's
-        // alias setting is.
-        const source = toCanonicalCommandLine(insertDraftRef.current, slashAtAlias);
+        // alias setting is. An abbreviated verb is the same kind of convenience and is spelled out for
+        // the same reason.
+        const source = toCanonicalCommandLine(settleAbbreviation(insertDraftRef.current), slashAtAlias);
         if (!source.trim()) {
             setEditorMode({ kind: "idle" });
             return;
@@ -2346,7 +2359,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         };
         insertBlock(block, editorMode.slot.afterBlockId, false, { target: editorMode.slot.target, replaceBlockId: editorMode.slot.replaceBlockId });
         startInsertAfter(block.id, true);
-    }, [editorMode, insertBlock, slashAtAlias, startInsertAfter, uuidService]);
+    }, [editorMode, insertBlock, settleAbbreviation, slashAtAlias, startInsertAfter, uuidService]);
 
 
     // Backspace on an empty insert slot: dismiss the blank line - taking the row it stands in for, when
@@ -2635,7 +2648,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (editorMode.kind !== "insert") {
             return;
         }
-        const value = insertDraftRef.current;
+        // A verb still in its abbreviated form - the author pressed Enter without finishing the word -
+        // is spelled out before anything reads the line, so the command resolves and nothing lands
+        // holding the abbreviation.
+        const value = settleAbbreviation(insertDraftRef.current);
+        insertDraftRef.current = value;
         if (!value.trim()) {
             // An empty line writes a blank row where it stands and carries the caret down with it.
             if (!commitBlankRowFromInsert()) {
@@ -2657,7 +2674,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         commitNarrationFromInsert(true);
-    }, [commitBlankRowFromInsert, commitCommandFromInsert, commitInvalidFromInsert, commitNarrationFromInsert, commitPluginActionFromInsert, editorMode, slashAtAlias]);
+    }, [commitBlankRowFromInsert, commitCommandFromInsert, commitInvalidFromInsert, commitNarrationFromInsert, commitPluginActionFromInsert, editorMode, settleAbbreviation, slashAtAlias]);
 
     /**
      * Pick a speaker that no Studio character backs. Valid, not a fallback: NLR's dialogue box only

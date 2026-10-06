@@ -575,7 +575,7 @@ describe("BuildService asset-name gate", () => {
             graphId: "ev-open",
             nodeId: "tileImage",
             nodeType: "blueprint.list.getItemField",
-            nodeTitle: "Get Item Field",
+            nodeTitle: "Get Field",
         },
     });
 
@@ -601,7 +601,7 @@ describe("BuildService asset-name gate", () => {
             // The node and the pin arrive as catalogue entries, so the reader sees them in the
             // language the canvas draws them in.
             && line.message.includes("blueprint.node.setImageAsset")
-            && line.message.includes("blueprint.node.getItemField"))).toBe(true);
+            && line.message.includes("blueprint.node.getField"))).toBe(true);
     });
 
     it("builds once nothing picks an asset by a computed value", async () => {

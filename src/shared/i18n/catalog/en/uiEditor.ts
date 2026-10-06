@@ -39,6 +39,10 @@ export const uiEditor = {
         nvl: "Full-screen novel-mode dialog history.",
     },
     panel: {
+        // The rail's first section: every page and Game UI in the project. Named for what it holds,
+        // beside "Component Library" and "Input Actions" below it.
+        interfaces: "Interfaces",
+        // Not shown: what a screen reader calls the Pages / Game UI switch at the top of that section.
         interfaceType: "Interface Type",
         createPage: "Create Page",
         createGameUi: "Create Game UI",
@@ -76,6 +80,17 @@ export const uiEditor = {
     history: {
         moveSurface: "move interface {name}",
         setEntryPage: "set entry page {name}",
+        createComponent: "create component {name}",
+        duplicateComponent: "duplicate component {name}",
+        duplicateComponents: "duplicate {count} components",
+        deleteComponent: "delete component {name}",
+        deleteComponents: "delete {count} components",
+        // A template or a pasted page: named by the page it added, or by its definition when only
+        // definitions arrived.
+        importSurface: "add interface {name}",
+        importSurfaces: "add {count} interfaces",
+        importComponent: "add component {name}",
+        importComponents: "add {count} components",
     },
     // The project's input vocabulary. An author names a gesture once - "Advance", "Skip" - and each
     // interface answers the ones it wants, so the same six words are read in the library panel and
@@ -115,6 +130,7 @@ export const uiEditor = {
             trackpad: "Trackpad",
             touch: "Touch screen",
             key: "Keyboard",
+            gamepad: "Gamepad",
         },
         gesture: {
             click: "Click",
@@ -181,6 +197,7 @@ export const uiEditor = {
         wordsFromRowField: "These words come from the list row field “{field}”.",
         wordsFromBlueprintValue: "These words come from the blueprint value “{name}”.",
         wordsFromComponentParam: "These words come from the component parameter “{param}”, set on each placement.",
+        wordsFromPageParam: "These words come from the page param “{param}”, given when the page is opened.",
     },
     editor: {
         componentNotFound: "Component not found",
@@ -192,6 +209,9 @@ export const uiEditor = {
         selectTool: "Select tool",
         panTool: "Pan the canvas",
         openInDevMode: "Open this interface in Dev Mode",
+        showInLivePreview: "Show this interface in the live preview",
+        livePreviewShowsNoNotifications: "Notifications are not shown in the live preview",
+        livePreviewNoRow: "No row in the story shows this interface",
         componentDefinitionHint: "Components are edited as definitions",
         bindElement: "Bind Element",
         bindSelectHint: "Select one element on this Surface",
@@ -219,6 +239,11 @@ export const uiEditor = {
         canvasLayout: "Canvas layout (edges & center)",
         elementBorders: "Element borders (edge to edge)",
         elementLayout: "Element layout (centers)",
+        grid: "Grid",
+        gridStyle: "Grid style",
+        gridLines: "Lines",
+        gridDots: "Dots",
+        gridSize: "Grid size",
     },
     contextMenu: {
         pasteIntoContainer: "Paste into container",
@@ -270,6 +295,17 @@ export const uiEditor = {
             bottom: "bottom",
             left: "left",
         },
+    },
+    /**
+     * Other Game UI drawn faintly on a Game UI canvas, where and in the order the game draws it.
+     * View state, like the screen preview frames.
+     */
+    reference: {
+        label: "Game UI reference",
+        heading: "Other game UI",
+        none: "This project has no other game UI.",
+        /** Readout when a shown surface is not the size of the one being edited. */
+        sizeDiffers: "Different size: {name} {width}×{height}",
     },
     /**
      * A paste of elements, or of a whole interface, copied in another project.

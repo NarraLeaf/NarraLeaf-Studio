@@ -37,6 +37,9 @@ import { Check, EyeOff } from "lucide-react";
 import { ContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { ShortcutContextMenu } from "@/apps/workspace/components/ui/ShortcutContextMenu";
 import { useTranslation } from "@/lib/i18n";
+import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
+import { formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
+import { buildStructFieldPaletteEntries } from "../components/structFieldPaletteEntries";
 import { useOptionalWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
@@ -150,6 +153,11 @@ import {
 import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/services";
 import type { BlueprintGraphEditorDiagnostic } from "@/lib/workspace/services/ui-editor/blueprint/graphValidation";
 import type { BlueprintGraphVariableTypeInferenceContext } from "@/lib/workspace/services/ui-editor/blueprint/graphVariableTypeInference";
+import {
+    pinBlueprintFieldReaderStruct,
+    withInferredBlueprintStructTypes,
+    type BlueprintStructTypeInferenceContext,
+} from "@/lib/workspace/services/ui-editor/blueprint/graphStructTypeInference";
 import { interfaceDocumentFreezeScope } from "../../ui-editor/uiLiveSession";
 import { BLUEPRINT_EXEC_EDGE_COLOR } from "@/lib/ui-editor/blueprint-graph-edge-style";
 import { measureEditorSidebarInset } from "@/lib/components/layout/editorSidebarInset";
@@ -510,6 +518,11 @@ type BlueprintFlowCanvasInnerProps = {
         color: string;
         name: string;
     }) => string | undefined;
+    /**
+     * Where this graph's struct types come from: the document's list shapes and the row in scope.
+     * Without it, pins are typed by the engine's own shapes only.
+     */
+    structTypeContext?: BlueprintStructTypeInferenceContext;
 };
 
 export type BlueprintFlowViewport = {
@@ -621,6 +634,7 @@ function BlueprintFlowCanvasInner({
     currentBlueprintId,
     resolveCallableFnSignature,
     onCreateGroupFrame,
+    structTypeContext,
 }: BlueprintFlowCanvasInnerProps) {
     // React Flow derives document-wide ids from this (the dot-grid `<pattern>`, edge
     // markers, handle element ids, ARIA descriptions) and falls back to a literal "1"
@@ -690,6 +704,8 @@ function BlueprintFlowCanvasInner({
     );
     const variableTypeContextRef = useRef(variableTypeContext);
     variableTypeContextRef.current = variableTypeContext;
+    const structTypeContextRef = useRef(structTypeContext);
+    structTypeContextRef.current = structTypeContext;
     const irRef = useRef(ir);
     irRef.current = ir;
 
@@ -1015,6 +1031,8 @@ function BlueprintFlowCanvasInner({
         displayableTargetVariantsSig: string;
         dynamicSelectOptionsByNodeSig: string;
         dynamicSelectOptionsSig: string;
+        /** The shapes the pins were typed with; a list's columns changing retypes its readers. */
+        structTypeContext: BlueprintStructTypeInferenceContext | undefined;
         /** The translator the wires were named with; a new one is a language switch. */
         t: typeof t;
     } | null>(null);
@@ -1180,6 +1198,7 @@ function BlueprintFlowCanvasInner({
             prevStruct.displayableTargetVariantsSig !== displayableTargetVariantsSig ||
             prevStruct.dynamicSelectOptionsByNodeSig !== dynamicSelectOptionsByNodeSig ||
             prevStruct.dynamicSelectOptionsSig !== dynamicSelectOptionsSig ||
+            prevStruct.structTypeContext !== structTypeContext ||
             prevStruct.t !== t;
 
         if (structural) {
@@ -1192,10 +1211,14 @@ function BlueprintFlowCanvasInner({
                 displayableTargetVariantsSig,
                 dynamicSelectOptionsByNodeSig,
                 dynamicSelectOptionsSig,
+                structTypeContext,
                 t,
             };
+            // Typed once for both the cards and the wires, so a wire is coloured by the pin types
+            // the card it leaves draws.
+            const typedSnap = withInferredBlueprintStructTypes(snap, structTypeContext);
             const base = blueprintIrToFlowNodes(
-                snap,
+                typedSnap,
                 nodeCatalog,
                 stablePatchNodeParam,
                 blueprintMemberVariables,
@@ -1240,7 +1263,7 @@ function BlueprintFlowCanvasInner({
             // hover tooltip would give its ends rather than React Flow's, which reads out node ids.
             const cards = new Map(base.map(node => [node.id, node.data]));
             setEdges(
-                blueprintIrToFlowEdges(snap, nodeCatalog, variableTypeContext).map(edge => ({
+                blueprintIrToFlowEdges(typedSnap, nodeCatalog, variableTypeContext).map(edge => ({
                     ...edge,
                     ariaLabel: nameBlueprintWire(edge, nodeId => cards.get(nodeId), t),
                 })),
@@ -1278,6 +1301,7 @@ function BlueprintFlowCanvasInner({
         blueprintSavedVariables,
         blueprintMembersSig,
         variableTypeContext,
+        structTypeContext,
         graphKey,
         nodeCatalog,
         revision,
@@ -1735,13 +1759,23 @@ function BlueprintFlowCanvasInner({
             sourceHandle: connection.sourceHandle ?? null,
             targetHandle: connection.targetHandle ?? null,
         };
-        return isValidBlueprintIrExecConnection(irRef.current, conn, variableTypeContextRef.current);
+        return isValidBlueprintIrExecConnection(
+            withInferredBlueprintStructTypes(irRef.current, structTypeContextRef.current),
+            conn,
+            variableTypeContextRef.current,
+        );
     }, []);
 
     const onConnect = useCallback(
         (connection: Connection) => {
             const snap = irRef.current;
-            if (!isValidBlueprintIrExecConnection(snap, connection, variableTypeContextRef.current)) {
+            if (
+                !isValidBlueprintIrExecConnection(
+                    withInferredBlueprintStructTypes(snap, structTypeContextRef.current),
+                    connection,
+                    variableTypeContextRef.current,
+                )
+            ) {
                 return;
             }
             if (!connection.sourceHandle || !connection.targetHandle) {
@@ -1753,12 +1787,15 @@ function BlueprintFlowCanvasInner({
                 return;
             }
             const next = cloneBlueprintIr(snap);
-            next.edges = applyBlueprintIrConnection(next, {
+            const wiring = {
                 source,
                 target,
                 sourceHandle: connection.sourceHandle,
                 targetHandle: connection.targetHandle,
-            });
+            };
+            next.edges = applyBlueprintIrConnection(next, wiring);
+            // In the same commit as the wire, so one undo takes back both the wire and the shape.
+            pinBlueprintFieldReaderStruct(next, wiring, structTypeContextRef.current);
             commitBlueprintIr(next);
         },
         [commitBlueprintIr],
@@ -1780,7 +1817,7 @@ function BlueprintFlowCanvasInner({
                 return;
             }
             const source = resolveBlueprintDragConnectSource(
-                irRef.current,
+                withInferredBlueprintStructTypes(irRef.current, structTypeContextRef.current),
                 fromHandle.nodeId,
                 fromHandle.id,
                 fromHandle.type,
@@ -2703,6 +2740,7 @@ function BlueprintFlowCanvasInner({
                 nodeCatalog={nodeCatalog}
                 paletteContext={paletteContext}
                 onPickEntry={onAddMenuPickEntry}
+                structTypeContext={structTypeContext}
             />
             <BlueprintWireEmphasis ref={wireEmphasisRef} canvasId={flowId} />
             <SaveSchemaFieldsModal isOpen={saveSchemaEditorOpen} onClose={closeSaveSchemaEditor} />
@@ -2768,8 +2806,10 @@ const BlueprintAddNodeMenuHost = forwardRef<
             flowPosition: { x: number; y: number },
             connectSource: BlueprintDragConnectSource | undefined,
         ) => void;
+        structTypeContext?: BlueprintStructTypeInferenceContext;
     }
->(function BlueprintAddNodeMenuHost({ nodeCatalog, paletteContext, onPickEntry }, ref) {
+>(function BlueprintAddNodeMenuHost({ nodeCatalog, paletteContext, onPickEntry, structTypeContext }, ref) {
+    const { t } = useTranslation();
     const [request, setRequest] = useState<BlueprintAddNodeMenuRequest | null>(null);
 
     useImperativeHandle(ref, () => ({
@@ -2785,6 +2825,20 @@ const BlueprintAddNodeMenuHost = forwardRef<
                       pickBlueprintDragConnectTargetPin(connectSource, entry) !== null
                 : undefined,
         [connectSource],
+    );
+
+    const fieldEntries = useMemo(
+        () =>
+            connectSource
+                ? buildStructFieldPaletteEntries({
+                      source: connectSource,
+                      resolveStruct: structId =>
+                          structTypeContext?.resolveStruct?.(structId) ?? resolveUIStruct(null, structId),
+                      resolveEntry: (type, params) => nodeCatalog.resolveCatalogEntryForNode(type, params),
+                      t,
+                  })
+                : [],
+        [connectSource, nodeCatalog, structTypeContext, t],
     );
 
     const close = useCallback(() => setRequest(null), []);
@@ -2807,8 +2861,13 @@ const BlueprintAddNodeMenuHost = forwardRef<
             anchor={{ x: request.clientX, y: request.clientY }}
             flowPosition={request.flow}
             connectMode={Boolean(connectSource)}
-            connectSourceLabel={connectSource && !connectSource.isExec ? connectSource.valueType : undefined}
+            connectSourceLabel={
+                connectSource && !connectSource.isExec
+                    ? formatBlueprintValueTypeLabel(connectSource.valueType, t)
+                    : undefined
+            }
             entryFilter={entryFilter}
+            leadingEntries={fieldEntries}
             onClose={close}
             onPickEntry={pick}
         />

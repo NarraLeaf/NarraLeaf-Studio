@@ -86,6 +86,8 @@ import {
     isInputBindingHeld,
 } from "@/lib/ui-editor/runtime/input/inputHoldState";
 import { readCurrentInputDevice } from "@/lib/ui-editor/runtime/input/inputDeviceState";
+import { getGamepadAxis, isGamepadButtonHeld, isGamepadConnected } from "@/lib/ui-editor/runtime/input/gamepadState";
+import { formatBlueprintGamepadButton, formatBlueprintGamepadAxis } from "@shared/types/blueprint/gamepad";
 import { hitChainHasOperableElement } from "@/lib/ui-editor/runtime/input/surfaceInputActions";
 import { readSurfaceHitChain } from "@/lib/ui-editor/runtime/input/surfaceInputDom";
 import { isListLikeWidgetType, type UIListScrollMetrics } from "@shared/types/ui-editor/list";
@@ -820,6 +822,9 @@ export type BlueprintHostApiRuntime = {
          * string so a graph compares both against the same literals.
          */
         getDevice: () => string;
+        isGamepadConnected: () => boolean;
+        isGamepadButtonHeld: (button: string) => boolean;
+        getGamepadAxis: (axis: string) => number;
     };
     /**
      * Moving the player's real cursor, for the Move Mouse family.
@@ -5077,6 +5082,35 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     return readCurrentInputDevice();
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            isGamepadConnected: () => {
+                const cap = "input.isGamepadConnected";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return isGamepadConnected();
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            isGamepadButtonHeld: (button: string) => {
+                const cap = "input.isGamepadButtonHeld";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const name = formatBlueprintGamepadButton(button);
+                    return name ? isGamepadButtonHeld(name) : false;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getGamepadAxis: (axis: string) => {
+                const cap = "input.getGamepadAxis";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const name = formatBlueprintGamepadAxis(axis);
+                    return name ? getGamepadAxis(name) : 0;
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

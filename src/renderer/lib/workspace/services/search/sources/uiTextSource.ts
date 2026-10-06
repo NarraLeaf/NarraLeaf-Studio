@@ -1,6 +1,7 @@
 import type { TranslationKey } from "@shared/i18n";
 import { getUIComponentLink, type UIComponentDefinition, type UIDocument, type UIElement, type UISurface } from "@shared/types/ui-editor/document";
 import { listUIPlacementTextValues } from "@shared/types/ui-editor/componentTextParams";
+import { listUIPageTextValues } from "@shared/types/ui-editor/pageTextParams";
 import { readUITextSite, resolveUITextWords, uiTextSiteLabel, uiTextSiteOf, uiTextSitesOf } from "@shared/types/ui-editor/textSource";
 import { uiTextSampleCauseOf } from "@shared/types/ui-editor/textSample";
 import { i18nStore, translate } from "@/lib/i18n";
@@ -68,6 +69,19 @@ export function extractUITextEntries(document: UIDocument, input: UITextExtracti
                 group: "uiText",
                 text: words,
                 detail: `${ownerName} › ${nameOf(element)} › ${param.name.trim() || nameOf(shownBy[0])}`,
+                target,
+            });
+        }
+        // A page's text parameters: the default a text on the page shows, the words a Page widget gives.
+        for (const { param, value } of listUIPageTextValues(document, element)) {
+            if (!value.text.trim()) {
+                continue;
+            }
+            entries.push({
+                id: `uitext:${element.id}.pageParam.${param.id}`,
+                group: "uiText",
+                text: value.text,
+                detail: `${ownerName} › ${nameOf(element)} › ${param.name}`,
                 target,
             });
         }

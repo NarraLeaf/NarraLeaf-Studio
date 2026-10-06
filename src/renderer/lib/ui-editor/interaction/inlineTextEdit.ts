@@ -1,7 +1,9 @@
 import { getUIComponentParams, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { findUIComponentHoldingElement } from "@shared/types/ui-editor/componentTextParams";
+import { findUIElementSurfaceId } from "@shared/types/ui-editor/frame";
 import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemContext";
+import { getUIPageParams } from "@shared/types/ui-editor/pageParams";
 import { findUIStructField, uiStructFieldLabel } from "@shared/types/ui-editor/struct";
 import { readUITextSite, uiTextSiteOf } from "@shared/types/ui-editor/textSource";
 import { translate } from "@/lib/i18n";
@@ -28,6 +30,7 @@ export function isInlineTextEditableElement(element: UIElement | null | undefine
 export type BoundTextSource =
     | { kind: "listItemField"; fieldId: string }
     | { kind: "componentParam"; paramId: string }
+    | { kind: "pageParam"; paramId: string }
     | { kind: "blueprintValue"; blueprintId: string };
 
 /**
@@ -54,6 +57,9 @@ export function boundTextSourceOf(element: UIElement | null | undefined): BoundT
     if (reading.binding?.kind === "componentParam") {
         return { kind: "componentParam", paramId: reading.binding.paramId };
     }
+    if (reading.binding?.kind === "pageParam") {
+        return { kind: "pageParam", paramId: reading.binding.paramId };
+    }
     if (reading.binding?.kind === "blueprintValue") {
         return { kind: "blueprintValue", blueprintId: reading.binding.blueprintId };
     }
@@ -76,6 +82,13 @@ function componentParamLabel(document: UIDocument, element: UIElement, paramId: 
     const component = findUIComponentHoldingElement(document, element.id);
     const param = getUIComponentParams(component).find(candidate => candidate.id === paramId);
     return param?.name.trim() || paramId;
+}
+
+/** The parameter's name as the page's inspector shows it, or its id when the page no longer declares it. */
+function pageParamLabel(document: UIDocument, element: UIElement, paramId: string): string {
+    const surfaceId = findUIElementSurfaceId(document, element.id);
+    const surface = surfaceId ? document.surfaces.find(candidate => candidate.id === surfaceId) : undefined;
+    return getUIPageParams(surface).find(candidate => candidate.id === paramId)?.name ?? paramId;
 }
 
 /**
@@ -115,6 +128,8 @@ export function beginOrExplainInlineTextEdit(host: InlineTextEditHost, surfaceId
         message = translate("uiEditor.canvas.wordsFromRowField", { field: rowFieldLabel(document, element, bound.fieldId) });
     } else if (bound.kind === "componentParam") {
         message = translate("uiEditor.canvas.wordsFromComponentParam", { param: componentParamLabel(document, element, bound.paramId) });
+    } else if (bound.kind === "pageParam") {
+        message = translate("uiEditor.canvas.wordsFromPageParam", { param: pageParamLabel(document, element, bound.paramId) });
     } else {
         const name = services.get<LocalBlueprintService>(Services.LocalBlueprint)
             .getBlueprintDocument().blueprints[bound.blueprintId]?.name?.trim();

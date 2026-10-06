@@ -100,6 +100,27 @@ export const properties = {
         bindNone: "No parameter",
         bindMissing: "Missing parameter",
     },
+    pageParams: {
+        title: "Params",
+        none: "No params",
+        hint: "Given by whatever opens this page. A text param can be shown by a text directly; read the others with Get Page Param.",
+        rowShape: "Row struct",
+        anyShape: "Unspecified",
+        bindLabel: "Page param",
+        bindNone: "No param",
+        bindMissing: "Missing param",
+        add: "Add param",
+        remove: "Remove {name}",
+        namePlaceholder: "Name",
+        default: "Default",
+        type: "Type",
+        typeString: "String",
+        typeText: "Text",
+        typeNumber: "Number",
+        typeBoolean: "Boolean",
+        typeList: "List",
+        typeJson: "JSON",
+    },
     binding: {
         notReady: "Blueprint not ready for this control.",
         bindToField: "Bind to field…",
@@ -201,6 +222,8 @@ export const properties = {
             voice: "Voice",
             /** Project -> Design: the fonts the whole project defaults to. */
             design: "Design",
+            /** Project -> Settings: the letterbox picture. */
+            projectSettings: "Settings",
             /** A plugin's own data that ships with the game, such as the Gallery catalogue. */
             plugin: "Plugin",
         },

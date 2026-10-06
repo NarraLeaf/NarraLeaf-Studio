@@ -16,6 +16,7 @@ import type {
     UISurface,
 } from "@shared/types/ui-editor/document";
 import { getUIComponentLink, isUIComponentTextParam } from "@shared/types/ui-editor/document";
+import { getUIPageParams } from "@shared/types/ui-editor/pageParams";
 import { uiTextSitesOf } from "@shared/types/ui-editor/textSource";
 import { printValue } from "../../blueprint-cli/dsl/values";
 import { PARAM_KEY_SUFFIX, propAssignmentKey } from "./parse";
@@ -66,7 +67,9 @@ export function printUiDocument(document: UIDocument, options: PrintOptions = {}
                 lines.push(
                     binding.kind === "pointer"
                         ? `${INDENT}pointer ${binding.gesture}`
-                        : `${INDENT}key ${printValue(binding.key)}`,
+                        : binding.kind === "gamepad"
+                          ? `${INDENT}gamepad ${printValue(binding.button)}`
+                          : `${INDENT}key ${printValue(binding.key)}`,
                 );
             }
             blocks.push(lines.join("\n"));
@@ -107,6 +110,16 @@ export function printSurface(
         lines.push(
             `${INDENT}answers ${answer.actionId}`
                 + (answer.consume === undefined ? "" : ` consume=${answer.consume}`),
+        );
+    }
+    // The type is written unless it is a string, as a component's is; a list's row shape; the
+    // default when there is one.
+    for (const param of getUIPageParams(surface)) {
+        lines.push(
+            `${INDENT}param ${param.id} ${printValue(param.name)}`
+                + (param.type === "string" ? "" : ` type=${param.type}`)
+                + (param.struct ? ` struct=${printValue(param.struct)}` : "")
+                + (param.defaultValue === undefined ? "" : ` = ${printValue(param.defaultValue)}`),
         );
     }
     if (surface.kind === "stageSurface") {
@@ -195,7 +208,7 @@ export function printElementTree(
         lines.push(
             binding.kind === "blueprintValue"
                 ? `${inner}bind ${propPath} = blueprint ${printValue(binding.blueprintId)} valueType=${binding.valueType}`
-                : binding.kind === "componentParam"
+                : binding.kind === "componentParam" || binding.kind === "pageParam"
                     ? `${inner}bind ${propPath} = param ${printValue(binding.paramId)}`
                     : `${inner}bind ${propPath} = field ${printValue(binding.fieldId)}`,
         );

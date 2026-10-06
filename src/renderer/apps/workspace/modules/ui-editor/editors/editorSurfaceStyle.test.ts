@@ -20,4 +20,18 @@ describe("getEditorSurfaceStyle", () => {
     it("never clips a component at its edge", () => {
         expect(getEditorSurfaceStyle(surface, true)?.overflow).toBe("visible");
     });
+
+    // Other Game UI can be drawn under a Game UI surface as a reference; a fill added here would
+    // cover it on the canvas while the game shows straight through.
+    it("adds no fill to a transparent Game UI surface", () => {
+        const gameUi = {
+            ...surface,
+            kind: "stageSurface",
+            host: "player",
+            mount: { kind: "slot", slotId: "onStage" },
+        } as unknown as UISurface;
+        const style = getEditorSurfaceStyle(gameUi, false);
+        expect(style?.backgroundColor).toBeUndefined();
+        expect(style?.outline).toBeTruthy();
+    });
 });

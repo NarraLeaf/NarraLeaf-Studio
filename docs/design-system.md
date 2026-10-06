@@ -188,6 +188,19 @@ Phase 2 新增(用来替换各处手写模式):
 | `Tooltip` | 给取不到属性的目标用的包裹式提示（首选属性写法,见 §7.1） |
 | `AnchoredPanel` | 手写的「portal 到 body + fixed 定位 + 躲开视口边缘」浮层（`HintPopover` 与拼写建议面板共用它;对话框仍走 `Modal` / overlay host） |
 
+### 分区面板：`SectionStack`
+
+一个侧栏面板里有**几块作者要同时看的独立列表**时用它（[`apps/workspace/components/ui/SectionStack.tsx`](../src/renderer/apps/workspace/components/ui/SectionStack.tsx)；UI 面板的「界面／组件库／输入意图」是第一个用户），像 VS Code 的资源管理器那样分区：
+
+- **分区头**（`StackSection` 自带，不要手写）：`PanelHeader size="sm"`（36px）铺标题栏用的 `bg-surface-sunken`，左边是 Accordion 的 `ChevronRight`（展开时转 90°），标题 `text-xs font-semibold`，有计数就跟在标题后（`text-2xs text-fg-subtle`），行尾是这一分区的动作（`ToolbarButton size="xs"`），只在展开时出现。整行是一个目标，hover 时整行叠一层 `bg-fill`（和 Accordion 的头一样；sunken 垫在下面，所以是叠上去而不是换掉）。分区体是面板本色，所以分区之间的界线永远读得出来。
+- **分区体**：展开时才挂载，高度由面板分配并裁切，里面的列表自己滚动——列表写 `min-h-0 flex-1 overflow-y-auto overscroll-contain`。**面板本身永不滚动**，滚到一个列表的尽头也不会带动别的列表。
+- **动效**：只有展开／折叠会动——所有分区体的高度一起 `200ms ease-out` 过渡（和 Accordion 同一档），总高始终等于面板，于是下面的分区头是滑到新位置而不是跳过去；折叠中的分区体留到动效结束才卸载，期间 `inert`。拖缝、方向键、面板变高都即时生效，和 VS Code 的分区一样。
+- **缝**：两个展开的分区之间是一条 `ResizableHandle`（1px），可拖动、键盘聚焦后方向键每次 24px、双击恢复两侧的默认高度；中间隔着折叠的分区也算相邻。下面没有展开的分区时只画一条线。
+- **高度规则**（[`sectionStackLayout.ts`](../src/renderer/apps/workspace/components/ui/sectionStackLayout.ts)，规则写在测试里）：每个分区声明 `minSize` 与 `defaultSize`；`fillId` 指定的分区（面板的主体）吃下剩余高度，面板变矮时它先缩到最小值，其余分区再按各自高出最小值的部分同比缩小；连最小值都放不下时按最小值的比例分，分区头始终可见。
+- 展开状态和高度由调用方保存（UI 面板按工程记在 `PanelStateService`），`onSizesChange` 每次手势只报一次。
+
+只有一个列表的面板不用它；一页需要整体滚动的长内容用 `Accordion`；表单分组用 `SectionCard`。
+
 ## 7.1 提示（tooltip）
 
 **原生 `title=` 已经全仓下线,新写的一律用 `data-tip`。** Chromium 画的那个气泡不跟主题、要等约一秒、还盖住正在瞄准的像素；
@@ -196,6 +209,7 @@ Phase 2 新增(用来替换各处手写模式):
 - **一个控件**：`data-tip="重新加载"`。共享组件（`Button` / `ToolbarButton` / `Input` …）把 rest props 铺到 DOM,所以属性直接穿过去,不用改组件签名。
 - **一排控件**：把这排原有的 wrapper 换成 `<TooltipGroup className="…">`（[lib/tooltip](../src/renderer/lib/tooltip)）。组内**延迟只付一次**——第一条等满延迟,之后指针移到组内任何一个都立即出,离开这排就冷却。**不要在既有 wrapper 外面再套一层**,那正是属性写法要避免的多余盒子。
 - **纯图标控件**：`data-tip` 不再是可访问名的兜底,自己写 `aria-label`。已有可见文字的控件**不要**再补 `aria-label`（会盖掉可见名）。
+- **有快捷键的控件**：再写 `data-tip-shortcut`,气泡在文字后面用淡色印出键位。值取 `useShortcutLabels()` 格式化好的结果（`shortcuts.forBinding("<目录 id>")`）,它跟平台、也跟作者的改键;**不要**写目录里的默认键,也不要把键位拼进 `data-tip` 的文字里。
 - **禁用控件**：照写 `data-tip`。指针事件根本到不了禁用控件,提示是靠命中测试解析出来的。
 - 延迟是**一个全局值**（设置 → 外观 → 提示延迟,默认 500ms）。「立即」只由 `TooltipGroup` 的热链给出,没有逐处的 instant 开关。
 - **方向**：默认向上、没地方就翻下面。贴边的一条轨（侧栏图标列）要**朝里开**——左轨 `side="right"`、右轨 `side="left"`、底轨 `side="top"`,在 `TooltipGroup` 上写一次,组内所有控件继承；单个控件可写 `data-tip-side`。方向是意向不是保证,那一侧放不下就翻到对面。
@@ -204,7 +218,7 @@ Phase 2 新增(用来替换各处手写模式):
 
 ## 8. 防回归
 
-[scripts/style-ratchet.mjs](../scripts/style-ratchet.mjs) 统计任意 hex、裸调色板、任意 px 字号、裸圆角等"债务"计数,基线存在 `scripts/style-ratchet.baseline.json`。**CI 的 `verify` job 会跑 `yarn style:ratchet`**（[.github/workflows/ci.yml](../.github/workflows/ci.yml)),本地同样命令——计数只准降不准升。修完一批后跑 `yarn style:ratchet --save` 收紧基线。
+[scripts/style-ratchet.mjs](../scripts/style-ratchet.mjs) 统计任意 hex、裸调色板、任意 px 字号、裸圆角等"债务"计数,基线存在 `scripts/style-ratchet.baseline.json`。**CI 的检查会跑它**（经 [scripts/verify.mjs](../scripts/verify.mjs),本地 `yarn verify --checks` 是同一张清单;单跑用 `yarn style:ratchet`)——计数只准降不准升。修完一批后跑 `yarn style:ratchet --save` 收紧基线。
 
 扫描范围见 [scripts/style-scan.mjs](../scripts/style-scan.mjs)：**只数字符串字面量,跳过测试文件、注释内容与标识符**。这不是图省事——组件库的 JSDoc 里写着它取代的手写模式（`Badge` 的注释就含 `rounded px-1.5 …`）,把注释算进债务等于让组件库为它消灭的债务背锅,唯一"修法"是删文档。标识符同理：类名只有进了字符串才到得了 DOM,所以一个**以类名命名的声明**不输出任何 CSS。`PluginInstallPermissions` 有个开关 `rounded-md` 的 `rounded?: boolean` prop,把它的每次出现都算成裸圆角债务,等于让门禁要求为迁就正则而改 prop 名。
 

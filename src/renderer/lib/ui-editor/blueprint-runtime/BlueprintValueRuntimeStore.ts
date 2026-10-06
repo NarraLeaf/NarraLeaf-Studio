@@ -14,9 +14,11 @@ import { clampSliderValue, normalizeSliderProps } from "@shared/types/ui-editor/
 import { UI_SWITCH_ELEMENT_TYPE } from "@shared/types/ui-editor/switch";
 import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
 import { withUIComponentTextValue, type UIComponentTextValues } from "@shared/types/ui-editor/componentTextParams";
+import type { UIPageTextValues } from "@shared/types/ui-editor/pageTextParams";
 import {
     UI_TEXT_SITES,
     readUITextSite,
+    uiTextHasWords,
     uiTextRuntimeOriginOf,
     uiTextSiteOf,
     withUITextRuntimeWords,
@@ -686,7 +688,8 @@ const LAYOUT_VISIBLE_BINDING_PATH = "layout.visible";
 /**
  * `componentTexts` is what the placement being drawn gives its component's text parameters
  * (`resolveUIComponentTextParams`), or null where the element is not drawn inside a placement - the
- * component's own editor, a page.
+ * component's own editor, a page. `pageTexts` is what the page the element is on gives its text
+ * parameters (`resolveUIPageTextParams`), or null inside a placement, which is on no page.
  */
 export function mergeElementWithBlueprintValues(
     element: UIElement,
@@ -695,6 +698,7 @@ export function mergeElementWithBlueprintValues(
     listItemScope: UIListItemScope | null = null,
     instanceKey = "",
     componentTexts: UIComponentTextValues | null = null,
+    pageTexts: UIPageTextValues | null = null,
 ): UIElement {
     const bindings = element.valueBindings;
     if (!bindings) {
@@ -741,6 +745,21 @@ export function mergeElementWithBlueprintValues(
                 continue;
             }
             out = withUIComponentTextValue(out, target.site, componentTexts[binding.paramId]);
+            continue;
+        }
+        if (binding.kind === "pageParam") {
+            // The page's counterpart, read off what the page was opened with. An opened page answers
+            // even for a parameter it does not have - with nothing, as a placement does. Unopened (the
+            // page's own canvas) it draws the default, and the element's own words, as sample text,
+            // while the default has none: the page has to be laid out before anything opens it.
+            if (!target.site || target.site.role !== "words" || !pageTexts || readUITextSite(element, target.site).key) {
+                continue;
+            }
+            const value = pageTexts.values[binding.paramId];
+            if (!pageTexts.opened && !(value && uiTextHasWords(value.text))) {
+                continue;
+            }
+            out = withUIComponentTextValue(out, target.site, value);
             continue;
         }
         if (!valueRuntime || binding.valueType !== target.valueType) {

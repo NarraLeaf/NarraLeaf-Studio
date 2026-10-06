@@ -8,6 +8,7 @@
  */
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
+import { letterboxAssetIds } from "@shared/types/letterbox";
 import {
     collectBlueprintWarmupAssets,
     collectSurfaceWarmupAssetIds,
@@ -37,6 +38,7 @@ function packSource(pack: GameRuntimePackV1): SurfaceWarmupSource {
     return {
         uidoc: pack.bundle.ui.uidoc,
         fontAssetIds: (pack.bundle.fonts ?? []).map(entry => entry.assetId),
+        letterboxAssetIds: letterboxAssetIds(pack.bundle.letterbox),
         manifestIds: packManifestIds(pack),
         blueprintDocument: pack.bundle.ui.localBlueprints,
     };

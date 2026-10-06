@@ -194,10 +194,35 @@ function parseSurface(line: SourceLine, tokens: string[], body: SourceLine[]): U
         settings: [],
         answers: [],
         slots: [],
+        params: [],
         root: null,
     };
     for (const item of blockItems(body)) {
         const itemTokens = tokensOf(item.line);
+        if (itemTokens[0] === "param") {
+            // `param message "Message" = ""`, `param count "Count" type=number = 3`,
+            // `param rows "Rows" type=list struct=nl.confirmButton` - id, the name the page's props
+            // carry the value under, its kind (and a list's row shape), and the default.
+            const id = readString(itemTokens[1] ?? "", item.line);
+            const eq = itemTokens.indexOf("=");
+            const head = eq >= 0 ? itemTokens.slice(2, eq) : itemTokens.slice(2);
+            const isFlag = (token: string) => /^[A-Za-z]+=/.test(token);
+            const flags = readFlags(head.filter(isFlag), item.line);
+            for (const key of Object.keys(flags)) {
+                if (key !== "type" && key !== "struct") {
+                    throw new UiParseError(`a page param takes type= and struct=, got "${key}=".`, item.line.number);
+                }
+            }
+            statement.params.push({
+                line: item.line.number,
+                id,
+                name: readString(head.find(token => !isFlag(token)) ?? id, item.line),
+                type: flags.type ?? "string",
+                ...(flags.struct !== undefined ? { struct: flags.struct } : {}),
+                ...(eq >= 0 ? { defaultValue: readJs(itemTokens[eq + 1] ?? '""', item.line) } : {}),
+            });
+            continue;
+        }
         if (itemTokens[0] === "setting" && itemTokens[2] === "=") {
             statement.settings.push(readAssignment(item.line, itemTokens.slice(1)));
             continue;
@@ -314,7 +339,7 @@ function parseAction(line: SourceLine, tokens: string[], body: SourceLine[]): Ui
         throw new UiParseError('an action needs an id: `action advance "Advance"`.', line.number);
     }
     const name = tokens[2] ? readString(tokens[2], line) : id;
-    const bindings: ({ kind: "pointer"; gesture: string } | { kind: "key"; key: string })[] = [];
+    const bindings: ({ kind: "pointer"; gesture: string } | { kind: "key"; key: string } | { kind: "gamepad"; button: string })[] = [];
     for (const item of blockItems(body)) {
         const itemTokens = tokensOf(item.line);
         if (itemTokens[0] === "pointer") {
@@ -325,7 +350,11 @@ function parseAction(line: SourceLine, tokens: string[], body: SourceLine[]): Ui
             bindings.push({ kind: "key", key: readString(itemTokens[1] ?? "", item.line) });
             continue;
         }
-        throw new UiParseError("an action holds `pointer <gesture>` and `key <Key>` lines.", item.line.number);
+        if (itemTokens[0] === "gamepad") {
+            bindings.push({ kind: "gamepad", button: readString(itemTokens[1] ?? "", item.line) });
+            continue;
+        }
+        throw new UiParseError("an action holds `pointer <gesture>`, `key <Key>` and `gamepad <Button>` lines.", item.line.number);
     }
     return { kind: "action", line: line.number, id, name, bindings };
 }
@@ -472,7 +501,7 @@ function readBinding(line: SourceLine, tokens: string[]): UiBindingLine {
         return {
             line: line.number,
             propPath,
-            source: { kind: "componentParam", paramId: readString(tokens[4] ?? "", line) },
+            source: { kind: "param", paramId: readString(tokens[4] ?? "", line) },
         };
     }
     throw new UiParseError(`a binding source is "blueprint", "field" or "param", got "${source ?? ""}".`, line.number);

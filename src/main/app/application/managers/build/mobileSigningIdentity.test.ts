@@ -42,7 +42,9 @@ describe("resolveMobileSigningIdentity", () => {
         expect(second).toEqual(first);
     });
 
-    it("keeps the private key owner-only", async () => {
+    it.skipIf(process.platform === "win32")("keeps the private key owner-only", async () => {
+        // POSIX only: on win32 the mode bits are a no-op, and asserting them
+        // there would only prove that Node reports what it invented.
         const userDataDir = await makeUserDataDir();
         await resolveMobileSigningIdentity(userDataDir);
         const { mode } = await fs.stat(identityPath(userDataDir));

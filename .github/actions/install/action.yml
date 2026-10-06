@@ -1,0 +1,47 @@
+name: Install dependencies
+description: >-
+  Node 22, Corepack, a GitHub Packages credential and `yarn install` - what every
+  verify job needs before it can run anything. Run after actions/checkout.
+
+inputs:
+  packages-token:
+    description: The run's own GITHUB_TOKEN; see the credential step for why.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+
+    - name: Enable Corepack
+      shell: bash
+      run: corepack enable
+
+    # GitHub Packages serves the whole @narraleaf scope and asks for a
+    # credential on every package it holds, the ones whose repositories are
+    # public included. The run's own GITHUB_TOKEN is enough and is the right
+    # thing to reach for: it is minted for this job, dies with it, and is
+    # masked in the log, so no long-lived personal token has to be stored as a
+    # repository secret.
+    #
+    # It reaches @narraleaf/bindings - which is private, and belongs to
+    # NarraLeaf-Encryption rather than to this repository - only because that
+    # package grants this repository read access under "Manage Actions access".
+    # Withdrawing that grant is how this repository loses the dependency, and
+    # that is the intended control: nothing here can widen it.
+    - name: Authenticate to GitHub Packages
+      shell: bash
+      run: node .github/scripts/write-packages-credential.mjs
+      env:
+        GITHUB_PACKAGES_TOKEN: ${{ inputs.packages-token }}
+
+    # --no-immutable is required, not a shortcut: yarn defaults to --immutable
+    # under CI, and this repo deliberately does not commit yarn.lock, so every
+    # run legitimately writes one. The dependency the mobile tests rely on
+    # (@narraleaf/studio-shell) is pinned exactly in package.json, so a fresh
+    # resolve still gets the same templates.
+    - name: Install dependencies
+      shell: bash
+      run: yarn install --no-immutable

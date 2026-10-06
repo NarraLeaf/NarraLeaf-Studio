@@ -44,6 +44,7 @@ import {
 import { applyCompiled, formatApplyResult } from "./apply";
 import { checkProjectDocument, checkUiSource, formatDiagnostics } from "./check";
 import { resolveEntrySurfaceId } from "@shared/types/ui-editor/entrySurface";
+import { getUIPageParams } from "@shared/types/ui-editor/pageParams";
 import { printUiDocument } from "./dsl/print";
 import {
     assertWritableSchema,
@@ -71,6 +72,7 @@ import {
 } from "./remove";
 import { didYouMean } from "./text";
 import { findUsages, formatPropValues, formatUsages, readSkeletonDocument, repoRoot } from "./usage";
+import { registerBuiltInPluginStructs } from "@/lib/blueprint-cli/builtinPluginNodes";
 
 export type CliIo = {
     out: (text: string) => void;
@@ -194,6 +196,9 @@ export function runCli(argv: readonly string[], io: CliIo): number {
  * the command's own output.
  */
 function loadPlugins(args: Args, io: CliIo): void {
+    // The plugins bundled with Studio declare row shapes a shipped list may name; they are known
+    // without being asked for, as their nodes are to the blueprint tool.
+    registerBuiltInPluginStructs();
     for (const dir of args.lists.plugin ?? []) {
         const loaded = loadCliPlugin(dir);
         for (const note of loaded.notes) {
@@ -308,6 +313,10 @@ function commandSurfaces(args: Args, io: CliIo): number {
     for (const surface of document.surfaces) {
         const mount = surface.kind === "stageSurface" ? ` slot=${surface.mount.slotId}` : "";
         const answers = (surface.actions ?? []).map(action => action.actionId).join(", ");
+        // A page's parameters, as the nodes that open it name their inputs and `param` lines spell them.
+        const pageParams = getUIPageParams(surface)
+            .map(param => `${param.id}${param.type === "string" ? "" : `:${param.type}`}${param.struct ? `<${param.struct}>` : ""}`)
+            .join(" ");
         const wholeSurface = matches(surface.name, surface.id);
         const elements = collectTree(document.elements, surface.rootElementId)
             .map(element => ({ element, path: elementPath(document.elements, element) }))
@@ -319,7 +328,8 @@ function commandSurfaces(args: Args, io: CliIo): number {
         lines.push(
             `${surface.name}  ${surface.kind}${mount}  ${surface.designSize.width}x${surface.designSize.height}`
                 + `${surface.id === entrySurfaceId ? "  entry" : ""}`
-                + `${answers ? `  answers ${answers}` : ""}`,
+                + `${answers ? `  answers ${answers}` : ""}`
+                + `${pageParams ? `  (params ${pageParams})` : ""}`,
         );
         lines.push(`    owner=surfaceMain surface=${surface.id}`);
         for (const entry of elements) {

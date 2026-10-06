@@ -256,7 +256,7 @@ function ownerDrawingKey(document: UIDocument, elementId: string, instanceKey: s
  * reach an element's blueprint without coming from any one drawing of it, so the question "which
  * row" has no answer in the event. It used to get none: the graph ran once, as nobody. For an
  * element drawn once, for the page, that is the right answer and it still is. For an element a list
- * repeats it meant `Get Item Field` read nothing and `Set Property (self)` wrote to the template,
+ * repeats it meant `Get Field` read nothing and `Set Property (self)` wrote to the template,
  * which no row draws - the graph ran, the log was clean, and no row changed.
  *
  * Such an element now answers once per row on screen, each run in its row, the way a key press
@@ -1666,7 +1666,7 @@ export async function invokeBlueprintFnCall(options: {
     /**
      * The list row the call came from, carried into the body for the reason the instance key is:
      * a fn is a piece of the calling graph pulled out to be named, and a piece of an Item Click still
-     * means the row that was pressed. Without it `Get Item Field` inside the body read nothing, so
+     * means the row that was pressed. Without it `Get Field` inside the body read nothing, so
      * moving three nodes out of Item Click into a fn quietly changed what they did.
      */
     callerListItemScope?: UIListItemScope | null;
