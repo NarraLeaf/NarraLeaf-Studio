@@ -766,6 +766,23 @@ describe("UIDocumentService surface creation", () => {
         ]);
     });
 
+    it("leaves no undo step for a props write that asks to skip history, on a page or in a definition", () => {
+        // An inspector filling in the appearance keys an element predates writes the moment the
+        // element is selected; recorded, that step was the first thing Ctrl+Z took back, invisibly.
+        const { service, historyCalls } = createHarness({ withHistory: true });
+        const rootId = service.getDocument().surfaces[0]!.rootElementId;
+        const component = service.createEmptyComponent("Slot");
+        historyCalls.length = 0;
+
+        service.updateElementProps(rootId, { clipContent: true }, { skipHistory: true });
+        service.updateComponentElementProps(component.id, component.rootElementId, { clipContent: true }, { skipHistory: true });
+        expect(historyCalls).toEqual([]);
+        expect(service.getDocument().elements[rootId]!.props).toMatchObject({ clipContent: true });
+
+        service.updateElementProps(rootId, { clipContent: false });
+        expect(historyCalls).toEqual([{ surfaceId: MAIN_APP_SURFACE_ID, mergeKey: `props:${rootId}:clipContent` }]);
+    });
+
     it("duplicates Pages with independent elements and private blueprints", () => {
         const { service, blueprintDocument, createGraphBlueprint } = createHarness({ withLocalBlueprint: true });
         const source = service.createSurface({

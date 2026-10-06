@@ -1152,7 +1152,16 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
-    public updateElementProps(elementId: string, propsPatch: Record<string, unknown>): void {
+    /**
+     * `skipHistory` is for bookkeeping writes nobody asked for - an inspector filling in the
+     * appearance keys an element predates, the moment it is selected. Recorded, that left an undo
+     * step behind every first selection, so Ctrl+Z after looking around a page did nothing visible.
+     */
+    public updateElementProps(
+        elementId: string,
+        propsPatch: Record<string, unknown>,
+        options: { skipHistory?: boolean } = {},
+    ): void {
         const surfaceId = this.getElementSurfaceId(elementId);
         this.mutateDocument(document => {
             const element = document.elements[elementId];
@@ -1171,7 +1180,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 normalizeFlowChildLayouts(document, element.childrenIds);
             }
         }, {
-            history: surfaceId
+            history: surfaceId && !options.skipHistory
                 ? {
                       surfaceId,
                       mergeKey: `props:${elementId}:${Object.keys(propsPatch).sort().join(",")}`,
@@ -4385,10 +4394,12 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         this.setComponentElementValueBinding(component.id, elementId, propPath, id ? { kind: "componentParam", paramId: id } : null);
     }
 
+    /** `skipHistory` as {@link updateElementProps} takes it. */
     public updateComponentElementProps(
         componentId: string,
         elementId: string,
         propsPatch: Record<string, unknown>,
+        options: { skipHistory?: boolean } = {},
     ): void {
         this.mutateDocument(document => {
             const component = (document.components ?? []).find(item => item.id === componentId);
@@ -4402,7 +4413,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             };
             component.updatedAt = new Date().toISOString();
         }, {
-            history: this.componentHistory(componentId, `props:${elementId}:${Object.keys(propsPatch).sort().join(",")}`),
+            history: options.skipHistory
+                ? false
+                : this.componentHistory(componentId, `props:${elementId}:${Object.keys(propsPatch).sort().join(",")}`),
         });
     }
 

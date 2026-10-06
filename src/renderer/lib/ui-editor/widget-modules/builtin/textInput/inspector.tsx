@@ -65,7 +65,7 @@ function TextInputAppearanceField(props: CustomFieldProps<UIInspectorData>) {
             textInputButtonBaselineProps(getTextInputProps(element)),
         );
         if (next !== appearance) {
-            documentService.updateElementProps(element.id, { appearance: next });
+            documentService.updateElementProps(element.id, { appearance: next }, { skipHistory: true });
         }
     }, [appearance, documentService, element, props.readOnly]);
 
