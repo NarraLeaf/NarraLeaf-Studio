@@ -236,6 +236,8 @@ export const uiEditor = {
         showSelected: "显示所选",
         hideSelected: "隐藏所选",
         addToComponentLibrary: "添加到组件库",
+        cannotHoldChildren: "{name}不能包含子元素",
+        linkedInstanceContents: "关联实例的内容在其组件中编辑",
         group: "编组",
         ungroup: "取消编组",
         addState: "添加状态",

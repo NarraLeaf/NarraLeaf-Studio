@@ -4,9 +4,14 @@ import {
     isLinkedUIComponentElement,
     isUIStructuralWidgetPart,
 } from "@shared/types/ui-editor/document";
+import { isComponentEditorVirtualRootId } from "@/lib/ui-editor/componentEditorRoot";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { collectSubtreeElementIds } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
-import { isValidUIInsertParent, resolveInsertTargetParent } from "./resolveInsertTargetParent";
+import {
+    isValidUIInsertParent,
+    resolveInsertTargetParent,
+    resolveSurfaceInsertRefusal,
+} from "./resolveInsertTargetParent";
 
 /** A parent, and the child the added elements go in front of (`null`: after its last child). */
 export type UIEditorAddTarget = {
@@ -31,7 +36,7 @@ export function parentTakesAddedElements(
     if (isLinkedUIComponentElement(parent)) {
         return false;
     }
-    if (isValidUIInsertParent(parent)) {
+    if (isValidUIInsertParent(document, parent)) {
         return true;
     }
     if (added.length === 0) {
@@ -134,6 +139,39 @@ export function aimAddAtElement(
  * is such a parent - the walk settles on a parent that takes an author's children.
  */
 const ONE_NEW_ELEMENT: readonly (Pick<UIElement, "extra"> | undefined)[] = [undefined];
+
+/**
+ * Whether a new widget can be created inside `parent` itself: what the layer outline's Insert Child
+ * asks of the row it was opened on, which names its destination and so does not walk up to a parent
+ * that would take it instead.
+ */
+export function parentTakesNewElement(document: UIDocument, parent: UIElement): boolean {
+    return parentTakesAddedElements(document, parent, ONE_NEW_ELEMENT);
+}
+
+/**
+ * Whether the insert tool, armed as `tool`, can put anything on this surface.
+ *
+ * The tool belongs to the whole workspace rather than to one editor, so a tool armed on a page is
+ * still armed in the next editor the author switches to. Two editors cannot take what it holds: one
+ * whose root holds nothing (`resolveSurfaceInsertRefusal`), and a component's own editor when the tool
+ * holds a component, because definitions are not placed inside definitions - the editor's document
+ * service refuses `createComponentInstance`.
+ */
+export function insertToolCanPlace(
+    document: UIDocument,
+    surfaceId: string,
+    tool: { componentId?: string },
+): boolean {
+    const rootId = resolveSurfaceRootElementId(document, surfaceId);
+    if (!rootId) {
+        return false;
+    }
+    if (tool.componentId && isComponentEditorVirtualRootId(rootId)) {
+        return false;
+    }
+    return resolveSurfaceInsertRefusal(document, surfaceId) == null;
+}
 
 /**
  * The parent a new element goes into for the gestures that name none: the insert tool's drag, the

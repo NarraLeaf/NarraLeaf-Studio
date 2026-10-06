@@ -22,6 +22,7 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
         canGroup,
         canUngroup,
         insertParentIdForRow,
+        insertBlockedReason,
     } = input;
 
     const items: ContextMenuDef = [];
@@ -57,6 +58,8 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
                 id: "insert",
                 label: translate("uiEditor.contextMenu.insert"),
                 submenu: insertSubmenu,
+                disabled: insertBlockedReason != null,
+                tooltip: insertBlockedReason ?? undefined,
             });
         }
         items.push(
@@ -91,18 +94,21 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
     // A page's root has no name or visibility of its own; a component's frame has both.
     const isRoot = rowElement.type === ROOT;
 
-    if (insertParentIdForRow) {
-        const insertSubmenu = buildInsertWidgetSubmenu(widgetModules, "outline-insert-", type => {
+    // Into the row itself, as the name says, and greyed out with the reason when the row takes no
+    // children. It used to insert into the nearest container above a row that took none, so Insert
+    // Child on a text input added a sibling - and in a component whose root is a text input, where
+    // nothing above takes one, the row offered it anyway and the insert was refused.
+    items.push({
+        id: "insert-child",
+        label: translate("uiEditor.contextMenu.insertChild"),
+        submenu: buildInsertWidgetSubmenu(widgetModules, "outline-insert-", type => {
             actions.hideMenu();
             actions.insertChildInOutline(type);
-        });
-        items.push({
-            id: "insert-child",
-            label: translate("uiEditor.contextMenu.insertChild"),
-            submenu: insertSubmenu,
-        });
-        items.push({ separator: true, id: "sep-ins" });
-    }
+        }),
+        disabled: insertBlockedReason != null,
+        tooltip: insertBlockedReason ?? undefined,
+    });
+    items.push({ separator: true, id: "sep-ins" });
 
     // Never the surface itself - a page's root, or a component's frame in its own editor.
     const editableIds = (menuSelection?.elementIds ?? []).filter(id => {

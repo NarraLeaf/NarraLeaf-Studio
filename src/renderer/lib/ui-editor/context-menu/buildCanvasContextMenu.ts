@@ -12,7 +12,7 @@ import { translate } from "@/lib/i18n";
 const ROOT = "nl.root";
 
 export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): ContextMenuDef {
-    const { menuSelection, hasClipboard, widgetModules, documentService, actions, canGroup, canUngroup } = input;
+    const { menuSelection, hasClipboard, widgetModules, documentService, actions, canGroup, canUngroup, insertBlockedReason } = input;
     const items: ContextMenuDef = [];
 
     if (hasClipboard) {
@@ -35,6 +35,8 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
             id: "insert",
             label: translate("uiEditor.contextMenu.insert"),
             submenu: insertSubmenu,
+            disabled: insertBlockedReason != null,
+            tooltip: insertBlockedReason ?? undefined,
         });
     }
 

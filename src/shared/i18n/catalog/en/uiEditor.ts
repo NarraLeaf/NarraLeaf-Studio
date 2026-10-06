@@ -256,6 +256,8 @@ export const uiEditor = {
         showSelected: "Show selected",
         hideSelected: "Hide selected",
         addToComponentLibrary: "Add to Component Library",
+        cannotHoldChildren: "{name} cannot contain child elements",
+        linkedInstanceContents: "The contents of a linked instance are edited in its component",
         group: "Group",
         ungroup: "Ungroup",
         addState: "Add state",

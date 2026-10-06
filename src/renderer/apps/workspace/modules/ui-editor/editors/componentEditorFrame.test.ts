@@ -244,6 +244,7 @@ describe.each(ROOT_NAMES)("a component whose root is called %s", rootName => {
             canGroup: false,
             canUngroup: false,
             allowAddToComponentLibrary: false,
+            insertBlockedReason: null,
         };
         const canvas = buildCanvasContextMenu({ ...shared, actions: menuActions() });
         const outline = buildOutlineContextMenu({
