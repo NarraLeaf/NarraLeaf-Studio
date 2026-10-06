@@ -124,6 +124,7 @@ import {
 } from "./uiDocumentTreeMove";
 import { createGroupContainerProps } from "@/lib/ui-editor/widget-modules/builtin/container/groupProps";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
+import { resolveDialogueAdvanceActionIds } from "@/lib/ui-editor/runtime/app/engineNvlKeys";
 import { parentTakesAddedElements } from "@/lib/ui-editor/tree/resolveAddTarget";
 import type { UIEditorClipboardPayload } from "@/lib/ui-editor/commands/uiEditorClipboard";
 import {
@@ -154,10 +155,12 @@ import { assertValidBlueprintDocument } from "./blueprint/documentValidation";
 import {
     BLUEPRINT_GRAPH_IR_META_KIND,
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
+    BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
     BLUEPRINT_NODE_TYPE_DATA_JSON_GET,
     BLUEPRINT_NODE_TYPE_DATA_NOT_NULL,
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
@@ -353,11 +356,18 @@ type NvlStageTemplate = {
     listId: UIElementId;
     nametagId: UIElementId;
     textsId: UIElementId;
+    /**
+     * The project's actions its dialogue box reads on with, which the NVL page answers too - see
+     * `UIDocumentService.configureDefaultNvlBlueprints`. Empty when the project has none.
+     */
+    advanceActionIds: string[];
 };
 
 /** One stage-slot creation template: authored elements plus post-insert blueprint seeding. */
 type StageSlotTemplate = {
     elements: Record<UIElementId, UIElement>;
+    /** The project actions the new surface answers, enabled on it as it is created. */
+    actions?: UISurfaceActionEnablement[];
     configure: (surfaceId: UISurfaceId) => void;
 };
 
@@ -2802,6 +2812,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 ? this.createStageSlotTemplate(effectiveMount.slotId, rootElement, designSize)
                 : null;
         const templateElements = stageTemplate?.elements ?? {};
+        if (surface.kind === "stageSurface" && stageTemplate?.actions?.length) {
+            surface.actions = stageTemplate.actions;
+        }
 
         this.mutateDocument(document => {
             document.elements[rootElementId] = rootElement;
@@ -6005,6 +6018,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 const template = this.createNvlStageTemplate(rootElement, designSize);
                 return {
                     elements: template.elements,
+                    actions: template.advanceActionIds.map(actionId => ({ actionId })),
                     configure: surfaceId => this.configureDefaultNvlBlueprints(surfaceId, template),
                 };
             }
@@ -6413,7 +6427,27 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             listId,
             nametagId,
             textsId,
+            advanceActionIds: this.resolveDialogueAdvanceActionsForStarter(),
         };
+    }
+
+    /**
+     * The actions the project's dialogue box reads on with, as far as a new NVL page can follow them.
+     *
+     * Read from the box's graphs the way the engine's own NVL page reads them
+     * (`resolveDialogueAdvanceActionIds`), and kept to actions the project still defines - an
+     * enablement naming a missing one does nothing, and copying it onto a new surface would only
+     * carry the dead entry further.
+     */
+    private resolveDialogueAdvanceActionsForStarter(): string[] {
+        const localBp = this.getOptionalLocalBlueprintService();
+        if (!localBp) {
+            return [];
+        }
+        const document = this.getDocument();
+        const defined = normalizeUIInputActionLibrary(document.actions);
+        return [...resolveDialogueAdvanceActionIds(document, localBp.getBlueprintDocument())]
+            .filter(actionId => Boolean(defined[actionId]));
     }
 
     /** Value graph: `Init -> Return Value` fed by `Get List Item Props -> Get JSON Field(propsPath)`. */
@@ -6537,6 +6571,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
      * Panel (`nl.container`) because collection widgets like `nl.nvl.list` do not expose a
      * `Mouse Click` head; the panel's own Mouse Click plus Element Click on the interaction layer
      * and the list cover every click region.
+     *
+     * The page's wiring when the project has no action its dialogue box reads on with; see
+     * {@link createNvlActionNextGraph} for the one it gets when it has.
      */
     private createNvlNextGraph(
         surfaceId: UISurfaceId,
@@ -6613,6 +6650,64 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         };
     }
 
+    /**
+     * Event graph for an NVL page in a project whose dialogue box reads on with actions: each of
+     * those actions runs `Next`, and so does a click on the NVL list.
+     *
+     * The actions bring the keys, the gamepad and a click anywhere on the page that is not on a
+     * control - the same presses that read the box on. The list is the exception: it is a control,
+     * and an action stands down over a control (`pointerInputClaimedByControl`), so a click on the
+     * lines would otherwise do nothing. `Element Click` on the list hears exactly that click and no
+     * other, so no press reads on twice and no widget answers a gesture the page answers as well.
+     *
+     * On the surface's blueprint, because only a surface answers an action.
+     */
+    private createNvlActionNextGraph(
+        surfaceId: UISurfaceId,
+        actionIds: readonly string[],
+        listId: UIElementId,
+    ): BlueprintGraphIr {
+        const nextId = "nvl.next";
+        const listClickId = "nvl.next.listElementClick";
+        const nodes: Record<string, BlueprintGraphNode> = {
+            [nextId]: {
+                id: nextId,
+                type: BLUEPRINT_NODE_TYPE_GAME_NEXT,
+                params: {},
+                meta: { editorLayout: { x: 560, y: 220 } },
+            },
+            [listClickId]: {
+                id: listClickId,
+                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
+                params: {
+                    surfaceId,
+                    elementId: listId,
+                    elementType: NVL_LIST_WIDGET_TYPE,
+                },
+                // Below the action heads, clear of them: an Element Click card draws a preview of its element.
+                meta: { editorLayout: { x: 80, y: 80 + actionIds.length * 240 } },
+            },
+        };
+        const edges: NonNullable<BlueprintGraphIr["edges"]> = [
+            { from: { nodeId: listClickId, port: "then" }, to: { nodeId: nextId, port: "in" } },
+        ];
+        actionIds.forEach((actionId, index) => {
+            const headId = `nvl.next.action${index}`;
+            nodes[headId] = {
+                id: headId,
+                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
+                params: { [BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID]: actionId },
+                meta: { editorLayout: { x: 80, y: 40 + index * 240 } },
+            };
+            edges.push({ from: { nodeId: headId, port: "then" }, to: { nodeId: nextId, port: "in" } });
+        });
+        return {
+            nodes,
+            edges,
+            meta: { [BLUEPRINT_GRAPH_IR_META_KIND]: "event" },
+        };
+    }
+
     private configureDefaultNotificationBlueprints(template: NotificationStageTemplate): void {
         this.seedListItemTextValueBinding(
             template.itemTextId,
@@ -6658,6 +6753,32 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
 
         this.seedListItemTextValueBinding(template.nametagId, "nametag", translate("defaultDoc.nvl.nametag"), translate("defaultDoc.speaker"));
+
+        if (template.advanceActionIds.length > 0) {
+            // The dialogue box's own actions, answered on the page as the box answers them: a project
+            // whose box reads on with Enter reads its NVL page on with Enter. The surface enables
+            // them as it is created (`createStageSlotTemplate`).
+            const surfaceName = this.getDocument().surfaces.find(surface => surface.id === surfaceId)?.name;
+            const surfaceBlueprintId = localBp.ensureSurfaceMain(surfaceId, surfaceName);
+            localBp.applyBlueprintMutation(doc => {
+                const blueprint = doc.blueprints[surfaceBlueprintId];
+                if (!blueprint) {
+                    return;
+                }
+                blueprint.graphs.events = {
+                    ...(blueprint.graphs.events ?? {}),
+                    nvlNext: {
+                        id: "nvlNext",
+                        name: translate("defaultDoc.nvl.nextEvent"),
+                        graph: this.createNvlActionNextGraph(surfaceId, template.advanceActionIds, template.listId),
+                    },
+                };
+                if (Array.isArray(blueprint.graphs.eventIds) && !blueprint.graphs.eventIds.includes("nvlNext")) {
+                    blueprint.graphs.eventIds.push("nvlNext");
+                }
+            });
+            return;
+        }
 
         // Advancement graph hosted on the Panel (nl.container) - collection widgets like the NVL
         // List do not expose a Mouse Click head.

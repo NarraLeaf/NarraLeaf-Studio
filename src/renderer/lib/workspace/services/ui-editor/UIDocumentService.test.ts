@@ -22,10 +22,12 @@ import { isEntrySurface } from "@shared/types/ui-editor/entrySurface";
 import { buildUIComponentEditorSurfaceId, buildUIComponentSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
 import {
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
+    BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
     BLUEPRINT_NODE_TYPE_DATA_JSON_GET,
     BLUEPRINT_NODE_TYPE_DATA_NOT_NULL,
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
@@ -113,6 +115,8 @@ function createHarness(options: { withLocalBlueprint?: boolean; withHistory?: bo
         return id;
     };
     const localBlueprintService = {
+        ensureSurfaceMain: (surfaceId: string, displayName?: string) =>
+            createGraphBlueprint(`surface-main-${surfaceId}`, displayName ?? "Surface", { kind: "surfaceMain", surfaceId }),
         ensureWidgetMain: (surfaceId: string, elementId: string, displayName?: string) =>
             createGraphBlueprint(`widget-main-${elementId}`, displayName ?? "Widget", {
                 kind: "widgetMain",
@@ -521,6 +525,71 @@ describe("UIDocumentService surface creation", () => {
             .filter((node: any) => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK)
             .map((node: any) => node.params?.elementId);
         expect(elementClickTargets).toEqual([interactionLayer.id]);
+    });
+
+    it("answers the dialogue box's advance actions on a new NVL page, and a click on its list", () => {
+        const { service, blueprintDocument, createGraphBlueprint } = createHarness({ withLocalBlueprint: true });
+        const dialog = service.createSurface({
+            kind: "stageSurface",
+            host: "player",
+            name: "Dialogue",
+            stageMount: { kind: "slot", slotId: "dialog" },
+        }) as UIStageSurface;
+        // A project whose dialogue box reads on with "advance" (click, Space, Enter), as the starter
+        // project's does: the action is defined, enabled on the box, and answered there by Next.
+        (service as any).mutateDocument((document: any) => {
+            document.actions = {
+                advance: { id: "advance", name: "Advance", bindings: [{ kind: "pointer", gesture: "click" }, { kind: "key", key: "Enter" }] },
+                backlog: { id: "backlog", name: "Backlog", bindings: [{ kind: "pointer", gesture: "wheelUp" }] },
+            };
+            const box = document.surfaces.find((surface: any) => surface.id === dialog.id);
+            box.actions = [{ actionId: "advance" }, { actionId: "backlog" }];
+        });
+        const boxBlueprintId = createGraphBlueprint("dialog-main", "Dialogue", { kind: "surfaceMain", surfaceId: dialog.id });
+        blueprintDocument.blueprints[boxBlueprintId].graphs.events.advance = {
+            id: "advance",
+            name: "Advance",
+            graph: {
+                nodes: {
+                    pressed: { id: "pressed", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION, params: { [BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID]: "advance" } },
+                    next: { id: "next", type: BLUEPRINT_NODE_TYPE_GAME_NEXT, params: {} },
+                },
+                edges: [{ from: { nodeId: "pressed", port: "then" }, to: { nodeId: "next", port: "in" } }],
+            },
+        };
+
+        const nvl = service.createSurface({
+            kind: "stageSurface",
+            host: "player",
+            name: "NVL",
+            stageMount: { kind: "slot", slotId: "nvl" },
+        }) as UIStageSurface;
+
+        // The backlog action reaches no Next on the box, so the page does not take it up.
+        expect(service.getDocument().surfaces.find(surface => surface.id === nvl.id)?.actions).toEqual([{ actionId: "advance" }]);
+
+        const doc = service.getDocument();
+        const panel = doc.elements[doc.elements[nvl.rootElementId]!.childrenIds[1]!]!;
+        const list = doc.elements[panel.childrenIds[0]!]!;
+        // No widget answers a click of its own: the page's action does, so nothing reads on twice.
+        expect(blueprintDocument.blueprints[`widget-main-${panel.id}`]?.graphs.events.nvlNext).toBeUndefined();
+
+        const graph = blueprintDocument.blueprints[`surface-main-${nvl.id}`].graphs.events.nvlNext.graph;
+        const nodes = Object.values(graph.nodes) as any[];
+        const head = nodes.find((node: any) => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION);
+        const listClick = nodes.find((node: any) => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK);
+        const next = nodes.find((node: any) => node.type === BLUEPRINT_NODE_TYPE_GAME_NEXT);
+        expect(head.params[BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID]).toBe("advance");
+        // The list is a control, and the action stands down over one; a click on the lines is heard here.
+        expect(listClick.params).toMatchObject({ surfaceId: nvl.id, elementId: list.id, elementType: "nl.nvl.list" });
+        expect(nodes.some((node: any) =>
+            node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK || node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP
+        )).toBe(false);
+        const edges = graph.edges.map((edge: any) => `${edge.from.nodeId}.${edge.from.port}->${edge.to.nodeId}.${edge.to.port}`);
+        expect(edges.sort()).toEqual([
+            `${head.id}.then->${next.id}.in`,
+            `${listClick.id}.then->${next.id}.in`,
+        ].sort());
     });
 
     it("creates On-Stage Game UI as a bare transparent root", () => {
