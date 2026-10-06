@@ -3,7 +3,7 @@ import { Aperture, Blocks,
     AppWindow, Bookmark, Clock, CornerUpLeft, Eye, FileText, FlagTriangleRight, GitBranch, Image, Layers, LogOut, MessageSquare, Minus, Move, Music, Puzzle, Route, SeparatorHorizontal, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video, Wind } from "lucide-react";
 import { resolveBrandColorValue } from "@shared/brand/brandRegistry";
 import type { StoryBlock, StoryBlockId, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment } from "@shared/types/story";
-import { storyVariableRefKey } from "@shared/types/story";
+import { resolveStoryGroupRunMode, storyGroupKindOfMode, storyVariableRefKey } from "@shared/types/story";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { richIfMeaningful } from "./richText";
 import { paragraphActionCharacterId } from "./storyCharacterActions";
@@ -611,9 +611,11 @@ function rowCommandId(block: StoryBlock): string | null {
                 // One payload, two commands: `until` present IS the conditional form (see the payload's
                 // note), which is `/until` - the same flag the container header reads.
                 case "repeat": return block.payload.until ? "until" : "repeat";
-                case "parallel": return "parallel";
-                case "race": return "race";
-                case "sequence": return "sequence";
+                // By how the group runs, as its header names it: a stored `mode` decides over the
+                // `control` word (see `resolveStoryGroupRunMode`).
+                case "parallel":
+                case "race":
+                case "sequence": return storyGroupKindOfMode(resolveStoryGroupRunMode(block.payload));
                 case "break": return "break";
                 case "cut": return "cut";
                 case "label": return "label";

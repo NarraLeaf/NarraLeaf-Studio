@@ -1433,7 +1433,7 @@ export const story = {
             reset: "カメラをリセット",
         },
         condition: "条件",
-        branch: "{branch} の枝",
+        branch: "{branch}の枝",
         label: "ラベル {name}",
         goto: "{name} へ移動",
         break: "繰り返しから抜ける",

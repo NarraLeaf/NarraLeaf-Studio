@@ -1375,7 +1375,7 @@ export const story = {
             reset: "复位",
         },
         condition: "条件",
-        branch: "{branch} 分支",
+        branch: "{branch}分支",
         label: "标签 {name}",
         goto: "跳到 {name}",
         break: "跳出循环",

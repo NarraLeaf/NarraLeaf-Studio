@@ -870,7 +870,10 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
     }
     if (block.kind === "control") {
         if (block.payload.control === "condition") return translate("story.describe.condition");
-        if (block.payload.control === "conditionBranch") return translate("story.describe.branch", { branch: block.payload.branch });
+        // The branch in the header's own words (If / Else if / Else), never the stored enum.
+        if (block.payload.control === "conditionBranch") {
+            return translate("story.describe.branch", { branch: getStoryContainerHeaderInfo(block)?.pill ?? "" });
+        }
         // The name IS the row: a label row saying only "Label" would leave the author counting rows
         // to find which one a goto points at.
         if (block.payload.control === "label") return translate("story.describe.label", { name: block.payload.name || translate("story.describe.unnamed") });
@@ -906,7 +909,9 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
                 ? translate("story.describe.quit", { page })
                 : translate("story.describe.quitUnset");
         }
-        return block.payload.control;
+        // A group reads as its header does - by how it runs - and nothing here prints the stored
+        // `control` word, which is an identifier and not the interface's language.
+        return getStoryContainerHeaderInfo(block)?.pill ?? translate("story.badge.control");
     }
     if (block.kind === "jump") {
         return translate("story.describe.jump", { scene: getStorySceneName(scenes, block.payload.targetSceneId) });

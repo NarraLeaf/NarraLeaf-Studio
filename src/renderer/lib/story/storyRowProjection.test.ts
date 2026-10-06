@@ -305,6 +305,12 @@ describe("a group's header", () => {
         expect(getStoryContainerHeaderInfo(control({ control: "parallel", mode: "all" }))?.groupWaits).toBeUndefined();
         expect(getStoryContainerHeaderInfo(control({ control: "race", mode: "any" }))?.groupWaits).toBeUndefined();
     });
+
+    it("describes a group and a branch in the header's words, never by the stored enum", () => {
+        expect(describeStoryBlock(control({ control: "sequence", mode: "all" }), bare)).toBe("Parallel");
+        expect(describeStoryBlock(control({ control: "race" }), bare)).toBe("Race, first to finish");
+        expect(describeStoryBlock(control({ control: "conditionBranch", branch: "elseIf" }), bare)).toBe("Else if branch");
+    });
 });
 
 describe("storyContainerChain", () => {
