@@ -178,6 +178,9 @@ export const uiEditor = {
     canvas: {
         unknownWidget: "不明なウィジェット",
         widgetRenderFailed: "ウィジェットの描画に失敗",
+        componentMissing: "コンポーネントが見つからない",
+        componentLoopBlocked: "コンポーネントの循環を止めた",
+        componentRootMissing: "コンポーネントのルートがない",
         wordsFromRowField: "この文字はリスト行の項目「{field}」から来る",
         wordsFromBlueprintValue: "この文字はブループリント値「{name}」で決まる",
         wordsFromComponentParam: "この文字はコンポーネントのパラメータ「{param}」から来る。値は置いたものごとに設定する",
