@@ -57,9 +57,11 @@ describe("studioWritesZip", () => {
         expect(studioWritesZip({ platform: "windows", formats: ["nsis"] })).toBe(false);
     });
 
-    it("leaves a macOS or Linux zip made on its own host to electron-builder", () => {
-        expect(studioWritesZip({ platform: "macos", formats: ["zip"] })).toBe(false);
-        expect(studioWritesZip({ platform: "linux", formats: ["zip"] })).toBe(false);
+    it("takes a macOS or Linux zip too, and leaves their other formats alone", () => {
+        expect(studioWritesZip({ platform: "macos", formats: ["dmg", "zip"] })).toBe(true);
+        expect(studioWritesZip({ platform: "linux", formats: ["AppImage", "zip"] })).toBe(true);
+        expect(studioWritesZip({ platform: "macos", formats: ["dmg"] })).toBe(false);
+        expect(studioWritesZip({ platform: "linux", formats: ["deb"] })).toBe(false);
     });
 });
 

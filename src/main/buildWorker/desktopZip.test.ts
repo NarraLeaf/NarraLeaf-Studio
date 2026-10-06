@@ -4,7 +4,7 @@ import os from "os";
 import path from "path";
 import zlib from "zlib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { folderArchiveItems, writeFolderZip } from "./desktopZip";
+import { folderArchiveItems, linkStaysInside, writeFolderZip } from "./desktopZip";
 import { parseZipIndex, readEntryBytes } from "./mobile/zipModel";
 
 let root: string;
@@ -61,7 +61,7 @@ describe("writeFolderZip", () => {
     it("takes each file's mode from the caller, as a Linux app's are read from its content", async () => {
         const app = path.join(root, "linux-unpacked");
         await layOutApp(app);
-        const items = await folderArchiveItems(app, absolute => (absolute.endsWith(".exe") ? 0o755 : 0o644));
+        const items = await folderArchiveItems(app, { fileMode: absolute => (absolute.endsWith(".exe") ? 0o755 : 0o644) });
         const modes = new Map(items.map(item => [item.name, item.mode]));
         expect(modes.get("Game.exe")).toBe(0o755);
         expect(modes.get("resources/app.asar")).toBe(0o644);
@@ -76,6 +76,69 @@ describe("writeFolderZip", () => {
         } catch {
             return;
         }
-        await expect(folderArchiveItems(app, () => 0o644)).rejects.toThrow(/neither a file nor a folder/);
+        await expect(folderArchiveItems(app)).rejects.toThrow(/outside the app/);
+    });
+
+    it("reads each file's own permission bits on a macOS or Linux host", async () => {
+        const app = path.join(root, "linux-unpacked");
+        await layOutApp(app);
+        const executable = path.join(app, "Game.exe");
+        await fs.chmod(executable, 0o755).catch(() => undefined);
+        const own = (await fs.stat(executable)).mode & 0o777;
+        const items = await folderArchiveItems(app, { posix: true });
+        expect(items.find(item => item.name === "Game.exe")?.mode).toBe(own);
+        // And on Windows, where Node makes the bits up, the fixed ones electron-builder used.
+        const invented = await folderArchiveItems(app, { posix: false });
+        expect(invented.find(item => item.name === "Game.exe")?.mode).toBe(0o644);
+        expect(invented.find(item => item.name === "resources/")?.mode).toBe(0o755);
+    });
+
+    it("puts a macOS bundle inside one folder named after it, as electron-builder's zip does", async () => {
+        const bundle = path.join(root, "mac-arm64", "Game.app");
+        await fs.mkdir(path.join(bundle, "Contents", "MacOS"), { recursive: true });
+        await fs.writeFile(path.join(bundle, "Contents", "MacOS", "Game"), Buffer.from("macho"));
+        await fs.writeFile(path.join(bundle, "Contents", "Info.plist"), Buffer.from("<plist/>"));
+        const file = path.join(root, "Game-1.0.0-mac-arm64.zip");
+        await writeFolderZip(bundle, file, { topFolder: "Game.app", mtime: new Date(Date.UTC(2026, 0, 1)) });
+        expect(parseZipIndex(await fs.readFile(file)).entries.map(entry => entry.name)).toEqual([
+            "Game.app/",
+            "Game.app/Contents/",
+            "Game.app/Contents/Info.plist",
+            "Game.app/Contents/MacOS/",
+            "Game.app/Contents/MacOS/Game",
+        ]);
+    });
+
+    it("keeps a framework's relative links as links", async () => {
+        const framework = path.join(root, "Electron Framework.framework");
+        await fs.mkdir(path.join(framework, "Versions", "A"), { recursive: true });
+        await fs.writeFile(path.join(framework, "Versions", "A", "Electron Framework"), Buffer.from("macho"));
+        try {
+            await fs.symlink("A", path.join(framework, "Versions", "Current"));
+            await fs.symlink("Versions/Current/Electron Framework", path.join(framework, "Electron Framework"));
+        } catch {
+            // A Windows host without the right to make links has nothing to prove here; the macOS
+            // and Linux runs of this file do.
+            return;
+        }
+        const items = await folderArchiveItems(framework, { posix: true });
+        const links = items.filter(item => item.kind === "symlink").map(item => [item.name, item.kind === "symlink" ? item.target : ""]);
+        expect(links).toEqual([
+            ["Electron Framework", "Versions/Current/Electron Framework"],
+            ["Versions/Current", "A"],
+        ]);
+    });
+});
+
+describe("linkStaysInside", () => {
+    it("allows a link that resolves inside the app, and refuses one that leaves it", () => {
+        expect(linkStaysInside("Versions/Current", "A")).toBe(true);
+        expect(linkStaysInside("Electron Framework", "Versions/Current/Electron Framework")).toBe(true);
+        expect(linkStaysInside("Frameworks/X.framework/Versions/Current", "../../Y.framework")).toBe(true);
+        expect(linkStaysInside("Versions/Current", "../../outside")).toBe(false);
+        expect(linkStaysInside("lib", "..")).toBe(false);
+        expect(linkStaysInside("lib", "/usr/lib")).toBe(false);
+        expect(linkStaysInside("lib", String.raw`C:\Users\author`)).toBe(false);
+        expect(linkStaysInside("lib", "")).toBe(false);
     });
 });

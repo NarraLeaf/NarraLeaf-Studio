@@ -418,14 +418,14 @@ async function packageDesktopTargets(config: GameBuildWorkerConfig, log: GameBui
  *
  * electron-builder hands a zip to 7-Zip, whose Deflate gives each file one thread, and a game's zip
  * is two very large files - minutes on one core. Studio's writer compresses every file in pieces on
- * all of them (see parallelZip). Windows only, for now: a Windows app is plain files with nothing a
- * zip has to take care to keep. A macOS bundle needs its links and modes kept, and a Linux app its
- * modes; on their own hosts those zips stay with electron-builder until each has been checked on its
- * platform, and from Windows they were always Studio's (packWithoutPlatformTools), now on the same
- * writer.
+ * all of them (see parallelZip), keeping the permission bits and the links a macOS bundle or a Linux
+ * app needs (see desktopZip). Every desktop platform: a macOS or Linux zip made on a machine of its
+ * own kind comes through here, and one made from Windows was always Studio's
+ * (packWithoutPlatformTools), on the same writer.
  */
 export function studioWritesZip(target: Pick<GameBuildWorkerTarget, "platform" | "formats">): boolean {
-    return target.platform === "windows" && target.formats.includes("zip");
+    return (target.platform === "windows" || target.platform === "macos" || target.platform === "linux")
+        && target.formats.includes("zip");
 }
 
 /** The laid-out app in `appOutDir` as the zip electron-builder's zip target would have named. */
@@ -446,8 +446,26 @@ async function writeAppZip(
         format: "zip",
     }));
     log("info", `writing the ${target.platform} zip, compressed on every core`);
-    await writeFolderZip(appOutDir, file);
+    if (target.platform === "macos") {
+        // The bundle itself is the archive's one folder, as electron-builder's zip has it: what a
+        // player double-clicks is `Game.app`, not a loose `Contents/`.
+        const bundle = await macAppBundle(appOutDir);
+        await writeFolderZip(path.join(appOutDir, bundle), file, { topFolder: bundle });
+    } else {
+        await writeFolderZip(appOutDir, file);
+    }
     return file;
+}
+
+/** The one `.app` electron-builder laid out in `appOutDir`. */
+async function macAppBundle(appOutDir: string): Promise<string> {
+    const bundles = (await fsPromises.readdir(appOutDir, { withFileTypes: true }))
+        .filter(entry => entry.isDirectory() && entry.name.endsWith(".app"))
+        .map(entry => entry.name);
+    if (bundles.length !== 1) {
+        throw new Error(`expected one app bundle in ${appOutDir}, found ${bundles.length}`);
+    }
+    return bundles[0];
 }
 
 /**
@@ -461,8 +479,9 @@ async function writeAppZip(
  * core, to make the executable 7 KB smaller than 7-Zip's own highest level does in a third of the
  * time, and to make the store not one byte smaller than it already was.
  *
- * A Windows zip no longer goes through 7-Zip at all (see studioWritesZip); this is the level the
- * zips still made by electron-builder - macOS and Linux on their own hosts - are written at.
+ * No zip goes through 7-Zip any more (see studioWritesZip). The level stays set so that a zip that
+ * ever did again - a format added later, a target that bypasses studioWritesZip - is not handed back
+ * to fifteen passes.
  *
  * Level 9 is that highest level. It changes nothing else electron-builder writes: the installer's
  * payload and the other archive formats are at 9 already, and a dmg keeps the format "maximum"
