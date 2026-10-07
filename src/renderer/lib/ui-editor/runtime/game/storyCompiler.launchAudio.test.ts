@@ -263,6 +263,61 @@ describe("a row-precise launch and the scene's sounds", () => {
     });
 });
 
+/**
+ * The engine looks a line's take up in the voices table of the scene playing it, so the opening scene
+ * of a launch has to carry the table of the scene it stands for. It carried none, and every line from
+ * the launch row to the end of that scene played silently while the same lines spoke from the title.
+ * Asserted on the scene's own `config.voices`, the table the engine reads, not on anything the
+ * compiler holds.
+ */
+describe("a row-precise launch and the scene's voice takes", () => {
+    const takes = { ja: { "first-text": "asset-ja-first", "target-text": "asset-ja-target" }, en: { "target-text": "asset-en-target" } };
+
+    async function launchVoiced(doc: StoryDocument, targetBlockId: string, voiceLocale = "ja"): Promise<Compiled> {
+        return compileStudioStoryToNlr({
+            document: doc,
+            sceneId: SCENE,
+            resolveAssetUrl: (assetId: string) => `test://${assetId}`,
+            voice: {
+                voicedLocales: [{ code: "ja", displayName: "日本語" }, { code: "en", displayName: "English" }],
+                tables: takes,
+                getVoiceLocale: () => voiceLocale,
+            },
+            launch: {
+                targetBlockId,
+                snapshot: computeStoryStageSnapshot({ document: doc, sceneId: SCENE, targetBlockId }),
+            },
+        });
+    }
+
+    const voicesOf = (scene: unknown): Record<string, unknown> | undefined =>
+        (scene as { config?: { voices?: Record<string, unknown> } }).config?.voices;
+
+    it("gives the opening scene the takes of the scene it was launched in", async () => {
+        const compiled = await launchVoiced(document([line("first"), line("target")]), "target");
+
+        expect(errors(compiled)).toEqual([]);
+        expect(compiled.scene).not.toBe(compiled.scenes[SCENE]);
+        expect(voicesOf(compiled.scene)).toEqual({ "first-text": "test://asset-ja-first", "target-text": "test://asset-ja-target" });
+        // The document's own scene keeps its table, for a jump back to it.
+        expect(voicesOf(compiled.scenes[SCENE])).toEqual(voicesOf(compiled.scene));
+    });
+
+    it("opens on the dub language in force, and a dub switch reaches the opening scene too", async () => {
+        const compiled = await launchVoiced(document([line("first"), line("target")]), "target", "en");
+        expect(voicesOf(compiled.scene)).toEqual({ "target-text": "test://asset-en-target" });
+
+        expect(compiled.setVoiceLocale?.("ja")).toBe(true);
+        expect(voicesOf(compiled.scene)).toEqual({ "first-text": "test://asset-ja-first", "target-text": "test://asset-ja-target" });
+    });
+
+    it("carries no table in a project with no takes, as the scene itself carries none", async () => {
+        const compiled = await launchAt(document([line("first"), line("target")]), "target");
+
+        expect(voicesOf(compiled.scene) ?? null).toBeNull();
+    });
+});
+
 /** The compile's warnings, for the cases where a row in the tail addresses something the launch must have built. */
 function compiled(result: Compiled): { warnings: string[] } {
     return { warnings: result.diagnostics.filter(entry => entry.level === "warning").map(entry => entry.message) };

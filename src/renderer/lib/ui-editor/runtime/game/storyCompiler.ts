@@ -1503,6 +1503,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
                 assetUrlCache,
             localization,
             voicedUnitIds,
+            constructSpeakingScene: scenesBuild.constructSpeakingScene,
             nextActionIndex,
         })
         : allScenes[input.sceneId];
@@ -1578,6 +1579,7 @@ async function buildLaunchEntryScene(params: {
     assetUrlCache: AssetUrlCache;
     localization?: SceneLocalizationResolver;
     voicedUnitIds?: ReadonlySet<string>;
+    constructSpeakingScene: ExtraSceneVoices;
     nextActionIndex: (blockId: string) => number;
 }): Promise<Scene> {
     const { input, launch, nlrStory, allScenes, diagnostics, resolveAssetUrl, assetUrlCache } = params;
@@ -1621,7 +1623,10 @@ async function buildLaunchEntryScene(params: {
         diagnostics,
         ...(params.localization ? { localization: params.localization } : {}),
     });
-    const launchScene = new Scene(
+    // It plays the rest of the scene's lines, so it carries the scene's takes as well: the engine
+    // looks a line's take up in the scene playing it, and without the table every line from the
+    // target row to the scene's end was silent here while the same lines spoke from the title.
+    const launchScene = params.constructSpeakingScene(scene.id, voices => new Scene(
         sceneRuntimeName(scene),
         {
             ...(backgroundSrc ? { background: backgroundSrc } : {}),
@@ -1630,8 +1635,9 @@ async function buildLaunchEntryScene(params: {
             // the config: the scene would start it in its init, before anything here could turn it
             // down, pause it or swap it for the one a `/bgm` row put on.
             ...(sceneMusic ? { backgroundMusicFade: sceneMusic.fadeMs } : {}),
+            ...(voices ? { voices } : {}),
         },
-    );
+    ));
     const launchIdPrefix = launchSceneIdPrefix(scene.id, launch.targetBlockId ?? "");
     setSceneOwnElementIds(params.elementIdBindings, launchScene, `${launchIdPrefix}:scene`);
 
@@ -2327,6 +2333,8 @@ async function createNlrScenes(input: {
     getVoicePlayback: (unitId: string) => VoicePlayback | null;
     /** The image each scene opens on, by Studio scene id; absent for a scene opening on a colour. */
     initialBackgroundUrls: Record<string, string>;
+    /** Construct one more scene that speaks a document scene's lines; see {@link ExtraSceneVoices}. */
+    constructSpeakingScene: ExtraSceneVoices;
 }> {
     const scenes: Record<string, Scene> = {};
 
@@ -2531,8 +2539,38 @@ async function createNlrScenes(input: {
             }
         }
     }
-    return { scenes, setVoiceLocale: applyLocale, getVoicePlayback, initialBackgroundUrls };
+    const constructSpeakingScene: ExtraSceneVoices = (sceneId, construct) => {
+        if (!voicesForScene?.has(sceneId)) {
+            return construct(undefined);
+        }
+        // Filled for the language in force now, and registered below so a dub switch rewrites it
+        // with every other scene's table.
+        const table: Record<string, string | Sound> = { ...(sceneVoicesFor(activeLocale)?.[sceneId] ?? {}) };
+        const built = construct(table);
+        const live = (built as unknown as { config?: { voices?: unknown } }).config?.voices;
+        liveTables.push({
+            sceneId,
+            live: live && typeof live === "object" ? live as Record<string, string | Sound> : table,
+        });
+        return built;
+    };
+    return { scenes, setVoiceLocale: applyLocale, getVoicePlayback, initialBackgroundUrls, constructSpeakingScene };
 }
+
+/**
+ * Construct a scene that is not one of the document's but speaks one scene's lines - the opening
+ * scene of a row-precise launch, which plays the rest of the scene it was launched in.
+ *
+ * The engine finds a line's take in the voices table of the scene playing it (`Scene.getVoice`), so a
+ * scene built without the table plays every line of its own silently, while the same lines played
+ * from the document's scene are heard. `construct` is handed the table to pass as the scene's
+ * `voices` config - undefined when the project has no takes for that scene - and the scene's own
+ * copy of it is kept with the others, so a dub switch reaches this scene as it reaches the rest.
+ */
+type ExtraSceneVoices = (
+    sceneId: string,
+    construct: (voices: Record<string, string | Sound> | undefined) => Scene,
+) => Scene;
 
 async function resolveSceneInitialBackground(input: {
     scene: StoryScene;
