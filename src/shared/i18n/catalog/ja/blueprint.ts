@@ -106,6 +106,40 @@ export const blueprint = {
         language: "言語",
         voiceLanguage: "ボイスの言語",
     },
+    /**
+     * 値の型の名前。ピン、型の選択、変数、メッセージのどこでも同じ語を使い、1 つの型に 1 つの語。
+     * 「数値」はブループリントの float と、ストーリー変数・リストのフィールド・ページのパラメータの number の両方。
+     * 「リスト」は array とページのパラメータの list の両方。
+     */
+    valueType: {
+        // ピン名の後、変数のラベル、メッセージでの書き方。英語は型 ID、日本語は名前を書く
+        inline: "{name}",
+        string: "文字列",
+        integer: "整数",
+        float: "数値",
+        number: "数値",
+        boolean: "真偽値",
+        json: "JSON",
+        array: "リスト",
+        list: "リスト",
+        any: "任意の値",
+        text: "テキスト",
+        audioTrack: "トラック",
+        image: "画像",
+        imageAsset: "画像",
+        imageAssetOrNull: "画像",
+        color: "色",
+        rgbaColor: "色",
+        vector2D: "2 次元ベクトル",
+        rect: "矩形",
+        timer: "タイマー",
+        animationToken: "アニメーション",
+        soundHandle: "サウンド",
+        responseBody: "レスポンス",
+        saveSlot: "セーブ枠",
+        element: "要素",
+        elementOf: "{widget}の要素",
+    },
     diagnostics: {
         empty: "指摘なし",
         summary: "メッセージ · エラー {errors} · 警告 {warnings} · 情報 {infos}",
@@ -169,7 +203,7 @@ export const blueprint = {
             toUnknown: "線のつなぎ先のノードがない",
             portMismatch: "{from} → {to} でピンが噛み合っていない",
             connectionInvalid: "{from} -> {to} のつなぎ方が不正。{detail}",
-            connectionTypeDetail: " 型が合わない：{from} -> {to}",
+            connectionTypeDetail: "型が合わない：{from} -> {to}",
         },
         node: {
             contextInvalid: "ノード「{name}」は{owner}では使えない。{hint}",
@@ -202,7 +236,7 @@ export const blueprint = {
         },
         condition: {
             returnMissing: "条件は真偽値を返す必要がある",
-            returnNotBoolean: "条件は真偽値を返す必要があるが、これが返すのは {type}",
+            returnNotBoolean: "条件は真偽値を返す必要があるが、これが返すのは{type}",
         },
         binding: {
             broken: "壊れた結びつけ「{id}」{detail}",

@@ -28,7 +28,7 @@ export const localVariableBlueprintNodes: BlueprintNodeDef[] = [
         pins: [],
         inspectorParams: [
             { key: "name", label: "Name", kind: "string" },
-            { key: "valueType", label: "Data type", kind: "select", options: VARIABLE_TYPE_SELECT_OPTIONS },
+            { key: "valueType", label: "Data type", kind: "select", options: VARIABLE_TYPE_SELECT_OPTIONS, optionsAreValueTypes: true },
             { key: "defaultValue", label: "Default", kind: "literal" },
         ],
         execute: () => ({}),

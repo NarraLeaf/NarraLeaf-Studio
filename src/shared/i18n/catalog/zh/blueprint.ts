@@ -105,6 +105,41 @@ export const blueprint = {
         language: "语言",
         voiceLanguage: "语音语言",
     },
+    /**
+     * 值类型的名称：引脚、类型选择器、变量与消息中都用这一组词，一种类型一个词。
+     * 「数字」同时是蓝图的 float 与故事变量、列表字段、页面参数的 number；「列表」同时是 array 与页面参数的 list。
+     * 「文本」与 `/local` 的 type= 输入词一致；页面与组件的 text 参数是玩家读到、由文本或按钮直接显示的文字，
+     * 叫「界面文字」，与「文本」区分。
+     */
+    valueType: {
+        // 引脚名之后、变量标签与消息中的写法。英文写类型 id，中文写名称
+        inline: "{name}",
+        string: "文本",
+        integer: "整数",
+        float: "数字",
+        number: "数字",
+        boolean: "布尔值",
+        json: "JSON",
+        array: "列表",
+        list: "列表",
+        any: "任意值",
+        text: "界面文字",
+        audioTrack: "音轨",
+        image: "图片",
+        imageAsset: "图片",
+        imageAssetOrNull: "图片",
+        color: "颜色",
+        rgbaColor: "颜色",
+        vector2D: "二维向量",
+        rect: "矩形",
+        timer: "计时器",
+        animationToken: "动画",
+        soundHandle: "声音",
+        responseBody: "响应",
+        saveSlot: "存档槽",
+        element: "元素",
+        elementOf: "{widget}元素",
+    },
     diagnostics: {
         empty: "无诊断信息",
         summary: "消息 · {errors}E · {warnings}W · {infos}I",
@@ -168,8 +203,8 @@ export const blueprint = {
             fromUnknown: "连线的源节点不存在",
             toUnknown: "连线的目标节点不存在",
             portMismatch: "引脚不匹配：{from} → {to}",
-            connectionInvalid: "无效连接 {from} -> {to}：{detail}",
-            connectionTypeDetail: " 类型不匹配：{from} -> {to}",
+            connectionInvalid: "无效连接 {from} -> {to}{detail}",
+            connectionTypeDetail: "，类型不匹配：{from} -> {to}",
         },
         node: {
             contextInvalid: "节点“{name}”不能用于{owner}{hint}",
@@ -202,7 +237,7 @@ export const blueprint = {
         },
         condition: {
             returnMissing: "条件应返回一个布尔值",
-            returnNotBoolean: "条件必须返回布尔值，但此处返回的是 {type}",
+            returnNotBoolean: "条件必须返回布尔值，但此处返回的是{type}",
         },
         binding: {
             broken: "损坏的绑定“{id}”{detail}",
@@ -1542,7 +1577,7 @@ export const blueprint = {
         getTotalPlaytime: "获取累计游玩时长",
     },
     nodeDescription: {
-        getComponentParam: "当前放置处为所选参数设置的值；未设置时为参数的默认值。使用翻译键的「文字」参数得到键名，其文字由「翻译键文本」取得",
+        getComponentParam: "当前放置处为所选参数设置的值；未设置时为参数的默认值。使用翻译键的「界面文字」参数得到键名，其文字由「翻译键文本」取得",
         getPageParam: "打开页面时为所选参数传入的值；未传入时为参数的默认值。参数在页面属性中声明",
         compareEqual: "A 与 B 类型相同且值相同时为真。数字 1 与文本“1”不相等",
         compareNotEqual: "A 与 B 的值或类型不同时为真。数字 1 与文本“1”视为不同",
