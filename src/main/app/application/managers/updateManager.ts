@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "child_process";
 import os from "os";
+import { session } from "electron";
 import { autoUpdater, CancellationToken } from "electron-updater";
 import { IPCEventType } from "@shared/types/ipcEvents";
 import {
@@ -8,6 +9,8 @@ import {
     UPDATE_AUTO_DOWNLOAD_KEY,
     UPDATE_RECHECK_INTERVAL_MS,
     UPDATE_RELEASES_URL,
+    UPDATE_SOURCE_KEY,
+    readUpdateSourcePreference,
     type UpdateState,
     type UpdateStatus,
 } from "@shared/constants/update";
@@ -25,6 +28,8 @@ import {
     type InstallLayout,
 } from "./updateStaging";
 import { DifferentialRetry } from "./updateDifferentialRetry";
+import { askGitCode, chooseUpdateSource, type UpdateFetch, type UpdateOffer, type UpdateSourceId } from "./updateSource";
+import { releaseDirectoryFeed } from "./releaseDirectoryProvider";
 import { getMainTranslator } from "../i18n";
 import type { BaseApp } from "../baseApp";
 
@@ -32,6 +37,19 @@ export { compareVersions } from "./updateVersions";
 
 /** Where the check-only path reads the newest published release from. */
 const GITHUB_LATEST_RELEASE_API = "https://api.github.com/repos/NarraLeaf/NarraLeaf-Studio/releases/latest";
+
+/**
+ * The feed the package was built with (`publish:` in electron-builder.yml). Used when no source
+ * answered, so a check that cannot reach anything fails the way it always has rather than reading a
+ * release directory an earlier check settled on.
+ */
+const PACKAGED_FEED = { provider: "github", owner: "NarraLeaf", repo: "NarraLeaf-Studio" } as const;
+
+/**
+ * The partition electron-updater downloads through (its `NET_SESSION_NAME`). Sources are timed on
+ * it, so the proxy the measurement goes through is the one the download will.
+ */
+const UPDATER_SESSION = "electron-updater";
 
 /** A check that hangs is worse than one that fails: the panel would spin forever. */
 const CHECK_TIMEOUT_MS = 15_000;
@@ -54,14 +72,16 @@ const BUSY_STATUSES: ReadonlySet<UpdateStatus> = new Set(["checking", "downloadi
  *
  * Two very different paths, chosen by {@link canSelfUpdate}:
  *
- * - **Windows, packaged** - electron-updater against the GitHub release the `v*` tag published, in
- *   three steps that all run while the author works: check, download, prepare. Preparing runs the
+ * - **Windows, packaged** - electron-updater against the release the `v*` tag published, on GitHub
+ *   or on its GitCode copy, whichever is faster (`updateSource.ts`), in three steps that all run
+ *   while the author works: check, download, prepare. Preparing runs the
  *   downloaded installer with `--nl-prepare`, which unpacks the new version into the installation
  *   beside the running one (see `updateStaging.ts` for the layout). Applying it is then a swap of
  *   folders, so the restart the author asks for takes as long as any other restart instead of the
  *   minutes a full install keeps Studio closed. A version found by a check is downloaded and
  *   prepared without asking unless the author turned that off (`UPDATE_AUTO_DOWNLOAD_KEY`).
- * - **Everything else** - one GitHub API request and a version comparison, reported as `manual`.
+ * - **Everything else** - one request for the newest release and a version comparison, reported as
+ *   `manual`.
  *   macOS cannot self-update at all until Studio is code-signed (Squirrel.Mac refuses an unsigned
  *   app, and the updater's mac channel wants a `zip` target we do not build); Linux is not
  *   published by `release.yml` at all; and an unpackaged development build has no
@@ -96,6 +116,13 @@ export class UpdateManager {
      * initiative until the next launch; pressing Download still does.
      */
     private declinedVersion: string | null = null;
+    /**
+     * The source the last check settled on, and for which version. A recheck finding the same
+     * version uses it again rather than timing both sources a second time.
+     */
+    private sourceChoice: { version: string; source: UpdateSourceId } | null = null;
+    /** What the source the updater is pointed at offers; its page is where "Release notes" goes. */
+    private offer: UpdateOffer | null = null;
     private readonly differentialRetry = new DifferentialRetry({
         log: message => this.app.logger.info("[Update]", message),
         networkError: summary => new Error(getMainTranslator(this.app).t("update.errors.connection", { reason: summary })),
@@ -249,14 +276,14 @@ export class UpdateManager {
             if (this.takesOnItsOwn(info.version)) {
                 // Straight to downloading, without passing through "available": every surface that
                 // announces an offer would otherwise announce one that is already being acted on.
-                this.state = { ...this.state, availableVersion: info.version, releaseUrl: UPDATE_RELEASES_URL, error: undefined };
+                this.state = { ...this.state, availableVersion: info.version, releaseUrl: this.releaseUrlFor(info.version), error: undefined };
                 void this.beginDownload(false);
                 return;
             }
             this.setState({
                 status: "available",
                 availableVersion: info.version,
-                releaseUrl: UPDATE_RELEASES_URL,
+                releaseUrl: this.releaseUrlFor(info.version),
                 error: undefined,
             });
         });
@@ -311,6 +338,8 @@ export class UpdateManager {
         }
 
         if (this.canSelfUpdate()) {
+            this.setState({ status: "checking", error: undefined });
+            await this.pointAtSource();
             try {
                 await autoUpdater.checkForUpdates();
             } catch (error) {
@@ -321,20 +350,58 @@ export class UpdateManager {
             return this.state;
         }
 
-        return this.checkViaGitHub();
+        return this.checkManually();
     }
 
     /**
-     * The check-only path: one request to the releases API, one comparison.
+     * Point the updater at the release directory of the source to download from.
      *
-     * Goes through `applyDownloadRewrite` so an author behind a mirror can reach it. The
-     * *download* is not rewritten - electron-updater resolves its own URLs from `app-update.yml`,
-     * and pointing it at a mirror means a `generic` feed whose layout has to match GitHub's
-     * release URLs exactly. That is a separate piece of work, not a line here; until it exists an
-     * author on a mirror can still see that an update exists and fetch it from the page.
+     * Asked before every check rather than once, because which source is faster is a property of
+     * the network the author is on today. The choice is remembered per version, so the six-hourly
+     * recheck of a version already found does not time the sources again.
      */
-    private async checkViaGitHub(): Promise<UpdateState> {
+    private async pointAtSource(): Promise<void> {
+        const preference = readUpdateSourcePreference(this.app.globalState.get(UPDATE_SOURCE_KEY));
+        let offer: UpdateOffer | null = null;
+        try {
+            offer = await chooseUpdateSource({
+                fetch: updaterSessionFetch(),
+                currentVersion: this.state.currentVersion,
+                preference,
+                remembered: this.sourceChoice,
+                log: message => this.app.logger.info("[Update]", message),
+            });
+        } catch (error) {
+            this.app.logger.warn(`[Update] Choosing where to update from failed: ${describeError(error)}`);
+        }
+        this.offer = offer;
+        if (!offer) {
+            this.app.logger.info(`[Update] No update source answered (${preference}); asking the packaged feed.`);
+            autoUpdater.setFeedURL(PACKAGED_FEED);
+            return;
+        }
+        this.sourceChoice = { version: offer.version, source: offer.source };
+        autoUpdater.setFeedURL(releaseDirectoryFeed(offer.feedUrl));
+    }
+
+    /** The page of the release a check found, on the host it was found on. */
+    private releaseUrlFor(version: string): string {
+        return this.offer?.version === version ? this.offer.releaseUrl : UPDATE_RELEASES_URL;
+    }
+
+    /**
+     * The check-only path: one request for the newest release, one comparison.
+     *
+     * GitHub's releases API, through `applyDownloadRewrite` so an author behind a mirror can reach
+     * it; GitCode's when the author chose it or GitHub did not answer. The page linked is then
+     * GitCode's copy of the release, which is the one such an author can open.
+     */
+    private async checkManually(): Promise<UpdateState> {
         this.setState({ status: "checking", error: undefined });
+        const preference = readUpdateSourcePreference(this.app.globalState.get(UPDATE_SOURCE_KEY));
+        if (preference === "gitcode") {
+            return this.checkManuallyOnGitCode(null, preference);
+        }
         try {
             const url = applyDownloadRewrite(GITHUB_LATEST_RELEASE_API, message => this.app.logger.info("[Update]", message));
             const response = await studioFetch(url, {
@@ -342,8 +409,7 @@ export class UpdateManager {
                 signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
             });
             if (!response.ok) {
-                this.setState({ status: "error", error: `GitHub answered ${response.status}` });
-                return this.state;
+                return this.checkManuallyOnGitCode(`GitHub answered ${response.status}`, preference);
             }
             const payload = await response.json() as { tag_name?: unknown; html_url?: unknown };
             const tag = typeof payload.tag_name === "string" ? payload.tag_name : "";
@@ -363,8 +429,35 @@ export class UpdateManager {
                 releaseUrl: typeof payload.html_url === "string" ? payload.html_url : UPDATE_RELEASES_URL,
             });
         } catch (error) {
-            this.setState({ status: "error", error: describeError(error) });
+            return this.checkManuallyOnGitCode(describeError(error), preference);
         }
+        return this.state;
+    }
+
+    /**
+     * The check-only path on GitCode. `githubFailure` is why GitHub was passed over, and is what gets
+     * reported if GitCode does not answer either; null when GitCode was the author's choice.
+     */
+    private async checkManuallyOnGitCode(githubFailure: string | null, preference: string): Promise<UpdateState> {
+        if (preference === "github") {
+            this.setState({ status: "error", error: githubFailure ?? "GitHub did not answer." });
+            return this.state;
+        }
+        let offer: UpdateOffer | null = null;
+        try {
+            offer = await askGitCode(studioFetch as UpdateFetch);
+        } catch (error) {
+            this.app.logger.info(`[Update] GitCode did not answer: ${describeError(error)}`);
+        }
+        if (!offer) {
+            this.setState({ status: "error", error: githubFailure ?? "GitCode did not answer." });
+            return this.state;
+        }
+        if (compareVersions(offer.version, this.state.currentVersion) <= 0) {
+            this.setState({ status: "idle", availableVersion: undefined });
+            return this.state;
+        }
+        this.setState({ status: "manual", availableVersion: offer.version, releaseUrl: offer.releaseUrl });
         return this.state;
     }
 
@@ -666,6 +759,12 @@ export class UpdateManager {
             }
         }
     }
+}
+
+/** Fetch through the session electron-updater downloads through. */
+function updaterSessionFetch(): UpdateFetch {
+    const updaterSession = session.fromPartition(UPDATER_SESSION, { cache: false });
+    return (url, init) => updaterSession.fetch(url, init);
 }
 
 /** Updater failures arrive as Errors, strings, and occasionally objects. All of them get read. */

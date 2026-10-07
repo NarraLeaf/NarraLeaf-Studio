@@ -40,11 +40,19 @@ export const update = {
     setting: {
         checkOnLaunch: {
             label: "更新を自動で確認",
-            description: "Studio の起動直後と、起動中は数時間ごとに GitHub へ問い合わせる",
+            description: "Studio の起動直後と、起動中は数時間ごとに新しいバージョンを問い合わせる",
         },
         autoDownload: {
             label: "更新を自動でダウンロード",
             description: "新しいバージョンをバックグラウンドでダウンロードして準備する。Studio を再起動すると適用される",
+        },
+        source: {
+            label: "更新のダウンロード元",
+            description: "新しいバージョンのダウンロード元。自動では GitHub と GitCode の速度を比べ、速い方を使う",
+            options: {
+                auto: "自動",
+                gitcode: "GitCode（中国本土）",
+            },
         },
     },
     notification: {

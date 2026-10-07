@@ -23,6 +23,22 @@ export const UPDATE_AUTO_CHECK_KEY = "app.updateCheckOnLaunch";
 export const UPDATE_AUTO_DOWNLOAD_KEY = "app.updateAutoDownload";
 
 /**
+ * Where updates are downloaded from: GitHub, GitCode (the same files, served from inside mainland
+ * China), or `auto` - both are asked and the faster one is used. See `updateSource.ts` in the main
+ * process for how "faster" is decided.
+ */
+export const UPDATE_SOURCE_KEY = "app.updateSource";
+
+export const UPDATE_SOURCE_PREFERENCES = ["auto", "github", "gitcode"] as const;
+
+export type UpdateSourcePreference = (typeof UPDATE_SOURCE_PREFERENCES)[number];
+
+/** What the stored setting means, with anything unrecognised read as `auto`. */
+export function readUpdateSourcePreference(value: unknown): UpdateSourcePreference {
+    return (UPDATE_SOURCE_PREFERENCES as readonly unknown[]).includes(value) ? value as UpdateSourcePreference : "auto";
+}
+
+/**
  * Whether this profile has already been told that closing every window leaves Studio running in
  * the notification area.
  *
@@ -50,7 +66,10 @@ export const UPDATE_AUTO_CHECK_DELAY_MS = 8_000;
  */
 export const UPDATE_RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
-/** Where "View release notes" and the macOS "download it yourself" path send the user. */
+/**
+ * Where "View release notes" and the macOS "download it yourself" path send the user when no check
+ * has said which release, or on which host.
+ */
 export const UPDATE_RELEASES_URL = "https://github.com/NarraLeaf/NarraLeaf-Studio/releases/latest";
 
 /**
