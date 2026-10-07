@@ -1018,6 +1018,9 @@ interface HeldProjects {
     problem: TranslationKey | null;
 }
 
+const NOTHING_HELD: HeldProjects = { reading: false, projects: null, problem: null };
+const STILL_READING: HeldProjects = { reading: true, projects: null, problem: null };
+
 /**
  * What one server already holds, asked once per server the author opens.
  *
@@ -1033,7 +1036,9 @@ interface HeldProjects {
  * name the way it always did rather than refusing to connect at all.
  */
 function useServerProjects(remoteOrigin: string | null): HeldProjects {
-    const [held, setHeld] = useState<HeldProjects>({ reading: false, projects: null, problem: null });
+    /** What is held, and the server it was asked of. */
+    const [held, setHeld] = useState<{ origin: string | null; value: HeldProjects }>(
+        { origin: null, value: NOTHING_HELD });
     /**
      * The read that is out, and which server it is for.
      *
@@ -1046,11 +1051,11 @@ function useServerProjects(remoteOrigin: string | null): HeldProjects {
 
     useEffect(() => {
         if (remoteOrigin === null) {
-            setHeld({ reading: false, projects: null, problem: null });
+            setHeld({ origin: null, value: NOTHING_HELD });
             return;
         }
         let live = true;
-        setHeld({ reading: true, projects: null, problem: null });
+        setHeld({ origin: remoteOrigin, value: STILL_READING });
 
         const answer = outstanding.current?.key === remoteOrigin
             ? outstanding.current.answer
@@ -1062,19 +1067,27 @@ function useServerProjects(remoteOrigin: string | null): HeldProjects {
             const read = result as Awaited<ReturnType<typeof listProjects>>;
             if (!read.ok) {
                 setHeld({
-                    reading: false,
-                    projects: null,
-                    problem: SERVER_PROBLEM_KEYS[serverProblemFromTeam(read.problem).kind],
+                    origin: remoteOrigin,
+                    value: {
+                        reading: false,
+                        projects: null,
+                        problem: SERVER_PROBLEM_KEYS[serverProblemFromTeam(read.problem).kind],
+                    },
                 });
                 return;
             }
-            setHeld({ reading: false, projects: read.value.projects, problem: null });
+            setHeld({ origin: remoteOrigin, value: { reading: false, projects: read.value.projects, problem: null } });
         });
 
         return () => { live = false; };
     }, [remoteOrigin]);
 
-    return held;
+    // The render that first sees a server comes before the effect that asks it, and what is held
+    // then is the last server's answer or nobody's. Said as still reading from that render on:
+    // otherwise the name field and Create were drawn for a frame before the list was asked for,
+    // pressable, with a name the server already holds not yet refused.
+    if (held.origin !== remoteOrigin) return remoteOrigin === null ? NOTHING_HELD : STILL_READING;
+    return held.value;
 }
 
 /**
