@@ -236,6 +236,12 @@ export type LiveGameUiCallbackDeps = {
      * - the story preview, a bundle that carries none - and every backlog row then has no picture.
      */
     resolveSpeakerAvatar?: (sourceName: string) => BlueprintImageAsset | null;
+    /**
+     * Whether Play Voice would play this line's take now, by its voice unit id: whether the dub
+     * language in force has one. Read lazily for the reason `resolveSpeakerAvatar` is. Absent on a
+     * host that cannot play a take - the story preview - and every backlog row then says it has none.
+     */
+    canReplayVoice?: (unitId: string) => boolean;
 };
 
 /**
@@ -327,6 +333,7 @@ function liveGameHistoryControls(liveGame: LiveGame): {
 function toBlueprintHistoryEntries(
     raw: unknown,
     resolveSpeakerAvatar?: (sourceName: string) => BlueprintImageAsset | null,
+    canReplayVoice?: (unitId: string) => boolean,
 ): BlueprintGameHistoryEntry[] {
     if (!Array.isArray(raw)) {
         return [];
@@ -340,6 +347,9 @@ function toBlueprintHistoryEntries(
         const isMenu = element.type === "menu";
         const text = element.text == null ? "" : String(element.text);
         const character = !isMenu && element.character != null ? String(element.character) : null;
+        // The replayable handle. Present from engine 0.24.0 on; an entry from an older save simply
+        // has none, and a backlog replay button hides itself for that line.
+        const voiceId = !isMenu && element.voiceId != null ? String(element.voiceId) : null;
         return [{
             id: String(record.token ?? ""),
             type: isMenu ? "menu" : "say",
@@ -347,9 +357,8 @@ function toBlueprintHistoryEntries(
             character,
             avatar: character ? resolveSpeakerAvatar?.(character) ?? null : null,
             voice: !isMenu && element.voice != null ? String(element.voice) : null,
-            // The replayable handle. Present from engine 0.24.0 on; an entry from an older
-            // save simply has none, and a backlog replay button hides itself for that line.
-            voiceId: !isMenu && element.voiceId != null ? String(element.voiceId) : null,
+            voiceId,
+            hasVoice: voiceId !== null && canReplayVoice?.(voiceId) === true,
             selected: isMenu && element.selected != null ? String(element.selected) : null,
             isPending: record.isPending === true,
         }];
@@ -400,6 +409,7 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
         currentDialogNametagRef,
         dialogClickTargets,
         resolveSpeakerAvatar,
+        canReplayVoice,
     } = deps;
 
     return {
@@ -426,7 +436,7 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
         },
 
         onGetHistory: (): BlueprintGameHistoryEntry[] => {
-            return toBlueprintHistoryEntries(getLiveGame()?.getHistory?.(), resolveSpeakerAvatar);
+            return toBlueprintHistoryEntries(getLiveGame()?.getHistory?.(), resolveSpeakerAvatar, canReplayVoice);
         },
 
         onGetFuture: (): BlueprintGameHistoryEntry[] => {
@@ -435,6 +445,7 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
             return toBlueprintHistoryEntries(
                 getFuture ? getFuture.call(liveGame) : undefined,
                 resolveSpeakerAvatar,
+                canReplayVoice,
             );
         },
 

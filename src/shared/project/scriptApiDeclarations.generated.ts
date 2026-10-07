@@ -1441,6 +1441,12 @@ declare module "@narraleaf/script" {
     	 * URL the player already heard and nothing in the runtime accepts a URL.
     	 */
     	voiceId: string | null;
+    	/**
+    	 * Whether Play Voice plays this line's take now: the line has a \`voiceId\` and the dub language in
+    	 * force has a take for it. What a backlog row's replay button shows itself by - a list row reads
+    	 * whether an element is drawn from a boolean field.
+    	 */
+    	hasVoice: boolean;
     	/** Chosen option text for a menu entry; null for say entries or an unresolved menu. */
     	selected: string | null;
     	/** True while the entry is the line currently being shown (not yet committed). */

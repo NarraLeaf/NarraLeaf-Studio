@@ -2464,6 +2464,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         currentDialogNametagRef,
         dialogClickTargets: nlrDialogClickTargets,
         resolveSpeakerAvatar: sourceName => resolveSpeakerAvatarRef.current(sourceName),
+        // The same answer Play Voice acts on, so a backlog row offers a replay exactly when one plays.
+        canReplayVoice: unitId => Boolean(nlrCompiledRef.current?.getVoicePlayback?.(unitId)),
     }), [requireActiveLiveGame]);
 
     /**
