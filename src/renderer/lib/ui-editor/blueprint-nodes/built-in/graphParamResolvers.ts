@@ -418,6 +418,8 @@ import {
 import { BLUEPRINT_SOUND_PARAM_TRACK, readBlueprintAudioTrackParam } from "./audioTrackParams";
 import { readKeyTextLocale, resolveLocalizationKeyText } from "./localizationKeyText";
 import { GAME_LOCALE_STATE_KEY } from "../../blueprint-runtime/blueprintStateWrites";
+import { readRuntimeLocale } from "@/lib/ui-editor/runtime/localization/runtimeLocale";
+import { getActiveProjectLocale } from "@shared/typography/projectFonts";
 import {
     readBlueprintDurationStyle,
     readBlueprintRelativeStyle,
@@ -2925,6 +2927,23 @@ function resolveWidgetPropertyNodeOutput(
 const DEFAULT_TIME_FORMAT_PATTERN = "YYYY-MM-DD HH:mm";
 
 /**
+ * The language `Format Time Localized` and `Format Relative Time` word a moment in when their Locale
+ * is empty: the language the game's text is in, so a save slot's date reads like the slot's label.
+ *
+ * The game's own tag, not one of Studio's catalogues - `Intl` knows far more languages than Studio
+ * draws its words in. In a running game that is the player's current language, read straight from the
+ * game (`runtimeLocale.ts`) so a switch is seen on the very read it lands on; recorded as read, so a
+ * Blueprint Value showing the date runs again when the player switches. Where no game is running - the
+ * editor, the story preview - it is the language the window draws the project's text in, which the
+ * workspace publishes as the source language (`projectFonts`). Empty only where neither has one, and
+ * `Intl` then falls back to the machine's language.
+ */
+function readTimeWordingLocale(runtime: DataPinResolveRuntime | undefined): string {
+    runtime?.valueExecution?.trackState?.(GAME_LOCALE_STATE_KEY);
+    return readRuntimeLocale().locale || getActiveProjectLocale();
+}
+
+/**
  * The Time family, all pure.
  *
  * Every branch reads its inputs through {@link resolveInput} and answers from
@@ -2978,11 +2997,16 @@ function resolveTimeNodeOutput(
         const pattern = str("pattern");
         return formatBlueprintTime(ts("timestamp"), pattern.length > 0 ? pattern : DEFAULT_TIME_FORMAT_PATTERN);
     }
+    // A Locale the author wrote wins; an empty one is the game's language (see `readTimeWordingLocale`).
+    const wordingLocale = (pin: string): string => {
+        const written = str(pin);
+        return written.trim().length > 0 ? written : readTimeWordingLocale(runtime);
+    };
     if (type === BLUEPRINT_NODE_TYPE_TIME_FORMAT_LOCALIZED) {
         return portId === "result"
             ? formatBlueprintTimeLocalized({
                 timestamp: ts("timestamp"),
-                locale: str("locale"),
+                locale: wordingLocale("locale"),
                 dateStyle: readBlueprintTimeDisplayStyle(params, BLUEPRINT_TIME_PARAM_DATE_STYLE, "medium"),
                 // Defaults to a date with no clock: the common label is a day, and an author who
                 // wants the time can say so in one click.
@@ -2995,7 +3019,7 @@ function resolveTimeNodeOutput(
             ? formatBlueprintRelativeTime({
                 from: ts("from"),
                 to: ts("to"),
-                locale: str("locale"),
+                locale: wordingLocale("locale"),
                 numeric: readBlueprintRelativeStyle(params),
             })
             : undefined;

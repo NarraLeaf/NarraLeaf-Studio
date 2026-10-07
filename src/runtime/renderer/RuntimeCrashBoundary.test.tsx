@@ -18,15 +18,15 @@ vi.mock("@/lib/ui-editor/runtime/gameRuntimeBridge", () => ({
 }));
 
 // The vitest alias maps `@` at the Studio renderer, so `@/lib/i18n` would resolve to the editor's
-// live store rather than the fixed-locale shim the runtime bundle is built with. Keys are enough
+// live store rather than the shell-language shim the runtime bundle is built with. Keys are enough
 // here: what is under test is the catching and the reporting, not the wording.
 vi.mock("@/lib/i18n", () => ({
     useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-import { RuntimeCrashBoundary } from "./RuntimeCrashBoundary";
+import { RuntimeCrashBoundary, carryRendererFailure } from "./RuntimeCrashBoundary";
 import { clearAutomaticRestarts, setRuntimeCrashPolicy } from "./crashPolicy";
-import { clearStoryPosition, recordStoryRow, recordStoryScene } from "@/lib/ui-editor/runtime/app/lastStoryPosition";
+import { clearStoryPosition, readStoryPosition, recordStoryRow, recordStoryScene } from "@/lib/ui-editor/runtime/app/lastStoryPosition";
 
 function Exploding(): never {
     throw new TypeError("Cannot read properties of undefined (reading 'designSize')");
@@ -156,6 +156,38 @@ describe("RuntimeCrashBoundary", () => {
             sceneName: "The corridor",
             rowId: "block-7",
         });
+    });
+
+    it("takes a failure the engine caught first, with what was known where it was caught", async () => {
+        // The engine's Player catches a render failure inside the stage and puts its own fallback
+        // there; the shell throws it on to this boundary. By then the scene has unmounted and the
+        // position record is empty, so the position and the stage's component stack travel with it.
+        bridge = {
+            log: (level, message) => { logged.push({ level, message }); },
+            saveCrashReport: async request => {
+                reported.push(request);
+                return { outcome: "written", path: "crash-report.txt" };
+            },
+        };
+        recordStoryScene("Chapter One", "The corridor");
+        recordStoryRow("block-7");
+        const failure = carryRendererFailure(new Error("the stage could not draw"), {
+            story: readStoryPosition(),
+            componentStack: "\n    at StageSceneList",
+        });
+        clearStoryPosition();
+        function ThrowsOn(): never {
+            throw failure;
+        }
+
+        render(<RuntimeCrashBoundary><ThrowsOn /></RuntimeCrashBoundary>);
+
+        expect(screen.getByText("game.crash.title")).toBeTruthy();
+        expect(logged[0].message).toContain("StageSceneList");
+        fireEvent.click(screen.getByText("game.crash.saveReport"));
+        await waitFor(() => expect(reported).toHaveLength(1));
+        expect(reported[0].story).toEqual({ storyName: "Chapter One", sceneName: "The corridor", rowId: "block-7" });
+        expect(reported[0].details).toContain("StageSceneList");
     });
 
     it("keeps the player's way out reachable in a small window", () => {

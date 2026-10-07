@@ -292,6 +292,18 @@ export type GameAppHost = {
      */
     reportIssue?: (issue: GameAppRuntimeIssue) => void;
     /**
+     * The stage stopped drawing for good: a render failure inside the engine's `Player` reached the
+     * engine's own error boundary, which replaces the whole stage - dialogue and on-stage interface
+     * included - with a fallback of its own for the rest of the session. That fallback is a white box
+     * with an English sentence and no way out, so a shell with a crash screen of its own takes the game
+     * there instead, which says what happened in the player's language and offers the restart.
+     *
+     * Called after the failure has been reported the usual way (`log`, `reportIssue`), for the running
+     * session only. Omitted by Dev Mode, which keeps the failure in its Problems panel with the row that
+     * raised it and keeps its debugging tools on screen, and by the story preview.
+     */
+    stageCrashed?: (error: Error, componentStack: string | null) => void;
+    /**
      * What became of each asset a widget on a surface asked for - drawn, not asked for, or failed
      * and at which step - and when that drawing goes away.
      *

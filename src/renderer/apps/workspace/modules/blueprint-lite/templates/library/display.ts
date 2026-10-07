@@ -73,11 +73,11 @@ export const DISPLAY_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         owners: WIDGET_OWNERS,
         featured: 6,
         text: {
-            en: { title: "Clock", description: "Shows the current time in the format of the player's system." },
-            zh: { title: "时钟", description: "按玩家系统的格式显示当前时间" },
-            ja: { title: "時計", description: "現在の時刻をプレイヤーのシステムの形式で表示する" },
+            en: { title: "Clock", description: "Shows the current time in the format of the game's language." },
+            zh: { title: "时钟", description: "按游戏语言的格式显示当前时间" },
+            ja: { title: "時計", description: "現在の時刻をゲームの言語の形式で表示する" },
         },
-        // An empty locale is the player's system locale, so the time reads as the system clock does.
+        // An empty locale is the game's language, so the time reads in the language of the words around it.
         graph: () => everySecondGraph(
             "format.result",
             "    now: blueprint.time.now @0,160",
@@ -178,9 +178,9 @@ export const DISPLAY_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         category: "display",
         owners: WIDGET_OWNERS,
         text: {
-            en: { title: "Date", description: "Shows today's date in the format of the player's system." },
-            zh: { title: "日期", description: "按玩家系统的格式显示今天的日期" },
-            ja: { title: "日付", description: "今日の日付をプレイヤーのシステムの形式で表示する" },
+            en: { title: "Date", description: "Shows today's date in the format of the game's language." },
+            zh: { title: "日期", description: "按游戏语言的格式显示今天的日期" },
+            ja: { title: "日付", description: "今日の日付をゲームの言語の形式で表示する" },
         },
         // Written once as the widget starts. Unlike the clock it does not keep time: a page left open
         // across midnight is the one case it would miss, and a loop for that is not worth running.

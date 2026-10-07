@@ -25,6 +25,32 @@ export function describeRendererError(error: unknown, componentStack?: string | 
 }
 
 /**
+ * What a failure caught by another boundary first brings with it when it is thrown on to this one.
+ *
+ * The engine's `Player` catches a render failure inside it and replaces the stage with a fallback of
+ * its own; the shell throws that failure again so the player gets this screen instead (see
+ * `GameAppHost.stageCrashed`). By then the stage is coming down, so the two facts the screen and the
+ * report want are taken where it was first caught: where the story was, and where in the stage it
+ * failed. Read here by identity, so an ordinary throw carries nothing and reads as before.
+ */
+export type CarriedRendererFailure = {
+    story: GameCrashStoryPosition | null;
+    componentStack: string | null;
+};
+
+const carriedFailures = new WeakMap<object, CarriedRendererFailure>();
+
+/** Attach what was known where `error` was first caught; returns `error` for throwing on. */
+export function carryRendererFailure(error: Error, carried: CarriedRendererFailure): Error {
+    carriedFailures.set(error, carried);
+    return error;
+}
+
+function carriedFailureOf(error: unknown): CarriedRendererFailure | undefined {
+    return typeof error === "object" && error !== null ? carriedFailures.get(error) : undefined;
+}
+
+/**
  * The boundary around the whole game.
  *
  * There was none. A throw anywhere in the game - a widget, a plugin's element renderer, the stage -
@@ -47,11 +73,15 @@ export class RuntimeCrashBoundary extends Component<RuntimeCrashBoundaryProps, R
         // `componentDidCatch`: both of those run after the failed tree has come down, and the engine
         // unmounts its scene on the way out. Asked then, "where was the player" answers "nowhere"
         // for every crash in the middle of a scene - which is the crash worth reporting.
-        return { details: describeRendererError(error), story: readStoryPosition() };
+        const carried = carriedFailureOf(error);
+        return {
+            details: describeRendererError(error, carried?.componentStack),
+            story: carried ? carried.story : readStoryPosition(),
+        };
     }
 
     componentDidCatch(error: unknown, info: ErrorInfo): void {
-        const details = describeRendererError(error, info.componentStack);
+        const details = describeRendererError(error, carriedFailureOf(error)?.componentStack ?? info.componentStack);
         this.setState({ details });
 
         const bridge = getGameRuntimeBridge();

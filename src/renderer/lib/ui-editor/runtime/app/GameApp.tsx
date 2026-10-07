@@ -1,6 +1,7 @@
 import {
     useCallback,
     useEffect,
+    useLayoutEffect,
     useMemo,
     useRef,
     useState,
@@ -645,6 +646,24 @@ export function GameApp(props: GameAppProps): ReactNode {
         });
     }, [gameLocalizationRuntime]);
     /**
+     * Whether this app is being taken down, which the language publish below must not answer.
+     *
+     * Taking the runtime core down empties its persistent store and tells every subscriber, and the
+     * language read from an empty store is the source language - which is not the language the player
+     * was reading. Published, it would put the shipped game's crash screen in that language (the
+     * shell speaks the language published here) along with the document's `lang`, at the one moment
+     * the game is unmounting because it crashed. A layout effect's cleanup runs before any passive
+     * one when the tree is removed, so this is set before the store is emptied. Cleared on every mount
+     * so a StrictMode remount in a development build leaves it as it found it.
+     */
+    const leavingRef = useRef(false);
+    useLayoutEffect(() => {
+        leavingRef.current = false;
+        return () => {
+            leavingRef.current = true;
+        };
+    }, []);
+    /**
      * The language the project's default font stack resolves in.
      *
      * A rung of that stack may be restricted to some languages (see `@shared/types/typography`), so
@@ -669,7 +688,12 @@ export function GameApp(props: GameAppProps): ReactNode {
             setActiveProjectLocale("");
             return;
         }
-        const publish = (): void => setActiveProjectLocale(gameLocalizationRuntime.getLocale());
+        const publish = (): void => {
+            // Not on the way out: see `leavingRef`.
+            if (!leavingRef.current) {
+                setActiveProjectLocale(gameLocalizationRuntime.getLocale());
+            }
+        };
         publish();
         return gameLocalizationRuntime.subscribe(publish);
     }, [gameLocalizationRuntime]);
@@ -6620,6 +6644,14 @@ export function GameApp(props: GameAppProps): ReactNode {
                 // only part of this an author can fix. Read it before anything else touches the
                 // play head.
                 reportFailure(err);
+            }}
+            onPlayerCrash={(err, crashSessionId, componentStack) => {
+                // Reported above through `onError`. What is left is the stage, which the engine has
+                // replaced with its own fallback - the shell decides whether that stays on screen.
+                if (nlrSession?.id !== crashSessionId) {
+                    return;
+                }
+                host.stageCrashed?.(err, componentStack);
             }}
         />
     );

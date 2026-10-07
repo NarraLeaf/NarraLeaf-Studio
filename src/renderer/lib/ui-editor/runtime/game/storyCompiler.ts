@@ -204,8 +204,8 @@ import {
     type StoryVisitedContent,
 } from "./storyVisited";
 // Every diagnostic is worded here, in the language of the window the compile runs in: Studio's own
-// language in Dev Mode and the scene preview, the machine's in a packaged game (the runtime bundle
-// aliases this module to its shim). An author reads these in the Issues panel, so they are never the
+// language in Dev Mode and the scene preview, the shell's in a packaged game (the runtime bundle
+// aliases this module to its shim, which speaks the game's language). An author reads these in the Issues panel, so they are never the
 // compiler's own English and never carry an id.
 import { translate } from "@/lib/i18n";
 import type { InterpolationParams, LocaleCode, TranslationKey } from "@shared/i18n";
