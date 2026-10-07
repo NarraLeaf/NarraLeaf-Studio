@@ -4,7 +4,9 @@ import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CACHE_ROOT_DIR_NAME, CacheNamespace, UserDataNamespace } from "@shared/types/constants";
 import {
+    adoptInstallerCacheStash,
     appDirectoryCacheCandidate,
+    installerCacheStash,
     legacyCacheRoot,
     migrateLegacyCacheRoot,
     probeWritable,
@@ -235,5 +237,65 @@ describe("migrating out of the old cache root", () => {
                 "utf-8",
             ),
         ).toBe("binary");
+    });
+});
+
+describe("the cache root an install moved aside", () => {
+    let scratch: string;
+    let installDir: string;
+    let root: string;
+
+    beforeEach(async () => {
+        scratch = await fs.mkdtemp(path.join(os.tmpdir(), "nls-cache-stash-"));
+        installDir = path.join(scratch, "NarraLeaf Studio");
+        root = path.join(installDir, CACHE_ROOT_DIR_NAME);
+        await fs.mkdir(installDir, { recursive: true });
+    });
+
+    afterEach(async () => {
+        await fs.rm(scratch, { recursive: true, force: true });
+    });
+
+    it("is named after the installation and sits beside it", () => {
+        expect(installerCacheStash(root)).toBe(`${installDir}.nl-cache`);
+    });
+
+    it("is moved back when the install stopped before restoring it", async () => {
+        const stash = installerCacheStash(root);
+        await fs.mkdir(path.join(stash, CacheNamespace.Toolchains), { recursive: true });
+        await fs.writeFile(path.join(stash, CacheNamespace.Toolchains, "zig.exe"), "binary");
+
+        expect(adoptInstallerCacheStash(root)).toBe(true);
+
+        expect(await fs.readFile(path.join(root, CacheNamespace.Toolchains, "zig.exe"), "utf-8")).toBe("binary");
+        await expect(fs.access(stash)).rejects.toThrow();
+    });
+
+    it("never replaces a cache root that is already there", async () => {
+        const stash = installerCacheStash(root);
+        await fs.mkdir(stash, { recursive: true });
+        await fs.writeFile(path.join(stash, "old"), "stash");
+        await fs.mkdir(root, { recursive: true });
+        await fs.writeFile(path.join(root, "current"), "root");
+
+        expect(adoptInstallerCacheStash(root)).toBe(false);
+
+        expect(await fs.readdir(root)).toEqual(["current"]);
+    });
+
+    it("is adopted before the root is probed, so the probe does not leave an empty root in its way", async () => {
+        const stash = installerCacheStash(root);
+        await fs.mkdir(stash, { recursive: true });
+        await fs.writeFile(path.join(stash, "kept"), "x");
+
+        const resolution = resolveCacheRoot({
+            packaged: true,
+            userDataDir: path.join(scratch, "userData"),
+            execPath: path.join(installDir, "NarraLeaf Studio.exe"),
+            platform: "win32",
+        });
+
+        expect(resolution).toEqual({ root, reason: "app-directory" });
+        expect(await fs.readdir(root)).toEqual(["kept"]);
     });
 });

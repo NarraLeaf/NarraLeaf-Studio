@@ -975,6 +975,7 @@ export const story = {
         title: "实时预览",
         dock: "停靠到场景编辑器",
         pip: "画中画",
+        skipTyping: "跳过打字动画",
         selectRow: "选择故事行以预览舞台状态",
         failed: "预览失败",
         settleTimeout: "舞台未能在限定时间内完成布置",

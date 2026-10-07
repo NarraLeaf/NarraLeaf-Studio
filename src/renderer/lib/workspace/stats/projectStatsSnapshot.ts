@@ -18,6 +18,7 @@ import {
     extractCharacterTranslationRows,
     extractKeyTranslationRows,
     extractEndingTranslationRows,
+    extractRenameTranslationRows,
     extractSceneTranslationRows,
     extractUiTranslationRows,
     type TranslatableUnitRef,
@@ -413,10 +414,9 @@ async function collectTranslatableRows(
     const localizationService = ctx.services.get<LocalizationService>(Services.Localization);
     const rows: TranslatableUnitRef[] = [];
 
-    const characters = ctx.services.get<CharacterService>(Services.Character).listCharacter();
-    for (const row of extractCharacterTranslationRows(
-        characters.map(character => ({ id: character.profile.getId(), name: character.profile.getName() })),
-    )) {
+    const characters = ctx.services.get<CharacterService>(Services.Character).listCharacter()
+        .map(character => ({ id: character.profile.getId(), name: character.profile.getName() }));
+    for (const row of extractCharacterTranslationRows(characters)) {
         rows.push({ unitId: row.unitId, sourceText: row.sourceText });
     }
     for (const document of documents) {
@@ -424,6 +424,9 @@ async function collectTranslatableRows(
             rows.push({ unitId: row.unitId, sourceText: row.sourceText });
         }
         for (const row of extractEndingTranslationRows(document)) {
+            rows.push({ unitId: row.unitId, sourceText: row.sourceText });
+        }
+        for (const row of extractRenameTranslationRows(document, characters)) {
             rows.push({ unitId: row.unitId, sourceText: row.sourceText });
         }
         for (const row of localizationService.extractRows(document)) {

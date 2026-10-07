@@ -15,6 +15,7 @@ import { useMenuBarModeContextMenu } from "./useMenuBarModeContextMenu";
 import { MENU_BAR_MODE_DEFAULT, MENU_BAR_MODE_KEY, MenuBarMode, resolveMenuBarMode } from "@/lib/settings/menuBarOptions";
 import { ProjectSwitcher } from "./ProjectSwitcher";
 import { ControlBar } from "./ControlBar";
+import { UpdateIndicator } from "./UpdateIndicator";
 import { LiveSessionPresence, TeamProjectProvider } from "../../modules/team";
 import { NotificationContainer } from "../ui/NotificationContainer";
 import { DialogContainer } from "../ui/DialogContainer";
@@ -919,6 +920,9 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                                 the only always-visible statement that a live session is running, and a
                                 session outlives every tab. */}
                             <LiveSessionPresence />
+                            {/* The software update, directly left of the dock toggles, while there
+                                is one to show. */}
+                            <UpdateIndicator />
                             <ControlBar
                                 leftSidebarVisible={leftDockOpen}
                                 rightSidebarVisible={rightDockOpen}

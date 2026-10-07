@@ -8,14 +8,6 @@
 export const saveSchema = {
     title: "Save fields",
     open: "Save fields",
-    type: {
-        string: "String",
-        integer: "Integer",
-        float: "Float",
-        boolean: "Boolean",
-        json: "JSON",
-        array: "Array",
-    },
     field: {
         name: "Name",
         type: "Type",

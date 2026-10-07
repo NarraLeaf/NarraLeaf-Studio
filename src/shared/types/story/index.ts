@@ -7,6 +7,7 @@ export * from "./stageObjects";
 export * from "./declarations";
 export * from "./labels";
 export * from "./endings";
+export * from "./renames";
 export * from "./order";
 export * from "./sceneRuntimeName";
 export * from "./groupRun";

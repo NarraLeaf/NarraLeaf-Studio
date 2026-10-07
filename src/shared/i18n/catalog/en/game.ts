@@ -2,7 +2,8 @@
  * `game` - text the running game produces, in Dev Mode and in a shipped build alike.
  *
  * `saveLoad.refused*` and `words` are shown to the player inside the game, in the game's language
- * (`playerWords.ts`). `crash` and `session` are the shell's, in the machine's language. The rest is
+ * (`playerWords.ts`). `crash` and `session` are the shell's, in the game's language as well
+ * (`shellLocale.ts`), or the machine's before a game language is known. The rest is
  * written to whoever is watching the run: the Dev Mode issues panel where there is one, the log
  * otherwise.
  */

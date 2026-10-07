@@ -597,6 +597,7 @@ function DynamicPinTypeSelect({
     fallbackValueType?: string;
     onPatchNodeParam: (nodeId: string, key: string, value: unknown) => void;
 }) {
+    const { t } = useTranslation();
     const current = types[pin.id] ?? pin.valueType ?? fallbackValueType ?? typeOptions[0] ?? "any";
     return (
         <div
@@ -607,7 +608,7 @@ function DynamicPinTypeSelect({
             <Select
                 size="sm"
                 className="min-w-[4.5rem]"
-                options={typeOptions.map(t => ({ value: t, label: t }))}
+                options={typeOptions.map(type => ({ value: type, label: formatBlueprintValueTypeLabel(type, t) }))}
                 value={current}
                 onChange={value => {
                     onPatchNodeParam(nodeId, typeParamKey, { ...types, [pin.id]: String(value) });
@@ -1358,7 +1359,12 @@ function InspectorParamOnCard({
               ...(selectOptions.some(opt => opt.value === "")
                   ? []
                   : [{ value: "", label: resolveBlueprintLabel(spec.emptyOptionLabel ?? "-", t) }]),
-              ...selectOptions.map(opt => ({ value: opt.value, label: resolveBlueprintLabel(opt.label, t) })),
+              ...selectOptions.map(opt => ({
+                  value: opt.value,
+                  label: spec.optionsAreValueTypes
+                      ? formatBlueprintValueTypeLabel(opt.value, t, "option")
+                      : resolveBlueprintLabel(opt.label, t),
+              })),
           ]
         : undefined;
     const variableComponentOptions: SelectOption[] = [

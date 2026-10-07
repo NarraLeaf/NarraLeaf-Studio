@@ -33,9 +33,9 @@ vi.mock("@/apps/workspace/components/ui/freezeGuard", async () => {
     return { ...actual, useFreezeGuard: () => actual.makeFreezeGuard(false, "") };
 });
 
-// The character, scene and ending groups are extracted from a real story document, which this test has no
-// business building: what is under test is the windowing, and a story's own lines are the rows that
-// make the table long.
+// The character, rename, scene and ending groups are extracted from a real story document, which this
+// test has no business building: what is under test is the windowing, and a story's own lines are the
+// rows that make the table long.
 vi.mock("@/lib/workspace/services/localization/localizationModel", async () => {
     const actual = await vi.importActual<typeof import("@/lib/workspace/services/localization/localizationModel")>(
         "@/lib/workspace/services/localization/localizationModel",
@@ -45,6 +45,7 @@ vi.mock("@/lib/workspace/services/localization/localizationModel", async () => {
         extractCharacterTranslationRows: () => [],
         extractSceneTranslationRows: () => [],
         extractEndingTranslationRows: () => [],
+        extractRenameTranslationRows: () => [],
         extractUiTranslationRows: () => [],
         extractKeyTranslationRows: () => [],
     };

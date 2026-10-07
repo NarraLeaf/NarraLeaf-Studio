@@ -285,8 +285,18 @@ export function NlrStageLayer(props: {
      * session so hosts can ignore teardown noise from an already-replaced session.
      */
     onError: (error: Error, sessionId: string) => void;
+    /**
+     * The Player itself stopped drawing: a render failure inside it reached the engine's own error
+     * boundary, which now draws the engine's fallback in the stage's place for the rest of the
+     * session. Reported through {@link onError} first, like every stage error; this says, in
+     * addition, that the stage is gone. `componentStack` is where in the Player it failed.
+     *
+     * Optional: a host that leaves the fallback where it is - Dev Mode, which keeps the failure in
+     * its Problems panel - has nothing to do here.
+     */
+    onPlayerCrash?: (error: Error, sessionId: string, componentStack: string | null) => void;
 }) {
-    const { session, interactive, visible = true, renderOnStage, onFirstSceneReady, onEnvironmentReady, onLiveGameReady, onEnd, onError } = props;
+    const { session, interactive, visible = true, renderOnStage, onFirstSceneReady, onEnvironmentReady, onLiveGameReady, onEnd, onError, onPlayerCrash } = props;
     const startedSessionRef = useRef<string | null>(null);
     const stageRootRef = useRef<HTMLDivElement>(null);
     const gameStateRef = useRef<PlayerEventContext["gameState"] | null>(null);
@@ -442,7 +452,12 @@ export function NlrStageLayer(props: {
                         onPreloadComplete={handlePreloadComplete}
                         onFirstSceneReady={handleFirstSceneReady}
                         onEnd={handleEnd}
-                        onError={(error) => onError(error, session.id)}
+                        // The Player's `onError` is its error boundary's and nothing else's: by the
+                        // time it is called the stage has been replaced by the engine's fallback.
+                        onError={(error, errorInfo) => {
+                            onError(error, session.id);
+                            onPlayerCrash?.(error, session.id, errorInfo?.componentStack ?? null);
+                        }}
                     >
                         {renderOnStage ? session.onStageNode ?? null : null}
                     </Player>

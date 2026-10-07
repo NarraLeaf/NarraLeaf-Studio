@@ -8,15 +8,27 @@ export const update = {
         checking: "更新を確認中…",
         available: "バージョン {version} が公開されている",
         downloading: "バージョン {version} をダウンロード中…",
+        preparing: "バージョン {version} を準備中…",
         ready: "バージョン {version} はインストールできる",
+        readyFast: "バージョン {version} の準備完了",
         error: "更新を確認できなかった",
+        failed: "バージョン {version} をダウンロードできなかった",
         manual: "バージョン {version} をダウンロードできる",
     },
+    errors: {
+        connection: "ダウンロードサーバーに接続できなかった（{reason}）",
+    },
     versions: "使用中 {current}",
+    readyHint: "Studio の終了時にも適用される",
+    indicator: {
+        label: "ソフトウェア更新",
+    },
     actions: {
         check: "更新を確認",
         download: "更新をダウンロード",
         install: "再起動してインストール",
+        restart: "再起動して更新",
+        cancel: "更新を中止",
         releaseNotes: "リリースノート",
         openDownloadPage: "ダウンロードページを開く",
     },
@@ -27,17 +39,25 @@ export const update = {
     },
     setting: {
         checkOnLaunch: {
-            label: "起動時に更新を確認",
-            description: "Studio の起動直後に GitHub へ 1 回だけ問い合わせる。ダウンロードが自動で始まることはない",
+            label: "更新を自動で確認",
+            description: "Studio の起動直後と、起動中は数時間ごとに GitHub へ問い合わせる",
+        },
+        autoDownload: {
+            label: "更新を自動でダウンロード",
+            description: "新しいバージョンをバックグラウンドでダウンロードして準備する。Studio を再起動すると適用される",
         },
     },
     notification: {
         message: "NarraLeaf Studio {version} が公開されている",
         detail: "使用中は {current}",
         action: "更新を見る",
+        readyMessage: "NarraLeaf Studio {version} の準備完了",
+        readyDetail: "再起動すると更新が完了する",
     },
     launcher: {
         available: "{version} に更新",
+        progress: "{version} に更新中…",
+        ready: "再起動して {version} に更新",
     },
     quitPrompt: {
         title: "更新の実行中",

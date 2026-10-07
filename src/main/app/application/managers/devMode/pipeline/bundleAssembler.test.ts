@@ -916,7 +916,7 @@ describe("bundleAssembler story schema", () => {
                         id: "scene-1",
                         name: "Scene 1",
                         runtimeName: "Scene 1",
-                        rootBlockIds: ["grade", "true-end"],
+                        rootBlockIds: ["grade", "veil", "veil-off", "blank", "true-end"],
                         blocks: {
                             grade: {
                                 id: "grade",
@@ -931,6 +931,28 @@ describe("bundleAssembler story schema", () => {
                                         props: { color: "#000000", hold: 25 },
                                     },
                                 },
+                            },
+                            veil: {
+                                id: "veil",
+                                kind: "action",
+                                parentId: null,
+                                childrenIds: [],
+                                payload: { action: "character", operation: "setName", characterId: "aoi", displayName: "Stranger" },
+                            },
+                            "veil-off": {
+                                id: "veil-off",
+                                kind: "action",
+                                parentId: null,
+                                childrenIds: [],
+                                disabled: true,
+                                payload: { action: "character", operation: "setName", characterId: "aoi", displayName: "Ghost" },
+                            },
+                            blank: {
+                                id: "blank",
+                                kind: "action",
+                                parentId: null,
+                                childrenIds: [],
+                                payload: { action: "character", operation: "setName", characterId: "aoi", displayName: "" },
                             },
                             "true-end": {
                                 id: "true-end",
@@ -988,6 +1010,9 @@ describe("bundleAssembler story schema", () => {
         expect(bundle.localization?.scenes).toEqual({ "scene-1": "Scene 1" });
         // The same for endings: the table is what decides whether an `ending:` unit ships.
         expect(bundle.localization?.endings).toEqual({ "true-end": "True End" });
+        // And for the words `/rename` rows give: what a recorded speaker is read back through, and
+        // what decides whether a `rename:` unit ships. A disabled row and a blank one name no one.
+        expect(bundle.localization?.renames).toEqual({ veil: "Stranger" });
     });
 });
 

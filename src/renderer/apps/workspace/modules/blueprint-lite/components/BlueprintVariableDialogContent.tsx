@@ -7,6 +7,7 @@ import {
 import { Input, InputGroup } from "@/lib/components/elements/Input";
 import { Select, type SelectOption } from "@/lib/components/elements/Select";
 import { useTranslation } from "@/lib/i18n";
+import { formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
 
 export type BlueprintVariableDialogValue = {
     name: string;
@@ -14,11 +15,6 @@ export type BlueprintVariableDialogValue = {
     defaultValue: LiteralValue | undefined;
     valid: boolean;
 };
-
-const BLUEPRINT_VARIABLE_SELECT_OPTIONS: SelectOption[] = BLUEPRINT_VARIABLE_TYPE_OPTIONS.map(option => ({
-    value: option.value,
-    label: option.label,
-}));
 
 type Props = {
     defaultName: string;
@@ -34,6 +30,13 @@ export function BlueprintVariableDialogContent({
     onChange,
 }: Props) {
     const { t } = useTranslation();
+    const typeOptions: SelectOption[] = useMemo(
+        () => BLUEPRINT_VARIABLE_TYPE_OPTIONS.map(option => ({
+            value: option.value,
+            label: formatBlueprintValueTypeLabel(option.value, t, "option"),
+        })),
+        [t],
+    );
     const [name, setName] = useState(defaultName);
     const [valueType, setValueType] = useState(defaultValueType);
 
@@ -74,7 +77,7 @@ export function BlueprintVariableDialogContent({
             <InputGroup label={t("blueprint.dialog.dataType")} required>
                 <Select
                     fullWidth
-                    options={BLUEPRINT_VARIABLE_SELECT_OPTIONS}
+                    options={typeOptions}
                     value={valueType}
                     onChange={value => setValueType(String(value))}
                     placeholder={t("blueprint.dialog.selectDataType")}

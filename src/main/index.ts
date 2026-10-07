@@ -50,17 +50,18 @@ function describeError(error: unknown): string {
 }
 
 /**
- * Whether the quit may proceed while an installer is downloading.
+ * Whether the quit may proceed while an installer the user asked for is downloading.
  *
- * True whenever nothing is downloading, so the common path costs one boolean. When something is,
- * the user gets the last word - and "Keep Downloading" is the default button, because that is the
- * answer that loses nothing.
+ * True whenever no such download is running, so the common path costs one boolean. A download
+ * Studio started on its own is not asked about - it starts again on the next launch. When the user
+ * pressed Download, they get the last word - and "Keep Downloading" is the default button, because
+ * that is the answer that loses nothing.
  *
  * A failure to show the dialog must not become a quit that cannot be cancelled *or* an app that
  * cannot be quit; it resolves to "go ahead", which is what the user asked for in the first place.
  */
 function confirmQuitDuringUpdate(instance: App): boolean {
-    if (!instance.getUpdateManager().isDownloading()) {
+    if (!instance.getUpdateManager().isDownloadingOnRequest()) {
         return true;
     }
     try {

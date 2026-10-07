@@ -51,7 +51,7 @@ import type {
     StorySceneId,
 } from "@shared/types/story";
 import { listScenesInDocumentOrder } from "@shared/types/story";
-import { guardTruth } from "@/lib/story/guardTruth";
+import { conditionGuardExpr, guardTruth } from "@/lib/story/guardTruth";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { buildSceneFlowGraph, type SceneFlowBranchNodeModel, type SceneFlowGraph } from "./sceneFlowModel";
 import { collectSceneFlowContinuations, type SceneFlowContinuation } from "./sceneFlowRoutes";
@@ -238,8 +238,9 @@ function widenAll(variables: readonly SceneFlowNumericVariable[]): VariableState
 /**
  * Whether one arm can be taken with the counters holding what `bound` says they can.
  *
- * Only an `expression` condition is judged: a `variable`-kind one is a boolean or `exists` test this
- * numeric domain says nothing about, and a `blueprint` one is a graph. Both are taken.
+ * A typed expression and a comparison picked from the condition editor's dropdowns are judged alike,
+ * through the one tree {@link conditionGuardExpr} gives both. What has no tree - a `blueprint`
+ * condition, a picked flag test, an unfinished comparison - is taken.
  */
 function armIsPassable(
     scene: { blocks: Record<StoryBlockId, StoryBlock> },
@@ -247,10 +248,11 @@ function armIsPassable(
     bound: VariableState,
 ): boolean {
     const guard = armGuard(scene, arm.blockId);
-    if (!guard || guard.condition.kind !== "expression") {
+    const expr = guard ? conditionGuardExpr(guard.condition) : null;
+    if (!guard || !expr) {
         return true;
     }
-    const truth = guardTruth(guard.condition.expression.ast, key => bound.get(key) ?? UNKNOWN);
+    const truth = guardTruth(expr, key => bound.get(key) ?? UNKNOWN);
     // `hiddenWhen` closes the arm when it HOLDS; an `if` arm closes when its condition does not.
     return guard.inverted ? truth !== "true" : truth !== "false";
 }

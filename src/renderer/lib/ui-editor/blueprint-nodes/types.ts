@@ -284,6 +284,12 @@ export type BlueprintInspectorParamDef = {
      */
     options?: BlueprintInspectorParamSelectOption[];
     /**
+     * For `kind: "select"`: the options' values are value types, so the card shows each by the type's
+     * word (`formatBlueprintValueTypeLabel`) rather than by its `label`, which stays the English the
+     * command line prints.
+     */
+    optionsAreValueTypes?: boolean;
+    /**
      * For `kind: "select"` without static `options`: the flow projection
      * populates options from context data keyed by this source id.
      * Known sources include `"surfaces"` (available App Surfaces) and

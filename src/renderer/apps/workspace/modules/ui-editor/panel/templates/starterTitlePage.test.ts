@@ -248,18 +248,18 @@ describe.each(LANGUAGES)("the starter title page, in $name", language => {
 
 describe("brandColorsToAdopt", () => {
     const colors: BrandColor[] = [
-        { id: "surface.sunken", name: "Page background", value: "#0A090D" },
-        { id: "border.strong", name: "Selected border", value: "nlbrand:surface.raised/0.7" },
-        { id: "surface.raised", name: "Panel", value: "#15171D" },
+        { id: "pageBackground", name: "Page background", value: "#0A090D" },
+        { id: "hoverBorder", name: "Hover border", value: "nlbrand:panel/0.7" },
+        { id: "panel", name: "Panel", value: "#15171D" },
     ];
 
     it("takes what is missing and what a taken entry links to, in the template's order", () => {
-        expect(brandColorsToAdopt(["border.strong", "primary"], colors, id => id === "primary").map(color => color.id))
-            .toEqual(["border.strong", "surface.raised"]);
+        expect(brandColorsToAdopt(["hoverBorder", "primary"], colors, id => id === "primary").map(color => color.id))
+            .toEqual(["hoverBorder", "panel"]);
     });
 
     it("never replaces an entry the project already has", () => {
-        expect(brandColorsToAdopt(["surface.sunken"], colors, () => true)).toEqual([]);
+        expect(brandColorsToAdopt(["pageBackground"], colors, () => true)).toEqual([]);
     });
 });
 

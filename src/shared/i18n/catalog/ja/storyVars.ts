@@ -9,12 +9,6 @@ import type { LocaleNamespace } from "../types";
  * 「グローバル」はアプリロジックのブループリント自身の変数を指すので、2 つのスコープで共有できない。
  */
 export const storyVars = {
-    valueType: {
-        boolean: "真偽値",
-        number: "数値",
-        string: "文字列",
-        json: "JSON",
-    },
     value: {
         true: "真",
         false: "偽",

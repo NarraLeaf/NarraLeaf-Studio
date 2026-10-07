@@ -2,8 +2,9 @@
  * Translation table editor (editor-area tab, one per target locale).
  * Rows follow the story's narrative order (chapters → scenes → depth-first
  * blocks) so translators read lines in context, never alphabetically; each
- * story source opens with a "Characters", a "Scenes" and an "Endings" group so display names,
- * place names and ending names translate alongside the lines that use them. The "Interface text" source carries
+ * story source opens with "Characters", "Renames", "Scenes" and "Endings" groups so display names,
+ * the names `/rename` rows give, place names and ending names translate alongside the lines that use
+ * them. The "Interface text" source carries
  * both UI widget texts and the named-key registry (keys are managed inline:
  * editable source, hover remove, trailing add row).
  * Two modes: "translate" is a clean bilingual reading view; "review" is a
@@ -47,6 +48,7 @@ import {
     extractCharacterTranslationRows,
     extractEndingTranslationRows,
     extractKeyTranslationRows,
+    extractRenameTranslationRows,
     extractSceneTranslationRows,
     extractUiTranslationRows,
     type LocalizationUnitState,
@@ -100,6 +102,7 @@ const ADD_KEY_ROW_HEIGHT_PX = 44;
 const CHARACTERS_GROUP_KEY = "__characters__";
 const SCENES_GROUP_KEY = "__scenes__";
 const ENDINGS_GROUP_KEY = "__endings__";
+const RENAMES_GROUP_KEY = "__renames__";
 const KEYS_GROUP_KEY = "__keys__";
 /** How many of the places still naming a key the removal confirmation lists before it counts the rest. */
 const KEY_REMOVAL_PLACES_SHOWN = 12;
@@ -371,6 +374,17 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
                     groupName: t("workspace.localization.table.charactersGroup"),
                     speaker: t("workspace.localization.table.characterSpeaker"),
                 }));
+                // Right after the cast: the other names a character speaks under, each beside the
+                // character it renames, which is who the translator needs to know it is.
+                const renameRows: TableRow[] = extractRenameTranslationRows(document, characters).map(row => ({
+                    unitId: row.unitId,
+                    sourceText: row.sourceText,
+                    interpolationCount: 0,
+                    groupKey: RENAMES_GROUP_KEY,
+                    groupName: t("workspace.localization.table.renamesGroup"),
+                    speaker: characters.find(character => character.id === row.characterId)?.name
+                        || t("workspace.localization.table.renameSpeaker"),
+                }));
                 // Ahead of the lines, beside the cast: the names of the places are the other thing a
                 // translator wants settled before translating anything that happens in them.
                 const sceneRows: TableRow[] = extractSceneTranslationRows(document).map(row => ({
@@ -401,7 +415,7 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
                     groupName: row.sceneName,
                     speaker: speakerNameFor(row),
                 }));
-                setRows([...characterRows, ...sceneRows, ...endingRows, ...storyRows]);
+                setRows([...characterRows, ...renameRows, ...sceneRows, ...endingRows, ...storyRows]);
             } catch {
                 setRows([]);
             }

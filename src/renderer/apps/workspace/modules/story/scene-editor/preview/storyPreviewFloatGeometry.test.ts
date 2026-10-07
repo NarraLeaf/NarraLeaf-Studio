@@ -109,4 +109,10 @@ describe("stored preview layout", () => {
         const empty = parseStoryScenePreviewPaneState(undefined);
         expect(empty).toMatchObject({ open: false, mode: "dock", float: null, floatFrame: "workspace" });
     });
+
+    it("types lines out unless skipping the typing was turned on", () => {
+        expect(parseStoryScenePreviewPaneState({ open: true, width: 420, mode: "dock" }).skipTyping).toBe(false);
+        expect(parseStoryScenePreviewPaneState(undefined).skipTyping).toBe(false);
+        expect(parseStoryScenePreviewPaneState({ skipTyping: true }).skipTyping).toBe(true);
+    });
 });

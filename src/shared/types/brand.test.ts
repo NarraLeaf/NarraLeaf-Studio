@@ -5,9 +5,11 @@ import {
     BUILTIN_BRAND_COLORS,
     builtinBrandColor,
     createEmptyProjectBrandDocument,
+    isBrandControlSlotId,
     isBuiltinBrandColorId,
     migrateProjectBrandDocument,
     normalizeProjectBrandColors,
+    type BrandColor,
 } from "./brand";
 import { parseBrandLink } from "@shared/brand/brandLink";
 
@@ -39,6 +41,47 @@ describe("the seeded palette", () => {
         expect(BRAND_CONTROL_GROUPS.flatMap(group => group.slotIds)).toEqual(
             BUILTIN_BRAND_COLORS.filter(seed => seed.id.includes(".")).map(seed => seed.id),
         );
+    });
+});
+
+describe("isBrandControlSlotId", () => {
+    const FLAT_SEEDS = ["primary", "secondary", "background", "foreground"];
+
+    it("is true of exactly the seeded control slots", () => {
+        expect(BUILTIN_BRAND_COLORS.filter(seed => isBrandControlSlotId(seed.id)).map(seed => seed.id))
+            .toEqual(BRAND_CONTROL_GROUPS.flatMap(group => group.slotIds));
+        for (const id of FLAT_SEEDS) {
+            expect(isBrandControlSlotId(id), id).toBe(false);
+        }
+    });
+
+    it("lists a project's own dotted colours among the colours, and none of them under a control", () => {
+        // The six a project made from the skeleton template before 1.18.0 carries. `text.subtle`
+        // shares its prefix with a seeded group and is still no slot of it.
+        const own: BrandColor[] = [
+            { id: "surface.sunken", name: "Page background", value: "#0A090D" },
+            { id: "surface.raised", name: "Panel", value: "#15171D" },
+            { id: "surface.overlay", name: "Raised fill", value: "#222630" },
+            { id: "text.subtle", name: "Subtle text", value: "#6E7681" },
+            { id: "border.strong", name: "Selected border", value: "nlbrand:primary/0.7" },
+            { id: "surface.active", name: "Active fill", value: "#1D414D" },
+        ];
+        const colors = normalizeProjectBrandColors([...BUILTIN_BRAND_COLORS, ...own]);
+
+        expect(colors.filter(color => !isBrandControlSlotId(color.id)).map(color => color.id))
+            .toEqual([...FLAT_SEEDS, ...own.map(color => color.id)]);
+        const underControls = BRAND_CONTROL_GROUPS.flatMap(group => group.slotIds);
+        for (const color of own) {
+            expect(underControls).not.toContain(color.id);
+        }
+    });
+
+    it("leaves a fresh project's seeded slots under their controls", () => {
+        const colors = createEmptyProjectBrandDocument().colors;
+
+        expect(colors.filter(color => !isBrandControlSlotId(color.id)).map(color => color.id)).toEqual(FLAT_SEEDS);
+        expect(colors.filter(color => isBrandControlSlotId(color.id)).map(color => color.id))
+            .toEqual(BRAND_CONTROL_GROUPS.flatMap(group => group.slotIds));
     });
 });
 

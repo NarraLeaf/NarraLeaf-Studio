@@ -57,6 +57,11 @@ export interface GlobalStateType extends Record<string, any> {
      */
     "app.updateCheckOnLaunch": boolean;
     /**
+     * Whether a version a check finds is downloaded and prepared without being asked. See
+     * `UPDATE_AUTO_DOWNLOAD_KEY` in `@shared/constants/update`.
+     */
+    "app.updateAutoDownload": boolean;
+    /**
      * Whether ⌘Q has to be pressed twice before it quits, instead of quitting on the first press.
      *
      * macOS only, and not because the key combination is: Windows and Linux quit with Alt+F4 or the
@@ -546,6 +551,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     // languages to decide its own default.
     "app.developerMode": false,
     "app.updateCheckOnLaunch": true,
+    "app.updateAutoDownload": true,
     "app.confirmQuit": CONFIRM_QUIT_DEFAULT,
     [SCREEN_EFFECT_QUALITY_KEY]: SCREEN_EFFECT_QUALITY_DEFAULT,
     [SCREEN_EFFECT_THREADS_KEY]: SCREEN_EFFECT_THREADS_DEFAULT,

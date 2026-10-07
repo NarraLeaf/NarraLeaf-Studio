@@ -49,7 +49,7 @@ export const storyExpr = {
         repeatTimesAndUntil: "重复只能按次数或按条件之一执行，不能同时指定；删除其中一项",
         expressionError: "{message}",
         expressionNotBoolean: "条件必须是真假判断，例如 gold >= 100",
-        expressionTypeMismatch: "「{variable}」存放的是 {expected}，无法存入 {received}",
+        expressionTypeMismatch: "「{variable}」存放的是{expected}，无法存入{received}",
         duplicateVariable: "「{value}」已存在；改用其他名称，或用 /set 修改其值",
         reservedVariableName: "「{value}」在表达式中表示变体，改用其他名称",
         unknownTarget: "舞台上没有名为「{value}」的对象",

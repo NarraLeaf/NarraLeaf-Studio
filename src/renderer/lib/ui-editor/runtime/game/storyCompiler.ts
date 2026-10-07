@@ -204,8 +204,8 @@ import {
     type StoryVisitedContent,
 } from "./storyVisited";
 // Every diagnostic is worded here, in the language of the window the compile runs in: Studio's own
-// language in Dev Mode and the scene preview, the machine's in a packaged game (the runtime bundle
-// aliases this module to its shim). An author reads these in the Issues panel, so they are never the
+// language in Dev Mode and the scene preview, the shell's in a packaged game (the runtime bundle
+// aliases this module to its shim, which speaks the game's language). An author reads these in the Issues panel, so they are never the
 // compiler's own English and never carry an id.
 import { translate } from "@/lib/i18n";
 import type { InterpolationParams, LocaleCode, TranslationKey } from "@shared/i18n";
@@ -877,6 +877,12 @@ export type StagePreviewCompileInput = {
      */
     onChoiceTaken?: (optionBlockId: StoryBlockId) => void;
     /**
+     * Compile lines without their pauses, for a host that shows each line in full as soon as it
+     * starts (the story preview with typing skipped). The words are the same; only the timing of
+     * their reveal is left out.
+     */
+    skipTyping?: boolean;
+    /**
      * Continuous playback ("play from here"). Instead of playing the target's own action and
      * holding on the resulting frame, compile the whole execution tail from the target onwards —
      * the rest of its branch, then everything after it in the scene (see collectStoryPlaybackPlan).
@@ -897,6 +903,8 @@ type SceneCompileContext = {
     previewSingleScene?: boolean;
     /** First jump met while compiling a preview tail, so the pane can name where playback stopped. */
     previewEncounteredJump?: { blockId: StoryBlockId; targetSceneId: StorySceneId };
+    /** Leave a line's pauses out of its sentence; see {@link StagePreviewCompileInput.skipTyping}. */
+    dropTextPauses?: boolean;
     characters: Map<string, Character>;
     characterSummaries: Map<string, DevModeCharacterSummary>;
     /** Dialog-avatar lookups resolved to URLs, per character. Built on first portrait binding. */
@@ -1984,6 +1992,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         nlrScene: previewScene,
         allScenes: { [scene.id]: previewScene },
         previewSingleScene: true,
+        dropTextPauses: input.skipTyping === true,
         characters: new Map(),
         characterSummaries,
         avatarAssetIdByUrl: new Map(),
@@ -3230,7 +3239,9 @@ function buildSentenceParts(
     const interpolationWords: unknown[] = [];
     for (const run of segment.rich) {
         if ("pause" in run) {
-            prompt.push(run.pause === true ? new Pause() : Pause.wait(run.pause));
+            if (!ctx.dropTextPauses) {
+                prompt.push(run.pause === true ? new Pause() : Pause.wait(run.pause));
+            }
             continue;
         }
         if ("event" in run) {
@@ -3300,7 +3311,10 @@ function buildLocalizedSentencePrompt(ctx: SceneCompileContext, segment: StoryTe
     for (let index = 0; index < sourceRuns.length; index += 1) {
         const run = sourceRuns[index];
         if ("pause" in run) {
-            tokensByRun.set(index, run.pause === true ? new Pause() : Pause.wait(run.pause));
+            // A dropped pause has no token, and a translation placing it places nothing.
+            if (!ctx.dropTextPauses) {
+                tokensByRun.set(index, run.pause === true ? new Pause() : Pause.wait(run.pause));
+            }
         } else if ("event" in run) {
             const event = eventMap?.get(run);
             if (event) {

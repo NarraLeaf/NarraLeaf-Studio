@@ -301,6 +301,17 @@ declare module "@narraleaf/script" {
     	 * Assembled from the story documents the bundle carries.
     	 */
     	endings?: Record<string, string>;
+    	/**
+    	 * \`/rename\` source words (rename id → the words the row gives its character), for the \`/rename\`
+    	 * rows this build ships, in story order.
+    	 *
+    	 * Two jobs. The engine records a speaker by the words it was given and nothing else, so this is
+    	 * what turns a recorded "神秘少女" back into the \`rename:\` units that translate it. And, as
+    	 * \`endings\` does, it is the set of rows the build still has, which decides whether a \`rename:\`
+    	 * unit ships with a variant that dropped scenes. Assembled from the story documents the bundle
+    	 * carries.
+    	 */
+    	renames?: Record<string, string>;
     };
     type StoryId = string;
     type StoryLiteralValue = string | number | boolean | null | StoryLiteralValue[] | {
