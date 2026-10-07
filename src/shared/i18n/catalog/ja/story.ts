@@ -1021,6 +1021,7 @@ export const story = {
         title: "実況プレビュー",
         dock: "シーンエディタに収める",
         pip: "ピクチャインピクチャ",
+        skipTyping: "文字表示アニメーションをスキップ",
         selectRow: "舞台の状態を見るには、ストーリーの行を選ぶ",
         failed: "プレビューに失敗",
         settleTimeout: "ステージの準備が時間内に完了しなかった",

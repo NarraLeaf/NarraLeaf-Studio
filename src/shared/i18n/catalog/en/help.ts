@@ -177,6 +177,8 @@ export const help = {
                 + "- Rows can be moved, duplicated, indented and deleted from the keyboard.\n"
                 + "- The live preview shows the stage at the selected row. Clicking it selects the next row the "
                 + "game waits at: a line or a menu. On a menu, clicking an option selects the first line of that option.\n"
+                + "- A click on a line the live preview is still typing shows the whole line first. With Skip typing "
+                + "animation turned on at the top of the live preview, every line appears in full at once.\n"
                 + "- In picture-in-picture, the live preview stays on screen over the other editors and shows the scene "
                 + "of the scene editor used last.\n"
                 + "- Edits to the Game UI appear in the live preview as they are made.\n"

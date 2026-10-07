@@ -1136,6 +1136,7 @@ export const story = {
         title: "Live Preview",
         dock: "Dock in the scene editor",
         pip: "Picture-in-picture",
+        skipTyping: "Skip typing animation",
         selectRow: "Select a story row to preview its stage state.",
         failed: "Preview failed",
         settleTimeout: "The stage did not finish setting up in time.",
