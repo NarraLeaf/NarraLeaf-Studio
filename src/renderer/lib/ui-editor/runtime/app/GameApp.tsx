@@ -6645,6 +6645,14 @@ export function GameApp(props: GameAppProps): ReactNode {
                 // play head.
                 reportFailure(err);
             }}
+            onPlayerCrash={(err, crashSessionId, componentStack) => {
+                // Reported above through `onError`. What is left is the stage, which the engine has
+                // replaced with its own fallback - the shell decides whether that stays on screen.
+                if (nlrSession?.id !== crashSessionId) {
+                    return;
+                }
+                host.stageCrashed?.(err, componentStack);
+            }}
         />
     );
 

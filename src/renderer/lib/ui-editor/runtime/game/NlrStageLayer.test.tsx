@@ -16,8 +16,22 @@ import { NlrStageLayer, type NlrStageSession } from "./NlrStageLayer";
 vi.mock("narraleaf-react", () => ({
     DevTools: { setActionId: vi.fn() },
     GameProviders: ({ children }: { children?: ReactNode }) => <>{children}</>,
-    Player: ({ children }: { children?: ReactNode }) => <div data-testid="nlr-player">{children}</div>,
+    // Reports `playerFailure` through its `onError` once, the way the engine's own error boundary
+    // inside the Player does when the stage fails to render.
+    Player: ({ children, onError }: {
+        children?: ReactNode;
+        onError?: (error: Error, info: { componentStack: string }) => void;
+    }) => {
+        const failure = playerFailure;
+        if (failure) {
+            playerFailure = null;
+            onError?.(failure, { componentStack: "\n    at StageSceneList" });
+        }
+        return <div data-testid="nlr-player">{children}</div>;
+    },
 }));
+
+let playerFailure: Error | null = null;
 
 afterEach(cleanup);
 
@@ -92,5 +106,29 @@ describe("NlrStageLayer visibility", () => {
         const root = stageRoot(container);
         expect(root.style.visibility).toBe("visible");
         expect(root.className).toContain("bg-black");
+    });
+});
+
+describe("NlrStageLayer when the Player stops drawing", () => {
+    it("reports the failure as a stage error, then says the stage is gone", () => {
+        const calls: string[] = [];
+        playerFailure = new Error("the stage could not draw");
+        render(
+            <NlrStageLayer
+                session={makeSession()}
+                interactive={false}
+                renderOnStage={false}
+                onLiveGameReady={NOOP}
+                onEnvironmentReady={NOOP}
+                onFirstSceneReady={NOOP}
+                onError={(error, sessionId) => calls.push(`error ${sessionId} ${error.message}`)}
+                onPlayerCrash={(error, sessionId, componentStack) =>
+                    calls.push(`crash ${sessionId} ${error.message}${componentStack ?? ""}`)}
+            />,
+        );
+        expect(calls).toEqual([
+            "error session-1 the stage could not draw",
+            "crash session-1 the stage could not draw\n    at StageSceneList",
+        ]);
     });
 });
