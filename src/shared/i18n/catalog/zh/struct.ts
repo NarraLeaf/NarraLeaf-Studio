@@ -1,12 +1,4 @@
 export const struct = {
-    type: {
-        string: "字符串",
-        number: "数字",
-        boolean: "布尔值",
-        image: "图片",
-        color: "颜色",
-        json: "JSON",
-    },
     field: {
         name: "名称",
         type: "类型",

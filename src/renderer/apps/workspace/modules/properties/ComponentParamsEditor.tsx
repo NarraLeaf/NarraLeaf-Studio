@@ -44,6 +44,7 @@ import {
     writeDesignTimeLocalizationKeySourceText,
 } from "@/lib/ui-editor/runtime/localization/designTimeKeys";
 import { useTranslation } from "@/lib/i18n";
+import { formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { IconButtonSegGroup } from "./framework/fields/IconButtonSegGroup";
 import type { CustomFieldProps } from "./framework/types";
@@ -158,11 +159,10 @@ export function ComponentParamsEditor({
         [params, write],
     );
 
-    const typeOptions = [
-        { value: "string", label: t("properties.componentParams.typeString") },
-        { value: "text", label: t("properties.componentParams.typeText") },
-        { value: "audioTrack", label: t("properties.componentParams.typeAudioTrack") },
-    ];
+    const typeOptions = (["string", "text", "audioTrack"] as const).map(type => ({
+        value: type,
+        label: formatBlueprintValueTypeLabel(type, t, "option"),
+    }));
 
     return (
         <SectionCard

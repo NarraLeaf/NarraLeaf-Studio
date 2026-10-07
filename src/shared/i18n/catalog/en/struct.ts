@@ -6,14 +6,6 @@
  * diagnostics that report a field nothing declares, and the item table.
  */
 export const struct = {
-    type: {
-        string: "String",
-        number: "Number",
-        boolean: "Boolean",
-        image: "Image",
-        color: "Color",
-        json: "JSON",
-    },
     field: {
         name: "Name",
         type: "Type",

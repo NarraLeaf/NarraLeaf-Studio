@@ -4,7 +4,7 @@ import { LOCALIZED_COMMANDS_DEFAULT } from "@/lib/settings/commandLanguageOption
 import { storyExpr as en } from "@shared/i18n/catalog/en/storyExpr";
 import { createTranslator } from "@shared/i18n";
 import type { TranslationKey } from "@shared/i18n";
-import { getCommandLineReason } from "./storyCommandReason";
+import { getCommandLineReason, storyCommandReasonParams } from "./storyCommandReason";
 import type { StoryCommandContext } from "./storyCommandResolution";
 import { EMPTY_STORY_COMMAND_CONTEXT, EMPTY_STORY_COMMAND_STAGE_OBJECTS } from "./storyCommandResolution";
 
@@ -150,11 +150,16 @@ describe("getCommandLineReason", () => {
         if (!reason) {
             return;
         }
-        for (const locale of ["en", "zh"] as const) {
-            const text = createTranslator(locale).t(reason.key, reason.params);
+        // The types are written as the variables panel writes them: English keeps the type ids, the
+        // other languages their words.
+        const typeWords = { en: ["number", "string"], zh: ["数字", "文本"], ja: ["数値", "文字列"] } as const;
+        for (const locale of ["en", "zh", "ja"] as const) {
+            const { t } = createTranslator(locale);
+            const text = t(reason.key, storyCommandReasonParams(reason, t));
             expect(text, locale).toContain("gold");
-            expect(text, locale).toContain("number");
-            expect(text, locale).toContain("string");
+            for (const word of typeWords[locale]) {
+                expect(text, locale).toContain(word);
+            }
             // The expression source must not appear at all: there is no role left for it to fill.
             expect(text, locale).not.toContain("upper");
         }
