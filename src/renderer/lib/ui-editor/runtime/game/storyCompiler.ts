@@ -127,12 +127,13 @@ import {
     AUDIO_TRACK_CHANNELS,
     AUDIO_TRACK_ID_VOICE,
     BUILTIN_AUDIO_TRACKS,
+    audioTrackDisplayName,
     resolveAudioTrack,
     resolveAudioTrackChain,
     resolveAudioTrackPlayback,
 } from "@shared/types/audioTrack";
 import { parseTranslatedRuns } from "@shared/utils/localizationText";
-import { resolveStoryAssetVariant, type StoryAssetVariants } from "@shared/types/story";
+import { resolveStoryAssetVariant, resolveStoryGroupRunMode, type StoryAssetVariants } from "@shared/types/story";
 import {
     composeStoryFilter,
     isEmptyStoryTransformProps,
@@ -207,7 +208,8 @@ import {
 // aliases this module to its shim). An author reads these in the Issues panel, so they are never the
 // compiler's own English and never carry an id.
 import { translate } from "@/lib/i18n";
-import type { InterpolationParams, TranslationKey } from "@shared/i18n";
+import type { InterpolationParams, LocaleCode, TranslationKey } from "@shared/i18n";
+import { playerWordsLocale, translatePlayerWords } from "@/lib/ui-editor/runtime/localization/playerWords";
 import { authoredNameOrNull } from "@shared/utils/generatedId";
 import { classifyAssetFailure } from "../assetResolution";
 import { sceneMusicElementId, STORY_CAMERA_ELEMENT_ID } from "./stableElementIds";
@@ -331,6 +333,11 @@ type SceneLocalizationResolver = {
      * separately is how they come to disagree.
      */
     variant: (variants: StoryAssetVariants | undefined, assetId: string) => string | null;
+    /**
+     * The catalogue language Studio's own words are drawn in for the current locale - the words the
+     * story puts in front of the player where the author wrote none (see `playerWords.ts`).
+     */
+    playerWordsLocale: () => LocaleCode | null;
 };
 
 function createSceneLocalizationResolver(input: StoryLocalizationRuntime): SceneLocalizationResolver {
@@ -346,6 +353,7 @@ function createSceneLocalizationResolver(input: StoryLocalizationRuntime): Scene
         hasTranslation: textId => Object.values(input.tables).some(table => Boolean(table[textId])),
         variant: (variants, assetId) =>
             resolveStoryAssetVariant(variants, assetId, activeLocale(), input.sourceLocale),
+        playerWordsLocale: () => playerWordsLocale(input, activeLocale()),
         resolve: textId => {
             const locale = activeLocale();
             const chain = chains.get(locale) ?? resolveLocaleChain(input, locale);
@@ -1238,8 +1246,6 @@ const BGM_SOUND_NAME = BGM_STAGE_OBJECT_NAME;
 const EMPTY_STORY_ID = "__nlr_empty_story__";
 const EMPTY_SCENE_ID = "__nlr_empty_scene__";
 const UNKNOWN_CHARACTER_ID = "__unknown_character__";
-/** Nametag for a character that has no authored name. Must be non-empty, and must not be a UUID. */
-const UNKNOWN_CHARACTER_NAME = "Unknown";
 
 /**
  * Build a minimal, playable NLR story that mounts an empty scene. Used to boot the
@@ -1497,6 +1503,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
                 assetUrlCache,
             localization,
             voicedUnitIds,
+            constructSpeakingScene: scenesBuild.constructSpeakingScene,
             nextActionIndex,
         })
         : allScenes[input.sceneId];
@@ -1572,6 +1579,7 @@ async function buildLaunchEntryScene(params: {
     assetUrlCache: AssetUrlCache;
     localization?: SceneLocalizationResolver;
     voicedUnitIds?: ReadonlySet<string>;
+    constructSpeakingScene: ExtraSceneVoices;
     nextActionIndex: (blockId: string) => number;
 }): Promise<Scene> {
     const { input, launch, nlrStory, allScenes, diagnostics, resolveAssetUrl, assetUrlCache } = params;
@@ -1615,7 +1623,10 @@ async function buildLaunchEntryScene(params: {
         diagnostics,
         ...(params.localization ? { localization: params.localization } : {}),
     });
-    const launchScene = new Scene(
+    // It plays the rest of the scene's lines, so it carries the scene's takes as well: the engine
+    // looks a line's take up in the scene playing it, and without the table every line from the
+    // target row to the scene's end was silent here while the same lines spoke from the title.
+    const launchScene = params.constructSpeakingScene(scene.id, voices => new Scene(
         sceneRuntimeName(scene),
         {
             ...(backgroundSrc ? { background: backgroundSrc } : {}),
@@ -1624,8 +1635,9 @@ async function buildLaunchEntryScene(params: {
             // the config: the scene would start it in its init, before anything here could turn it
             // down, pause it or swap it for the one a `/bgm` row put on.
             ...(sceneMusic ? { backgroundMusicFade: sceneMusic.fadeMs } : {}),
+            ...(voices ? { voices } : {}),
         },
-    );
+    ));
     const launchIdPrefix = launchSceneIdPrefix(scene.id, launch.targetBlockId ?? "");
     setSceneOwnElementIds(params.elementIdBindings, launchScene, `${launchIdPrefix}:scene`);
 
@@ -2321,6 +2333,8 @@ async function createNlrScenes(input: {
     getVoicePlayback: (unitId: string) => VoicePlayback | null;
     /** The image each scene opens on, by Studio scene id; absent for a scene opening on a colour. */
     initialBackgroundUrls: Record<string, string>;
+    /** Construct one more scene that speaks a document scene's lines; see {@link ExtraSceneVoices}. */
+    constructSpeakingScene: ExtraSceneVoices;
 }> {
     const scenes: Record<string, Scene> = {};
 
@@ -2525,8 +2539,38 @@ async function createNlrScenes(input: {
             }
         }
     }
-    return { scenes, setVoiceLocale: applyLocale, getVoicePlayback, initialBackgroundUrls };
+    const constructSpeakingScene: ExtraSceneVoices = (sceneId, construct) => {
+        if (!voicesForScene?.has(sceneId)) {
+            return construct(undefined);
+        }
+        // Filled for the language in force now, and registered below so a dub switch rewrites it
+        // with every other scene's table.
+        const table: Record<string, string | Sound> = { ...(sceneVoicesFor(activeLocale)?.[sceneId] ?? {}) };
+        const built = construct(table);
+        const live = (built as unknown as { config?: { voices?: unknown } }).config?.voices;
+        liveTables.push({
+            sceneId,
+            live: live && typeof live === "object" ? live as Record<string, string | Sound> : table,
+        });
+        return built;
+    };
+    return { scenes, setVoiceLocale: applyLocale, getVoicePlayback, initialBackgroundUrls, constructSpeakingScene };
 }
+
+/**
+ * Construct a scene that is not one of the document's but speaks one scene's lines - the opening
+ * scene of a row-precise launch, which plays the rest of the scene it was launched in.
+ *
+ * The engine finds a line's take in the voices table of the scene playing it (`Scene.getVoice`), so a
+ * scene built without the table plays every line of its own silently, while the same lines played
+ * from the document's scene are heard. `construct` is handed the table to pass as the scene's
+ * `voices` config - undefined when the project has no takes for that scene - and the scene's own
+ * copy of it is kept with the others, so a dub switch reaches this scene as it reaches the rest.
+ */
+type ExtraSceneVoices = (
+    sceneId: string,
+    construct: (voices: Record<string, string | Sound> | undefined) => Scene,
+) => Scene;
 
 async function resolveSceneInitialBackground(input: {
     scene: StoryScene;
@@ -4539,8 +4583,10 @@ function reportTrackConflict(
         return;
     }
     // A track id is not a name, and a track removed since the row was written has no name left.
-    const nameOf = (id: string): string => authoredNameOrNull(ctx.audioTracks.find(track => track.id === id)?.name)
-        ?? say("story.compile.media.removedTrack");
+    const nameOf = (id: string): string => {
+        const track = ctx.audioTracks.find(entry => entry.id === id);
+        return (track ? authoredNameOrNull(audioTrackDisplayName(track, translate)) : null) ?? say("story.compile.media.removedTrack");
+    };
     diagnostic(ctx, "warning", blockId, say("story.compile.media.trackConflict", {
         name: objectLabel(name),
         existing: nameOf(existing),
@@ -4910,7 +4956,7 @@ async function getVfx(
  */
 function choiceOptionPrompt(ctx: SceneCompileContext, segment: StoryTextSegment, blockId: string): unknown {
     if (!segment.value && !segmentHasInterpolation(segment)) {
-        return "Option";
+        return playerWordsPrompt(ctx, "game.words.option");
     }
     const prompt = buildLocalizedSentencePrompt(ctx, segment, blockId);
     const voiceConfig = voiceConfigForLine(ctx, segment.textId);
@@ -5280,7 +5326,7 @@ async function compileUnchainedGroupBody(ctx: SceneCompileContext, blockIds: rea
 
 async function compileControlGroup(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "control" }>): Promise<NlrStatement[]> {
     const payload = block.payload as Extract<StoryControlPayload, { control: "sequence" | "parallel" | "race" | "repeat" }>;
-    const mode = payload.mode ?? (payload.control === "parallel" ? "all" : payload.control === "race" ? "any" : "do");
+    const mode = resolveStoryGroupRunMode(payload);
     // Which of the two body shapes below this group hands the engine. `repeat` is decided by the row
     // and not by `mode`, in its counted form and in its `until` form alike, so it is tested first -
     // a stale `mode` on a repeat row never reaches the call.
@@ -5362,7 +5408,9 @@ function getCharacter(ctx: SceneCompileContext, characterId: string | undefined,
     // silently disappears. `normalizedId` is a characterId UUID, which must never reach the UI.
     // Identity is keyed on `normalizedId` above, so this string is cosmetic only.
     const summary = ctx.characterSummaries.get(normalizedId);
-    const displayName = summary?.name?.trim() || UNKNOWN_CHARACTER_NAME;
+    // The nametag for a character with no authored name: never empty and never a UUID, and in the
+    // game's language rather than in English.
+    const displayName = summary?.name?.trim() || playerWords(ctx, "game.words.unknownSpeaker");
     const character = new Character(displayName, characterNametagConfig(summary));
     setStableElementId(ctx.elementIdBindings, character, `nl:character:${normalizedId}`);
     ctx.characters.set(normalizedId, character);
@@ -8005,6 +8053,27 @@ function sceneDisplayName(scene: Pick<StoryScene, "name" | "runtimeName">): stri
 /** A catalog sentence for a diagnostic. Every message in this file is one. */
 function say(key: TranslationKey, params?: InterpolationParams): string {
     return translate(key, params);
+}
+
+/**
+ * Studio's words for the player, where the story leaves a place without words of its own - an option
+ * the author left empty. Unlike {@link say}, which writes to the author, these are read in the game,
+ * so they are in the game's language (`playerWords.ts`); and they are resolved as they are drawn,
+ * the way a translated line is (`buildLocalizedSentencePrompt`).
+ */
+function playerWordsPrompt(ctx: SceneCompileContext, key: TranslationKey): unknown[] {
+    const localization = ctx.localization;
+    const resolveDynamic = () => translatePlayerWords(localization ? localization.playerWordsLocale() : null, key);
+    return [new Word((resolveDynamic as unknown) as any)];
+}
+
+/**
+ * {@link playerWordsPrompt}'s words as they read in the language this compile is for, for a place
+ * that takes a plain string. A compile is per language (`compiledStoryCache` keys on it), so a
+ * language change never reuses these.
+ */
+function playerWords(ctx: SceneCompileContext, key: TranslationKey): string {
+    return translatePlayerWords(ctx.localization ? ctx.localization.playerWordsLocale() : null, key);
 }
 
 /**

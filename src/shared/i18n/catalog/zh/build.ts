@@ -162,6 +162,7 @@ export const build = {
             contentLabel: "内容取自的变体",
             contentHint: "该变体的场景、条件分支与美术会进入补丁",
             sameVariant: "内容与所更新的构建是同一个变体，补丁不包含任何改动",
+            sameProject: "所更新的构建由当前项目生成，补丁不包含任何改动。为已发布的构建导出补丁，请选择「已有的构建目录」",
             outputLabel: "保存为",
             nameLabel: "名称",
             namePlaceholder: "显示在游戏日志中",

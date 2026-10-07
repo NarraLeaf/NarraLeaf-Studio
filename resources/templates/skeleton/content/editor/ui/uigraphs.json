@@ -6263,7 +6263,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "One blueprint for the BGM, Sound effects and Voice rows of the Config page: each row is an instance of this component and names its track in the Audio track param (bgm, sound or voice), which Get Component Param reads for the instance being run. To add a slider for another track, place this component in a row and set Audio track to that track's id. The slider's 0–100 becomes the volume's 0 to 1 (divide by 100). Memo keeps the value because one output can feed only one input, and two nodes use it here.",
+                      "text": "One blueprint for the BGM, Sound effects and Voice rows of the Config page: each row is an instance of this component and picks its track from the list in the Audio track param, which Get Component Param reads for the instance being run. To add a slider for another track, place this component in a row and pick that track in Audio track. The slider's 0–100 becomes the volume's 0 to 1 (divide by 100). Memo keeps the value because one output can feed only one input, and two nodes use it here.",
                       "width": 1100,
                       "height": 160
                     },
@@ -19445,7 +19445,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "Runs each time this list is shown; a hidden list is not drawn, so its button on the left draws it again and it shows what is unlocked by then. Get Gallery hands over the CG entries of the Gallery panel (left rail), each row carrying its lock state, its picture and its name, masked while locked. A new project has none, so the list starts empty and Empty note says so. An Unlock Gallery node in the story unlocks an entry. The four lists run this same layer with their own Kind and empty text. They are not one component: Kind is picked on the node and has no pin, so a component param cannot set it, and each list lays out its rows differently.",
+                      "text": "Runs each time this list is shown; a hidden list is not drawn, so its button on the left draws it again and it shows what is unlocked by then. Get Gallery hands over the CG entries of the Gallery panel (left rail ▸ Collapsed panels), each row carrying its lock state, its picture and its name, masked while locked. A new project has none, so the list starts empty and Empty note says so. An entry is unlocked by an Unlock Gallery node in the blueprint of a Blueprint row in the story. The four lists run this same layer with their own Kind and empty text. They are not one component: Kind is picked on the node and has no pin, so a component param cannot set it, and each list lays out its rows differently.",
                       "width": 1100,
                       "height": 180
                     },
@@ -20468,7 +20468,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "Runs each time this list is shown; a hidden list is not drawn, so its button on the left draws it again and it shows what is unlocked by then. Get Gallery hands over the recollection entries of the Gallery panel (left rail), each row carrying its lock state, its picture and its name, masked while locked. A new project has none, so the list starts empty and Empty note says so. Reaching an entry's scene in the story unlocks it. The four lists run this same layer with their own Kind and empty text. They are not one component: Kind is picked on the node and has no pin, so a component param cannot set it, and each list lays out its rows differently.",
+                      "text": "Runs each time this list is shown; a hidden list is not drawn, so its button on the left draws it again and it shows what is unlocked by then. Get Gallery hands over the recollection entries of the Gallery panel (left rail ▸ Collapsed panels), each row carrying its lock state, its picture and its name, masked while locked. A new project has none, so the list starts empty and Empty note says so. Reaching an entry's scene in the story unlocks it. The four lists run this same layer with their own Kind and empty text. They are not one component: Kind is picked on the node and has no pin, so a component param cannot set it, and each list lays out its rows differently.",
                       "width": 1100,
                       "height": 180
                     },
@@ -21178,7 +21178,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "Runs each time this list is shown; a hidden list is not drawn, so its button on the left draws it again and it shows what is unlocked by then. Get Gallery hands over the music entries of the Gallery panel (left rail), each row carrying its lock state, its track and its name, masked while locked. A new project has none, so the list starts empty and Empty note says so. Playing a track in the story unlocks it. The four lists run this same layer with their own Kind and empty text. They are not one component: Kind is picked on the node and has no pin, so a component param cannot set it, and each list lays out its rows differently.",
+                      "text": "Runs each time this list is shown; a hidden list is not drawn, so its button on the left draws it again and it shows what is unlocked by then. Get Gallery hands over the music entries of the Gallery panel (left rail ▸ Collapsed panels), each row carrying its lock state, its track and its name, masked while locked. A new project has none, so the list starts empty and Empty note says so. Playing a track in the story unlocks it. The four lists run this same layer with their own Kind and empty text. They are not one component: Kind is picked on the node and has no pin, so a component param cannot set it, and each list lays out its rows differently.",
                       "width": 1100,
                       "height": 180
                     },
@@ -21816,7 +21816,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "Runs each time this list is shown; a hidden list is not drawn, so its button on the left draws it again and it shows what is unlocked by then. Get Gallery hands over the voice entries of the Gallery panel (left rail), each row carrying its lock state, its line and its name, masked while locked. A new project has none, so the list starts empty and Empty note says so. Hearing a line in the story unlocks it. The four lists run this same layer with their own Kind and empty text. They are not one component: Kind is picked on the node and has no pin, so a component param cannot set it, and each list lays out its rows differently.",
+                      "text": "Runs each time this list is shown; a hidden list is not drawn, so its button on the left draws it again and it shows what is unlocked by then. Get Gallery hands over the voice entries of the Gallery panel (left rail ▸ Collapsed panels), each row carrying its lock state, its line and its name, masked while locked. A new project has none, so the list starts empty and Empty note says so. Hearing a line in the story unlocks it. The four lists run this same layer with their own Kind and empty text. They are not one component: Kind is picked on the node and has no pin, so a component param cannot set it, and each list lays out its rows differently.",
                       "width": 1100,
                       "height": 180
                     },
@@ -23709,6 +23709,113 @@
           "functions": {}
         },
         "bindings": {}
+      },
+      "5159ea93-2917-4a75-ac5f-2b636b7df649": {
+        "id": "5159ea93-2917-4a75-ac5f-2b636b7df649",
+        "name": "Replay voice",
+        "owner": {
+          "kind": "widgetMain",
+          "surfaceId": "8a607acd-95dd-4af7-9994-686c20891c18",
+          "elementId": "352f20e9-3f47-41f2-85f0-3f5d95799d96"
+        },
+        "graphs": {
+          "eventIds": [
+            "ad0f5348-62bc-49b4-98ac-d15de6f6aed8"
+          ],
+          "events": {
+            "ad0f5348-62bc-49b4-98ac-d15de6f6aed8": {
+              "id": "ad0f5348-62bc-49b4-98ac-d15de6f6aed8",
+              "name": "Replay the line",
+              "graph": {
+                "nodes": {
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Runs when this button is pressed on a row of the log. Get Field reads the row's voiceId, and Play Voice plays that line's take again in the voice language in force; a take still speaking stops first. The button is drawn only on rows whose line has a take to play: its visibility reads the row's hasVoice field.",
+                      "width": 1000,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
+                    "type": "blueprint.event.head.mouseClick",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 170
+                      }
+                    }
+                  },
+                  "voice": {
+                    "id": "voice",
+                    "type": "blueprint.list.getItemField",
+                    "params": {
+                      "field": "voiceId"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 260,
+                        "y": 261
+                      }
+                    }
+                  },
+                  "play": {
+                    "id": "play",
+                    "type": "blueprint.voice.play",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 600,
+                        "y": 170
+                      }
+                    }
+                  }
+                },
+                "edges": [
+                  {
+                    "from": {
+                      "nodeId": "pressed",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "play",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "voice",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "play",
+                      "port": "voiceId"
+                    }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
+            }
+          },
+          "functionIds": [],
+          "functions": {}
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
       }
     },
     "ownerRecords": {
@@ -24221,12 +24328,15 @@
       },
       "componentWidgetMain:6dea9a83-5008-4547-a0ad-dc4fea97cedb:f4c4cb26-ea0d-4cfc-9b4e-e11e9d3b54be": {
         "blueprintId": "a7f9fdd6-6002-40d8-9751-ca908ecced39"
+      },
+      "widgetMain:8a607acd-95dd-4af7-9994-686c20891c18:352f20e9-3f47-41f2-85f0-3f5d95799d96": {
+        "blueprintId": "5159ea93-2917-4a75-ac5f-2b636b7df649"
       }
     },
     "meta": {}
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-10-06T02:53:16.828Z"
+    "updatedAt": "2026-10-07T01:00:07.465Z"
   }
 }

@@ -17,14 +17,14 @@ const FIELD: ProjectAudioTrack = { id: "t_field", name: "Field", parentId: null,
 describe("audioBusStatusLine", () => {
     it("names the row's own bus first and the player's slider last", () => {
         expect(audioBusStatusLine(t, tracks(ALICE), "t_alice", "sound"))
-            .toBe("Alice → Voice · project.audio.slider.voice");
+            .toBe("Alice → project.audio.builtinName.voice · project.audio.slider.voice");
     });
 
     it("keeps the seeded slider however many buses of the author's own sit between", () => {
         // The engine's own slot check walks all the way up, so the slider has to as well - stopping
         // at the nearest bus would tell the author to look for a "Whisper Volume" that does not exist.
         expect(audioBusStatusLine(t, tracks(ALICE, WHISPER), "t_whisper", "sound"))
-            .toBe("Whisper → Alice → Voice · project.audio.slider.voice");
+            .toBe("Whisper → Alice → project.audio.builtinName.voice · project.audio.slider.voice");
     });
 
     it("falls back to the global volume for a bus that reaches master through none of the three", () => {
@@ -33,9 +33,16 @@ describe("audioBusStatusLine", () => {
     });
 
     it("answers the caller's own fallback when the row names no track, and when it names a dead one", () => {
-        expect(audioBusStatusLine(t, tracks(), undefined, "bgm")).toBe("Music · project.audio.slider.bgm");
+        expect(audioBusStatusLine(t, tracks(), undefined, "bgm")).toBe("project.audio.builtinName.bgm · project.audio.slider.bgm");
         // A deleted track is not a broken row: it resolves to the seeded bus for the row's shape.
-        expect(audioBusStatusLine(t, tracks(), "t_gone", "sound")).toBe("SFX · project.audio.slider.sound");
+        expect(audioBusStatusLine(t, tracks(), "t_gone", "sound")).toBe("project.audio.builtinName.sound · project.audio.slider.sound");
+    });
+
+    it("names a seeded bus in the interface's words until the author renames it", () => {
+        // Stored as "Music" in every project; shown as the interface's word for it. A name the author
+        // gave is theirs and is shown as written.
+        const renamed = tracks().map(track => (track.id === "bgm" ? { ...track, name: "Score" } : track));
+        expect(audioBusStatusLine(t, renamed, undefined, "bgm")).toBe("Score · project.audio.slider.bgm");
     });
 
     it("says nothing about volume", () => {

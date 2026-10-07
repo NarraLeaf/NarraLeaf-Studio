@@ -19,7 +19,12 @@ import type { StoryExpressionIssue } from "@shared/utils/storyExpressionParser";
 
 export type StoryCommandSpan = { start: number; end: number };
 
-export type StoryCommandNamedRef = { id: string; name: string };
+/**
+ * Something a line names by its name. `aliases` are further words that resolve to it but are not
+ * offered: a seeded audio track is offered by the interface word for it and still answers to the
+ * stored English name an older line was typed with.
+ */
+export type StoryCommandNamedRef = { id: string; name: string; aliases?: readonly string[] };
 
 /**
  * A named appearance of one character. `axisId` is present exactly when the character is layered,

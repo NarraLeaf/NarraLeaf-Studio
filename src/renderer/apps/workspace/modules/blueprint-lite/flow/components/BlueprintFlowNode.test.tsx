@@ -6,10 +6,16 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_COMMENT,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
+    BLUEPRINT_NODE_TYPE_SCENE_GET,
+    BLUEPRINT_NODE_TYPE_SOUND_PLAY,
 } from "@shared/types/blueprint/graph";
+import { BLUEPRINT_SOUND_TRACK_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/audioTrackParams";
 import { resolveBlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
 import { BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY } from "@/lib/ui-editor/blueprint-nodes/types";
+import { BLUEPRINT_SCENE_VARIABLE_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/storyVariableNodes";
+import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
+import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import { BlueprintFlowNode } from "./BlueprintFlowNode";
 
 function renderSaveGameCapturePin(screenshot: unknown): string {
@@ -66,6 +72,25 @@ function renderComment(params: Record<string, unknown>): string {
     );
 }
 
+function renderSceneVarCard(params: Record<string, unknown>, options: { value: string; label: string }[]): string {
+    registerCoreBlueprintNodes();
+    const catalog = resolveBlueprintNodeEditorCatalogEntry(BLUEPRINT_NODE_TYPE_SCENE_GET);
+    return renderToStaticMarkup(
+        <BlueprintFlowNode
+            {...({
+                selected: false,
+                data: {
+                    catalog,
+                    nodeId: "get",
+                    params,
+                    dynamicSelectOptions: { [BLUEPRINT_SCENE_VARIABLE_OPTIONS_SOURCE]: options },
+                    onPatchNodeParam: vi.fn(),
+                },
+            } as any)}
+        />,
+    );
+}
+
 function renderElementCard(params: Record<string, unknown>, elementPreview?: unknown): string {
     registerCoreBlueprintNodes();
     const catalog = resolveBlueprintNodeEditorCatalogEntry(BLUEPRINT_NODE_TYPE_ELEMENT_REF);
@@ -94,6 +119,11 @@ vi.mock("@xyflow/react", () => ({
         Top: "top",
     },
     useReactFlow: () => ({ getZoom: () => 1 }),
+}));
+
+// The asset picker on a sound card reads the workspace's assets; the cards here are rendered alone.
+vi.mock("@/apps/workspace/modules/assets/components/AssetSelector", () => ({
+    AssetSelector: () => null,
 }));
 
 /**
@@ -151,6 +181,34 @@ describe("BlueprintFlowNode", () => {
         expect(renderBooleanLiteral(false)).toContain("False");
         expect(renderBooleanLiteral("true")).toContain("True");
         expect(renderBooleanLiteral(undefined)).not.toContain("True");
+    });
+
+    it("names the track an unpicked Play Sound plays on instead of showing a dash", () => {
+        registerCoreBlueprintNodes();
+        const catalog = resolveBlueprintNodeEditorCatalogEntry(BLUEPRINT_NODE_TYPE_SOUND_PLAY);
+        const markup = renderToStaticMarkup(
+            <BlueprintFlowNode
+                {...({
+                    selected: false,
+                    data: {
+                        catalog,
+                        nodeId: "play",
+                        params: {},
+                        dynamicSelectOptions: {
+                            [BLUEPRINT_SOUND_TRACK_OPTIONS_SOURCE]: [
+                                { value: "", label: "Default (SFX)" },
+                                { value: "bgm", label: "Music" },
+                                { value: "sound", label: "SFX" },
+                            ],
+                        },
+                        onPatchNodeParam: vi.fn(),
+                    },
+                } as any)}
+            />,
+        );
+
+        expect(markup).toContain("Default (SFX)");
+        expect(markup).not.toMatch(/>-</);
     });
 
     it("renders the Save Game Capture pin as an on-card true/false dropdown", () => {
@@ -255,5 +313,38 @@ describe("BlueprintFlowNode", () => {
         expect(markup).toContain("Title");
         expect(markup).toContain('data-preview="title"');
         expect(markup).not.toContain("Missing element");
+    });
+    /**
+     * A Scene Var card had no control for its variable at all: the field's kind had no picker, so
+     * an author could not point it at anything with the mouse and every such node failed to run.
+     */
+    it("lets a Scene Var card pick from its scene's variables, and shows the one it holds by name", () => {
+        const markup = renderSceneVarCard({ sceneVariableId: "var-hp" }, [
+            { value: "var-hp", label: "hp" },
+            { value: "var-mood", label: "Mood" },
+        ]);
+
+        expect(markup).toContain(">hp<");
+        expect(markup).not.toContain("var-hp");
+    });
+
+    it("leaves a Scene Var card unset when the variable it held is no longer in its scene", () => {
+        const markup = renderSceneVarCard({ sceneVariableId: "gone" }, [{ value: "var-hp", label: "hp" }]);
+
+        expect(markup).not.toContain("gone");
+        expect(markup).not.toContain(">hp<");
+    });
+
+    it("names the kind of control an element card holds, not its type id", () => {
+        // A stand-in module rather than the built-ins: registering those imports every widget.
+        widgetModuleRegistry.register({ type: "test.gauge", displayName: "Gauge" } as unknown as UIWidgetModule);
+        try {
+            const markup = renderElementCard({ surfaceId: "page", elementId: "title", elementType: "test.gauge" });
+
+            expect(markup).not.toContain("test.gauge");
+            expect(markup).toContain("Gauge");
+        } finally {
+            widgetModuleRegistry.unregister("test.gauge");
+        }
     });
 });

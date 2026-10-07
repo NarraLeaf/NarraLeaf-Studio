@@ -1112,6 +1112,20 @@ function collectElementEventTargets(input: {
     return out;
 }
 
+/**
+ * Whether an `On Element Click` head anywhere on the surface - in the page's blueprint or in any
+ * widget's - names this element. The element's own Mouse Click is a different question, answered by
+ * `widgetPrivateBlueprintHasSlotHead`.
+ */
+export function elementClickIsNamedOnSurface(input: {
+    document: UIDocument;
+    blueprintDocument: BlueprintDocument;
+    surfaceId: string;
+    target: BlueprintElementRef;
+}): boolean {
+    return collectElementEventTargets({ ...input, nodeType: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK }).length > 0;
+}
+
 type ElementEventDispatchOptions = {
     document: UIDocument;
     blueprintDocument: BlueprintDocument;

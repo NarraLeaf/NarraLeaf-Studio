@@ -4,6 +4,7 @@ import { LOCALIZED_COMMANDS_DEFAULT } from "@/lib/settings/commandLanguageOption
 import type { StoryBlock, StoryDocument, StoryScene } from "@shared/types/story";
 import {
     describeStoryBlock,
+    getStoryContainerHeaderInfo,
     projectStoryRow,
     storyBlockBadge,
     storyContainerChain,
@@ -108,6 +109,19 @@ describe("storyRowSentence — the sentence the editor shows", () => {
         // An unbound motion row has nothing to name, table or not.
         expect(storyRowSentence(action({ action: "camera", operation: "transform", transform: { mode: "animation" } }), { ...bare, motionName: () => "x" }))
             .toBe("Motion");
+    });
+
+    it("names a blueprint row by its blueprint, and only by its kind when there is nothing to say", () => {
+        const row = (blueprintId: string) => action({ action: "blueprint", blueprintId });
+        const lookups: StoryRowLookups = { ...bare, blueprintName: id => ({ a: "Confirm sound", b: "Back sound" } as Record<string, string>)[id] ?? null };
+        expect(describeStoryBlock(row("a"), lookups)).toBe("Blueprint Confirm sound");
+        expect(describeStoryBlock(row("b"), lookups)).toBe("Blueprint Back sound");
+        expect(describeStoryBlock(row("c"), lookups)).toBe("Blueprint");
+        // No blueprint yet, or no table to ask: the kind, never the id.
+        expect(describeStoryBlock(row(""), lookups)).toBe("Blueprint");
+        expect(describeStoryBlock(row("a"), bare)).toBe("Blueprint");
+        i18nStore.setLocale("zh");
+        expect(describeStoryBlock(row("a"), lookups)).toBe("蓝图 Confirm sound");
     });
 
     it("falls back to the id when the caller has no asset table, and says so when the table misses", () => {
@@ -285,6 +299,30 @@ describe("colour", () => {
         };
         expect(storyBlockBadge(invalid).group).toBeNull();
         expect(storyRowAccentColor(invalid)).toBe("rgb(var(--nl-danger))");
+    });
+});
+
+describe("a group's header", () => {
+    it("names the group by how it runs, which its stored mode decides", () => {
+        expect(getStoryContainerHeaderInfo(control({ control: "parallel", mode: "all" }))?.commandId).toBe("parallel");
+        expect(getStoryContainerHeaderInfo(control({ control: "sequence" }))?.commandId).toBe("sequence");
+        expect(getStoryContainerHeaderInfo(control({ control: "race" }))?.commandId).toBe("race");
+        // Rows the earlier inspector let disagree with themselves read as they play.
+        expect(getStoryContainerHeaderInfo(control({ control: "sequence", mode: "all" }))?.commandId).toBe("parallel");
+        expect(getStoryContainerHeaderInfo(control({ control: "parallel", mode: "do" }))?.commandId).toBe("sequence");
+    });
+
+    it("marks a group the rows after it do not wait for, and only that", () => {
+        expect(getStoryContainerHeaderInfo(control({ control: "parallel", mode: "allAsync" }))?.groupWaits).toBe(false);
+        expect(getStoryContainerHeaderInfo(control({ control: "sequence", mode: "doAsync" }))?.groupWaits).toBe(false);
+        expect(getStoryContainerHeaderInfo(control({ control: "parallel", mode: "all" }))?.groupWaits).toBeUndefined();
+        expect(getStoryContainerHeaderInfo(control({ control: "race", mode: "any" }))?.groupWaits).toBeUndefined();
+    });
+
+    it("describes a group and a branch in the header's words, never by the stored enum", () => {
+        expect(describeStoryBlock(control({ control: "sequence", mode: "all" }), bare)).toBe("Parallel");
+        expect(describeStoryBlock(control({ control: "race" }), bare)).toBe("Race, first to finish");
+        expect(describeStoryBlock(control({ control: "conditionBranch", branch: "elseIf" }), bare)).toBe("Else if branch");
     });
 });
 

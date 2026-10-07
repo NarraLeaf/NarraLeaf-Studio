@@ -16,6 +16,8 @@ import { hasScriptLayer } from "@shared/blueprint/blueprintLayers";
 import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import { isStorySyncValueOwner } from "@shared/types/blueprint/document";
 import { blueprintAnchor } from "@shared/blueprint/ownerShape";
+import { blueprintDisplayName, factoryLayerNameKey } from "@shared/types/ui-editor/ownerLabels";
+import { translate } from "@/lib/i18n";
 import type { UIDocument, UIElementId, UISurface } from "@shared/types/ui-editor/document";
 
 export type BlueprintDevToolsScope = {
@@ -87,7 +89,7 @@ export function listDevModeBlueprints(
             }
             debuggable.push({
                 id: blueprint.id,
-                name: blueprint.name,
+                name: blueprintDisplayName(blueprint, translate),
                 ownerKind: blueprint.owner.kind,
                 syncOnly: isStorySyncValueOwner(blueprint.owner),
                 graphs,
@@ -153,7 +155,11 @@ function listDebuggableGraphs(blueprint: Blueprint): DebuggableGraph[] {
             if (nodeCount === 0) {
                 continue;
             }
-            graphs.push({ graphId: entry.id, name: entry.name?.trim() || entry.id, kind, nodeCount });
+            // A layer Studio seeded reads as the title of the event that starts it, as the editor's
+            // layer list shows it, rather than as the English it is stored with.
+            const seededKey = kind === "event" ? factoryLayerNameKey(entry.id, entry.name) : undefined;
+            const name = seededKey ? translate(seededKey) : entry.name?.trim() || entry.id;
+            graphs.push({ graphId: entry.id, name, kind, nodeCount });
         }
     };
     collect(blueprint.graphs.events, "event");

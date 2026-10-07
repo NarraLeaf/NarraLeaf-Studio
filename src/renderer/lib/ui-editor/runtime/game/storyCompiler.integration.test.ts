@@ -1082,6 +1082,26 @@ describe("compileStudioStoryToNlr", () => {
             }
         });
 
+        // That label is read by the player, so it is in the game's language, not in English.
+        it("words the neutral label in the game's language", async () => {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument(dialogueBlocks("char-gone"), ["say"]),
+                sceneId: "scene-1",
+                characters: [],
+                localization: {
+                    sourceLocale: "zh-CN",
+                    locales: [
+                        { code: "zh-CN", displayName: "简体中文" },
+                        { code: "ja", displayName: "日本語" },
+                    ],
+                    tables: {},
+                    getLocale: () => "ja",
+                },
+            });
+            const sayAction = compiled.actionIdBindings.find(binding => binding.blockId === "say")?.action as any;
+            expect(sayAction?.contentNode?.getContent?.()?.config?.character?.state.name).toBe("不明");
+        });
+
         it("still binds one Character instance per characterId when names collide", async () => {
             const compiled = await compileStudioStoryToNlr({
                 document: baseDocument({
@@ -2235,6 +2255,53 @@ describe("compileStudioStoryToNlr localization", () => {
         locale = "zh-CN";
         expect(renderDynamicResult(promptWords[0].text({}))).toBe("怎么办？");
         expect(renderDynamicResult(optionWords[0].text({}))).toBe("留下");
+    });
+
+    /**
+     * An option left empty is drawn with Studio's word for one. The player reads it, so it is in the
+     * language the game is being read in - and, for a language Studio has no words in, in the
+     * project's source language rather than in English.
+     */
+    it("words an option left empty in the game's language", async () => {
+        const option: StoryBlock = {
+            id: "option",
+            kind: "nodeAction",
+            parentId: "choice",
+            childrenIds: [],
+            payload: { action: "choiceOption", text: { textId: "text-option", value: "", role: "choiceText" } },
+        };
+        const choice: StoryBlock = {
+            id: "choice",
+            kind: "nodeAction",
+            parentId: null,
+            childrenIds: ["option"],
+            payload: { action: "choice", prompt: { textId: "text-prompt", value: "怎么办？", role: "choicePrompt" } },
+        };
+        let locale = "zh-CN";
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ choice, option }, ["choice"]),
+            sceneId: "scene-1",
+            localization: {
+                sourceLocale: "zh-CN",
+                locales: [
+                    { code: "zh-CN", displayName: "简体中文" },
+                    { code: "en", displayName: "English" },
+                    { code: "ja", displayName: "日本語" },
+                    { code: "fr", displayName: "Français" },
+                ],
+                tables: {},
+                getLocale: () => locale,
+            },
+        });
+        const optionWords = menuOnScene(compiled.scene).choices[0].prompt?.text as any[];
+        const drawn = () => renderDynamicResult(optionWords[0].text({}));
+        expect(drawn()).toBe("选项");
+        locale = "ja";
+        expect(drawn()).toBe("選択肢");
+        locale = "en";
+        expect(drawn()).toBe("Option");
+        locale = "fr";
+        expect(drawn()).toBe("选项");
     });
 
     /**

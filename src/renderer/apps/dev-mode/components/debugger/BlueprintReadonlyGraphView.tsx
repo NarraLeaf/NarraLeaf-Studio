@@ -33,6 +33,7 @@ import { getBlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-gra
 import { blueprintEdgeStyle } from "@/lib/ui-editor/blueprint-graph-edge-style";
 import { readNodeEditorLayout } from "@/lib/workspace/services/ui-editor/blueprint/graphEditing";
 import { useTranslation } from "@/lib/i18n";
+import { useFlowAriaLabels } from "@/lib/ui-editor/hooks/useFlowAriaLabels";
 import {
     resolveBlueprintLabel,
     resolveBlueprintNodeTitle,
@@ -135,6 +136,7 @@ export type BlueprintReadonlyGraphViewProps = {
 function BlueprintReadonlyGraphViewInner(props: BlueprintReadonlyGraphViewProps) {
     const { ir, blueprintId, graphId, breakpointsByKey, pausable, pausedNodeId, focusNonce } = props;
     const { t } = useTranslation();
+    const flowAriaLabels = useFlowAriaLabels();
     const flow = useReactFlow();
     const lastFocusRef = useRef<string | null>(null);
 
@@ -212,6 +214,7 @@ function BlueprintReadonlyGraphViewInner(props: BlueprintReadonlyGraphViewProps)
 
     return (
         <ReactFlow
+            ariaLabelConfig={flowAriaLabels}
             nodes={nodes}
             edges={edges}
             nodeTypes={nodeTypes}

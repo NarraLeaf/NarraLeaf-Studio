@@ -98,17 +98,18 @@ export function derivedWritesFrozen(projectPath: string): boolean {
 /**
  * The payload as rows and nothing else.
  *
- * The two fields a clipboard payload can carry beyond the rows are the two that only exist on the
- * machine holding it: a grant reaching another project's files, and that project's translations.
- * Both are dropped *before* the rows are treated, so what a rows-only paste may write is a property
- * of the value it works from rather than a promise every later step has to remember to keep.
+ * The fields a clipboard payload can carry beyond the rows are the ones that only exist on the
+ * machine holding it: a grant reaching another project's files, that project's translations, and the
+ * blueprints its rows own. All are dropped *before* the rows are treated, so what a rows-only paste
+ * may write is a property of the value it works from rather than a promise every later step has to
+ * remember to keep.
  *
  * Takes are not stripped because they were never here: a take is an id into the *recording*
  * project's audio library, so it is worth nothing anywhere else and no copy has ever put one on the
  * clipboard. What keeps them out is that this path reads no voice library at all.
  */
 export function rowsOnlyPayload(payload: StoryClipboardPayload): StoryClipboardPayload {
-    const { assets: _assets, translations: _translations, ...rows } = payload;
+    const { assets: _assets, translations: _translations, blueprints: _blueprints, ...rows } = payload;
     return rows;
 }
 

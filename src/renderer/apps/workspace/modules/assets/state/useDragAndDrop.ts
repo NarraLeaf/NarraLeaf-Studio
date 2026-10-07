@@ -1,4 +1,4 @@
-import { useState, useCallback, DragEvent } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, DragEvent } from 'react';
 import { Asset, AssetGroup } from '@/lib/workspace/services/assets/types';
 import { AssetCategory, categoryOfAssetType } from '@/lib/workspace/services/assets/assetTypes';
 import { WorkspaceContext } from '@/lib/workspace/services/services';
@@ -7,9 +7,12 @@ import { Services } from '@/lib/workspace/services/services';
 import {
     ASSET_DRAG_MIME,
     collectAssetsForWorkspaceDrag,
+    decodeAssetDragPayload,
     encodeAssetDragPayload,
     isWorkspaceAssetDragEvent,
+    resolveAssetsFromDragPayload,
 } from "@/apps/workspace/modules/assets/dnd/assetDragContract";
+import type { WorkspaceAssetDragSession } from "@/apps/workspace/dnd/types";
 import { applyMultiAssetDragImage } from "@/apps/workspace/modules/assets/dnd/multiAssetDragImage";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { assetLibraryFreezeScope } from "../assetLiveSession";
@@ -55,6 +58,14 @@ export interface UseDragAndDropParams {
     onWorkspaceDragSessionStart?: (assets: Asset[], primaryId: string, sourcePanelId?: string) => void;
     onWorkspaceDragSessionEnd?: () => void;
     /**
+     * The workspace-wide asset drag in progress, whichever panel started it.
+     *
+     * Read to tell a drag that began in the other assets panel (the sidebar and the bottom tray are
+     * two instances of this panel, each with its own drag state) from one that began here, so a
+     * folder here can light up for the files being carried over.
+     */
+    workspaceDragSession?: WorkspaceAssetDragSession | null;
+    /**
      * File a dragged set in another folder. Absent while the panel has no sets to drag.
      *
      * The move itself is the panel's: it takes the sets nested inside the dragged one and the files
@@ -73,6 +84,7 @@ export function useDragAndDrop({
     panelId,
     onWorkspaceDragSessionStart,
     onWorkspaceDragSessionEnd,
+    workspaceDragSession,
     onAssetSetDrop,
 }: UseDragAndDropParams) {
     // Dropping INTO the panel moves or imports, so it is off while frozen. Dragging OUT of it is not:
@@ -92,6 +104,40 @@ export function useDragAndDrop({
     const [draggedAssetSet, setDraggedAssetSet] = useState<DraggedAssetSetState | null>(null);
     const [dropTargetId, setDropTargetId] = useState<string | null>(null);
     const [dragOver, setDragOver] = useState(false);
+
+    /**
+     * The sections the files another assets panel is dragging belong to, or null while no such drag
+     * is on.
+     *
+     * The sidebar and the bottom tray each own a copy of this hook, so a file picked up in one is not
+     * this copy's `draggedItem`: what is being carried is known only from the workspace drag both of
+     * them publish to. Used to light up the folders that would take it; the drop itself reads the
+     * files from the drag's own payload (`dropFromOtherPanel`).
+     */
+    const otherPanelDragCategories = useMemo<ReadonlySet<AssetCategory> | null>(() => {
+        if (!workspaceDragSession || workspaceDragSession.sourcePanelId === panelId || workspaceDragSession.assets.length === 0) {
+            return null;
+        }
+        return new Set(workspaceDragSession.assets.map(asset => categoryOfAssetType(asset.type)));
+    }, [panelId, workspaceDragSession]);
+
+    /**
+     * Forget a drag of this panel's files that the other assets panel took.
+     *
+     * The other panel ends the workspace drag when it files them, and by then the row the drag
+     * started from has usually moved out of this panel's view - so the `dragend` that would have
+     * cleared {@link draggedItem} never reaches it. Left set, it would turn the next drop of desktop
+     * files on one of this panel's folders into a move of that stale file.
+     */
+    const sessionSourceRef = useRef<string | undefined>(undefined);
+    useEffect(() => {
+        const previousSource = sessionSourceRef.current;
+        sessionSourceRef.current = workspaceDragSession?.sourcePanelId;
+        if (!workspaceDragSession && previousSource === panelId) {
+            setDraggedItem(current => (current && !current.isGroup ? null : current));
+            setDropTargetId(null);
+        }
+    }, [panelId, workspaceDragSession]);
 
     const isDescendantGroup = useCallback((ancestorId: string, descendantId: string, groupsList: AssetGroup[]): boolean => {
         const descendant = groupsList.find((groupItem) => groupItem.id === descendantId);
@@ -183,19 +229,50 @@ export function useDragAndDrop({
             return;
         }
         const isExternalFiles = event.dataTransfer.types.includes("Files");
-        const isExternalAssetDrag = isWorkspaceAssetDragEvent(event.dataTransfer) && !draggedItem;
+        // Files dragged over from the other assets panel are filed here, not copied: see
+        // `dropFromOtherPanel`.
+        const isOtherPanelAssetDrag = isWorkspaceAssetDragEvent(event.dataTransfer) && !draggedItem;
 
-        if (draggedItem || isExternalFiles || isExternalAssetDrag) {
+        if (draggedItem || isExternalFiles || isOtherPanelAssetDrag) {
             setDropTargetId(targetId);
-            if (draggedItem) {
-                event.dataTransfer.dropEffect = "move";
-            } else if (isExternalAssetDrag) {
-                event.dataTransfer.dropEffect = "copy";
-            } else {
-                event.dataTransfer.dropEffect = "copy";
-            }
+            event.dataTransfer.dropEffect = draggedItem || isOtherPanelAssetDrag ? "move" : "copy";
         }
     }, [draggedItem, freeze, libraryFreeze]);
+
+    /**
+     * File the assets another assets panel is dragging into a folder of this one.
+     *
+     * The drag carries its files in its payload (`encodeAssetDragPayload`), read here at the drop -
+     * the one moment a browser hands the payload over - and resolved against the library as it is
+     * now. The move is the one an in-panel drop makes, under the same rule: only the files of the
+     * folder's own section move, and a drag that holds nothing of that section moves nothing.
+     *
+     * A payload naming this very panel is left alone: a drag that started here is `draggedItem`, and
+     * answering it twice would file it twice.
+     */
+    const dropFromOtherPanel = useCallback(
+        async (event: DragEvent, targetCategory: AssetCategory, targetGroup: AssetGroup | null) => {
+            setDragOver(false);
+            setDropTargetId(null);
+            const wire = decodeAssetDragPayload(event.dataTransfer.getData(ASSET_DRAG_MIME));
+            if (!context || !wire || wire.s === panelId || libraryFreeze.frozen) {
+                return;
+            }
+            const assetsService = context.services.get<AssetsService>(Services.Assets);
+            const candidates = resolveAssetsFromDragPayload(wire, assetsService.getAssets())
+                .filter(asset => categoryOfAssetType(asset.type) === targetCategory);
+            if (candidates.length === 0) {
+                return;
+            }
+            const status = await assetsService.moveAssetsToGroup(candidates, targetGroup?.id);
+            if (!status.success) {
+                return;
+            }
+            onWorkspaceDragSessionEnd?.();
+            onDropCompleted({ movedAssetIds: candidates.map(asset => asset.id), movedGroupIds: [] });
+        },
+        [context, libraryFreeze, onDropCompleted, onWorkspaceDragSessionEnd, panelId],
+    );
 
     const handleDropOnItem = useCallback(
         async (event: DragEvent, targetCategory: AssetCategory, targetGroup: AssetGroup | null) => {
@@ -220,7 +297,13 @@ export function useDragAndDrop({
                 return;
             }
 
-            if (!draggedItem) return;
+            if (!draggedItem) {
+                // Nothing picked up here: what is landing, if anything, is the other assets panel's.
+                if (isWorkspaceAssetDragEvent(event.dataTransfer)) {
+                    await dropFromOtherPanel(event, targetCategory, targetGroup);
+                }
+                return;
+            }
 
             const assetsService = context.services.get<AssetsService>(Services.Assets);
 
@@ -295,6 +378,7 @@ export function useDragAndDrop({
             context,
             draggedAssetSet,
             draggedItem,
+            dropFromOtherPanel,
             filteredAssets,
             filteredGroups,
             freeze,
@@ -311,6 +395,7 @@ export function useDragAndDrop({
     return {
         draggedItem,
         draggedAssetSet,
+        otherPanelDragCategories,
         dropTargetId,
         dragOver,
         setDragOver,

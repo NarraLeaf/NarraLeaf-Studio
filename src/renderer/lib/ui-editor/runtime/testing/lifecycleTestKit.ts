@@ -41,6 +41,8 @@ export function createRecordingCore(log: LifecycleEventLog): BlueprintRuntimeCor
         realCloseScope(runtimeScopeId, reason);
     };
     return {
+        bundleId: "lifecycle-test",
+        bundleRevision: 0,
         scopeBridge: new ScopeStoreBridge(),
         debug: new DebugBridge(),
         bindingDebugCoalescer: new BindingDebugCoalescer(),

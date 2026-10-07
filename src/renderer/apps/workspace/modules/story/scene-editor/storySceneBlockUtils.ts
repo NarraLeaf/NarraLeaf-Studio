@@ -3,11 +3,12 @@ import { Aperture, Blocks,
     AppWindow, Bookmark, Clock, CornerUpLeft, Eye, FileText, FlagTriangleRight, GitBranch, Image, Layers, LogOut, MessageSquare, Minus, Move, Music, Puzzle, Route, SeparatorHorizontal, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video, Wind } from "lucide-react";
 import { resolveBrandColorValue } from "@shared/brand/brandRegistry";
 import type { StoryBlock, StoryBlockId, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment } from "@shared/types/story";
-import { storyVariableRefKey } from "@shared/types/story";
+import { resolveStoryGroupRunMode, storyGroupKindOfMode, storyVariableRefKey } from "@shared/types/story";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { richIfMeaningful } from "./richText";
 import { paragraphActionCharacterId } from "./storyCharacterActions";
 import type { Character } from "@/lib/workspace/services/character/Character";
+import { canAcceptChildren as modelCanAcceptChildren } from "@/lib/workspace/services/story/storyModel";
 import type { CharacterAppearanceRef, StoryBlockTarget, StoryStagePlacement, VisibleStoryRow } from "./storySceneEditorTypes";
 import {
     describeStoryBlock,
@@ -467,24 +468,11 @@ export function planSelectionNudge(
     return moves.length > 0 ? moves : null;
 }
 
-export function canAcceptChildren(block: StoryBlock | undefined): boolean {
-    if (!block) {
-        return false;
-    }
-    // `label`, `goto`, `break`, `cut`, `ending` and `quit` are the control rows that are NOT
-    // containers: a label is a point, a goto is a move, a break is an exit, a cut is where one
-    // edition stops, an ending is where the story does and a quit is where the run does - none has a
-    // body. Everything else under `control` groups rows.
-    if (block.kind === "control"
-        && (block.payload.control === "label" || block.payload.control === "goto"
-            || block.payload.control === "break" || block.payload.control === "cut"
-            || block.payload.control === "ending" || block.payload.control === "quit")) {
-        return false;
-    }
-    return block.kind === "control" ||
-        (block.kind === "action" && block.payload.action === "nvl") ||
-        (block.kind === "nodeAction" && (block.payload.action === "choice" || block.payload.action === "choiceOption"));
-}
+/**
+ * Whether a row is a container. The story model's own answer, re-exported so the editor asks the
+ * same function the insert and move mutators enforce - see {@link modelCanAcceptChildren}.
+ */
+export const canAcceptChildren = modelCanAcceptChildren;
 
 export function isTextEditableBlock(block: StoryBlock): boolean {
     return Boolean(getTextSegment(block));
@@ -611,9 +599,11 @@ function rowCommandId(block: StoryBlock): string | null {
                 // One payload, two commands: `until` present IS the conditional form (see the payload's
                 // note), which is `/until` - the same flag the container header reads.
                 case "repeat": return block.payload.until ? "until" : "repeat";
-                case "parallel": return "parallel";
-                case "race": return "race";
-                case "sequence": return "sequence";
+                // By how the group runs, as its header names it: a stored `mode` decides over the
+                // `control` word (see `resolveStoryGroupRunMode`).
+                case "parallel":
+                case "race":
+                case "sequence": return storyGroupKindOfMode(resolveStoryGroupRunMode(block.payload));
                 case "break": return "break";
                 case "cut": return "cut";
                 case "label": return "label";
@@ -726,6 +716,7 @@ export function describeBlockSubject(
     scenes?: Record<StorySceneId, StoryScene>,
     resolveMotionName?: (animationId: string) => string | null,
     projectVariableName?: StoryRowLookups["projectVariableName"],
+    blueprintName?: StoryRowLookups["blueprintName"],
 ): string {
     return describeStoryBlock(block, {
         character: characterRowLookup(characters),
@@ -734,6 +725,7 @@ export function describeBlockSubject(
         scenes,
         motionName: resolveMotionName,
         projectVariableName,
+        blueprintName,
     });
 }
 
@@ -921,17 +913,19 @@ export function planRowBackspaceReplacement(
  * options, so a narration under either is a shape the compiler's tree contract does not admit.
  *
  * Nothing else enforces that. `insertBlockInScene` would happily land the row — `canAcceptChildren`
- * says yes to every `control` (condition included) and to a `choice` — so this rule is the only thing
- * keeping the illegal tree out; deleting it produces a scene that builds and then fails to compile.
- * `nvl` is the single case that is also mechanically enforced: a container to this module, but not to
- * `canAcceptChildren`, so an insert there throws.
+ * says yes to a condition and to a `choice` — so this rule is the only thing keeping the illegal tree
+ * out; deleting it produces a scene that builds and then fails to compile. An `/nvl` row is the
+ * opposite case: the lines it holds are the whole of what it is for.
  */
 function acceptsPlainRows(parent: StoryBlock | null | undefined): boolean {
-    if (!parent) {
+    if (!parent || !canAcceptChildren(parent)) {
         return false;
     }
     if (parent.kind === "control") {
         return parent.payload.control !== "condition";
+    }
+    if (parent.kind === "action") {
+        return parent.payload.action === "nvl";
     }
     return parent.kind === "nodeAction" && parent.payload.action === "choiceOption";
 }

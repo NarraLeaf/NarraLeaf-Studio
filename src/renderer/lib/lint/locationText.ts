@@ -1,4 +1,31 @@
+import type { TranslationKey } from "@shared/i18n";
+import { factoryLayerNameKey } from "@shared/types/ui-editor/ownerLabels";
+import { resolveBlueprintNodeTitle } from "@/apps/workspace/modules/blueprint-lite/blueprintNodeI18n";
 import type { LintLocation } from "./types";
+
+/** The translator a location is spelled with. Optional: without one, stored words are printed as stored. */
+export type LintLocationTranslate = (key: TranslationKey) => string;
+
+type BlueprintLintLocation = Extract<LintLocation, { kind: "blueprint" }>;
+
+/**
+ * A blueprint location's layer, as the member tree names it: a layer Studio seeded under the title of
+ * the event that starts it (`factoryLayerNameKey`), any other under the name the author gave it.
+ * Empty for a layer with no name.
+ */
+export function blueprintLocationLayerLabel(location: BlueprintLintLocation, translate?: LintLocationTranslate): string {
+    const name = location.layerName ?? "";
+    const key = location.graphId ? factoryLayerNameKey(location.graphId, name) : undefined;
+    return key && translate ? translate(key) : name;
+}
+
+/** A blueprint location's node, by the title its card shows; empty when the finding names no node. */
+export function blueprintLocationNodeLabel(location: BlueprintLintLocation, translate?: LintLocationTranslate): string {
+    if (!location.nodeTitle) {
+        return "";
+    }
+    return translate ? resolveBlueprintNodeTitle(location.nodeTitle, translate) : location.nodeTitle;
+}
 
 /**
  * How a finding's site is spelled, and when saying it would only repeat the sentence beside it.
@@ -22,7 +49,7 @@ export const LINT_LOCATION_SEPARATOR = " / ";
  * The report tab does not use this: it has a column for the row number and knows the project's own
  * name, so it spells a location its own way (`lintLocationLabel`).
  */
-export function describeLintLocation(location: LintLocation): string {
+export function describeLintLocation(location: LintLocation, translate?: LintLocationTranslate): string {
     switch (location.kind) {
         case "project":
             return "";
@@ -34,8 +61,14 @@ export function describeLintLocation(location: LintLocation): string {
                 : location.storyName;
             return location.line === undefined ? scene : `${scene}:${location.line}`;
         }
+        // The layer and the node: one blueprint holds several findings of one rule, and its name
+        // alone printed them as the same line.
         case "blueprint":
-            return location.blueprintName ?? location.blueprintId;
+            return [
+                location.blueprintName ?? location.blueprintId,
+                blueprintLocationLayerLabel(location, translate),
+                blueprintLocationNodeLabel(location, translate),
+            ].filter(Boolean).join(LINT_LOCATION_SEPARATOR);
         case "surface":
             return location.elementName
                 ? `${location.surfaceName}${LINT_LOCATION_SEPARATOR}${location.elementName}`

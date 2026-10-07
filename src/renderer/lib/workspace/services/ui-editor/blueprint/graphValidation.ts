@@ -3,6 +3,7 @@ import type {
     BlueprintDocument,
     BlueprintGraphEdge,
     BlueprintGraphIr,
+    BlueprintGraphNode,
     BlueprintOwnerRef,
 } from "@shared/types/blueprint/document";
 import { buildBlueprintRunGraphId } from "@shared/blueprint/blueprintRunGraphId";
@@ -10,6 +11,7 @@ import { blueprintContract } from "@shared/blueprint/ownerShape";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
 import { translate } from "@/lib/i18n";
+import { ownerLabelKey } from "@shared/types/ui-editor/ownerLabels";
 import {
     BLUEPRINT_NODE_PARAM_FN_NAME,
     BLUEPRINT_NODE_PARAM_FN_REF,
@@ -139,7 +141,8 @@ function reportDuplicatePinConnection(
     input: {
         key: string;
         nodeId: string;
-        port: string;
+        /** The pin as the message names it; asked for only when there is something to report. */
+        describePin: () => string;
         direction: "input" | "output";
         graphKind: "event" | "function";
         graphId: string;
@@ -154,7 +157,7 @@ function reportDuplicatePinConnection(
                 input.direction === "input"
                     ? "blueprint.diagnostics.graph.pinMultipleInput"
                     : "blueprint.diagnostics.graph.pinMultipleOutput",
-                { node: input.nodeId, port: input.port },
+                { pin: input.describePin() },
             ),
             target: {
                 kind: "node",
@@ -229,12 +232,41 @@ function describeNodeContextError(def: BlueprintNodeDef, ctx: BlueprintPaletteCo
     } else if (def.requiresListItemContext && !ctx.listItemContextAvailable) {
         hint = translate("blueprint.diagnostics.node.contextListItemHint");
     }
+    // The node by its card's title and the blueprint by what the editor calls its kind: an owner kind
+    // or a graph kind here was printed into the message bar verbatim, in every language.
     return translate("blueprint.diagnostics.node.contextInvalid", {
-        name: def.displayName,
-        ownerKind: ctx.owner.kind,
-        graphKind: ctx.graphKind,
+        name: resolveBlueprintNodeTitle(def.displayName, translate),
+        owner: translate(ownerLabelKey(ctx.owner.kind)),
         hint,
     });
+}
+
+/**
+ * A node as a diagnostic names it: by the title its card shows.
+ *
+ * Never by its id. A diagnostic is read in the message bar under the canvas and in the project's
+ * problem list, and clicking it goes to the node - so the title, which is what the author sees on the
+ * card they are taken to, is all the naming it needs. A node the catalogue does not know reads as the
+ * canvas draws its stub.
+ */
+function diagnosticNodeTitle(node: BlueprintGraphNode | undefined): string {
+    const def = node ? BlueprintNodeCatalogService.getInstance().get(node.type) : undefined;
+    return def ? resolveBlueprintNodeTitle(def.displayName, translate) : translate("blueprint.canvas.unknownNode");
+}
+
+/**
+ * A pin as a diagnostic names it: the card's title and the pin's label, as the wire tooltip writes
+ * one end. A pin the card no longer has - the case a port mismatch reports - is named by its card
+ * alone, since what is left of it is an id.
+ */
+function diagnosticPinName(node: BlueprintGraphNode | undefined, port: string, direction: "input" | "output"): string {
+    const title = diagnosticNodeTitle(node);
+    const label = node
+        ? resolveBlueprintNodeEditorCatalogEntryForNode(node.type, node.params).pins.find(
+              pin => pin.id === port && pin.kind === direction,
+          )?.label
+        : undefined;
+    return label ? translate("blueprint.wire.end", { node: title, pin: resolveBlueprintLabel(label, translate) }) : title;
 }
 
 function fnPinDeclSignature(decls: ReturnType<typeof readBlueprintFnReturnPinDecls>): string {
@@ -328,7 +360,7 @@ function validateBlueprintFnRules(
             out.push({
                 severity: "warning",
                 code: "fn.name_missing",
-                message: translate("blueprint.diagnostics.fn.nameMissing", { node: nodeId }),
+                message: translate("blueprint.diagnostics.fn.nameMissing", { node: diagnosticNodeTitle(node) }),
                 target: nodeTarget(nodeId),
             });
             continue;
@@ -383,7 +415,7 @@ function validateBlueprintFnRules(
                     out.push({
                         severity: "error",
                         code: "fn.return_signature_conflict",
-                        message: translate("blueprint.diagnostics.fn.returnSignatureConflict", { node: returnId }),
+                        message: translate("blueprint.diagnostics.fn.returnSignatureConflict", { node: diagnosticNodeTitle(returnNode) }),
                         target: nodeTarget(returnId),
                     });
                 }
@@ -399,7 +431,7 @@ function validateBlueprintFnRules(
             out.push({
                 severity: "warning",
                 code: "fn.call_unset",
-                message: translate("blueprint.diagnostics.fn.callUnset", { node: nodeId }),
+                message: translate("blueprint.diagnostics.fn.callUnset", { node: diagnosticNodeTitle(node) }),
                 target: nodeTarget(nodeId),
             });
             continue;
@@ -630,7 +662,7 @@ export function validateBlueprintGraphIr(
                     out.push({
                         severity: "error",
                         code: "graph.entry_missing_node",
-                        message: translate("blueprint.diagnostics.graph.entryMissingNode", { node: entry.start.nodeId }),
+                        message: translate("blueprint.diagnostics.graph.entryMissingNode"),
                         target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
                     });
                 } else {
@@ -666,7 +698,7 @@ export function validateBlueprintGraphIr(
             out.push({
                 severity: "error",
                 code: "edge.self_connection",
-                message: translate("blueprint.diagnostics.edge.selfConnection", { node: edge.from.nodeId }),
+                message: translate("blueprint.diagnostics.edge.selfConnection", { node: diagnosticNodeTitle(nodes[edge.from.nodeId]) }),
                 target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: edge.from.nodeId },
             });
         }
@@ -674,7 +706,7 @@ export function validateBlueprintGraphIr(
             out.push({
                 severity: "error",
                 code: "edge.from_unknown",
-                message: translate("blueprint.diagnostics.edge.fromUnknown", { node: edge.from.nodeId }),
+                message: translate("blueprint.diagnostics.edge.fromUnknown"),
                 target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
             });
         }
@@ -682,7 +714,7 @@ export function validateBlueprintGraphIr(
             out.push({
                 severity: "error",
                 code: "edge.to_unknown",
-                message: translate("blueprint.diagnostics.edge.toUnknown", { node: edge.to.nodeId }),
+                message: translate("blueprint.diagnostics.edge.toUnknown"),
                 target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
             });
         }
@@ -712,8 +744,8 @@ export function validateBlueprintGraphIr(
                     severity: "warning",
                     code: "edge.port_mismatch",
                     message: translate("blueprint.diagnostics.edge.portMismatch", {
-                        from: `${edge.from.nodeId}.${edge.from.port}`,
-                        to: `${edge.to.nodeId}.${edge.to.port}`,
+                        from: diagnosticPinName(fromNode, edge.from.port, "output"),
+                        to: diagnosticPinName(toNode, edge.to.port, "input"),
                     }),
                     target: {
                         kind: "node",
@@ -735,16 +767,16 @@ export function validateBlueprintGraphIr(
                 const typeDetail =
                     outPin.semantic === "data" && inPin.semantic === "data" && outPin.valueType && inPin.valueType
                         ? translate("blueprint.diagnostics.edge.connectionTypeDetail", {
-                              from: outPin.valueType,
-                              to: inPin.valueType,
+                              from: formatBlueprintValueTypeLabel(outPin.valueType, translate),
+                              to: formatBlueprintValueTypeLabel(inPin.valueType, translate),
                           })
                         : "";
                 out.push({
                     severity: "error",
                     code: "edge.connection_invalid",
                     message: translate("blueprint.diagnostics.edge.connectionInvalid", {
-                        from: `${edge.from.nodeId}.${edge.from.port}`,
-                        to: `${edge.to.nodeId}.${edge.to.port}`,
+                        from: diagnosticPinName(fromNode, edge.from.port, "output"),
+                        to: diagnosticPinName(toNode, edge.to.port, "input"),
                         detail: typeDetail,
                     }),
                     target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: edge.from.nodeId },
@@ -756,7 +788,7 @@ export function validateBlueprintGraphIr(
             reportDuplicatePinConnection(out, seenPins, {
                 key: `out\0${edge.from.nodeId}\0${edge.from.port}`,
                 nodeId: edge.from.nodeId,
-                port: edge.from.port,
+                describePin: () => diagnosticPinName(nodes[edge.from.nodeId], edge.from.port, "output"),
                 direction: "output",
                 graphKind: ctx.graphKind,
                 graphId: ctx.graphId,
@@ -767,7 +799,7 @@ export function validateBlueprintGraphIr(
             reportDuplicatePinConnection(out, seenPins, {
                 key: `in\0${edge.to.nodeId}\0${edge.to.port}`,
                 nodeId: edge.to.nodeId,
-                port: edge.to.port,
+                describePin: () => diagnosticPinName(nodes[edge.to.nodeId], edge.to.port, "input"),
                 direction: "input",
                 graphKind: ctx.graphKind,
                 graphId: ctx.graphId,
@@ -811,14 +843,16 @@ export function validateBlueprintGraphIr(
             out.push({
                 severity: "warning",
                 code: "node.unknown_type",
-                message: translate("blueprint.diagnostics.node.unknownType", { node: nid, type: n.type }),
+                // The type is the one thing known about a node no definition answers for, and it is
+                // what names the plugin that contributed it.
+                message: translate("blueprint.diagnostics.node.unknownType", { type: n.type }),
                 target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
             });
         } else if (!behaviorNodeRegistry.get(n.type)) {
             out.push({
                 severity: "warning",
                 code: "node.no_runtime",
-                message: translate("blueprint.diagnostics.node.noRuntime", { node: nid, type: n.type }),
+                message: translate("blueprint.diagnostics.node.noRuntime", { node: diagnosticNodeTitle(n) }),
                 target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
             });
         }
@@ -854,7 +888,7 @@ export function validateBlueprintGraphIr(
                 out.push({
                     severity: "warning",
                     code: "node.variable_id_invalid",
-                    message: translate("blueprint.diagnostics.node.variableIdInvalid", { node: nid }),
+                    message: translate("blueprint.diagnostics.node.variableIdInvalid", { node: diagnosticNodeTitle(n) }),
                     target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
                 });
             }
@@ -868,7 +902,7 @@ export function validateBlueprintGraphIr(
                 out.push({
                     severity: "warning",
                     code: "node.persistent_variable_id_invalid",
-                    message: translate("blueprint.diagnostics.node.persistentVariableIdInvalid", { node: nid }),
+                    message: translate("blueprint.diagnostics.node.persistentVariableIdInvalid", { node: diagnosticNodeTitle(n) }),
                     target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
                 });
             }
@@ -882,7 +916,7 @@ export function validateBlueprintGraphIr(
                 out.push({
                     severity: "warning",
                     code: "node.saved_variable_id_invalid",
-                    message: translate("blueprint.diagnostics.node.savedVariableIdInvalid", { node: nid }),
+                    message: translate("blueprint.diagnostics.node.savedVariableIdInvalid", { node: diagnosticNodeTitle(n) }),
                     target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
                 });
             }

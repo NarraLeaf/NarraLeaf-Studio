@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils/cn";
 import { ASSET_CATEGORY_ORDER, AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup, AssetSource } from "@/lib/workspace/services/assets/types";
 import { useAssetsPanelContext } from "../AssetsPanelContext";
+import { isWorkspaceAssetDragEvent } from "../dnd/assetDragContract";
 import { ASSET_SET_REVEAL_RING, useAssetSetRevealMark, useSetSummary } from "../components/AssetSetRow";
 import { formatAssetSetCoordinateReading, readAssetSetCoordinate } from "@shared/types/assetSetLabels";
 import type { AssetSetCell } from "@shared/types/assetSet";
@@ -96,6 +97,7 @@ export function AssetsListView({
         isNarrowed,
         draggedItem,
         draggedAssetSet,
+        otherPanelDragCategories,
         showContextMenu,
         publishRowOrder,
         unreadableCategories,
@@ -238,6 +240,7 @@ export function AssetsListView({
                                 e.stopPropagation();
                                 if (draggedItem?.category === category
                                     || draggedAssetSet?.category === category
+                                    || otherPanelDragCategories?.has(category)
                                     || e.dataTransfer.types.includes('Files')) {
                                     setDropTargetId(`root:${category}`);
                                 }
@@ -303,6 +306,7 @@ function CategoryRows({ category, rows, scrollElement }: {
     const {
         draggedItem,
         draggedAssetSet,
+        otherPanelDragCategories,
         filteredGroups,
         expandedAssetSets,
         assetSetReveal,
@@ -367,12 +371,18 @@ function CategoryRows({ category, rows, scrollElement }: {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [revealNonce]);
 
-    /** The folder a pointer event landed in, read off the row wrapper the virtualiser already indexes. */
+    /**
+     * The folder a pointer event landed in, read off the row wrapper the virtualiser already indexes.
+     *
+     * A folder's own row is that folder: its name is the first thing an author drops a file on, and
+     * before the list was windowed the row sat inside the folder's drop target. Every other row is in
+     * the innermost folder enclosing it.
+     */
     const groupUnder = useCallback((event: DragEvent): AssetGroup | null => {
         const host = (event.target as HTMLElement | null)?.closest<HTMLElement>("[data-index]");
         const index = host ? Number(host.dataset.index) : Number.NaN;
         const row = Number.isFinite(index) ? rows[index] : undefined;
-        const groupId = row?.groupPath[row.groupPath.length - 1];
+        const groupId = row?.kind === "group" ? row.group.id : row?.groupPath[row.groupPath.length - 1];
         if (!groupId) {
             return null;
         }
@@ -398,7 +408,8 @@ function CategoryRows({ category, rows, scrollElement }: {
                     event.stopPropagation();
                     const files = event.dataTransfer.types.includes("Files");
                     const internal = (draggedItem && draggedItem.category === category)
-                        || (draggedAssetSet && draggedAssetSet.category === category);
+                        || (draggedAssetSet && draggedAssetSet.category === category)
+                        || Boolean(otherPanelDragCategories?.has(category));
                     // A frozen library never lights up as a drop target: the move and the import are
                     // both refused, and a folder that glows and then keeps its old contents reads as
                     // a bug.
@@ -424,7 +435,9 @@ function CategoryRows({ category, rows, scrollElement }: {
                     event.preventDefault();
                     event.stopPropagation();
                     setDragOverGroupId(null);
-                    if ((draggedItem || draggedAssetSet) && handleDropOnItem) {
+                    // Files from the other assets panel are filed here too; offered to the import, they
+                    // would have opened a file picker out of nowhere.
+                    if ((draggedItem || draggedAssetSet || isWorkspaceAssetDragEvent(event.dataTransfer)) && handleDropOnItem) {
                         handleDropOnItem(event, category, group);
                     } else {
                         handleImportToGroup(category, group.id, event.dataTransfer.files, event.dataTransfer);
@@ -451,7 +464,9 @@ function CategoryRows({ category, rows, scrollElement }: {
                                 row.band && "bg-fill-subtle",
                                 row.band?.first && bandOpen && "border-t border-edge-subtle",
                                 row.band?.last && bandOpen && "border-b border-edge-subtle",
-                                dragOverGroupId && row.groupPath.includes(dragOverGroupId) && "bg-primary/20",
+                                dragOverGroupId
+                                    && (row.groupPath.includes(dragOverGroupId) || (row.kind === "group" && row.group.id === dragOverGroupId))
+                                    && "bg-primary/20",
                             )}
                             style={{ transform: `translateY(${item.start - listMargin}px)` }}
                         >
