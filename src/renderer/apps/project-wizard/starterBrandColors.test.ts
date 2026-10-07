@@ -3,10 +3,9 @@
  * the panels, the fill above them, the subtle text, the hover border and the selected fill its
  * screens are painted in - and Project ▸ Design is where an author finds and changes them.
  *
- * The page lists an author's own colour by an id with no dot. A dotted id is a control slot
- * (`button.primary`): it is listed under its control, and only when Studio seeds it
- * (`BRAND_CONTROL_GROUPS` in `@shared/types/brand`). So a colour of the template's own whose id has a
- * dot is on neither list - every link to it paints, and nobody can change it. And the page shows a
+ * The page lists every colour but the control slots Studio seeds, which it draws under their control
+ * (`isBrandControlSlotId` in `@shared/types/brand`). A dot in an id reads as one of those slots
+ * (`button.primary`), so the template's own colours have ids without one. And the page shows a
  * colour's name rather than its id, so each one is named in the language the project is written in.
  *
  * Read the way the wizard lands a project: the English content, with a variant's own files laid
@@ -19,7 +18,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { collectBrandLinkReferences } from "@shared/brand/brandReferences";
 import { BrandPalette } from "@shared/brand/brandRegistry";
-import { BRAND_CONTROL_GROUPS, normalizeProjectBrandColors, type BrandColor } from "@shared/types/brand";
+import { isBrandControlSlotId, normalizeProjectBrandColors, type BrandColor } from "@shared/types/brand";
 import { collectBrokenBrandLinks } from "@/lib/lint/rules/brand";
 
 const TEMPLATE = path.join(process.cwd(), "resources/templates/skeleton");
@@ -49,15 +48,13 @@ function ownColors(variant: string | null): BrandColor[] {
     return palette(variant).filter(color => !color.builtin);
 }
 
-const SLOT_IDS = new Set(BRAND_CONTROL_GROUPS.flatMap(group => group.slotIds));
-
 describe.each(LANGUAGES)("the skeleton's palette in $name", ({ variant }) => {
     it("lists every colour of its own on Project ▸ Design", () => {
         const own = ownColors(variant);
         expect(own.length).toBeGreaterThan(0);
         for (const color of own) {
-            expect(color.id.includes("."), `${color.id} is listed on neither part of the page`).toBe(false);
-            expect(SLOT_IDS.has(color.id)).toBe(false);
+            expect(isBrandControlSlotId(color.id), `${color.id} is drawn as a control slot`).toBe(false);
+            expect(color.id.includes("."), `${color.id} reads as a control slot`).toBe(false);
         }
     });
 

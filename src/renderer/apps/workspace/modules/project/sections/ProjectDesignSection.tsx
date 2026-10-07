@@ -64,7 +64,7 @@ import type { LocalizationService } from "@/lib/workspace/services/localization/
 import type { BrandPalette } from "@shared/brand/brandRegistry";
 import { collectBrandLinkReferences, countBrandLinkReferences } from "@shared/brand/brandReferences";
 import type { TranslationKey } from "@shared/i18n";
-import { BRAND_CONTROL_GROUPS, type BrandColor } from "@shared/types/brand";
+import { BRAND_CONTROL_GROUPS, isBrandControlSlotId, type BrandColor } from "@shared/types/brand";
 import { entryServesLocale, PROJECT_FONT_STACK_MAX, type ProjectFontEntry } from "@shared/types/typography";
 import {
     localeAutonym,
@@ -185,10 +185,10 @@ export function ProjectDesignSection({ uiService }: ProjectSectionProps) {
      */
     const palette = brandService?.getPalette() ?? null;
 
-    // Ids with no dot. That is the model's own distinction between a colour the author decided and
-    // a slot a control consumes, and taking it from the id keeps this list and `BRAND_CONTROL_GROUPS`
-    // reading the same array (see `@shared/types/brand`).
-    const projectColors = useMemo(() => colors.filter(color => !color.id.includes(".")), [colors]);
+    // Everything but the control slots Studio seeds, which the groups below draw. Where that line
+    // falls is `isBrandControlSlotId`, the one place it is decided (see `@shared/types/brand`), so
+    // this list and `BRAND_CONTROL_GROUPS` between them hold every entry exactly once.
+    const projectColors = useMemo(() => colors.filter(color => !isBrandControlSlotId(color.id)), [colors]);
     const byId = useMemo(() => new Map(colors.map(color => [color.id, color])), [colors]);
 
     const addColor = useCallback(() => {
