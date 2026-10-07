@@ -23709,6 +23709,113 @@
           "functions": {}
         },
         "bindings": {}
+      },
+      "5159ea93-2917-4a75-ac5f-2b636b7df649": {
+        "id": "5159ea93-2917-4a75-ac5f-2b636b7df649",
+        "name": "ボイス再生",
+        "owner": {
+          "kind": "widgetMain",
+          "surfaceId": "8a607acd-95dd-4af7-9994-686c20891c18",
+          "elementId": "352f20e9-3f47-41f2-85f0-3f5d95799d96"
+        },
+        "graphs": {
+          "eventIds": [
+            "ad0f5348-62bc-49b4-98ac-d15de6f6aed8"
+          ],
+          "events": {
+            "ad0f5348-62bc-49b4-98ac-d15de6f6aed8": {
+              "id": "ad0f5348-62bc-49b4-98ac-d15de6f6aed8",
+              "name": "その行のボイスを再生",
+              "graph": {
+                "nodes": {
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "ログの行でこのボタンを押すと動く。「フィールドを取得」が行の voiceId を読み、「ボイスを再生」がその行のボイスを現在のボイスの言語でもう一度再生する。再生中のボイスは先に止まる。このボタンは再生できるボイスがある行にだけ表示され、表示は行の hasVoice フィールドを読む。",
+                      "width": 1000,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
+                    "type": "blueprint.event.head.mouseClick",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 170
+                      }
+                    }
+                  },
+                  "voice": {
+                    "id": "voice",
+                    "type": "blueprint.list.getItemField",
+                    "params": {
+                      "field": "voiceId"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 260,
+                        "y": 261
+                      }
+                    }
+                  },
+                  "play": {
+                    "id": "play",
+                    "type": "blueprint.voice.play",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 600,
+                        "y": 170
+                      }
+                    }
+                  }
+                },
+                "edges": [
+                  {
+                    "from": {
+                      "nodeId": "pressed",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "play",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "voice",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "play",
+                      "port": "voiceId"
+                    }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
+            }
+          },
+          "functionIds": [],
+          "functions": {}
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
       }
     },
     "ownerRecords": {
@@ -24221,12 +24328,15 @@
       },
       "componentWidgetMain:6dea9a83-5008-4547-a0ad-dc4fea97cedb:f4c4cb26-ea0d-4cfc-9b4e-e11e9d3b54be": {
         "blueprintId": "a7f9fdd6-6002-40d8-9751-ca908ecced39"
+      },
+      "widgetMain:8a607acd-95dd-4af7-9994-686c20891c18:352f20e9-3f47-41f2-85f0-3f5d95799d96": {
+        "blueprintId": "5159ea93-2917-4a75-ac5f-2b636b7df649"
       }
     },
     "meta": {}
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-10-06T22:17:46.637Z"
+    "updatedAt": "2026-10-07T01:00:07.465Z"
   }
 }

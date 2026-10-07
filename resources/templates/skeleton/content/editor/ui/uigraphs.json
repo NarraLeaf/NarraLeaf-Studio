@@ -23709,6 +23709,113 @@
           "functions": {}
         },
         "bindings": {}
+      },
+      "5159ea93-2917-4a75-ac5f-2b636b7df649": {
+        "id": "5159ea93-2917-4a75-ac5f-2b636b7df649",
+        "name": "Replay voice",
+        "owner": {
+          "kind": "widgetMain",
+          "surfaceId": "8a607acd-95dd-4af7-9994-686c20891c18",
+          "elementId": "352f20e9-3f47-41f2-85f0-3f5d95799d96"
+        },
+        "graphs": {
+          "eventIds": [
+            "ad0f5348-62bc-49b4-98ac-d15de6f6aed8"
+          ],
+          "events": {
+            "ad0f5348-62bc-49b4-98ac-d15de6f6aed8": {
+              "id": "ad0f5348-62bc-49b4-98ac-d15de6f6aed8",
+              "name": "Replay the line",
+              "graph": {
+                "nodes": {
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Runs when this button is pressed on a row of the log. Get Field reads the row's voiceId, and Play Voice plays that line's take again in the voice language in force; a take still speaking stops first. The button is drawn only on rows whose line has a take to play: its visibility reads the row's hasVoice field.",
+                      "width": 1000,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
+                    "type": "blueprint.event.head.mouseClick",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 170
+                      }
+                    }
+                  },
+                  "voice": {
+                    "id": "voice",
+                    "type": "blueprint.list.getItemField",
+                    "params": {
+                      "field": "voiceId"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 260,
+                        "y": 261
+                      }
+                    }
+                  },
+                  "play": {
+                    "id": "play",
+                    "type": "blueprint.voice.play",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 600,
+                        "y": 170
+                      }
+                    }
+                  }
+                },
+                "edges": [
+                  {
+                    "from": {
+                      "nodeId": "pressed",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "play",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "voice",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "play",
+                      "port": "voiceId"
+                    }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
+            }
+          },
+          "functionIds": [],
+          "functions": {}
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
       }
     },
     "ownerRecords": {
@@ -24221,12 +24328,15 @@
       },
       "componentWidgetMain:6dea9a83-5008-4547-a0ad-dc4fea97cedb:f4c4cb26-ea0d-4cfc-9b4e-e11e9d3b54be": {
         "blueprintId": "a7f9fdd6-6002-40d8-9751-ca908ecced39"
+      },
+      "widgetMain:8a607acd-95dd-4af7-9994-686c20891c18:352f20e9-3f47-41f2-85f0-3f5d95799d96": {
+        "blueprintId": "5159ea93-2917-4a75-ac5f-2b636b7df649"
       }
     },
     "meta": {}
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-10-06T22:17:46.637Z"
+    "updatedAt": "2026-10-07T01:00:07.465Z"
   }
 }

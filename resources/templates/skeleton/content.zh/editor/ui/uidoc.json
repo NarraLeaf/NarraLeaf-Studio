@@ -5929,6 +5929,7 @@
             "character": "说话人",
             "voice": "",
             "voiceId": "",
+            "hasVoice": true,
             "selected": "",
             "isPending": false
           },
@@ -5939,6 +5940,7 @@
             "character": "说话人",
             "voice": "",
             "voiceId": "",
+            "hasVoice": false,
             "selected": "",
             "isPending": false
           },
@@ -5949,6 +5951,7 @@
             "character": "说话人",
             "voice": "",
             "voiceId": "",
+            "hasVoice": true,
             "selected": "",
             "isPending": false
           },
@@ -5959,6 +5962,7 @@
             "character": "说话人",
             "voice": "",
             "voiceId": "",
+            "hasVoice": false,
             "selected": "",
             "isPending": false
           }
@@ -5974,7 +5978,8 @@
         "3c6c0b9a-9bcd-5ce5-93df-b9b0ad523272",
         "0185d569-9ab3-460a-9f35-107e559c105c",
         "465a62e7-7bbc-475d-8002-929ada7ee70b",
-        "795ee5ba-6640-4f54-8961-3ea7d2f0b4c7"
+        "795ee5ba-6640-4f54-8961-3ea7d2f0b4c7",
+        "352f20e9-3f47-41f2-85f0-3f5d95799d96"
       ],
       "layout": {
         "x": 0,
@@ -6550,7 +6555,7 @@
       "layout": {
         "x": 56,
         "y": 40,
-        "width": 1330,
+        "width": 1270,
         "height": 60,
         "visible": true,
         "opacity": 1
@@ -49667,6 +49672,160 @@
           "linked": true
         }
       }
+    },
+    "352f20e9-3f47-41f2-85f0-3f5d95799d96": {
+      "id": "352f20e9-3f47-41f2-85f0-3f5d95799d96",
+      "type": "nl.button",
+      "name": "重播配音",
+      "parentId": "e1e45cc5-f9bf-48da-b126-555dcc1abcf6",
+      "childrenIds": [],
+      "layout": {
+        "x": 1342,
+        "y": 33,
+        "width": 48,
+        "height": 48,
+        "visible": true,
+        "opacity": 1
+      },
+      "props": {
+        "label": "▶",
+        "fontSize": 18,
+        "color": "nlbrand:text.muted",
+        "fontWeight": "normal",
+        "textAlign": "center",
+        "textVerticalAlign": "center",
+        "lineHeight": 1,
+        "textWrapMode": "nowrap",
+        "backgroundColor": "transparent",
+        "fillType": "color",
+        "fillOpacity": 0,
+        "fillVisible": false,
+        "backgroundFit": "cover",
+        "borderRadius": 24,
+        "borderWidth": 1,
+        "borderColor": "nlbrand:container.border",
+        "borderStyle": "solid",
+        "paddingX": 0,
+        "paddingY": 0,
+        "clipContent": true,
+        "cursor": "pointer",
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "默认",
+              "propertyGroups": [
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": false
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "transparent"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": 0.08
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "borderStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "solid"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderWidth",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "borderColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:container.border"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:border.strong"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "clickSound": {
+          "assetId": "e54ece05-7e8c-4196-85b2-57a356b8e442"
+        },
+        "hoverSound": {
+          "assetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23"
+        }
+      },
+      "valueBindings": {
+        "layout.visible": {
+          "kind": "listItemField",
+          "fieldId": "hasVoice"
+        }
+      }
     }
   },
   "actions": {
@@ -49751,7 +49910,7 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-10-06T22:17:58.638Z"
+    "updatedAt": "2026-10-07T00:59:53.063Z"
   },
   "structs": {},
   "entrySurfaceId": "5107c0a1-0000-4000-8000-000000000500"
