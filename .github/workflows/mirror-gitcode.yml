@@ -1,0 +1,72 @@
+name: Mirror to GitCode
+
+# Copies one release's files to the same-named release on GitCode
+# (https://gitcode.com/NarraLeaf/NarraLeaf-Studio), which is where mainland China downloads Studio
+# from: GitHub is unreachable or crawls there, and Studio's updater and the download page both read
+# the copy. The script's header (.github/scripts/mirror-release-to-gitcode.mjs) says what GitCode
+# expects and in what order the files go.
+#
+# Only release files are copied - installers, blockmaps, update feeds - never code. The GitCode
+# repository holds a README and nothing else.
+#
+# Called by release.yml once the GitHub release is published, and runnable by hand for a tag whose
+# copy failed or never happened (Actions > Mirror to GitCode > Run workflow). Re-running skips the
+# files already there.
+#
+# The token is a GitCode personal access token with read/write on Projects and Repository, stored
+# as the GITCODE_TOKEN repository secret. It expires; a run that fails with 401 needs a new one.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+    secrets:
+      GITCODE_TOKEN:
+        required: false
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to copy, e.g. v1.4.4"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mirror-gitcode-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    name: mirror ${{ inputs.tag }}
+    runs-on: ubuntu-latest
+    # A few hundred megabytes cross the Pacific into GitCode's storage; it is not quick.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # The same set release.yml attaches, read back from the published release so a re-run copies
+      # exactly what GitHub serves.
+      - name: Download the release's files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          gh release download "$TAG" --repo "$REPO" --dir release-files \
+            -p '*.exe' -p '*.dmg' -p '*.zip' -p '*.blockmap' -p 'latest*.yml'
+          ls -la release-files
+
+      - name: Copy them to GitCode
+        env:
+          GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: node .github/scripts/mirror-release-to-gitcode.mjs --tag "$TAG" --from release-files
