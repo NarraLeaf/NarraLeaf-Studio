@@ -87,6 +87,7 @@ import {
     type DevModeWidgetRuntimePatch,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import {
+    runtimeCoreIsFor,
     useBlueprintRuntimeCore,
     type BlueprintRuntimeCore,
 } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
@@ -518,6 +519,18 @@ export function GameApp(props: GameAppProps): ReactNode {
         disposeMessage: host.disposeMessage,
         onScriptIssue: reportScriptIssue,
     });
+    /**
+     * Whether `core` is the one built for the bundle this render holds.
+     *
+     * Not the case for a moment after every new revision: the previous core is torn down in the
+     * commit the revision arrives in - its persistent store detached, so every read answers a declared
+     * default and every write goes nowhere - and the new one is published only once the bundle's
+     * scripts have mounted. A story restarted in that moment (a row's play control pressed with the
+     * window open, a hot reload of a running game) compiled and mounted against the torn-down core:
+     * the player's dub and text language, their preferences and volumes and every persistent value
+     * read as defaults, and what the run then wrote was lost. Those starts wait for this instead.
+     */
+    const coreIsCurrent = runtimeCoreIsFor(core, bundle);
     // Runtime plugins reach story variables and the player's language through the
     // blueprint runtime, so those capabilities only become real once it exists.
     // Re-attaches on a bundle swap (Dev Mode live reload); the plugins' own
@@ -935,6 +948,32 @@ export function GameApp(props: GameAppProps): ReactNode {
         };
         const cap = window.setTimeout(release, NLR_BOOT_PRELOAD_TIMEOUT_MS);
         return release;
+    }, []);
+    /**
+     * A hold raised for a start that is waiting for its revision's core (see `coreIsCurrent`), by the
+     * start it belongs to.
+     *
+     * The start is claimed and held in the commit its revision arrives in, as before - that is what
+     * keeps the entry page undrawn - and run once the core is current, in a later commit. The hold
+     * travels across that gap here; a start overtaken in the meantime lets its hold go.
+     */
+    const waitingStartHoldRef = useRef<{ key: string; release: () => void } | null>(null);
+    const holdWaitingStart = useCallback((key: string): void => {
+        const waiting = waitingStartHoldRef.current;
+        if (waiting?.key === key) {
+            return;
+        }
+        waiting?.release();
+        waitingStartHoldRef.current = { key, release: holdForStoryLaunch() };
+    }, [holdForStoryLaunch]);
+    /** The hold {@link holdWaitingStart} raised for this start, handed over to it; null when none was. */
+    const takeWaitingStartHold = useCallback((key: string): (() => void) | null => {
+        const waiting = waitingStartHoldRef.current;
+        if (waiting?.key !== key) {
+            return null;
+        }
+        waitingStartHoldRef.current = null;
+        return waiting.release;
     }, []);
     const pendingGameStartsRef = useRef(new Map<string, { resolve: () => void; reject: (error: Error) => void }>());
     const nlrLiveGameRef = useRef<LiveGame | null>(null);
@@ -5396,17 +5435,24 @@ export function GameApp(props: GameAppProps): ReactNode {
             // the time.
             return;
         }
-        consumedLaunchTokenRef.current = launch.token;
+        // Claimed and held in this commit even when the start has to wait for its core below: the
+        // hot-reload effect must not take the revision meanwhile, and the page this bundle reset the
+        // stack to stays undrawn until the story is up (see `storyLaunchPending`).
         claimedLaunchRevisionRef.current = bundle.revision;
+        const holdKey = `launch:${launch.token}`;
+        holdWaitingStart(holdKey);
+        if (!coreIsCurrent) {
+            // Run again when the core built for this revision is published - see `coreIsCurrent`.
+            return;
+        }
+        consumedLaunchTokenRef.current = launch.token;
         const request: DevModeStartStoryRequest = {
             storyId: launch.storyId,
             sceneId: launch.sceneId,
             ...(launch.startBlockId ? { startBlockId: launch.startBlockId } : {}),
             ...(launch.snapshotId ? { snapshotId: launch.snapshotId } : {}),
         };
-        // The page this bundle reset the stack to stays undrawn until the story is up: see
-        // `storyLaunchPending`.
-        const releaseHold = holdForStoryLaunch();
+        const releaseHold = takeWaitingStartHold(holdKey) ?? holdForStoryLaunch();
         void (async () => {
             try {
                 await startStoryInGame(request, { forceReinit: true });
@@ -5426,7 +5472,18 @@ export function GameApp(props: GameAppProps): ReactNode {
                 releaseHold();
             }
         })();
-    }, [bundle.bundleId, bundle.revision, bundleSuperseded, holdForStoryLaunch, host, reportFailure, startStoryInGame]);
+    }, [
+        bundle.bundleId,
+        bundle.revision,
+        bundleSuperseded,
+        coreIsCurrent,
+        holdForStoryLaunch,
+        holdWaitingStart,
+        host,
+        reportFailure,
+        startStoryInGame,
+        takeWaitingStartHold,
+    ]);
 
     useEffect(() => {
         if (activeStoryRevisionRef.current === null) {
@@ -5446,6 +5503,18 @@ export function GameApp(props: GameAppProps): ReactNode {
         // preserving whether the game had already been entered.
         const request = activeStoryRequestRef.current;
         const wasEntered = gameEnteredRef.current;
+        // A game on screen comes straight back, without the page this bundle reset the stack to
+        // being drawn over it in between - see `storyLaunchPending`. Sitting on a page, that page
+        // is what the author is looking at, and nothing is held. Held in this commit even when the
+        // restart has to wait for its core below.
+        const holdKey = `reload:${bundle.bundleId}:${bundle.revision}`;
+        if (wasEntered && request) {
+            holdWaitingStart(holdKey);
+        }
+        if (!coreIsCurrent) {
+            // Run again when the core built for this revision is published - see `coreIsCurrent`.
+            return;
+        }
         /**
          * Where the player was, read now - before the mount below replaces the session that knows.
          *
@@ -5454,10 +5523,7 @@ export function GameApp(props: GameAppProps): ReactNode {
          * for.
          */
         const resumeState = wasEntered ? captureStoryResumeState() : null;
-        // A game on screen comes straight back, without the page this bundle reset the stack to
-        // being drawn over it in between - see `storyLaunchPending`. Sitting on a page, that page
-        // is what the author is looking at, and nothing is held.
-        const releaseHold = wasEntered && request ? holdForStoryLaunch() : null;
+        const releaseHold = takeWaitingStartHold(holdKey) ?? (wasEntered && request ? holdForStoryLaunch() : null);
         void (async () => {
             try {
                 if (request) {
@@ -5520,13 +5586,16 @@ export function GameApp(props: GameAppProps): ReactNode {
         bundleSuperseded,
         captureStoryResumeState,
         compileStoryRequest,
+        coreIsCurrent,
         enterMountedGame,
         host,
         mountNlrSession,
         playHead,
         holdForStoryLaunch,
+        holdWaitingStart,
         resolveRunningStoryDocument,
         startEmptyNlrEnvironment,
+        takeWaitingStartHold,
     ]);
 
     useEffect(() => {
