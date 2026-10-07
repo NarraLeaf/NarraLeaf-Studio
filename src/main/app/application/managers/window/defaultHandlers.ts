@@ -14,7 +14,7 @@ import {
     SpellcheckStatusHandler,
     SpellcheckSuggestHandler,
 } from "./handlers/spellcheckAction";
-import { AppUpdateCheckHandler, AppUpdateDownloadHandler, AppUpdateGetStateHandler, AppUpdateInstallHandler } from "./handlers/updateAction";
+import { AppUpdateCancelHandler, AppUpdateCheckHandler, AppUpdateDownloadHandler, AppUpdateGetStateHandler, AppUpdateInstallHandler } from "./handlers/updateAction";
 import {
     FsStatHandler, FsListHandler, FsDetailsHandler, FsDirectorySizeHandler, FsRequestReadHandler, FsRequestReadDirHandler, FsRequestWriteHandler,
     FsCreateDirHandler, FsEnsureRegularFileHandler, FsWriteFileNoFollowHandler, FsDeleteFileHandler, FsDeleteDirHandler, FsRenameHandler,
@@ -246,6 +246,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new AppUpdateCheckHandler(),
         new AppUpdateDownloadHandler(),
         new AppUpdateInstallHandler(),
+        new AppUpdateCancelHandler(),
 
         new AppSettingsWindowLaunchHandler(),
         new AppCountWorkspaceWindowsHandler(),

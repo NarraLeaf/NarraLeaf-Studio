@@ -65,7 +65,7 @@ import { clearAllProjectStats } from "@/lib/stats/clearAllProjectStats";
 import { resetAllPreferences, resetWorkspaceLayout } from "@/lib/settings/resetSettings";
 import { DASHBOARD_OPEN_DEFAULT_KEY } from "@shared/constants/dashboard";
 import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
-import { UPDATE_AUTO_CHECK_KEY, UPDATE_PANEL_SETTING_KEY } from "@shared/constants/update";
+import { UPDATE_AUTO_CHECK_KEY, UPDATE_AUTO_DOWNLOAD_KEY, UPDATE_PANEL_SETTING_KEY } from "@shared/constants/update";
 import { KEYBINDING_OVERRIDES_SETTINGS_KEY } from "@/lib/workspace/services/ui/KeybindingService";
 import { DOWNLOAD_REWRITES_KEY, USE_SYSTEM_PROXY_KEY } from "@shared/types/downloadSource";
 import { OFFICIAL_SOURCE_VALUE } from "@/lib/settings/sourceSelection";
@@ -348,19 +348,33 @@ export const AppSettings: AppSettingDefinition[] = [
         visible: () => isMacPlatform(),
     },
     {
-        // Read by the main process's UpdateManager when it decides whether to schedule the launch
-        // check. Off means Studio never asks on its own; the Check button in the panel below and
-        // the tray's Check for Updates row still work, so this turns off the *asking*, not the
-        // feature.
+        // Read by the main process's UpdateManager at launch and at every periodic check. Off means
+        // Studio never asks on its own; the Check button in the panel below and the tray's Check
+        // for Updates row still work, so this turns off the *asking*, not the feature.
         key: UPDATE_AUTO_CHECK_KEY,
         category: "general",
         scope: SettingScope.Global,
         type: SettingValueType.Boolean,
-        label: "Check for updates at launch",
+        label: "Check for updates automatically",
         labelKey: "update.setting.checkOnLaunch.label",
-        description: "Asks GitHub once, shortly after Studio starts. Downloads never begin on their own.",
+        description: "Asks GitHub shortly after Studio starts, and every few hours while it runs.",
         descriptionKey: "update.setting.checkOnLaunch.description",
         defaultValue: true,
+    },
+    {
+        // Read by the main process's UpdateManager whenever a check finds a version. Off brings back
+        // the two presses: the check announces the version, Download in the panel starts it.
+        key: UPDATE_AUTO_DOWNLOAD_KEY,
+        category: "general",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Download updates automatically",
+        labelKey: "update.setting.autoDownload.label",
+        description: "A new version is downloaded and prepared in the background. Restarting Studio applies it.",
+        descriptionKey: "update.setting.autoDownload.description",
+        defaultValue: true,
+        // Only a build that can install its own updates downloads them.
+        visible: () => !isMacPlatform(),
     },
     {
         // Rendered by `SETTING_PANELS.softwareUpdate`. Nothing is stored under this key: the state

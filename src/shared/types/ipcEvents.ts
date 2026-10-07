@@ -210,6 +210,7 @@ export enum IPCEventType {
     appUpdateCheck = "app.update.check",
     appUpdateDownload = "app.update.download",
     appUpdateInstall = "app.update.install",
+    appUpdateCancel = "app.update.cancel",
     appUpdateStateChanged = "app.update.stateChanged",
 
     fsStat = "fs.stat",
@@ -1218,12 +1219,10 @@ export type IPCEvents = {
         response: { state: UpdateState };
     };
     /**
-     * Start downloading the offered installer.
+     * Start downloading the offered installer, because the author pressed Download.
      *
-     * Separate from the check because they are separate decisions: the check is free, the
-     * download is a few hundred megabytes. Only the Settings panel calls this - the notification
-     * that announces an update opens the panel instead, so nobody commits to the transfer from a
-     * toast they were half-reading.
+     * Only needed when automatic downloads are off, or after a cancel: otherwise main starts the
+     * download itself as soon as a check finds a version (`UPDATE_AUTO_DOWNLOAD_KEY`).
      */
     [IPCEventType.appUpdateDownload]: {
         type: IPCMessageType.request,
@@ -1231,12 +1230,19 @@ export type IPCEvents = {
         data: Record<string, never>;
         response: { state: UpdateState };
     };
-    /** Quit and apply the downloaded installer. Silent, so the wizard is not walked again. */
+    /** Quit and apply the update, then start Studio again. */
     [IPCEventType.appUpdateInstall]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: Record<string, never>;
         response: void;
+    };
+    /** Stop the download or the preparing in progress. The version stays on offer. */
+    [IPCEventType.appUpdateCancel]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: { state: UpdateState };
     };
     /** Write a settings document to a file the user picks. See `@shared/utils/settingsDocument`. */
     [IPCEventType.appExportSettings]: {
