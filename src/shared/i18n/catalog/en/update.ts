@@ -24,6 +24,10 @@ export const update = {
         failed: "Version {version} could not be downloaded.",
         manual: "Version {version} is available to download.",
     },
+    /** The line under a failed status. `{reason}` is short and technical: `HTTP 502`, `net::ERR_…`. */
+    errors: {
+        connection: "Could not reach the download server ({reason}).",
+    },
     /** Sits under the status line: what the running build is, and what it would become. */
     versions: "Installed {current}",
     /** Under a ready update: the other way it gets applied. */

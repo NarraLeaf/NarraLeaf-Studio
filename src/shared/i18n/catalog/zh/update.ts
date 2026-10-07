@@ -15,6 +15,9 @@ export const update = {
         failed: "{version} 下载失败",
         manual: "有新版本 {version} 可供下载",
     },
+    errors: {
+        connection: "无法连接到下载服务器（{reason}）",
+    },
     versions: "当前版本 {current}",
     readyHint: "退出 Studio 时也会自动安装",
     indicator: {

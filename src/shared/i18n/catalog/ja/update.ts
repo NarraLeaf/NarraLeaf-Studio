@@ -15,6 +15,9 @@ export const update = {
         failed: "バージョン {version} をダウンロードできなかった",
         manual: "バージョン {version} をダウンロードできる",
     },
+    errors: {
+        connection: "ダウンロードサーバーに接続できなかった（{reason}）",
+    },
     versions: "使用中 {current}",
     readyHint: "Studio の終了時にも適用される",
     indicator: {

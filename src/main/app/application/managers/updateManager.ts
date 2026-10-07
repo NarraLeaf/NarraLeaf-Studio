@@ -24,6 +24,8 @@ import {
     updaterCacheDir,
     type InstallLayout,
 } from "./updateStaging";
+import { DifferentialRetry } from "./updateDifferentialRetry";
+import { getMainTranslator } from "../i18n";
 import type { BaseApp } from "../baseApp";
 
 export { compareVersions } from "./updateVersions";
@@ -94,6 +96,10 @@ export class UpdateManager {
      * initiative until the next launch; pressing Download still does.
      */
     private declinedVersion: string | null = null;
+    private readonly differentialRetry = new DifferentialRetry({
+        log: message => this.app.logger.info("[Update]", message),
+        networkError: summary => new Error(getMainTranslator(this.app).t("update.errors.connection", { reason: summary })),
+    });
 
     constructor(private readonly app: BaseApp) {
         this.state = {
@@ -224,9 +230,17 @@ export class UpdateManager {
         autoUpdater.logger = {
             info: (message: unknown) => this.app.logger.info("[Update]", message),
             warn: (message: unknown) => this.app.logger.warn("[Update]", message),
-            error: (message: unknown) => this.app.logger.error("[Update]", message),
+            error: (message: unknown) => {
+                this.differentialRetry.observe(message);
+                this.app.logger.error("[Update]", message);
+            },
             debug: (message: unknown) => this.app.logger.debug("[Update]", message),
         };
+        // A dropped request retries the ~15 MB incremental download instead of starting the
+        // ~330 MB full one. See updateDifferentialRetry.ts.
+        if (!this.differentialRetry.install(autoUpdater)) {
+            this.app.logger.warn("[Update] electron-updater has no differentialDownloadInstaller; incremental downloads are not retried.");
+        }
 
         autoUpdater.on("checking-for-update", () => {
             this.setState({ status: "checking", error: undefined });

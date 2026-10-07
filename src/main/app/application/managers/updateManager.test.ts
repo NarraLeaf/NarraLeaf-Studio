@@ -413,3 +413,65 @@ describe("UpdateManager on packaged Windows", () => {
         });
     });
 });
+
+describe("UpdateManager incremental downloads", () => {
+    const realPlatform = process.platform;
+
+    beforeEach(() => {
+        Object.defineProperty(process, "platform", { value: "win32" });
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        Object.defineProperty(process, "platform", { value: realPlatform });
+    });
+
+    it("retries a 502 as an incremental download instead of falling back to the full installer", async () => {
+        // The shape of electron-updater's own method: it logs why it gave up, then answers true.
+        const attempts: string[] = [];
+        const updater = autoUpdater as unknown as {
+            logger: { error(message: string): void };
+            differentialDownloadInstaller: (...args: unknown[]) => Promise<boolean>;
+        };
+        updater.differentialDownloadInstaller = async function (this: typeof updater) {
+            attempts.push("attempt");
+            if (attempts.length === 1) {
+                this.logger.error("Cannot download differentially, fallback to full download: HttpError: 502 \nHeaders: {}");
+                return true;
+            }
+            return false;
+        };
+        new UpdateManager(makeApp({ launchUpdateCheck: false, packaged: true }).app).initialize();
+
+        const result = updater.differentialDownloadInstaller({}, { cancellationToken: { cancelled: false } });
+        await vi.advanceTimersByTimeAsync(3_000);
+
+        await expect(result).resolves.toBe(false);
+        expect(attempts).toHaveLength(2);
+    });
+
+    it("stops waiting to retry once the download is cancelled", async () => {
+        const updater = autoUpdater as unknown as {
+            logger: { error(message: string): void };
+            differentialDownloadInstaller: (...args: unknown[]) => Promise<boolean>;
+        };
+        let attempts = 0;
+        updater.differentialDownloadInstaller = async function (this: typeof updater) {
+            attempts += 1;
+            this.logger.error("Cannot download differentially, fallback to full download: HttpError: 502");
+            return true;
+        };
+        new UpdateManager(makeApp({ launchUpdateCheck: false, packaged: true }).app).initialize();
+        const token = { cancelled: false };
+
+        const result = updater.differentialDownloadInstaller({}, { cancellationToken: token });
+        await vi.advanceTimersByTimeAsync(1_000);
+        token.cancelled = true;
+        await vi.advanceTimersByTimeAsync(250);
+
+        // True hands the cancelled token to the updater's own full download, which rejects at once.
+        await expect(result).resolves.toBe(true);
+        expect(attempts).toBe(1);
+    });
+});
