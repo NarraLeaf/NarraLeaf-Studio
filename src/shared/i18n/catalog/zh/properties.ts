@@ -99,7 +99,7 @@ export const properties = {
     pageParams: {
         title: "参数",
         none: "暂无参数",
-        hint: "由打开该页面的节点或页面控件传入。界面文字参数可直接绑定到文本，其他参数用「获取页面参数」读取",
+        hint: "由打开该页面的节点或页面控件传入。文字参数可直接绑定到文本，其他参数用「获取页面参数」读取",
         rowShape: "行结构",
         anyShape: "不指定",
         bindLabel: "页面参数",

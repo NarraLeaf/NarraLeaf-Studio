@@ -152,7 +152,7 @@ describe("getCommandLineReason", () => {
         }
         // The types are written as the variables panel writes them: English keeps the type ids, the
         // other languages their words.
-        const typeWords = { en: ["number", "string"], zh: ["数字", "文本"], ja: ["数値", "文字列"] } as const;
+        const typeWords = { en: ["number", "string"], zh: ["数字", "字符串"], ja: ["数値", "文字列"] } as const;
         for (const locale of ["en", "zh", "ja"] as const) {
             const { t } = createTranslator(locale);
             const text = t(reason.key, storyCommandReasonParams(reason, t));

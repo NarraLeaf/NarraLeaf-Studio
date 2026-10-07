@@ -97,8 +97,8 @@ describe("formatBlueprintValueTypeLabel", () => {
                 expect(formatBlueprintValueTypeLabel(type, t), type).toBe(formatBlueprintValueTypeLabel(type, t, "option"));
             }
         }
-        expect(formatBlueprintValueTypeLabel("string", zh)).toBe("文本");
-        expect(formatBlueprintValueTypeLabel("array<string>", zh)).toBe("文本列表");
+        expect(formatBlueprintValueTypeLabel("string", zh)).toBe("字符串");
+        expect(formatBlueprintValueTypeLabel("array<string>", zh)).toBe("字符串列表");
         expect(formatBlueprintValueTypeLabel("boolean", zh)).toBe("布尔值");
         expect(formatBlueprintValueTypeLabel("string", ja)).toBe("文字列");
     });
