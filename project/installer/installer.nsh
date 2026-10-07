@@ -1046,7 +1046,17 @@ Function nlPrepare
   SetOutPath "$R0"
   !ifndef ZIP_COMPRESSION
     !ifdef APP_64
+      ; Written exactly as the template writes it (extractEmbeddedAppPackage): stored, not
+      ; compressed again. makensis keeps one copy of a block it has already written, but only
+      ; when the bytes match - compressed under the default setting this was a second 330 MB
+      ; block, and 1.4.3's installer came out at twice the size of 1.4.2's.
+      !ifdef COMPRESS
+        SetCompress off
+      !endif
       File "/oname=$PLUGINSDIR\app-64.${COMPRESSION_METHOD}" "${APP_64}"
+      !ifdef COMPRESS
+        SetCompress "${COMPRESS}"
+      !endif
       GetFunctionAddress $R9 nlPrepareProgress
       Nsis7z::ExtractWithCallback "$PLUGINSDIR\app-64.${COMPRESSION_METHOD}" $R9
       Delete "$PLUGINSDIR\app-64.${COMPRESSION_METHOD}"
