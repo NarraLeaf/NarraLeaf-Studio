@@ -108,7 +108,7 @@ export async function runCommandLineLint(context: WorkspaceContext): Promise<voi
     emit(blocking > 0 ? "error" : "success", formatLintFinishedLine(report));
 
     const findings: CommandLineRunFinding[] = report.entries.map(entry => {
-        const location = describeLintLocation(entry.location);
+        const location = describeLintLocation(entry.location, translate);
         return {
             severity: entry.severity,
             id: entry.ruleId,

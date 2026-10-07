@@ -36,7 +36,9 @@ import { blueprintBreakpointKey } from "@shared/types/blueprint/breakpoints";
 import { Check, EyeOff } from "lucide-react";
 import { ContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { ShortcutContextMenu } from "@/apps/workspace/components/ui/ShortcutContextMenu";
-import { useTranslation } from "@/lib/i18n";
+import { useTranslation, type UseTranslation } from "@/lib/i18n";
+import type { TranslationKey } from "@shared/i18n";
+import { useFlowAriaLabels } from "@/lib/ui-editor/hooks/useFlowAriaLabels";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
 import { buildStructFieldPaletteEntries } from "../components/structFieldPaletteEntries";
@@ -363,11 +365,22 @@ function readBlueprintFrameOutlineColor(nodes: readonly Node<BlueprintFlowNodeDa
 
 type BlueprintNodeParamHistoryOptions = { mergeKey?: string; mergeWindowMs?: number };
 
-function generateUniqueDynamicPinLabel(existing: Record<string, string>, prefix: string): string {
+/**
+ * The names a new Fn parameter and result start with, in the interface language, by the prefix the
+ * node definitions spell them with. An author renames them; until then they are what the Fn card and
+ * every Call Fn card print, so they are written in the author's language rather than in English.
+ */
+const DEFAULT_PIN_NAME_KEYS: Readonly<Record<string, TranslationKey>> = {
+    param: "blueprint.pin.newParamName",
+    result: "blueprint.pin.newResultName",
+};
+
+function generateUniqueDynamicPinLabel(existing: Record<string, string>, prefix: string, t: UseTranslation["t"]): string {
     const used = new Set(Object.values(existing).map(label => label.trim()).filter(Boolean));
+    const nameKey = DEFAULT_PIN_NAME_KEYS[prefix];
     let n = 1;
     for (;;) {
-        const candidate = `${prefix}${n}`;
+        const candidate = nameKey ? t(nameKey, { n }) : `${prefix}${n}`;
         if (!used.has(candidate)) {
             return candidate;
         }
@@ -648,6 +661,7 @@ function BlueprintFlowCanvasInner({
     // starts; see `components/ui/freezeGuard`.
     const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
     const { t, tn } = useTranslation();
+    const flowAriaLabels = useFlowAriaLabels();
     // Optional: the canvas also renders where there is no workspace provider (Dev Mode). Null there,
     // and the delete notice below simply does not fire.
     const workspace = useOptionalWorkspace();
@@ -837,6 +851,7 @@ function BlueprintFlowCanvasInner({
                     nextLabels[nextId] = generateUniqueDynamicPinLabel(
                         nextLabels,
                         d.defaultPinLabelPrefix ?? d.labelPrefix ?? "input",
+                        t,
                     );
                 }
                 params[d.pinLabelParamKey] = nextLabels;
@@ -844,7 +859,7 @@ function BlueprintFlowCanvasInner({
             n.params = params;
             commitBlueprintIr(snap);
         },
-        [commitBlueprintIr],
+        [commitBlueprintIr, t],
     );
 
     const removeDynamicInputPin = useCallback(
@@ -2620,6 +2635,7 @@ function BlueprintFlowCanvasInner({
             {...{ [BLUEPRINT_CANVAS_ATTRIBUTE]: flowId }}
         >
             <ReactFlow
+                ariaLabelConfig={flowAriaLabels}
                 key={graphKey}
                 nodes={nodes}
                 edges={edges}

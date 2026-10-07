@@ -80,6 +80,7 @@ const HISTORY_ENTRY_STRUCT: UIStructDef = {
         field("avatar", "image"),
         field("voice", "string"),
         field("voiceId", "string"),
+        field("hasVoice", "boolean"),
         field("selected", "string"),
         field("isPending", "boolean"),
     ],

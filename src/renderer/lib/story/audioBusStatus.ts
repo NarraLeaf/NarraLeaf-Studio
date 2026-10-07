@@ -1,6 +1,6 @@
 import type { TranslationKey, Translator } from "@shared/i18n";
 import type { AudioTrackChannel, ProjectAudioTrack } from "@shared/types/audioTrack";
-import { AUDIO_TRACK_CHANNELS, resolveAudioTrackChain } from "@shared/types/audioTrack";
+import { AUDIO_TRACK_CHANNELS, audioTrackDisplayName, resolveAudioTrackChain } from "@shared/types/audioTrack";
 
 /**
  * The player's own volume sliders, which alias onto the three seeded buses. Their names are fixed:
@@ -51,5 +51,5 @@ export function audioBusStatusLine(
         ? t(SLIDER_KEYS[seeded.id as AudioTrackChannel])
         : t("project.audio.slider.global");
 
-    return [chain.map(track => track.name).join(" → "), slider].join(" · ");
+    return [chain.map(track => audioTrackDisplayName(track, t)).join(" → "), slider].join(" · ");
 }

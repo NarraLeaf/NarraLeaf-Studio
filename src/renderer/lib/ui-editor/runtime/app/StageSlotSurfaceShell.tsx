@@ -57,6 +57,12 @@ export type GameUiSlotHostOptions = {
      */
     resolveAvatarAssetId?: (url: string) => string | null;
     /**
+     * The name a player reads for a speaker the engine recorded by name - the character's name in the
+     * game's language. What an NVL row's `nametag` shows; the dialogue box reads the same answer
+     * through `Get Nametag`. Absent on a host that shows the story in the words it is written in.
+     */
+    displaySpeakerName?: (recordedName: string) => string;
+    /**
      * The whole game host, as one value.
      *
      * This used to be sixty-odd fields declared here and forwarded one by one into the slot's own

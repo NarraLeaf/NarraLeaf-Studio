@@ -47,6 +47,9 @@ import type { VoiceEditorTabPayload } from "./voiceEditorTabId";
 import { VoiceRow, type VoiceTableRow } from "./VoiceRows";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 import { describeAssetReadFailure } from "@/lib/workspace/assets/assetReadFailure";
+import { ORPHANS_SOURCE_VALUE, OrphanUnitList, useStoryTextLineIndex, type OrphanUnitRow } from "../localization/OrphanUnits";
+import { voiceDocumentFreezeScope } from "../localization/localizationLiveSession";
+import { orphanVoiceUnitIds } from "@/lib/lint/rules/text/textSegments";
 
 type EditorMode = "assign" | "audition";
 type GroupAxis = "scene" | "character";
@@ -65,11 +68,13 @@ type TableRow = VoiceTableRow & { speaker: string; indexInScene: number };
 
 export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<VoiceEditorTabPayload | undefined>) {
     const { context, isInitialized } = useWorkspace();
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     // The rows guard themselves (see `VoiceRows`); the cast name in the group header is the one
     // writing control this shell owns.
     const freeze = useFreezeGuard();
     const locale = payload?.locale ?? "";
+    /** What removing the orphans writes: this language's takes, the document the rows guard as well. */
+    const takesFreeze = useFreezeGuard(voiceDocumentFreezeScope(locale));
 
     const voiceService = useMemo(
         () => (context && isInitialized ? context.services.get<VoiceService>(Services.Voice) : null),
@@ -149,7 +154,7 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
             const entries = storyService.listStories();
             setStories(entries);
             setStoryId(current => {
-                if (current && entries.some(entry => entry.id === current)) {
+                if (current === ORPHANS_SOURCE_VALUE || (current && entries.some(entry => entry.id === current))) {
                     return current;
                 }
                 return storyService.getDefaultStoryId() ?? entries[0]?.id ?? null;
@@ -216,7 +221,8 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
     // locale's translation table as much as on the story - and re-runs when either moves. It also
     // re-runs when choice voicing is switched, which decides whether the options are rows at all.
     useEffect(() => {
-        if (!voiceService || !storyService || !storyId || !locale) {
+        // The orphans are not rows of any story: they are drawn by their own list below.
+        if (!voiceService || !storyService || !storyId || storyId === ORPHANS_SOURCE_VALUE || !locale) {
             setRows([]);
             return;
         }
@@ -289,6 +295,17 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
             unsubscribe();
         };
     }, [voiceService, locale, localeInProject]);
+
+    /**
+     * This language's orphans: its takes of lines that are not in the game, counted against every
+     * story the way `voice/orphan` counts them.
+     */
+    const lineIndex = useStoryTextLineIndex(storyService);
+    const orphanUnitIds = useMemo(
+        () => (lineIndex.kind === "ready" && voiceDoc ? orphanVoiceUnitIds(voiceDoc.units, lineIndex.live) : null),
+        [lineIndex, voiceDoc],
+    );
+    const showingOrphans = storyId === ORPHANS_SOURCE_VALUE;
 
     /** The last refusal said, so edits refused for one reason are said once. Cleared by one that lands. */
     const refusedEditRef = useRef<string | null>(null);
@@ -664,6 +681,14 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [revealToken, storyService, voiceService]);
 
+    /** A project check finding about this language's orphans opens the table on them. */
+    const orphansToken = payload?.orphans?.token ?? null;
+    useEffect(() => {
+        if (orphansToken !== null) {
+            setStoryId(ORPHANS_SOURCE_VALUE);
+        }
+    }, [orphansToken]);
+
     /**
      * The second half: the row brought on screen and marked once it has been read, with whatever was
      * hiding it cleared. An unlinked line is not a row at all in the audition pass, so that is left
@@ -713,9 +738,54 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
         return config?.voicedLocales.find(entry => entry.code === locale)?.displayName ?? locale;
     }, [voiceService, locale]);
 
+    /**
+     * Unlink orphaned takes, after asking. The audio stays in the library; a line restored or enabled
+     * later is unvoiced again.
+     */
+    const handleRemoveOrphans = useCallback(async (unitIds: string[]) => {
+        if (!voiceService || !uiService || unitIds.length === 0 || takesFreeze.frozen) {
+            return;
+        }
+        const confirmed = await uiService.showConfirm(
+            tn("workspace.voice.table.orphans.removeConfirm", unitIds.length),
+            t("workspace.voice.table.orphans.removeDetail"),
+        );
+        if (!confirmed) {
+            return;
+        }
+        try {
+            voiceService.removeUnits(locale, unitIds);
+        } catch (error) {
+            uiService.showError(error instanceof Error ? error : String(error));
+        }
+    }, [voiceService, uiService, takesFreeze.frozen, locale, t, tn]);
+
+    const orphanRows = useMemo<OrphanUnitRow[]>(() => {
+        if (!orphanUnitIds || lineIndex.kind !== "ready") {
+            return [];
+        }
+        return orphanUnitIds.map(unitId => {
+            const line = lineIndex.lines.get(unitId);
+            const unit = voiceDoc?.units[unitId];
+            const asset = resolveAsset(unit?.assetId);
+            const duration = formatVoiceDuration(unit?.duration);
+            const clip = asset?.name ?? t("workspace.voice.table.clipMissing");
+            return { unitId, ...(line ? { line } : {}), content: duration ? `${clip} · ${duration}` : clip };
+        });
+    }, [orphanUnitIds, lineIndex, voiceDoc, resolveAsset, t]);
+
     const storyOptions: SelectOption[] = useMemo(
-        () => stories.map(entry => ({ value: entry.id, label: entry.name })),
-        [stories],
+        () => [
+            ...stories.map(entry => ({ value: entry.id, label: entry.name })),
+            // Listed while there is something to list, and while it is the page on screen.
+            ...((orphanUnitIds?.length ?? 0) > 0 || showingOrphans
+                ? [{
+                    value: ORPHANS_SOURCE_VALUE,
+                    label: t("workspace.voice.table.orphans.source", { count: orphanUnitIds?.length ?? 0 }),
+                }]
+                : []),
+        ],
+        [stories, orphanUnitIds, showingOrphans, t],
     );
 
     const filterOptions: SelectOption[] = useMemo(() => [
@@ -764,13 +834,14 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
 
     return (
         <div className="flex h-full min-h-0 flex-col bg-surface" data-help-topic="voice">
-            <div className="flex items-center gap-3 border-b border-edge px-4 py-2">
+            {/* Wraps rather than squeezes, as the translation table's toolbar does. */}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-edge px-4 py-2">
                 <div className="flex min-w-0 items-center gap-2">
                     <Mic className="h-4 w-4 shrink-0 text-fg-muted" />
                     <span className="truncate text-sm font-medium text-fg">{localeDisplayName}</span>
                     <span className="rounded-md border border-edge px-1.5 py-0.5 text-2xs text-fg-subtle">{locale}</span>
                 </div>
-                <div className="ml-auto flex items-center gap-3">
+                <div className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-2 whitespace-nowrap">
                     <div className="flex items-center gap-2">
                         <span className="text-2xs text-fg-subtle">{t("workspace.voice.table.storyLabel")}</span>
                         <Select
@@ -782,7 +853,7 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
                             className="w-40"
                         />
                     </div>
-                    <div className="flex items-center rounded-md bg-surface-sunken p-0.5">
+                    <div className={cn("flex items-center rounded-md bg-surface-sunken p-0.5", showingOrphans && "hidden")}>
                         {groupAxisOptions.map(option => (
                             <button
                                 key={option.key}
@@ -799,7 +870,7 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
                             </button>
                         ))}
                     </div>
-                    {mode === "assign" ? (
+                    {showingOrphans ? null : mode === "assign" ? (
                         <Select
                             options={filterOptions}
                             value={filter}
@@ -818,7 +889,7 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
                             className="w-32"
                         />
                     )}
-                    <div className="flex items-center rounded-md bg-surface-sunken p-0.5">
+                    <div className={cn("flex items-center rounded-md bg-surface-sunken p-0.5", showingOrphans && "hidden")}>
                         {modeOptions.map(option => (
                             <button
                                 key={option.key}
@@ -841,7 +912,29 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
                 <TableFindOverlay find={find} placeholder={t("workspace.voice.table.findPlaceholder")} />
             ) : null}
             <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
-                {stories.length === 0 ? (
+                {showingOrphans ? (
+                    lineIndex.kind === "unreadable" ? (
+                        <EmptyMessage icon={<Mic className="h-5 w-5" />} text={t("workspace.voice.table.orphans.unknown")} />
+                    ) : orphanRows.length === 0 ? (
+                        lineIndex.kind === "loading" ? null : (
+                            <EmptyMessage icon={<CheckCircle2 className="h-5 w-5 text-success" />} text={t("workspace.voice.table.orphans.none")} />
+                        )
+                    ) : (
+                        <OrphanUnitList
+                            rows={orphanRows}
+                            frozen={takesFreeze.frozen}
+                            frozenReason={takesFreeze.reason}
+                            onRemove={unitIds => void handleRemoveOrphans(unitIds)}
+                            strings={{
+                                summary: tn("workspace.voice.table.orphans.summary", orphanRows.length),
+                                disabledLine: t("workspace.localization.table.orphans.disabledLine"),
+                                deletedLine: t("workspace.localization.table.orphans.deletedLine"),
+                                removeOne: t("workspace.voice.table.remove"),
+                                removeAll: t("workspace.voice.table.orphans.removeAll"),
+                            }}
+                        />
+                    )
+                ) : stories.length === 0 ? (
                     <EmptyMessage icon={<Mic className="h-5 w-5" />} text={t("workspace.voice.table.noStories")} />
                 ) : rows.length === 0 ? (
                     <EmptyMessage icon={<AudioLines className="h-5 w-5" />} text={t("workspace.voice.table.emptyStory")} />

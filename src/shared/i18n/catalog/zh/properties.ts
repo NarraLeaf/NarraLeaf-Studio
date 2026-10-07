@@ -92,6 +92,9 @@ export const properties = {
         type: "类型",
         typeString: "字符串",
         typeText: "文字",
+        typeAudioTrack: "音轨",
+        trackMissing: "缺失的音轨",
+        trackNone: "未选择音轨",
         bindLabel: "参数",
         bindNone: "不绑定参数",
         bindMissing: "缺失的参数",
@@ -199,6 +202,7 @@ export const properties = {
         unknown: "无法确定使用情况",
         unknownDetail: "{location} 无法读取",
         unknownComputed: "{location} 的资产名称在运行时拼出",
+        defaultFonts: "默认字体",
         count: {
             one: "{count} 处引用",
             other: "{count} 处引用",

@@ -416,6 +416,7 @@ export const storyInspector = {
     },
     blueprint: {
         storyActionTitle: "故事动作",
+        name: "蓝图名称",
     },
     audio: {
         track: "音轨",
@@ -521,13 +522,9 @@ export const storyInspector = {
         parallel: "并行",
         race: "竞速",
         repeat: "重复",
-        mode: {
-            do: "执行",
-            doAsync: "异步执行",
-            all: "全部",
-            allAsync: "全部异步",
-            any: "任一",
-        },
+        rowsAfter: "后续行",
+        rowsAfterWait: "组完成后开始",
+        rowsAfterStart: "与组同时开始",
         times: "次数",
         loopKind: "循环方式",
         loopKindTimes: "按次数",

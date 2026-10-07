@@ -32,7 +32,10 @@ import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrac
 import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
 import type { DlcService } from "@/lib/workspace/services/dlc/DlcService";
 import { DLC_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/dlcNodes";
-import { BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/soundNodes";
+import {
+    BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE,
+    BLUEPRINT_SOUND_TRACK_OPTIONS_SOURCE,
+} from "@/lib/ui-editor/blueprint-nodes/built-in/soundNodes";
 import { BLUEPRINT_COMPONENT_PARAM_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/componentNodes";
 import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
@@ -40,6 +43,7 @@ import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEd
 import type { BlueprintEntryTabPayload } from "../blueprintEntryTabId";
 import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import type { StoryDocument } from "@shared/types/story";
+import { AUDIO_TRACK_ID_SOUND, audioTrackDisplayName, resolveAudioTrack } from "@shared/types/audioTrack";
 import { listSceneIdsInDocumentOrder, listStoryEndings } from "@shared/types/story";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getUIComponentParams } from "@shared/types/ui-editor/document";
@@ -49,8 +53,12 @@ import {
     subscribeActiveUIPageParams,
 } from "@shared/types/ui-editor/pageParams";
 import { BLUEPRINT_PAGE_PARAM_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/frameNodes";
+import { BLUEPRINT_SCENE_VARIABLE_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/storyVariableNodes";
+import { buildSceneVariableOptions } from "./sceneVariableOptions";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
-import { isFactoryStoryBlueprintName, ownerLabelKey } from "@shared/types/ui-editor/ownerLabels";
+import { blueprintDisplayName, isFactoryStoryBlueprintName, ownerLabelKey } from "@shared/types/ui-editor/ownerLabels";
+import { workspaceStoryBlueprintSummary } from "@/lib/story/storyBlueprintSummary";
+import { syncEditorTabTitle } from "@/lib/workspace/services/ui/editorTabTitle";
 import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemContext";
 import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
@@ -222,6 +230,17 @@ function getActiveIr(bp: Blueprint, view: BlueprintEditorGraphView | null): Blue
         return layer && !layer.script ? ensureBlueprintGraphIr(layer.graph) : null;
     }
     return ensureBlueprintGraphIr(bp.graphs.functions[view.graphId]?.graph);
+}
+
+/**
+ * An element as a card names it: by its name, or - unnamed - by the name the insert palette gives
+ * its kind. Never by its type id, which is not a word.
+ */
+function elementCardLabel(element: UIElement | null | undefined): string | undefined {
+    if (!element) {
+        return undefined;
+    }
+    return element.name?.trim() || widgetModuleRegistry.get(element.type)?.displayName || element.type;
 }
 
 function getGraphToolbarLabel(bp: Blueprint, view: BlueprintEditorGraphView | null): string {
@@ -729,6 +748,17 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     // when the blueprint is deleted (avoids an early return between the hooks below).
     const bp = doc.blueprints[payload.blueprintId]!;
 
+    // A story blueprint's tab is named as its row reads - the name an author gave it, or what it
+    // does - and follows it as the graph is edited. A title fixed at open would go on naming a
+    // function the graph no longer calls, and two such tabs side by side would both read as their kind.
+    const storyTabTitle = bp.owner.kind === "storyAction"
+        ? blueprintDisplayName(bp, t, workspaceStoryBlueprintSummary(doc, nodeCatalog, t)(bp))
+        : null;
+    useEffect(() => {
+        if (storyTabTitle && uiService.editor.get(tabId)?.title !== storyTabTitle) {
+            syncEditorTabTitle(uiService, tabId, storyTabTitle);
+        }
+    }, [storyTabTitle, tabId, uiService]);
 
     const uiDocument = blueprintDocumentService.getDocument();
     const widgetElement =
@@ -1791,10 +1821,13 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             }
             const { document: targetDocument, surface, element } = target;
             const revisionKey = `${node.id}:${ref.surfaceId}:${ref.elementId}:${uiDocumentRevision}`;
+            // The kind of control by the name the insert palette gives it, for an unnamed element too:
+            // the card prints both lines, and a type id is not a word.
+            const kindName = widgetModuleRegistry.get(element.type)?.displayName ?? element.type;
             previews[node.id] = {
                 revisionKey,
-                name: element.name?.trim() || element.type,
-                type: element.type,
+                name: element.name?.trim() || kindName,
+                type: kindName,
                 text: typeof element.props?.text === "string" ? element.props.text : undefined,
                 layout: {
                     width: element.layout.width,
@@ -1823,7 +1856,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         const out: Record<string, BlueprintFlowNodeData["displayableTargetVariants"]> = {};
         for (const node of Object.values(activeIr.nodes ?? {})) {
             if (node.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT) {
-                const label = widgetElement?.name?.trim() || widgetElement?.type;
+                const label = elementCardLabel(widgetElement);
                 out[node.id] = elementVariantOptions(widgetElement, label, t);
                 continue;
             }
@@ -1850,7 +1883,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             }
             const ref = readBlueprintElementRefParams(sourceNode.params);
             const element = ref ? currentDocument.elements[ref.elementId] : undefined;
-            const label = element?.name?.trim() || element?.type;
+            const label = elementCardLabel(element);
             out[node.id] = elementVariantOptions(element, label, t);
         }
         return out;
@@ -2156,6 +2189,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 value: character.profile.getId(),
                 label: character.profile.getName().trim() || t("blueprint.options.unnamedCharacter"),
             }));
+        // The `Play Sound` Track picker and the track volume nodes'. Author order, built-ins first - the
+        // same order the project Audio surface shows, so the first row here is the one an author looks for.
+        const audioTracks = audioTrackService.listTracks();
+        const audioTrackOptions: BlueprintInspectorParamSelectOption[] = audioTracks
+            .map(track => ({ value: track.id, label: audioTrackDisplayName(track, t) }));
         const opts: Record<string, BlueprintInspectorParamSelectOption[]> = {
             surfaces: surfaceOptions,
             stories: storyOptions,
@@ -2168,11 +2206,18 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             [DLC_OPTIONS_SOURCE]: dlcService.list().map(dlc => ({ value: dlc.id, label: dlc.name })),
             characters: characterOptions,
             localizationKeys: localizationKeyOptions,
-            // The `Play Sound` Track picker. Author order, built-ins first - the same order the
-            // project Audio surface shows, so the first row here is the one an author looks for.
-            [BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE]: audioTrackService
-                .listTracks()
-                .map(track => ({ value: track.id, label: track.name })),
+            [BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE]: audioTrackOptions,
+            // `Play Sound`'s: the same rows under an empty one that names the track an unpicked
+            // sound plays on, worded as a sound row's Track field words it.
+            [BLUEPRINT_SOUND_TRACK_OPTIONS_SOURCE]: [
+                {
+                    value: "",
+                    label: t("storyInspector.audio.trackDefault", {
+                        name: audioTrackDisplayName(resolveAudioTrack(audioTracks, undefined, AUDIO_TRACK_ID_SOUND), t),
+                    }),
+                },
+                ...audioTrackOptions,
+            ],
             callableFns: listCallableBlueprintFnOptions({
                 blueprintDocument: doc,
                 uiDocument,
@@ -2188,6 +2233,16 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 value: param.id,
                 label: param.name.trim() || param.id,
             }));
+        }
+        // The variables of the scene whose row runs this blueprint, for `Get Scene Var` / `Set Scene
+        // Var`. Ids, not names: the variable's row id is what the node stores and what the compiled
+        // scene answers to, so renaming the variable must not unpoint the graph.
+        if (bp.owner.kind === "storyAction") {
+            opts[BLUEPRINT_SCENE_VARIABLE_OPTIONS_SOURCE] = buildSceneVariableOptions(
+                storyEntries.map(story => ({ id: story.id, document: storyDocumentsById[story.id] })),
+                payload.blueprintId,
+                t("blueprint.options.untitledScene"),
+            );
         }
         // The parameters of the page this blueprint belongs to, for `Get Page Param`. Ids, not names,
         // for the same reason.
@@ -2386,7 +2441,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             {/* A story blueprint nobody has named yet carries an English placeholder; its kind
                 is what the Blueprint Overview and the function lists call it too. */}
             <span className="truncate font-mono text-2xs text-fg-muted">
-                {isFactoryStoryBlueprintName(bp.name) ? t(ownerLabelKey(bp.owner.kind)) : bp.name}
+                {storyTabTitle ?? (isFactoryStoryBlueprintName(bp.name) ? t(ownerLabelKey(bp.owner.kind)) : bp.name)}
             </span>
         </div>
     );

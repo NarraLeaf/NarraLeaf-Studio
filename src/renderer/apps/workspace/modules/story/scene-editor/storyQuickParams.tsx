@@ -68,10 +68,11 @@ export function blockOverview(
     motionName?: (animationId: string) => string | null,
     projectVariableName?: StoryRowLookups["projectVariableName"],
     pluginActionLabel?: StoryRowLookups["pluginActionLabel"],
+    blueprintName?: StoryRowLookups["blueprintName"],
 ): OverviewFragment[] {
     return storyActionRowFragments(
         block,
-        { character: characterRowLookup(characters), scene, scenes, motionName, projectVariableName, pluginActionLabel },
+        { character: characterRowLookup(characters), scene, scenes, motionName, projectVariableName, pluginActionLabel, blueprintName },
         label,
     );
 }
@@ -100,7 +101,7 @@ export function BlockOverview(props: {
     const motionName = useStoryMotionNames();
     // Same source the command line reads its variable names from, so the two readings of one row
     // cannot name the same variable differently.
-    const { projectVariableName } = useStoryCommandLineContext();
+    const { projectVariableName, blueprintName } = useStoryCommandLineContext();
     // Same rule as `motionName` above: a plugin row's label lives in the registration, which only the
     // React layer can reach, so the projection takes it as a lookup and stays pure.
     const pluginActionLabel = useStoryPluginActionLabels();
@@ -119,7 +120,7 @@ export function BlockOverview(props: {
         );
     }
 
-    const fragments = blockOverview(props.block, props.characters, props.scene, props.scenes, key => t(key), motionName, projectVariableName, pluginActionLabel);
+    const fragments = blockOverview(props.block, props.characters, props.scene, props.scenes, key => t(key), motionName, projectVariableName, pluginActionLabel, blueprintName);
     return (
         // The rows no command owns keep the old reading: italic, and no fragment brighter than
         // `fg-muted`. A stage direction that cannot be typed as a line has no skeleton to echo, so it

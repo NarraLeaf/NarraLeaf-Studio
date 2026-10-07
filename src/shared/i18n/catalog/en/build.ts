@@ -177,6 +177,8 @@ export const build = {
             contentLabel: "Variant the content comes from",
             contentHint: "The scenes, variant conditions and art of this variant go into the patch.",
             sameVariant: "The content and the build it updates are the same variant. The patch carries no changes.",
+            // The same fact for a project with one variant, where the content field is not drawn.
+            sameProject: "The build it updates is made from the current project. The patch carries no changes. For a build already released, choose An existing build folder.",
             outputLabel: "Save as",
             nameLabel: "Name",
             namePlaceholder: "Shown in the game's log",

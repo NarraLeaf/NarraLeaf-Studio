@@ -28,6 +28,15 @@ export const BLUEPRINT_SOUND_PARAM_TRACK = "audioTrackId";
  */
 export const BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE = "audioTracks";
 
+/**
+ * The same tracks for a picker whose empty choice is itself a track: `Play Sound` with no track plays
+ * on the project's SFX track. The list carries its own empty entry, worded with that track's name the
+ * way the story inspector words a sound row's (`storyInspector.audio.trackDefault`), so the card says
+ * where the sound goes instead of showing a dash. Kept apart from {@link
+ * BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE}, whose other readers treat an empty choice as "pick one".
+ */
+export const BLUEPRINT_SOUND_TRACK_OPTIONS_SOURCE = "soundTracks";
+
 /** Empty is a real state (nothing picked yet); callers decide what it means for them. */
 export function readBlueprintAudioTrackParam(params: Record<string, unknown> | undefined): string {
     const value = params?.[BLUEPRINT_SOUND_PARAM_TRACK];

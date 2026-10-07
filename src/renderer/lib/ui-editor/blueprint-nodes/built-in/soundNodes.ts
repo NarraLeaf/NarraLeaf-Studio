@@ -30,7 +30,7 @@ import {
 } from "@shared/types/blueprint/valueTypes";
 import { DEFAULT_AUDIO_TRACK_ID } from "@shared/types/audioTrack";
 import {
-    BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE as AUDIO_TRACK_OPTIONS_SOURCE,
+    BLUEPRINT_SOUND_TRACK_OPTIONS_SOURCE,
     BLUEPRINT_SOUND_PARAM_TRACK as SOUND_PARAM_TRACK,
 } from "./audioTrackParams";
 import type { TranslationKey } from "@shared/i18n";
@@ -68,6 +68,7 @@ export const BLUEPRINT_SOUND_PARAM_ASSET = BLUEPRINT_SOUND_ASSET_PARAM_KEY;
 export {
     BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE,
     BLUEPRINT_SOUND_PARAM_TRACK,
+    BLUEPRINT_SOUND_TRACK_OPTIONS_SOURCE,
 } from "./audioTrackParams";
 
 const handleIn: BlueprintNodePinDef = {
@@ -269,13 +270,14 @@ function requireHandle(ctx: SoundExecuteCtx, nodeTitleKey: TranslationKey) {
  *
  * Dynamic rather than static because the whole point of a track is that a project can add one:
  * "Ambience" has to appear here the moment the author creates it on the project Audio surface,
- * without a node-catalog change. An empty selection resolves to the built-in SFX track.
+ * without a node-catalog change. An empty selection resolves to the built-in SFX track, and the
+ * picker's own empty entry says so (see `BLUEPRINT_SOUND_TRACK_OPTIONS_SOURCE`).
  */
 const audioTrackParam = {
     key: SOUND_PARAM_TRACK,
     label: "Track",
     kind: "select" as const,
-    dynamicOptionsSource: AUDIO_TRACK_OPTIONS_SOURCE,
+    dynamicOptionsSource: BLUEPRINT_SOUND_TRACK_OPTIONS_SOURCE,
 };
 
 export const soundBlueprintNodes: BlueprintNodeDef[] = [

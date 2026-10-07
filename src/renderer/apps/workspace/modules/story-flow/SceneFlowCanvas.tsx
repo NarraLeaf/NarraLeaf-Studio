@@ -21,6 +21,7 @@ import { ExternalLink, Unlink } from "lucide-react";
 import type { StoryBlockId, StorySceneId } from "@shared/types/story";
 import type { Translator } from "@shared/i18n";
 import { useTranslation } from "@/lib/i18n";
+import { useFlowAriaLabels } from "@/lib/ui-editor/hooks/useFlowAriaLabels";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements";
 import { cn } from "@/lib/utils/cn";
 import { SceneFlowNode, type SceneFlowNodeData } from "./SceneFlowNode";
@@ -236,6 +237,7 @@ function SceneFlowCanvasInner({
     // The colons `useId` emits break its internal `querySelector` lookups.
     const flowId = useId().replace(/:/g, "");
     const { t } = useTranslation();
+    const flowAriaLabels = useFlowAriaLabels();
 
     const { fitView } = useReactFlow();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node<SceneFlowNodeData | SceneFlowBranchNodeData>>([]);
@@ -624,6 +626,7 @@ function SceneFlowCanvasInner({
             />
         )}
         <ReactFlow
+            ariaLabelConfig={flowAriaLabels}
             id={flowId}
             nodes={nodes}
             edges={edges}

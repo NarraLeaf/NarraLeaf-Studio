@@ -9,6 +9,7 @@ import {
 } from "@shared/story/migrateStoryDocument";
 import {
     bindRowsToCharacter,
+    canAcceptChildren,
     collectRowsSpokenByName,
     setSpeakerOnBlocks,
     collectInvalidBlocks,
@@ -596,6 +597,43 @@ describe("storyModel", () => {
         };
 
         expect(() => insertBlockInScene(scene, jump, { parentId: null })).toThrow(/Jump/);
+    });
+
+    it("places rows inside an NVL row, by insert and by move", () => {
+        const document = createEmptyStoryDocument({ id: STORY_ID_3, name: "Story", now: "2026-06-08T00:00:00.000Z", generateId: idFactory() });
+        const scene = document.scenes[document.entrySceneId!];
+        const nvl: StoryBlock = { id: "nvl", kind: "action", parentId: null, childrenIds: [], payload: { action: "nvl" } };
+        insertBlockInScene(scene, nvl, { parentId: null });
+        insertBlockInScene(scene, narrationBlock("first", "first-text", "First."), { parentId: "nvl" });
+        insertBlockInScene(scene, narrationBlock("second", "second-text", "Second."), { parentId: null });
+
+        moveBlockInScene(scene, "second", { parentId: "nvl" });
+
+        expect(scene.rootBlockIds).toEqual(["nvl"]);
+        expect(scene.blocks.nvl.childrenIds).toEqual(["first", "second"]);
+        expect(scene.blocks.second.parentId).toBe("nvl");
+    });
+
+    it("answers the container question once, for the editor and the mutators alike", () => {
+        const control = (control: string): StoryBlock =>
+            ({ id: control, kind: "control", parentId: null, childrenIds: [], payload: { control } }) as unknown as StoryBlock;
+        expect(canAcceptChildren({ id: "n", kind: "action", parentId: null, childrenIds: [], payload: { action: "nvl" } })).toBe(true);
+        expect(canAcceptChildren(control("sequence"))).toBe(true);
+        expect(canAcceptChildren(control("condition"))).toBe(true);
+        for (const point of ["label", "goto", "break", "cut", "ending", "quit"]) {
+            expect(canAcceptChildren(control(point))).toBe(false);
+        }
+        expect(canAcceptChildren({ id: "w", kind: "action", parentId: null, childrenIds: [], payload: { action: "wait", mode: "click" } })).toBe(false);
+        expect(canAcceptChildren(narrationBlock("line", "line-text", "Line."))).toBe(false);
+    });
+
+    it("refuses to put a row inside a point control such as a label", () => {
+        const document = createEmptyStoryDocument({ id: STORY_ID_3, name: "Story", now: "2026-06-08T00:00:00.000Z", generateId: idFactory() });
+        const scene = document.scenes[document.entrySceneId!];
+        insertBlockInScene(scene, { id: "label", kind: "control", parentId: null, childrenIds: [], payload: { control: "label", name: "top" } }, { parentId: null });
+
+        expect(() => insertBlockInScene(scene, narrationBlock("line", "line-text", "Line."), { parentId: "label" }))
+            .toThrow(/cannot accept child blocks/);
     });
 });
 

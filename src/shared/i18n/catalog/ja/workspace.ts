@@ -88,6 +88,8 @@ export const workspace = {
             characterSpeaker: "キャラクター",
             scenesGroup: "シーン",
             sceneSpeaker: "シーン",
+            endingsGroup: "エンディング",
+            endingSpeaker: "エンディング",
             addKey: "追加",
             keyNamePlaceholder: "キー（menu.start…）",
             keySourcePlaceholder: "原文",
@@ -130,6 +132,22 @@ export const workspace = {
             statusReviewed: "確認済み",
             statusStale: "要確認",
             findPlaceholder: "訳文を検索",
+            orphans: {
+                source: "対応する行のない翻訳（{count}）",
+                summary: {
+                    other: "ゲームに含まれない行の翻訳が {count} 件ある",
+                },
+                none: "対応する行のない翻訳はない",
+                disabledLine: "無効にした行",
+                deletedLine: "削除した行",
+                delete: "削除",
+                deleteAll: "すべて削除",
+                deleteConfirm: {
+                    other: "対応する行のない翻訳 {count} 件を削除するか",
+                },
+                deleteDetail: "元に戻せない。行を有効に戻すか復元した場合は翻訳し直す",
+                unknown: "読み込めないストーリーがあるため、対応する行のない翻訳は表示しない",
+            },
         },
         live: {
             entryClaimed: "{name} がこの行を翻訳している",
@@ -218,6 +236,19 @@ export const workspace = {
             notePlaceholder: "メモ…",
             dropHint: "音声をドロップすると割り当てる",
             findPlaceholder: "セリフを検索",
+            orphans: {
+                source: "対応する行のない録音（{count}）",
+                summary: {
+                    other: "ゲームに含まれない行に結びついた録音が {count} 件ある",
+                },
+                none: "対応する行のない録音はない",
+                removeAll: "すべて取り除く",
+                removeConfirm: {
+                    other: "対応する行のない録音 {count} 件を取り除くか",
+                },
+                removeDetail: "音声ファイルはアセットライブラリに残る。行を有効に戻すか復元した場合は音声を割り当て直す",
+                unknown: "読み込めないストーリーがあるため、対応する行のない録音は表示しない",
+            },
         },
     },
     textSourceMigration: {

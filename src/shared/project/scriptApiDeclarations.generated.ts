@@ -293,6 +293,14 @@ declare module "@narraleaf/script" {
     	 * dropped is absent here too.
     	 */
     	scenes?: Record<string, string>;
+    	/**
+    	 * Ending-name source texts (ending id → source-language name), for the endings this build ships.
+    	 *
+    	 * Read as the set of endings the build still has, which is what decides whether an \`ending:\` unit
+    	 * ships with a variant that dropped scenes - the same question \`scenes\` answers for \`scene:\` units.
+    	 * Assembled from the story documents the bundle carries.
+    	 */
+    	endings?: Record<string, string>;
     };
     type StoryId = string;
     type StoryLiteralValue = string | number | boolean | null | StoryLiteralValue[] | {
@@ -1408,9 +1416,13 @@ declare module "@narraleaf/script" {
     };
     type BlueprintStoryEnding = {
     	endingId: string;
+    	/** The ending's name in the game's language, falling back to the words the row is written with. */
     	name: string;
     	sceneId: string;
-    	/** The scene the ending row sits in, so a row can be grouped or captioned without a lookup. */
+    	/**
+    	 * The scene the ending row sits in, so a row can be grouped or captioned without a lookup. In the
+    	 * game's language, like the name.
+    	 */
     	sceneName: string;
     	isReached: boolean;
     };
@@ -1421,7 +1433,10 @@ declare module "@narraleaf/script" {
     	type: "say" | "menu";
     	/** Sentence text (say) or the menu prompt (menu); empty string when the source had none. */
     	text: string;
-    	/** Speaker nametag for a say entry; null for menu entries or narration. */
+    	/**
+    	 * Speaker nametag for a say entry, in the game's language as the name plate shows it; null for menu
+    	 * entries or narration.
+    	 */
     	character: string | null;
     	/**
     	 * The speaker's dialog avatar, as the project declares it; null for narration, a menu row, and a
@@ -1441,6 +1456,12 @@ declare module "@narraleaf/script" {
     	 * URL the player already heard and nothing in the runtime accepts a URL.
     	 */
     	voiceId: string | null;
+    	/**
+    	 * Whether Play Voice plays this line's take now: the line has a \`voiceId\` and the dub language in
+    	 * force has a take for it. What a backlog row's replay button shows itself by - a list row reads
+    	 * whether an element is drawn from a boolean field.
+    	 */
+    	hasVoice: boolean;
     	/** Chosen option text for a menu entry; null for say entries or an unresolved menu. */
     	selected: string | null;
     	/** True while the entry is the line currently being shown (not yet committed). */
@@ -1521,6 +1542,15 @@ declare module "@narraleaf/script" {
     	};
     	/** Dispatch a widget private event slot (for example \`init\` or \`mouseClick\`) on the owner-local blueprint. */
     	dispatchElementBlueprintEvent: (elementId: string, eventName: string, payload?: Record<string, unknown>, options?: UIHostAdapterElementEventOptions) => Promise<void>;
+    	/**
+    	 * Whether a press on this element is handled by the element itself: its own blueprint has a
+    	 * Mouse Click head, or an On Element Click head names it.
+    	 *
+    	 * Asked by a list of the controls in its rows: a press such a control answers is that control's,
+    	 * and the row does not raise Item Click for it - as a key pressed on the control already is not
+    	 * the row's. Optional because a host that dispatches nothing - an editor preview - has no answer.
+    	 */
+    	elementAnswersPress?: (elementId: string) => boolean;
     	/** Continue the current widget event from this element to its structural parent. */
     	continueElementEventBubble?: (elementId: string, eventName: string, payload?: Record<string, unknown>, options?: UIHostAdapterElementEventOptions) => Promise<boolean>;
     	/** Dispatch a surface-level event on the current surfaceMain blueprint. */

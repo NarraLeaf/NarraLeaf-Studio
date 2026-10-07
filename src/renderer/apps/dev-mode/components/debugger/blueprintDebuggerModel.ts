@@ -8,6 +8,8 @@
 
 import type { BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import type { BlueprintBreakpoint } from "@shared/types/blueprint/breakpoints";
+import type { TranslationKey } from "@shared/i18n";
+import { factoryLayerNameKey } from "@shared/types/ui-editor/ownerLabels";
 
 export function resolveBlueprintGraphIr(
     document: BlueprintDocument | undefined,
@@ -27,11 +29,17 @@ export function resolveBlueprintGraphIr(
     );
 }
 
-/** The graph's authored name, for a call-stack row or a breakpoint list entry. */
+/**
+ * The graph's authored name, for a call-stack row or a breakpoint list entry.
+ *
+ * A layer Studio seeded still carries the English it was stored with; given the panel's `t`, it
+ * reads as the title of the event that starts it, as the editor's layer list shows it.
+ */
 export function resolveBlueprintGraphName(
     document: BlueprintDocument | undefined,
     blueprintId: string | undefined,
     graphId: string | undefined,
+    t?: (key: TranslationKey) => string,
 ): string | undefined {
     if (!blueprintId || !graphId) {
         return undefined;
@@ -40,7 +48,12 @@ export function resolveBlueprintGraphName(
     if (!blueprint) {
         return undefined;
     }
-    const entry = blueprint.graphs.events?.[graphId] ?? blueprint.graphs.functions?.[graphId];
+    const layer = blueprint.graphs.events?.[graphId];
+    const seededKey = layer && t ? factoryLayerNameKey(graphId, layer.name) : undefined;
+    if (seededKey) {
+        return t!(seededKey);
+    }
+    const entry = layer ?? blueprint.graphs.functions?.[graphId];
     return entry?.name?.trim() || undefined;
 }
 

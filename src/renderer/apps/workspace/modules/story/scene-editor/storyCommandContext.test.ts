@@ -1,7 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { StoryActionPayload, StoryBlock, StoryDocument } from "@shared/types/story";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
+import { BUILTIN_AUDIO_TRACKS } from "@shared/types/audioTrack";
+import { commandI18nStore, i18nStore } from "@/lib/i18n";
+import { LOCALIZED_COMMANDS_DEFAULT } from "@/lib/settings/commandLanguageOptions";
 import { buildStoryCommandContext } from "./storyCommandContext";
+import { parseCommandLine } from "./storyCommandParser";
+import { resolveCommandLine } from "./storyCommandResolution";
 
 /** One action block per line, in root order - enough to exercise the stage-object collection. */
 function documentWith(payloads: Record<string, StoryActionPayload>): StoryDocument {
@@ -173,5 +178,63 @@ describe("buildStoryCommandContext - variables", () => {
             { name: "Affection", ref: { scope: "saved", variableId: "sv-1" }, valueType: "number", defaultValue: 0 },
             { name: "Playthroughs", ref: { scope: "persistent", variableId: "pk-1" }, valueType: "number", defaultValue: undefined },
         ]);
+    });
+});
+
+describe("buildStoryCommandContext - audio tracks", () => {
+    afterEach(() => {
+        commandI18nStore.setPreference(LOCALIZED_COMMANDS_DEFAULT);
+        i18nStore.setLocale("en");
+    });
+
+    const tracks = [
+        ...BUILTIN_AUDIO_TRACKS,
+        { id: "t_narra", name: "Narra", parentId: "voice", volume: 1, loop: false },
+    ];
+
+    function contextIn(locale: "en" | "zh") {
+        i18nStore.setLocale(locale);
+        const document = documentWith({});
+        return buildStoryCommandContext({
+            assets: undefined,
+            characters: [],
+            document,
+            sceneId: "scene-1",
+            scene: document.scenes["scene-1"],
+            audioTracks: tracks,
+        });
+    }
+
+    it("offers a seeded track by the command language's word, and still answers to its stored name", () => {
+        const context = contextIn("zh");
+        expect(context.audioTracks.map(track => track.name)).toEqual(["音乐", "音效", "语音", "Narra"]);
+
+        // A line typed before the words changed keeps naming the same track, and so does the new word.
+        for (const word of ["Music", "音乐"]) {
+            const line = parseCommandLine(`/bgm theme track=${word}`);
+            if (line.kind !== "command") {
+                throw new Error("not a command");
+            }
+            const resolved = resolveCommandLine(line, { ...context, audio: [{ id: "a1", name: "theme" }] });
+            expect(resolved.issues).toEqual([]);
+            expect(resolved.args.track).toEqual({ kind: "audioTrack", trackId: "bgm" });
+        }
+    });
+
+    it("keeps a renamed seeded track's own name, and adds nothing in English", () => {
+        expect(contextIn("en").audioTracks.map(track => [track.name, track.aliases])).toEqual([
+            ["Music", undefined], ["SFX", undefined], ["Voice", undefined], ["Narra", undefined],
+        ]);
+        i18nStore.setLocale("zh");
+        const document = documentWith({});
+        const renamed = buildStoryCommandContext({
+            assets: undefined,
+            characters: [],
+            document,
+            sceneId: "scene-1",
+            scene: document.scenes["scene-1"],
+            audioTracks: tracks.map(track => (track.id === "bgm" ? { ...track, name: "Score" } : track)),
+        });
+        expect(renamed.audioTracks[0]).toEqual({ id: "bgm", name: "Score" });
     });
 });

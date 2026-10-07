@@ -32,7 +32,13 @@ import type {
     StorySceneId,
     StoryVariableValueType,
 } from "@shared/types/story";
-import { sceneVariableDefs, savedVariableDefs, storyPersistentDefs } from "@shared/types/story";
+import {
+    resolveStoryGroupRunMode,
+    sceneVariableDefs,
+    savedVariableDefs,
+    storyGroupKindOfMode,
+    storyPersistentDefs,
+} from "@shared/types/story";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { buildMergedPersistentView } from "@shared/variables/mergedPersistentView";
 
@@ -302,7 +308,10 @@ function findLoopInStack(stack: StackLike): StackLike["loop"] | null {
 function innermostConcurrentBlock(scene: StoryScene, chain: readonly ExecutionContextRung[]): StoryBlock | null {
     for (let index = chain.length - 1; index >= 0; index -= 1) {
         const block = scene.blocks[chain[index].blockId];
-        if (block?.kind === "control" && (block.payload.control === "parallel" || block.payload.control === "race")) {
+        // By how the group runs, which a stored `mode` decides over the `control` word.
+        if (block?.kind === "control"
+            && (block.payload.control === "sequence" || block.payload.control === "parallel" || block.payload.control === "race")
+            && storyGroupKindOfMode(resolveStoryGroupRunMode(block.payload)) !== "sequence") {
             return block;
         }
     }

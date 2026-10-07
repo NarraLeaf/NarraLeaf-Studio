@@ -41,6 +41,7 @@ import { parsePluginStore, pluginStoreNamespace } from "@shared/utils/pluginStor
 import { FsRejectErrorCode } from "@shared/types/os";
 import { getInterface } from "@/lib/app/bridge";
 import { i18nStore, translate } from "@/lib/i18n/store";
+import type { TranslationKey } from "@shared/i18n";
 import { normalizeLetterboxConfiguration } from "@shared/types/letterbox";
 import { pluginDisplayName } from "@shared/utils/pluginDisplayText";
 import { workspacePluginSession } from "@/lib/plugins/workspacePluginSession";
@@ -75,19 +76,21 @@ function uiReferenceSlotKey(field: string | undefined): string {
 const REBUILD_DEBOUNCE_MS = 300;
 
 /**
- * What a whole-slice failure names as its place.
+ * What a whole-slice failure names as its place, as catalogue keys.
  *
- * These three slices are one document each, and the document has no name an author gave it - the
- * blueprint document is the project's graphs, the UI document is its interface. The word is what
- * the sidebar calls the thing, so a message built from it points somewhere real.
+ * These slices are one document each, and the document has no name an author gave it - the
+ * blueprint document is the project's graphs, the UI document is its interface. The word is the
+ * one this index's own rows name that kind of reference with, read in the interface language when
+ * the gap is recorded: it lands in a sentence ("… could not be read") in every locale, where English
+ * literals stood before.
  */
-const BLUEPRINT_SLICE_LOCATION = "Blueprints";
-const UI_SLICE_LOCATION = "Interface";
-const CHARACTER_SLICE_LOCATION = "Characters";
+const BLUEPRINT_SLICE_LOCATION: TranslationKey = "properties.references.kind.blueprint";
+const UI_SLICE_LOCATION: TranslationKey = "properties.references.kind.uiElement";
+const CHARACTER_SLICE_LOCATION: TranslationKey = "properties.references.kind.character";
 /** Project -> Design. One per project, named for the sub-page an author would go to. */
-const DESIGN_SLICE_LOCATION = "Default fonts";
+const DESIGN_SLICE_LOCATION: TranslationKey = "properties.references.defaultFonts";
 /** What a failure to list the plugins names as its place: the panel an author would go to. */
-const PLUGIN_SLICE_LOCATION = "Plugins";
+const PLUGIN_SLICE_LOCATION: TranslationKey = "properties.references.kind.plugin";
 
 /**
  * Reference Service — the asset reverse-lookup index ("what uses this file?").
@@ -873,7 +876,7 @@ export class ReferenceService extends Service<ReferenceService> {
             console.warn("[ReferenceService] Failed to scan blueprints:", error);
             this.blueprintReferences = [];
             this.sliceSetReferences.set("blueprint", []);
-            this.setSliceGaps("blueprint", [{ reason: "sliceFailed", slice: "blueprint", location: BLUEPRINT_SLICE_LOCATION }]);
+            this.setSliceGaps("blueprint", [{ reason: "sliceFailed", slice: "blueprint", location: translate(BLUEPRINT_SLICE_LOCATION) }]);
         }
     }
 
@@ -910,7 +913,7 @@ export class ReferenceService extends Service<ReferenceService> {
         } catch (error) {
             console.warn("[ReferenceService] Failed to follow asset names:", error);
             // Which kinds are in doubt is unknown when nothing was followed, so every kind is.
-            this.setSliceGaps("assetNames", [{ reason: "sliceFailed", slice: "blueprint", location: BLUEPRINT_SLICE_LOCATION }]);
+            this.setSliceGaps("assetNames", [{ reason: "sliceFailed", slice: "blueprint", location: translate(BLUEPRINT_SLICE_LOCATION) }]);
         }
     }
 
@@ -936,7 +939,7 @@ export class ReferenceService extends Service<ReferenceService> {
             console.warn("[ReferenceService] Failed to scan the UI document:", error);
             this.uiReferences = [];
             this.sliceSetReferences.set("ui", []);
-            this.setSliceGaps("ui", [{ reason: "sliceFailed", slice: "ui", location: UI_SLICE_LOCATION }]);
+            this.setSliceGaps("ui", [{ reason: "sliceFailed", slice: "ui", location: translate(UI_SLICE_LOCATION) }]);
         }
     }
 
@@ -982,7 +985,7 @@ export class ReferenceService extends Service<ReferenceService> {
             console.warn("[ReferenceService] Failed to scan characters:", error);
             this.characterReferences = [];
             this.sliceSetReferences.set("character", []);
-            this.setSliceGaps("character", [{ reason: "sliceFailed", slice: "character", location: CHARACTER_SLICE_LOCATION }]);
+            this.setSliceGaps("character", [{ reason: "sliceFailed", slice: "character", location: translate(CHARACTER_SLICE_LOCATION) }]);
         }
     }
 
@@ -1019,7 +1022,7 @@ export class ReferenceService extends Service<ReferenceService> {
             // and a host that does not register a brand service at all must degrade to a reported
             // gap rather than take the whole build down with it.
             const brandService = this.getContext().services.get<BrandService>(Services.Brand);
-            this.designReferences = extractProjectFontReferences(brandService.listFonts(), DESIGN_SLICE_LOCATION);
+            this.designReferences = extractProjectFontReferences(brandService.listFonts(), translate(DESIGN_SLICE_LOCATION));
             this.setSliceGaps("design", []);
         } catch (error) {
             console.warn("[ReferenceService] Failed to scan the project design:", error);
@@ -1030,7 +1033,7 @@ export class ReferenceService extends Service<ReferenceService> {
             this.setSliceGaps("design", [{
                 reason: "sliceFailed",
                 slice: "design",
-                location: DESIGN_SLICE_LOCATION,
+                location: translate(DESIGN_SLICE_LOCATION),
                 affects: ["font"],
                 // The one slice that is a single place: the font stack it failed to read.
                 target: { kind: "projectPage", page: "design", part: "fonts" },
@@ -1054,7 +1057,7 @@ export class ReferenceService extends Service<ReferenceService> {
             console.warn("[ReferenceService] Failed to read the plugins' published data:", error);
             this.pluginStores = [];
             this.pluginReferences = [];
-            this.setSliceGaps("plugin", [{ reason: "sliceFailed", slice: "plugin", location: PLUGIN_SLICE_LOCATION }]);
+            this.setSliceGaps("plugin", [{ reason: "sliceFailed", slice: "plugin", location: translate(PLUGIN_SLICE_LOCATION) }]);
             return;
         }
         this.matchPluginReferences();

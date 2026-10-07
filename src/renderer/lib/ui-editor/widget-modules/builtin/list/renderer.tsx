@@ -48,6 +48,7 @@ import {
     resolveListItemsBindingArray,
     resolveListRepeatLayout,
 } from "./helpers";
+import { pressIsAnsweredInRow } from "./rowPress";
 
 type ScrollMetrics = {
     viewport: number;
@@ -552,6 +553,16 @@ export function ListRenderer(props: WidgetRendererProps) {
         },
         [dispatchListItemEvent],
     );
+    /** Whether a press inside a row was a control's in it rather than the row's: see `pressIsAnsweredInRow`. */
+    const pressAnsweredInRow = useCallback(
+        (event: MouseEvent<HTMLDivElement>): boolean => {
+            const answers = blueprintRuntime?.elementAnswersPress;
+            return answers
+                ? pressIsAnsweredInRow({ target: event.target, row: event.currentTarget, rowRootIds: new Set(itemTemplateIds), answers })
+                : false;
+        },
+        [blueprintRuntime, itemTemplateIds.join("\0")],
+    );
     /**
      * The row the keyboard enters this list on: the one it last left, else the selected one, else the
      * first. The list is one stop on Tab however many rows it has - the rest are reached with the
@@ -616,7 +627,13 @@ export function ListRenderer(props: WidgetRendererProps) {
             "data-ui-list-item-key": key,
             "data-ui-list-item-index": i,
             style: rowStyle,
-            onClick: isRuntime ? () => handleListItemClick(scope) : undefined,
+            onClick: isRuntime
+                ? (event: MouseEvent<HTMLDivElement>) => {
+                      if (!pressAnsweredInRow(event)) {
+                          handleListItemClick(scope);
+                      }
+                  }
+                : undefined,
             onPointerEnter: isRuntime ? () => handleListItemHover(scope) : undefined,
             // In a running game a row is a control the keyboard reaches, as a button is: Enter and
             // Space raise Item Click exactly as a click does. On the canvas it is only a drawing.

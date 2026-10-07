@@ -283,6 +283,8 @@ const CLICKS: readonly { page: string; button: string; clip: string }[] = [
     ...["Log", "Save", "Load"].flatMap(page =>
         pressableRailEntries(page).map(button => ({ page, button, clip: "ui-confirm" })),
     ),
+    // The replay button on a voiced Log row: a press on it is its own, not the row's pick.
+    { page: "Log", button: "Replay voice", clip: "ui-confirm" },
 ];
 
 /** The entries that answer the pointer arriving. Rails only: a settings toggle is not a menu. */
@@ -291,6 +293,8 @@ const HOVERS: readonly { page: string; button: string }[] = [
     ...["Config", "Log", "Save", "Load"].flatMap(page => pressableRailEntries(page).map(button => ({ page, button }))),
     // The segment rail is a menu, so it answers the pointer the way the nav rails do.
     ...["CG", "Recollection", "Music", "Voice"].map(button => ({ page: "Extra", button })),
+    // A control on a row, among rows that only answer a press: the pointer arriving says it is there.
+    { page: "Log", button: "Replay voice" },
 ];
 
 /** The rows whose every press is a pick, so their row carries the sound. */

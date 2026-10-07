@@ -23,6 +23,7 @@ import { resolveBlueprintNodeEditorCatalogEntryForNode } from "@/lib/ui-editor/b
 import { blueprintEdgeStyle } from "@/lib/ui-editor/blueprint-graph-edge-style";
 import { readNodeEditorLayout } from "@/lib/workspace/services/ui-editor/blueprint/graphEditing";
 import { useTranslation, type UseTranslation } from "@/lib/i18n";
+import { useFlowAriaLabels } from "@/lib/ui-editor/hooks/useFlowAriaLabels";
 import { cn } from "@/lib/utils/cn";
 import type { BlueprintInspectorParamDef } from "@/lib/ui-editor/blueprint-nodes/types";
 import { resolveBlueprintLabel, resolveBlueprintNodeTitle } from "../blueprintNodeI18n";
@@ -133,6 +134,7 @@ type Props = {
 
 function BlueprintTemplatePreviewInner({ ir, pendingNodeIds }: Props) {
     const { t } = useTranslation();
+    const flowAriaLabels = useFlowAriaLabels();
 
     const { nodes, dataPins } = useMemo(() => {
         const pending = new Set(pendingNodeIds);
@@ -195,6 +197,7 @@ function BlueprintTemplatePreviewInner({ ir, pendingNodeIds }: Props) {
 
     return (
         <ReactFlow
+            ariaLabelConfig={flowAriaLabels}
             nodes={nodes}
             edges={edges}
             nodeTypes={nodeTypes}

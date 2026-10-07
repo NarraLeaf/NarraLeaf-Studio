@@ -15,14 +15,19 @@
  * than guesses at.
  */
 
-import { parseSceneTranslationUnitId, type GameLocalizationBundle } from "@shared/types/localization";
+import {
+    parseEndingTranslationUnitId,
+    parseSceneTranslationUnitId,
+    type GameLocalizationBundle,
+} from "@shared/types/localization";
 import type { GameVoiceBundle } from "@shared/types/voice";
 
 /**
  * Unit id prefixes that name something no scene owns: a UI element's text, a character's display
  * name, an author-named key. A scene drop cannot take any of them away, so they ship whole.
  * Everything without one of these prefixes is a story `textId`, which belongs to exactly one row -
- * except `scene:`, which belongs to a whole scene and is narrowed by {@link isShippedSceneUnit}.
+ * except `scene:`, which belongs to a whole scene and is narrowed by {@link isShippedSceneUnit}, and
+ * `ending:`, which belongs to an `/ending` row and is narrowed by {@link isShippedEndingUnit}.
  */
 const SCENE_INDEPENDENT_UNIT_PREFIXES = ["ui:", "char:", "key:"] as const;
 
@@ -82,7 +87,22 @@ function isShippedSceneUnit(bundle: GameLocalizationBundle, unitId: string): boo
     return bundle.scenes ? sceneId in bundle.scenes : true;
 }
 
-/** Drop translation units whose story row - or whole scene - is no longer in the build. */
+/**
+ * Whether an `ending:` unit names an ending this build still has, or null when the id is not one.
+ *
+ * The ending-name table is assembled from the documents the bundle carries, so it answers "did this
+ * ending's row survive the drop" the way the scene table does for scenes - and an ending a demo cannot
+ * reach is often the spoiler the drop was for. A bundle with no table cannot answer, and keeps the unit.
+ */
+function isShippedEndingUnit(bundle: GameLocalizationBundle, unitId: string): boolean | null {
+    const endingId = parseEndingTranslationUnitId(unitId);
+    if (endingId === null) {
+        return null;
+    }
+    return bundle.endings ? endingId in bundle.endings : true;
+}
+
+/** Drop translation units whose story row - or whole scene, or ending - is no longer in the build. */
 export function restrictLocalizationToTextIds(
     bundle: GameLocalizationBundle,
     textIds: ReadonlySet<string>,
@@ -92,9 +112,10 @@ export function restrictLocalizationToTextIds(
     for (const [locale, table] of Object.entries(bundle.tables)) {
         const kept: Record<string, string> = {};
         for (const [unitId, target] of Object.entries(table)) {
-            const shippedScene = isShippedSceneUnit(bundle, unitId);
-            if (shippedScene !== null) {
-                if (shippedScene) {
+            // A scene's or an ending's name ships with the scene or the ending it names.
+            const shippedOwner = isShippedSceneUnit(bundle, unitId) ?? isShippedEndingUnit(bundle, unitId);
+            if (shippedOwner !== null) {
+                if (shippedOwner) {
                     kept[unitId] = target;
                 } else {
                     removedUnitCount += 1;

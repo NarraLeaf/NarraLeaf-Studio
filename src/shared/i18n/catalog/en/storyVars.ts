@@ -26,6 +26,7 @@ export const storyVars = {
     },
     row: {
         nameAria: "Variable name",
+        defaultName: "Variable",
         defaultPlaceholder: "default",
         defaultAria: "Default value",
         delete: "Delete variable",

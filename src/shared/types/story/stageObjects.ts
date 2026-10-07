@@ -25,6 +25,7 @@ import {
 } from "./actionableTarget";
 import { layerActionTargetRef, resolveStoryLayerRef } from "./layerRef";
 import { listSceneBlocksInDocumentOrder } from "./order";
+import { resolveStoryGroupRunMode, storyGroupKindOfMode } from "./groupRun";
 
 /**
  * **Does the object this row acts on exist?** - asked once, answered once.
@@ -556,8 +557,7 @@ function runsInSequence(block: StoryBlock): boolean {
             return false;
         }
         if (payload.control === "sequence" || payload.control === "parallel" || payload.control === "race" || payload.control === "repeat") {
-            const mode = payload.mode ?? (payload.control === "parallel" ? "all" : payload.control === "race" ? "any" : "do");
-            return payload.control !== "repeat" && (mode === "do" || mode === "doAsync");
+            return payload.control !== "repeat" && storyGroupKindOfMode(resolveStoryGroupRunMode(payload)) === "sequence";
         }
         return true;
     }
