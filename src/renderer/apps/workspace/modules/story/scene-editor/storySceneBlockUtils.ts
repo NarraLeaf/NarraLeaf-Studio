@@ -716,6 +716,7 @@ export function describeBlockSubject(
     scenes?: Record<StorySceneId, StoryScene>,
     resolveMotionName?: (animationId: string) => string | null,
     projectVariableName?: StoryRowLookups["projectVariableName"],
+    blueprintName?: StoryRowLookups["blueprintName"],
 ): string {
     return describeStoryBlock(block, {
         character: characterRowLookup(characters),
@@ -724,6 +725,7 @@ export function describeBlockSubject(
         scenes,
         motionName: resolveMotionName,
         projectVariableName,
+        blueprintName,
     });
 }
 

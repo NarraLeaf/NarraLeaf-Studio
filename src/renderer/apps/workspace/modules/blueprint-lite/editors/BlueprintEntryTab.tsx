@@ -56,7 +56,9 @@ import { BLUEPRINT_PAGE_PARAM_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-n
 import { BLUEPRINT_SCENE_VARIABLE_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/storyVariableNodes";
 import { buildSceneVariableOptions } from "./sceneVariableOptions";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
-import { isFactoryStoryBlueprintName, ownerLabelKey } from "@shared/types/ui-editor/ownerLabels";
+import { blueprintDisplayName, isFactoryStoryBlueprintName, ownerLabelKey } from "@shared/types/ui-editor/ownerLabels";
+import { workspaceStoryBlueprintSummary } from "@/lib/story/storyBlueprintSummary";
+import { syncEditorTabTitle } from "@/lib/workspace/services/ui/editorTabTitle";
 import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemContext";
 import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
@@ -746,6 +748,17 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     // when the blueprint is deleted (avoids an early return between the hooks below).
     const bp = doc.blueprints[payload.blueprintId]!;
 
+    // A story blueprint's tab is named as its row reads - the name an author gave it, or what it
+    // does - and follows it as the graph is edited. A title fixed at open would go on naming a
+    // function the graph no longer calls, and two such tabs side by side would both read as their kind.
+    const storyTabTitle = bp.owner.kind === "storyAction"
+        ? blueprintDisplayName(bp, t, workspaceStoryBlueprintSummary(doc, nodeCatalog, t)(bp))
+        : null;
+    useEffect(() => {
+        if (storyTabTitle && uiService.editor.get(tabId)?.title !== storyTabTitle) {
+            syncEditorTabTitle(uiService, tabId, storyTabTitle);
+        }
+    }, [storyTabTitle, tabId, uiService]);
 
     const uiDocument = blueprintDocumentService.getDocument();
     const widgetElement =
@@ -2428,7 +2441,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             {/* A story blueprint nobody has named yet carries an English placeholder; its kind
                 is what the Blueprint Overview and the function lists call it too. */}
             <span className="truncate font-mono text-2xs text-fg-muted">
-                {isFactoryStoryBlueprintName(bp.name) ? t(ownerLabelKey(bp.owner.kind)) : bp.name}
+                {storyTabTitle ?? (isFactoryStoryBlueprintName(bp.name) ? t(ownerLabelKey(bp.owner.kind)) : bp.name)}
             </span>
         </div>
     );

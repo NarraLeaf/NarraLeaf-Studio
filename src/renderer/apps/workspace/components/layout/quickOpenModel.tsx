@@ -2,6 +2,8 @@ import { FileText, Image as ImageIcon, Music, PanelsTopLeft, Users, Workflow, Fi
 import type { ReactNode } from "react";
 import type { TranslationKey } from "@shared/i18n";
 import { blueprintDisplayName } from "@shared/types/ui-editor/ownerLabels";
+import { workspaceStoryBlueprintSummary } from "@/lib/story/storyBlueprintSummary";
+import type { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
 import { translate } from "@/lib/i18n";
 import { listScenesInDocumentOrder } from "@shared/types/story";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
@@ -152,6 +154,12 @@ export function collectQuickOpenEntries(ctx: WorkspaceContext): QuickOpenEntry[]
     const blueprintService = ctx.services.get<LocalBlueprintService>(Services.LocalBlueprint);
     try {
         const document = blueprintService.getBlueprintDocument();
+        // A story blueprint nobody named is listed by what it does, as its row reads.
+        const whatItDoes = workspaceStoryBlueprintSummary(
+            document,
+            ctx.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog),
+            translate,
+        );
         for (const [ownerKey, record] of Object.entries(document.ownerRecords)) {
             const blueprint = document.blueprints[record.blueprintId];
             const owner = blueprint ? parseBlueprintOwnerKey(ownerKey) : null;
@@ -161,7 +169,7 @@ export function collectQuickOpenEntries(ctx: WorkspaceContext): QuickOpenEntry[]
             entries.push({
                 key: `blueprint:${blueprint.id}`,
                 kind: "blueprint",
-                title: blueprintDisplayName(blueprint, translate),
+                title: blueprintDisplayName(blueprint, translate, whatItDoes(blueprint)),
                 icon: <Workflow className="h-4 w-4" />,
                 // Addressed and named as the interface panel and the inspector open it, so picking a
                 // blueprint whose editor is already open focuses that tab instead of adding another.

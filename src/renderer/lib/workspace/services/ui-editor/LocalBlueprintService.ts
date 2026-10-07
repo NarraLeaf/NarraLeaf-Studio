@@ -80,6 +80,7 @@ import {
     widgetValueOwnerKey,
 } from "./blueprint/ownerKeys";
 import { cloneStoryActionBlueprintForPaste } from "./blueprint/cloneBlueprintForPaste";
+import { factoryStoryBlueprintName } from "@shared/types/ui-editor/ownerLabels";
 import { derivedBlueprintId } from "./blueprint/derivedBlueprintId";
 import { ownerKeyBelongsToSurface } from "@shared/blueprint/ownerKey";
 import { SCRIPTS_DIR } from "@shared/project/scriptsDirectory";
@@ -721,8 +722,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 outId = active;
                 return;
             }
-            const defaultName =
-                input?.mode === "value" ? "Story Value" : input?.mode === "condition" ? "Story Condition" : "Story Action";
+            const defaultName = factoryStoryBlueprintName(input?.mode);
             const blueprint = createMainBlueprint({
                 id,
                 name: input?.displayName ?? defaultName,
@@ -781,6 +781,31 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
 
     public getStoryActionBlueprintId(blueprintId: string): string | undefined {
         return getSlotBlueprintId(this.getBlueprintDocument(), storyActionOwnerKey(blueprintId));
+    }
+
+    /**
+     * Name a story blueprint - what its row, the inspector, search and Quick Open call it - or clear
+     * the name it was given, which puts back the one it was created with so those places go back to
+     * saying what the blueprint does.
+     *
+     * One undo step for a run of typing (a merge key per blueprint), on the blueprint's own history,
+     * like every other edit to the blueprint.
+     */
+    public setStoryBlueprintName(blueprintId: string, name: string): void {
+        const blueprint = this.getBlueprintDocument().blueprints[blueprintId];
+        if (!blueprint || blueprint.owner.kind !== "storyAction") {
+            return;
+        }
+        const next = name.trim() ? name : factoryStoryBlueprintName(blueprint.owner.mode);
+        if (blueprint.name === next) {
+            return;
+        }
+        this.applyBlueprintEdit({ blueprintId }, doc => {
+            const target = doc.blueprints[blueprintId];
+            if (target) {
+                target.name = next;
+            }
+        }, { mergeKey: `story-blueprint-name:${blueprintId}` });
     }
 
     /**

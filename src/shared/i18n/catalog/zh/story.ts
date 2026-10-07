@@ -1365,6 +1365,7 @@ export const story = {
         vfx: "{operation} 氛围特效 {name}",
         nvl: "NVL 块",
         blueprint: "蓝图",
+        blueprintNamed: "蓝图 {name}",
         pluginAction: "插件动作",
         // 镜头行的措辞就是作者敲进去的那个词（`story.enumValue.*`）——行里读到的和手册里教的
         // 必须是同一个词，否则又回到"打的是缩放、显示的是推拉"那种割裂。

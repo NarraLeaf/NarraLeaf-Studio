@@ -1572,6 +1572,7 @@ export const story = {
         vfx: "{operation} ambience {name}",
         nvl: "NVL block",
         blueprint: "Blueprint",
+        blueprintNamed: "Blueprint {name}",
         // A plugin marker row whose plugin is not loaded, so there is no registration to read a
         // label out of. Deliberately generic: the only other thing the row holds is the plugin id,
         // and an id is not a name.

@@ -146,6 +146,12 @@ export type StoryRowLookups = {
      * Read by the `/quit` row, whose whole content is the page it hands the screen to.
      */
     surfaceName?: (surfaceId: string) => string | null;
+    /**
+     * The name a `/blueprint` row's blueprint goes by - the one its author gave it, or what it does
+     * (`storyBlueprintName`) - or `null` when it has neither. Omit it and the row names only its kind,
+     * as it does for a blueprint not created yet: the payload holds an id and nothing else.
+     */
+    blueprintName?: (blueprintId: string) => string | null;
 };
 
 /**
@@ -860,7 +866,12 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
         if (payload.action === "video") return translate("story.describe.video", { operation: verbWord(payload, payload.operation), name: actionableSubjectWord(scene, payload.target, "video", payload.objectName) || translate("story.describe.unnamed") });
         if (payload.action === "vfx") return translate("story.describe.vfx", { operation: verbWord(payload, payload.operation), name: actionableSubjectWord(scene, payload.target, "vfx", payload.objectName) || translate("story.describe.unnamed") });
         if (payload.action === "nvl") return translate("story.describe.nvl");
-        if (payload.action === "blueprint") return translate("story.describe.blueprint");
+        if (payload.action === "blueprint") {
+            // The blueprint IS the row, as the name is a label's: ten rows reading only "Blueprint"
+            // would leave the author opening each one to find which does what.
+            const name = payload.blueprintId ? lookups.blueprintName?.(payload.blueprintId) : null;
+            return name ? translate("story.describe.blueprintNamed", { name }) : translate("story.describe.blueprint");
+        }
         if (payload.action === "camera") return describeCamera(payload, lookups.motionName);
         if (payload.action === "plugin") {
             return lookups.pluginActionLabel?.(payload.pluginId, payload.actionId, payload.params)

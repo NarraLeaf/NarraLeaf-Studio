@@ -1425,6 +1425,7 @@ export const story = {
         vfx: "環境演出 {name} を{operation}",
         nvl: "NVL ブロック",
         blueprint: "ブループリント",
+        blueprintNamed: "ブループリント {name}",
         pluginAction: "プラグインアクション",
         cameraOp: {
             transform: "カメラ",

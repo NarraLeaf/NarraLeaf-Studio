@@ -795,6 +795,32 @@ describe("copying a story blueprint for a copied row", () => {
     });
 });
 
+describe("naming a story blueprint", () => {
+    it("names it, puts back the name it was created with when cleared, and undoes a run of typing in one step", () => {
+        const { service, graphDocument } = createHarness();
+        const id = service.ensureStoryActionBlueprint();
+        const nameOf = () => graphDocument.blueprintDocument.blueprints[id].name;
+
+        service.setStoryBlueprintName(id, "D");
+        service.setStoryBlueprintName(id, "Door");
+        service.setStoryBlueprintName(id, "Door chime");
+        expect(nameOf()).toBe("Door chime");
+
+        expect(service.undoBlueprint(id)).toBe(true);
+        expect(nameOf()).toBe("Story Action");
+
+        service.setStoryBlueprintName(id, "Door chime");
+        service.setStoryBlueprintName(id, "   ");
+        expect(nameOf()).toBe("Story Action");
+    });
+
+    it("leaves every blueprint that is not a story's alone", () => {
+        const { service, graphDocument } = createHarness();
+        service.setStoryBlueprintName("bp-main", "Renamed");
+        expect(graphDocument.blueprintDocument.blueprints["bp-main"].name).toBe("Main");
+    });
+});
+
 describe("removing a registry variable inside a live session", () => {
     it("states the removal and leaves the node sweep to the effect", () => {
         // ⚠ The sweep is DERIVED: the effect says the variable is gone, and every machine works out
