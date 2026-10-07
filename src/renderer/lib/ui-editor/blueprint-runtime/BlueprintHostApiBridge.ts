@@ -2054,7 +2054,10 @@ export type BlueprintGameHistoryEntry = {
     type: "say" | "menu";
     /** Sentence text (say) or the menu prompt (menu); empty string when the source had none. */
     text: string;
-    /** Speaker nametag for a say entry; null for menu entries or narration. */
+    /**
+     * Speaker nametag for a say entry, in the game's language as the name plate shows it; null for menu
+     * entries or narration.
+     */
     character: string | null;
     /**
      * The speaker's dialog avatar, as the project declares it; null for narration, a menu row, and a

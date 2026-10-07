@@ -31,9 +31,10 @@ import {
     localizationKeyUnitId,
     LOCALE_RESTART_RESUME_KEY,
     LOCALE_STORAGE_KEY,
-    characterTranslationUnitId,
     matchSystemLocale,
     normalizeLanguageChangeConfiguration,
+    resolveLocalizedCharacterName,
+    resolveLocalizedSpeakerName,
     resolveLocalizedUnitText,
 } from "@shared/types/localization";
 import { VOICE_LOCALE_STORAGE_KEY } from "@shared/types/voice";
@@ -652,25 +653,62 @@ export function GameApp(props: GameAppProps): ReactNode {
         return gameLocalizationRuntime.subscribe(publish);
     }, [gameLocalizationRuntime]);
     const widgetRuntimeStore = useMemo(() => new WidgetRuntimeStateStore(), []);
-    // Localized character nametag: NLR reports the authored (source-language)
-    // name; map it back to its character and translate the `char:<id>` unit for
-    // the current locale. Applied at the single point where the nametag enters
-    // the dialog state, so the ref, global state, and host API all see the
-    // translated name. Like story text, a mid-line language switch applies from
-    // the next spoken line.
-    const translateCharacterName = useCallback((name: string | null): string | null => {
+    /**
+     * The game's language right now, or null where nothing in the game is translated - no
+     * localization, no runtime yet, or a project without a source language.
+     */
+    const readGameLocale = useCallback((): string | null => {
         const localization = bundle.localization;
-        if (!name || !localization || !core || isKeysOnlyLocalization(localization)) {
-            return name;
-        }
-        const character = bundle.storyLibrary?.characters.find(entry => entry.name === name);
-        if (!character) {
-            return name;
+        if (!localization || !core || isKeysOnlyLocalization(localization)) {
+            return null;
         }
         const stored = core.scopeBridge.persistenceGet(LOCALE_STORAGE_KEY);
-        const locale = typeof stored === "string" && stored ? stored : localization.sourceLocale;
-        return resolveLocalizedUnitText(localization, locale, characterTranslationUnitId(character.id)) ?? name;
-    }, [bundle.localization, bundle.storyLibrary, core]);
+        return typeof stored === "string" && stored ? stored : localization.sourceLocale;
+    }, [bundle.localization, core]);
+    /**
+     * A speaker's name as the player reads it, from the name the engine recorded.
+     *
+     * The engine knows a character only by the name it was given, and every place that name reaches
+     * the player - the name plate, a backlog line, the speaker a save was left on, an NVL row - hands
+     * back that string. Each of them comes through here, so the name a character is translated to is
+     * the same everywhere and follows the language the lines are in (see
+     * `resolveLocalizedSpeakerName` for what a `/rename` row's words do).
+     *
+     * Read at the moment a name is shown, like a story line: a language switched mid-line applies
+     * from the next line, and a title screen switched before a game reads the new language at once.
+     */
+    const translateCharacterName = useCallback((name: string | null): string | null => {
+        const localization = bundle.localization;
+        const locale = readGameLocale();
+        if (!name || !localization || locale === null) {
+            return name;
+        }
+        return resolveLocalizedSpeakerName(localization, locale, bundle.storyLibrary?.characters, name);
+    }, [bundle.localization, bundle.storyLibrary, readGameLocale]);
+    /**
+     * Read through a ref by the callbacks built once per host (`createLiveGameUiCallbacks`, a Game
+     * UI slot's options), for the reason `resolveSpeakerAvatarRef` below is.
+     */
+    const translateCharacterNameRef = useRef(translateCharacterName);
+    useEffect(() => {
+        translateCharacterNameRef.current = translateCharacterName;
+    }, [translateCharacterName]);
+    const displaySpeakerName = useCallback(
+        (recordedName: string): string => translateCharacterNameRef.current(recordedName) ?? recordedName,
+        [],
+    );
+    /**
+     * Where a save was left, as a save screen shows it: the engine's line and speaker, with the
+     * speaker in the game's language.
+     *
+     * A save records the speaker by name, exactly as the backlog does, so nothing in the file changes
+     * and every save already written reads the same way. The line itself is the words the engine
+     * stamped when it saved.
+     */
+    const readSavedGameLineForPlayer = useCallback((savedGame: unknown): SaveRecordLine => {
+        const line = readSavedGameLine(savedGame);
+        return line.speaker ? { ...line, speaker: translateCharacterName(line.speaker) ?? line.speaker } : line;
+    }, [translateCharacterName]);
     /**
      * The speaking character's *id*, from the authored name NLR reports.
      *
@@ -713,22 +751,42 @@ export function GameApp(props: GameAppProps): ReactNode {
      *
      * `color` is additive on the summary, so a bundle built before it existed simply mirrors with no
      * colour - `toBlueprintCharacterInfo` treats absent and empty alike.
+     *
+     * The name is mirrored in the game's language - the `char:` unit the name plate reads - and
+     * mirrored again when the language changes. Only a change of language re-mirrors: the
+     * subscription hears every persistence write, and a table rewritten on each of them would
+     * re-evaluate every value graph on every line.
      */
     useEffect(() => {
         if (!core) {
             return;
         }
-        const table = (bundle.storyLibrary?.characters ?? []).flatMap(entry => {
-            const info = toBlueprintCharacterInfo({
-                id: entry.id,
-                name: entry.name,
-                color: entry.color,
-                avatarAssetId: resolveDefaultCharacterAvatarAssetId(entry),
+        const mirror = (locale: string | null): void => {
+            const localization = bundle.localization;
+            const table = (bundle.storyLibrary?.characters ?? []).flatMap(entry => {
+                const info = toBlueprintCharacterInfo({
+                    id: entry.id,
+                    name: localization && locale !== null
+                        ? resolveLocalizedCharacterName(localization, locale, entry.id, entry.name)
+                        : entry.name,
+                    color: entry.color,
+                    avatarAssetId: resolveDefaultCharacterAvatarAssetId(entry),
+                });
+                return info ? [info] : [];
             });
-            return info ? [info] : [];
+            core.scopeBridge.globalSet(BLUEPRINT_GAME_CHARACTERS_STATE_KEY, table);
+        };
+        let mirroredLocale = readGameLocale();
+        mirror(mirroredLocale);
+        return core.scopeBridge.subscribePersistence(() => {
+            const locale = readGameLocale();
+            if (locale === mirroredLocale) {
+                return;
+            }
+            mirroredLocale = locale;
+            mirror(locale);
         });
-        core.scopeBridge.globalSet(BLUEPRINT_GAME_CHARACTERS_STATE_KEY, table);
-    }, [bundle.storyLibrary, core]);
+    }, [bundle.localization, bundle.storyLibrary, core, readGameLocale]);
     const [widgetPatchesByScope, setWidgetPatchesByScope] = useState<Record<string, Record<string, DevModeWidgetRuntimePatch>>>({});
     // The table itself; the state beside it is only what makes a write re-render. Every writer sets
     // this first and never the other way round - see `WidgetPatchesByScope` for why an effect
@@ -2425,7 +2483,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         currentDialogNametagRef,
         dialogClickTargets: nlrDialogClickTargets,
         resolveSpeakerAvatar: sourceName => resolveSpeakerAvatarRef.current(sourceName),
-    }), [requireActiveLiveGame]);
+        displaySpeakerName,
+    }), [requireActiveLiveGame, displaySpeakerName]);
 
     /**
      * Which actions the dialogue box reads on with, as far as playing has shown - the half of
@@ -3743,13 +3802,13 @@ export function GameApp(props: GameAppProps): ReactNode {
                 ),
                 // Read from the record this loop already holds, through the reader `Get Save Line`
                 // uses, so a row and that node say the same thing about the same slot.
-                ...readSavedGameLine(record.savedGame),
+                ...readSavedGameLineForPlayer(record.savedGame),
                 metadata: record.metadata.user ?? null,
             };
         }));
         return entries.filter((entry): entry is AutoSaveEntry => entry !== null)
             .sort((a, b) => b.timestamp - a.timestamp);
-    }, [host.saveStore, saveBuild, saveCompatibilityConfig]);
+    }, [host.saveStore, readSavedGameLineForPlayer, saveBuild, saveCompatibilityConfig]);
 
     const autoSave = useAutoSave({
         config: autoSaveConfig,
@@ -3835,8 +3894,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         if (!record) {
             return null;
         }
-        return readSavedGameLine(record.savedGame);
-    }, [host.saveStore]);
+        return readSavedGameLineForPlayer(record.savedGame);
+    }, [host.saveStore, readSavedGameLineForPlayer]);
 
     /**
      * Which of the project's stories one slot was written in.
@@ -4398,6 +4457,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             lifecycleRef,
             makeStateAccessors,
             resolveAvatarAssetId,
+            displaySpeakerName,
             host: gameHostCapabilities,
             // The gate rather than the runtime's own start, and the one thing a slot surface is
             // deliberately given a different callable for. A slot keeps whatever it was handed when
@@ -4576,6 +4636,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         getChoiceCountInGame,
         getCurrentNametag,
         resolveAvatarAssetId,
+        displaySpeakerName,
         getGamePreferenceInGame,
         getFutureInGame,
         getHistoryInGame,

@@ -236,6 +236,12 @@ export type LiveGameUiCallbackDeps = {
      * - the story preview, a bundle that carries none - and every backlog row then has no picture.
      */
     resolveSpeakerAvatar?: (sourceName: string) => BlueprintImageAsset | null;
+    /**
+     * The name a player reads for a speaker the engine recorded by name: the character's name in the
+     * game's language. Read lazily like `resolveSpeakerAvatar`, and absent on a host that shows the
+     * story in the words it is written in (the story preview), where the recorded name is shown.
+     */
+    displaySpeakerName?: (recordedName: string) => string;
 };
 
 /**
@@ -323,10 +329,14 @@ function liveGameHistoryControls(liveGame: LiveGame): {
  * `resolveSpeakerCharacterId` joins the character table on for the live line. A host with no table
  * to join against passes no resolver, and every row reads as having no picture, which is what a
  * backlog showed before this field existed.
+ *
+ * The speaker is handed out the way the name plate shows it, in the game's language; the avatar is
+ * joined on the recorded name before that, since the recorded name is what the table is keyed by.
  */
 function toBlueprintHistoryEntries(
     raw: unknown,
     resolveSpeakerAvatar?: (sourceName: string) => BlueprintImageAsset | null,
+    displaySpeakerName?: (recordedName: string) => string,
 ): BlueprintGameHistoryEntry[] {
     if (!Array.isArray(raw)) {
         return [];
@@ -344,7 +354,7 @@ function toBlueprintHistoryEntries(
             id: String(record.token ?? ""),
             type: isMenu ? "menu" : "say",
             text,
-            character,
+            character: character ? displaySpeakerName?.(character) ?? character : null,
             avatar: character ? resolveSpeakerAvatar?.(character) ?? null : null,
             voice: !isMenu && element.voice != null ? String(element.voice) : null,
             // The replayable handle. Present from engine 0.24.0 on; an entry from an older
@@ -400,12 +410,18 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
         currentDialogNametagRef,
         dialogClickTargets,
         resolveSpeakerAvatar,
+        displaySpeakerName,
     } = deps;
 
     return {
         onGetNametag: (): string | null => {
+            // The engine's last line names its speaker by the name it was given, so it is shown the
+            // way the prompt below is: in the game's language. The prompt's copy is already shown so.
             const liveGameSpeaker = readNlrLastDialogSpeaker(getLiveGame());
-            return liveGameSpeaker ?? currentDialogNametagRef.current;
+            if (liveGameSpeaker !== null) {
+                return displaySpeakerName?.(liveGameSpeaker) ?? liveGameSpeaker;
+            }
+            return currentDialogNametagRef.current;
         },
 
         onGetNotifications: (): BlueprintGameNotification[] => {
@@ -426,7 +442,7 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
         },
 
         onGetHistory: (): BlueprintGameHistoryEntry[] => {
-            return toBlueprintHistoryEntries(getLiveGame()?.getHistory?.(), resolveSpeakerAvatar);
+            return toBlueprintHistoryEntries(getLiveGame()?.getHistory?.(), resolveSpeakerAvatar, displaySpeakerName);
         },
 
         onGetFuture: (): BlueprintGameHistoryEntry[] => {
@@ -435,6 +451,7 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
             return toBlueprintHistoryEntries(
                 getFuture ? getFuture.call(liveGame) : undefined,
                 resolveSpeakerAvatar,
+                displaySpeakerName,
             );
         },
 

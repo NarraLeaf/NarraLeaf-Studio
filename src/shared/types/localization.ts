@@ -488,6 +488,41 @@ export function resolveLocalizedSceneName(
 }
 
 /**
+ * A character's name in `locale`: its `char:` unit along the language's fallback chain, else the
+ * name the character is written with - the same fallback a story line takes.
+ */
+export function resolveLocalizedCharacterName(
+    bundle: Pick<GameLocalizationBundle, "sourceLocale" | "locales" | "tables">,
+    locale: LocaleCode,
+    characterId: string,
+    sourceName: string,
+): string {
+    return resolveLocalizedUnitText(bundle, locale, characterTranslationUnitId(characterId)) ?? sourceName;
+}
+
+/**
+ * The name to show for a speaker the engine recorded by name, in `locale`.
+ *
+ * The engine knows a character only by the name it was given - the nametag, a backlog line, the
+ * speaker a save was left on all carry that string and nothing else - so the name is matched back to
+ * the character written with it, and that character's `char:` unit is what the player reads.
+ *
+ * A recorded name no character is written with is shown as recorded. That is a `/rename` row's own
+ * words ("？？？"), a one-off speaker, or a save written before the character was renamed: the
+ * project has no translation of any of them. A `/rename` back to a character's name is that
+ * character's name again, so it translates like any other line that character speaks.
+ */
+export function resolveLocalizedSpeakerName(
+    bundle: Pick<GameLocalizationBundle, "sourceLocale" | "locales" | "tables">,
+    locale: LocaleCode,
+    characters: readonly { id: string; name: string }[] | undefined,
+    recordedName: string,
+): string {
+    const character = characters?.find(entry => entry.name === recordedName);
+    return character ? resolveLocalizedCharacterName(bundle, locale, character.id, recordedName) : recordedName;
+}
+
+/**
  * Render a string a game stored for later display - today, a save slot's metadata.
  *
  * A stored string may be a *reference* to something the project translates, and today the one such
