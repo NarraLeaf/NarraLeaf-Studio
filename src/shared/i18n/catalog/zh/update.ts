@@ -40,11 +40,19 @@ export const update = {
     setting: {
         checkOnLaunch: {
             label: "自动检查更新",
-            description: "Studio 启动后以及运行期间每隔数小时向 GitHub 查询一次",
+            description: "Studio 启动后以及运行期间每隔数小时查询一次新版本",
         },
         autoDownload: {
             label: "自动下载更新",
             description: "在后台下载并准备新版本，重启 Studio 后生效",
+        },
+        source: {
+            label: "更新下载源",
+            description: "下载新版本所用的服务器。选择自动时会比较 GitHub 与 GitCode 的速度，使用较快的一个",
+            options: {
+                auto: "自动",
+                gitcode: "GitCode（中国大陆）",
+            },
         },
     },
     notification: {

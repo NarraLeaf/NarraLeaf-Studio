@@ -11,6 +11,7 @@ import type { BaseApp } from "../baseApp";
 import { autoUpdater } from "electron-updater";
 import { spawn } from "child_process";
 import { readPreparedVersion, removeStagedCopy, UPDATE_WAIT_PID_ENV } from "./updateStaging";
+import { askGitCode, chooseUpdateSource, type UpdateOffer } from "./updateSource";
 import { UpdateManager } from "./updateManager";
 
 // electron-updater reaches for Electron's app at import time, so the whole module is a stand-in:
@@ -31,6 +32,7 @@ vi.mock("electron-updater", () => {
             autoRunAppAfterInstall: false,
             logger: null,
             on: vi.fn(),
+            setFeedURL: vi.fn(),
             checkForUpdates: vi.fn(),
             downloadUpdate: vi.fn(() => new Promise(() => undefined)),
             quitAndInstall: vi.fn(),
@@ -39,6 +41,27 @@ vi.mock("electron-updater", () => {
 });
 
 vi.mock("child_process", () => ({ spawn: vi.fn() }));
+
+vi.mock("electron", () => ({ session: { fromPartition: () => ({ fetch: vi.fn() }) } }));
+
+// Which source answers is updateSource.test.ts's business; here it is whatever a test says.
+vi.mock("./updateSource", async importOriginal => ({
+    ...await importOriginal<typeof import("./updateSource")>(),
+    chooseUpdateSource: vi.fn(async () => null),
+    askGitCode: vi.fn(async () => null),
+}));
+
+vi.mock("./releaseDirectoryProvider", () => ({
+    releaseDirectoryFeed: (url: string) => ({ provider: "custom", url }),
+}));
+
+const GITCODE_OFFER: UpdateOffer = {
+    source: "gitcode",
+    version: "1.2.4",
+    feedUrl: "https://gitcode.com/NarraLeaf/NarraLeaf-Studio/releases/download/v1.2.4",
+    installerUrl: "https://gitcode.com/NarraLeaf/NarraLeaf-Studio/releases/download/v1.2.4/NarraLeaf-Studio-Setup-1.2.4-x64.exe",
+    releaseUrl: "https://gitcode.com/NarraLeaf/NarraLeaf-Studio/releases/v1.2.4",
+};
 
 vi.mock("./updateStaging", async importOriginal => {
     const actual = await importOriginal<typeof import("./updateStaging")>();
@@ -157,6 +180,20 @@ describe("UpdateManager.initialize", () => {
         manager.dispose();
     });
 
+    it("asks GitCode when GitHub does not answer, and links to its copy of the release", async () => {
+        vi.mocked(askGitCode).mockResolvedValueOnce(GITCODE_OFFER);
+        const { app } = makeApp({ launchUpdateCheck: false });
+        const manager = new UpdateManager(app);
+        manager.initialize();
+
+        const state = await manager.check();
+
+        expect(state.status).toBe("manual");
+        expect(state.availableVersion).toBe("1.2.4");
+        expect(state.releaseUrl).toBe(GITCODE_OFFER.releaseUrl);
+        manager.dispose();
+    });
+
     it("asks nothing when the author turned the automatic check off", () => {
         const { app } = makeApp({ launchUpdateCheck: true, autoCheckSetting: false });
         const manager = new UpdateManager(app);
@@ -212,6 +249,37 @@ describe("UpdateManager on packaged Windows", () => {
         });
         return child;
     }
+
+    describe("where it updates from", () => {
+        beforeEach(() => {
+            vi.mocked(autoUpdater.setFeedURL).mockClear();
+            vi.mocked(autoUpdater.checkForUpdates).mockClear();
+            vi.mocked(chooseUpdateSource).mockReset().mockResolvedValue(null);
+        });
+
+        it("points the updater at the release directory of the source chosen, before checking", async () => {
+            vi.mocked(chooseUpdateSource).mockResolvedValue(GITCODE_OFFER);
+            const { manager } = managerFor({ autoDownloadSetting: false });
+
+            await manager.check();
+
+            expect(autoUpdater.setFeedURL).toHaveBeenCalledWith({ provider: "custom", url: GITCODE_OFFER.feedUrl });
+            expect(vi.mocked(autoUpdater.setFeedURL).mock.invocationCallOrder[0])
+                .toBeLessThan(vi.mocked(autoUpdater.checkForUpdates).mock.invocationCallOrder[0]);
+            // "Release notes" opens the copy on the host the update comes from.
+            updaterListener<{ version: string }>("update-available")({ version: "1.2.4" });
+            expect(manager.getState().releaseUrl).toBe(GITCODE_OFFER.releaseUrl);
+        });
+
+        it("falls back to the packaged feed when no source answered, so the failure reads as it always has", async () => {
+            const { manager } = managerFor();
+
+            await manager.check();
+
+            expect(autoUpdater.setFeedURL).toHaveBeenCalledWith({ provider: "github", owner: "NarraLeaf", repo: "NarraLeaf-Studio" });
+            expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
+        });
+    });
 
     describe("a version a check finds", () => {
         it("is downloaded at once, without ever being offered", () => {

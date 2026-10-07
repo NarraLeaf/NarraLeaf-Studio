@@ -65,7 +65,13 @@ import { clearAllProjectStats } from "@/lib/stats/clearAllProjectStats";
 import { resetAllPreferences, resetWorkspaceLayout } from "@/lib/settings/resetSettings";
 import { DASHBOARD_OPEN_DEFAULT_KEY } from "@shared/constants/dashboard";
 import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
-import { UPDATE_AUTO_CHECK_KEY, UPDATE_AUTO_DOWNLOAD_KEY, UPDATE_PANEL_SETTING_KEY } from "@shared/constants/update";
+import {
+    UPDATE_AUTO_CHECK_KEY,
+    UPDATE_AUTO_DOWNLOAD_KEY,
+    UPDATE_PANEL_SETTING_KEY,
+    UPDATE_SOURCE_KEY,
+    UPDATE_SOURCE_PREFERENCES,
+} from "@shared/constants/update";
 import { KEYBINDING_OVERRIDES_SETTINGS_KEY } from "@/lib/workspace/services/ui/KeybindingService";
 import { DOWNLOAD_REWRITES_KEY, USE_SYSTEM_PROXY_KEY } from "@shared/types/downloadSource";
 import { OFFICIAL_SOURCE_VALUE } from "@/lib/settings/sourceSelection";
@@ -357,7 +363,7 @@ export const AppSettings: AppSettingDefinition[] = [
         type: SettingValueType.Boolean,
         label: "Check for updates automatically",
         labelKey: "update.setting.checkOnLaunch.label",
-        description: "Asks GitHub shortly after Studio starts, and every few hours while it runs.",
+        description: "Asks for a newer version shortly after Studio starts, and every few hours while it runs.",
         descriptionKey: "update.setting.checkOnLaunch.description",
         defaultValue: true,
     },
@@ -375,6 +381,31 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: true,
         // Only Windows installs its own updates; elsewhere there is nothing for this to download.
         visible: () => isWindowsPlatform(),
+    },
+    {
+        // Read by the main process's UpdateManager at every check (`updateSource.ts`). Automatic asks
+        // GitHub and GitCode, which hold the same files, and downloads from whichever is faster
+        // right now; naming one asks only that one. Shown everywhere: on macOS it still decides
+        // where Studio looks for a newer version and which release page it links to.
+        key: UPDATE_SOURCE_KEY,
+        category: "general",
+        scope: SettingScope.Global,
+        type: SettingValueType.Enum,
+        label: "Update download source",
+        labelKey: "update.setting.source.label",
+        description: "Where new versions are downloaded from. Automatic compares GitHub and GitCode and uses the faster one.",
+        descriptionKey: "update.setting.source.description",
+        defaultValue: "auto",
+        options: [...UPDATE_SOURCE_PREFERENCES],
+        optionLabels: {
+            auto: "Automatic",
+            github: "GitHub",
+            gitcode: "GitCode (mainland China)",
+        },
+        optionLabelKeys: {
+            auto: "update.setting.source.options.auto",
+            gitcode: "update.setting.source.options.gitcode",
+        },
     },
     {
         // Rendered by `SETTING_PANELS.softwareUpdate`. Nothing is stored under this key: the state
