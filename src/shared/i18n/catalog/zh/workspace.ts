@@ -84,6 +84,8 @@ export const workspace = {
             characterSpeaker: "角色",
             scenesGroup: "场景",
             sceneSpeaker: "场景",
+            endingsGroup: "结局",
+            endingSpeaker: "结局",
             addKey: "添加",
             keyNamePlaceholder: "键名（menu.start…）",
             keySourcePlaceholder: "源语言文案",

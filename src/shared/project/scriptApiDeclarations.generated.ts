@@ -293,6 +293,14 @@ declare module "@narraleaf/script" {
     	 * dropped is absent here too.
     	 */
     	scenes?: Record<string, string>;
+    	/**
+    	 * Ending-name source texts (ending id → source-language name), for the endings this build ships.
+    	 *
+    	 * Read as the set of endings the build still has, which is what decides whether an \`ending:\` unit
+    	 * ships with a variant that dropped scenes - the same question \`scenes\` answers for \`scene:\` units.
+    	 * Assembled from the story documents the bundle carries.
+    	 */
+    	endings?: Record<string, string>;
     };
     type StoryId = string;
     type StoryLiteralValue = string | number | boolean | null | StoryLiteralValue[] | {
@@ -1408,9 +1416,13 @@ declare module "@narraleaf/script" {
     };
     type BlueprintStoryEnding = {
     	endingId: string;
+    	/** The ending's name in the game's language, falling back to the words the row is written with. */
     	name: string;
     	sceneId: string;
-    	/** The scene the ending row sits in, so a row can be grouped or captioned without a lookup. */
+    	/**
+    	 * The scene the ending row sits in, so a row can be grouped or captioned without a lookup. In the
+    	 * game's language, like the name.
+    	 */
     	sceneName: string;
     	isReached: boolean;
     };
@@ -1421,7 +1433,10 @@ declare module "@narraleaf/script" {
     	type: "say" | "menu";
     	/** Sentence text (say) or the menu prompt (menu); empty string when the source had none. */
     	text: string;
-    	/** Speaker nametag for a say entry; null for menu entries or narration. */
+    	/**
+    	 * Speaker nametag for a say entry, in the game's language as the name plate shows it; null for menu
+    	 * entries or narration.
+    	 */
     	character: string | null;
     	/**
     	 * The speaker's dialog avatar, as the project declares it; null for narration, a menu row, and a
