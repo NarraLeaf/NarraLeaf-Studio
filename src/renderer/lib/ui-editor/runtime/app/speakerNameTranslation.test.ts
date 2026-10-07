@@ -5,8 +5,8 @@
  * The engine records a speaker by the name it was given and hands that string back everywhere; the
  * name plate once preferred the engine's copy of the last line's speaker over the translated prompt,
  * so a game read in English showed English lines under a Chinese name. What is pinned here is that
- * every reader goes through the one translation, and what a name no character is written with (a
- * `/rename` row's own words) does.
+ * every reader goes through the one translation, and that it covers the words a `/rename` row gives
+ * as well as a character's own name.
  *
  * Comments in English per project convention.
  */
@@ -32,7 +32,8 @@ const BUNDLE: GameLocalizationBundle = {
         { code: "en-GB", displayName: "English (UK)", fallback: "en" },
         { code: "ko", displayName: "한국어" },
     ],
-    tables: { en: { "char:char-aoi": "Aoi", "char:char-narra": "Narra-EN" } },
+    tables: { en: { "char:char-aoi": "Aoi", "char:char-narra": "Narra-EN", "rename:veil": "Mysterious girl" } },
+    renames: { veil: "神秘少女", mask: "？？？" },
 };
 
 function sayEntry(token: string, character: string | null, text: string): unknown {
@@ -63,14 +64,20 @@ describe("a speaker's name in the game's language", () => {
         expect(resolveLocalizedSpeakerName(BUNDLE, "zh-CN", CHARACTERS, "葵")).toBe("葵");
     });
 
-    it("shows a name no character is written with as recorded - a /rename row's own words", () => {
+    it("reads a /rename row's words through the row's own translation, else as recorded", () => {
+        expect(resolveLocalizedSpeakerName(BUNDLE, "en", CHARACTERS, "神秘少女")).toBe("Mysterious girl");
+        expect(resolveLocalizedSpeakerName(BUNDLE, "en-GB", CHARACTERS, "神秘少女")).toBe("Mysterious girl");
+        expect(resolveLocalizedSpeakerName(BUNDLE, "ko", CHARACTERS, "神秘少女")).toBe("神秘少女");
+        // A row nobody translated, and words no row gives, read as recorded.
         expect(resolveLocalizedSpeakerName(BUNDLE, "en", CHARACTERS, "？？？")).toBe("？？？");
+        expect(resolveLocalizedSpeakerName(BUNDLE, "en", CHARACTERS, "路人")).toBe("路人");
         // Renamed back to the character's own name, it is that character's name again.
         expect(resolveLocalizedSpeakerName(BUNDLE, "en", CHARACTERS, "Narra")).toBe("Narra-EN");
     });
 
     it("is what the name plate reads, from the engine's last line as much as from the prompt", () => {
         expect(callbacks("en", { lastSpeaker: "葵" }).onGetNametag()).toBe("Aoi");
+        expect(callbacks("en", { lastSpeaker: "神秘少女" }).onGetNametag()).toBe("Mysterious girl");
         // The prompt's copy is translated where it is captured; it is read as it stands.
         expect(callbacks("en", { lastSpeaker: undefined, prompt: "Aoi" }).onGetNametag()).toBe("Aoi");
         expect(callbacks("en", { lastSpeaker: undefined, prompt: null }).onGetNametag()).toBeNull();
@@ -78,8 +85,12 @@ describe("a speaker's name in the game's language", () => {
 
     it("is what a backlog row hands out, and narration stays without a speaker", () => {
         const rows = callbacks("en", {
-            history: [sayEntry("t1", "葵", "It has two."), sayEntry("t2", null, "The bell rang.")],
+            history: [
+                sayEntry("t1", "葵", "It has two."),
+                sayEntry("t2", null, "The bell rang."),
+                sayEntry("t3", "神秘少女", "So it is my turn."),
+            ],
         }).onGetHistory() as BlueprintGameHistoryEntry[];
-        expect(rows.map(row => row.character)).toEqual(["Aoi", null]);
+        expect(rows.map(row => row.character)).toEqual(["Aoi", null, "Mysterious girl"]);
     });
 });
