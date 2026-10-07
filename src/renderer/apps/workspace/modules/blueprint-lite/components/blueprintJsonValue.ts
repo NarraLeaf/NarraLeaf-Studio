@@ -223,7 +223,16 @@ function truncateText(value: string, max: number): string {
     return value.length > max ? `${value.slice(0, Math.max(0, max - 1))}...` : value;
 }
 
-export function summarizeJsonValue(input: unknown): string {
+/**
+ * A JSON value in one line, for a card or a field too narrow for the value itself.
+ *
+ * `itemCount` words an array's size in the interface language; the English default is for callers
+ * that render nothing an author reads (logs, tests).
+ */
+export function summarizeJsonValue(
+    input: unknown,
+    itemCount: (count: number) => string = count => `${count} item${count === 1 ? "" : "s"}`,
+): string {
     const value = normalizeJsonValue(input);
     if (value === null) {
         return "null";
@@ -238,7 +247,7 @@ export function summarizeJsonValue(input: unknown): string {
         if (value.length === 0) {
             return "[]";
         }
-        return `[${value.length} item${value.length === 1 ? "" : "s"}]`;
+        return `[${itemCount(value.length)}]`;
     }
     const keys = Object.keys(value);
     if (keys.length === 0) {

@@ -461,6 +461,9 @@ export const blueprint = {
         rawJson: "原始 JSON",
         root: "根",
         edit: "编辑 JSON",
+        itemCount: {
+            other: "{count} 项",
+        },
     },
     audio: {
         select: "选择音频",

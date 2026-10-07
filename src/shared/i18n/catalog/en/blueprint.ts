@@ -514,6 +514,11 @@ export const blueprint = {
         rawJson: "Raw JSON",
         root: "Root",
         edit: "Edit JSON",
+        /** An array's size in a JSON value's one-line summary: `[2 items]`. Read with `tn`. */
+        itemCount: {
+            one: "{count} item",
+            other: "{count} items",
+        },
     },
     audio: {
         select: "Select audio",

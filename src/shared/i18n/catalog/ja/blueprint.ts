@@ -460,6 +460,9 @@ export const blueprint = {
         rawJson: "生の JSON",
         root: "ルート",
         edit: "JSON を編集",
+        itemCount: {
+            other: "{count} 項目",
+        },
     },
     audio: {
         select: "音声を選ぶ",
