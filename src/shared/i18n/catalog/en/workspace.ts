@@ -101,6 +101,8 @@ export const workspace = {
             sceneSpeaker: "Scene",
             endingsGroup: "Endings",
             endingSpeaker: "Ending",
+            renamesGroup: "Renames",
+            renameSpeaker: "Rename",
             addKey: "Add",
             keyNamePlaceholder: "Key (menu.start…)",
             keySourcePlaceholder: "Source text",

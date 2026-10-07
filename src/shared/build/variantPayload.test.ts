@@ -108,6 +108,30 @@ describe("restrictLocalizationToTextIds", () => {
         expect(result.removedUnitCount).toBe(1);
     });
 
+    /**
+     * A `rename:` unit belongs to a `/rename` row the same way - and the name a character is revealed
+     * under in a scene a demo cut is as much a spoiler as the ending.
+     */
+    it("keeps a /rename row's words whose row ships and drops those whose row does not", () => {
+        const withRenames: GameLocalizationBundle = {
+            ...bundle,
+            tables: { en: { kept: "kept", "rename:veil": "Mysterious girl", "rename:reveal": "Aoi, the heir" } },
+            renames: { veil: "神秘少女" },
+        };
+        const result = restrictLocalizationToTextIds(withRenames, new Set(["kept"]));
+        expect(result.bundle.tables.en).toEqual({ kept: "kept", "rename:veil": "Mysterious girl" });
+        expect(result.removedUnitCount).toBe(1);
+    });
+
+    it("keeps every /rename row's words when nothing assembled a rename table to check against", () => {
+        const result = restrictLocalizationToTextIds(
+            { ...bundle, tables: { en: { "rename:veil": "Mysterious girl" } } },
+            new Set(),
+        );
+        expect(result.bundle.tables.en).toEqual({ "rename:veil": "Mysterious girl" });
+        expect(result.removedUnitCount).toBe(0);
+    });
+
     it("keeps every ending name when nothing assembled an ending table to check against", () => {
         const result = restrictLocalizationToTextIds(
             { ...bundle, tables: { en: { "ending:alive": "True End" } } },
