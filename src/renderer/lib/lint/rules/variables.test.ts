@@ -1133,6 +1133,40 @@ describe("variables/condition-never-holds", () => {
             .toHaveLength(1);
     });
 
+    it("judges a comparison picked from the dropdowns as the expression it spells", async () => {
+        // The same guard, stored the way the condition editor's dropdowns store it: one guard, one
+        // verdict, whichever editor wrote it.
+        const pickedGuard = (value: number): BlockSpec => ({
+            id: "if1",
+            kind: "control",
+            payload: { control: "condition" },
+            children: [{
+                id: "br1",
+                kind: "control",
+                payload: {
+                    control: "conditionBranch",
+                    branch: "if",
+                    condition: { kind: "variable", target: AFFECTION_REF, operator: "greaterOrEqual", value },
+                },
+            }],
+        });
+        const reachingWith = (guard: BlockSpec): LintContext => createTestLintContext({
+            stories: [storyFrom("s1", "Story", [
+                scene("a", "A", [
+                    numberDeclaration("affection", "affection", 0),
+                    incBy("w1", AFFECTION_REF, 2, "affection"),
+                    jump("j1", "end"),
+                ]),
+                scene("end", "End", [guard]),
+            ], "a")],
+        });
+
+        const findings = await runAsync("variables/condition-never-holds", reachingWith(pickedGuard(50)));
+        expect(findings).toHaveLength(1);
+        expect(findings[0]?.messageParams).toMatchObject({ variable: "affection", bound: "2..2" });
+        expect(await runAsync("variables/condition-never-holds", reachingWith(pickedGuard(2)))).toEqual([]);
+    });
+
     it("leaves the case with no writer at all to the other rule", async () => {
         // Both rules would have something to say; only one of them says the useful thing.
         const ctx = createTestLintContext({
