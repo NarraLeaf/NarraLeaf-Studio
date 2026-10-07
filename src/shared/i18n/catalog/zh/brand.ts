@@ -50,6 +50,19 @@ export const brand = {
         },
         preview: "预览语言",
         excluded: "{language} 不使用",
+        builtin: {
+            group: "内置字体",
+            systemUi: "系统界面字体",
+            sansSerif: "无衬线（通用）",
+            serif: "衬线（通用）",
+            monospace: "等宽（通用）",
+            kind: {
+                system: "系统字体",
+                sansSerif: "无衬线",
+                serif: "衬线",
+                monospace: "等宽",
+            },
+        },
     },
 
     panel: {

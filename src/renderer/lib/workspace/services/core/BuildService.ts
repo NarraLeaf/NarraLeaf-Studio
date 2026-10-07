@@ -66,6 +66,7 @@ import { translate, translateN } from "@/lib/i18n";
 import { isProjectTrusted } from "@/lib/workspace/projectTrust";
 import { UIDocumentService } from "../ui-editor/UIDocumentService";
 import { UIGraphService } from "../ui-editor/UIGraphService";
+import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { LintingConfiguration } from "../../project/configuration";
 // Type-only on purpose: the gate needs `run()` and nothing else, and a value import would drag the
 // whole rule registry (and every rule's dependencies) into the build path and its tests.
@@ -865,6 +866,9 @@ export class BuildService extends Service<BuildService> {
                 projectDeclaredScenes: appTags.getDocument().reachableScenes ?? {},
                 stories: await this.loadAllStories(),
                 blueprints: this.listProjectBlueprints(),
+                // So a refusal names the page and the widget a Start Game sits on, not only the
+                // blueprint, which is named after its widget and says nothing about the page.
+                uiDocument: this.readUIDocumentForNames(),
                 plugins: await this.listShippingPlugins(),
                 // The four sets this gate cannot be stopped by. Nothing about a surface, an asset, a
                 // localization key or a plugin's presence blocks a build, and assembling them means
@@ -1079,6 +1083,19 @@ export class BuildService extends Service<BuildService> {
         } catch (error) {
             console.error("[Build] could not read the blueprint document for the content check", error);
             return [];
+        }
+    }
+
+    /**
+     * The UI document, read only for the names of pages, widgets and components. Null when it
+     * cannot be had, which names each mechanism by its blueprint alone rather than stopping a check.
+     */
+    private readUIDocumentForNames(): UIDocument | null {
+        try {
+            return this.getContext().services.get<UIDocumentService>(Services.UIDocument).getDocument();
+        } catch (error) {
+            console.warn("[Build] could not read the UI document for the content check's names", error);
+            return null;
         }
     }
 
@@ -1859,7 +1876,7 @@ export function formatLintFinding(entry: LintReportEntry): string {
     const message = translate(entry.messageKey, resolveLintMessageParams(entry, translate, translateN));
     return translate("lint.console.finding", {
         rule: entry.ruleId,
-        location: nonRedundantLintLocation(describeLintLocation(entry.location), message),
+        location: nonRedundantLintLocation(describeLintLocation(entry.location, translate), message),
         message,
     })
         // A project-wide finding has no location and would otherwise leave a gap mid-line - and so

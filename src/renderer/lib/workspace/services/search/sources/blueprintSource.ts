@@ -1,4 +1,4 @@
-import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { i18nStore, translate } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
@@ -10,9 +10,11 @@ import { UIDocumentService } from "../../ui-editor/UIDocumentService";
 import { BlueprintNodeCatalogService } from "../../ui-editor/BlueprintNodeCatalogService";
 import { VariableRegistryService } from "../../variables/VariableRegistryService";
 import { decodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
+import { blueprintDisplayName, factoryLayerNameKey } from "@shared/types/ui-editor/ownerLabels";
 import { anchorComponentId, anchorElementId, anchorSurfaceId, blueprintAnchor } from "@shared/blueprint/ownerShape";
 import type { SearchIndexEntry } from "../searchIndexModel";
 import type { SearchSource } from "../searchSource";
+import { workspaceStoryBlueprintSummary } from "@/lib/story/storyBlueprintSummary";
 
 /** Longest literal kept from a node's params; anything longer is a payload, not a name. */
 const MAX_NODE_LITERAL_LENGTH = 80;
@@ -118,6 +120,11 @@ export interface BlueprintExtractionOptions {
      */
     registryVariables?: VariableRegistryEntry[];
     labels: BlueprintEntryLabels;
+    /**
+     * What a story blueprint nobody named does (`summarizeStoryBlueprint`), so it is listed under the
+     * words its row reads as rather than as one more copy of its kind. Absent, it is listed by kind.
+     */
+    describeStoryBlueprint?: (blueprint: Blueprint) => string | null;
 }
 
 /** The dedup key of a node row: exactly the two strings the row puts on screen. */
@@ -188,12 +195,18 @@ export function extractBlueprintEntries(
             continue;
         }
         const ownerLabel = resolveOwnerLabel?.(ownerKey);
+        // As Quick Open and the blueprint's tab name it: a story blueprint nobody has named reads as
+        // what it does, or else as its kind, in the interface language - never as the English
+        // placeholder it was stored with.
+        const blueprintName = blueprint.name
+            ? blueprintDisplayName(blueprint, translate, options.describeStoryBlueprint?.(blueprint))
+            : "";
 
-        if (blueprint.name) {
+        if (blueprintName) {
             entries.push({
                 id: `bp:${blueprint.id}`,
                 group: "blueprint",
-                text: blueprint.name,
+                text: blueprintName,
                 detail: ownerLabel,
                 target: { kind: "blueprint", blueprintId: blueprint.id, ownerKey },
             });
@@ -207,7 +220,7 @@ export function extractBlueprintEntries(
                 id: `bpvar:${blueprint.id}:${variable.id}`,
                 group: "variable",
                 text: variable.name,
-                detail: ownerLabel ? `${blueprint.name} › ${ownerLabel}` : blueprint.name,
+                detail: ownerLabel ? `${blueprintName} › ${ownerLabel}` : blueprintName,
                 target: { kind: "blueprint", blueprintId: blueprint.id, ownerKey },
             });
         }
@@ -219,12 +232,17 @@ export function extractBlueprintEntries(
             ir: { nodes?: Record<string, { id: string; type: string; params?: Record<string, unknown> }> } | undefined;
         };
         const graphSlots: GraphSlot[] = [
-            ...Object.entries(blueprint.graphs.events).map(([graphId, slot]) => ({
-                focus: "event" as const,
-                graphId,
-                name: slot.name || labels.unnamedEvent,
-                ir: slot.graph,
-            })),
+            ...Object.entries(blueprint.graphs.events).map(([graphId, slot]) => {
+                // A layer Studio seeded reads as the title of the event that starts it, as the layer
+                // list shows it; one the author named reads as they named it.
+                const seededKey = factoryLayerNameKey(graphId, slot.name);
+                return {
+                    focus: "event" as const,
+                    graphId,
+                    name: seededKey ? translate(seededKey) : slot.name || labels.unnamedEvent,
+                    ir: slot.graph,
+                };
+            }),
             ...Object.entries(blueprint.graphs.functions).map(([graphId, slot]) => ({
                 focus: "function" as const,
                 graphId,
@@ -234,7 +252,7 @@ export function extractBlueprintEntries(
         ];
 
         for (const { focus, graphId, name: graphName, ir } of graphSlots) {
-            const where = ownerLabel ? `${ownerLabel} › ${graphName}` : `${blueprint.name} › ${graphName}`;
+            const where = ownerLabel ? `${ownerLabel} › ${graphName}` : `${blueprintName} › ${graphName}`;
             for (const node of Object.values(ir?.nodes ?? {})) {
                 const label = resolveNodeLabel(node.type) ?? node.type;
                 if (!label) {
@@ -353,7 +371,8 @@ export const blueprintSource: SearchSource = {
             }
             return catalogNames.get(type);
         };
-        return extractBlueprintEntries(blueprintService.getBlueprintDocument(), {
+        const document = blueprintService.getBlueprintDocument();
+        return extractBlueprintEntries(document, {
             // Translated by the map the node cards are drawn with, so a row names a node the way the
             // canvas does. It is read at extraction time, which is why `watch` rebuilds the slice when
             // the interface language changes.
@@ -364,6 +383,7 @@ export const blueprintSource: SearchSource = {
             resolveNodeAlias: catalogName,
             resolveOwnerLabel: ownerKey => resolveBlueprintOwnerLabel(ctx, ownerKey),
             registryVariables: [...blueprintService.listPersistentVariables(), ...blueprintService.listSavedVariables()],
+            describeStoryBlueprint: workspaceStoryBlueprintSummary(document, catalog, translate),
             labels: {
                 unnamedEvent: translate("blueprint.memberTree.unnamedEvent" as TranslationKey),
                 unnamedFunction: translate("blueprint.memberTree.unnamedFunction" as TranslationKey),

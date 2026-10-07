@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import { AssetPickerRow } from "../assets/AssetPickerRow";
 import { useProjectAudioTracks } from "./useProjectAudioTracks";
+import { audioTrackDisplayName } from "@shared/types/audioTrack";
 
 /** The increment the volume slider moves on. The box beside it takes any value in 0..1. */
 const VOLUME_STEP = 0.05;
@@ -131,7 +132,8 @@ function SoundPlaybackOptions({
     const trackId = sound.audioTrackId && tracks.some(track => track.id === sound.audioTrackId)
         ? sound.audioTrackId
         : UI_INTERACTION_SOUND_DEFAULT_TRACK_ID;
-    const trackName = tracks.find(track => track.id === trackId)?.name ?? trackId;
+    const shownTrack = tracks.find(track => track.id === trackId);
+    const trackName = shownTrack ? audioTrackDisplayName(shownTrack, t) : trackId;
     const summary = t("properties.interactionSound.summary", { volume: formatVolume(volume), track: trackName });
 
     return (
@@ -156,7 +158,7 @@ function SoundPlaybackOptions({
                             fullWidth
                             value={trackId}
                             disabled={readOnly}
-                            options={tracks.map(track => ({ value: track.id, label: track.name }))}
+                            options={tracks.map(track => ({ value: track.id, label: audioTrackDisplayName(track, t) }))}
                             onChange={value => onChange({ audioTrackId: value ? String(value) : null })}
                         />
                     </div>

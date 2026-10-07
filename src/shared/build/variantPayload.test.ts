@@ -93,6 +93,30 @@ describe("restrictLocalizationToTextIds", () => {
         expect(result.removedUnitCount).toBe(1);
     });
 
+    /**
+     * An `ending:` unit belongs to an `/ending` row, which is neither a line's text id nor anything a
+     * scene drop leaves behind - and the name of an ending a demo cannot reach is the spoiler.
+     */
+    it("keeps an ending name whose row ships and drops one whose row does not", () => {
+        const withEndings: GameLocalizationBundle = {
+            ...bundle,
+            tables: { en: { kept: "kept", "ending:alive": "True End", "ending:gone": "Bad End" } },
+            endings: { alive: "真结局" },
+        };
+        const result = restrictLocalizationToTextIds(withEndings, new Set(["kept"]));
+        expect(result.bundle.tables.en).toEqual({ kept: "kept", "ending:alive": "True End" });
+        expect(result.removedUnitCount).toBe(1);
+    });
+
+    it("keeps every ending name when nothing assembled an ending table to check against", () => {
+        const result = restrictLocalizationToTextIds(
+            { ...bundle, tables: { en: { "ending:alive": "True End" } } },
+            new Set(),
+        );
+        expect(result.bundle.tables.en).toEqual({ "ending:alive": "True End" });
+        expect(result.removedUnitCount).toBe(0);
+    });
+
     it("keeps every scene name when nothing assembled a scene table to check against", () => {
         const result = restrictLocalizationToTextIds(
             { ...bundle, tables: { "zh-CN": { "scene:alive": "走廊" } } },

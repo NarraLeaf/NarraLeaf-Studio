@@ -764,6 +764,63 @@ describe("LocalBlueprintService ensure* helpers", () => {
     });
 });
 
+describe("copying a story blueprint for a copied row", () => {
+    it("adds the copy under a new id, owned by itself, with the source left as it was", () => {
+        const { service, graphDocument } = createHarness();
+        const sourceId = service.ensureStoryActionBlueprint();
+        const source = graphDocument.blueprintDocument.blueprints[sourceId];
+        source.name = "Open the gallery";
+
+        const copyId = service.copyStoryActionBlueprint(source);
+
+        expect(copyId).toBeTruthy();
+        expect(copyId).not.toBe(sourceId);
+        const copy = graphDocument.blueprintDocument.blueprints[copyId!];
+        expect(copy.owner).toEqual({ kind: "storyAction", blueprintId: copyId });
+        expect(copy.name).toBe("Open the gallery");
+        expect(service.getStoryActionBlueprintId(copyId!)).toBe(copyId);
+        // Two graphs, not one: editing the copy cannot reach the source.
+        expect(copy.graphs).not.toBe(source.graphs);
+        expect(service.getStoryActionBlueprintId(sourceId)).toBe(sourceId);
+    });
+
+    it("adds nothing for a blueprint the document would refuse", () => {
+        const { service, graphDocument, graphMutations } = createHarness();
+        const before = graphMutations.count;
+        const broken = { id: "carried", name: "Broken", owner: { kind: "storyAction", blueprintId: "carried" }, graphs: null } as unknown as Blueprint;
+
+        expect(service.copyStoryActionBlueprint(broken)).toBeNull();
+        expect(graphMutations.count).toBe(before);
+        expect(Object.keys(graphDocument.blueprintDocument.blueprints)).toEqual(["bp-main"]);
+    });
+});
+
+describe("naming a story blueprint", () => {
+    it("names it, puts back the name it was created with when cleared, and undoes a run of typing in one step", () => {
+        const { service, graphDocument } = createHarness();
+        const id = service.ensureStoryActionBlueprint();
+        const nameOf = () => graphDocument.blueprintDocument.blueprints[id].name;
+
+        service.setStoryBlueprintName(id, "D");
+        service.setStoryBlueprintName(id, "Door");
+        service.setStoryBlueprintName(id, "Door chime");
+        expect(nameOf()).toBe("Door chime");
+
+        expect(service.undoBlueprint(id)).toBe(true);
+        expect(nameOf()).toBe("Story Action");
+
+        service.setStoryBlueprintName(id, "Door chime");
+        service.setStoryBlueprintName(id, "   ");
+        expect(nameOf()).toBe("Story Action");
+    });
+
+    it("leaves every blueprint that is not a story's alone", () => {
+        const { service, graphDocument } = createHarness();
+        service.setStoryBlueprintName("bp-main", "Renamed");
+        expect(graphDocument.blueprintDocument.blueprints["bp-main"].name).toBe("Main");
+    });
+});
+
 describe("removing a registry variable inside a live session", () => {
     it("states the removal and leaves the node sweep to the effect", () => {
         // ⚠ The sweep is DERIVED: the effect says the variable is gone, and every machine works out

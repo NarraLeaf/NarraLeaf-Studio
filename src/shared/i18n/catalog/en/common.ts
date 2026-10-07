@@ -105,4 +105,20 @@ export const common = {
             other: "{count} info",
         },
     },
+    /**
+     * What a screen reader is told on a node graph - the blueprint editor, the scene flow - about
+     * working it from the keyboard. The graph library's own sentences are English, and it reads them
+     * out in every language unless it is handed these.
+     */
+    flowCanvas: {
+        nodeHelp: "Press Enter or Space to select a node. Press Delete to remove it and Escape to cancel.",
+        movableNodeHelp:
+            "Press Enter or Space to select a node, then move it with the arrow keys. Press Delete to remove it and Escape to cancel.",
+        wireHelp: "Press Enter or Space to select a wire. Press Delete to remove it and Escape to cancel.",
+        nodeMoved: "Moved the selected node {direction}. Position x {x}, y {y}",
+        up: "up",
+        down: "down",
+        left: "left",
+        right: "right",
+    },
 } as const;

@@ -91,7 +91,8 @@ import {
     type StoryRowFilter,
 } from "./storyRowFilter";
 import { cloneSerializedBlock, flattenSerializedClone, listBlockTextIds, serializeBlockSubtree } from "./storySceneClipboard";
-import { collectSubtreeBlocks } from "./storyForeignPaste";
+import { collectSubtreeBlocks, listSerializedBlocks } from "./storyForeignPaste";
+import { giveCopiedRowsTheirBlueprints } from "./storyRowBlueprints";
 import { carryTranslationsWithinProject } from "./storyTranslationTransfer";
 import { carryVoiceWithinProject } from "./storyVoiceTransfer";
 import { getSelectionUnitRange, richRunsToPlain } from "./richText";
@@ -3031,6 +3032,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         storyService,
         uuidService,
         uiService,
+        blueprintService,
         assetsService,
         fileSystemService,
         localizationService,
@@ -3472,6 +3474,15 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         const textIdMap = new Map<string, string>();
         const clones = orderedRoots.map(rootId =>
             cloneSerializedBlock(serializeBlockSubtree(scene, rootId), () => uuidService.generate(), textIdMap));
+        // The duplicate's blueprints are copies: the rows it was made from are still here and still
+        // own theirs, and a duplicate sharing them would change the original when its graph is edited.
+        if (blueprintService) {
+            giveCopiedRowsTheirBlueprints(listSerializedBlocks(clones), {
+                blueprint: id => blueprintService.getBlueprintDocument().blueprints[id],
+                namedByRows: () => true,
+                copy: source => blueprintService.copyStoryActionBlueprint(source),
+            }, "copy");
+        }
         // One operation for the whole gesture, as the paste is: duplicating five rows is one act and
         // takes one press to undo.
         storyService.insertBlocks(storyId, sceneId, clones.flatMap(cloned => flattenSerializedClone(cloned, target)));
@@ -3499,7 +3510,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
                     .catch(error => console.warn("[storyEditor] could not carry takes for the duplicated rows", error));
             }
         })();
-    }, [activeBlockId, isFrozenNow, localizationService, recordHistory, scene, sceneId, selectedBlockIds, storyId, storyService, uuidService, visibleRows, voiceService]);
+    }, [activeBlockId, blueprintService, isFrozenNow, localizationService, recordHistory, scene, sceneId, selectedBlockIds, storyId, storyService, uuidService, visibleRows, voiceService]);
 
     /**
      * The block ids a row operation acts on: the selection (deduped to roots so a container carries its

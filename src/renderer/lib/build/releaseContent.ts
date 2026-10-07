@@ -15,6 +15,7 @@ import {
     type ProjectAppTag,
 } from "@shared/types/appTag";
 import type { Blueprint } from "@shared/types/blueprint/document";
+import type { UIDocument } from "@shared/types/ui-editor/document";
 import { runtimeCapabilitiesCanStartStory, type PluginRuntimeCapability } from "@shared/types/pluginPermissions";
 import { listScenesInDocumentOrder, type StoryDocument, type StorySceneId } from "@shared/types/story";
 import type { AssetReference, ReferenceSiteKind } from "../workspace/services/references/referenceModel";
@@ -65,6 +66,56 @@ export type ReleaseContentPlugin = {
     runtimeCapabilities: readonly PluginRuntimeCapability[];
 };
 
+/** The part of the UI document that names where a blueprint sits: pages, their widgets, components. */
+export type BlueprintPlaceDocument = Pick<UIDocument, "surfaces" | "elements" | "components">;
+
+/**
+ * Where a blueprint sits, in the names an author navigates by: `Page ▸ Widget` for a widget's logic,
+ * `Component ▸ Widget` for one inside a component, the page's name for a page's own logic, and the
+ * blueprint's own name for everything else.
+ *
+ * A blueprint is named after its widget when it is made, so its name alone reads like a widget with
+ * no page to find it on - and two pages often hold a widget of the same name. The page is the half
+ * of the answer an author cannot recover from the name.
+ *
+ * Never an id: a part that cannot be resolved falls back to the blueprint's name.
+ */
+export function describeBlueprintPlace(
+    blueprint: Pick<Blueprint, "name" | "owner">,
+    document: BlueprintPlaceDocument | null | undefined,
+): string {
+    const own = blueprint.name?.trim() ?? "";
+    const owner = blueprint.owner;
+    if (!document || !owner) {
+        return own;
+    }
+    if (owner.kind === "widgetMain" || owner.kind === "widgetValue") {
+        const page = document.surfaces.find(surface => surface.id === owner.surfaceId)?.name.trim();
+        const widget = document.elements[owner.elementId]?.name?.trim() || own;
+        return page ? joinPlace(page, widget) : own;
+    }
+    if (owner.kind === "componentWidgetMain") {
+        const component = document.components?.find(candidate => candidate.id === owner.componentId);
+        const name = component?.name.trim();
+        if (!component || !name) {
+            return own;
+        }
+        // The component's root widget is the component as an author sees it on a page.
+        const widget = owner.elementId === component.rootElementId
+            ? ""
+            : component.elements[owner.elementId]?.name?.trim() || own;
+        return widget && widget !== name ? joinPlace(name, widget) : name;
+    }
+    if (owner.kind === "surfaceMain") {
+        return document.surfaces.find(surface => surface.id === owner.surfaceId)?.name.trim() || own;
+    }
+    return own;
+}
+
+function joinPlace(container: string, widget: string): string {
+    return widget ? `${container} ▸ ${widget}` : container;
+}
+
 export type ReleaseContentInput = {
     /** The variant being answered about. The release tag is a legitimate subject; it removes nothing. */
     appTag: ProjectAppTag;
@@ -73,6 +124,11 @@ export type ReleaseContentInput = {
     stories: readonly ReleaseContentStory[];
     /** Every blueprint the project runs, loaded. */
     blueprints: readonly Blueprint[];
+    /**
+     * Pages, widgets and components, for naming where a blueprint sits. Absent, a mechanism is named
+     * by its blueprint's name alone.
+     */
+    uiDocument?: BlueprintPlaceDocument | null;
     surfaces: readonly { id: string; name: string }[];
     assets: readonly { id: string; name: string }[];
     /** `assetId -> where it is referenced`, as `ReferenceService` indexes it. */
@@ -182,8 +238,10 @@ export type UnreadableMechanism = {
 export function listUnreadableMechanisms(input: {
     blueprints: readonly Blueprint[];
     plugins: readonly ReleaseContentPlugin[];
+    uiDocument?: BlueprintPlaceDocument | null;
 }): UnreadableMechanism[] {
     const found: UnreadableMechanism[] = [];
+    const byId = new Map(input.blueprints.map(blueprint => [blueprint.id, blueprint]));
     const scan = scanStoryEntryPoints(blueprintGraphCarriers(input.blueprints), () => true);
     for (const entry of scan.undecidable) {
         const mechanism: AppTagMechanismRef = {
@@ -193,11 +251,16 @@ export function listUnreadableMechanisms(input: {
             graphId: entry.graphId,
             nodeId: entry.nodeId,
         };
+        const blueprint = byId.get(entry.blueprintId);
         found.push({
             reason: "unreadableStartStoryTarget",
             mechanism,
             mechanismKey: appTagMechanismKey(mechanism),
-            location: entry.blueprintName ?? entry.blueprintId,
+            // The carrier always comes from one of these blueprints; the scan's own name is the
+            // fallback only so a name, never an id, is what a caller can be handed.
+            location: blueprint
+                ? describeBlueprintPlace(blueprint, input.uiDocument)
+                : entry.blueprintName?.trim() ?? "",
             missing: entry.missing,
         });
     }
@@ -208,7 +271,7 @@ export function listUnreadableMechanisms(input: {
                 reason: "scriptBlueprint",
                 mechanism,
                 mechanismKey: appTagMechanismKey(mechanism),
-                location: blueprint.name,
+                location: describeBlueprintPlace(blueprint, input.uiDocument),
             });
         }
     }

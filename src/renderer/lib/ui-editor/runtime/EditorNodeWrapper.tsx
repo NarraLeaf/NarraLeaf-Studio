@@ -25,8 +25,8 @@ import {
 } from "@/lib/ui-editor/runtime/displayableMotion";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { BehaviorGraphEventControl } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
-import { createEventPropagationControl, getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
-import { getSharedGamepadTracker } from "@/lib/ui-editor/runtime/input/gamepadState";
+import { getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
+import { listenAsGamepadControl } from "@/lib/ui-editor/runtime/input/gamepadControls";
 import { readInputEventTime, wheelGestureGate } from "@/lib/ui-editor/runtime/input/wheelGesture";
 import { isTouchStrokeInFlight } from "@/lib/ui-editor/runtime/input/touchGesture";
 import { getWidgetLogicEvent, isPointerPositionElementEvent } from "@shared/types/ui-editor/widgetLogic";
@@ -517,10 +517,11 @@ export function EditorNodeWrapper({
         if (!canDown && !canUp) {
             return undefined;
         }
-        // Subscribe only. The GameApp poller starts the tracker; the editor canvas never does, so
-        // these heads stay quiet there even though every mounted widget would otherwise hear them.
-        return getSharedGamepadTracker().onEdge(edge => {
-            const eventControl = createEventPropagationControl();
+        // Handed each press by the game's dispatcher once the global blueprint and the keyboard owner
+        // have had it, with the control the whole press shares - so a global head that stops it keeps
+        // it from here, as it does a key (`gamepadControls`). The editor canvas runs no dispatcher, so
+        // these heads stay quiet there.
+        return listenAsGamepadControl((edge, eventControl) => {
             const payload = { button: edge.button };
             if (edge.type === "down" && canDown) {
                 dispatchMountedWidgetEvent("gamepadButtonDown", payload, eventControl);

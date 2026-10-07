@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { AUDIO_TRACK_ID_VOICE, audioTrackDescendantIds, resolveAudioTrack } from "@shared/types/audioTrack";
+import { AUDIO_TRACK_ID_VOICE, audioTrackDescendantIds, audioTrackDisplayName, resolveAudioTrack } from "@shared/types/audioTrack";
 import { Select } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
@@ -50,8 +50,8 @@ export function CharacterVoiceTrackField({ data }: CustomFieldProps<CharacterEdi
         // different in the document from one that was set back to the default.
         const voiceBus = resolveAudioTrack(tracks, undefined, AUDIO_TRACK_ID_VOICE);
         const entries: SelectOption[] = [
-            { value: "", label: voiceBus.name },
-            ...buses.map(track => ({ value: track.id, label: track.name })),
+            { value: "", label: audioTrackDisplayName(voiceBus, t) },
+            ...buses.map(track => ({ value: track.id, label: audioTrackDisplayName(track, t) })),
         ];
         // A stored id that is neither `voice` nor beneath it - the bus was deleted, or re-parented
         // out of the voice subtree. Shown as itself rather than dropped: a select that silently

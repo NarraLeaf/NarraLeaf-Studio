@@ -456,6 +456,7 @@ export const storyInspector = {
 
     blueprint: {
         storyActionTitle: "ストーリーアクション",
+        name: "ブループリント名",
     },
 
     audio: {
@@ -581,13 +582,9 @@ export const storyInspector = {
         parallel: "並行",
         race: "先着",
         repeat: "繰り返し",
-        mode: {
-            do: "実行",
-            doAsync: "非同期で実行",
-            all: "すべて",
-            allAsync: "すべて非同期",
-            any: "いずれか",
-        },
+        rowsAfter: "後続の行",
+        rowsAfterWait: "グループの完了後に開始",
+        rowsAfterStart: "グループと同時に開始",
         times: "回数",
         loopKind: "ループ",
         loopKindTimes: "回数を決める",

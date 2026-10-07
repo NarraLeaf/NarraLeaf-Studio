@@ -28,6 +28,7 @@ import { useAssetSearch } from "./state/useAssetSearch";
 import { useAssetFilters, filtersNeedLibrarySnapshot } from "./state/useAssetFilters";
 import { useAssetLibrarySnapshot } from "../asset-overview/useAssetLibrarySnapshot";
 import { useDragAndDrop, type InternalAssetDropCompletedInfo } from "./state/useDragAndDrop";
+import { isWorkspaceAssetDragEvent } from "./dnd/assetDragContract";
 import { useClipboard } from "./state/useClipboard";
 import { useAssetFocus } from "./state/useAssetFocus";
 import { useAssetActions, ContextMenuTargetState } from "./state/useAssetActions";
@@ -1144,7 +1145,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     );
 
     const { 
-        draggedItem, draggedAssetSet, dropTargetId, dragOver, 
+        draggedItem, draggedAssetSet, otherPanelDragCategories, dropTargetId, dragOver, 
         setDragOver, setDropTargetId, handleDragStart, handleAssetSetDragStart, handleDragEnd, 
         handlePanelDragOver, handlePanelDragLeave, handleDragOverItem, handleDropOnItem 
     } = useDragAndDrop({
@@ -1157,6 +1158,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         panelId,
         onWorkspaceDragSessionStart: workspaceDrag?.beginSession,
         onWorkspaceDragSessionEnd: workspaceDrag?.endSession,
+        workspaceDragSession: workspaceDrag?.session ?? null,
         onAssetSetDrop: handleAssetSetDrop,
     });
 
@@ -1225,7 +1227,9 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const handleRootDrop = useCallback(
         async (event: React.DragEvent, category: AssetCategory, contextualGroup?: AssetGroup | null) => {
             const targetGroup = contextualGroup ?? null;
-            if (draggedItem || draggedAssetSet) {
+            // Files carried over from the other assets panel are a move as well; offered to the
+            // import, they would have opened a file picker out of nowhere.
+            if (draggedItem || draggedAssetSet || isWorkspaceAssetDragEvent(event.dataTransfer)) {
                 await handleDropOnItem(event, category, targetGroup);
             } else {
                 await handleImport(category, targetGroup?.id, event.dataTransfer.files, event.dataTransfer);
@@ -1337,7 +1341,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
 
     const contextValue = {
         assets, groups, assetSets, filteredAssets, filteredGroups, matchedGroupIds, selectedItems, focusedItemId,
-        draggedItem, draggedAssetSet, dropTargetId, clipboard, isMultiSelectMode, expandedGroups,
+        draggedItem, draggedAssetSet, otherPanelDragCategories, dropTargetId, clipboard, isMultiSelectMode, expandedGroups,
         expandedAssetSets, setExpandedAssetSets, assetSetReveal, assetSetNaming, rootAssetSets, memberAssetIds,
         handleItemSelect, publishRowOrder, handleAssetClick, handleAssetOpen, handleGroupFocus, showContextMenu,
         handleAssetSetSelect, showAssetSetContextMenu, showAssetSetValueContextMenu,

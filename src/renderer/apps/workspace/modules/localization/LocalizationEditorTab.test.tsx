@@ -33,7 +33,7 @@ vi.mock("@/apps/workspace/components/ui/freezeGuard", async () => {
     return { ...actual, useFreezeGuard: () => actual.makeFreezeGuard(false, "") };
 });
 
-// The character and scene groups are extracted from a real story document, which this test has no
+// The character, scene and ending groups are extracted from a real story document, which this test has no
 // business building: what is under test is the windowing, and a story's own lines are the rows that
 // make the table long.
 vi.mock("@/lib/workspace/services/localization/localizationModel", async () => {
@@ -44,6 +44,7 @@ vi.mock("@/lib/workspace/services/localization/localizationModel", async () => {
         ...actual,
         extractCharacterTranslationRows: () => [],
         extractSceneTranslationRows: () => [],
+        extractEndingTranslationRows: () => [],
         extractUiTranslationRows: () => [],
         extractKeyTranslationRows: () => [],
     };

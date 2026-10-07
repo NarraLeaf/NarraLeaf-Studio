@@ -24,6 +24,7 @@ import {
     singleSceneStories,
     textSegment,
 } from "./text/testFixtures";
+import { indexStoryTextLines, liveTextIds, orphanTranslationUnitIds } from "./text/textSegments";
 
 /**
  * The three localization rules, and the one thing they must never do: speak when the project has no
@@ -304,6 +305,31 @@ describe("localization/orphan", () => {
 
     it("is silent when the project has no localization", async () => {
         expect(await run("localization/orphan", createTestLintContext())).toEqual([]);
+    });
+
+    it("counts exactly the units the translation table lists as orphans, and opens that list", async () => {
+        const blocks = [
+            dialogueBlock("b1", textSegment("t-1", LINE, "dialogue")),
+            dialogueBlock("b2", textSegment("t-2", "Not yet.", "dialogue"), { disabled: true }),
+        ];
+        const units = {
+            "t-1": unit("家に帰ろう。", LINE),
+            "t-2": unit("まだだ。", "Not yet."),
+            "t-deleted": unit("消えた行", "a line that no longer exists"),
+            "key:menu.start": unit("はじめる", "Start"),
+        };
+        const findings = await run("localization/orphan", contextOf(blocks, units));
+
+        // The table's reading: every story's lines, disabled ones known but not live.
+        const lines = indexStoryTextLines(singleSceneStories(blocks).map(entry => ({ name: entry.name, document: entry.document })));
+        const listed = orphanTranslationUnitIds(units, liveTextIds(lines));
+
+        expect(listed.sort()).toEqual(["t-2", "t-deleted"]);
+        expect(findings[0].messageParams).toEqual({ count: listed.length, locale: "ja" });
+        expect(findings[0].target).toEqual({ kind: "translationOrphans", locale: "ja" });
+        // The disabled line is still described; the deleted one has nothing left to describe.
+        expect(lines.get("t-2")).toMatchObject({ text: "Not yet.", disabled: true });
+        expect(lines.has("t-deleted")).toBe(false);
     });
 });
 

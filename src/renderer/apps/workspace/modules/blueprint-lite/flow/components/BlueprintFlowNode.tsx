@@ -20,6 +20,8 @@ import {
 } from "@/lib/ui-editor/blueprint-nodes/types";
 import { BLUEPRINT_FIELD_READER_INPUT_PIN } from "@/lib/ui-editor/blueprint-nodes/effectivePins";
 import { formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
+import { BLUEPRINT_SCENE_VARIABLE_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/storyVariableNodes";
+import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { BlueprintLiteralValueControl, type LiteralEditMode } from "../../components/BlueprintLiteralValueControl";
 import { BlueprintJsonValueControl } from "../../components/BlueprintJsonValueControl";
 import { BlueprintColorValueControl } from "../../components/BlueprintColorValueControl";
@@ -1349,9 +1351,13 @@ function InspectorParamOnCard({
                   option.meta?.[spec.dynamicOptionsFilter!.optionMetaKey] === String(params[spec.dynamicOptionsFilter!.paramKey] ?? "")
               ))
             : rawSelectOptions;
+    // A list that carries its own empty entry says what an empty choice means (a sound with no track
+    // picked plays on SFX), so the generic one is not added in front of it.
     const selectComponentOptions: SelectOption[] | undefined = selectOptions
         ? [
-              { value: "", label: resolveBlueprintLabel(spec.emptyOptionLabel ?? "-", t) },
+              ...(selectOptions.some(opt => opt.value === "")
+                  ? []
+                  : [{ value: "", label: resolveBlueprintLabel(spec.emptyOptionLabel ?? "-", t) }]),
               ...selectOptions.map(opt => ({ value: opt.value, label: resolveBlueprintLabel(opt.label, t) })),
           ]
         : undefined;
@@ -1376,6 +1382,18 @@ function InspectorParamOnCard({
             value: v.value,
             label: v.name,
         })),
+    ];
+    // The scene's variables arrive with the editor's other dynamic lists: which scene they belong to
+    // is a fact about the story rows naming this blueprint, which only the editor has to hand.
+    const sceneVariableOptions =
+        spec.kind === "sceneVariableRef" ? dynamicSelectOptions?.[BLUEPRINT_SCENE_VARIABLE_OPTIONS_SOURCE] ?? [] : [];
+    const sceneVariableSelectValue =
+        spec.kind === "sceneVariableRef" && typeof raw === "string" && sceneVariableOptions.some(option => option.value === raw)
+            ? raw
+            : "";
+    const sceneVariableComponentOptions: SelectOption[] = [
+        { value: "", label: "-" },
+        ...sceneVariableOptions.map(option => ({ value: option.value, label: option.label })),
     ];
     const isVarDefaultValueParam =
         spec.kind === "literal" && spec.key === "defaultValue" && nodeType === BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR;
@@ -1441,6 +1459,19 @@ function InspectorParamOnCard({
                     size="sm"
                     options={savedVariableComponentOptions}
                     value={savedVariableSelectValue}
+                    onChange={value => {
+                        const v = String(value);
+                        onPatchNodeParam(nodeId, spec.key, v.length > 0 ? v : undefined);
+                    }}
+                    portalMenu
+                    menuPlacement="below"
+                />
+            ) : spec.kind === "sceneVariableRef" ? (
+                <Select
+                    fullWidth
+                    size="sm"
+                    options={sceneVariableComponentOptions}
+                    value={sceneVariableSelectValue}
                     onChange={value => {
                         const v = String(value);
                         onPatchNodeParam(nodeId, spec.key, v.length > 0 ? v : undefined);
@@ -2398,7 +2429,10 @@ function BlueprintElementLiteralNodeCard({
     // holds: the interface shows no ids.
     const emptyLabel = elementId ? t("blueprint.element.missing") : t("blueprint.element.select");
     const boundLabel = elementPreview?.name || emptyLabel;
-    const typeLabel = elementPreview?.type || elementType || t("blueprint.element.unbound");
+    // The kind of control by the name the insert palette gives it; its type id is not a word.
+    const typeLabel = elementPreview?.type
+        || (elementType ? widgetModuleRegistry.get(elementType)?.displayName ?? elementType : "")
+        || t("blueprint.element.unbound");
     const outputPins = catalog.pins.filter(p => p.kind === "output");
     return (
         <div
@@ -2714,14 +2748,18 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
         );
     }
 
+    // A node's own add label is English in its definition, like its pin labels, and is read the same way.
+    const addPinLabel = catalog.dynamicInputPinAddLabel
+        ? resolveBlueprintLabel(catalog.dynamicInputPinAddLabel, t)
+        : t("blueprint.pin.addInput");
     const addPinButton = (
         <Button
             type="button"
-            data-tip={catalog.dynamicInputPinAddLabel ?? t("blueprint.pin.addInput")}
+            data-tip={addPinLabel}
             className="nodrag mt-0.5 flex w-full items-center justify-center rounded-md border border-dashed border-edge !py-0.5 text-fg-subtle hover:border-edge-strong hover:bg-fill-subtle hover:text-fg-muted"
             variant="ghost"
             size="sm"
-            aria-label={catalog.dynamicInputPinAddLabel ?? t("blueprint.pin.addInput")}
+            aria-label={addPinLabel}
             onMouseDown={stopFlowNodePointerBubble}
             onPointerDown={stopFlowNodePointerBubble}
             onClick={e => {

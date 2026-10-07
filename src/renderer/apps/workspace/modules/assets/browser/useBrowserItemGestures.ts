@@ -134,22 +134,24 @@ export function useBrowserItemGestures({
  * empty space around the contents.
  *
  * Lights up only for what it would take - a file or folder from this panel in the same category, a
- * set from it, or files from the desktop - and never while the library is frozen: a target that
- * glows and then keeps its old contents reads as a bug.
+ * set from it, files of the same category dragged over from the other assets panel (the sidebar,
+ * when this is the tray), or files from the desktop - and never while the library is frozen: a
+ * target that glows and then keeps its old contents reads as a bug.
  *
  * The drag-over still accepts whatever it is offered (`preventDefault` on every pass), as the
  * library's other drop targets do: what is being dragged is read from React state that a native
  * drag's nested loop may not have delivered yet, and a target that refused on a stale answer would
  * never see the drop at all. The drop itself decides, with the state it has by then: a move from
- * this panel, or files from the desktop, and nothing else. A file dragged in from the other assets
- * panel is neither, and passed to the import it would have opened a file picker out of nowhere.
+ * this panel or from the other assets panel, or files from the desktop, and nothing else. Files from
+ * the other panel are a move, never an import: passed to the import they would have opened a file
+ * picker out of nowhere.
  */
 export function useBrowserDropTarget(
     category: AssetCategory | null,
     onDrop: (event: React.DragEvent, kind: "move" | "files") => void,
 ) {
     const freeze = useFreezeGuard(assetLibraryFreezeScope());
-    const { draggedItem, draggedAssetSet } = useAssetsPanelContext();
+    const { draggedItem, draggedAssetSet, otherPanelDragCategories } = useAssetsPanelContext();
     const [over, setOver] = useState(false);
 
     const accepts = useCallback((event: React.DragEvent): "move" | "copy" | null => {
@@ -163,10 +165,10 @@ export function useBrowserDropTarget(
             return draggedAssetSet.category === category ? "move" : null;
         }
         if (isWorkspaceAssetDragEvent(event.dataTransfer)) {
-            return null;
+            return otherPanelDragCategories?.has(category) ? "move" : null;
         }
         return event.dataTransfer.types.includes("Files") ? "copy" : null;
-    }, [category, draggedAssetSet, draggedItem, freeze.frozen]);
+    }, [category, draggedAssetSet, draggedItem, freeze.frozen, otherPanelDragCategories]);
 
     const handlers = {
         onDragOver: (event: React.DragEvent) => {
@@ -202,7 +204,13 @@ export function useBrowserDropTarget(
                 }
                 return;
             }
-            if (event.dataTransfer.files.length > 0 && !isWorkspaceAssetDragEvent(event.dataTransfer)) {
+            if (isWorkspaceAssetDragEvent(event.dataTransfer)) {
+                // The other assets panel's files. The move reads them from the drag's payload and
+                // files only those of this place's section.
+                onDrop(event, "move");
+                return;
+            }
+            if (event.dataTransfer.files.length > 0) {
                 onDrop(event, "files");
             }
         },

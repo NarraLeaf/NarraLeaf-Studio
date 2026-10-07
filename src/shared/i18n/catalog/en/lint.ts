@@ -1318,8 +1318,9 @@ export const lint = {
                 + "\n"
                 + "- A row deleted by mistake: undo the deletion in the story editor, and its translation "
                 + "applies again. A disabled row: right-click it and choose Enable.\n"
-                + "- Otherwise the translations can stay. If the count is not wanted, set the rule to Off in "
-                + "Project ▸ Project ▸ Project check.",
+                + "- Translations no longer needed: in the language's translation table, choose Orphan "
+                + "translations under Source, then delete them one at a time or all at once.\n"
+                + "- If the count is not wanted, set the rule to Off in Project ▸ Project ▸ Project check.",
         },
         voiceMissing: {
             title: "Missing voice",
@@ -1375,8 +1376,9 @@ export const lint = {
                 + "\n"
                 + "- A row deleted by mistake: undo the deletion in the story editor, and its recording applies "
                 + "again. A disabled row: right-click it and choose Enable.\n"
-                + "- Otherwise the recordings can stay. If the count is not wanted, set the rule to Off in "
-                + "Project ▸ Project ▸ Project check.",
+                + "- Recordings no longer needed: in the voice language's table, choose Orphan voice under "
+                + "Story, then remove them one at a time or all at once. The audio files stay in the asset library.\n"
+                + "- If the count is not wanted, set the rule to Off in Project ▸ Project ▸ Project check.",
         },
         brandBrokenLink: {
             title: "Broken color link",
@@ -1473,6 +1475,8 @@ export const lint = {
     },
     message: {
         ruleFailed: "{rule} could not run",
+        // Between the words of a list inside a message: the platforms a file will not play on.
+        listSeparator: ", ",
         storyLoadFailed: "{story} could not be opened",
         /**
          * Beside the line above and ahead of it, because it is the one reason a story will not open

@@ -2031,9 +2031,13 @@ function normalizeBlueprintGameNotifications(value: unknown): BlueprintGameNotif
  */
 export type BlueprintStoryEnding = {
     endingId: string;
+    /** The ending's name in the game's language, falling back to the words the row is written with. */
     name: string;
     sceneId: string;
-    /** The scene the ending row sits in, so a row can be grouped or captioned without a lookup. */
+    /**
+     * The scene the ending row sits in, so a row can be grouped or captioned without a lookup. In the
+     * game's language, like the name.
+     */
     sceneName: string;
     isReached: boolean;
 };
@@ -2054,7 +2058,10 @@ export type BlueprintGameHistoryEntry = {
     type: "say" | "menu";
     /** Sentence text (say) or the menu prompt (menu); empty string when the source had none. */
     text: string;
-    /** Speaker nametag for a say entry; null for menu entries or narration. */
+    /**
+     * Speaker nametag for a say entry, in the game's language as the name plate shows it; null for menu
+     * entries or narration.
+     */
     character: string | null;
     /**
      * The speaker's dialog avatar, as the project declares it; null for narration, a menu row, and a
@@ -2074,6 +2081,12 @@ export type BlueprintGameHistoryEntry = {
      * URL the player already heard and nothing in the runtime accepts a URL.
      */
     voiceId: string | null;
+    /**
+     * Whether Play Voice plays this line's take now: the line has a `voiceId` and the dub language in
+     * force has a take for it. What a backlog row's replay button shows itself by - a list row reads
+     * whether an element is drawn from a boolean field.
+     */
+    hasVoice: boolean;
     /** Chosen option text for a menu entry; null for say entries or an unresolved menu. */
     selected: string | null;
     /** True while the entry is the line currently being shown (not yet committed). */
@@ -2106,6 +2119,7 @@ function normalizeBlueprintGameHistory(value: unknown): BlueprintGameHistoryEntr
             avatar: normalizeBlueprintImageAssetValue(record.avatar),
             voice: normalizeNullableHistoryString(record.voice),
             voiceId: normalizeNullableHistoryString(record.voiceId),
+            hasVoice: record.hasVoice === true,
             selected: normalizeNullableHistoryString(record.selected),
             isPending: record.isPending === true,
         });

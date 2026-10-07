@@ -92,6 +92,9 @@ export const properties = {
         type: "型",
         typeString: "文字列",
         typeText: "テキスト",
+        typeAudioTrack: "トラック",
+        trackMissing: "見つからないトラック",
+        trackNone: "トラックなし",
         bindLabel: "パラメータ",
         bindNone: "パラメータなし",
         bindMissing: "見つからないパラメータ",
@@ -200,6 +203,7 @@ export const properties = {
         unknown: "使われているかどうか分からない",
         unknownDetail: "{location} を読めなかった",
         unknownComputed: "{location} のアセット名は実行時に組み立てられる",
+        defaultFonts: "既定のフォント",
         count: {
             other: "参照 {count} 件",
         },

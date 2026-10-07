@@ -67,7 +67,7 @@ blueprint.sound.play
 
   fields (write these as `key = value` under the node)
     soundAssetId  audioAsset  - Audio Clip
-    audioTrackId  choose from the project's audioTracks  - Track
+    audioTrackId  choose from the project's soundTracks  - Track
 ```
 
 A node that has a description - the sentence the add-node palette and the card show an author on

@@ -2,6 +2,7 @@ import type { LintContext } from "./context";
 import { LINT_RULES } from "./rules";
 import { yieldToEventLoop } from "./breather";
 import { annotateStoryLocation, createStoryRowLocator } from "./storyLocator";
+import { annotateBlueprintLocation, createBlueprintNodeLocator } from "./blueprintLocator";
 import {
     LINT_CATEGORY_ORDER,
     LINT_SEVERITY_ORDER,
@@ -58,6 +59,7 @@ export async function runLintRules(ctx: LintContext, options: LintRunOptions = {
     const rules = options.rules ?? LINT_RULES;
     const startedAt = Date.now();
     const locate = createStoryRowLocator(ctx.stories);
+    const locateNode = createBlueprintNodeLocator(ctx.blueprintDocument);
     const entries: LintReportEntry[] = [];
     const rulesRun: LintRuleId[] = [];
     const skipped: LintRuleId[] = [];
@@ -120,7 +122,7 @@ export async function runLintRules(ctx: LintContext, options: LintRunOptions = {
         }
 
         for (const finding of findings) {
-            entries.push({ ...annotateStoryLocation(finding, locate), severity });
+            entries.push({ ...annotateBlueprintLocation(annotateStoryLocation(finding, locate), locateNode), severity });
         }
         durations[rule.id] = now() - ruleStartedAt;
         done += 1;

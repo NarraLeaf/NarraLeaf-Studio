@@ -247,7 +247,7 @@ describe("ReferenceService.getIndexResult", () => {
         const result = service.getIndexResult();
 
         expect(result.complete).toBe(false);
-        expect(result.gaps).toEqual([{ reason: "sliceFailed", slice: "blueprint", location: "Blueprints" }]);
+        expect(result.gaps).toEqual([{ reason: "sliceFailed", slice: "blueprint", location: "Blueprint" }]);
     });
 
     it("names the document that would not load, by the name the author gave it", async () => {

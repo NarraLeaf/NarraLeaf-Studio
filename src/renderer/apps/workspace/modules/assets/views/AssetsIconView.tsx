@@ -4,6 +4,7 @@ import { ASSET_CATEGORY_ORDER, AssetCategory, AssetType } from "@/lib/workspace/
 import { Asset, AssetGroup, AssetSource } from "@/lib/workspace/services/assets/types";
 import { AlertCircle, FolderPlus, Folder, Link, Upload, ChevronLeft } from "lucide-react";
 import { useAssetsPanelContext } from "../AssetsPanelContext";
+import { isWorkspaceAssetDragEvent } from "../dnd/assetDragContract";
 import { iconViewRowOrder } from "../state/assetRowOrder";
 import { ASSET_CATEGORY_ICONS, ASSET_TYPE_ICONS } from "../constants";
 import { useTranslation } from "@/lib/i18n";
@@ -83,6 +84,7 @@ export function AssetsIconView({
         rootAssetSets,
         memberAssetIds,
         draggedAssetSet,
+        otherPanelDragCategories,
         publishRowOrder,
         assetSetReveal,
         unreadableCategories,
@@ -309,6 +311,7 @@ export function AssetsIconView({
                                 e.stopPropagation();
                                 if (draggedItem?.category === category
                                     || draggedAssetSet?.category === category
+                                    || otherPanelDragCategories?.has(category)
                                     || e.dataTransfer.types.includes("Files")) {
                                     setDropTargetId("root:" + category);
                                 }
@@ -731,6 +734,7 @@ function GroupIconTile({
         handleDragEnd,
         draggedItem,
         draggedAssetSet,
+        otherPanelDragCategories,
     } = useAssetsPanelContext();
     const [isDragOverLocal, setDragOverLocal] = useState(false);
     const isSelected = selectedItems.has("group:" + group.id);
@@ -760,7 +764,8 @@ function GroupIconTile({
                 e.stopPropagation();
                 const files = e.dataTransfer.types.includes("Files");
                 const internal = (draggedItem && draggedItem.category === category)
-                    || (draggedAssetSet && draggedAssetSet.category === category);
+                    || (draggedAssetSet && draggedAssetSet.category === category)
+                    || Boolean(otherPanelDragCategories?.has(category));
                 // A frozen library never lights up as a drop target: the move and the import are both
                 // refused, and a folder that glows and then keeps its old contents reads as a bug.
                 if (freeze.frozen || (!internal && !files)) {
@@ -777,7 +782,8 @@ function GroupIconTile({
                 e.preventDefault();
                 e.stopPropagation();
                 setDragOverLocal(false);
-                if ((draggedItem || draggedAssetSet) && handleDropOnItem) {
+                // Files from the other assets panel are filed here too, never imported.
+                if ((draggedItem || draggedAssetSet || isWorkspaceAssetDragEvent(e.dataTransfer)) && handleDropOnItem) {
                     handleDropOnItem(e, category, group);
                 } else {
                     handleImportToGroup(category, group.id, e.dataTransfer.files, e.dataTransfer);

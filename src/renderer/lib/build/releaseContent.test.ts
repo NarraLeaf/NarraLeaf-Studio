@@ -9,7 +9,14 @@ import {
     type StoryScene,
 } from "@shared/types/story";
 import type { AssetReference } from "../workspace/services/references/referenceModel";
-import { solveReleaseContent, type ReleaseContentInput, type ReleaseContentStory } from "./releaseContent";
+import {
+    describeBlueprintPlace,
+    listUnreadableMechanisms,
+    solveReleaseContent,
+    type BlueprintPlaceDocument,
+    type ReleaseContentInput,
+    type ReleaseContentStory,
+} from "./releaseContent";
 
 /**
  * What a package under one variant comes to.
@@ -369,5 +376,79 @@ describe("release content blockers", () => {
         }]);
         // Still not a blocker: the author answered, and a stale entry is a finding about the answer.
         expect(answer.blockers).toEqual([]);
+    });
+});
+
+// --- where a mechanism sits -----------------------------------------------------
+
+describe("the place a mechanism is named by", () => {
+    /** One page with a grid on it, and one component whose root and inner widget each have logic. */
+    const PLACES = {
+        surfaces: [
+            { id: "page-extra", name: "Extras", kind: "appSurface", rootElementId: "root-extra" },
+            { id: "page-title", name: "Title", kind: "appSurface", rootElementId: "root-title" },
+        ],
+        elements: {
+            "el-grid": { id: "el-grid", type: "nl.list", name: "Replay grid", childrenIds: [] },
+            "el-unnamed": { id: "el-unnamed", type: "nl.button", childrenIds: [] },
+        },
+        components: [{
+            id: "comp-card",
+            name: "Scene card",
+            rootElementId: "card-root",
+            elements: {
+                "card-root": { id: "card-root", type: "nl.container", name: "Scene card", childrenIds: ["card-hit"] },
+                "card-hit": { id: "card-hit", type: "nl.button", name: "Hit area", childrenIds: [] },
+            },
+        }],
+    } as unknown as BlueprintPlaceDocument;
+
+    const named = (name: string, owner: Blueprint["owner"]) => ({ name, owner });
+
+    it("names a widget's logic by its page and the widget", () => {
+        expect(describeBlueprintPlace(
+            named("Replay grid", { kind: "widgetMain", surfaceId: "page-extra", elementId: "el-grid" }),
+            PLACES,
+        )).toBe("Extras \u25B8 Replay grid");
+    });
+
+    it("names a widget inside a component by the component and the widget", () => {
+        expect(describeBlueprintPlace(
+            named("Hit area", { kind: "componentWidgetMain", componentId: "comp-card", elementId: "card-hit" }),
+            PLACES,
+        )).toBe("Scene card \u25B8 Hit area");
+        // The component's root widget is the component itself.
+        expect(describeBlueprintPlace(
+            named("Scene card", { kind: "componentWidgetMain", componentId: "comp-card", elementId: "card-root" }),
+            PLACES,
+        )).toBe("Scene card");
+    });
+
+    it("falls back to the blueprint's name for a part it cannot find, and never to an id", () => {
+        // A widget with no name of its own reads as the blueprint it carries.
+        expect(describeBlueprintPlace(
+            named("Start", { kind: "widgetMain", surfaceId: "page-title", elementId: "el-unnamed" }),
+            PLACES,
+        )).toBe("Title \u25B8 Start");
+        // A page that is gone leaves the blueprint's name, not the page id.
+        expect(describeBlueprintPlace(
+            named("Replay grid", { kind: "widgetMain", surfaceId: "page-gone", elementId: "el-grid" }),
+            PLACES,
+        )).toBe("Replay grid");
+        expect(describeBlueprintPlace(named("Global", { kind: "globalMain" }), PLACES)).toBe("Global");
+        expect(describeBlueprintPlace(named("Title", { kind: "surfaceMain", surfaceId: "page-title" }), null)).toBe("Title");
+    });
+
+    it("gives an unreadable Start Story its page and widget, in the panel and in the build's refusal", () => {
+        const grid = {
+            ...graphBlueprint(startStory({ storyId: "story-1", sceneId: "prologue" }), WIRED_SCENE_PIN),
+            name: "Replay grid",
+            owner: { kind: "widgetMain", surfaceId: "page-extra", elementId: "el-grid" },
+        } as Blueprint;
+
+        expect(listUnreadableMechanisms({ blueprints: [grid], plugins: [], uiDocument: PLACES })
+            .map(mechanism => mechanism.location)).toEqual(["Extras \u25B8 Replay grid"]);
+        expect(solveReleaseContent(input({ blueprints: [grid], uiDocument: PLACES })).blockers
+            .map(blocker => blocker.location)).toEqual(["Extras \u25B8 Replay grid"]);
     });
 });

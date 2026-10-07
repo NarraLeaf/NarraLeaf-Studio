@@ -48,6 +48,8 @@ import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge"
 import type { BindingDebugCoalescer } from "@/lib/ui-editor/blueprint-runtime/BindingDebugCoalescer";
 import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { renderUnknownWidgetTypeContent } from "@/lib/ui-editor/runtime/unknownWidgetTypeUi";
+import { usePlayerWords } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
+import type { TranslationKey } from "@shared/i18n";
 import { BlueprintWidgetInitLifecycle } from "@/lib/ui-editor/runtime/surface/BlueprintWidgetInitLifecycle";
 import {
     useWidgetRuntimeStateStore,
@@ -501,10 +503,15 @@ function renderSurfaceElementTreeWithValueRuntime(
     );
 }
 
-function NestedSurfacePlaceholder({ label }: { label: string }) {
+/**
+ * What a Page widget draws in place of a page it cannot draw. Drawn on the editor canvas and in the
+ * game alike, so its words are the player's in a game and the author's on the canvas (`usePlayerWords`).
+ */
+function NestedSurfacePlaceholder({ labelKey }: { labelKey: TranslationKey }) {
+    const words = usePlayerWords();
     return (
         <div className="flex h-full w-full items-center justify-center bg-fill-subtle px-3 text-center text-xs text-fg-muted">
-            {label}
+            {words(labelKey)}
         </div>
     );
 }
@@ -598,12 +605,12 @@ function NestedSurfaceRenderer(props: {
     const prefersReducedMotion = useReducedMotion();
     const surfacePathKey = surfacePath.join("\0");
     const targetSurface = targetSurfaceId ? document.surfaces.find(surface => surface.id === targetSurfaceId) : undefined;
-    const invalidLabel = targetSurfaceId && !targetSurface
-        ? "Missing Page"
+    const invalidLabel: TranslationKey | null = targetSurfaceId && !targetSurface
+        ? "widgets.frame.missingPage"
         : targetSurface && targetSurface.kind !== "appSurface"
-            ? "Target is not a Page"
+            ? "widgets.frame.targetNotPage"
             : targetSurface && surfacePath.includes(targetSurface.id)
-              ? "Page loop blocked"
+              ? "widgets.frame.pageLoopBlocked"
               : null;
     /**
      * The page the box the frame's pages are drawn in is sized for.
@@ -794,11 +801,11 @@ function NestedSurfaceRenderer(props: {
     };
 
     if (invalidLabel) {
-        return <NestedSurfacePlaceholder label={invalidLabel} />;
+        return <NestedSurfacePlaceholder labelKey={invalidLabel} />;
     }
 
     if (!runtimeInput && targetSurfaceId) {
-        return <NestedSurfacePlaceholder label="Page preview unavailable" />;
+        return <NestedSurfacePlaceholder labelKey="widgets.frame.previewUnavailable" />;
     }
 
     return (
@@ -1019,7 +1026,7 @@ function NestedSurfaceInstance(props: {
     const rootElementId = targetSurface.rootElementId;
     const rootElement = document.elements[rootElementId];
     if (!rootElement) {
-        return <NestedSurfacePlaceholder label="Page root missing" />;
+        return <NestedSurfacePlaceholder labelKey="widgets.frame.pageRootMissing" />;
     }
 
     const frameAnimation = getUIFrameWidgetProps(runtimeInput.frameElement).animation;
@@ -1252,10 +1259,12 @@ function ListRowDrawing(props: {
     return null;
 }
 
-function ComponentInstancePlaceholder({ message }: { message: string }) {
+/** What a placed component draws when its definition cannot be drawn; worded like `NestedSurfacePlaceholder`. */
+function ComponentInstancePlaceholder({ messageKey }: { messageKey: TranslationKey }) {
+    const words = usePlayerWords();
     return (
         <div className="flex h-full w-full items-center justify-center border border-dashed border-edge-strong bg-fill-subtle px-3 text-center text-xs text-fg-muted">
-            {message}
+            {words(messageKey)}
         </div>
     );
 }
@@ -1294,16 +1303,16 @@ function renderLinkedComponentInstanceContent(input: {
     }
     const component = input.document.components?.find(item => item.id === link.componentId);
     if (!component) {
-        return <ComponentInstancePlaceholder message="Missing component" />;
+        return <ComponentInstancePlaceholder messageKey="uiEditor.canvas.componentMissing" />;
     }
     if (input.componentPath.includes(component.id)) {
-        return <ComponentInstancePlaceholder message="Component loop blocked" />;
+        return <ComponentInstancePlaceholder messageKey="uiEditor.canvas.componentLoopBlocked" />;
     }
     // The definition is drawn against the project's document with its own surface added - see
     // `buildUIComponentDocumentView` for why added rather than swapped in.
     const view = buildUIComponentDocumentView(input.document, component);
     if (!view) {
-        return <ComponentInstancePlaceholder message="Component root missing" />;
+        return <ComponentInstancePlaceholder messageKey="uiEditor.canvas.componentRootMissing" />;
     }
     const { surface: virtualSurface, root: rootSnapshot, document: virtualDocument } = view;
     const root = component.elements[component.rootElementId]!;

@@ -13,8 +13,10 @@ import {
 import {
     createEmptyVariableRegistry,
     listRegistryEntries,
+    nextUnusedVariableName,
     normalizePersistentValueType,
 } from "@shared/variables/variableRegistryModel";
+import { translate } from "@/lib/i18n";
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
 import { storeWrite } from "../autosave/writeReport";
 import { FileSystemService } from "../core/FileSystem";
@@ -307,7 +309,13 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
         const entry: VariableRegistryEntry = {
             id,
             storageKey: id,
-            name: input?.name?.trim() || `${scope === "saved" ? "saved" : "persist"}_${id.slice(0, 8)}`,
+            // Unnamed, it takes the plain word for a variable, numbered past the ones already taken in
+            // either scope: names are shared by both, and the panel section says which scope it is in.
+            name: input?.name?.trim()
+                || nextUnusedVariableName(
+                    translate("storyVars.row.defaultName"),
+                    Object.values(this.getRegistry().entries).map(entry => entry.name),
+                ),
             scope,
             valueType: normalizePersistentValueType(input?.valueType),
             // Conditional, not `defaultValue: input?.defaultValue`. A variable created without a

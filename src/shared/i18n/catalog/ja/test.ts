@@ -152,13 +152,14 @@ export const test = {
             finding: {
                 sceneUnreachable: "「{scene}」へ至る条件を満たせる経路がない",
                 optionUnreachable: "「{option}」を提示する条件を満たせる経路がない",
+                conditionUnreachable: "「{condition}」を満たせる経路がない",
                 branchUnreachable: "この分岐に入る条件を満たせる経路がない",
                 endingUnreachable: "「{name}」は書かれているが、到達条件を満たせる経路がない",
                 endingUnreachableUnnamed: "このエンディングは書かれているが、到達条件を満たせる経路がない",
             },
             summary: {
                 passed: "スクリプトが導く先にはすべて到達できる",
-                failed: "到達不能: シーン {scenes} 件、選択肢 {options} 件、エンディング {endings} 件",
+                failed: "到達不能: シーン {scenes} 件、選択肢 {options} 件、条件分岐 {conditions} 件、エンディング {endings} 件",
             },
         },
         reachableEndings: {

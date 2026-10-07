@@ -141,16 +141,33 @@ const MEDIA_ASSET_TYPES: ReadonlySet<AssetType> = new Set([AssetType.Audio, Asse
  */
 const ALPHA_DISCARDING_PLATFORMS: readonly GameBuildPlatform[] = ["ios", "web"];
 
+/**
+ * The `{platform}` of a finding: the platforms' display names, which every locale writes the same
+ * way, joined the way the reader's locale writes a list.
+ *
+ * The ids stay in `messageParams` as the fallback a renderer without the keys would print. A
+ * sentence carrying them (`web, ios`) reads as an internal value - lower-case, English-joined - in
+ * the middle of a Chinese or Japanese message.
+ */
+function platformParams(platforms: readonly GameBuildPlatform[]): Pick<LintFinding, "messageParams" | "messageParamKeys"> {
+    return {
+        messageParams: { platform: platforms.join(", ") },
+        messageParamKeys: { platform: platforms.map(platform => `build.platform.${platform}` as const) },
+    };
+}
+
 function portabilityFinding(
     ruleId: LintFinding["ruleId"],
     messageKey: LintFinding["messageKey"],
     asset: LintAssetEntry,
-    messageParams: Record<string, string | number>,
+    platforms: readonly GameBuildPlatform[],
 ): LintFinding {
+    const params = platformParams(platforms);
     return {
         ruleId,
         messageKey,
-        messageParams,
+        messageParams: { asset: assetFileName(asset), ...params.messageParams },
+        messageParamKeys: params.messageParamKeys,
         location: { kind: "asset", assetId: asset.id, assetName: assetFileName(asset) || asset.id },
         target: { kind: "asset", assetId: asset.id, assetType: asset.type },
     };
@@ -196,7 +213,7 @@ export const PORTABILITY_LINT_RULES: readonly LintRule[] = [
                         "portability/media-format",
                         "lint.rule.portabilityMediaFormat.message",
                         asset,
-                        { asset: assetFileName(asset), platform: affected.join(", ") },
+                        affected,
                     ),
                 );
             }
@@ -293,10 +310,12 @@ export const PORTABILITY_LINT_RULES: readonly LintRule[] = [
                     if (!probe.ok || !probe.carriesAlpha) {
                         continue;
                     }
+                    const params = platformParams(affected);
                     findings.push({
                         ruleId: "portability/vfx-alpha",
                         messageKey: "lint.rule.portabilityVfxAlpha.message",
-                        messageParams: { asset: assetFileName(asset), platform: affected.join(", ") },
+                        messageParams: { asset: assetFileName(asset), ...params.messageParams },
+                        messageParamKeys: params.messageParamKeys,
                         location: storyLocation(entry, scene, block.id),
                         target: blockTarget(entry, scene, block.id),
                     });

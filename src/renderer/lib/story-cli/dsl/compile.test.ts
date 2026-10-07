@@ -60,6 +60,17 @@ describe("what a broken file is told", () => {
         expect(found.some(message => /levels and the row above/.test(message))).toBe(false);
     });
 
+    it("nests the lines indented under an /nvl row inside it", () => {
+        // The editor draws an NVL row with a body and the compiler plays its children as one page;
+        // the file reads the same shape rather than refusing the indentation.
+        expect(check("/nvl\n  The first line.\n  The second line.")).toEqual([]);
+    });
+
+    it("refuses a line indented under a label, which has no body", () => {
+        const found = check("/label top\n  Narra: under a label.");
+        expect(found.some(message => /takes no children/.test(message))).toBe(true);
+    });
+
     it("refuses an unknown command instead of reading it as narration", () => {
         // The rule the whole shape test rests on: a `/` line is a command or an error, never prose.
         const found = check("/nosuchcommand hello");

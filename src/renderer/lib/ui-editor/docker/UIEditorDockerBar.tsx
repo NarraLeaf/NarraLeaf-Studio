@@ -27,6 +27,7 @@ import {
     UI_EDITOR_WRITABLE,
     type UIEditorReadOnly,
 } from "@/lib/ui-editor/interaction/readOnlyInteraction";
+import { describeSurfaceInsertRefusal } from "@/lib/ui-editor/context-menu/insertRefusal";
 import { subscribeVideoPreviewPlayback } from "@/lib/ui-editor/interaction/videoPreviewPlayback";
 import { TooltipGroup } from "@/lib/tooltip";
 import { CANVAS_FREE_CENTRE_LEFT } from "@/lib/components/layout/editorSidebarInset";
@@ -882,6 +883,18 @@ export function UIEditorDockerBar({
         setEphemeralPreviewVersion((v) => v + 1);
     }), []);
 
+    // A surface that takes no new element - a component whose root is a text input - greys the
+    // palette out the way a read-only surface does, so it never arms a tool the canvas refuses.
+    const insertRefusal = useMemo(
+        () => describeSurfaceInsertRefusal(documentService.getDocument(), surfaceId),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [documentService, surfaceId, docVersion],
+    );
+    const paletteReadOnly = useMemo<UIEditorReadOnly>(
+        () => (readOnly.active || insertRefusal == null ? readOnly : { active: true, reason: insertRefusal }),
+        [readOnly, insertRefusal],
+    );
+
     // Active insert type (if in insert mode)
     const activeInsertType = tool.kind === "insert" ? tool.nodeType : null;
     const activeComponentId = tool.kind === "insert" ? tool.componentId ?? null : null;
@@ -1020,7 +1033,7 @@ export function UIEditorDockerBar({
                             onSelectType={handleSelectType}
                             onOpenComponents={enableComponents ? () => setComponentsLibraryOpen(true) : undefined}
                             overflowButtonRef={overflowButtonRef}
-                            readOnly={readOnly}
+                            readOnly={paletteReadOnly}
                         />
                     )}
                 </DockerBarAnimatedWidthShell>

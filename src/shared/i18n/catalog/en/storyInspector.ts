@@ -475,6 +475,7 @@ export const storyInspector = {
 
     blueprint: {
         storyActionTitle: "Story Action",
+        name: "Blueprint name",
     },
 
     audio: {
@@ -600,13 +601,9 @@ export const storyInspector = {
         parallel: "Parallel",
         race: "Race",
         repeat: "Repeat",
-        mode: {
-            do: "Do",
-            doAsync: "Do async",
-            all: "All",
-            allAsync: "All async",
-            any: "Any",
-        },
+        rowsAfter: "Rows after",
+        rowsAfterWait: "Start when the group finishes",
+        rowsAfterStart: "Start with the group",
         times: "Times",
         loopKind: "Loop",
         loopKindTimes: "A number of times",

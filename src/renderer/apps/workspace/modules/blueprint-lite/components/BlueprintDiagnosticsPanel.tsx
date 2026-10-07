@@ -52,11 +52,12 @@ export function BlueprintDiagnosticsPanel({ diagnostics, onPick, problems = [], 
         diagnostics.filter(d => d.severity === severity).length + checks.filter(entry => entry.severity === severity).length;
 
     const Row = ({ d }: { d: BlueprintGraphEditorDiagnostic }) => {
+        // The level and the sentence only. `d.code` is the check's internal name - it tells tests and
+        // tools which rule spoke, and nothing an author reads.
         const body = (
             <>
                 <span className={SEVERITY_TEXT_CLASS[d.severity]}>{t(lintSeverityLabelKey(d.severity))}</span>
                 <span className="flex-1 text-fg-muted">{d.message}</span>
-                {d.code ? <span className="font-mono text-2xs text-fg-subtle">{d.code}</span> : null}
             </>
         );
         // A diagnostic that names nowhere — one about the blueprint as a whole — has nothing to go

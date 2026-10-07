@@ -127,6 +127,8 @@ type ProjectMember =
     | "moveComponentElements"
     | "ungroupComponentContainers"
     | "groupComponentElements"
+    | "promoteComponentElementToRoot"
+    | "wrapComponentRoot"
     | "createComponentElement"
     | "pasteComponentClipboardPayload"
     | "setComponentListItemStructFields"
@@ -198,6 +200,8 @@ export class ComponentDocumentServiceAdapter implements UIDocumentServiceSurface
     public readonly moveComponentElements = this.project("moveComponentElements");
     public readonly ungroupComponentContainers = this.project("ungroupComponentContainers");
     public readonly groupComponentElements = this.project("groupComponentElements");
+    public readonly promoteComponentElementToRoot = this.project("promoteComponentElementToRoot");
+    public readonly wrapComponentRoot = this.project("wrapComponentRoot");
     public readonly createComponentElement = this.project("createComponentElement");
     public readonly pasteComponentClipboardPayload = this.project("pasteComponentClipboardPayload");
     public readonly setComponentListItemStructFields = this.project("setComponentListItemStructFields");
@@ -391,11 +395,15 @@ export class ComponentDocumentServiceAdapter implements UIDocumentServiceSurface
         return Object.keys(rest).length > 0 ? rest : null;
     }
 
-    public updateElementProps(elementId: string, propsPatch: Record<string, unknown>): void {
+    public updateElementProps(
+        elementId: string,
+        propsPatch: Record<string, unknown>,
+        options: { skipHistory?: boolean } = {},
+    ): void {
         if (this.isVirtualRoot(elementId)) {
             return;
         }
-        this.base.updateComponentElementProps(this.componentId, elementId, propsPatch);
+        this.base.updateComponentElementProps(this.componentId, elementId, propsPatch, options);
     }
 
     public updateElementExtra(elementId: string, extraPatch: Record<string, unknown>): void {

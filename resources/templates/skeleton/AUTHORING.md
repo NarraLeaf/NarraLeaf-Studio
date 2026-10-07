@@ -82,6 +82,10 @@ and the `content.<locale>/` overlays only).
   one plays the cue itself: the Confirm page calls `UI back cue` when Escape backs out of a question.
 - A list that fills itself, in its own blueprint, uses the **Set List Content** that takes no
   Element input. The Log, Load and Extra lists are written that way.
+- A control on a list row that does something of its own - the Log's replay button - answers its
+  own **Mouse Click**: a press on it is that control's, and the list's Item Click answers presses
+  anywhere else on the row. A control only some rows have is shown by binding its visibility to a
+  boolean field of the row (the replay button reads `hasVoice`).
 - Before **Ask Confirm**, fetch the texts last-asked first: cancel, then the answer, then the
   question. Each text's wire then runs forwards into its own input, and none crosses another.
   Where the answer is handled, read the pressed row's `index` field with **Get Item Field** rather

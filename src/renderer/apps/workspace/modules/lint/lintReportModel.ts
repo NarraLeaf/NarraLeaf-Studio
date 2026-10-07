@@ -1,5 +1,11 @@
 import type { TranslationKey } from "@shared/i18n";
-import { nonRedundantLintLocation } from "@/lib/lint/locationText";
+import {
+    LINT_LOCATION_SEPARATOR,
+    blueprintLocationLayerLabel,
+    blueprintLocationNodeLabel,
+    nonRedundantLintLocation,
+    type LintLocationTranslate,
+} from "@/lib/lint/locationText";
 import {
     LINT_SEVERITY_ORDER,
     deriveLintRuleSlug,
@@ -130,7 +136,7 @@ export function lintSeverityLabelKey(severity: LintSeverity): TranslationKey {
  * a heading that read "Project" would be the only heading in the list that named a category instead
  * of a thing.
  */
-export function lintLocationLabel(location: LintLocation, projectName: string): string {
+export function lintLocationLabel(location: LintLocation, projectName: string, translate?: LintLocationTranslate): string {
     switch (location.kind) {
         case "project":
             return projectName;
@@ -140,8 +146,12 @@ export function lintLocationLabel(location: LintLocation, projectName: string): 
             return location.sceneName
                 ? `${location.storyName} / ${location.sceneName}`
                 : location.storyName;
+        // The blueprint and the layer, which is what a location heading groups (`lintLocationKey`);
+        // the node is the row's own detail (`lintEntryExcerpt`).
         case "blueprint":
-            return location.blueprintName || location.blueprintId;
+            return [location.blueprintName || location.blueprintId, blueprintLocationLayerLabel(location, translate)]
+                .filter(Boolean)
+                .join(LINT_LOCATION_SEPARATOR);
         case "surface":
             return location.elementName
                 ? `${location.surfaceName} / ${location.elementName}`
@@ -223,9 +233,16 @@ export function lintEntryLine(location: LintLocation): number | null {
     return location.kind === "story" && location.line !== undefined ? location.line : null;
 }
 
-/** The author's own words on the row, when the engine could take a copy of them. */
-export function lintEntryExcerpt(location: LintLocation): string {
-    return location.kind === "story" ? location.excerpt ?? "" : "";
+/**
+ * What tells one finding from its neighbours under the same heading: the author's own words on a
+ * story row, when the engine could take a copy of them, or the title of the blueprint node it is
+ * about.
+ */
+export function lintEntryExcerpt(location: LintLocation, translate?: LintLocationTranslate): string {
+    if (location.kind === "story") {
+        return location.excerpt ?? "";
+    }
+    return location.kind === "blueprint" ? blueprintLocationNodeLabel(location, translate) : "";
 }
 
 export function filterLintEntries(

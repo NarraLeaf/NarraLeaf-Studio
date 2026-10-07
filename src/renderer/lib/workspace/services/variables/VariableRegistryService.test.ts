@@ -144,11 +144,19 @@ describe("VariableRegistryService document adoption", () => {
             expect(service.listEntriesInScope("saved").map(entry => entry.id)).toEqual([saved.id]);
         });
 
-        it("names an unnamed variable after its scope, so the two are told apart on sight", async () => {
+        it("names an unnamed variable with a plain word, numbered past the names either scope already uses", async () => {
             const { service } = await createHarness();
 
-            expect(service.createEntry("persistent").name).toMatch(/^persist_/);
-            expect(service.createEntry("saved").name).toMatch(/^saved_/);
+            const first = service.createEntry("persistent").name;
+            const second = service.createEntry("saved").name;
+            service.createEntry("saved", { name: `${first}3` });
+            const fourth = service.createEntry("persistent").name;
+
+            expect([first, second, fourth]).toEqual(["Variable", "Variable2", "Variable4"]);
+            // Never a piece of the id: the name is what the panel shows and a line types.
+            for (const entry of service.listEntries()) {
+                expect(entry.name).not.toContain(entry.id.slice(0, 8));
+            }
         });
 
         it("writes the scope to disk", async () => {

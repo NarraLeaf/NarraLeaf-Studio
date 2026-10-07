@@ -27,8 +27,14 @@ import { resolveChosenOptionStop, resolveNextPreviewStop, type StoryPreviewStepO
 import { STORY_CONSOLE_CHANNEL_ID } from "./storyPreviewConsole";
 import { needsRunningGame } from "@/lib/ui-editor/runtime/app/runtimeRefusals";
 import { RECOMPILE_DEBOUNCE_MS, storyPreviewRebuildDelay, type StoryPreviewRebuildInput } from "./storyPreviewRebuildSchedule";
+import { startVisibleWatchdog } from "./visibleWatchdog";
+import { translate } from "@/lib/i18n";
 
-/** Pre-posed state mounts within a few frames; anything longer means the marker never fired. */
+/**
+ * Pre-posed state mounts within a few frames; anything longer means the marker never fired. Counted
+ * only while the window is visible (see `startVisibleWatchdog`): a hidden window paints no frames, so
+ * the stage cannot pose there, and an author who switched away has not hit a defect.
+ */
 const STATE_SETTLE_TIMEOUT_MS = 5_000;
 const MAX_ISSUES = 20;
 
@@ -103,6 +109,8 @@ type PreviewRun = {
     targetBlockId: string | null;
     /** The game's own advance on this session's line (see `StoryPreviewGame.advance`). */
     advance: () => Promise<void>;
+    /** See `StoryPreviewGame.afterNewGame`; called after every `newGame()` on this session. */
+    afterNewGame: () => void;
     /**
      * A press was handed to the line to finish it. If the line had finished by the time it landed,
      * the press settled it instead and the story ran past the target - which is the press moving on.
@@ -157,7 +165,8 @@ export function useStoryScenePreviewController(input: {
     const displayRunRef = useRef<PreviewRun | null>(null);
     /** The in-flight run building hidden beneath the display frame. */
     const pendingRunRef = useRef<PreviewRun | null>(null);
-    const settleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    /** Cancels the running settle deadline, if there is one. */
+    const settleWatchdogRef = useRef<(() => void) | null>(null);
     const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const blobResolverRef = useRef<WorkspaceBlobUrlResolver | null>(null);
     /** Last rebuild input; what changed since decides how long the rebuild waits. */
@@ -185,6 +194,8 @@ export function useStoryScenePreviewController(input: {
     }, [logStoryConsole]);
 
     const host = useStoryPreviewGameUi({ context, enabled: open && active, onIssue: pushIssue });
+    const hostRef = useRef(host);
+    hostRef.current = host;
 
     // Local assets resolve to session-lived blob URLs: `app://fs/{hash}` grants are single-use,
     // and the engine loads the same image URL repeatedly (preloader + render + session remounts).
@@ -283,9 +294,9 @@ export function useStoryScenePreviewController(input: {
     }, []);
 
     const clearDriveTimers = useCallback(() => {
-        if (settleTimeoutRef.current !== null) {
-            clearTimeout(settleTimeoutRef.current);
-            settleTimeoutRef.current = null;
+        if (settleWatchdogRef.current !== null) {
+            settleWatchdogRef.current();
+            settleWatchdogRef.current = null;
         }
     }, []);
 
@@ -381,6 +392,10 @@ export function useStoryScenePreviewController(input: {
         // the reset aborts cleanly, and React commits the removal and the reveal in one paint.
         disposeRunObject(retiring);
         refreshStageLayers();
+        // The retired row's persistent writes go with it, here rather than when the rebuild began so
+        // the frame still on screen kept reading its own values until it was swapped out. The target's
+        // own action, which may write one, runs after the reveal below.
+        hostRef.current.resetPersistence();
         run.resolveReveal();
     }, [disposeRunObject, refreshStageLayers]);
 
@@ -447,15 +462,17 @@ export function useStoryScenePreviewController(input: {
         setPhase("starting");
         try {
             run.liveGame.newGame();
+            run.afterNewGame();
         } catch (error) {
             failRun(run.runId, error instanceof Error ? error.message : String(error));
             return;
         }
         // The compiled story is pure state (instant seeds + injection script + gate + target); the
         // before-marker fires within the reveal wait. A miss means a compile/mount defect.
-        settleTimeoutRef.current = setTimeout(() => {
+        settleWatchdogRef.current = startVisibleWatchdog(() => {
+            settleWatchdogRef.current = null;
             if (!run.arrived) {
-                failRun(run.runId, "Preview stage did not settle in time.");
+                failRun(run.runId, translate("story.preview.settleTimeout"));
             }
         }, STATE_SETTLE_TIMEOUT_MS);
     }, [clearDriveTimers, failRun, setPhase]);
@@ -554,6 +571,7 @@ export function useStoryScenePreviewController(input: {
                 },
                 getLiveGame: () => findRunBySessionId(sessionId)?.liveGame ?? null,
                 resolveAvatarAssetId: url => compiled.avatarAssetIdByUrl.get(url) ?? null,
+                compiled,
             });
             // The preview's Image widgets resolve avatar ids through the same synchronous table the
             // packaged runtime uses, so a swap here costs a map read rather than an asset fetch.
@@ -584,6 +602,7 @@ export function useStoryScenePreviewController(input: {
                 arrived: false,
                 targetBlockId,
                 advance: previewGame.advance,
+                afterNewGame: previewGame.afterNewGame,
                 advanceRequested: false,
             };
             pendingRunRef.current = run;
@@ -734,6 +753,7 @@ export function useStoryScenePreviewController(input: {
             // frame. Its markers are idempotent and its reveal gate is already resolved.
             try {
                 liveGame.newGame();
+                run.afterNewGame();
             } catch (error) {
                 failRun(run.runId, error instanceof Error ? error.message : String(error));
             }
@@ -745,7 +765,7 @@ export function useStoryScenePreviewController(input: {
         if (!run || (run === displayRunRef.current && pendingRunRef.current !== null)) {
             // Teardown noise from a replaced session, or a stale frame kept only as the backdrop
             // while the next state builds - neither may fail the current run.
-            pushIssue({ level: "warning", message: `Previous preview session: ${error.message}` });
+            pushIssue({ level: "warning", message: translate("story.preview.previousSessionError", { message: error.message }) });
             return;
         }
         failRun(runIdRef.current, error.message);

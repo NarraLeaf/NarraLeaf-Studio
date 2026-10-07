@@ -17,6 +17,14 @@ import {
 } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 
 export type BlueprintRuntimeCore = {
+    /**
+     * The bundle this core was built for. Every new revision gets a new core, published only once
+     * the bundle's scripts have mounted, and the previous core is torn down in the commit the
+     * revision arrives in - so for a moment the core a host holds belongs to a bundle it no longer
+     * has. These say which one it is.
+     */
+    bundleId: string;
+    bundleRevision: number;
     scopeBridge: ScopeStoreBridge;
     debug: DebugBridge;
     bindingDebugCoalescer: BindingDebugCoalescer;
@@ -24,6 +32,18 @@ export type BlueprintRuntimeCore = {
     /** Present only when the host asked for a debugger; see `debuggerEnabled`. */
     debugSession: BlueprintDebugSession | null;
 };
+
+/**
+ * Whether a core is the one built for this bundle - not the previous revision's, which a host still
+ * holds for a moment after every new revision, torn down: its persistent store detached, so every
+ * read answers a declared default and every write is lost.
+ */
+export function runtimeCoreIsFor(
+    core: BlueprintRuntimeCore | null,
+    bundle: Pick<DevModeBundle, "bundleId" | "revision">,
+): core is BlueprintRuntimeCore {
+    return core !== null && core.bundleId === bundle.bundleId && core.bundleRevision === bundle.revision;
+}
 
 export type BlueprintRuntimeCoreOptions = {
     persistenceAdapter?: BlueprintPersistentStoreAdapter | null;
@@ -73,6 +93,8 @@ export function useBlueprintRuntimeCore(
             setBlueprintDebugController(debugSession);
         }
         const nextSession: BlueprintRuntimeCore = {
+            bundleId: bundle.bundleId,
+            bundleRevision: bundle.revision,
             // The bundle's declared defaults go in with the scope rather than after it: the first
             // reader - a title screen's Init, a value binding drawing - may run in the same commit.
             scopeBridge: new ScopeStoreBridge({ persistentDefaults: declaredPersistentDefaults(bundle) }),

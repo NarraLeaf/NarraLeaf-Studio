@@ -194,13 +194,22 @@ export class ScopeStoreBridge {
         this.persistenceAdapter = adapter;
         this.persistenceAdapterVersion++;
         if (!adapter) {
-            this.persistenceValues.clear();
-            this.persistentDefaultCopies.clear();
-            this.notifyPersistence();
-            announceBlueprintStateWrite(EVERY_PERSISTENT_STATE_KEY);
+            this.resetPersistenceToDefaults();
             return;
         }
         void this.reloadPersistenceSnapshot().catch(() => undefined);
+    }
+
+    /**
+     * Forget every persistent value this session holds, so each declared variable reads its default
+     * again. The store behind the adapter, if there is one, is not touched: this is for a session
+     * that keeps its persistent values in memory and starts over (the story preview, per row).
+     */
+    public resetPersistenceToDefaults(): void {
+        this.persistenceValues.clear();
+        this.persistentDefaultCopies.clear();
+        this.notifyPersistence();
+        announceBlueprintStateWrite(EVERY_PERSISTENT_STATE_KEY);
     }
 
     public async reloadPersistenceSnapshot(): Promise<void> {

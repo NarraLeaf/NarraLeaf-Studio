@@ -916,7 +916,7 @@ describe("bundleAssembler story schema", () => {
                         id: "scene-1",
                         name: "Scene 1",
                         runtimeName: "Scene 1",
-                        rootBlockIds: ["grade"],
+                        rootBlockIds: ["grade", "true-end"],
                         blocks: {
                             grade: {
                                 id: "grade",
@@ -931,6 +931,13 @@ describe("bundleAssembler story schema", () => {
                                         props: { color: "#000000", hold: 25 },
                                     },
                                 },
+                            },
+                            "true-end": {
+                                id: "true-end",
+                                kind: "control",
+                                parentId: null,
+                                childrenIds: [],
+                                payload: { control: "ending", name: "True End" },
                             },
                         },
                     },
@@ -979,6 +986,8 @@ describe("bundleAssembler story schema", () => {
             revision: 1,
         });
         expect(bundle.localization?.scenes).toEqual({ "scene-1": "Scene 1" });
+        // The same for endings: the table is what decides whether an `ending:` unit ships.
+        expect(bundle.localization?.endings).toEqual({ "true-end": "True End" });
     });
 });
 

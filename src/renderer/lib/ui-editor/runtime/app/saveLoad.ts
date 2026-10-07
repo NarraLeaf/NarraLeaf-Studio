@@ -38,6 +38,7 @@ import { isReservedSaveId } from "@shared/types/saves";
 import { translateLegacyElementIds, type LegacyElementIdTable } from "./legacyElementIds";
 import { translateLegacyActionIds, type ActionIdReading, type LegacyActionIdTable } from "./legacyActionIds";
 import { translate } from "@/lib/i18n";
+import { translateForPlayer } from "@/lib/ui-editor/runtime/localization/playerWords";
 
 /** How the story stamped into the save compares with the story now running. */
 export type SaveStoryOrigin =
@@ -863,11 +864,15 @@ const AUTHOR_REPORT_BY_GAME_STATE = {
     lost: { level: "error", key: "game.saveLoad.notRestored" },
 } as const satisfies Record<RunningGameState, { level: "warning" | "error"; key: TranslationKey }>;
 
-/** The one line the player is shown. Chosen by the story hash and by nothing else. */
+/**
+ * The one line the player is shown. Chosen by the story hash and by nothing else, and worded in the
+ * game's language, like everything else on the screen it appears on - the lines beside it, for the
+ * author, stay in the interface's.
+ */
 function refusalMessageForPlayer(origin: SaveStoryOrigin): string {
     return origin === "otherStory"
-        ? translate("game.saveLoad.refusedOtherStory")
-        : translate("game.saveLoad.refused");
+        ? translateForPlayer("game.saveLoad.refusedOtherStory")
+        : translateForPlayer("game.saveLoad.refused");
 }
 
 /**

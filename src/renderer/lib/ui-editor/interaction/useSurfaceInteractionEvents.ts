@@ -16,7 +16,7 @@ import {
 } from "./containerDrillSelection";
 import { isMoveableInteractionTarget } from "./surfaceInlineTextEditActivation";
 import { buildLayoutPatchForNewElementFromSurfaceRect } from "@/lib/ui-editor/tree/resolveInsertTargetParent";
-import { resolveNewElementParent } from "@/lib/ui-editor/tree/resolveAddTarget";
+import { insertToolCanPlace, resolveNewElementParent } from "@/lib/ui-editor/tree/resolveAddTarget";
 import {
     collectSnapGuideLines,
     splitSnapLinesToAxes,
@@ -304,6 +304,13 @@ export function useSurfaceInteractionEvents({
             if (tool.kind === "insert" && insertDrawEnabled && event.button === 0 && isInsideSurface) {
                 event.preventDefault();
                 event.stopPropagation();
+                // Armed in another editor with something this one cannot take - a component, on a
+                // component's own canvas. The tab disarms it when it is shown (`UISurfaceEditorTab`);
+                // this is the press on an editor in a second group, which was shown all along.
+                if (!insertToolCanPlace(documentService.getDocument(), surfaceId, tool)) {
+                    stateService.setTool({ kind: "select" });
+                    return;
+                }
                 const surfacePoint = clientToSurfaceCoords(event.clientX, event.clientY);
                 const component = tool.componentId ? documentService.getComponent(tool.componentId) : null;
                 const componentRoot = component ? component.elements[component.rootElementId] : null;

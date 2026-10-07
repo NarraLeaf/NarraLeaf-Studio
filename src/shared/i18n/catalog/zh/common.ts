@@ -81,4 +81,14 @@ export const common = {
             other: "{count} 个提示",
         },
     },
+    flowCanvas: {
+        nodeHelp: "按 Enter 或空格键选中节点，按 Delete 删除，按 Esc 取消",
+        movableNodeHelp: "按 Enter 或空格键选中节点，用方向键移动，按 Delete 删除，按 Esc 取消",
+        wireHelp: "按 Enter 或空格键选中连线，按 Delete 删除，按 Esc 取消",
+        nodeMoved: "所选节点已向{direction}移动，位置 x {x}，y {y}",
+        up: "上",
+        down: "下",
+        left: "左",
+        right: "右",
+    },
 } satisfies LocaleNamespace<"common">;

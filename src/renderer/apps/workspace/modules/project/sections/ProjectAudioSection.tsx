@@ -40,6 +40,7 @@ import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDoc
 import type { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
 import {
     audioTrackDescendantIds,
+    audioTrackDisplayName,
     countAudioTrackReferences,
     flattenAudioTrackTree,
     type ProjectAudioTrack,
@@ -160,15 +161,14 @@ export function ProjectAudioSection({ uiService }: ProjectSectionProps) {
         }
         const uses = references[track.id] ?? 0;
         const children = tracks.filter(entry => entry.parentId === track.id).length;
-        const parent = track.parentId === null
-            ? t("project.audio.parentMaster")
-            : trackService.getTrack(track.parentId)?.name ?? t("project.audio.parentMaster");
+        const parentTrack = track.parentId === null ? undefined : trackService.getTrack(track.parentId);
+        const parent = parentTrack ? audioTrackDisplayName(parentTrack, t) : t("project.audio.parentMaster");
         const detail = [
             tn("project.audio.deleteDetail", uses),
             children > 0 ? tn("project.audio.deleteChildren", children, { parent }) : null,
         ].filter(Boolean).join("\n");
         const confirmed = await uiService?.showDestructiveConfirm(
-            t("project.audio.deleteConfirm", { name: track.name }),
+            t("project.audio.deleteConfirm", { name: audioTrackDisplayName(track, t) }),
             detail,
             t("project.audio.delete"),
         );
@@ -282,7 +282,7 @@ function TrackItem({
             { value: "", label: t("project.audio.parentMaster") },
             ...tracks
                 .filter(entry => entry.id !== track.id && !forbidden.has(entry.id))
-                .map(entry => ({ value: entry.id, label: entry.name })),
+                .map(entry => ({ value: entry.id, label: audioTrackDisplayName(entry, t) })),
         ];
     }, [t, track.id, tracks]);
 
@@ -302,7 +302,7 @@ function TrackItem({
             }}
             title={
                 <span className="flex min-w-0 items-center gap-2">
-                    <span className="min-w-0 flex-1 truncate text-fg">{track.name}</span>
+                    <span className="min-w-0 flex-1 truncate text-fg">{audioTrackDisplayName(track, t)}</span>
                     <VolumeReadout
                         percent={draftPercent}
                         title={`${t("project.audio.volumeTitle")} ${draftPercent}${t("project.audio.volumeUnit")}`}
@@ -330,8 +330,10 @@ function TrackItem({
                 }}
             >
                 <Field label={t("project.audio.nameTitle")}>
+                    {/* The shown name, so a seeded track's field reads as its row does. The field
+                        only writes when the text changes, so opening it renames nothing. */}
                     <TrackNameField
-                        name={track.name}
+                        name={audioTrackDisplayName(track, t)}
                         disabled={frozen.disabled}
                         label={t("project.audio.nameTitle")}
                         onCommit={name => service?.renameTrack(track.id, name)}

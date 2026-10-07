@@ -351,6 +351,29 @@ export function parseSceneTranslationUnitId(unitId: string): string | null {
     return sceneId ? sceneId : null;
 }
 
+/** Prefix of the ending-name unit space. Exported so id parsing has one spelling. */
+export const ENDING_UNIT_PREFIX = "ending:";
+
+/**
+ * Translation-unit id of an ending's name: `ending:<endingId>`, the ending id being its `/ending`
+ * row's block id (`@shared/types/story/endings`).
+ *
+ * Keyed by the row rather than by the name, for the reason a scene is keyed by its id: the name is
+ * the part being translated, and an author who renames "Bad End" keeps every translation of it.
+ */
+export function endingTranslationUnitId(endingId: string): string {
+    return `${ENDING_UNIT_PREFIX}${endingId}`;
+}
+
+/** The ending id inside an `ending:<id>` unit, or null when the string is not one. */
+export function parseEndingTranslationUnitId(unitId: string): string | null {
+    if (!unitId.startsWith(ENDING_UNIT_PREFIX)) {
+        return null;
+    }
+    const endingId = unitId.slice(ENDING_UNIT_PREFIX.length);
+    return endingId ? endingId : null;
+}
+
 export type LocalizationKeyDefinition = {
     /** Source-language text (what renders when no translation applies). */
     sourceText: string;
@@ -414,6 +437,14 @@ export type GameLocalizationBundle = {
      * dropped is absent here too.
      */
     scenes?: Record<string, string>;
+    /**
+     * Ending-name source texts (ending id → source-language name), for the endings this build ships.
+     *
+     * Read as the set of endings the build still has, which is what decides whether an `ending:` unit
+     * ships with a variant that dropped scenes - the same question `scenes` answers for `scene:` units.
+     * Assembled from the story documents the bundle carries.
+     */
+    endings?: Record<string, string>;
 };
 
 /**
@@ -485,6 +516,57 @@ export function resolveLocalizedSceneName(
         return null;
     }
     return resolveLocalizedUnitText(bundle, locale, sceneTranslationUnitId(sceneId)) ?? sourceName;
+}
+
+/**
+ * An ending's name in `locale`: its `ending:` unit along the language's fallback chain, else the name
+ * the row is written with - the same fallback a story line takes.
+ *
+ * The source name is the caller's, read off the story document the build ships, because that is
+ * where every reader of an ending already finds it.
+ */
+export function resolveLocalizedEndingName(
+    bundle: Pick<GameLocalizationBundle, "sourceLocale" | "locales" | "tables">,
+    locale: LocaleCode,
+    endingId: string,
+    sourceName: string,
+): string {
+    return resolveLocalizedUnitText(bundle, locale, endingTranslationUnitId(endingId)) ?? sourceName;
+}
+
+/**
+ * A character's name in `locale`: its `char:` unit along the language's fallback chain, else the
+ * name the character is written with - the same fallback a story line takes.
+ */
+export function resolveLocalizedCharacterName(
+    bundle: Pick<GameLocalizationBundle, "sourceLocale" | "locales" | "tables">,
+    locale: LocaleCode,
+    characterId: string,
+    sourceName: string,
+): string {
+    return resolveLocalizedUnitText(bundle, locale, characterTranslationUnitId(characterId)) ?? sourceName;
+}
+
+/**
+ * The name to show for a speaker the engine recorded by name, in `locale`.
+ *
+ * The engine knows a character only by the name it was given - the nametag, a backlog line, the
+ * speaker a save was left on all carry that string and nothing else - so the name is matched back to
+ * the character written with it, and that character's `char:` unit is what the player reads.
+ *
+ * A recorded name no character is written with is shown as recorded. That is a `/rename` row's own
+ * words ("？？？"), a one-off speaker, or a save written before the character was renamed: the
+ * project has no translation of any of them. A `/rename` back to a character's name is that
+ * character's name again, so it translates like any other line that character speaks.
+ */
+export function resolveLocalizedSpeakerName(
+    bundle: Pick<GameLocalizationBundle, "sourceLocale" | "locales" | "tables">,
+    locale: LocaleCode,
+    characters: readonly { id: string; name: string }[] | undefined,
+    recordedName: string,
+): string {
+    const character = characters?.find(entry => entry.name === recordedName);
+    return character ? resolveLocalizedCharacterName(bundle, locale, character.id, recordedName) : recordedName;
 }
 
 /**

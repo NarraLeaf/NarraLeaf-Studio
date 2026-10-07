@@ -6,8 +6,9 @@
  * installed beside it.
  *
  * Three fields, and the id is the one that matters. It is the filename the player ends up with, so
- * it is shown, it is stated under the name as the file it produces, and changing it asks first -
- * copies already delivered keep the old name.
+ * it is shown, and it is stated under the name as the file it produces. Changing it asks first once
+ * the project uses it - copies already delivered keep the old name - and simply happens while
+ * nothing does yet.
  *
  * Built on `Accordion` like the variants above it: a list of N of the same thing, one row each,
  * nothing expanded until the author asks.
@@ -23,6 +24,8 @@ import { Services } from "@/lib/workspace/services/services";
 import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
 import type { DlcService } from "@/lib/workspace/services/dlc/DlcService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
+import type { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
+import { countDlcGraphReferences } from "@/lib/workspace/services/dlc/dlcReferences";
 import type { ProjectAppTag } from "@shared/types/appTag";
 import type { ProjectDlc } from "@shared/types/dlc";
 import { dlcArtifactFileName } from "@shared/utils/dlcDelivery";
@@ -60,6 +63,7 @@ export function ProjectDlcSection({ uiService }: ProjectSectionProps) {
             dlc: context.services.get<DlcService>(Services.Dlc),
             appTags: context.services.get<AppTagService>(Services.AppTags),
             story: context.services.get<StoryService>(Services.Story),
+            uiGraph: context.services.get<UIGraphService>(Services.UIGraph),
         };
     }, [context, isInitialized]);
 
@@ -107,6 +111,29 @@ export function ProjectDlcSection({ uiService }: ProjectSectionProps) {
         }
         return counts;
     }, [services, dlcs]);
+
+    /**
+     * Whether anything in the project names this DLC: a story marked for it, or a graph node that
+     * picks it. Asked when an id change is committed rather than kept up to date, because a graph
+     * edited in another tab changes the answer and this panel does not watch graphs.
+     *
+     * This is the one evidence of use the project holds. A DLC nothing names has carried no story
+     * and drawn no entrance, so there is no delivered file whose name a player's game relies on.
+     */
+    const dlcInUse = useCallback((id: string): boolean => {
+        if (!services) {
+            return true;
+        }
+        if (services.story.listStories().some(story => story.dlcId === id)) {
+            return true;
+        }
+        try {
+            return countDlcGraphReferences(services.uiGraph.getDocument().blueprintDocument ?? null, id) > 0;
+        } catch {
+            // Graphs that cannot be read are not evidence of nothing; ask.
+            return true;
+        }
+    }, [services]);
 
     // Filtered rather than pruned in an effect: a deleted id would otherwise sit in the open set and
     // re-open a later DLC that happened to be given the same id.
@@ -171,6 +198,8 @@ export function ProjectDlcSection({ uiService }: ProjectSectionProps) {
                             service={services?.dlc ?? null}
                             uiService={uiService}
                             variantOptions={variantOptions}
+                            inUse={dlcInUse}
+                            onIdChanged={(from, to) => setOpenIds(prev => prev.map(id => (id === from ? to : id)))}
                             onDelete={() => void removeDlc(dlc)}
                         />
                     ))}
@@ -186,12 +215,21 @@ function DlcItem({
     service,
     uiService,
     variantOptions,
+    inUse,
+    onIdChanged,
     onDelete,
 }: {
     dlc: ProjectDlc;
     service: DlcService | null;
     uiService: ProjectSectionProps["uiService"];
     variantOptions: readonly SelectOption[];
+    /** Whether anything in the project names a DLC by this id. */
+    inUse: (id: string) => boolean;
+    /**
+     * The row's id changed. The open rows are kept by id, so without this the row the author is
+     * typing in would fold shut the moment the new id is committed.
+     */
+    onIdChanged: (from: string, to: string) => void;
     onDelete: () => void;
 }) {
     const { t } = useTranslation();
@@ -263,6 +301,8 @@ function DlcItem({
                         dlc={dlc}
                         service={service}
                         uiService={uiService}
+                        inUse={inUse}
+                        onIdChanged={onIdChanged}
                         disabled={frozen.disabled}
                         onFocusChange={setFocused}
                         {...claimed}
@@ -275,7 +315,12 @@ function DlcItem({
                 </Field>
 
                 <Field label={t("project.dlc.attachTitle")}>
+                    {/* The fields' size and width, so the picker lines up with the two boxes
+                        above it rather than shrinking to its value at a larger type size. */}
                     <Select
+                        size="sm"
+                        fullWidth
+                        portalMenu
                         options={[...variantOptions]}
                         value={dlc.attachTo}
                         onChange={value => service?.setAttachTo(dlc.id, String(value))}
@@ -303,15 +348,19 @@ function DlcItem({
 /**
  * The id, which is the filename.
  *
- * Confirms before it changes, and only when it would really change: this is the one field on the
- * page whose old value is already in players' hands, and the service cannot ask - it has no surface.
- * The field puts the stored id back whenever the author declines, so a refused change never leaves a
- * value on screen the project does not have.
+ * Confirms before it changes, and only when it would really change something: this is the one
+ * field on the page whose old value can already be in players' hands, and the service cannot ask -
+ * it has no surface. A DLC nothing in the project names yet - the one an author has just added and
+ * is naming - changes without a question, like the name above it; the change is on the undo stack
+ * either way. The field puts the stored id back whenever the author declines, so a refused change
+ * never leaves a value on screen the project does not have.
  */
 function IdInput({
     dlc,
     service,
     uiService,
+    inUse,
+    onIdChanged,
     disabled,
     readOnly,
     onFocusChange,
@@ -320,6 +369,8 @@ function IdInput({
     dlc: ProjectDlc;
     service: DlcService | null;
     uiService: ProjectSectionProps["uiService"];
+    inUse: (id: string) => boolean;
+    onIdChanged: (from: string, to: string) => void;
     disabled: boolean;
     /** True while somebody else is inside this row. See `configLiveSession`. */
     readOnly?: boolean;
@@ -339,15 +390,23 @@ function IdInput({
             setDraft(dlc.id);
             return;
         }
-        const confirmed = await uiService?.showDestructiveConfirm(
+        const confirmed = !inUse(dlc.id) || await uiService?.showDestructiveConfirm(
             t("project.dlc.idChangeConfirm", { id: next }),
             t("project.dlc.idChangeDetail"),
             t("project.dlc.idChangeAction"),
         );
+        if (!confirmed) {
+            setDraft(dlc.id);
+            return;
+        }
         // Read the id back rather than assuming: what was typed may have been folded into something
         // a filesystem carries, or numbered around one already taken.
-        setDraft(confirmed ? service.changeId(dlc.id, next) : dlc.id);
-    }, [dlc.id, draft, service, t, uiService]);
+        const changed = service.changeId(dlc.id, next);
+        if (changed !== dlc.id) {
+            onIdChanged(dlc.id, changed);
+        }
+        setDraft(changed);
+    }, [dlc.id, draft, inUse, onIdChanged, service, t, uiService]);
 
     return (
         <Input

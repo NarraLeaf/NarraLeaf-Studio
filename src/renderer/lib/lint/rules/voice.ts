@@ -6,6 +6,7 @@ import {
     isBlankSegment,
     legacyVoiceAssetId,
     listLiveTextSegments,
+    orphanVoiceUnitIds,
     segmentSourceText,
     storyLocation,
     SPOKEN_TEXT_SEGMENT_KINDS,
@@ -116,8 +117,8 @@ function runStale(ctx: LintContext): LintFinding[] {
  * an orphan's row is what is missing, so it has no location beyond the project, and one finding per
  * unit rendered as N identical unactionable rows. A locale with no orphans emits nothing.
  *
- * Opening one lands on that language's voice table, as near as there is: the table lists the script's
- * lines, so a take whose line is gone has no row in it, and the table can neither show nor unlink one.
+ * Opening one lands on that language's voice table showing its orphans - the takes this counts -
+ * where they can be unlinked.
  */
 function runOrphan(ctx: LintContext): LintFinding[] {
     const voice = ctx.voice;
@@ -131,7 +132,7 @@ function runOrphan(ctx: LintContext): LintFinding[] {
         if (!document) {
             continue;
         }
-        const count = Object.keys(document.units).filter(unitId => !liveTextIds.has(unitId)).length;
+        const count = orphanVoiceUnitIds(document.units, liveTextIds).length;
         if (count === 0) {
             continue;
         }
@@ -141,7 +142,7 @@ function runOrphan(ctx: LintContext): LintFinding[] {
             messageParams: { count, locale },
             messageParamCounts: { recordings: { key: "lint.rule.voiceOrphan.recordingCount", count } },
             location: { kind: "project" },
-            target: { kind: "voiceLine", locale },
+            target: { kind: "voiceOrphans", locale },
         });
     }
     return findings;

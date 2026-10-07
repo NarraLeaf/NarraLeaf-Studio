@@ -4,7 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 import { AssetType } from "../../workspace/services/assets/assetTypes";
 import type { LintAlphaProbe, LintAssetEntry, LintContext, LintStoryEntry } from "../context";
 import { createTestLintContext } from "../testContext";
-import type { LintFinding, LintRuleId } from "../types";
+import { resolveLintMessageParams, type LintFinding, type LintRuleId } from "../types";
+import { createTranslator } from "@shared/i18n";
 import { PORTABILITY_LINT_RULES } from "./portability";
 
 /**
@@ -24,6 +25,12 @@ function runRule(id: LintRuleId, ctx: LintContext): Promise<LintFinding[]> {
         throw new Error(`no such rule: ${id}`);
     }
     return Promise.resolve(rule.run(ctx, {}));
+}
+
+/** A finding as a reader of that locale sees it. */
+function render(locale: "en" | "zh" | "ja", finding: LintFinding): string {
+    const { t, tn } = createTranslator(locale);
+    return t(finding.messageKey, resolveLintMessageParams(finding, t, tn));
 }
 
 function asset(id: string, name: string, overrides: Partial<LintAssetEntry> = {}): LintAssetEntry {
@@ -73,6 +80,17 @@ describe("portability/media-format", () => {
 
         expect(findings).toHaveLength(1);
         expect(findings[0].messageParams).toEqual({ asset: "theme.ogg", platform: "web, ios" });
+    });
+
+    it("names the platforms by their display names, joined the way each language writes a list", async () => {
+        const ctx = createTestLintContext({ assets: oggAssets, buildPlatforms: ["windows", "web", "ios"] });
+
+        const [finding] = await runRule("portability/media-format", ctx);
+
+        expect(render("en", finding)).toBe("theme.ogg does not play on Web, iOS");
+        expect(render("zh", finding)).toBe("theme.ogg 在 Web、iOS 上无法播放");
+        expect(render("ja", finding)).toContain("Web、iOS");
+        expect(render("zh", finding)).not.toMatch(/web|ios/);
     });
 
     it("covers every Ogg audio spelling, on the Safari-engine targets and nowhere else", async () => {
@@ -294,6 +312,7 @@ describe("portability/vfx-alpha", () => {
 
         expect(findings).toHaveLength(1);
         expect(findings[0].messageParams?.platform).toBe("ios, web");
+        expect(render("zh", findings[0])).toContain("iOS、Web");
     });
 
     it("stays silent, and never probes, when no WebKit target is selected", async () => {

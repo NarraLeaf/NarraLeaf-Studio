@@ -15,7 +15,7 @@ import type {
     UIElementId,
     UISurface,
 } from "@shared/types/ui-editor/document";
-import { getUIComponentLink, isUIComponentTextParam } from "@shared/types/ui-editor/document";
+import { getUIComponentLink, isUIComponentAudioTrackParam, isUIComponentTextParam } from "@shared/types/ui-editor/document";
 import { getUIPageParams } from "@shared/types/ui-editor/pageParams";
 import { uiTextSitesOf } from "@shared/types/ui-editor/textSource";
 import { printValue } from "../../blueprint-cli/dsl/values";
@@ -146,7 +146,7 @@ export function printComponent(component: UIComponentDefinition, options: PrintO
     for (const param of component.params ?? []) {
         lines.push(
             `${INDENT}param ${param.id} ${printValue(param.name)}`
-                + (isUIComponentTextParam(param) ? " type=text" : "")
+                + (isUIComponentTextParam(param) ? " type=text" : isUIComponentAudioTrackParam(param) ? " type=audioTrack" : "")
                 + ` = ${printValue(param.defaultValue)}`,
         );
     }

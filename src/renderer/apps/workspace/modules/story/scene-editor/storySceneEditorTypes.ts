@@ -1,4 +1,5 @@
 import type { AssetTransferManifestEntry } from "@shared/types/assetTransfer";
+import type { Blueprint } from "@shared/types/blueprint/document";
 import type { LocaleCode, LocalizationUnit } from "@shared/types/localization";
 import type { StoryBlock, StoryBlockId, StoryCharacterTagSelection, StoryRichRun } from "@shared/types/story";
 
@@ -227,4 +228,13 @@ export type StoryClipboardPayload = {
     assets?: StoryClipboardAssets;
     /** Absent when none of the copied lines is translated. See {@link StoryClipboardTranslations}. */
     translations?: StoryClipboardTranslations;
+    /**
+     * The blueprints the copied rows own, keyed by their ids in the project they were copied from:
+     * what a `/blueprint` row runs, what a branch is decided by, what an inline value returns.
+     * Absent when the rows own none.
+     *
+     * Carried whole, so a paste can give its rows copies of their own wherever it lands - in another
+     * project the ids name nothing, or somebody else's graph. See `storyRowBlueprints`.
+     */
+    blueprints?: Record<string, Blueprint>;
 };

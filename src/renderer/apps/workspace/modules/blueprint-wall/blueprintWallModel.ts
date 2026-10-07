@@ -10,6 +10,7 @@ import { listSceneIdsInDocumentOrder } from "@shared/types/story/order";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { isFactoryStoryBlueprintName, ownerLabelKey } from "@shared/types/ui-editor/ownerLabels";
 import { getStageSlotLabel } from "@/lib/ui-editor/stageSlotLabel";
+import { blueprintIdsNamedByScene } from "@/lib/story/sceneBlueprintRefs";
 import type { BlueprintEditorOpenTarget } from "@/lib/workspace/services/ui-editor/blueprint/navigationTargets";
 import { getComponentEditorSurfaceId } from "../ui-editor/editors/componentEditorAdapter";
 
@@ -144,27 +145,11 @@ function storyBlueprintScenes(stories: readonly BlueprintWallStory[]): Map<strin
             if (!scene) {
                 continue;
             }
-            // A row names a blueprint in four shapes (an action, an interpolation, a condition, an
-            // expression call) and all four spell it `blueprintId`, so one walk finds them all.
-            const visit = (value: unknown): void => {
-                if (Array.isArray(value)) {
-                    value.forEach(visit);
-                    return;
+            for (const blueprintId of blueprintIdsNamedByScene(scene)) {
+                if (!found.has(blueprintId)) {
+                    found.set(blueprintId, { story, sceneId, sceneName: scene.name, order: order++ });
                 }
-                if (!value || typeof value !== "object") {
-                    return;
-                }
-                for (const [key, child] of Object.entries(value)) {
-                    if (key === "blueprintId" && typeof child === "string") {
-                        if (!found.has(child)) {
-                            found.set(child, { story, sceneId, sceneName: scene.name, order: order++ });
-                        }
-                    } else {
-                        visit(child);
-                    }
-                }
-            };
-            visit(scene);
+            }
         }
     }
     return found;

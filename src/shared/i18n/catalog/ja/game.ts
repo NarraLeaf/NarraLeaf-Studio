@@ -106,4 +106,8 @@ export const game = {
         detail: "別のブラウザタブで動作中。そのタブを閉じてから、このページを再読み込みする",
         reload: "再読み込み",
     },
+    words: {
+        option: "選択肢",
+        unknownSpeaker: "不明",
+    },
 } satisfies LocaleNamespace<"game">;

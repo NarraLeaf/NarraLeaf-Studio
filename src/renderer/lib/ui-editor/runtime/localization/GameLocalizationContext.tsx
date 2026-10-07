@@ -18,10 +18,13 @@ import {
     type UITextSite,
     type UITextWordsInput,
 } from "@shared/types/ui-editor/textSource";
+import type { InterpolationParams, TranslationKey } from "@shared/i18n";
+import { useTranslation } from "@/lib/i18n";
 import {
     getDesignTimeLocalizationKeys,
     subscribeDesignTimeLocalizationKeys,
 } from "./designTimeKeys";
+import { playerWordsLocale, translatePlayerWords } from "./playerWords";
 
 export type GameLocalizationRuntime = {
     bundle: GameLocalizationBundle;
@@ -97,6 +100,32 @@ export function useLocalizedWidgetSites(element: UIElement, sites: readonly UITe
         sites,
         runtime ? { kind: "game", bundle: runtime.bundle, locale } : { kind: "canvas", keys: designTimeKeys },
     );
+}
+
+/** A key from Studio's catalogue, worded for whoever is looking: the player in a game, the author on the canvas. */
+export type PlayerWords = (key: TranslationKey, params?: InterpolationParams) => string;
+
+/**
+ * Studio's own words for a component a player can see - a placeholder where a page or a component
+ * cannot be drawn - in the language the game is being played in (see `playerWords.ts`).
+ *
+ * Re-renders when the player's language changes, as {@link useLocalizedWidgetText} does. Outside a
+ * provider - the editor canvas, a preview without localization - and for a game whose languages
+ * Studio has no catalogue for, it is the interface's translator, so the same placeholder reads in
+ * the author's language while they edit and in the player's while they play.
+ */
+export function usePlayerWords(): PlayerWords {
+    const runtime = useContext(GameLocalizationContext);
+    const { t } = useTranslation();
+    // The same answer for a render with no DOM, as `useLocalizedWidgetSites` gives: there is nothing
+    // to hydrate against, and the words are the player's either way.
+    const readLocale = () => runtime?.getLocale() ?? "";
+    const locale = useSyncExternalStore(runtime?.subscribe ?? noopSubscribe, readLocale, readLocale);
+    const wordsLocale = runtime ? playerWordsLocale(runtime.bundle, locale) : null;
+    if (!wordsLocale) {
+        return t;
+    }
+    return (key, params) => translatePlayerWords(wordsLocale, key, params);
 }
 
 /**

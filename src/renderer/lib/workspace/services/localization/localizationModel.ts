@@ -13,9 +13,14 @@ import type {
     StoryScene,
     StoryTextSegment,
 } from "@shared/types/story";
-import { listScenesInDocumentOrder } from "@shared/types/story";
+import { listScenesInDocumentOrder, listStoryEndings } from "@shared/types/story";
 import type { LocalizationDocument, LocalizationKeysDocument, LocalizationUnit } from "@shared/types/localization";
-import { characterTranslationUnitId, localizationKeyUnitId, sceneTranslationUnitId } from "@shared/types/localization";
+import {
+    characterTranslationUnitId,
+    endingTranslationUnitId,
+    localizationKeyUnitId,
+    sceneTranslationUnitId,
+} from "@shared/types/localization";
 import type { TranslationExchangeRow } from "@shared/utils/localizationExchange";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { findUIElementSurfaceId } from "@shared/types/ui-editor/frame";
@@ -201,6 +206,38 @@ export function extractSceneTranslationRows(document: StoryDocument): SceneTrans
             sceneId: scene.id,
             storyId: document.id,
             sourceText: scene.name,
+        }));
+}
+
+/** One ending's name as a translation row (unit id `ending:<endingId>`). */
+export type EndingTranslationRow = {
+    unitId: string;
+    endingId: string;
+    storyId: string;
+    sceneId: string;
+    /** The scene the `/ending` row is in, for the translator's context. */
+    sceneName: string;
+    /** The ending's source-language name - what an endings screen shows the player. */
+    sourceText: string;
+};
+
+/**
+ * Ending names as translation rows, in story order.
+ *
+ * The same scan every other reader of endings uses (`listStoryEndings`), so the table offers exactly
+ * the endings the game can name: a disabled row is no ending, and an unnamed one has nothing to
+ * translate.
+ */
+export function extractEndingTranslationRows(document: StoryDocument): EndingTranslationRow[] {
+    return listStoryEndings(document)
+        .filter(ending => ending.name.length > 0)
+        .map(ending => ({
+            unitId: endingTranslationUnitId(ending.endingId),
+            endingId: ending.endingId,
+            storyId: document.id,
+            sceneId: ending.sceneId,
+            sceneName: ending.sceneName,
+            sourceText: ending.name,
         }));
 }
 

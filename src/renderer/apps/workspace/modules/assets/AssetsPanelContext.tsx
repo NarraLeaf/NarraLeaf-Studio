@@ -79,6 +79,11 @@ interface AssetsPanelContextType {
     draggedItem?: DraggedItemState | null;
     /** Non-null while a set's row is being dragged to another folder. */
     draggedAssetSet?: DraggedAssetSetState | null;
+    /**
+     * The sections of the files the other assets panel is dragging, or null while it drags nothing.
+     * A folder of one of these sections takes them as a move (`useDragAndDrop`).
+     */
+    otherPanelDragCategories?: ReadonlySet<AssetCategory> | null;
     dropTargetId?: string | null;
     clipboard: ClipboardState | null;
     isMultiSelectMode: boolean;

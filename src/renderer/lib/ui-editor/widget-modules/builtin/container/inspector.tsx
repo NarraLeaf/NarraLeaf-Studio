@@ -32,6 +32,9 @@ function ContainerAppearanceField(props: CustomFieldProps<UIInspectorData>) {
     // them left "This element has no valid appearance data" on 91 of the skeleton's 307 elements -
     // with no way for the author to get out of it. The synthesized model is a faithful projection of
     // the flat props, so nothing renders differently the moment it appears.
+    //
+    // And it leaves no undo step (`skipHistory`): a step for it was the first thing Ctrl+Z took back
+    // after selecting an element, and taking it back changed nothing anyone could see.
     useLayoutEffect(() => {
         if (props.readOnly) {
             return;
@@ -43,7 +46,7 @@ function ContainerAppearanceField(props: CustomFieldProps<UIInspectorData>) {
         if (next !== appearance) {
             documentService.updateElementProps(element.id, {
                 appearance: next,
-            });
+            }, { skipHistory: true });
         }
     }, [appearance, documentService, element, props.readOnly]);
 

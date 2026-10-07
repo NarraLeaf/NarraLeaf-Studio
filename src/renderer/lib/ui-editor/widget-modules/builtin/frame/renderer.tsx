@@ -1,5 +1,5 @@
 import { useRef, type CSSProperties, type ReactElement } from "react";
-import { useTranslation } from "@/lib/i18n";
+import { usePlayerWords } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { fitFramePage } from "@/lib/ui-editor/runtime/surface/framePageFit";
 import { getFrameProps } from "./helpers";
@@ -13,7 +13,8 @@ function FramePlaceholder({ label }: { label: string }): ReactElement {
 }
 
 export function FrameRenderer(props: WidgetRendererProps): ReactElement | null {
-    const { t } = useTranslation();
+    // Its placeholders are read in the game too, so they are worded in the game's language there.
+    const t = usePlayerWords();
     const { element, document, hostAdapter, renderSurface, instanceKey } = props;
     const frame = getFrameProps(element);
     const targetSurface = frame.targetSurfaceId

@@ -40,7 +40,7 @@ export function NvlSlotSurface(props: {
 }) {
     const { options, surface, dialogs } = props;
     const runtime = useStageSlotSurfaceRuntime({ options, surface, slotId: "nvl" });
-    const { core, bundle, host: { widgetRuntimeStore, onIsNvlMode: isNvlModeInGame } } = options;
+    const { core, bundle, displaySpeakerName, host: { widgetRuntimeStore, onIsNvlMode: isNvlModeInGame } } = options;
     const { runtimeScopeId, flushSlotElements } = runtime;
     const previousCountRef = useRef(0);
 
@@ -50,12 +50,17 @@ export function NvlSlotSurface(props: {
     );
 
     const items = useMemo<NvlSlotItem[]>(
-        () => dialogs.map((proxy, index) => ({
-            index,
-            nametag: readNlrCharacterName((proxy.entry as NvlEntryLike | null | undefined)?.character) ?? "",
-            isActive: proxy.isActive === true,
-        })),
-        [dialogs],
+        () => dialogs.map((proxy, index) => {
+            // The engine names the speaker by the name it was given; a row shows it the way the
+            // dialogue box does, in the game's language.
+            const recorded = readNlrCharacterName((proxy.entry as NvlEntryLike | null | undefined)?.character);
+            return {
+                index,
+                nametag: recorded ? displaySpeakerName?.(recorded) ?? recorded : "",
+                isActive: proxy.isActive === true,
+            };
+        }),
+        [dialogs, displaySpeakerName],
     );
 
     useEffect(() => {

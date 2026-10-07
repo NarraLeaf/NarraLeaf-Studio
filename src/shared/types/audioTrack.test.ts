@@ -8,9 +8,11 @@ import {
     BUILTIN_AUDIO_TRACKS,
     DEFAULT_AUDIO_TRACK_ID,
     audioTrackChildren,
+    audioTrackDisplayName,
     audioTrackDescendantIds,
     countAudioTrackReferences,
     createSeededAudioTrackDocument,
+    factoryAudioTrackNameKey,
     flattenAudioTrackTree,
     migrateProjectAudioTrackDocument,
     normalizeAudioTrackChannel,
@@ -592,5 +594,23 @@ describe("countAudioTrackReferences", () => {
         const root: Record<string, unknown> = { a: shared, b: shared };
         root.self = root;
         expect(countAudioTrackReferences([root], known).ambience).toBe(1);
+    });
+});
+
+describe("audioTrackDisplayName", () => {
+    const say = (key: string) => `t:${key}`;
+
+    it("shows a seeded track that keeps its factory name in the interface's words", () => {
+        expect(BUILTIN_AUDIO_TRACKS.map(track => audioTrackDisplayName(track, say as never))).toEqual([
+            "t:project.audio.builtinName.bgm",
+            "t:project.audio.builtinName.sound",
+            "t:project.audio.builtinName.voice",
+        ]);
+    });
+
+    it("shows a renamed seeded track, and an author's track that shares a factory name, as written", () => {
+        expect(audioTrackDisplayName({ id: "bgm", name: "Score" }, say as never)).toBe("Score");
+        expect(audioTrackDisplayName({ id: "t_mine", name: "Music" }, say as never)).toBe("Music");
+        expect(factoryAudioTrackNameKey({ id: "t_mine", name: "Music" })).toBeUndefined();
     });
 });

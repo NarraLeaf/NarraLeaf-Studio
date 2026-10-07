@@ -55,6 +55,19 @@ export const brand = {
         },
         preview: "プレビュー言語",
         excluded: "{language}では使わない",
+        builtin: {
+            group: "組み込みフォント",
+            systemUi: "システム UI フォント",
+            sansSerif: "サンセリフ（汎用）",
+            serif: "セリフ（汎用）",
+            monospace: "等幅（汎用）",
+            kind: {
+                system: "システムフォント",
+                sansSerif: "サンセリフ",
+                serif: "セリフ",
+                monospace: "等幅",
+            },
+        },
     },
 
     panel: {

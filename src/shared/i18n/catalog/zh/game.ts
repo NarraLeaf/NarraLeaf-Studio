@@ -86,4 +86,8 @@ export const game = {
         detail: "它正在另一个浏览器标签页中运行。关闭该标签页，然后重新载入本页。",
         reload: "重新载入",
     },
+    words: {
+        option: "选项",
+        unknownSpeaker: "未知",
+    },
 } satisfies LocaleNamespace<"game">;

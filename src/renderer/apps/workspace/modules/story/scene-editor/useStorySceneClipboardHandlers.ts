@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, type ClipboardEvent, type Dispatch, type RefObject, type SetStateAction } from "react";
 import type { AssetTransferEntry, AssetTransferManifestEntry } from "@shared/types/assetTransfer";
 import type { LiveDerived } from "@shared/live/ops";
-import type { StoryBlock, StoryBlockId, StoryScene, StorySceneId } from "@shared/types/story";
+import type { Blueprint } from "@shared/types/blueprint/document";
+import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene, StorySceneId } from "@shared/types/story";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { getInterface } from "@/lib/app/bridge";
 import type { Character } from "@/lib/workspace/services/character/Character";
@@ -17,6 +18,7 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
+import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { VoiceService } from "@/lib/workspace/services/voice/VoiceService";
 import { translate, translateN } from "@/lib/i18n";
 import {
@@ -49,6 +51,14 @@ import {
     treatForeignCharacterRefs,
 } from "./storyForeignPaste";
 import { filterOutSelectedDescendants, getInsertionTargetAfter } from "./storySceneBlockUtils";
+import {
+    blueprintIdsNamedByStories,
+    collectCarriedBlueprints,
+    giveCopiedRowsTheirBlueprints,
+    listOwnedBlueprintIds,
+    readCarriedBlueprints,
+    type StoryBlueprintPasteMode,
+} from "./storyRowBlueprints";
 import {
     cloneSerializedBlock,
     exportBlockPlainText,
@@ -111,6 +121,12 @@ export function useStorySceneClipboardHandlers(params: {
     storyService: StoryService | null;
     uuidService: UuidService | null;
     uiService: UIService | null;
+    /**
+     * Where the blueprints the copied rows own live: a copy carries them, a paste gives the pasted
+     * rows copies of their own (see `storyRowBlueprints`). Null until the workspace is ready, which
+     * leaves pasted rows naming the blueprints they named.
+     */
+    blueprintService: LocalBlueprintService | null;
     /** The library a foreign paste imports into, and the one a copy offers files out of. */
     assetsService: AssetsService | null;
     /** Reads the bytes of a file a redeemed transfer granted access to. */
@@ -278,17 +294,52 @@ export function useStorySceneClipboardHandlers(params: {
         return insertedRoots.length > 0;
     }, [params, pasteMayTakeFocus]);
 
+    /**
+     * Give the minted rows blueprints of their own, before they are written - see
+     * `storyRowBlueprints` for which ones are kept, copied or made from what the clipboard carried.
+     *
+     * `namedByRows` is read from every story this project has in memory, so a paste that may keep a
+     * blueprint has loaded all of them first (`pasteOwnRows`). A story that could not be read names
+     * nothing here, which can only turn a keep into a copy - never the other way round.
+     */
+    const giveBlueprints = useCallback((
+        clones: SerializedStoryBlock[],
+        mode: StoryBlueprintPasteMode,
+        carried?: Record<string, Blueprint>,
+    ): void => {
+        const { blueprintService, storyService } = params;
+        if (!blueprintService) {
+            return;
+        }
+        let named: Set<string> | null = null;
+        const documents = () => (storyService?.listStories() ?? [])
+            .map(entry => storyService?.getLoadedStoryDocument(entry.id))
+            .filter((document): document is StoryDocument => Boolean(document));
+        giveCopiedRowsTheirBlueprints(listSerializedBlocks(clones), {
+            blueprint: id => blueprintService.getBlueprintDocument().blueprints[id],
+            namedByRows: id => (named ??= blueprintIdsNamedByStories(documents())).has(id),
+            copy: source => blueprintService.copyStoryActionBlueprint(source),
+        }, mode, carried);
+    }, [params]);
+
     /** Clone and write in one step: every paste that derives nothing anybody else has to compute. */
     const pasteBlocks = useCallback((
         roots: SerializedStoryBlock[],
         target: StoryBlockTarget,
+        blueprints?: { mode: StoryBlueprintPasteMode; carried?: Record<string, Blueprint> },
     ): { textIds: Map<string, string> } | null => {
         const minted = cloneForPaste(roots);
-        if (!minted || !insertClones(minted.clones, target)) {
+        if (!minted) {
+            return null;
+        }
+        if (blueprints) {
+            giveBlueprints(minted.clones, blueprints.mode, blueprints.carried);
+        }
+        if (!insertClones(minted.clones, target)) {
             return null;
         }
         return { textIds: minted.textIds };
-    }, [cloneForPaste, insertClones]);
+    }, [cloneForPaste, giveBlueprints, insertClones]);
 
     /**
      * The one-line paste, unchanged: it still guesses a `Name: text` line against the cast.
@@ -653,7 +704,12 @@ export function useStorySceneClipboardHandlers(params: {
         if (transfer.frozen || params.isFrozen()) {
             return;
         }
-        const pasted = pasteBlocks(treatment.roots, target);
+        // The blueprints the rows own come from the copies the clipboard carried, never from this
+        // project's blueprints under the same ids - those are somebody else's graphs.
+        const pasted = pasteBlocks(treatment.roots, target, {
+            mode: "foreign",
+            carried: readCarriedBlueprints(payload.blueprints),
+        });
         if (!pasted) {
             return;
         }
@@ -708,6 +764,36 @@ export function useStorySceneClipboardHandlers(params: {
     }, [carryTranslations, carryVoice, params]);
 
     /**
+     * Rows pasted back into the project they were copied from, outside a live session.
+     *
+     * When the rows own blueprints, every story is brought into memory first: whether the paste may
+     * keep a blueprint - the cut-and-paste that moves a row - depends on no other row naming it, and a
+     * story nobody has opened yet is still a story whose rows count. The freeze is read again after
+     * that wait, for the reason the bulk plain paste gives.
+     */
+    const pasteOwnRows = useCallback((payload: StoryClipboardPayload, target: StoryBlockTarget): void => {
+        const paste = () => {
+            const pasted = pasteBlocks(payload.roots, target, {
+                mode: "paste",
+                carried: readCarriedBlueprints(payload.blueprints),
+            });
+            if (pasted) {
+                void pasteOwnUnits(payload, pasted.textIds);
+            }
+        };
+        const { storyService } = params;
+        if (!storyService || listOwnedBlueprintIds(listSerializedBlocks(payload.roots)).length === 0) {
+            paste();
+            return;
+        }
+        void storyService.loadAllStories().then(() => {
+            if (!params.isFrozen()) {
+                paste();
+            }
+        });
+    }, [params, pasteBlocks, pasteOwnUnits]);
+
+    /**
      * The five routes, from one clipboard payload.
      *
      * Returns whether the paste was taken, so the callers that have to decide about `preventDefault`
@@ -748,10 +834,7 @@ export function useStorySceneClipboardHandlers(params: {
                             }
                             return true;
                         }
-                        const pasted = pasteBlocks(parsed.roots, anchor.target);
-                        if (pasted) {
-                            void pasteOwnUnits(parsed, pasted.textIds);
-                        }
+                        pasteOwnRows(parsed, anchor.target);
                         return true;
                     }
                     if (session !== null) {
@@ -792,7 +875,7 @@ export function useStorySceneClipboardHandlers(params: {
             default:
                 return false;
         }
-    }, [params, pasteBlocks, pasteForeignBlocks, pasteOwnUnits, pasteRowsOnly, pasteSingleLine, pastePlain, resolveAnchor]);
+    }, [params, pasteForeignBlocks, pasteOwnRows, pasteRowsOnly, pasteSingleLine, pastePlain, resolveAnchor]);
 
     const copySelectionToClipboard = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
         if (isTextInputActive()) {
@@ -808,6 +891,10 @@ export function useStorySceneClipboardHandlers(params: {
         }
         const assets = assetOffersRef.current.get(assetOfferKey);
         const translations = collectCopiedTranslations(params.localizationService, scene, roots);
+        const blueprintService = params.blueprintService;
+        const blueprints = blueprintService
+            ? collectCarriedBlueprints(collectSubtreeBlocks(scene, roots), id => blueprintService.getBlueprintDocument().blueprints[id])
+            : undefined;
         const payload: StoryClipboardPayload = {
             version: 2,
             kind: "narraleaf.story.actions",
@@ -823,6 +910,8 @@ export function useStorySceneClipboardHandlers(params: {
             ...(assets ? { assets } : {}),
             // Absent for the same reason when none of the copied lines is translated.
             ...(translations ? { translations } : {}),
+            // And when none of the copied rows owns a blueprint.
+            ...(blueprints ? { blueprints } : {}),
         };
         event.preventDefault();
         event.clipboardData.setData(STORY_ACTIONS_MIME, JSON.stringify(payload));

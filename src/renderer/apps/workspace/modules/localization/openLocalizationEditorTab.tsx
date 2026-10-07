@@ -7,13 +7,14 @@ export function createLocalizationEditorTab(
     locale: string,
     title: string,
     reveal?: LocalizationEditorTabPayload["reveal"],
+    orphans?: LocalizationEditorTabPayload["orphans"],
 ): EditorTabDefinition<LocalizationEditorTabPayload> {
     return {
         id: getLocalizationEditorTabId(locale),
         title,
         icon: <Languages className="h-4 w-4" />,
         component: LocalizationEditorTab,
-        payload: reveal ? { locale, reveal } : { locale },
+        payload: { locale, ...(reveal ? { reveal } : {}), ...(orphans ? { orphans } : {}) },
         closable: true,
         modified: false,
     };

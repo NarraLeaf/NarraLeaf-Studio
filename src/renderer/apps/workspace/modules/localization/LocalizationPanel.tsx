@@ -27,79 +27,36 @@ import { translationDocumentFreezeScope } from "./localizationLiveSession";
  */
 const FREEZE_READ_ONLY_LOCALIZATION_MENU_IDS: ReadonlySet<string> = new Set(["export-translations"]);
 import { useRegistry } from "../../registry";
-import { i18nStore, useTranslation } from "@/lib/i18n";
+import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import {
     LocalizationService,
     isSourceLocked,
     localeDisplayNameIn,
 } from "@/lib/workspace/services/localization/LocalizationService";
-import {
-    buildTranslationExchangeRows,
-    extractCharacterTranslationRows,
-    extractKeyTranslationRows,
-    extractSceneTranslationRows,
-    extractUiTranslationRows,
-    type LocalizationProgress,
-    type TranslatableUnitContext,
-    type TranslationExportScope,
-} from "@/lib/workspace/services/localization/localizationModel";
-import { listPluginWordsRows, subscribePluginWords } from "@/lib/workspace/services/localization/pluginWords";
+import type { LocalizationProgress, TranslatableUnitContext } from "@/lib/workspace/services/localization/localizationModel";
+import { subscribePluginWords } from "@/lib/workspace/services/localization/pluginWords";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
-import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
-import type { BlueprintDocument } from "@shared/types/blueprint/document";
-import { describeLocalizationKeyContext, indexLocalizationKeyUses } from "@/lib/workspace/services/localization/localizationKeyUses";
-import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
-import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
-import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
 import {
     findLocaleFallbackConflict,
     isValidLocaleCode,
     localeAutonym as autonymFor,
     type LocalizationConfiguration,
-    type LocalizationDocument,
 } from "@shared/types/localization";
-import {
-    TRANSLATION_EXCHANGE_FORMAT_INFO,
-    detectTranslationExchangeFormat,
-    parseTranslationExchange,
-    serializeTranslationExchange,
-    translationExchangeExtensions,
-    type TranslationExchangeFormat,
-} from "@shared/utils/localizationExchange";
-import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { createLocalizationEditorTab } from "./openLocalizationEditorTab";
 import { getLocalizationEditorTabId } from "./localizationEditorTabId";
 import { closeEditorTabsWhere } from "../../registry/closeEditorTabsWhere";
-import { TranslationExportForm } from "./TranslationExportForm";
 import { LanguageSettingsForm, type FallbackCandidate } from "./LanguageSettingsForm";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
-import { basename } from "@shared/utils/path";
-import { describeFileWriteFailure } from "@/lib/workspace/services/core/writeFailureReason";
-import { itemWrite } from "@/lib/workspace/services/autosave/writeReport";
-import {
-    describeExchangeProblem,
-    describeImportFailure,
-    fileLevelProblem,
-    importReadFailureReason,
-} from "@/lib/workspace/assets/importFailure";
+import { collectTranslatableUnits, useTranslationExchange } from "./translationExchange";
 
-/** One translatable unit with translator-facing context (for progress and export). */
+/** One translatable unit with translator-facing context (for progress). */
 type PanelRow = TranslatableUnitContext;
-
-/** The project's blueprints, or none while their store is still coming up. */
-function readBlueprintDocument(uiDocumentService: UIDocumentService | null): BlueprintDocument | null {
-    try {
-        return uiDocumentService?.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint).getBlueprintDocument() ?? null;
-    } catch {
-        return null;
-    }
-}
 
 /** Call `onChange` whenever a blueprint changes; a no-op unsubscribe when there is no graph store yet. */
 function subscribeToBlueprints(uiDocumentService: UIDocumentService | null, onChange: () => void): () => void {
@@ -127,7 +84,7 @@ const GHOST_ROW_CLASS =
 export function LocalizationPanel({ panelId }: PanelComponentProps) {
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
-    const { t, tn } = useTranslation();
+    const { t } = useTranslation();
     // Adding, removing and re-sourcing a language write `.nlproj`, which no partial freeze exempts.
     // Reading the tables, switching locale and exporting a CSV write nothing at all.
     const freeze = useFreezeGuard();
@@ -166,23 +123,10 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
     );
     const uiDocumentRevision = useUIDocumentRevision(uiDocumentService);
 
-    /** Written into the exported file so a translator can tell two projects apart. */
-    const projectName = useMemo(() => {
-        if (!context || !isInitialized) {
-            return "";
-        }
-        return context.services.get<ProjectService>(Services.Project).getProjectConfig().name?.trim() ?? "";
-    }, [context, isInitialized]);
-
     const [config, setConfig] = useState<LocalizationConfiguration | null>(null);
     const [rows, setRows] = useState<PanelRow[]>([]);
     const [progressByLocale, setProgressByLocale] = useState<Record<string, LocalizationProgress>>({});
     const [refreshTick, setRefreshTick] = useState(0);
-
-    // Last format chosen for an export: a team that translates in Poedit does so
-    // every time, and re-picking it per language is the kind of friction that
-    // makes people export once and edit JSON by hand instead.
-    const [exportFormat, setExportFormat] = useState<TranslationExchangeFormat>("csv");
 
     // Add-language inline form (collapsed by default; the panel shows no idle inputs).
     const [addingLocale, setAddingLocale] = useState(false);
@@ -199,80 +143,16 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
         return localizationService.onConfigChanged(setConfig);
     }, [localizationService]);
 
-    // Every translatable unit of the project: character names, scene names and
-    // story lines (narrative order), widgets' own words, and named keys —
-    // with translator-facing context (feeds both progress and CSV export).
+    // Every translatable unit of the project, with translator-facing context: what the progress
+    // bars count. Read by the same function an export reads (`collectTranslatableUnits`), so the
+    // two never disagree about what there is to translate.
     useEffect(() => {
         if (!storyService || !localizationService) {
             return;
         }
         let disposed = false;
         const recompute = async () => {
-            const collected: PanelRow[] = [];
-            const characters = (characterService?.listCharacter() ?? []).map(character => ({
-                id: character.profile.getId(),
-                name: character.profile.getName(),
-            }));
-            for (const row of extractCharacterTranslationRows(characters)) {
-                collected.push({ unitId: row.unitId, sourceText: row.sourceText, context: row.sourceText });
-            }
-            for (const entry of storyService.listStories()) {
-                try {
-                    const document = await storyService.loadStory(entry.id);
-                    for (const row of extractSceneTranslationRows(document)) {
-                        // The story is the context a scene name needs: the name itself is the source
-                        // column, so repeating it there would tell the translator nothing.
-                        collected.push({
-                            unitId: row.unitId,
-                            sourceText: row.sourceText,
-                            context: document.name || row.sourceText,
-                        });
-                    }
-                    for (const row of localizationService.extractRows(document)) {
-                        collected.push({
-                            unitId: row.unitId,
-                            sourceText: row.sourceText,
-                            ...(row.sourceMarkup ? { sourceMarkup: row.sourceMarkup } : {}),
-                            context: row.sceneName,
-                        });
-                    }
-                } catch {
-                    // A broken story must not take the panel down.
-                }
-            }
-            const uiDocument = uiDocumentService?.getDocument();
-            if (uiDocument) {
-                for (const row of extractUiTranslationRows(uiDocument, { locale: i18nStore.getLocale() })) {
-                    collected.push({
-                        unitId: row.unitId,
-                        sourceText: row.sourceText,
-                        context: row.groupName ? `${row.groupName} · ${row.elementName}` : row.elementName,
-                    });
-                }
-            }
-            // The words plugins offer - a menu row's label, a gallery entry's name - beside the
-            // interface's own, under the plugin that holds them.
-            for (const row of listPluginWordsRows()) {
-                collected.push({ unitId: row.unitId, sourceText: row.sourceText, context: row.context });
-            }
-            let keysDocument = localizationService.getKeysIfLoaded();
-            if (!keysDocument) {
-                keysDocument = await localizationService.loadKeys().catch(() => undefined);
-            }
-            // A key's row says where the key is used - the pages and components showing its words or
-            // reading it in a blueprint - since its name alone tells a translator nothing about them.
-            const keyUses = indexLocalizationKeyUses({
-                uiDocument: uiDocument ?? null,
-                blueprintDocument: readBlueprintDocument(uiDocumentService),
-                widgetName: element => widgetModuleRegistry.get(element.type)?.displayName || element.type,
-            });
-            for (const row of extractKeyTranslationRows(keysDocument ?? { schemaVersion: 1, keys: {} })) {
-                collected.push({
-                    unitId: row.unitId,
-                    sourceText: row.sourceText,
-                    context: describeLocalizationKeyContext(row.keyName, keyUses.get(row.keyName)),
-                });
-            }
+            const collected = await collectTranslatableUnits({ storyService, localizationService, characterService, uiDocumentService });
             if (!disposed) {
                 setRows(collected);
             }
@@ -475,187 +355,8 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
         });
     }, [localizationService, uiService, t]);
 
-    /** Write one exchange file, after the dialog below has settled format and scope. */
-    const writeExport = useCallback(async (code: string, format: TranslationExchangeFormat, scope: TranslationExportScope) => {
-        if (!localizationService || !context) {
-            return;
-        }
-        try {
-            const document = await localizationService.loadDocument(code);
-            const exportRows = buildTranslationExchangeRows(rows, document, scope);
-            if (exportRows.length === 0) {
-                uiService?.showNotification(t("workspace.localization.exchange.exportEmpty"), "info");
-                return;
-            }
-            const config = localizationService.getConfiguration();
-            const text = serializeTranslationExchange(format, {
-                sourceLocale: config.sourceLocale,
-                targetLocale: code,
-                projectName: projectName || undefined,
-                rows: exportRows,
-            });
-            // Native save dialog: the user picks the destination (null = cancelled).
-            const extension = TRANSLATION_EXCHANGE_FORMAT_INFO[format].extension;
-            const selection = await appPrivilegedFacade.fs.selectSaveFile(`${code}.${extension}`, [extension]);
-            if (!selection.success || !selection.data.ok) {
-                // The dialog's own failure is for the log; it is English and says nothing to act on.
-                console.warn("[localization] the save dialog failed", selection);
-                throw new Error(t("workspace.shell.fileDialogFailed"));
-            }
-            const targetPath = selection.data.data;
-            if (!targetPath) {
-                return;
-            }
-            const filesystem = context.services.get<FileSystemService>(Services.FileSystem);
-            // Reported here, where the author asked for it, by the name they gave the file - the
-            // save-status surface only logs it. Never the system's message, which is English and
-            // quotes the whole path.
-            const result = await filesystem.write(
-                targetPath,
-                text,
-                "utf-8",
-                itemWrite(basename(targetPath), "workspace.shell.save.stores.localization", "handledByWriter"),
-            );
-            if (!result.ok) {
-                throw new Error(describeFileWriteFailure(basename(targetPath), result.error, t));
-            }
-            uiService?.showNotification(
-                tn("workspace.localization.exchange.exportDone", exportRows.length, { path: targetPath }),
-                "success",
-            );
-        } catch (error) {
-            uiService?.showError(error instanceof Error ? error : String(error));
-        }
-    }, [localizationService, context, rows, uiService, projectName, t]);
-
-    const handleExport = useCallback(async (code: string, displayName: string) => {
-        if (!localizationService || !uiService) {
-            return;
-        }
-        let document: LocalizationDocument;
-        try {
-            document = await localizationService.loadDocument(code);
-        } catch (error) {
-            uiService.showError(error instanceof Error ? error : String(error));
-            return;
-        }
-        const pendingCount = buildTranslationExchangeRows(rows, document, "pending").length;
-
-        // The footer buttons are snapshotted when the dialog opens, so the
-        // selection lives here and the form reports into it.
-        let format = exportFormat;
-        let scope: TranslationExportScope = pendingCount > 0 && pendingCount < rows.length ? "pending" : "all";
-        const dialogId = uiService.dialogs.show({
-            title: t("workspace.localization.exchange.exportTitle", { name: displayName }),
-            width: 420,
-            closable: true,
-            content: (
-                <TranslationExportForm
-                    totalCount={rows.length}
-                    pendingCount={pendingCount}
-                    initialFormat={format}
-                    initialScope={scope}
-                    onChange={(nextFormat, nextScope) => {
-                        format = nextFormat;
-                        scope = nextScope;
-                    }}
-                />
-            ),
-            buttons: [
-                { label: t("common.cancel"), onClick: () => uiService.dialogs.close(dialogId) },
-                {
-                    label: t("workspace.localization.exchange.exportAction"),
-                    primary: true,
-                    onClick: () => {
-                        uiService.dialogs.close(dialogId);
-                        setExportFormat(format);
-                        void writeExport(code, format, scope);
-                    },
-                },
-            ],
-        });
-    }, [localizationService, uiService, rows, exportFormat, writeExport, t]);
-
-    /**
-     * Fold a translator's exchange file back into the language's document.
-     *
-     * Refused before the picker opens rather than at the save. The menu row this hangs off is greyed
-     * by the freeze already, but the row was drawn before the author started reading the file list,
-     * and everything between the picker and the write - the parse, the "this file names a different
-     * language" confirmation - is time in which a session can begin. Asking a translator to confirm
-     * an overwrite that is then discarded is the worst version of this.
-     */
-    const handleImport = useCallback(async (code: string, displayName: string) => {
-        if (!localizationService || !context || !uiService || importFreeze.frozen) {
-            return;
-        }
-        try {
-            // The title is passed because the generic picker's default says "Select Icon File",
-            // which is what a translator would otherwise be asked for.
-            const selection = await appPrivilegedFacade.fs.selectFile(
-                translationExchangeExtensions(),
-                false,
-                t("workspace.localization.exchange.importDialogTitle"),
-            );
-            if (!selection.success || !selection.data.ok || selection.data.data.length === 0) {
-                return;
-            }
-            const filePath = selection.data.data[0];
-            const filesystem = context.services.get<FileSystemService>(Services.FileSystem);
-            // Every refusal below names the file by its name and says why in the author's terms. The
-            // read's own message is English and quotes the whole path, and the parsers answer in codes.
-            const content = await filesystem.read(filePath, "utf-8");
-            if (!content.ok) {
-                console.warn("[localization] could not read the translation file", content.error);
-                throw new Error(describeImportFailure(filePath, importReadFailureReason(content.error.code, t), t));
-            }
-            const format = detectTranslationExchangeFormat(filePath, content.data);
-            if (!format) {
-                throw new Error(describeImportFailure(filePath, t("workspace.localization.exchange.importUnsupported"), t));
-            }
-            const parsed = parseTranslationExchange(format, content.data);
-            if (parsed.rows.length === 0) {
-                throw new Error(describeImportFailure(
-                    filePath,
-                    describeExchangeProblem(fileLevelProblem(parsed.problems), t),
-                    t,
-                ));
-            }
-
-            // A file that names a different language than the one it is being
-            // imported into is the expensive mistake: unit ids match across
-            // languages, so nothing downstream would ever notice.
-            const declared = parsed.targetLocale?.trim();
-            if (declared && declared.toLowerCase() !== code.toLowerCase()) {
-                const proceed = await uiService.showConfirm(
-                    t("workspace.localization.exchange.localeMismatch", { declared, name: displayName }),
-                    t("workspace.localization.exchange.localeMismatchDetail"),
-                );
-                if (!proceed) {
-                    return;
-                }
-            }
-
-            await localizationService.loadDocument(code);
-            const currentSourceByUnit = new Map(rows.map(row => [row.unitId, row.sourceText]));
-            const summary = localizationService.applyImportedRows(code, parsed.rows, currentSourceByUnit);
-            uiService.showNotification(t("workspace.localization.panel.importCounts", {
-                ...summary,
-                applied: tn("workspace.localization.panel.translationCount", summary.applied),
-            }), "success");
-            if (parsed.problems.length > 0) {
-                uiService.showNotification(
-                    tn("workspace.localization.exchange.importWarnings", parsed.problems.length, {
-                        first: describeExchangeProblem(parsed.problems[0], t),
-                    }),
-                    "warning",
-                );
-            }
-            setRefreshTick(tick => tick + 1);
-        } catch (error) {
-            uiService.showError(error instanceof Error ? error : String(error));
-        }
-    }, [localizationService, context, importFreeze.frozen, rows, uiService, t]);
+    // Export and import, shared with the translation table's toolbar.
+    const exchange = useTranslationExchange();
 
     const localeMenuItems = useMemo<ContextMenuDef>(() => {
         if (!localeMenu) {
@@ -680,12 +381,12 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
             {
                 id: "export-translations",
                 label: t("workspace.localization.exchange.exportMenu"),
-                onClick: () => void handleExport(code, displayName),
+                onClick: () => void exchange.exportLanguage(code, displayName),
             },
             {
                 id: "import-translations",
                 label: t("workspace.localization.exchange.importMenu"),
-                onClick: () => void handleImport(code, displayName),
+                onClick: () => void exchange.importLanguage(code, displayName, importFreeze.frozen),
             },
             { id: "separator", separator: true },
             {
@@ -695,7 +396,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
             },
         );
         return items;
-    }, [localeMenu, handleSetSource, handleLanguageSettings, handleExport, handleImport, handleRemoveLocale, t]);
+    }, [localeMenu, handleSetSource, handleLanguageSettings, exchange, importFreeze.frozen, handleRemoveLocale, t]);
     const frozenLocaleMenuItems = useMemo(
         () => freezeContextMenuRows(
             localeMenuItems,
@@ -763,8 +464,11 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                                                 aria-haspopup="menu"
                                                 aria-expanded={menuOpen}
                                                 data-tip={t("workspace.localization.panel.more")} aria-label={t("workspace.localization.panel.more")}
-                                                className={`ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-subtle transition-opacity hover:bg-fill hover:text-fg focus-visible:opacity-100 group-hover:opacity-100 ${
-                                                    menuOpen ? "opacity-100" : "opacity-0"
+                                                // Always drawn: the language's export, import and settings are behind it,
+                                                // and a button that only appears under the pointer is one an author has
+                                                // to already know about to find.
+                                                className={`ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-md hover:bg-fill hover:text-fg ${
+                                                    menuOpen ? "bg-fill text-fg" : "text-fg-subtle"
                                                 }`}
                                                 onClick={event => {
                                                     event.stopPropagation();

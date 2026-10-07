@@ -473,12 +473,33 @@ export function createTextId(generateId: StoryIdFactory): StoryTextId {
     return textId;
 }
 
+/**
+ * Whether a row is a container: something other rows can be placed inside.
+ *
+ * The one answer every reader of the tree asks - the editor draws these rows with a body and offers
+ * to add a line inside them, the insert and move mutators refuse any other parent, the story CLI and
+ * the script import decide by it whether an indented line nests, and the compiler compiles the
+ * children of exactly these rows. Two copies of this list once disagreed about `/nvl`: the editor
+ * drew an NVL row as a container and the compiler compiled its children, while this check refused
+ * every row put inside it, so an NVL passage could not be written at all.
+ *
+ * `label`, `goto`, `break`, `cut`, `ending` and `quit` are the control rows that are NOT containers:
+ * a label is a point, a goto is a move, a break is an exit, a cut is where one edition stops, an
+ * ending is where the story does and a quit is where the run does - none has a body. Every other
+ * control row groups rows, an `/nvl` row holds the lines shown on its page, and a menu holds its
+ * options, each of which holds the rows that run when it is picked.
+ */
 export function canAcceptChildren(block: StoryBlock | undefined): boolean {
     if (!block) {
         return false;
     }
     if (block.kind === "control") {
-        return true;
+        const { control } = block.payload;
+        return control !== "label" && control !== "goto" && control !== "break"
+            && control !== "cut" && control !== "ending" && control !== "quit";
+    }
+    if (block.kind === "action") {
+        return block.payload.action === "nvl";
     }
     if (block.kind === "nodeAction") {
         return block.payload.action === "choice" || block.payload.action === "choiceOption";

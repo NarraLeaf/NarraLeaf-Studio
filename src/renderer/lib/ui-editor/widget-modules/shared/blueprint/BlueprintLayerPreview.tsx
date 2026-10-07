@@ -2,6 +2,8 @@ import "@xyflow/react/dist/style.css";
 import { memo, useId } from "react";
 import { FileCode2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { resolveBlueprintLabel, resolveBlueprintNodeTitle } from "@/lib/ui-editor/blueprint-nodes/blueprintNodeI18n";
+import { useFlowAriaLabels } from "@/lib/ui-editor/hooks/useFlowAriaLabels";
 import {
     BLUEPRINT_COMMENT_COLORS,
     resolveBlueprintCommentColorKey,
@@ -125,8 +127,10 @@ const MiniBlueprintNode = memo(function MiniBlueprintNode({ data }: NodeProps<No
                 style={{ width: data.width, height: data.height }}
             >
                 {handles}
+                {/* Stored as the definitions spell them, and drawn in the words the canvas uses for the
+                    same card - a thumbnail in English beside a Chinese canvas reads as a different graph. */}
                 <div className={`truncate px-2 py-1 text-xs font-medium ${detailedHeaderClass(data.role)}`}>
-                    {data.title ?? t("widgetChrome.blueprint.node")}
+                    {data.title ? resolveBlueprintNodeTitle(data.title, t) : t("widgetChrome.blueprint.node")}
                 </div>
                 {rows > 0 ? (
                     <div className="flex flex-1 justify-between gap-2 px-2 py-1.5">
@@ -134,14 +138,14 @@ const MiniBlueprintNode = memo(function MiniBlueprintNode({ data }: NodeProps<No
                             {inputs.map((label, index) => (
                                 <span key={`in-${index}`} className="flex items-center gap-1 truncate text-2xs text-fg-muted">
                                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-fg-muted" />
-                                    {label}
+                                    {resolveBlueprintLabel(label, t)}
                                 </span>
                             ))}
                         </div>
                         <div className="flex min-w-0 flex-col items-end gap-1">
                             {outputs.map((label, index) => (
                                 <span key={`out-${index}`} className="flex items-center gap-1 truncate text-2xs text-fg-muted">
-                                    {label}
+                                    {resolveBlueprintLabel(label, t)}
                                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-warning" />
                                 </span>
                             ))}
@@ -161,6 +165,15 @@ const MiniBlueprintNode = memo(function MiniBlueprintNode({ data }: NodeProps<No
         </div>
     );
 });
+
+/**
+ * How far a thumbnail may zoom out to fit its graph: far enough for any graph an author lays out.
+ *
+ * The fit is clamped to this, and at 0.08 a graph wider than about 3,000 units no longer fit the card:
+ * it was centred and cropped, and with only what is on screen drawn, a graph rewritten with nodes
+ * farther apart showed a couple of cards in a corner, or nothing at all.
+ */
+const PREVIEW_MIN_ZOOM = 0.01;
 
 const miniNodeTypes: NodeTypes = {
     [PREVIEW_NODE_TYPE]: MiniBlueprintNode,
@@ -186,6 +199,7 @@ export function BlueprintLayerPreview({
     variant?: "mini" | "detailed";
 }) {
     const { t } = useTranslation();
+    const flowAriaLabels = useFlowAriaLabels();
     // Unique per instance: React Flow scopes its document-wide ids (dot-grid `<pattern>`,
     // edge markers, handle ids) to this, defaulting every instance to "1" otherwise.
     // Several previews plus the main editor canvas coexist on one page, and the first
@@ -213,14 +227,15 @@ export function BlueprintLayerPreview({
                     ids out of a thumbnail whose card already says which blueprint it is. */}
                 <ReactFlow
                     aria-hidden
+                    ariaLabelConfig={flowAriaLabels}
                     key={flowKey}
                     id={flowId}
                     nodes={nodes}
                     edges={edges}
                     nodeTypes={miniNodeTypes}
                     fitView
-                    fitViewOptions={{ padding: 0.22, minZoom: 0.08, maxZoom: detailed ? 1 : 0.85, duration: 0 }}
-                    minZoom={0.08}
+                    fitViewOptions={{ padding: 0.22, minZoom: PREVIEW_MIN_ZOOM, maxZoom: detailed ? 1 : 0.85, duration: 0 }}
+                    minZoom={PREVIEW_MIN_ZOOM}
                     maxZoom={detailed ? 1 : 0.85}
                     nodesDraggable={false}
                     nodesConnectable={false}

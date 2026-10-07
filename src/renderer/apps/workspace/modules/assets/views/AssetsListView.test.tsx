@@ -10,6 +10,7 @@ import { createEmptyAssetCategoryRecord } from "../state/assetCategoryRecord";
 import type { ResolvedAssetSet } from "../state/useAssetSets";
 import { installVirtualLayoutStub } from "@/lib/utils/virtualLayoutTestStub";
 import { AssetsListView } from "./AssetsListView";
+import { ASSET_DRAG_MIME } from "../dnd/assetDragContract";
 
 // The real one reads the workspace freeze service through a provider this test has no business
 // standing up; nothing here is frozen.
@@ -29,6 +30,7 @@ afterEach(() => {
     cleanup();
     restoreLayout();
     importToGroup.mockReset();
+    dropOnItem.mockReset();
 });
 
 const LIBRARY_SIZE = 4000;
@@ -56,6 +58,7 @@ const FOLDER: AssetGroup = {
 };
 
 const importToGroup = vi.fn();
+const dropOnItem = vi.fn();
 
 function Harness({ publishRowOrder = () => undefined, assetTransfers = {}, unreadableCategories = new Set<AssetCategory>() }: {
     publishRowOrder?: (keys: readonly string[]) => void;
@@ -103,6 +106,7 @@ function Harness({ publishRowOrder = () => undefined, assetTransfers = {}, unrea
         showAssetSetContextMenu: () => undefined,
         showAssetSetValueContextMenu: () => undefined,
         handleImportToGroup: importToGroup,
+        handleDropOnItem: dropOnItem,
         isFocused: () => false,
         isNarrowed: false,
         mediaSupport: new Map(),
@@ -167,6 +171,32 @@ describe("AssetsListView on a large library", () => {
         expect(importToGroup).toHaveBeenCalledTimes(1);
         expect(importToGroup.mock.calls[0][0]).toBe(AssetCategory.Image);
         expect(importToGroup.mock.calls[0][1]).toBe(FOLDER.id);
+    });
+
+    it("drops onto a folder's own row into that folder", () => {
+        render(<Harness />);
+
+        // The name is the first thing dropped on. Read as "the folder the row is filed in" it was the
+        // section root, and the file landed beside the folder instead of in it.
+        const folderRow = document.querySelector("[data-index='0']") as HTMLElement;
+        fireEvent.drop(folderRow, { dataTransfer: { files: [], types: [] } });
+
+        expect(importToGroup).toHaveBeenCalledTimes(1);
+        expect(importToGroup.mock.calls[0][1]).toBe(FOLDER.id);
+    });
+
+    it("files what the other assets panel is dragging, and never offers it to the import", () => {
+        render(<Harness />);
+
+        // Nothing is being dragged in this panel; the payload is the other panel's. Handed to the
+        // import it opened a file picker; it is a move into the folder.
+        const folderRow = document.querySelector("[data-index='0']") as HTMLElement;
+        fireEvent.drop(folderRow, { dataTransfer: { files: [], types: [ASSET_DRAG_MIME, "text/plain"] } });
+
+        expect(importToGroup).not.toHaveBeenCalled();
+        expect(dropOnItem).toHaveBeenCalledTimes(1);
+        expect(dropOnItem.mock.calls[0][1]).toBe(AssetCategory.Image);
+        expect(dropOnItem.mock.calls[0][2]).toEqual(FOLDER);
     });
 
     it("leaves a row filed at the section root to the section's own drop target", () => {
@@ -291,6 +321,7 @@ function SetHarness({ publishRowOrder = () => undefined }: { publishRowOrder?: (
         showAssetSetContextMenu: () => undefined,
         showAssetSetValueContextMenu: () => undefined,
         handleImportToGroup: importToGroup,
+        handleDropOnItem: dropOnItem,
         isFocused: () => false,
         isNarrowed: false,
         mediaSupport: new Map(),

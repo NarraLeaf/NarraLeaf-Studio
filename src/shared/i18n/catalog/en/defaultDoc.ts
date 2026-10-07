@@ -9,7 +9,7 @@ export const defaultDoc = {
     rootName: "Root",
     componentName: "Component",
     pageName: "Page",
-    pageCopy: "{name} Copy",
+    nameCopy: "{name} Copy",
     speaker: "Speaker",
     dialog: {
         interactionLayer: "Dialog Interaction Layer",

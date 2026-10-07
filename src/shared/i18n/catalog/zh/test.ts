@@ -146,13 +146,14 @@ export const test = {
             finding: {
                 sceneUnreachable: "没有路径能满足通往「{scene}」的条件",
                 optionUnreachable: "没有路径能满足提供「{option}」的条件",
+                conditionUnreachable: "没有路径能满足条件「{condition}」",
                 branchUnreachable: "没有路径能满足进入该分支的条件",
                 endingUnreachable: "「{name}」已写入，但没有路径能满足到达它的条件",
                 endingUnreachableUnnamed: "该结局已写入，但没有路径能满足到达它的条件",
             },
             summary: {
                 passed: "剧本指向的场景、选项与结局均可到达",
-                failed: "无法到达：场景 {scenes} 个，选项 {options} 个，结局 {endings} 个",
+                failed: "无法到达：场景 {scenes} 个，选项 {options} 个，条件分支 {conditions} 个，结局 {endings} 个",
             },
         },
         reachableEndings: {

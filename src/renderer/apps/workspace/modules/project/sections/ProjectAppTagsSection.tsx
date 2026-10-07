@@ -38,6 +38,7 @@ import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
 import type { Blueprint } from "@shared/types/blueprint/document";
+import type { UIDocument } from "@shared/types/ui-editor/document";
 import { listScenesInDocumentOrder } from "@shared/types/story";
 import {
     APP_TAG_OVERRIDE_KEYS,
@@ -80,19 +81,27 @@ type AppTagReferenceCount = { total: number; story: number };
 /** One scene a declaration can name. Flat, because a declaration crosses stories. */
 type DeclarableScene = { storyId: string; sceneId: string; label: string };
 
-/** One page a variant can end on. */
-type EndingPage = { id: string; name: string };
+/**
+ * One surface of the project, as the ending picker reads it.
+ *
+ * `page` is false for a game-interface surface - the dialogue box, the choice list, a notice - which
+ * is drawn on the stage while a story plays and is not something a finished story can land on.
+ * Those are kept in the list rather than dropped so a variant that already names one still shows
+ * that name instead of reading as a page that was deleted.
+ */
+type EndingPage = { id: string; name: string; page: boolean };
 
 /** Whether two page lists would render the same picker. */
 function sameSurfaces(a: readonly EndingPage[], b: readonly EndingPage[]): boolean {
-    return a.length === b.length && a.every((page, index) => page.id === b[index].id && page.name === b[index].name);
+    return a.length === b.length && a.every((page, index) =>
+        page.id === b[index].id && page.name === b[index].name && page.page === b[index].page);
 }
 
-/** The pages a variant can name as its ending, as the picker lists them. */
+/** The surfaces a variant's ending can name, as the picker reads them. */
 function readSurfaces(context: WorkspaceContext): EndingPage[] {
     try {
         return (context.services.get<UIDocumentService>(Services.UIDocument).getDocument().surfaces ?? [])
-            .map(surface => ({ id: surface.id, name: surface.name }));
+            .map(surface => ({ id: surface.id, name: surface.name, page: surface.kind === "appSurface" }));
     } catch {
         return [];
     }
@@ -133,7 +142,15 @@ async function loadMechanisms(context: WorkspaceContext): Promise<{
             }))
         : [];
 
-    const mechanisms = listUnreadableMechanisms({ blueprints, plugins });
+    let uiDocument: UIDocument | null = null;
+    try {
+        uiDocument = services.get<UIDocumentService>(Services.UIDocument).getDocument();
+    } catch {
+        // Named by blueprint alone, which is what the list shows without it.
+        uiDocument = null;
+    }
+
+    const mechanisms = listUnreadableMechanisms({ blueprints, plugins, uiDocument });
     if (mechanisms.length === 0) {
         // Nothing to declare, so nothing to read every story document for.
         return { mechanisms, scenes: [], surfaces, buildAxes };
@@ -551,6 +568,7 @@ function TagItem({
                     project's own choice has no field higher up the page to be read from. */}
                 <EndingField
                     tagId={tag.id}
+                    builtin={tag.builtin === true}
                     label={t("project.appTags.ending.title")}
                     surfaceId={ending.value}
                     overridden={ending.overridden}
@@ -827,12 +845,22 @@ function OverrideField({
  * is the project saying its builds end on nothing, which is what every project did before this
  * field existed.
  *
- * A page the project no longer has stays selected and shows as its id. The alternative is a picker
- * that silently reads as "show nothing" for a variant that names a deleted page, which is the one
- * reading an author cannot tell from a page they never picked.
+ * **A variant that states nothing and inherits nothing shows as not chosen**, never as "show
+ * nothing". That state plays like "show nothing", but it is not a decision, and a build of a variant
+ * that cuts the story refuses it for exactly that reason (`variant-ending-missing`). Drawn as the
+ * explicit option, the field would say the question was answered while the build says it was not,
+ * and picking "show nothing" would change nothing on screen. The release row is the project's own
+ * record, where a blank is the project's answer, so it keeps the explicit option.
+ *
+ * Only pages are offered: a game-interface surface is drawn on the stage while a story plays, and a
+ * story that has ended has nothing left for it to sit on. A variant that already names one keeps
+ * showing it by name. A page the project no longer has stays selected and is called a deleted page -
+ * never shown as its id, and never quietly read as "show nothing", which is the one reading an
+ * author could not tell from a page they never picked.
  */
 function EndingField({
     tagId,
+    builtin,
     label,
     surfaceId,
     overridden,
@@ -841,6 +869,8 @@ function EndingField({
     service,
 }: {
     tagId: string;
+    /** The release row, which edits the project's own record. */
+    builtin: boolean;
     label: string;
     surfaceId: string;
     overridden: boolean;
@@ -849,13 +879,17 @@ function EndingField({
     service: AppTagService | null;
 }) {
     const { t } = useTranslation();
+    const unchosen = !builtin && !overridden && !surfaceId;
 
     const options = useMemo<SelectOption[]>(() => {
-        const known = surfaces.map(surface => ({ value: surface.id, label: surface.name }));
-        const missing = surfaceId && !surfaces.some(surface => surface.id === surfaceId)
-            ? [{ value: surfaceId, label: surfaceId }]
-            : [];
-        return [{ value: "", label: t("project.appTags.ending.none") }, ...known, ...missing];
+        const pages = surfaces
+            .filter(surface => surface.page)
+            .map(surface => ({ value: surface.id, label: surface.name }));
+        const current = surfaceId ? surfaces.find(surface => surface.id === surfaceId) : undefined;
+        const kept = !surfaceId || current?.page
+            ? []
+            : [{ value: surfaceId, label: current ? current.name : t("project.appTags.ending.missing") }];
+        return [{ value: "", label: t("project.appTags.ending.none") }, ...pages, ...kept];
     }, [surfaceId, surfaces, t]);
 
     return (
@@ -884,7 +918,10 @@ function EndingField({
                     portalMenu
                     className="min-w-0"
                     options={options}
-                    value={surfaceId}
+                    // No value while unchosen, so the placeholder shows and "show nothing" is a
+                    // change the select reports rather than a re-pick of what it already holds.
+                    value={unchosen ? undefined : surfaceId}
+                    placeholder={t("project.appTags.ending.unset")}
                     disabled={disabled}
                     ariaLabel={label}
                     onChange={value => service?.setEndingSurface(tagId, String(value))}

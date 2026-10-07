@@ -2,6 +2,8 @@ import { useCallback, useRef, useState } from "react";
 import { SELECTABLE_TARGET } from "@/lib/ui-editor/interaction/constants";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { buildCanvasContextMenu } from "@/lib/ui-editor/context-menu/buildCanvasContextMenu";
+import { describeSurfaceInsertRefusal } from "@/lib/ui-editor/context-menu/insertRefusal";
+import { resolveComponentRootSwapMenuEntry } from "@/lib/ui-editor/context-menu/componentRootSwapMenu";
 import {
     resolveCanvasContextSelection,
     shouldApplyCanvasContextRetarget,
@@ -130,6 +132,8 @@ export function useSurfaceCanvasContextMenu(params: {
                 canGroup,
                 canUngroup,
                 allowAddToComponentLibrary: allowAddSelectionToComponentLibrary,
+                insertBlockedReason: describeSurfaceInsertRefusal(doc, surface.id),
+                rootSwap: resolveComponentRootSwapMenuEntry({ document: doc, surfaceId: surface.id, menuSelection: menuSel, documentService, stateService }),
                 actions: {
                     hideMenu,
                     insertType: type => {
@@ -201,19 +205,14 @@ export function useSurfaceCanvasContextMenu(params: {
                         if (!menuSel || menuSel.elementIds.length === 0) {
                             return;
                         }
-                        const primaryId = menuSel.primaryId ?? menuSel.elementIds[0];
-                        const primary = primaryId ? doc.elements[primaryId] : null;
-                        const fallbackName =
-                            menuSel.elementIds.length === 1
-                                ? primary?.name ?? primary?.type ?? "Component"
-                                : "Component";
+                        // No name passed: the service names it after the one element, or with the
+                        // catalog's word for a component when there are several or the one is unnamed.
                         const component = documentService.createComponentFromElements(
                             surface.id,
                             menuSel.elementIds,
-                            fallbackName,
                         );
                         if (component) {
-                            uiService?.showNotification(`Added "${component.name}" to Component Library`, "success");
+                            uiService?.showNotification(translate("uiEditor.contextMenu.addedToComponentLibrary", { name: component.name }), "success");
                         }
                     },
                     arrange: op => {

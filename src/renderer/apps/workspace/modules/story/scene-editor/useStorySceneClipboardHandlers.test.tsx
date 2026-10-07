@@ -43,8 +43,17 @@ function setup(options: {
     sceneId?: string;
     localizationService?: unknown;
     voiceService?: unknown;
+    blueprintService?: unknown;
+    /** The stories a paste may read to learn which blueprints rows still name. */
+    stories?: { id: string; document: unknown }[];
 } = {}) {
-    const storyService = { insertBlocks: vi.fn() };
+    const stories = options.stories ?? [];
+    const storyService = {
+        insertBlocks: vi.fn(),
+        listStories: () => stories.map(story => ({ id: story.id })),
+        getLoadedStoryDocument: (id: string) => stories.find(story => story.id === id)?.document,
+        loadAllStories: () => Promise.resolve(),
+    };
     const frozen = { value: false };
     const showNotification = vi.fn();
     const spies = {
@@ -62,6 +71,7 @@ function setup(options: {
             showConfirm: options.showConfirm ?? (() => Promise.resolve(true)),
             showNotification,
         } as never,
+        blueprintService: (options.blueprintService ?? null) as never,
         assetsService: null,
         fileSystemService: null,
         localizationService: (options.localizationService ?? null) as never,
@@ -689,5 +699,126 @@ describe("pasting while a live session is open", () => {
 
         expect(handlers.storyService.insertBlocks).toHaveBeenCalledTimes(4);
         expect(handlers.showNotification).toHaveBeenCalledTimes(1);
+    });
+});
+
+/**
+ * A row that runs a blueprint, copied and pasted end to end: the copy gets a graph of its own, and a
+ * cut-and-paste moves the row with the graph it had.
+ */
+describe("blueprints travelling with copied rows", () => {
+    const BLUEPRINT_ROW: StoryBlock = {
+        id: "block-1",
+        kind: "action",
+        parentId: null,
+        childrenIds: [],
+        payload: { action: "blueprint", blueprintId: "bp-1" },
+    };
+    const SCENE_WITH_ROW = {
+        id: "scene-1",
+        name: "One",
+        blocks: { "block-1": BLUEPRINT_ROW },
+        rootBlockIds: ["block-1"],
+    } as unknown as StoryScene;
+    const EMPTY_SCENE = { id: "scene-1", name: "One", blocks: {}, rootBlockIds: [] } as unknown as StoryScene;
+
+    function blueprintStub() {
+        const blueprints: Record<string, unknown> = {
+            "bp-1": { id: "bp-1", name: "Story Action", owner: { kind: "storyAction", blueprintId: "bp-1" }, graphs: { events: {}, functions: {} } },
+        };
+        const copied: string[] = [];
+        return {
+            blueprints,
+            copied,
+            service: {
+                getBlueprintDocument: () => ({ blueprints }),
+                copyStoryActionBlueprint: (source: { id: string }) => {
+                    const id = `bp-copy-${copied.length + 1}`;
+                    copied.push(source.id);
+                    blueprints[id] = { ...source, id };
+                    return id;
+                },
+            },
+        };
+    }
+
+    function copyEvent() {
+        const written = new Map<string, string>();
+        return {
+            written,
+            event: {
+                preventDefault: () => undefined,
+                clipboardData: { setData: (mime: string, value: string) => void written.set(mime, value) },
+            } as unknown as ClipboardEvent<HTMLDivElement>,
+        };
+    }
+
+    function blocksPasteEvent(payload: string): ClipboardEvent<HTMLDivElement> {
+        return {
+            target: document.body,
+            preventDefault: () => undefined,
+            nativeEvent: { shiftKey: false },
+            clipboardData: { getData: (mime: string) => (mime === STORY_ACTIONS_MIME ? payload : "") },
+        } as unknown as ClipboardEvent<HTMLDivElement>;
+    }
+
+    function pastedBlueprintId(storyService: { insertBlocks: { mock: { calls: unknown[][] } } }): string {
+        const inserts = storyService.insertBlocks.mock.calls[0][2] as { block: StoryBlock }[];
+        return (inserts[0].block.payload as unknown as { blueprintId: string }).blueprintId;
+    }
+
+    it("gives the pasted copy a blueprint of its own while the original row is still there", async () => {
+        const blueprint = blueprintStub();
+        const handlers = setup({
+            scene: SCENE_WITH_ROW,
+            blueprintService: blueprint.service,
+            stories: [{ id: "story-1", document: { scenes: { "scene-1": SCENE_WITH_ROW } } }],
+        });
+
+        const copied = copyEvent();
+        handlers.result.current.copySelectionToClipboard(copied.event);
+        handlers.result.current.handlePaste(blocksPasteEvent(copied.written.get(STORY_ACTIONS_MIME) ?? ""));
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(blueprint.copied).toEqual(["bp-1"]);
+        expect(pastedBlueprintId(handlers.storyService)).toBe("bp-copy-1");
+    });
+
+    it("moves the row with its blueprint when no row names it any more - a cut and a paste", async () => {
+        const blueprint = blueprintStub();
+        const source = setup({ scene: SCENE_WITH_ROW, blueprintService: blueprint.service });
+        const copied = copyEvent();
+        source.result.current.copySelectionToClipboard(copied.event);
+
+        // The cut took the original row out, so the story the paste reads names the blueprint nowhere.
+        const destination = setup({
+            scene: EMPTY_SCENE,
+            blueprintService: blueprint.service,
+            stories: [{ id: "story-1", document: { scenes: { "scene-1": EMPTY_SCENE } } }],
+        });
+        destination.result.current.handlePaste(blocksPasteEvent(copied.written.get(STORY_ACTIONS_MIME) ?? ""));
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(blueprint.copied).toEqual([]);
+        expect(pastedBlueprintId(destination.storyService)).toBe("bp-1");
+    });
+
+    it("carries the blueprint on the clipboard, and makes the foreign row's copy from it", async () => {
+        const blueprint = blueprintStub();
+        const source = setup({ scene: SCENE_WITH_ROW, blueprintService: blueprint.service });
+        const copied = copyEvent();
+        source.result.current.copySelectionToClipboard(copied.event);
+        const payload = JSON.parse(copied.written.get(STORY_ACTIONS_MIME) ?? "{}") as Record<string, unknown>;
+        expect(Object.keys(payload.blueprints as object)).toEqual(["bp-1"]);
+        payload.source = { path: "D:/projects/elsewhere", identifier: "com.example.elsewhere", name: "Elsewhere" };
+
+        const elsewhere = blueprintStub();
+        delete elsewhere.blueprints["bp-1"];
+        const destination = setup({ scene: EMPTY_SCENE, blueprintService: elsewhere.service });
+        destination.result.current.handlePaste(blocksPasteEvent(JSON.stringify(payload)));
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(elsewhere.copied).toEqual(["bp-1"]);
+        expect(pastedBlueprintId(destination.storyService)).toBe("bp-copy-1");
     });
 });

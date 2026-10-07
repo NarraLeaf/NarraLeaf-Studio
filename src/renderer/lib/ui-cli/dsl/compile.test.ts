@@ -324,8 +324,8 @@ describe("a component's text parameters", () => {
         expect(check('other="x"')).toEqual(["warning ui.param_unknown"]);
     });
 
-    it("refuses a param type that is neither string nor text", () => {
-        expect(() => parseUiFile(COMPONENT.replace("type=text", "type=words"))).toThrow(/string or text/);
+    it("refuses a param type that is not string, text or audioTrack", () => {
+        expect(() => parseUiFile(COMPONENT.replace("type=text", "type=words"))).toThrow(/string, text or audioTrack/);
     });
 });
 

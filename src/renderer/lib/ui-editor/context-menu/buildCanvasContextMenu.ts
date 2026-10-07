@@ -3,6 +3,7 @@ import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEdito
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { buildInsertWidgetSubmenu } from "./insertWidgetMenuItems";
+import { componentRootSwapMenuItem } from "./componentRootSwapMenu";
 import { appendArrangeSubmenu } from "./appendArrangeSubmenu";
 import { appendAlignSubmenu } from "./appendAlignSubmenu";
 import type { BuildCanvasContextMenuInput } from "./types";
@@ -12,7 +13,7 @@ import { translate } from "@/lib/i18n";
 const ROOT = "nl.root";
 
 export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): ContextMenuDef {
-    const { menuSelection, hasClipboard, widgetModules, documentService, actions, canGroup, canUngroup } = input;
+    const { menuSelection, hasClipboard, widgetModules, documentService, actions, canGroup, canUngroup, insertBlockedReason } = input;
     const items: ContextMenuDef = [];
 
     if (hasClipboard) {
@@ -35,6 +36,8 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
             id: "insert",
             label: translate("uiEditor.contextMenu.insert"),
             submenu: insertSubmenu,
+            disabled: insertBlockedReason != null,
+            tooltip: insertBlockedReason ?? undefined,
         });
     }
 
@@ -136,6 +139,8 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
             });
         }
     }
+
+    items.push(...componentRootSwapMenuItem(input.rootSwap, actions.hideMenu));
 
     if (input.allowAddToComponentLibrary !== false) {
         items.push({

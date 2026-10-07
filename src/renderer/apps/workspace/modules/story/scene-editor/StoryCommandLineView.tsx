@@ -5,6 +5,7 @@ import { useWorkspace } from "@/apps/workspace/context";
 import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName";
 import { useHideParamNames } from "@/apps/workspace/hooks/useHideParamNames";
 import { useCommandTranslation } from "@/lib/i18n";
+import { audioTrackDisplayName } from "@shared/types/audioTrack";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Character } from "@/lib/workspace/services/character/Character";
@@ -15,6 +16,7 @@ import { getCommandSegments, type StoryCommandRole } from "./storyCommandHighlig
 import type { StoryCommandContext, StoryCommandSpan } from "./storyCommandValues";
 import { projectStoryCommandLine, type StoryCommandLineEdit, type StoryCommandLineLink, type StoryCommandLineOrnament, type StoryCommandLineProjection } from "./storyCommandLine";
 import { characterRowLookup } from "./storySceneBlockUtils";
+import { useStoryBlueprintNames } from "./useStoryBlueprintNames";
 import { useStoryMotionNames } from "./useStoryMotionNames";
 import type { StoryRowLookups } from "@/lib/story/storyRowProjection";
 
@@ -89,6 +91,11 @@ export type StoryCommandLineContextValue = {
     appTagName?: StoryRowLookups["appTagName"];
     /** The name of a UI page, for the `/quit` row that names one. Same derivation. */
     surfaceName?: StoryRowLookups["surfaceName"];
+    /**
+     * The name a `/blueprint` row's blueprint goes by. Here rather than per row for the reason the
+     * whole context is: one subscription to the blueprint document per editor tab, not one per row.
+     */
+    blueprintName?: StoryRowLookups["blueprintName"];
     /** What a name on a line could refer to — the picker lists for every subject a row names. */
     commandContext?: StoryCommandContext;
 };
@@ -107,9 +114,13 @@ export function StoryCommandLineProvider({ slashAtAlias, commandContext, childre
     children: ReactNode;
 }) {
     const tracks = useProjectAudioTracks();
+    // A seeded track is named in the command language, as the rest of the line is - the same word a
+    // typed line resolves (`buildStoryCommandContext`).
+    const { t: commandT } = useCommandTranslation();
     // Read here rather than threaded from the controller: nothing but the rows below this provider
     // wants it, and this is the one place that already resolves per-tab preferences for all of them.
     const hideParamNames = useHideParamNames();
+    const blueprintName = useStoryBlueprintNames();
     const { context, isInitialized } = useWorkspace();
     const assets = useMemo(
         () => (context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null),
@@ -130,7 +141,10 @@ export function StoryCommandLineProvider({ slashAtAlias, commandContext, childre
         trigger: slashAtAlias ? ALT_ACTION_TRIGGER : ACTION_TRIGGER,
         hideParamNames,
         projectVariableName: (scope, variableId) => projectVariableNames.get(storyVariableRefKey({ scope, variableId })) ?? null,
-        audioTrackName: trackId => tracks.find(track => track.id === trackId)?.name ?? null,
+        audioTrackName: trackId => {
+            const track = tracks.find(entry => entry.id === trackId);
+            return track ? audioTrackDisplayName(track, commandT) : null;
+        },
         // Read through the service on every call rather than off a snapshot: an asset rename does not
         // touch the story document, so nothing here would be told to rebuild a captured table. Asset
         // sets are asked second, because a row may name one and it reads as the set's own name.
@@ -156,8 +170,9 @@ export function StoryCommandLineProvider({ slashAtAlias, commandContext, childre
         appTagName: appTagId => commandContext?.appTags.find(tag => tag.id === appTagId)?.name ?? null,
         // The same reading, for the page a `/quit` row lands on.
         surfaceName: surfaceId => commandContext?.surfaces.find(page => page.id === surfaceId)?.name ?? null,
+        blueprintName,
         commandContext,
-    }), [assets, commandContext, hideParamNames, slashAtAlias, tracks]);
+    }), [assets, blueprintName, commandContext, commandT, hideParamNames, slashAtAlias, tracks]);
     return <StoryCommandLineContext.Provider value={value}>{children}</StoryCommandLineContext.Provider>;
 }
 

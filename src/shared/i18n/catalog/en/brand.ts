@@ -84,6 +84,24 @@ export const brand = {
         },
         preview: "Preview in",
         excluded: "Not used for {language}",
+        /**
+         * The font picker's group of stacks that need no font file. A typeface with a name of its own
+         * (Arial, Georgia) keeps it in every language; a generic stack is a word and is named here.
+         * `kind` is the line under each row's name.
+         */
+        builtin: {
+            group: "Built-in fonts",
+            systemUi: "System UI",
+            sansSerif: "Sans-serif (generic)",
+            serif: "Serif (generic)",
+            monospace: "Monospace (generic)",
+            kind: {
+                system: "System font",
+                sansSerif: "Sans-serif",
+                serif: "Serif",
+                monospace: "Monospace",
+            },
+        },
     },
 
     /** The Brand sub-page itself. Its two headings are `project.group.brand*`. */

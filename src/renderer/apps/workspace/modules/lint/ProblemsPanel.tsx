@@ -221,8 +221,8 @@ export function ProblemsPanel({ panelId = PROBLEMS_PANEL_ID }: Partial<PanelComp
 
     const ruleTitle = useCallback((ruleId: LintRuleId) => t(lintRuleTitleKey(ruleId)), [t]);
     const locationLabel = useCallback(
-        (location: LintLocation) => lintLocationLabel(location, projectName),
-        [projectName],
+        (location: LintLocation) => lintLocationLabel(location, projectName, t),
+        [projectName, t],
     );
 
     const scopedEntries = useMemo(
@@ -247,7 +247,7 @@ export function ProblemsPanel({ panelId = PROBLEMS_PANEL_ID }: Partial<PanelComp
             label,
             line === null ? "" : String(line),
             message,
-            lintEntryExcerpt(entry.location),
+            lintEntryExcerpt(entry.location, t),
             ruleTitle(entry.ruleId),
         ].join("\n");
     }, [t, tn, groupMode, locationLabel, ruleTitle]);
@@ -672,7 +672,7 @@ function ProblemEntryRow({
 }) {
     const { t, tn } = useTranslation();
     const message = t(entry.messageKey, resolveLintMessageParams(entry, t, tn));
-    const excerpt = lintEntryExcerpt(entry.location);
+    const excerpt = lintEntryExcerpt(entry.location, t);
     const { label, line } = lintEntryLocator(entry.location, mode, locationLabel, message);
     const helpTopic = ruleHelpTopic(entry.ruleId);
     const SeverityIcon = SEVERITY_ICON[entry.severity];

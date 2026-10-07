@@ -592,10 +592,18 @@ export function AssetSelector({
         });
     };
 
-    const renderAssetRow = (asset: Asset, level: number) => {
+    /**
+     * `subtitle` replaces the tag line. A caller's own row (a built-in font stack, the project's
+     * default) is not a file anybody tagged, so it prints the description its caller wrote instead -
+     * a blank line when there is none - rather than "No tags" or the bookkeeping ids it carries.
+     */
+    const renderAssetRow = (asset: Asset, level: number, subtitle?: string) => {
         const isSelected = selection.has(asset.id);
         const ItemIcon = ASSET_TYPE_ICONS[asset.type] ?? File;
         const tagLabels = readAssetTags(asset.tags ?? [], assetSetNaming).map(entry => entry.label);
+        const secondLine = subtitle !== undefined
+            ? subtitle || " "
+            : tagLabels.length ? tagLabels.join(", ") : t("assets.noTags");
         return (
             <button
                 key={asset.id}
@@ -613,7 +621,7 @@ export function AssetSelector({
                 <div className="flex-1 min-w-0">
                     <div className="text-sm truncate">{asset.name}</div>
                     <div className="text-2xs text-fg-subtle truncate">
-                        {tagLabels.length ? tagLabels.join(", ") : t("assets.noTags")}
+                        {secondLine}
                     </div>
                 </div>
                 {isSelected && <Check className="w-4 h-4 text-primary flex-shrink-0" />}
@@ -645,7 +653,7 @@ export function AssetSelector({
                             </button>
                             {isExpanded && (
                                 <div className="space-y-1">
-                                    {group.assets.map((asset) => renderAssetRow(asset, 1))}
+                                    {group.assets.map((asset) => renderAssetRow(asset, 1, asset.description ?? ""))}
                                 </div>
                             )}
                         </div>

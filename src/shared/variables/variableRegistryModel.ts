@@ -103,6 +103,30 @@ export function listRegistryEntries(registry: VariableRegistry, scope?: Variable
 }
 
 /**
+ * The name a variable created without one gets: `base` itself while no entry uses it, then `base2`,
+ * `base3` and so on.
+ *
+ * No separator before the number, so the name stays one bare word an expression can read without
+ * quoting (`变量2 + 1`), and it never carries any part of the id: a name is what an author reads on
+ * the panel and types in a line, and a hexadecimal fragment there is an id on the interface.
+ */
+export function nextUnusedVariableName(base: string, takenNames: Iterable<string>): string {
+    const taken = new Set<string>();
+    for (const name of takenNames) {
+        taken.add(name.trim());
+    }
+    if (!taken.has(base)) {
+        return base;
+    }
+    for (let ordinal = 2; ; ordinal += 1) {
+        const candidate = `${base}${ordinal}`;
+        if (!taken.has(candidate)) {
+            return candidate;
+        }
+    }
+}
+
+/**
  * The persistent runtime table baked into a bundle/pack; keyed by entry id (= the node
  * `persistentVariableId`). Filtered by scope, not a plain copy: saved entries share this registry
  * but are backed by the save file, and letting one through here would hand the persistent channel a

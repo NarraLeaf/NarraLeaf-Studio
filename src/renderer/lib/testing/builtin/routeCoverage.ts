@@ -105,6 +105,7 @@ export function createRouteCoverageTest(host: BuiltInTestHost): TestDefinition {
 
             let unreachableScenes = 0;
             let unreachableOptions = 0;
+            let unreachableConditions = 0;
             let unreachableEndings = 0;
 
             for (const [index, story] of analysed.entries()) {
@@ -170,12 +171,22 @@ export function createRouteCoverageTest(host: BuiltInTestHost): TestDefinition {
                     if (!arm || !coverage.reachableSceneIds.has(arm.sceneId)) {
                         continue;
                     }
-                    unreachableOptions += 1;
+                    // An option is the player's to pick and a condition branch is the state's to take, and
+                    // a condition's label is its test, not something on offer: each is worded and
+                    // counted as what it is.
+                    const isOption = arm.kind === "choice";
+                    if (isOption) {
+                        unreachableOptions += 1;
+                    } else {
+                        unreachableConditions += 1;
+                    }
                     ctx.report({
                         severity: "warning",
-                        message: arm.label
-                            ? { key: "test.builtin.routeCoverage.finding.optionUnreachable", params: { option: arm.label } }
-                            : { key: "test.builtin.routeCoverage.finding.branchUnreachable" },
+                        message: !arm.label
+                            ? { key: "test.builtin.routeCoverage.finding.branchUnreachable" }
+                            : isOption
+                                ? { key: "test.builtin.routeCoverage.finding.optionUnreachable", params: { option: arm.label } }
+                                : { key: "test.builtin.routeCoverage.finding.conditionUnreachable", params: { condition: arm.label } },
                         target: rowTarget(story, arm.sceneId, arm.blockId),
                     });
                 }
@@ -203,8 +214,13 @@ export function createRouteCoverageTest(host: BuiltInTestHost): TestDefinition {
             // evidence, and without this it would come back "passed" from a sweep that never ended.
             ctx.signal.throwIfAborted();
 
-            const params = { scenes: unreachableScenes, options: unreachableOptions, endings: unreachableEndings };
-            const total = unreachableScenes + unreachableOptions + unreachableEndings;
+            const params = {
+                scenes: unreachableScenes,
+                options: unreachableOptions,
+                conditions: unreachableConditions,
+                endings: unreachableEndings,
+            };
+            const total = unreachableScenes + unreachableOptions + unreachableConditions + unreachableEndings;
             return total > 0
                 ? { status: "failed", summary: { key: "test.builtin.routeCoverage.summary.failed", params } }
                 : { status: "passed", summary: { key: "test.builtin.routeCoverage.summary.passed", params } };

@@ -274,7 +274,8 @@ function parseComponent(line: SourceLine, tokens: string[], body: SourceLine[]):
         const itemTokens = tokensOf(item.line);
         if (itemTokens[0] === "param") {
             // `param slot "Slot" = "1"` - id, author-facing name, default value - or
-            // `param label "Label" type=text = "Item"` for words a widget inside the component shows.
+            // `param label "Label" type=text = "Item"` for words a widget inside the component shows,
+            // `param track "Track" type=audioTrack = "bgm"` for one of the project's audio tracks.
             const id = readString(itemTokens[1] ?? "", item.line);
             const eq = itemTokens.indexOf("=");
             const head = eq >= 0 ? itemTokens.slice(2, eq) : itemTokens.slice(2);
@@ -285,15 +286,15 @@ function parseComponent(line: SourceLine, tokens: string[], body: SourceLine[]):
                     throw new UiParseError(`a param takes type= and nothing else, got "${key}=".`, item.line.number);
                 }
             }
-            if (flags.type !== undefined && flags.type !== "string" && flags.type !== "text") {
-                throw new UiParseError(`a param's type is string or text, got "${flags.type}".`, item.line.number);
+            if (flags.type !== undefined && flags.type !== "string" && flags.type !== "text" && flags.type !== "audioTrack") {
+                throw new UiParseError(`a param's type is string, text or audioTrack, got "${flags.type}".`, item.line.number);
             }
             const defaultValue = eq >= 0 ? String(readJs(itemTokens[eq + 1] ?? '""', item.line) ?? "") : "";
             statement.params.push({
                 line: item.line.number,
                 id,
                 name: readString(head.find(token => !isFlag(token)) ?? id, item.line),
-                type: flags.type === "text" ? "text" : "string",
+                type: flags.type === "text" || flags.type === "audioTrack" ? flags.type : "string",
                 defaultValue,
             });
             continue;

@@ -80,7 +80,7 @@ export type UiComponentStatement = {
     line: number;
     name: string;
     id?: string;
-    params: { line: number; id: string; name: string; type: "string" | "text"; defaultValue: string }[];
+    params: { line: number; id: string; name: string; type: "string" | "text" | "audioTrack"; defaultValue: string }[];
     previewMeta?: { width: number; height: number };
     root: UiElementNode | null;
 };

@@ -21,7 +21,10 @@ import {
     displayableSubjectWord,
     layerActionTargetRef,
     resolveDisplayableTargetRef,
+    resolveStoryGroupRunMode,
     resolveStoryLayerRef,
+    storyGroupKindOfMode,
+    storyGroupWaits,
     storyVariableRefKey,
 } from "@shared/types/story";
 import { formatStorySecondsLabel, storyMsToSeconds } from "@shared/utils/storyTime";
@@ -143,6 +146,12 @@ export type StoryRowLookups = {
      * Read by the `/quit` row, whose whole content is the page it hands the screen to.
      */
     surfaceName?: (surfaceId: string) => string | null;
+    /**
+     * The name a `/blueprint` row's blueprint goes by - the one its author gave it, or what it does
+     * (`storyBlueprintName`) - or `null` when it has neither. Omit it and the row names only its kind,
+     * as it does for a blueprint not created yet: the payload holds an id and nothing else.
+     */
+    blueprintName?: (blueprintId: string) => string | null;
 };
 
 /**
@@ -316,6 +325,11 @@ export type StoryContainerHeaderInfo = {
      * because the payload does not have one either (`until` present selects the conditional form).
      */
     repeatUntil?: StoryConditionRef;
+    /**
+     * Set to false on a sequence or parallel group the story does not wait for: the rows after it
+     * start together with it. Absent on every other header.
+     */
+    groupWaits?: boolean;
 };
 
 /** Header descriptor for a container block - the pill text + which inline editors it exposes. */
@@ -354,13 +368,18 @@ export function getStoryContainerHeaderInfo(block: StoryBlock): StoryContainerHe
             }
             return { pill: translate("story.containerHeader.repeat"), commandId: "repeat", role: "group", hasCondition: false, repeatTimes: payload.times ?? 1 };
         }
-        if (payload.control === "parallel") {
-            return { pill: translate("story.containerHeader.parallel"), commandId: "parallel", role: "group", hasCondition: false };
+        // Named by how the group runs, which is its `mode` whenever one is stored: a row written as
+        // `/sequence` that holds `mode: "all"` runs its rows side by side, and its header says so.
+        const run = resolveStoryGroupRunMode(payload);
+        const kind = storyGroupKindOfMode(run);
+        const waits = storyGroupWaits(run);
+        if (kind === "parallel") {
+            return { pill: translate("story.containerHeader.parallel"), commandId: "parallel", role: "group", hasCondition: false, ...(waits ? {} : { groupWaits: false }) };
         }
-        if (payload.control === "race") {
+        if (kind === "race") {
             return { pill: translate("story.containerHeader.race"), commandId: "race", role: "group", hasCondition: false };
         }
-        return { pill: translate("story.containerHeader.sequence"), commandId: "sequence", role: "group", hasCondition: false };
+        return { pill: translate("story.containerHeader.sequence"), commandId: "sequence", role: "group", hasCondition: false, ...(waits ? {} : { groupWaits: false }) };
     }
     if (block.kind === "action" && block.payload.action === "nvl") {
         return { pill: translate("story.containerHeader.nvl"), commandId: "nvl", role: "nvl", hasCondition: false };
@@ -847,7 +866,12 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
         if (payload.action === "video") return translate("story.describe.video", { operation: verbWord(payload, payload.operation), name: actionableSubjectWord(scene, payload.target, "video", payload.objectName) || translate("story.describe.unnamed") });
         if (payload.action === "vfx") return translate("story.describe.vfx", { operation: verbWord(payload, payload.operation), name: actionableSubjectWord(scene, payload.target, "vfx", payload.objectName) || translate("story.describe.unnamed") });
         if (payload.action === "nvl") return translate("story.describe.nvl");
-        if (payload.action === "blueprint") return translate("story.describe.blueprint");
+        if (payload.action === "blueprint") {
+            // The blueprint IS the row, as the name is a label's: ten rows reading only "Blueprint"
+            // would leave the author opening each one to find which does what.
+            const name = payload.blueprintId ? lookups.blueprintName?.(payload.blueprintId) : null;
+            return name ? translate("story.describe.blueprintNamed", { name }) : translate("story.describe.blueprint");
+        }
         if (payload.action === "camera") return describeCamera(payload, lookups.motionName);
         if (payload.action === "plugin") {
             return lookups.pluginActionLabel?.(payload.pluginId, payload.actionId, payload.params)
@@ -857,7 +881,10 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
     }
     if (block.kind === "control") {
         if (block.payload.control === "condition") return translate("story.describe.condition");
-        if (block.payload.control === "conditionBranch") return translate("story.describe.branch", { branch: block.payload.branch });
+        // The branch in the header's own words (If / Else if / Else), never the stored enum.
+        if (block.payload.control === "conditionBranch") {
+            return translate("story.describe.branch", { branch: getStoryContainerHeaderInfo(block)?.pill ?? "" });
+        }
         // The name IS the row: a label row saying only "Label" would leave the author counting rows
         // to find which one a goto points at.
         if (block.payload.control === "label") return translate("story.describe.label", { name: block.payload.name || translate("story.describe.unnamed") });
@@ -893,7 +920,9 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
                 ? translate("story.describe.quit", { page })
                 : translate("story.describe.quitUnset");
         }
-        return block.payload.control;
+        // A group reads as its header does - by how it runs - and nothing here prints the stored
+        // `control` word, which is an identifier and not the interface's language.
+        return getStoryContainerHeaderInfo(block)?.pill ?? translate("story.badge.control");
     }
     if (block.kind === "jump") {
         return translate("story.describe.jump", { scene: getStorySceneName(scenes, block.payload.targetSceneId) });

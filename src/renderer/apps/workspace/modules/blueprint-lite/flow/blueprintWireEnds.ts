@@ -16,6 +16,7 @@
 
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
 import type { UseTranslation } from "@/lib/i18n";
+import { BLUEPRINT_SCENE_VARIABLE_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/storyVariableNodes";
 import { resolveBlueprintLabel, resolveBlueprintNodeTitle } from "../blueprintNodeI18n";
 
 type Translate = UseTranslation["t"];
@@ -179,6 +180,10 @@ function readCardDetail(card: BlueprintWireEndCard, t: Translate): string | unde
             return shortDetail(card.persistentVariables?.find(variable => variable.value === raw)?.name);
         case "savedVariableRef":
             return shortDetail(card.savedVariables?.find(variable => variable.value === raw)?.name);
+        case "sceneVariableRef":
+            return shortDetail(
+                card.dynamicSelectOptions?.[BLUEPRINT_SCENE_VARIABLE_OPTIONS_SOURCE]?.find(option => option.value === raw)?.label,
+            );
         default:
             return undefined;
     }

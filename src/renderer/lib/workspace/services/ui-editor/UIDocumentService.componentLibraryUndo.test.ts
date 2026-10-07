@@ -23,7 +23,8 @@ import {
     type UILayout,
 } from "@shared/types/ui-editor/document";
 import { HistoryService } from "../history/HistoryService";
-import { HistoryEntryTag, projectHistoryScope } from "../history/historyScopes";
+import { HistoryEntryTag, projectHistoryScope, uiSurfaceHistoryScope } from "../history/historyScopes";
+import { translate } from "@/lib/i18n";
 import { Services } from "../services";
 import { createMainBlueprint } from "./blueprint/blueprintFactories";
 import { derivedBlueprintId } from "./blueprint/derivedBlueprintId";
@@ -346,15 +347,41 @@ describe("adding to the library", () => {
         expect(h.history.peekUndo(PROJECT)).toEqual({ key: "uiEditor.history.duplicateComponent", params: { name: "Back" } });
     });
 
-    it("takes back a component made from page elements without touching the page", () => {
+    it("takes back a component made from page elements on the page's stack, without touching the page", () => {
         const h = createHarness();
         const page = structuredClone(h.uidoc.getDocument().elements);
         const made = h.uidoc.createComponentFromElements(PAGE, ["pageList"], "List");
         expect(made).not.toBeNull();
+        expect(h.steps()).toMatchObject({ undo: 0 });
 
-        h.history.undo(PROJECT);
+        h.history.undo(uiSurfaceHistoryScope(PAGE));
         expect(h.library()).toEqual(["Save slot", "Back", "Badge"]);
         expect(h.uidoc.getDocument().elements).toEqual(page);
+
+        h.history.redo(uiSurfaceHistoryScope(PAGE));
+        expect(h.library()).toEqual(["Save slot", "Back", "Badge", "List"]);
+    });
+
+    it("is the step Ctrl+Z in the page takes back first, ahead of the page's own last edit", () => {
+        const h = createHarness();
+        h.uidoc.renameElement("pageList", "Moved list");
+        h.uidoc.createComponentFromElements(PAGE, ["backTop", "backBottom"]);
+        expect(h.library()).toHaveLength(4);
+
+        h.history.undo(uiSurfaceHistoryScope(PAGE));
+        expect(h.library()).toEqual(["Save slot", "Back", "Badge"]);
+        expect(h.uidoc.getDocument().elements.pageList.name).toBe("Moved list");
+
+        h.history.undo(uiSurfaceHistoryScope(PAGE));
+        expect(h.uidoc.getDocument().elements.pageList.name).toBe("pageList");
+    });
+
+    it("names a copy of several elements with the catalog's word, and a copy of one after the element", () => {
+        const h = createHarness();
+        const several = h.uidoc.createComponentFromElements(PAGE, ["backTop", "backBottom"]);
+        expect(several?.name).toBe(translate("defaultDoc.componentName"));
+        const one = h.uidoc.createComponentFromElements(PAGE, ["pageList"]);
+        expect(one?.name).toBe("pageList");
     });
 });
 

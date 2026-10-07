@@ -6,7 +6,7 @@ import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { createTranslator } from "@shared/i18n";
 import { i18nStore } from "@/lib/i18n";
 import { Services, type WorkspaceContext } from "../../services";
-import { componentWidgetMainOwnerKey, widgetMainOwnerKey } from "../../ui-editor/blueprint/ownerKeys";
+import { componentWidgetMainOwnerKey, storyActionOwnerKey, widgetMainOwnerKey } from "../../ui-editor/blueprint/ownerKeys";
 
 function blueprintDoc(): BlueprintDocument {
     return {
@@ -436,5 +436,31 @@ describe("blueprintSource.dedupKey", () => {
             { id: "bp:b", group: "blueprint", text: "Image", detail: "Main Menu", target: { kind: "blueprint", blueprintId: "b", ownerKey: "surfaceMain:s" } },
         ];
         expect(dedupSearchEntries(twins, blueprintSource.dedupKey!)).toHaveLength(2);
+    });
+});
+
+describe("story blueprints nobody named", () => {
+    function storyDoc(): BlueprintDocument {
+        const story = (id: string) => ({
+            id,
+            name: "Story Action",
+            owner: { kind: "storyAction", blueprintId: id },
+            graphs: { events: {}, functions: {} },
+        });
+        return {
+            schemaVersion: 1,
+            ownerRecords: { [storyActionOwnerKey("s-1")]: { blueprintId: "s-1" }, [storyActionOwnerKey("s-2")]: { blueprintId: "s-2" } },
+            blueprints: { "s-1": story("s-1"), "s-2": story("s-2") },
+        } as unknown as BlueprintDocument;
+    }
+
+    it("are listed by what they do, so two of them read differently", () => {
+        const entries = extractBlueprintEntries(storyDoc(), {
+            resolveNodeLabel: () => undefined,
+            labels,
+            describeStoryBlueprint: blueprint => (blueprint.id === "s-1" ? "Confirm sound" : "Back sound"),
+        });
+        const titles = entries.filter(entry => entry.group === "blueprint").map(entry => entry.text).sort();
+        expect(titles).toEqual(["Back sound", "Confirm sound"]);
     });
 });

@@ -5,6 +5,7 @@ import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UiEditorArrangeOp } from "@/lib/ui-editor/commands/uiEditorArrange";
 import type { UiEditorAlignOp } from "@/lib/ui-editor/commands/uiEditorAlign";
+import type { ComponentRootSwapMenuEntry } from "./componentRootSwapMenu";
 
 /** User-triggered actions; callers wire to uiEditorCommands + UI state. */
 export type UiEditorContextMenuActions = {
@@ -44,6 +45,10 @@ export type BuildCanvasContextMenuInput = {
     /** At least one selected element is a group that can be dissolved */
     canUngroup: boolean;
     allowAddToComponentLibrary?: boolean;
+    /** Why Insert is greyed out (`describeSurfaceInsertRefusal`), or null when the surface takes new elements. */
+    insertBlockedReason: string | null;
+    /** Set as Root Element or Wrap in Container, in a component's own editor (`resolveComponentRootSwapMenuEntry`). */
+    rootSwap?: ComponentRootSwapMenuEntry | null;
 };
 
 export type BuildOutlineContextMenuInput = {
@@ -67,8 +72,15 @@ export type BuildOutlineContextMenuInput = {
     /** At least one selected element is a group that can be dissolved */
     canUngroup: boolean;
     allowAddToComponentLibrary?: boolean;
-    /** For insert-child submenu on a row */
+    /** The row's nearest parent that takes pasted elements, for Paste into Container. */
     insertParentIdForRow: string | null;
+    /**
+     * Why Insert Child (on a row) or Insert (on the blank area) is greyed out, or null when it is not:
+     * the row itself, or the surface's root, takes no new element (`describeInsertRefusal`).
+     */
+    insertBlockedReason: string | null;
+    /** Set as Root Element or Wrap in Container, in a component's own editor (`resolveComponentRootSwapMenuEntry`). */
+    rootSwap?: ComponentRootSwapMenuEntry | null;
 };
 
 export type BuildOutlineMenuResult = {

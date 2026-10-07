@@ -73,6 +73,13 @@ export type SearchJumpTarget =
      * the line up itself.
      */
     | { kind: "voiceLine"; locale: string; unitId?: string; storyId?: string }
+    /**
+     * A translation table showing its orphans: the translations of one language whose line is no
+     * longer in the game (deleted, or disabled), where they are listed and can be deleted.
+     */
+    | { kind: "translationOrphans"; locale: string }
+    /** A voice table showing its orphans: the takes of one voice language whose line is no longer in the game. */
+    | { kind: "voiceOrphans"; locale: string }
     /** A story motion, open in its own editor. */
     | { kind: "storyMotion"; animationId: string }
     /**

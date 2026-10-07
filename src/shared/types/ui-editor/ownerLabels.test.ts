@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { factoryLayerNameKey, isFactoryStoryBlueprintName } from "./ownerLabels";
+import { blueprintDisplayName, factoryLayerNameKey, factoryStoryBlueprintName, isFactoryStoryBlueprintName } from "./ownerLabels";
 
 describe("factoryLayerNameKey", () => {
     it("shows the layers Studio seeds by the title of the event that starts them", () => {
@@ -19,5 +19,40 @@ describe("isFactoryStoryBlueprintName", () => {
     it("knows the three names a story blueprint is created with", () => {
         expect(isFactoryStoryBlueprintName("Story Condition")).toBe(true);
         expect(isFactoryStoryBlueprintName("Ending check")).toBe(false);
+    });
+});
+
+describe("blueprintDisplayName", () => {
+    const echo = (key: string) => `<${key}>`;
+
+    it("names an unnamed story blueprint as its tab from the story is named, by how the row uses it", () => {
+        expect(blueprintDisplayName({ name: "Story Condition", owner: { kind: "storyAction", blueprintId: "b", mode: "condition" } }, echo))
+            .toBe("<story.condition.title>");
+        expect(blueprintDisplayName({ name: "Story Action", owner: { kind: "storyAction", blueprintId: "b" } }, echo))
+            .toBe("<storyInspector.blueprint.storyActionTitle>");
+        expect(blueprintDisplayName({ name: "Story Value", owner: { kind: "storyAction", blueprintId: "b", mode: "value" } }, echo))
+            .toBe("<story.interpolation.storyValueTitle>");
+    });
+
+    it("keeps a name an author gave, and any blueprint that is not a story's", () => {
+        expect(blueprintDisplayName({ name: "Ending check", owner: { kind: "storyAction", blueprintId: "b", mode: "condition" } }, echo))
+            .toBe("Ending check");
+        expect(blueprintDisplayName({ name: "Story Action", owner: { kind: "globalMain" } }, echo)).toBe("Story Action");
+    });
+
+    it("names an unnamed story blueprint by what it does when the caller can say", () => {
+        const unnamed = { name: "Story Action", owner: { kind: "storyAction" as const, blueprintId: "b" } };
+        expect(blueprintDisplayName(unnamed, echo, "Confirm sound")).toBe("Confirm sound");
+        expect(blueprintDisplayName(unnamed, echo, null)).toBe("<storyInspector.blueprint.storyActionTitle>");
+        // An author's name still wins over what the graph does.
+        expect(blueprintDisplayName({ ...unnamed, name: "Door chime" }, echo, "Confirm sound")).toBe("Door chime");
+    });
+});
+
+describe("factoryStoryBlueprintName", () => {
+    it("is the name each mode is created with, so clearing an author's name goes back to it", () => {
+        expect(isFactoryStoryBlueprintName(factoryStoryBlueprintName(undefined))).toBe(true);
+        expect(factoryStoryBlueprintName("value")).toBe("Story Value");
+        expect(factoryStoryBlueprintName("condition")).toBe("Story Condition");
     });
 });

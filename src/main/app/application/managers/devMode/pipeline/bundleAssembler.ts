@@ -122,6 +122,7 @@ import { BRAND_SCHEMA_VERSION } from "@shared/types/brand";
 import { LOCALIZATION_DOCUMENT_SCHEMA_VERSION, LOCALIZATION_KEYS_SCHEMA_VERSION } from "@shared/types/localization";
 import { SAVE_SCHEMA_VERSION } from "@shared/types/saveSchema";
 import {
+    listStoryEndings,
     STORY_ANIMATION_SCHEMA_VERSION,
     STORY_DOCUMENT_SCHEMA_VERSION,
     STORY_LIBRARY_INDEX_SCHEMA_VERSION,
@@ -261,10 +262,13 @@ async function assembleBundle(context: DevModeBundleLoadContext): Promise<DevMod
     const shippedTextIds = sceneDrop ? collectTextIds(storyLibrary?.documents ?? {}) : null;
     const localization = withoutUITextSampleUnits(
         restrictLocalization(
-            // The scene-name table is attached before the narrowing, not after: it is read as the set
-            // of scenes this build still has, which is exactly what decides whether a `scene:` unit
-            // ships.
-            withSceneNames(gameLocalizationFrom(textSources.files), storyLibrary?.documents),
+            // The scene- and ending-name tables are attached before the narrowing, not after: they are
+            // read as the scenes and endings this build still has, which is exactly what decides
+            // whether a `scene:` or an `ending:` unit ships.
+            withEndingNames(
+                withSceneNames(gameLocalizationFrom(textSources.files), storyLibrary?.documents),
+                storyLibrary?.documents,
+            ),
             shippedTextIds,
             context.onNotice,
         ),
@@ -1626,6 +1630,29 @@ function withSceneNames(
         }
     }
     return { ...bundle, scenes };
+}
+
+/**
+ * Attach the source-language name of every ending the build carries.
+ *
+ * Read through the same scan the compiler and an endings screen use (`listStoryEndings`), so a
+ * disabled `/ending` row - which the build does not produce - has no entry, and neither does an
+ * ending whose scene a variant dropped.
+ */
+function withEndingNames(
+    bundle: GameLocalizationBundle | undefined,
+    documents: Record<string, StoryDocument> | undefined,
+): GameLocalizationBundle | undefined {
+    if (!bundle) {
+        return bundle;
+    }
+    const endings: Record<string, string> = {};
+    for (const document of Object.values(documents ?? {})) {
+        for (const ending of listStoryEndings(document)) {
+            endings[ending.endingId] = ending.name;
+        }
+    }
+    return { ...bundle, endings };
 }
 
 function restrictLocalization(

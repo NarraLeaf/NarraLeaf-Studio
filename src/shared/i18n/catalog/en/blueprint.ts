@@ -164,9 +164,9 @@ export const blueprint = {
         },
         graph: {
             noNodes: "Graph has no nodes yet.",
-            pinMultipleInput: "Pin {node}.{port} has multiple input connections; a pin takes one connection.",
-            pinMultipleOutput: "Pin {node}.{port} has multiple output connections; a pin takes one connection.",
-            entryMissingNode: "Entry points to missing node \"{node}\".",
+            pinMultipleInput: "Pin \"{pin}\" has multiple input connections; a pin takes one connection.",
+            pinMultipleOutput: "Pin \"{pin}\" has multiple output connections; a pin takes one connection.",
+            entryMissingNode: "The entry points to a node that does not exist.",
             entryInvalid: "Function entry not found.",
         },
         event: {
@@ -179,21 +179,21 @@ export const blueprint = {
         },
         edge: {
             selfConnection: "Node \"{node}\" cannot connect to itself.",
-            fromUnknown: "Missing source node \"{node}\".",
-            toUnknown: "Missing target node \"{node}\".",
+            fromUnknown: "A wire starts at a node that does not exist.",
+            toUnknown: "A wire ends at a node that does not exist.",
             portMismatch: "Pin mismatch on {from} → {to}.",
             connectionInvalid: "Invalid connection {from} -> {to}.{detail}",
             connectionTypeDetail: " Type mismatch: {from} -> {to}.",
         },
         node: {
-            contextInvalid: "Node \"{name}\" is not allowed in this {ownerKind} {graphKind} graph.{hint}",
+            contextInvalid: "Node \"{name}\" is not allowed in {owner}.{hint}",
             contextValueReturnHint: " Return Value only belongs in Blueprint Value graphs.",
             contextListItemHint: " It reads the list row it runs for, and nothing here draws one.",
-            noRuntime: "Node \"{node}\": no runtime for type \"{type}\".",
+            noRuntime: "Node \"{node}\" has no runtime.",
             inputMissing: "\"{node}\" has nothing connected to \"{pin}\".",
             stepLimit: "\"{head}\" stopped at \"{node}\" after {steps} steps without a wait.",
             stepLimitGlobal: "\"{head}\" in App logic stopped at \"{node}\" after {steps} steps without a wait.",
-            unknownType: "Node \"{node}\": unknown type \"{type}\". Its plugin may be uninstalled or disabled.",
+            unknownType: "Unknown node type \"{type}\". Its plugin may be uninstalled or disabled.",
             variableIdInvalid: "Node \"{node}\": pick a variable.",
             persistentVariableIdInvalid: "Node \"{node}\": pick a persistent variable.",
             savedVariableIdInvalid: "Node \"{node}\": pick a saved variable.",
@@ -204,11 +204,11 @@ export const blueprint = {
             pageParamMissing: "\"{node}\": the page does not declare this param.",
         },
         fn: {
-            nameMissing: "Fn \"{node}\": set a function name.",
+            nameMissing: "\"{node}\": set a function name.",
             duplicateName: "Fn name \"{name}\" is used by another function in scope.",
             returnOrphan: "Fn Return must be reachable from a Fn head.",
             returnMultipleHeads: "Fn Return is reachable from multiple Fn heads.",
-            returnSignatureConflict: "Fn Return \"{node}\" declares different results than the first Return of this fn.",
+            returnSignatureConflict: "\"{node}\" declares different results than the first Return of this fn.",
             callUnset: "Node \"{node}\": pick a function.",
             callTargetNotFound: "Fn \"{name}\" does not exist in this scope.",
             callSignatureStale: "Function signature changed; re-select \"{name}\" to update its pins.",
@@ -510,6 +510,9 @@ export const blueprint = {
         removeOutput: "Remove output pin",
         jsonFieldName: "JSON object field name",
         readsRow: "Current row",
+        /** The name a parameter or a result added to a Fn card starts with, before the author renames it. */
+        newParamName: "param{n}",
+        newResultName: "result{n}",
     },
     comment: {
         color: {

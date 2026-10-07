@@ -96,6 +96,9 @@ export const properties = {
         type: "Type",
         typeString: "String",
         typeText: "Text",
+        typeAudioTrack: "Audio track",
+        trackMissing: "Missing track",
+        trackNone: "No track",
         bindLabel: "Parameter",
         bindNone: "No parameter",
         bindMissing: "Missing parameter",
@@ -208,6 +211,8 @@ export const properties = {
         unknown: "Usage could not be determined",
         unknownDetail: "{location} could not be read",
         unknownComputed: "{location} picks its asset by a name assembled at run time",
+        /** Project -> Design: the font stack a reference or an unreadable document is placed in. */
+        defaultFonts: "Default fonts",
         count: {
             one: "{count} reference",
             other: "{count} references",

@@ -1138,6 +1138,9 @@ export const story = {
         pip: "Picture-in-picture",
         selectRow: "Select a story row to preview its stage state.",
         failed: "Preview failed",
+        settleTimeout: "The stage did not finish setting up in time.",
+        gameUiBlueprintError: "Game UI blueprint error: {message}",
+        previousSessionError: "Previous preview session: {message}",
         playFromHere: "Play from here",
         restart: "Restart",
         stop: "Stop playback",
@@ -1482,6 +1485,7 @@ export const story = {
         parallel: "Parallel",
         race: "Race, first to finish",
         sequence: "In order",
+        noWait: "Doesn't wait",
         nvl: "NVL",
         menu: "Menu",
         option: "Option",
@@ -1568,6 +1572,7 @@ export const story = {
         vfx: "{operation} ambience {name}",
         nvl: "NVL block",
         blueprint: "Blueprint",
+        blueprintNamed: "Blueprint {name}",
         // A plugin marker row whose plugin is not loaded, so there is no registration to read a
         // label out of. Deliberately generic: the only other thing the row holds is the plugin id,
         // and an id is not a name.

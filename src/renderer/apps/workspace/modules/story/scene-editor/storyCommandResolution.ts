@@ -68,7 +68,8 @@ export { EMPTY_STORY_COMMAND_CONTEXT, EMPTY_STORY_COMMAND_STAGE_OBJECTS, EMPTY_S
  */
 function findByName(entries: readonly StoryCommandNamedRef[], raw: string): StoryCommandNamedRef | "ambiguous" | null {
     const needle = raw.trim().toLowerCase();
-    const matches = entries.filter(entry => entry.name.trim().toLowerCase() === needle);
+    const matches = entries.filter(entry => entry.name.trim().toLowerCase() === needle
+        || (entry.aliases ?? []).some(alias => alias.trim().toLowerCase() === needle));
     if (matches.length === 0) {
         return null;
     }

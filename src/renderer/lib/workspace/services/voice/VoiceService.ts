@@ -366,6 +366,27 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
     }
 
     /**
+     * Unlink several takes of one voice language at once - its orphans, whose lines are gone.
+     *
+     * One operation for the lot, as an import is, so a session carries it as one gesture rather than
+     * one per take. The audio assets stay in the library: this removes the links, not the files.
+     * Ids with no take are skipped; nothing at all is a no-op.
+     */
+    public removeUnits(locale: string, unitIds: readonly string[]): void {
+        const document = this.requireLoadedDocument(locale);
+        const entries = [...new Set(unitIds)]
+            .filter(unitId => document.units[unitId])
+            .map(unitId => ({ unitId, unit: null }));
+        if (entries.length === 0) {
+            return;
+        }
+        if (this.opSink?.handle({ op: "set-takes", locale, units: entries })) {
+            return;
+        }
+        this.writeUnits(locale, document, entries);
+    }
+
+    /**
      * File takes under unit ids this project has just minted - what a line carries with it when a
      * copy or a paste renames it (see `storyVoiceTransfer`).
      *

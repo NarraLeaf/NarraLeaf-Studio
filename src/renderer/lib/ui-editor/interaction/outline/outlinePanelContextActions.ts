@@ -19,6 +19,7 @@ import type { UIEditorStateService } from "@services/ui-editor/UIEditorStateServ
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
+import { translate } from "@/lib/i18n";
 
 const ROOT_WIDGET_TYPE = "nl.root";
 
@@ -137,15 +138,11 @@ export function createOutlinePanelMenuActions(params: {
             if (!menuSel || menuSel.elementIds.length === 0) {
                 return;
             }
-            const primaryId = menuSel.primaryId ?? menuSel.elementIds[0];
-            const primary = primaryId ? doc.elements[primaryId] : null;
-            const fallbackName =
-                menuSel.elementIds.length === 1
-                    ? primary?.name ?? primary?.type ?? "Component"
-                    : "Component";
-            const component = documentService.createComponentFromElements(surfaceId, menuSel.elementIds, fallbackName);
+            // No name passed: the service names it after the one element, or with the catalog's word
+            // for a component when there are several or the one is unnamed.
+            const component = documentService.createComponentFromElements(surfaceId, menuSel.elementIds);
             if (component) {
-                uiService?.showNotification(`Added "${component.name}" to Component Library`, "success");
+                uiService?.showNotification(translate("uiEditor.contextMenu.addedToComponentLibrary", { name: component.name }), "success");
             }
         },
         expandAllBranches: () => {

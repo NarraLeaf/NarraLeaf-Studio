@@ -7,13 +7,14 @@ export function createVoiceEditorTab(
     locale: string,
     title: string,
     reveal?: VoiceEditorTabPayload["reveal"],
+    orphans?: VoiceEditorTabPayload["orphans"],
 ): EditorTabDefinition<VoiceEditorTabPayload> {
     return {
         id: getVoiceEditorTabId(locale),
         title,
         icon: <Mic className="h-4 w-4" />,
         component: VoiceEditorTab,
-        payload: reveal ? { locale, reveal } : { locale },
+        payload: { locale, ...(reveal ? { reveal } : {}), ...(orphans ? { orphans } : {}) },
         closable: true,
         modified: false,
     };

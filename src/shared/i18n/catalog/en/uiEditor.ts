@@ -80,6 +80,8 @@ export const uiEditor = {
     history: {
         moveSurface: "move interface {name}",
         setEntryPage: "set entry page {name}",
+        setRootElement: "set root element {name}",
+        wrapRoot: "wrap {name} in a container",
         createComponent: "create component {name}",
         duplicateComponent: "duplicate component {name}",
         duplicateComponents: "duplicate {count} components",
@@ -194,6 +196,11 @@ export const uiEditor = {
     canvas: {
         unknownWidget: "Unknown widget",
         widgetRenderFailed: "Widget failed to draw",
+        // Drawn where a placed component cannot be, on the canvas and in a running game alike; in a
+        // game they follow the game's language (`usePlayerWords`).
+        componentMissing: "Missing component",
+        componentLoopBlocked: "Component loop blocked",
+        componentRootMissing: "Component root missing",
         wordsFromRowField: "These words come from the list row field “{field}”.",
         wordsFromBlueprintValue: "These words come from the blueprint value “{name}”.",
         wordsFromComponentParam: "These words come from the component parameter “{param}”, set on each placement.",
@@ -256,6 +263,14 @@ export const uiEditor = {
         showSelected: "Show selected",
         hideSelected: "Hide selected",
         addToComponentLibrary: "Add to Component Library",
+        setAsRoot: "Set as root element",
+        wrapRootInContainer: "Wrap in container",
+        setAsRootNotContainer: "Available when the root element is a container",
+        setAsRootNotAlone: "Available when this is the only element in the root container",
+        setAsRootNotFree: "Available when the root container's child layout is Free",
+        addedToComponentLibrary: "Added “{name}” to the Component Library.",
+        cannotHoldChildren: "{name} cannot contain child elements",
+        linkedInstanceContents: "The contents of a linked instance are edited in its component",
         group: "Group",
         ungroup: "Ungroup",
         addState: "Add state",
