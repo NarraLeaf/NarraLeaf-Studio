@@ -16,6 +16,7 @@ import { getCommandSegments, type StoryCommandRole } from "./storyCommandHighlig
 import type { StoryCommandContext, StoryCommandSpan } from "./storyCommandValues";
 import { projectStoryCommandLine, type StoryCommandLineEdit, type StoryCommandLineLink, type StoryCommandLineOrnament, type StoryCommandLineProjection } from "./storyCommandLine";
 import { characterRowLookup } from "./storySceneBlockUtils";
+import { useStoryBlueprintNames } from "./useStoryBlueprintNames";
 import { useStoryMotionNames } from "./useStoryMotionNames";
 import type { StoryRowLookups } from "@/lib/story/storyRowProjection";
 
@@ -90,6 +91,11 @@ export type StoryCommandLineContextValue = {
     appTagName?: StoryRowLookups["appTagName"];
     /** The name of a UI page, for the `/quit` row that names one. Same derivation. */
     surfaceName?: StoryRowLookups["surfaceName"];
+    /**
+     * The name a `/blueprint` row's blueprint goes by. Here rather than per row for the reason the
+     * whole context is: one subscription to the blueprint document per editor tab, not one per row.
+     */
+    blueprintName?: StoryRowLookups["blueprintName"];
     /** What a name on a line could refer to — the picker lists for every subject a row names. */
     commandContext?: StoryCommandContext;
 };
@@ -114,6 +120,7 @@ export function StoryCommandLineProvider({ slashAtAlias, commandContext, childre
     // Read here rather than threaded from the controller: nothing but the rows below this provider
     // wants it, and this is the one place that already resolves per-tab preferences for all of them.
     const hideParamNames = useHideParamNames();
+    const blueprintName = useStoryBlueprintNames();
     const { context, isInitialized } = useWorkspace();
     const assets = useMemo(
         () => (context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null),
@@ -163,8 +170,9 @@ export function StoryCommandLineProvider({ slashAtAlias, commandContext, childre
         appTagName: appTagId => commandContext?.appTags.find(tag => tag.id === appTagId)?.name ?? null,
         // The same reading, for the page a `/quit` row lands on.
         surfaceName: surfaceId => commandContext?.surfaces.find(page => page.id === surfaceId)?.name ?? null,
+        blueprintName,
         commandContext,
-    }), [assets, commandContext, commandT, hideParamNames, slashAtAlias, tracks]);
+    }), [assets, blueprintName, commandContext, commandT, hideParamNames, slashAtAlias, tracks]);
     return <StoryCommandLineContext.Provider value={value}>{children}</StoryCommandLineContext.Provider>;
 }
 

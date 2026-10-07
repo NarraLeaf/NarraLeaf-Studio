@@ -2031,9 +2031,13 @@ function normalizeBlueprintGameNotifications(value: unknown): BlueprintGameNotif
  */
 export type BlueprintStoryEnding = {
     endingId: string;
+    /** The ending's name in the game's language, falling back to the words the row is written with. */
     name: string;
     sceneId: string;
-    /** The scene the ending row sits in, so a row can be grouped or captioned without a lookup. */
+    /**
+     * The scene the ending row sits in, so a row can be grouped or captioned without a lookup. In the
+     * game's language, like the name.
+     */
     sceneName: string;
     isReached: boolean;
 };
@@ -2054,7 +2058,10 @@ export type BlueprintGameHistoryEntry = {
     type: "say" | "menu";
     /** Sentence text (say) or the menu prompt (menu); empty string when the source had none. */
     text: string;
-    /** Speaker nametag for a say entry; null for menu entries or narration. */
+    /**
+     * Speaker nametag for a say entry, in the game's language as the name plate shows it; null for menu
+     * entries or narration.
+     */
     character: string | null;
     /**
      * The speaker's dialog avatar, as the project declares it; null for narration, a menu row, and a

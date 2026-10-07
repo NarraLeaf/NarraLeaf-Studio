@@ -97,6 +97,7 @@ import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { useAssetFieldNotice } from "@/lib/workspace/hooks/useAssetFieldNotice";
 import type { StoryRowLookups } from "@/lib/story/storyRowProjection";
 import { describeBlockSubject, getBlockBadgeInfo } from "./storySceneBlockUtils";
+import { useStoryBlueprintNames } from "./useStoryBlueprintNames";
 import { useStoryMotionNames } from "./useStoryMotionNames";
 import { useStoryVoiceState } from "./useStoryVoiceState";
 import { CharacterAppearancePicker } from "./CharacterAppearancePicker";
@@ -106,6 +107,8 @@ import { StoryLayerField } from "./StoryLayerField";
 import { MotionField } from "../../story-motion";
 import { PuppetPreview } from "@/apps/workspace/modules/characters/editors/components/PuppetPreview";
 import { BeyondStoryDocumentClamp, StoryDocumentClamp } from "./storyInspectorFreeze";
+import { useBlueprintDocumentRevision } from "@/apps/workspace/modules/blueprint-lite/hooks/useBlueprintDocumentRevision";
+import { isFactoryStoryBlueprintName } from "@shared/types/ui-editor/ownerLabels";
 import {
     puppetDescribeStatusKey,
     puppetDescriptionRequestFor,
@@ -584,6 +587,7 @@ export function ActionInspector(props: {
         [context],
     );
     const resolveMotionName = useStoryMotionNames();
+    const blueprintName = useStoryBlueprintNames();
     const variableOptions = useStoryVariableOptions(props.document, props.sceneId);
     const subject = describeBlockSubject(
         block,
@@ -593,6 +597,7 @@ export function ActionInspector(props: {
         props.document.scenes,
         resolveMotionName,
         projectVariableNameOf(variableOptions),
+        blueprintName,
     );
     /**
      * The read-only clamp for a frozen workspace, and why it is a `<fieldset>` rather than a
@@ -894,6 +899,18 @@ function StoryActionBlueprintEditor(props: {
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const openBlueprint = useOpenBlueprintTarget();
+    // The name the row reads as. Empty while the blueprint keeps the name it was created with, and
+    // then the field shows what the row says instead - what the blueprint does - as its placeholder.
+    const revision = useBlueprintDocumentRevision();
+    const blueprintName = useStoryBlueprintNames();
+    const storedName = useMemo(() => {
+        if (!context || !isInitialized || !props.payload.blueprintId) return "";
+        const blueprint = context.services.get<LocalBlueprintService>(Services.LocalBlueprint)
+            .getBlueprintDocument().blueprints[props.payload.blueprintId];
+        return blueprint && !isFactoryStoryBlueprintName(blueprint.name) ? blueprint.name : "";
+        // `revision` is the document changing under the same service.
+    }, [context, isInitialized, props.payload.blueprintId, revision]);
+    const derivedName = !storedName && props.payload.blueprintId ? blueprintName?.(props.payload.blueprintId) ?? undefined : undefined;
     const handleOpen = useCallback((options?: BlueprintOpenOptions) => {
         if (!context || !isInitialized) return;
         const service = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
@@ -902,10 +919,38 @@ function StoryActionBlueprintEditor(props: {
             blueprintId = service.ensureStoryActionBlueprint();
             props.onChange({ ...props.payload, blueprintId });
         }
-        openBlueprint({ blueprintId, ownerKind: "storyAction", title: t("storyInspector.blueprint.storyActionTitle") }, options);
-    }, [context, isInitialized, openBlueprint, props, t]);
+        // The tab is named as the row reads, as Quick Open and search name it - so two rows' graphs
+        // open in two tabs that say which is which.
+        const title = storedName || derivedName || t("storyInspector.blueprint.storyActionTitle");
+        openBlueprint({ blueprintId, ownerKind: "storyAction", title }, options);
+    }, [context, derivedName, isInitialized, openBlueprint, props, storedName, t]);
+    const handleName = useCallback((name: string) => {
+        if (!context || !isInitialized) return;
+        const service = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        if (!props.payload.blueprintId) {
+            // A name for a row with no blueprint yet makes the blueprint, under that name - the way
+            // opening the card makes one.
+            if (!name.trim()) return;
+            const blueprintId = service.ensureStoryActionBlueprint({ displayName: name });
+            props.onChange({ ...props.payload, blueprintId });
+            return;
+        }
+        service.setStoryBlueprintName(props.payload.blueprintId, name);
+    }, [context, isInitialized, props]);
     return (
         <Section title={t("storyInspector.section.blueprint")}>
+            {/* The name lives in the blueprint document, not in this story's, so a freeze that
+                leaves the story writable still leaves it read-only. */}
+            <BeyondStoryDocumentClamp>
+                <div className="mb-2 max-w-sm">
+                    <TextField
+                        label={t("storyInspector.blueprint.name")}
+                        value={storedName}
+                        placeholder={derivedName}
+                        onChange={handleName}
+                    />
+                </div>
+            </BeyondStoryDocumentClamp>
             <StoryActionBlueprintPreviewCard
                 blueprintId={props.payload.blueprintId}
                 onOpen={handleOpen}

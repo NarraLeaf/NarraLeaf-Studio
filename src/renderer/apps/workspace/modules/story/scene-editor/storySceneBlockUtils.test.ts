@@ -498,6 +498,12 @@ describe("planRowBackspaceReplacement", () => {
         expect(planRowBackspaceReplacement(scene([condition, branch], ["c"]), ["b"])).toBeNull();
     });
 
+    it("plans the replacement inside an NVL row, whose body is lines", () => {
+        const nvl: StoryBlock = { id: "nvl", kind: "action", parentId: null, childrenIds: ["a1"], payload: { action: "nvl" } };
+        expect(planRowBackspaceReplacement(scene([nvl, showRow("a1", "nvl")], ["nvl"]), ["a1"]))
+            .toEqual({ replaceBlockId: "a1", target: { parentId: "nvl", beforeBlockId: "a1" } });
+    });
+
     it("declines a row that is gone", () => {
         expect(planRowBackspaceReplacement(scene([], []), ["missing"])).toBeNull();
     });

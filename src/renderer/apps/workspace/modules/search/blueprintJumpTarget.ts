@@ -6,6 +6,8 @@ import type { SearchJumpTarget } from "@/lib/workspace/services/search/searchInd
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import type { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
+import { workspaceStoryBlueprintSummary } from "@/lib/story/storyBlueprintSummary";
 import type { BlueprintEditorOpenTarget } from "@/lib/workspace/services/ui-editor/blueprint/navigationTargets";
 import { getBlueprintEntryTabId } from "../blueprint-lite/blueprintEntryTabId";
 import { getComponentEditorSurfaceId } from "../ui-editor/editors/componentEditorAdapter";
@@ -82,11 +84,20 @@ function blueprintTabTitle(context: WorkspaceContext, tabId: string, blueprintId
         return open.title;
     }
     try {
-        const blueprint = context.services
-            .get<LocalBlueprintService>(Services.LocalBlueprint)
-            .getBlueprintDocument()
-            .blueprints[blueprintId];
-        return (blueprint && blueprintDisplayName(blueprint, translate)) || undefined;
+        const document = context.services.get<LocalBlueprintService>(Services.LocalBlueprint).getBlueprintDocument();
+        const blueprint = document.blueprints[blueprintId];
+        if (!blueprint) {
+            return undefined;
+        }
+        // Named as Quick Open lists it: a story blueprint nobody named by what it does.
+        const whatItDoes = blueprint.owner?.kind === "storyAction"
+            ? workspaceStoryBlueprintSummary(
+                document,
+                context.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog),
+                translate,
+            )(blueprint)
+            : null;
+        return blueprintDisplayName(blueprint, translate, whatItDoes) || undefined;
     } catch {
         // No blueprint document yet: the tab factory's generic name is the honest one.
         return undefined;

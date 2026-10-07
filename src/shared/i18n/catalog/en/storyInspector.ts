@@ -475,6 +475,7 @@ export const storyInspector = {
 
     blueprint: {
         storyActionTitle: "Story Action",
+        name: "Blueprint name",
     },
 
     audio: {

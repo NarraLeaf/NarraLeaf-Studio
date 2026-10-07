@@ -18,6 +18,7 @@ import {
     buildTranslationExchangeRows,
     extractCharacterTranslationRows,
     extractKeyTranslationRows,
+    extractEndingTranslationRows,
     extractSceneTranslationRows,
     extractUiTranslationRows,
     type TranslatableUnitContext,
@@ -74,7 +75,7 @@ function readBlueprintDocument(uiDocumentService: UIDocumentService | null): Blu
 
 /**
  * Every translatable unit of the project, with the context a translator needs: character names, scene
- * names and story lines (narrative order), widgets' own words, plugins' words, and named keys.
+ * names, ending names and story lines (narrative order), widgets' own words, plugins' words, and named keys.
  *
  * What both the panel's progress and an exported file count, so the two always agree.
  */
@@ -101,6 +102,14 @@ export async function collectTranslatableUnits(sources: TranslatableUnitSources)
                     unitId: row.unitId,
                     sourceText: row.sourceText,
                     context: document.name || row.sourceText,
+                });
+            }
+            for (const row of extractEndingTranslationRows(document)) {
+                // The scene the ending is reached in, the way a line is placed by its scene.
+                collected.push({
+                    unitId: row.unitId,
+                    sourceText: row.sourceText,
+                    context: row.sceneName || document.name || row.sourceText,
                 });
             }
             for (const row of localizationService.extractRows(document)) {

@@ -1,4 +1,4 @@
-import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { i18nStore, translate } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
@@ -14,6 +14,7 @@ import { blueprintDisplayName, factoryLayerNameKey } from "@shared/types/ui-edit
 import { anchorComponentId, anchorElementId, anchorSurfaceId, blueprintAnchor } from "@shared/blueprint/ownerShape";
 import type { SearchIndexEntry } from "../searchIndexModel";
 import type { SearchSource } from "../searchSource";
+import { workspaceStoryBlueprintSummary } from "@/lib/story/storyBlueprintSummary";
 
 /** Longest literal kept from a node's params; anything longer is a payload, not a name. */
 const MAX_NODE_LITERAL_LENGTH = 80;
@@ -119,6 +120,11 @@ export interface BlueprintExtractionOptions {
      */
     registryVariables?: VariableRegistryEntry[];
     labels: BlueprintEntryLabels;
+    /**
+     * What a story blueprint nobody named does (`summarizeStoryBlueprint`), so it is listed under the
+     * words its row reads as rather than as one more copy of its kind. Absent, it is listed by kind.
+     */
+    describeStoryBlueprint?: (blueprint: Blueprint) => string | null;
 }
 
 /** The dedup key of a node row: exactly the two strings the row puts on screen. */
@@ -190,8 +196,11 @@ export function extractBlueprintEntries(
         }
         const ownerLabel = resolveOwnerLabel?.(ownerKey);
         // As Quick Open and the blueprint's tab name it: a story blueprint nobody has named reads as
-        // its kind in the interface language, not as the English placeholder it was stored with.
-        const blueprintName = blueprint.name ? blueprintDisplayName(blueprint, translate) : "";
+        // what it does, or else as its kind, in the interface language - never as the English
+        // placeholder it was stored with.
+        const blueprintName = blueprint.name
+            ? blueprintDisplayName(blueprint, translate, options.describeStoryBlueprint?.(blueprint))
+            : "";
 
         if (blueprintName) {
             entries.push({
@@ -362,7 +371,8 @@ export const blueprintSource: SearchSource = {
             }
             return catalogNames.get(type);
         };
-        return extractBlueprintEntries(blueprintService.getBlueprintDocument(), {
+        const document = blueprintService.getBlueprintDocument();
+        return extractBlueprintEntries(document, {
             // Translated by the map the node cards are drawn with, so a row names a node the way the
             // canvas does. It is read at extraction time, which is why `watch` rebuilds the slice when
             // the interface language changes.
@@ -373,6 +383,7 @@ export const blueprintSource: SearchSource = {
             resolveNodeAlias: catalogName,
             resolveOwnerLabel: ownerKey => resolveBlueprintOwnerLabel(ctx, ownerKey),
             registryVariables: [...blueprintService.listPersistentVariables(), ...blueprintService.listSavedVariables()],
+            describeStoryBlueprint: workspaceStoryBlueprintSummary(document, catalog, translate),
             labels: {
                 unnamedEvent: translate("blueprint.memberTree.unnamedEvent" as TranslationKey),
                 unnamedFunction: translate("blueprint.memberTree.unnamedFunction" as TranslationKey),

@@ -456,6 +456,7 @@ export const storyInspector = {
 
     blueprint: {
         storyActionTitle: "ストーリーアクション",
+        name: "ブループリント名",
     },
 
     audio: {

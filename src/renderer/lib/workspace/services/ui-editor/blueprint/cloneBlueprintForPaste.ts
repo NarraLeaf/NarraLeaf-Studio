@@ -88,6 +88,33 @@ function remapGraphElementRefs(
     }
 }
 
+/**
+ * Deep-clone a story blueprint - the graph behind one story row, one branch condition or one inline
+ * value - under a new id, for the copy of that row.
+ *
+ * A story blueprint's owner IS its id (`{ kind: "storyAction", blueprintId }`), and the graph names
+ * that id too wherever it calls one of its own functions (`fn:<blueprint id>:<head>`). Every one of
+ * those is renamed, by renaming the id wherever it appears: story blueprint ids are UUIDs, so the
+ * text cannot stand for anything else. A call left naming the source would run the source's
+ * function, which is the very sharing the copy exists to end.
+ *
+ * Null for anything that is not a story blueprint: the other owners have a place in the interface
+ * document, and copying them is the interface editor's paste.
+ */
+export function cloneStoryActionBlueprintForPaste(source: Blueprint, newBlueprintId: string): Blueprint | null {
+    if (source.owner?.kind !== "storyAction" || !source.id || !newBlueprintId) {
+        return null;
+    }
+    const cloned = JSON.parse(JSON.stringify(source).split(source.id).join(newBlueprintId)) as Blueprint;
+    cloned.id = newBlueprintId;
+    cloned.owner = {
+        kind: "storyAction",
+        blueprintId: newBlueprintId,
+        ...(source.owner.mode ? { mode: source.owner.mode } : {}),
+    };
+    return cloned;
+}
+
 export function cloneWidgetValueBlueprintForPaste(input: {
     source: Blueprint;
     newBlueprintId: string;

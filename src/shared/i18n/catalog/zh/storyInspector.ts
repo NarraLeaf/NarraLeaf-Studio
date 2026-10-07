@@ -416,6 +416,7 @@ export const storyInspector = {
     },
     blueprint: {
         storyActionTitle: "故事动作",
+        name: "蓝图名称",
     },
     audio: {
         track: "音轨",

@@ -111,6 +111,19 @@ describe("storyRowSentence — the sentence the editor shows", () => {
             .toBe("Motion");
     });
 
+    it("names a blueprint row by its blueprint, and only by its kind when there is nothing to say", () => {
+        const row = (blueprintId: string) => action({ action: "blueprint", blueprintId });
+        const lookups: StoryRowLookups = { ...bare, blueprintName: id => ({ a: "Confirm sound", b: "Back sound" } as Record<string, string>)[id] ?? null };
+        expect(describeStoryBlock(row("a"), lookups)).toBe("Blueprint Confirm sound");
+        expect(describeStoryBlock(row("b"), lookups)).toBe("Blueprint Back sound");
+        expect(describeStoryBlock(row("c"), lookups)).toBe("Blueprint");
+        // No blueprint yet, or no table to ask: the kind, never the id.
+        expect(describeStoryBlock(row(""), lookups)).toBe("Blueprint");
+        expect(describeStoryBlock(row("a"), bare)).toBe("Blueprint");
+        i18nStore.setLocale("zh");
+        expect(describeStoryBlock(row("a"), lookups)).toBe("蓝图 Confirm sound");
+    });
+
     it("falls back to the id when the caller has no asset table, and says so when the table misses", () => {
         const block = action({ action: "setBackground", assetId: "asset-1" });
         expect(storyRowSentence(block, bare)).toBe("Set background asset-1");
