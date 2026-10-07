@@ -2031,9 +2031,13 @@ function normalizeBlueprintGameNotifications(value: unknown): BlueprintGameNotif
  */
 export type BlueprintStoryEnding = {
     endingId: string;
+    /** The ending's name in the game's language, falling back to the words the row is written with. */
     name: string;
     sceneId: string;
-    /** The scene the ending row sits in, so a row can be grouped or captioned without a lookup. */
+    /**
+     * The scene the ending row sits in, so a row can be grouped or captioned without a lookup. In the
+     * game's language, like the name.
+     */
     sceneName: string;
     isReached: boolean;
 };

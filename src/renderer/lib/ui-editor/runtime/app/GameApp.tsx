@@ -34,6 +34,8 @@ import {
     matchSystemLocale,
     normalizeLanguageChangeConfiguration,
     resolveLocalizedCharacterName,
+    resolveLocalizedEndingName,
+    resolveLocalizedSceneName,
     resolveLocalizedSpeakerName,
     resolveLocalizedUnitText,
 } from "@shared/types/localization";
@@ -2127,14 +2129,22 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
         const persistence = endingsPersistence();
         const reached = persistence ? readReachedEndings(persistence) : [];
+        // Both names in the game's language: the ending's own `ending:` unit and its scene's
+        // `scene:` unit, each falling back to the words the story is written in.
+        const localization = bundle.localization;
+        const locale = readGameLocale();
         return listStoryEndings(document).map(ending => ({
             endingId: ending.endingId,
-            name: ending.name,
+            name: localization && locale !== null
+                ? resolveLocalizedEndingName(localization, locale, ending.endingId, ending.name)
+                : ending.name,
             sceneId: ending.sceneId,
-            sceneName: ending.sceneName,
+            sceneName: localization && locale !== null
+                ? resolveLocalizedSceneName(localization, locale, ending.sceneId) ?? ending.sceneName
+                : ending.sceneName,
             isReached: reached.includes(ending.endingId),
         }));
-    }, [bundle.storyLibrary, endingsPersistence]);
+    }, [bundle.localization, bundle.storyLibrary, endingsPersistence, readGameLocale]);
 
     const clearEndingStateInGame = useCallback(async (endingId: string): Promise<void> => {
         const persistence = endingsPersistence();
