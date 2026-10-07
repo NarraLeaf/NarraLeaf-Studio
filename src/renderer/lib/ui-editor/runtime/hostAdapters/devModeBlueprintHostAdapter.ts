@@ -16,8 +16,10 @@ import {
     dispatchBlueprintBroadcastEvent,
     dispatchSurfaceBlueprintEvent,
     dispatchBlueprintUiEvent,
+    elementClickIsNamedOnSurface,
     invokeBlueprintFnCall,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
+import { widgetPrivateBlueprintHasSlotHead } from "@/lib/ui-editor/blueprint-runtime/widgetPrivateBlueprintHeads";
 import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
@@ -87,6 +89,19 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
         resolveStruct: structId => resolveUIStruct(document, structId),
         dispatchElementBlueprintEvent: async () => {
             /* assigned after adapter */
+        },
+        elementAnswersPress: elementId => {
+            const element = readRuntimeElement(elementId);
+            if (!element) {
+                return false;
+            }
+            return widgetPrivateBlueprintHasSlotHead(blueprintDocument, { surfaceId: surface.id }, element, "mouseClick")
+                || elementClickIsNamedOnSurface({
+                    document,
+                    blueprintDocument,
+                    surfaceId: surface.id,
+                    target: { surfaceId: surface.id, elementId, elementType: element.type },
+                });
         },
     };
 
