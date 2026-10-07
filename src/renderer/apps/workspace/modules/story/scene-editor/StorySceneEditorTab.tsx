@@ -1543,6 +1543,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const previewOpen = previewPane?.open === true;
     const previewWidth = previewPane?.width ?? STORY_PREVIEW_PANE_DEFAULT_WIDTH;
     const previewMode: StoryScenePreviewPaneMode = previewPane?.mode ?? "dock";
+    const previewSkipTyping = previewPane?.skipTyping === true;
     const previewWidthRef = useRef(previewWidth);
     previewWidthRef.current = previewWidth;
     const editorBodyRef = useRef<HTMLDivElement | null>(null);
@@ -1633,6 +1634,10 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         previewHub.patchLayout({ open: true, mode });
     }, [previewHub, tabId]);
 
+    const togglePreviewSkipTyping = useCallback(() => {
+        previewHub?.patchLayout({ skipTyping: !previewHub.getLayout().skipTyping });
+    }, [previewHub]);
+
     /**
      * The width the pane is drawn at when a drag of its edge begins, and how far the drag may take
      * it. Taken from the drawn width rather than the stored one: while the script is holding the
@@ -1716,6 +1721,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         open: previewOpen && previewMode === "dock",
         onStepTo: stepPreviewTo,
         isRowShown,
+        skipTyping: previewSkipTyping,
     });
 
     // Lend the floating window what it needs from this tab while the tab is mounted, and tell it where
@@ -2739,6 +2745,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                             onClose={togglePreview}
                             mode="dock"
                             onToggleFloat={() => setPreviewMode("float")}
+                            skipTyping={previewSkipTyping}
+                            onToggleSkipTyping={togglePreviewSkipTyping}
                             stageAspectRatio={previewStacked ? preview.designSize.width / preview.designSize.height : undefined}
                         />
                     </div>

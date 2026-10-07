@@ -23,12 +23,12 @@
     { "id": "textInput.border", "value": "nlbrand:secondary/0.5", "builtin": true },
     { "id": "textInput.text", "value": "nlbrand:foreground", "builtin": true },
 
-    { "id": "pageBackground", "name": "Page background", "value": "#0A090D" },
-    { "id": "panel", "name": "Panel", "value": "#15171D" },
-    { "id": "raisedFill", "name": "Raised fill", "value": "#222630" },
-    { "id": "subtleText", "name": "Subtle text", "value": "#6E7681" },
-    { "id": "hoverBorder", "name": "Hover border", "value": "nlbrand:primary/0.7" },
-    { "id": "selectedFill", "name": "Selected fill", "value": "#1D414D" }
+    { "id": "pageBackground", "name": "ページの背景", "value": "#0A090D" },
+    { "id": "panel", "name": "パネル", "value": "#15171D" },
+    { "id": "raisedFill", "name": "上層の塗り", "value": "#222630" },
+    { "id": "subtleText", "name": "控えめな文字", "value": "#6E7681" },
+    { "id": "hoverBorder", "name": "ホバー時の枠線", "value": "nlbrand:primary/0.7" },
+    { "id": "selectedFill", "name": "選択中の塗り", "value": "#1D414D" }
   ],
   "fonts": []
 }

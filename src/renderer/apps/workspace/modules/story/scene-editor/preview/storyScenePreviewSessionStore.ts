@@ -36,6 +36,8 @@ export type StoryScenePreviewPaneState = {
     /** Null until the pane has been popped out at least once. */
     float: StoryScenePreviewFloatRect | null;
     floatFrame: StoryScenePreviewFloatFrame;
+    /** Lines appear on the stage in full rather than typed out (see `useStoryScenePreviewController`). */
+    skipTyping: boolean;
 };
 
 const STORY_PREVIEW_PANE_STATE_KEY = "story:editor:preview";
@@ -56,6 +58,7 @@ export const DEFAULT_STORY_SCENE_PREVIEW_PANE_STATE: StoryScenePreviewPaneState 
     mode: "dock",
     float: null,
     floatFrame: "workspace",
+    skipTyping: false,
 };
 
 function parseFloatRect(value: unknown): StoryScenePreviewFloatRect | null {
@@ -87,6 +90,7 @@ export function parseStoryScenePreviewPaneState(stored: Partial<StoryScenePrevie
         float,
         // Only a rect has a frame to be read in; with none there is nothing to carry over.
         floatFrame: float === null || stored?.floatFrame === "workspace" ? "workspace" : "editorBody",
+        skipTyping: stored?.skipTyping === true,
     };
 }
 

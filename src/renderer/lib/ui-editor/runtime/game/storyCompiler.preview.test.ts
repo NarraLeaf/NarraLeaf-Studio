@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DevTools } from "narraleaf-react";
+import { DevTools, Pause } from "narraleaf-react";
 import type { StoryBlock, StoryDocument } from "@shared/types/story";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { compileStagePreviewToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
@@ -192,6 +192,42 @@ describe("compileStagePreviewToNlr", () => {
         expect(compiled.diagnostics).toEqual([
             { level: "warning", blockId: "jump", message: "The preview stops before this jump instead of leaving the scene." },
         ]);
+    });
+
+    it("leaves a line's pauses out, and only those, when typing is skipped", async () => {
+        const line = block("line", "nodeAction", {
+            action: "narration",
+            text: {
+                textId: "line-text",
+                value: "Wait for it.",
+                role: "narration",
+                rich: [{ text: "Wait" }, { pause: true }, { text: " for" }, { pause: 400 }, { text: " it." }],
+            },
+        });
+        const document = baseDocument({ line }, ["line"]);
+        const words = async (skipTyping: boolean): Promise<unknown[]> => {
+            const compiled = await compileStagePreviewToNlr({
+                document,
+                sceneId: "scene-1",
+                snapshot: computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId: "line" }),
+                targetBlockId: "line",
+                resolveAssetUrl: assetId => `nlr://${assetId}`,
+                onBeforeTarget: () => {},
+                onAfterTarget: () => {},
+                skipTyping,
+            });
+            const binding = compiled.actionIdBindings.find(entry => entry.blockId === "line");
+            const content = (binding?.action as any)?.contentNode?.getContent?.();
+            const sentence = Array.isArray(content) ? content.find((item: any) => item?.text) : content;
+            return (sentence.text as Array<{ text: unknown }>).map(word => word.text);
+        };
+
+        const typed = await words(false);
+        expect(typed.filter(part => part instanceof Pause)).toHaveLength(2);
+
+        const shown = await words(true);
+        expect(shown.some(part => part instanceof Pause)).toBe(false);
+        expect(shown.join("")).toBe("Wait for it.");
     });
 
     it("keeps the full menu when the target is a choice block", async () => {

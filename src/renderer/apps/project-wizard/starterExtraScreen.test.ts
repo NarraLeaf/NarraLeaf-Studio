@@ -516,7 +516,7 @@ describe("the starter template's EXTRA screen", () => {
             expect(hit.props?.fillVisible).toBe(false);
             expect(hit.props?.borderColor).toBe("transparent");
             // Hovered, it takes the look the screen's other pressable things take: a brand wash and
-            // the strong border.
+            // the hover border.
             const appearance = hit.props?.appearance as {
                 variants: { id: string; propertyGroups: { key: string; rows: { conditions: unknown; value: unknown }[] }[] }[];
             };
@@ -524,7 +524,7 @@ describe("the starter template's EXTRA screen", () => {
             const hovered = (key: string): unknown =>
                 groups.find(group => group.key === key)?.rows
                     .find(row => (row.conditions as { hovered?: boolean } | null)?.hovered === true)?.value;
-            expect(hovered("borderColor")).toBe("nlbrand:border.strong");
+            expect(hovered("borderColor")).toBe("nlbrand:hoverBorder");
             expect(hovered("backgroundColor")).toBe("nlbrand:primary");
             expect(hovered("fillVisible")).toBe(true);
 

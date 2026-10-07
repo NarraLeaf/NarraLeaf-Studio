@@ -37,8 +37,10 @@ export function StoryScenePreviewFloat(props: {
     onClose: () => void;
     onDock: () => void;
     onCommit: (rect: StoryScenePreviewFloatRect) => void;
+    skipTyping: boolean;
+    onToggleSkipTyping: () => void;
 }) {
-    const { controller, bounds, rect, sceneName, onClose, onDock, onCommit } = props;
+    const { controller, bounds, rect, sceneName, onClose, onDock, onCommit, skipTyping, onToggleSkipTyping } = props;
 
     const [desired, setDesired] = useState<StoryScenePreviewFloatRect>(rect);
     const teardownRef = useRef<(() => void) | null>(null);
@@ -133,6 +135,8 @@ export function StoryScenePreviewFloat(props: {
                 sceneName={sceneName}
                 onToggleFloat={onDock}
                 onHeaderPointerDown={startMove}
+                skipTyping={skipTyping}
+                onToggleSkipTyping={onToggleSkipTyping}
             />
 
             {/* Edge move zones (corners left free for resizing). */}

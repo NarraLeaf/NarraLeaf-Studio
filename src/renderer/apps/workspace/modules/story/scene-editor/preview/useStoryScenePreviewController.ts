@@ -3,6 +3,7 @@ import type { LiveGame } from "narraleaf-react";
 import type { StoryAnimationAsset, StoryBlockId, StoryDocument, StoryScene } from "@shared/types/story";
 import {
     compileStagePreviewToNlr,
+    isSilentStoryLine,
     type NlrStoryCompileDiagnostic,
 } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import { computeStoryStageSnapshot, resolveTakenConditionBranch } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
@@ -107,6 +108,8 @@ type PreviewRun = {
     posed: boolean;
     arrived: boolean;
     targetBlockId: string | null;
+    /** Compiled to show its line in full: without the line's pauses, and with `startRevealPump`. */
+    skipTyping: boolean;
     /** The game's own advance on this session's line (see `StoryPreviewGame.advance`). */
     advance: () => Promise<void>;
     /** See `StoryPreviewGame.afterNewGame`; called after every `newGame()` on this session. */
@@ -147,8 +150,11 @@ export function useStoryScenePreviewController(input: {
     onStepTo?: (blockId: StoryBlockId) => void;
     /** Whether the editor is showing a row; a stop it is not showing is passed over. */
     isRowShown?: (blockId: StoryBlockId) => boolean;
+    /** Show a line in full as soon as it starts revealing, so a press on the stage always moves on. */
+    skipTyping?: boolean;
 }): StoryScenePreviewController {
     const { context, document, scene, sceneId, activeBlockId, active, open } = input;
+    const skipTyping = input.skipTyping === true;
 
     const [phase, setPhaseState] = useState<StoryScenePreviewPhase>("idle");
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -171,6 +177,8 @@ export function useStoryScenePreviewController(input: {
     const blobResolverRef = useRef<WorkspaceBlobUrlResolver | null>(null);
     /** Last rebuild input; what changed since decides how long the rebuild waits. */
     const lastRunInputRef = useRef<StoryPreviewRebuildInput | null>(null);
+    /** Cancels the running reveal pump, if there is one (see `startRevealPump`). */
+    const revealPumpRef = useRef<(() => void) | null>(null);
 
     const consoleService = useMemo(
         () => context?.services.get<ConsoleService>(Services.Console) ?? null,
@@ -411,6 +419,52 @@ export function useStoryScenePreviewController(input: {
         void promoteRun(run);
     }, [promoteRun]);
 
+    const stopRevealPump = useCallback(() => {
+        revealPumpRef.current?.();
+        revealPumpRef.current = null;
+    }, []);
+
+    /**
+     * With typing skipped, show the visible run's line in full as soon as it starts to reveal. The
+     * press is the one a click makes on a line still revealing (see `advanceFromStage`), made each
+     * frame until the line is shown. It is only ever made while the line is revealing: a press on a
+     * line already shown would settle it and run the story past its row.
+     *
+     * The line was compiled without its pauses (`skipTyping` on the compile), so the one press that
+     * lands reveals all of it. A press that stopped at a pause could also be taken by the engine as
+     * the end of the line, if it arrived before the line's typing had started, and leave the line
+     * cut short.
+     */
+    const startRevealPump = useCallback((run: PreviewRun) => {
+        stopRevealPump();
+        let frame = requestAnimationFrame(function tick() {
+            const liveGame = run.liveGame;
+            if (displayRunRef.current !== run || !liveGame) {
+                revealPumpRef.current = null;
+                return;
+            }
+            const reveal = readLineReveal(liveGame);
+            if (reveal === "shown") {
+                revealPumpRef.current = null;
+                return;
+            }
+            // While a newer row builds beneath, a press is about that row.
+            if (reveal === "revealing" && !pendingRunRef.current) {
+                void run.advance().catch(() => undefined);
+            }
+            frame = requestAnimationFrame(tick);
+        });
+        revealPumpRef.current = () => cancelAnimationFrame(frame);
+    }, [stopRevealPump]);
+
+    /** Whether a run's row is a line with something to reveal, as opposed to a menu or a command. */
+    const isLineRun = useCallback((run: PreviewRun): boolean => {
+        const block = run.targetBlockId ? latestRef.current.scene?.blocks[run.targetBlockId] : undefined;
+        return block?.kind === "nodeAction"
+            && (block.payload.action === "narration" || block.payload.action === "dialogue")
+            && !isSilentStoryLine(block.payload.text);
+    }, []);
+
     const handleBeforeTarget = useCallback((runId: number) => {
         if (runId !== runIdRef.current) {
             return;
@@ -425,7 +479,10 @@ export function useStoryScenePreviewController(input: {
         clearDriveTimers();
         // The target action (if any) plays once after this marker and the frame holds.
         setPhase("settled");
-    }, [clearDriveTimers, setPhase]);
+        if (run.skipTyping && run === displayRunRef.current && isLineRun(run)) {
+            startRevealPump(run);
+        }
+    }, [clearDriveTimers, isLineRun, setPhase, startRevealPump]);
 
     /** Answers a pick on a menu target's stage; assigned once `startRun` exists (see below). */
     const choiceTakenRef = useRef<(runId: number, optionBlockId: StoryBlockId) => void>(() => undefined);
@@ -542,6 +599,7 @@ export function useStoryScenePreviewController(input: {
                 onAfterTarget: () => handleAfterTarget(runId),
                 // A pick on a menu target is a request to look at its branch.
                 onChoiceTaken: optionBlockId => choiceTakenRef.current(runId, optionBlockId),
+                skipTyping,
             });
             if (runId !== runIdRef.current) {
                 return;
@@ -601,6 +659,7 @@ export function useStoryScenePreviewController(input: {
                 posed: false,
                 arrived: false,
                 targetBlockId,
+                skipTyping,
                 advance: previewGame.advance,
                 afterNewGame: previewGame.afterNewGame,
                 advanceRequested: false,
@@ -631,6 +690,7 @@ export function useStoryScenePreviewController(input: {
         scene,
         sceneId,
         setPhase,
+        skipTyping,
         variableTables,
     ]);
 
@@ -669,7 +729,7 @@ export function useStoryScenePreviewController(input: {
         // A line still revealing is shown in full first, as a press does in the game - but only on
         // the row's own frame. While a newer row builds beneath it, the press is about that row.
         const display = displayRunRef.current;
-        if (display?.liveGame && !pendingRunRef.current && display.targetBlockId === targetId && isLineRevealing(display.liveGame)) {
+        if (display?.liveGame && !pendingRunRef.current && display.targetBlockId === targetId && readLineReveal(display.liveGame) === "revealing") {
             display.advanceRequested = true;
             void display.advance().catch(() => undefined);
             return;
@@ -679,13 +739,14 @@ export function useStoryScenePreviewController(input: {
 
     const disposeAllRuns = useCallback(() => {
         clearDriveTimers();
+        stopRevealPump();
         const pending = pendingRunRef.current;
         const display = displayRunRef.current;
         pendingRunRef.current = null;
         displayRunRef.current = null;
         disposeRunObject(pending);
         disposeRunObject(display);
-    }, [clearDriveTimers, disposeRunObject]);
+    }, [clearDriveTimers, disposeRunObject, stopRevealPump]);
 
     // Debounced (re)build on any relevant change; immediate teardown when hidden/closed.
     useEffect(() => {
@@ -703,7 +764,7 @@ export function useStoryScenePreviewController(input: {
         }
         const previousInput = lastRunInputRef.current;
         const nextInput: StoryPreviewRebuildInput | null = document && sceneId
-            ? { document, sceneId, targetId: resolvedTargetId, gameUi: host.gameUi }
+            ? { document, sceneId, targetId: resolvedTargetId, gameUi: host.gameUi, skipTyping }
             : null;
         if (nextInput) {
             lastRunInputRef.current = nextInput;
@@ -718,7 +779,7 @@ export function useStoryScenePreviewController(input: {
                 debounceTimerRef.current = null;
             }
         };
-    }, [open, active, host.ready, host.gameUi, document, sceneId, resolvedTargetId, disposeAllRuns, refreshStageLayers, setPhase]);
+    }, [open, active, host.ready, host.gameUi, document, sceneId, resolvedTargetId, skipTyping, disposeAllRuns, refreshStageLayers, setPhase]);
 
     // Full teardown on unmount.
     useEffect(() => () => {
@@ -802,21 +863,25 @@ export function useStoryScenePreviewController(input: {
 }
 
 /**
- * True while the line on the stage is still revealing, so the press that shows the rest of it comes
- * before the press that moves on. The engine's own record of the line: an ADV box that has not run
- * out of characters, or an NVL page still typing.
+ * Where the line on the stage is: none there yet, still revealing, or shown in full. A press on a line
+ * still revealing shows the rest of it, and only a press on one already shown moves on. The engine's
+ * own record of the line: an ADV box that has or has not run out of characters, or an NVL page still
+ * typing or waiting for the player.
  */
-function isLineRevealing(liveGame: LiveGame): boolean {
+function readLineReveal(liveGame: LiveGame): "none" | "revealing" | "shown" {
     try {
         const state = liveGame.getGameState();
         const adv = state?.getAdvDialogState();
         if (adv) {
-            return !adv.ended;
+            return adv.ended ? "shown" : "revealing";
         }
         const nvl = state?.getNvlState();
-        return nvl?.active === true && nvl.phase === "typing";
+        if (nvl?.active === true && nvl.phase === "typing") {
+            return "revealing";
+        }
+        return nvl?.active === true && nvl.phase === "awaitAdvance" ? "shown" : "none";
     } catch {
-        return false;
+        return "none";
     }
 }
 
