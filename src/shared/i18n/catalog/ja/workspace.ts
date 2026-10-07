@@ -88,6 +88,8 @@ export const workspace = {
             characterSpeaker: "キャラクター",
             scenesGroup: "シーン",
             sceneSpeaker: "シーン",
+            endingsGroup: "エンディング",
+            endingSpeaker: "エンディング",
             addKey: "追加",
             keyNamePlaceholder: "キー（menu.start…）",
             keySourcePlaceholder: "原文",

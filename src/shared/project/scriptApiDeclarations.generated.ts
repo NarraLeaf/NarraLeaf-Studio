@@ -293,6 +293,14 @@ declare module "@narraleaf/script" {
     	 * dropped is absent here too.
     	 */
     	scenes?: Record<string, string>;
+    	/**
+    	 * Ending-name source texts (ending id → source-language name), for the endings this build ships.
+    	 *
+    	 * Read as the set of endings the build still has, which is what decides whether an \`ending:\` unit
+    	 * ships with a variant that dropped scenes - the same question \`scenes\` answers for \`scene:\` units.
+    	 * Assembled from the story documents the bundle carries.
+    	 */
+    	endings?: Record<string, string>;
     };
     type StoryId = string;
     type StoryLiteralValue = string | number | boolean | null | StoryLiteralValue[] | {

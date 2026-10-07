@@ -2,8 +2,8 @@
  * Translation table editor (editor-area tab, one per target locale).
  * Rows follow the story's narrative order (chapters → scenes → depth-first
  * blocks) so translators read lines in context, never alphabetically; each
- * story source opens with a "Characters" and a "Scenes" group so display names
- * and place names translate alongside the lines that use them. The "Interface text" source carries
+ * story source opens with a "Characters", a "Scenes" and an "Endings" group so display names,
+ * place names and ending names translate alongside the lines that use them. The "Interface text" source carries
  * both UI widget texts and the named-key registry (keys are managed inline:
  * editable source, hover remove, trailing add row).
  * Two modes: "translate" is a clean bilingual reading view; "review" is a
@@ -45,6 +45,7 @@ import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import {
     deriveUnitState,
     extractCharacterTranslationRows,
+    extractEndingTranslationRows,
     extractKeyTranslationRows,
     extractSceneTranslationRows,
     extractUiTranslationRows,
@@ -98,6 +99,7 @@ const ADD_KEY_ROW_HEIGHT_PX = 44;
 /** Group keys for the synthetic groups a source may carry. */
 const CHARACTERS_GROUP_KEY = "__characters__";
 const SCENES_GROUP_KEY = "__scenes__";
+const ENDINGS_GROUP_KEY = "__endings__";
 const KEYS_GROUP_KEY = "__keys__";
 /** How many of the places still naming a key the removal confirmation lists before it counts the rest. */
 const KEY_REMOVAL_PLACES_SHOWN = 12;
@@ -379,6 +381,16 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
                     groupName: t("workspace.localization.table.scenesGroup"),
                     speaker: t("workspace.localization.table.sceneSpeaker"),
                 }));
+                // After the places, before the lines: what each ending is called, which a player reads on
+                // an endings screen rather than in any line.
+                const endingRows: TableRow[] = extractEndingTranslationRows(document).map(row => ({
+                    unitId: row.unitId,
+                    sourceText: row.sourceText,
+                    interpolationCount: 0,
+                    groupKey: ENDINGS_GROUP_KEY,
+                    groupName: t("workspace.localization.table.endingsGroup"),
+                    speaker: t("workspace.localization.table.endingSpeaker"),
+                }));
                 const storyRows: TableRow[] = localizationService.extractRows(document).map(row => ({
                     unitId: row.unitId,
                     sourceText: row.sourceText,
@@ -389,7 +401,7 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
                     groupName: row.sceneName,
                     speaker: speakerNameFor(row),
                 }));
-                setRows([...characterRows, ...sceneRows, ...storyRows]);
+                setRows([...characterRows, ...sceneRows, ...endingRows, ...storyRows]);
             } catch {
                 setRows([]);
             }
