@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { StoryExpr } from "@shared/types/story";
+import type { StoryConditionRef, StoryExpr } from "@shared/types/story";
 import type { SceneFlowRange } from "@/apps/workspace/modules/story-flow/sceneFlowVariables";
-import { compareRange, guardTruth } from "./guardTruth";
+import { compareRange, conditionGuardExpr, guardTruth } from "./guardTruth";
 
 /**
  * The three-valued guard evaluator.
@@ -68,5 +68,56 @@ describe("guardTruth", () => {
     it("negates through `!`", () => {
         expect(guardTruth({ kind: "unary", op: "!", operand: binary(">=", read, literal(50)) }, over(known(0, 30))))
             .toBe("true");
+    });
+});
+
+describe("conditionGuardExpr", () => {
+    type Picked = Extract<StoryConditionRef, { kind: "variable" }>;
+    const picked = (operator: Picked["operator"], value?: Picked["value"]): StoryConditionRef => ({
+        kind: "variable",
+        target: { scope: "saved", variableId: "affection" },
+        operator,
+        ...(value === undefined ? {} : { value }),
+    });
+    const typed = (ast: StoryExpr): StoryConditionRef => ({ kind: "expression", expression: { source: "typed", ast } });
+    const truthOf = (condition: StoryConditionRef, range: SceneFlowRange) => {
+        const expr = conditionGuardExpr(condition);
+        return expr ? guardTruth(expr, over(range)) : null;
+    };
+
+    it("gives a comparison picked from the dropdowns the verdict the same comparison typed gets", () => {
+        // Each picked operator against the expression operator it stands for, on intervals that settle
+        // it either way and one that does not. A pair that disagreed anywhere would let one guard get
+        // two verdicts depending on which editor wrote it.
+        const pairs: [Picked["operator"], string][] = [
+            ["equals", "=="], ["notEquals", "!="],
+            ["greaterThan", ">"], ["greaterOrEqual", ">="],
+            ["lessThan", "<"], ["lessOrEqual", "<="],
+        ];
+        for (const [operator, op] of pairs) {
+            for (const range of [known(0, 30), known(60, 70), known(50, 50), known(0, 70)]) {
+                expect(truthOf(picked(operator, 50), range)).toBe(truthOf(typed(binary(op, read, literal(50))), range));
+            }
+        }
+        expect(truthOf(picked("greaterOrEqual", 50), known(0, 30))).toBe("false");
+    });
+
+    it("passes a typed expression through as it is", () => {
+        const ast = binary(">=", read, literal(50));
+        expect(conditionGuardExpr(typed(ast))).toBe(ast);
+    });
+
+    it("leaves the flag tests, a graph and an unfinished comparison unread", () => {
+        // "Is true" tests the boolean itself and `met` tests truthiness, so neither is the other.
+        expect(conditionGuardExpr(picked("isTrue"))).toBeNull();
+        expect(conditionGuardExpr(picked("isFalse"))).toBeNull();
+        expect(conditionGuardExpr(picked("exists"))).toBeNull();
+        expect(conditionGuardExpr(picked("greaterOrEqual"))).toBeNull();
+        expect(conditionGuardExpr({ kind: "blueprint", blueprintId: "bp" })).toBeNull();
+    });
+
+    it("keeps a picked value that is not a number undecided", () => {
+        // The tree is built, but an interval says nothing about a string, so nothing is settled.
+        expect(truthOf(picked("equals", "ok"), known(0, 30))).toBe("unknown");
     });
 });
