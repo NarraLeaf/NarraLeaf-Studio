@@ -162,6 +162,22 @@ function deriveControlGroups(colors: readonly BrandColor[]): readonly BrandContr
  */
 export const BRAND_CONTROL_GROUPS: readonly BrandControlGroup[] = deriveControlGroups(BUILTIN_BRAND_COLORS);
 
+const BRAND_CONTROL_SLOT_IDS: ReadonlySet<string> = new Set(BRAND_CONTROL_GROUPS.flatMap(group => group.slotIds));
+
+/**
+ * Whether `id` is one of the control slots Studio seeds - exactly the ids {@link BRAND_CONTROL_GROUPS}
+ * lists, which Project -> Design draws under their control.
+ *
+ * Every other entry is one of the project's colours and is drawn among them: the four seeded flat
+ * colours, a colour the author added, and one whose id merely carries a dot. A dotted id that is not
+ * a seed is no control's slot - a palette written by hand, or a project made from a template that
+ * spelled its own colours that way - and the page lists the colours a project paints with, so it is
+ * listed with them rather than nowhere.
+ */
+export function isBrandControlSlotId(id: string): boolean {
+    return BRAND_CONTROL_SLOT_IDS.has(id);
+}
+
 export function isBuiltinBrandColorId(id: string): boolean {
     return BUILTIN_BRAND_COLORS.some(color => color.id === id);
 }

@@ -631,10 +631,12 @@ export interface RendererPreloadedInterface {
             getState(): Promise<RequestStatus<{ state: UpdateState }>>;
             /** Ask whether a newer release exists. Never starts a download. */
             check(): Promise<RequestStatus<{ state: UpdateState }>>;
-            /** Start the transfer. Only the Settings panel calls this - see its header for why. */
+            /** Start the transfer. Main starts it itself unless automatic downloads are off. */
             download(): Promise<RequestStatus<{ state: UpdateState }>>;
-            /** Quit and apply what was downloaded. */
+            /** Quit, apply the update and start Studio again. */
             install(): Promise<RequestStatus<void>>;
+            /** Stop the download or the preparing in progress. */
+            cancel(): Promise<RequestStatus<{ state: UpdateState }>>;
             onStateChanged(handler: (state: UpdateState) => void): AppEventToken;
         };
     };

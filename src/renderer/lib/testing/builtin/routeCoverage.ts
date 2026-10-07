@@ -5,6 +5,7 @@ import { listSceneBlocksInDocumentOrder, listScenesInDocumentOrder, listStoryEnd
 import { buildSceneFlowGraph } from "@/apps/workspace/modules/story-flow/sceneFlowModel";
 import { computeSceneFlowCoverage } from "@/apps/workspace/modules/story-flow/sceneFlowCoverage";
 import { collectBlueprintVariableWrites } from "@/apps/workspace/modules/story-flow/sceneFlowVariables";
+import { storyConditionSummary } from "@/lib/story/storyRowProjection";
 import type { SearchJumpTarget } from "@/lib/workspace/services/search/searchJumpTarget";
 import { Services } from "@/lib/workspace/services/services";
 // Type-only, for the reason `reachableEndings` states: a value import pulls a service, and
@@ -91,6 +92,7 @@ export function createRouteCoverageTest(host: BuiltInTestHost): TestDefinition {
             }
 
             const registry = readRegistry(services);
+            const variableNames = registryVariableNames(registry);
             const blueprintWrites = collectBlueprintVariableWrites(blueprintDocument, registry);
             // A program that is not a graph has no nodes to scan, so what it assigns is unknowable.
             // Whole-project, because a `saved` counter it moves is a counter every story shares.
@@ -119,7 +121,9 @@ export function createRouteCoverageTest(host: BuiltInTestHost): TestDefinition {
                 if (!entrySceneIds) {
                     continue;
                 }
-                const graph = buildSceneFlowGraph(story.document);
+                // With the registry's names, so an arm nested under a condition on a project variable
+                // is labelled with that variable's name rather than with the word for a variable.
+                const graph = buildSceneFlowGraph(story.document, { variableNames });
                 // What this story's own graph cannot bound: a counter another story moves, or one a
                 // surface handler writes on the player's own schedule.
                 const externallyWrittenKeys = new Set(blueprintWrites.ambient);
@@ -186,7 +190,10 @@ export function createRouteCoverageTest(host: BuiltInTestHost): TestDefinition {
                             ? { key: "test.builtin.routeCoverage.finding.branchUnreachable" }
                             : isOption
                                 ? { key: "test.builtin.routeCoverage.finding.optionUnreachable", params: { option: arm.label } }
-                                : { key: "test.builtin.routeCoverage.finding.conditionUnreachable", params: { condition: arm.label } },
+                                : {
+                                    key: "test.builtin.routeCoverage.finding.conditionUnreachable",
+                                    params: { condition: conditionWording(story, arm.sceneId, arm.blockId, variableNames) ?? arm.label },
+                                },
                         target: rowTarget(story, arm.sceneId, arm.blockId),
                     });
                 }
@@ -249,6 +256,45 @@ function readRegistry(services: ReturnType<BuiltInTestHost["services"]>): Variab
         console.warn("[route-coverage] variable registry unavailable", error);
         return [];
     }
+}
+
+/**
+ * The registry's variable names by ref key - the half of naming a variable a story document cannot
+ * answer, since project variables are declared in the registry rather than as rows.
+ */
+function registryVariableNames(registry: readonly VariableRegistryEntry[]): Map<string, string> {
+    return new Map(registry.map(entry => [
+        storyVariableRefKey({
+            scope: entry.scope,
+            variableId: entry.scope === "persistent" ? entry.storageKey : entry.id,
+        }),
+        entry.name,
+    ]));
+}
+
+/**
+ * A condition arm's test as the chip on its row reads it: `好感度 大于或等于 20` for a comparison picked
+ * from the condition editor's dropdowns, the typed text for an expression. The finding jumps to that
+ * row, so it names the condition in the words the author sees there.
+ *
+ * Null when the row is not a condition arm, which leaves the caller with the map's label.
+ */
+function conditionWording(
+    story: CoverageStory,
+    sceneId: StorySceneId,
+    blockId: string,
+    variableNames: ReadonlyMap<string, string>,
+): string | null {
+    const scene = story.document.scenes[sceneId];
+    const block = scene?.blocks[blockId];
+    if (!scene || block?.kind !== "control" || block.payload.control !== "conditionBranch") {
+        return null;
+    }
+    return storyConditionSummary(block.payload.condition, {
+        scene,
+        scenes: story.document.scenes,
+        projectVariableName: (scope, variableId) => variableNames.get(storyVariableRefKey({ scope, variableId })) ?? null,
+    });
 }
 
 /** Every variable key one document assigns, disabled rows included - see `storyGuards` for why. */

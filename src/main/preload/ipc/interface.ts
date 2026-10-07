@@ -425,6 +425,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             check: () => ipcClient.invoke(IPCEventType.appUpdateCheck, {}),
             download: () => ipcClient.invoke(IPCEventType.appUpdateDownload, {}),
             install: () => ipcClient.invoke(IPCEventType.appUpdateInstall, {}),
+            cancel: () => ipcClient.invoke(IPCEventType.appUpdateCancel, {}),
             onStateChanged: (handler: (state: UpdateState) => void) =>
                 ipcClient.onMessage(IPCEventType.appUpdateStateChanged, (data) => handler(data.state)),
         },

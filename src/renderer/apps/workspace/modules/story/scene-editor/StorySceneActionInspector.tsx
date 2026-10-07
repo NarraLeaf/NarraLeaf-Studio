@@ -69,6 +69,7 @@ import { useProjectSurfaces } from "@/lib/story/useProjectSurfaces";
 import { BGM_OBJECT_NAME } from "./storyCommandValues";
 import { useTranslation } from "@/lib/i18n";
 import type { Translator, TranslationKey } from "@shared/i18n";
+import { formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight, Copy, ExternalLink, Image as ImageIcon, Mic, Palette, Play, RefreshCw, Square, Trash2, Video } from "lucide-react";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
@@ -823,12 +824,11 @@ function InspectorFields(props: {
     return null;
 }
 
-const declarationTypeOptions = (t: TFunc): SelectOption[] => [
-    { value: "boolean", label: t("storyVars.valueType.boolean") },
-    { value: "number", label: t("storyVars.valueType.number") },
-    { value: "string", label: t("storyVars.valueType.string") },
-    { value: "json", label: t("storyVars.valueType.json") },
-];
+const declarationTypeOptions = (t: TFunc): SelectOption[] =>
+    (["boolean", "number", "string", "json"] as const).map(type => ({
+        value: type,
+        label: formatBlueprintValueTypeLabel(type, t, "option"),
+    }));
 
 /** Editor for a `declaration` row - the row IS the variable, so this edits the declaration itself. */
 function DeclarationPayloadFields(props: {

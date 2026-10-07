@@ -18,7 +18,7 @@ import { isJumpModifierEvent } from "./useJumpModifier";
 import { useCommandTranslation, useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
 import { getCommandGhost } from "./storyCommandGhost";
-import { getCommandLineDraftReason, getCommandLineReason } from "./storyCommandReason";
+import { getCommandLineDraftReason, getCommandLineReason, storyCommandReasonParams } from "./storyCommandReason";
 import { useShortcutLabels } from "@/apps/workspace/hooks/useShortcutLabels";
 import { Services } from "@/lib/workspace/services/services";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
@@ -2105,7 +2105,7 @@ function CommandGhostHint(props: { value: string; source: string; caret: number;
                 // commit clears the value and the next edit strips it), so it renders flush at the start.
                 <span className="not-italic text-success/80">{props.confirmation}</span>
             ) : reason ? (
-                <span className="text-danger/80">{`  ${t(reason.key, reason.params)}`}</span>
+                <span className="text-danger/80">{`  ${t(reason.key, storyCommandReasonParams(reason, t))}`}</span>
             ) : (
                 <span className="italic text-fg-subtle">{`<${ct(`story.paramHint.${ghost!.hintKey}` as TranslationKey)}>`}</span>
             )}
@@ -3773,7 +3773,9 @@ function DraftRowPreview(props: { source: string; commandContext: StoryCommandCo
     // (command language), so a Chinese author reading an English command line is told the slot is
     // missing in Chinese and told its name in the word they would have to type.
     const reasonText = reason
-        ? t(reason.key, reason.paramHintKey ? { ...reason.params, slot: ct(reason.paramHintKey) } : reason.params)
+        ? t(reason.key, reason.paramHintKey
+            ? { ...storyCommandReasonParams(reason, t), slot: ct(reason.paramHintKey) }
+            : storyCommandReasonParams(reason, t))
         : t("story.rows.invalidHint");
     return (
         // `data-story-row-text`, so the row opens from a single click with the caret where the pointer

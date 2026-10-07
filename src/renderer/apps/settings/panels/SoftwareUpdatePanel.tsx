@@ -2,21 +2,11 @@ import { useCallback, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
 import { useUpdateState } from "@/lib/app/useUpdateState";
+import { updateCanCancel, updateStatusKey } from "@/lib/app/updatePresentation";
 import { Button } from "@/lib/components/elements";
-import { Progress, ProgressIndeterminate } from "@/lib/components/elements/Progress";
-import { formatBytes } from "@shared/utils/formatBytes";
-import { UPDATE_RELEASES_URL, type UpdateState } from "@shared/constants/update";
+import { UpdateStepProgress } from "@/lib/components/elements/UpdateStepProgress";
+import { UPDATE_RELEASES_URL } from "@shared/constants/update";
 import type { TranslationKey } from "@shared/i18n";
-
-const STATUS_KEYS: Record<UpdateState["status"], TranslationKey> = {
-    idle: "update.status.idle",
-    checking: "update.status.checking",
-    available: "update.status.available",
-    downloading: "update.status.downloading",
-    ready: "update.status.ready",
-    error: "update.status.error",
-    manual: "update.status.manual",
-};
 
 /**
  * Why this build cannot install its own updates, in the terms the reader is in.
@@ -33,15 +23,12 @@ function unsupportedKey(): TranslationKey {
 }
 
 /**
- * What Studio knows about newer versions of itself, and the two presses that act on it.
+ * What Studio knows about newer versions of itself, and what can be done about it from here.
  *
- * The order is deliberate and is the whole interaction the notification hands over to: an update
- * is *announced* elsewhere, and *started* here. Pressing Download is the point at which someone
- * commits a few hundred megabytes, so it happens on a surface they navigated to, with the version
- * numbers and the progress in front of them - not on a toast that was about to disappear.
- *
- * Every number on screen comes from the downloader over IPC (see `useUpdateState`). There is no
- * simulated progress: a bar that moves means bytes arrived.
+ * The same state and the same actions as the title bar's update panel (`UpdateIndicator`): check,
+ * download when automatic downloads are off, stop an update in progress, restart to apply a ready
+ * one. Every number on screen comes from the main process over IPC (see `useUpdateState`). There is
+ * no simulated progress: a bar that moves means bytes arrived or files were unpacked.
  */
 export function SoftwareUpdatePanel() {
     const { t } = useTranslation();
@@ -66,6 +53,12 @@ export function SoftwareUpdatePanel() {
         await getInterface().app.update.install().catch(() => null);
     }, []);
 
+    const cancel = useCallback(async () => {
+        setBusy(true);
+        await getInterface().app.update.cancel().catch(() => null);
+        setBusy(false);
+    }, []);
+
     const openReleases = useCallback((url: string) => {
         void getInterface().app.openExternal(url).catch(() => undefined);
     }, []);
@@ -75,9 +68,9 @@ export function SoftwareUpdatePanel() {
     }
 
     const version = state.availableVersion ?? "";
-    const percent = state.totalBytes && state.totalBytes > 0
-        ? ((state.transferredBytes ?? 0) / state.totalBytes) * 100
-        : null;
+    // Nothing to check while an update is under way or waiting to be applied.
+    const checkBlocked = state.status === "checking" || state.status === "downloading"
+        || state.status === "preparing" || state.status === "ready";
 
     return (
         <div className="flex flex-col gap-2">
@@ -87,7 +80,7 @@ export function SoftwareUpdatePanel() {
                 status line takes the label's weight: it is what this row is about. */}
             <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="flex flex-col gap-1 min-w-0 grow basis-64">
-                    <span className="text-sm font-medium text-fg">{t(STATUS_KEYS[state.status], { version })}</span>
+                    <span className="text-sm font-medium text-fg">{t(updateStatusKey(state), { version })}</span>
                     <span className="text-xs text-fg-subtle">
                         {state.status === "error" && state.error
                             ? state.error
@@ -95,6 +88,9 @@ export function SoftwareUpdatePanel() {
                     </span>
                     {state.status === "manual" && (
                         <span className="text-xs text-fg-subtle">{t(unsupportedKey())}</span>
+                    )}
+                    {state.status === "ready" && (
+                        <span className="text-xs text-fg-subtle">{t("update.readyHint")}</span>
                     )}
                 </div>
 
@@ -117,13 +113,19 @@ export function SoftwareUpdatePanel() {
                         size="sm"
                         variant="secondary"
                         className="h-7"
-                        disabled={busy || state.status === "checking" || state.status === "downloading"}
+                        disabled={busy || checkBlocked}
                         onClick={() => void check()}
                     >
                         {t("update.actions.check")}
                     </Button>
 
-                    {state.canInstall && state.status === "available" && (
+                    {updateCanCancel(state) && (
+                        <Button size="sm" variant="secondary" className="h-7" disabled={busy} onClick={() => void cancel()}>
+                            {t("update.actions.cancel")}
+                        </Button>
+                    )}
+
+                    {state.canInstall && (state.status === "available" || (state.status === "error" && version)) && (
                         <Button size="sm" variant="primary" className="h-7" disabled={busy} onClick={() => void download()}>
                             {t("update.actions.download")}
                         </Button>
@@ -131,7 +133,7 @@ export function SoftwareUpdatePanel() {
 
                     {state.status === "ready" && (
                         <Button size="sm" variant="primary" className="h-7" onClick={() => void install()}>
-                            {t("update.actions.install")}
+                            {t(state.fastRestart ? "update.actions.restart" : "update.actions.install")}
                         </Button>
                     )}
 
@@ -149,19 +151,8 @@ export function SoftwareUpdatePanel() {
             </div>
 
             {/* Full width under the row, not squeezed into the control column: the bar is a
-                measurement of the download, and a short one reads as a smaller job. */}
-            {state.status === "downloading" && (
-                <div className="flex flex-col gap-1">
-                    {percent === null
-                        ? <ProgressIndeterminate size="sm" />
-                        : <Progress size="sm" value={percent} animated={false} />}
-                    <p className="text-xs text-fg-subtle">
-                        {formatBytes(state.transferredBytes ?? 0)}
-                        {state.totalBytes ? ` / ${formatBytes(state.totalBytes)}` : ""}
-                        {state.bytesPerSecond ? ` · ${formatBytes(state.bytesPerSecond)}/s` : ""}
-                    </p>
-                </div>
-            )}
+                measurement of the step under way, and a short one reads as a smaller job. */}
+            <UpdateStepProgress state={state} />
         </div>
     );
 }

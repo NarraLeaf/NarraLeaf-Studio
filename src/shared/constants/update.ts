@@ -7,8 +7,20 @@
  * meaningful again, and the user's choice would be deleted on the next start.
  */
 
-/** Whether Studio asks GitHub for a newer release shortly after launch. */
+/**
+ * Whether Studio asks GitHub for a newer release on its own: shortly after launch, and again every
+ * {@link UPDATE_RECHECK_INTERVAL_MS} for as long as it stays running. The key keeps the name it had
+ * when the only check was the launch one, because renaming it would drop every author's answer.
+ */
 export const UPDATE_AUTO_CHECK_KEY = "app.updateCheckOnLaunch";
+
+/**
+ * Whether a version found by a check is downloaded and prepared without being asked.
+ *
+ * On by default (the user's call, 2026-10-06): an update that waits for a press is an update most
+ * people never take. Off brings back the two presses - the check announces, Download starts.
+ */
+export const UPDATE_AUTO_DOWNLOAD_KEY = "app.updateAutoDownload";
 
 /**
  * Whether this profile has already been told that closing every window leaves Studio running in
@@ -30,6 +42,14 @@ export const UPDATE_PANEL_SETTING_KEY = "app.update";
 /** How long after launch the automatic check runs, so it never competes with opening a project. */
 export const UPDATE_AUTO_CHECK_DELAY_MS = 8_000;
 
+/**
+ * How often a Studio that stays running checks again.
+ *
+ * Studio lives in the notification area once its windows are closed, so a session can last days;
+ * a check made only at launch would leave such a session on the version it started with.
+ */
+export const UPDATE_RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
 /** Where "View release notes" and the macOS "download it yourself" path send the user. */
 export const UPDATE_RELEASES_URL = "https://github.com/NarraLeaf/NarraLeaf-Studio/releases/latest";
 
@@ -47,9 +67,17 @@ export type UpdateStatus =
     | "checking"
     /** A newer release exists and has not been downloaded. */
     | "available"
-    /** The installer is downloading. This is the state the quit guard asks about. */
+    /** The installer is downloading. */
     | "downloading"
-    /** The installer is on disk and will be applied on quit. */
+    /**
+     * The installer is on disk and is unpacking the new version beside the running one, so the
+     * restart that applies it only has to swap folders. Runs while the author works.
+     */
+    | "preparing"
+    /**
+     * The update can be applied: by the restart the author asks for, or on the way out when Studio
+     * quits. `fastRestart` says whether the prepared copy is there to swap in.
+     */
     | "ready"
     /** The last check or download failed; `error` says how. */
     | "error"
@@ -75,6 +103,13 @@ export interface UpdateState {
     totalBytes?: number;
     /** Bytes per second, as reported by the downloader. */
     bytesPerSecond?: number;
+    /** How much of the new version has been unpacked, 0 to 1, while `status` is "preparing". */
+    prepareProgress?: number;
+    /**
+     * In "ready": true when the new version is already unpacked, so applying it is a swap of folders
+     * and a restart; false when the installer has to do the whole install while Studio is closed.
+     */
+    fastRestart?: boolean;
     /** Failure text for "error", already human-readable. */
     error?: string;
     /** Release notes URL for the version on offer. */

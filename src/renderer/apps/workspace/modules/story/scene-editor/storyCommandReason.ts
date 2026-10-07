@@ -4,6 +4,7 @@ import { paramHintKey } from "./storyCommandGrammar";
 import { localizedCommandToken, suggestCommandDef } from "./commands/registry";
 import type { StoryExpressionIssue } from "@shared/utils/storyExpressionParser";
 import { resolveCommandLine, type StoryCommandContext, type StoryCommandResolutionIssue } from "./storyCommandResolution";
+import { formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
 
 /**
  * Why a command line will not commit, in one sentence.
@@ -27,7 +28,34 @@ export type StoryCommandReason = {
      * caller that does not care still renders something.
      */
     paramHintKey?: TranslationKey;
+    /**
+     * The params that hold a value type id (`number`, `string`...). The caller writes them in the
+     * interface language with {@link storyCommandReasonParams}, the words a variable's type is shown
+     * with everywhere else.
+     */
+    valueTypeParams?: readonly string[];
 };
+
+/**
+ * A reason's params as the sentence reads them: each value type param written the way the variables
+ * panel and a blueprint pin write that type. Every other param is passed through.
+ */
+export function storyCommandReasonParams(
+    reason: StoryCommandReason,
+    t: (key: TranslationKey, params?: Record<string, string | number>) => string,
+): Record<string, string | number> {
+    if (!reason.valueTypeParams?.length) {
+        return reason.params;
+    }
+    const params = { ...reason.params };
+    for (const name of reason.valueTypeParams) {
+        const value = params[name];
+        if (typeof value === "string") {
+            params[name] = formatBlueprintValueTypeLabel(value, t);
+        }
+    }
+    return params;
+}
 
 const reasonKey = (code: string): TranslationKey => `storyExpr.reason.${code}` as TranslationKey;
 
@@ -214,6 +242,10 @@ function resolutionReason(issue: StoryCommandResolutionIssue, token: string): St
             // `variable`, not `value`: the variable is what holds a declared type. The message used to
             // fill that role with the expression source and read back as a contradiction
             // (`This produces string, but "upper("a")" holds number.`).
-            return { key: reasonKey(issue.code), params: { variable: issue.variable, expected: issue.expected, received: issue.received } };
+            return {
+                key: reasonKey(issue.code),
+                params: { variable: issue.variable, expected: issue.expected, received: issue.received },
+                valueTypeParams: ["expected", "received"],
+            };
     }
 }

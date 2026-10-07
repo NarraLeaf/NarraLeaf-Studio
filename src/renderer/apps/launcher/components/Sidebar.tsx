@@ -2,6 +2,7 @@ import { BookOpen, FolderOpen, Puzzle, Server, Settings } from "lucide-react";
 import { Item } from "./Item";
 import { getInterface } from "@/lib/app/bridge";
 import { useUpdateState } from "@/lib/app/useUpdateState";
+import { updateIsOnOffer } from "@/lib/app/updatePresentation";
 import { getAppInfo } from "@/lib/renderApp";
 import { useTranslation } from "@/lib/i18n";
 import { UPDATE_PANEL_SETTING_KEY } from "@shared/constants/update";
@@ -51,15 +52,18 @@ export function Sidebar({ active, onChange }: SidebarProps) {
 
     /**
      * The launcher's whole update surface: one line under the version number, and only when there
-     * is something to say. It opens the Settings panel - it does not start a download, which is a
-     * decision that belongs on the panel with the size and the progress in front of the reader.
-     *
-     * "ready" is included because an installer already on disk is still news: it needs a restart.
+     * is an update to show. It opens the Settings panel, where the update can be stopped, started
+     * or applied; the line itself only says which of those stages it is at.
      */
-    const updateOffer = update
-        && (update.status === "available" || update.status === "manual" || update.status === "ready")
-        && update.availableVersion
-        ? update.availableVersion
+    const updateLine = updateIsOnOffer(update) && update.availableVersion
+        ? t(
+            update.status === "ready"
+                ? "update.launcher.ready"
+                : update.status === "downloading" || update.status === "preparing"
+                    ? "update.launcher.progress"
+                    : "update.launcher.available",
+            { version: update.availableVersion },
+        )
         : null;
 
     const navigationItems = [
@@ -100,12 +104,12 @@ export function Sidebar({ active, onChange }: SidebarProps) {
                 <img src={PRODUCT_MARK_SRC} className="w-6 h-6" alt="app" />
                 <div className="flex flex-col leading-tight">
                     <span className="text-sm text-fg">NarraLeaf Studio</span>
-                    {updateOffer ? (
+                    {updateLine ? (
                         <button
                             className="w-fit text-2xs text-primary hover:underline cursor-default"
                             onClick={() => getInterface().app.launchSettings({ highlight: UPDATE_PANEL_SETTING_KEY })}
                         >
-                            {t("update.launcher.available", { version: updateOffer })}
+                            {updateLine}
                         </button>
                     ) : (
                         <span className="text-2xs text-fg-muted">v{getAppInfo().version}</span>

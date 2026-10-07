@@ -14,7 +14,7 @@
       },
       "rootElementId": "8b611438-66af-474e-827d-14d6a2e8b715",
       "settings": {
-        "backgroundColor": "nlbrand:surface.sunken",
+        "backgroundColor": "nlbrand:pageBackground",
         "pageAnimation": {
           "enter": "fade",
           "exit": "fade",
@@ -316,7 +316,7 @@
       },
       "rootElementId": "5107c0a1-0000-4000-8000-000000000501",
       "settings": {
-        "backgroundColor": "nlbrand:surface.sunken",
+        "backgroundColor": "nlbrand:pageBackground",
         "pageAnimation": {
           "enter": "fade",
           "exit": "fade",
@@ -373,7 +373,7 @@
             "stackAlignItems": "stretch",
             "stackJustifyContent": "start",
             "scrollAxis": "y",
-            "backgroundColor": "nlbrand:surface.sunken",
+            "backgroundColor": "nlbrand:pageBackground",
             "borderRadius": 0,
             "borderRadiusTL": 0,
             "borderRadiusTR": 0,
@@ -412,7 +412,7 @@
                       "rows": [
                         {
                           "conditions": null,
-                          "value": "nlbrand:surface.sunken"
+                          "value": "nlbrand:pageBackground"
                         }
                       ]
                     },
@@ -737,7 +737,7 @@
             "fitMode": "cover",
             "flipX": false,
             "flipY": false,
-            "backgroundColor": "nlbrand:surface.sunken",
+            "backgroundColor": "nlbrand:pageBackground",
             "fillVisible": true,
             "fillOpacity": 1,
             "borderRadius": 0,
@@ -762,7 +762,7 @@
           },
           "props": {
             "fontSize": 26,
-            "color": "nlbrand:text.subtle",
+            "color": "nlbrand:subtleText",
             "fontWeight": "normal",
             "fontStyle": "normal",
             "textAlign": "center",
@@ -833,7 +833,7 @@
                       "rows": [
                         {
                           "conditions": null,
-                          "value": "nlbrand:text.subtle"
+                          "value": "nlbrand:subtleText"
                         }
                       ]
                     },
@@ -1327,7 +1327,7 @@
           "props": {
             "text": "",
             "fontSize": 19,
-            "color": "nlbrand:text.subtle",
+            "color": "nlbrand:subtleText",
             "fontWeight": "normal",
             "fontStyle": "normal",
             "textAlign": "left",
@@ -1398,7 +1398,7 @@
                       "rows": [
                         {
                           "conditions": null,
-                          "value": "nlbrand:text.subtle"
+                          "value": "nlbrand:subtleText"
                         }
                       ]
                     },
@@ -1515,7 +1515,7 @@
           "props": {
             "text": "",
             "fontSize": 16,
-            "color": "nlbrand:text.subtle",
+            "color": "nlbrand:subtleText",
             "fontWeight": "normal",
             "fontStyle": "normal",
             "textAlign": "left",
@@ -1586,7 +1586,7 @@
                       "rows": [
                         {
                           "conditions": null,
-                          "value": "nlbrand:text.subtle"
+                          "value": "nlbrand:subtleText"
                         }
                       ]
                     },
@@ -2077,7 +2077,7 @@
           "props": {
             "text": "",
             "fontSize": 15,
-            "color": "nlbrand:text.subtle",
+            "color": "nlbrand:subtleText",
             "fontWeight": "normal",
             "fontStyle": "normal",
             "textAlign": "right",
@@ -2148,7 +2148,7 @@
                       "rows": [
                         {
                           "conditions": null,
-                          "value": "nlbrand:text.subtle"
+                          "value": "nlbrand:subtleText"
                         }
                       ]
                     },
@@ -2265,7 +2265,7 @@
           "props": {
             "text": "",
             "fontSize": 15,
-            "color": "nlbrand:text.subtle",
+            "color": "nlbrand:subtleText",
             "fontWeight": "normal",
             "fontStyle": "normal",
             "textAlign": "right",
@@ -2336,7 +2336,7 @@
                       "rows": [
                         {
                           "conditions": null,
-                          "value": "nlbrand:text.subtle"
+                          "value": "nlbrand:subtleText"
                         }
                       ]
                     },
@@ -2470,7 +2470,7 @@
             "stackAlignItems": "stretch",
             "stackJustifyContent": "start",
             "scrollAxis": "y",
-            "backgroundColor": "nlbrand:surface.raised",
+            "backgroundColor": "nlbrand:panel",
             "borderRadius": 4,
             "borderRadiusTL": 0,
             "borderRadiusTR": 0,
@@ -2509,7 +2509,7 @@
                       "rows": [
                         {
                           "conditions": null,
-                          "value": "nlbrand:surface.raised"
+                          "value": "nlbrand:panel"
                         }
                       ]
                     },
@@ -2897,7 +2897,7 @@
             "stackAlignItems": "stretch",
             "stackJustifyContent": "start",
             "scrollAxis": "y",
-            "backgroundColor": "nlbrand:surface.overlay",
+            "backgroundColor": "nlbrand:raisedFill",
             "borderRadius": 0,
             "borderRadiusTL": 0,
             "borderRadiusTR": 0,
@@ -2936,7 +2936,7 @@
                       "rows": [
                         {
                           "conditions": null,
-                          "value": "nlbrand:surface.overlay"
+                          "value": "nlbrand:raisedFill"
                         }
                       ]
                     },
@@ -3664,7 +3664,7 @@
           "props": {
             "text": "65",
             "fontSize": 22,
-            "color": "nlbrand:text.subtle",
+            "color": "nlbrand:subtleText",
             "fontWeight": "normal",
             "fontStyle": "normal",
             "textAlign": "left",
@@ -3735,7 +3735,7 @@
                       "rows": [
                         {
                           "conditions": null,
-                          "value": "nlbrand:text.subtle"
+                          "value": "nlbrand:subtleText"
                         }
                       ]
                     },
@@ -4404,7 +4404,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.sunken",
+        "backgroundColor": "nlbrand:pageBackground",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -4443,7 +4443,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.sunken"
+                      "value": "nlbrand:pageBackground"
                     }
                   ]
                 },
@@ -4775,7 +4775,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -4814,7 +4814,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -5510,7 +5510,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -5549,7 +5549,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -6765,7 +6765,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -6804,7 +6804,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -7539,7 +7539,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.sunken",
+        "backgroundColor": "nlbrand:pageBackground",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -7578,7 +7578,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.sunken"
+                      "value": "nlbrand:pageBackground"
                     }
                   ]
                 },
@@ -7910,7 +7910,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -7949,7 +7949,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -9160,7 +9160,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -9199,7 +9199,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -10006,7 +10006,7 @@
                       "conditions": {
                         "hovered": true
                       },
-                      "value": "nlbrand:border.strong"
+                      "value": "nlbrand:hoverBorder"
                     }
                   ],
                   "transition": {
@@ -10232,7 +10232,7 @@
                       "conditions": {
                         "hovered": true
                       },
-                      "value": "nlbrand:border.strong"
+                      "value": "nlbrand:hoverBorder"
                     }
                   ],
                   "transition": {
@@ -11325,7 +11325,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -11364,7 +11364,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -12065,7 +12065,7 @@
       "props": {
         "text": "65",
         "fontSize": 22,
-        "color": "nlbrand:text.subtle",
+        "color": "nlbrand:subtleText",
         "fontWeight": "normal",
         "fontStyle": "normal",
         "textAlign": "left",
@@ -12136,7 +12136,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:text.subtle"
+                      "value": "nlbrand:subtleText"
                     }
                   ]
                 },
@@ -12261,7 +12261,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -12300,7 +12300,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -13223,7 +13223,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -13262,7 +13262,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -13963,7 +13963,7 @@
       "props": {
         "text": "3",
         "fontSize": 22,
-        "color": "nlbrand:text.subtle",
+        "color": "nlbrand:subtleText",
         "fontWeight": "normal",
         "fontStyle": "normal",
         "textAlign": "left",
@@ -14034,7 +14034,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:text.subtle"
+                      "value": "nlbrand:subtleText"
                     }
                   ]
                 },
@@ -14159,7 +14159,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -14198,7 +14198,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -15121,7 +15121,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -15160,7 +15160,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -15861,7 +15861,7 @@
       "props": {
         "text": "1.3",
         "fontSize": 22,
-        "color": "nlbrand:text.subtle",
+        "color": "nlbrand:subtleText",
         "fontWeight": "normal",
         "fontStyle": "normal",
         "textAlign": "left",
@@ -15932,7 +15932,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:text.subtle"
+                      "value": "nlbrand:subtleText"
                     }
                   ]
                 },
@@ -16057,7 +16057,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -16096,7 +16096,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -17093,7 +17093,7 @@
                       "conditions": {
                         "hovered": true
                       },
-                      "value": "nlbrand:border.strong"
+                      "value": "nlbrand:hoverBorder"
                     }
                   ],
                   "transition": {
@@ -17319,7 +17319,7 @@
                       "conditions": {
                         "hovered": true
                       },
-                      "value": "nlbrand:border.strong"
+                      "value": "nlbrand:hoverBorder"
                     }
                   ],
                   "transition": {
@@ -17444,7 +17444,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -17483,7 +17483,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -18480,7 +18480,7 @@
                       "conditions": {
                         "hovered": true
                       },
-                      "value": "nlbrand:border.strong"
+                      "value": "nlbrand:hoverBorder"
                     }
                   ],
                   "transition": {
@@ -18706,7 +18706,7 @@
                       "conditions": {
                         "hovered": true
                       },
-                      "value": "nlbrand:border.strong"
+                      "value": "nlbrand:hoverBorder"
                     }
                   ],
                   "transition": {
@@ -18831,7 +18831,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -18870,7 +18870,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -20170,7 +20170,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -20209,7 +20209,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -20910,7 +20910,7 @@
       "props": {
         "text": "80",
         "fontSize": 22,
-        "color": "nlbrand:text.subtle",
+        "color": "nlbrand:subtleText",
         "fontWeight": "normal",
         "fontStyle": "normal",
         "textAlign": "left",
@@ -20981,7 +20981,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:text.subtle"
+                      "value": "nlbrand:subtleText"
                     }
                   ]
                 },
@@ -21106,7 +21106,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -21145,7 +21145,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -22040,7 +22040,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -22079,7 +22079,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -22974,7 +22974,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -23013,7 +23013,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -23908,7 +23908,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -23947,7 +23947,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -24687,7 +24687,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.sunken",
+        "backgroundColor": "nlbrand:pageBackground",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -24726,7 +24726,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.sunken"
+                      "value": "nlbrand:pageBackground"
                     }
                   ]
                 },
@@ -25058,7 +25058,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -25097,7 +25097,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -26308,7 +26308,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -26347,7 +26347,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -26679,7 +26679,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.raised",
+        "backgroundColor": "nlbrand:panel",
         "borderRadius": 4,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -26718,7 +26718,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.raised"
+                      "value": "nlbrand:panel"
                     }
                   ]
                 },
@@ -27060,7 +27060,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.raised",
+        "backgroundColor": "nlbrand:panel",
         "borderRadius": 4,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -27099,7 +27099,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.raised"
+                      "value": "nlbrand:panel"
                     }
                   ]
                 },
@@ -27441,7 +27441,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.raised",
+        "backgroundColor": "nlbrand:panel",
         "borderRadius": 4,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -27480,7 +27480,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.raised"
+                      "value": "nlbrand:panel"
                     }
                   ]
                 },
@@ -27822,7 +27822,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.raised",
+        "backgroundColor": "nlbrand:panel",
         "borderRadius": 4,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -27861,7 +27861,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.raised"
+                      "value": "nlbrand:panel"
                     }
                   ]
                 },
@@ -28203,7 +28203,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.raised",
+        "backgroundColor": "nlbrand:panel",
         "borderRadius": 4,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -28242,7 +28242,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.raised"
+                      "value": "nlbrand:panel"
                     }
                   ]
                 },
@@ -28584,7 +28584,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.raised",
+        "backgroundColor": "nlbrand:panel",
         "borderRadius": 4,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -28623,7 +28623,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.raised"
+                      "value": "nlbrand:panel"
                     }
                   ]
                 },
@@ -28975,7 +28975,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.sunken",
+        "backgroundColor": "nlbrand:pageBackground",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -29014,7 +29014,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.sunken"
+                      "value": "nlbrand:pageBackground"
                     }
                   ]
                 },
@@ -30561,7 +30561,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.sunken",
+        "backgroundColor": "nlbrand:pageBackground",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -30600,7 +30600,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.sunken"
+                      "value": "nlbrand:pageBackground"
                     }
                   ]
                 },
@@ -31522,7 +31522,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.sunken",
+        "backgroundColor": "nlbrand:pageBackground",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -31561,7 +31561,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.sunken"
+                      "value": "nlbrand:pageBackground"
                     }
                   ]
                 },
@@ -31893,7 +31893,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -31932,7 +31932,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -33489,7 +33489,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.sunken",
+        "backgroundColor": "nlbrand:pageBackground",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -33528,7 +33528,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.sunken"
+                      "value": "nlbrand:pageBackground"
                     }
                   ]
                 },
@@ -34822,7 +34822,7 @@
         "textVerticalAlign": "center",
         "lineHeight": 1.2,
         "textWrapMode": "nowrap",
-        "backgroundColor": "nlbrand:surface.sunken",
+        "backgroundColor": "nlbrand:pageBackground",
         "fillType": "color",
         "fillOpacity": 1,
         "fillVisible": true,
@@ -34847,7 +34847,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.sunken"
+                      "value": "nlbrand:pageBackground"
                     }
                   ],
                   "transition": {
@@ -34885,7 +34885,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.active"
+                      "value": "nlbrand:selectedFill"
                     }
                   ],
                   "transition": {
@@ -34941,7 +34941,7 @@
         "textVerticalAlign": "center",
         "lineHeight": 1.2,
         "textWrapMode": "nowrap",
-        "backgroundColor": "nlbrand:surface.sunken",
+        "backgroundColor": "nlbrand:pageBackground",
         "fillType": "color",
         "fillOpacity": 1,
         "fillVisible": true,
@@ -34966,7 +34966,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.sunken"
+                      "value": "nlbrand:pageBackground"
                     }
                   ],
                   "transition": {
@@ -35004,7 +35004,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.active"
+                      "value": "nlbrand:selectedFill"
                     }
                   ],
                   "transition": {
@@ -35060,7 +35060,7 @@
         "textVerticalAlign": "center",
         "lineHeight": 1.2,
         "textWrapMode": "nowrap",
-        "backgroundColor": "nlbrand:surface.sunken",
+        "backgroundColor": "nlbrand:pageBackground",
         "fillType": "color",
         "fillOpacity": 1,
         "fillVisible": true,
@@ -35098,7 +35098,7 @@
         "textVerticalAlign": "center",
         "lineHeight": 1.2,
         "textWrapMode": "nowrap",
-        "backgroundColor": "nlbrand:surface.sunken",
+        "backgroundColor": "nlbrand:pageBackground",
         "fillType": "color",
         "fillOpacity": 1,
         "fillVisible": true,
@@ -35136,7 +35136,7 @@
         "textVerticalAlign": "center",
         "lineHeight": 1.2,
         "textWrapMode": "nowrap",
-        "backgroundColor": "nlbrand:surface.sunken",
+        "backgroundColor": "nlbrand:pageBackground",
         "fillType": "color",
         "fillOpacity": 1,
         "fillVisible": true,
@@ -35174,7 +35174,7 @@
         "textVerticalAlign": "center",
         "lineHeight": 1.2,
         "textWrapMode": "nowrap",
-        "backgroundColor": "nlbrand:surface.sunken",
+        "backgroundColor": "nlbrand:pageBackground",
         "fillType": "color",
         "fillOpacity": 1,
         "fillVisible": true,
@@ -35620,7 +35620,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.sunken",
+        "backgroundColor": "nlbrand:pageBackground",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -35659,7 +35659,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.sunken"
+                      "value": "nlbrand:pageBackground"
                     }
                   ]
                 },
@@ -35991,7 +35991,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -36030,7 +36030,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -37241,7 +37241,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -37280,7 +37280,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -37612,7 +37612,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.raised",
+        "backgroundColor": "nlbrand:panel",
         "borderRadius": 4,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -37651,7 +37651,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.raised"
+                      "value": "nlbrand:panel"
                     }
                   ]
                 },
@@ -37993,7 +37993,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.raised",
+        "backgroundColor": "nlbrand:panel",
         "borderRadius": 4,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -38032,7 +38032,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.raised"
+                      "value": "nlbrand:panel"
                     }
                   ]
                 },
@@ -38374,7 +38374,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.raised",
+        "backgroundColor": "nlbrand:panel",
         "borderRadius": 4,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -38413,7 +38413,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.raised"
+                      "value": "nlbrand:panel"
                     }
                   ]
                 },
@@ -38755,7 +38755,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.raised",
+        "backgroundColor": "nlbrand:panel",
         "borderRadius": 4,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -38794,7 +38794,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.raised"
+                      "value": "nlbrand:panel"
                     }
                   ]
                 },
@@ -39136,7 +39136,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.raised",
+        "backgroundColor": "nlbrand:panel",
         "borderRadius": 4,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -39175,7 +39175,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.raised"
+                      "value": "nlbrand:panel"
                     }
                   ]
                 },
@@ -39517,7 +39517,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.raised",
+        "backgroundColor": "nlbrand:panel",
         "borderRadius": 4,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -39556,7 +39556,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.raised"
+                      "value": "nlbrand:panel"
                     }
                   ]
                 },
@@ -39918,7 +39918,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.raised",
+        "backgroundColor": "nlbrand:panel",
         "borderRadius": 4,
         "borderRadiusTL": 4,
         "borderRadiusTR": 4,
@@ -39957,7 +39957,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.raised"
+                      "value": "nlbrand:panel"
                     }
                   ]
                 },
@@ -40567,7 +40567,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 4,
         "borderRadiusTL": 4,
         "borderRadiusTR": 4,
@@ -40606,7 +40606,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -41504,7 +41504,7 @@
       },
       "props": {
         "fontSize": 17,
-        "color": "nlbrand:text.subtle",
+        "color": "nlbrand:subtleText",
         "fontWeight": "normal",
         "fontStyle": "normal",
         "textAlign": "left",
@@ -41575,7 +41575,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:text.subtle"
+                      "value": "nlbrand:subtleText"
                     }
                   ]
                 },
@@ -41814,7 +41814,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.raised",
+        "backgroundColor": "nlbrand:panel",
         "borderRadius": 4,
         "borderRadiusTL": 4,
         "borderRadiusTR": 4,
@@ -41853,7 +41853,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.raised"
+                      "value": "nlbrand:panel"
                     }
                   ]
                 },
@@ -42378,7 +42378,7 @@
       "props": {
         "text": "",
         "fontSize": 16,
-        "color": "nlbrand:text.subtle",
+        "color": "nlbrand:subtleText",
         "fontWeight": "normal",
         "fontStyle": "normal",
         "textAlign": "left",
@@ -42449,7 +42449,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:text.subtle"
+                      "value": "nlbrand:subtleText"
                     }
                   ]
                 },
@@ -42579,7 +42579,7 @@
         "textVerticalAlign": "center",
         "lineHeight": 1.2,
         "textWrapMode": "nowrap",
-        "backgroundColor": "nlbrand:surface.sunken",
+        "backgroundColor": "nlbrand:pageBackground",
         "fillType": "color",
         "fillOpacity": 1,
         "fillVisible": true,
@@ -43022,7 +43022,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.sunken",
+        "backgroundColor": "nlbrand:pageBackground",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -43061,7 +43061,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.sunken"
+                      "value": "nlbrand:pageBackground"
                     }
                   ]
                 },
@@ -43393,7 +43393,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -43432,7 +43432,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -43952,7 +43952,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -43991,7 +43991,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -45092,7 +45092,7 @@
                       "conditions": {
                         "hovered": true
                       },
-                      "value": "nlbrand:border.strong"
+                      "value": "nlbrand:hoverBorder"
                     }
                   ],
                   "transition": {
@@ -45318,7 +45318,7 @@
                       "conditions": {
                         "hovered": true
                       },
-                      "value": "nlbrand:border.strong"
+                      "value": "nlbrand:hoverBorder"
                     }
                   ],
                   "transition": {
@@ -45443,7 +45443,7 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "borderRadius": 0,
         "borderRadiusTL": 0,
         "borderRadiusTR": 0,
@@ -45482,7 +45482,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:raisedFill"
                     }
                   ]
                 },
@@ -45955,7 +45955,7 @@
                       "conditions": {
                         "hovered": true
                       },
-                      "value": "nlbrand:border.strong"
+                      "value": "nlbrand:hoverBorder"
                     }
                   ],
                   "transition": {
@@ -46175,7 +46175,7 @@
                       "conditions": {
                         "hovered": true
                       },
-                      "value": "nlbrand:border.strong"
+                      "value": "nlbrand:hoverBorder"
                     }
                   ],
                   "transition": {
@@ -46395,7 +46395,7 @@
                       "conditions": {
                         "hovered": true
                       },
-                      "value": "nlbrand:border.strong"
+                      "value": "nlbrand:hoverBorder"
                     }
                   ],
                   "transition": {
@@ -46615,7 +46615,7 @@
                       "conditions": {
                         "hovered": true
                       },
-                      "value": "nlbrand:border.strong"
+                      "value": "nlbrand:hoverBorder"
                     }
                   ],
                   "transition": {
@@ -46798,7 +46798,7 @@
       },
       "props": {
         "layoutKind": "free",
-        "backgroundColor": "nlbrand:surface.sunken",
+        "backgroundColor": "nlbrand:pageBackground",
         "fillVisible": true,
         "borderRadius": 4,
         "borderColor": "nlbrand:container.border",
@@ -46825,7 +46825,7 @@
       },
       "props": {
         "fitMode": "cover",
-        "backgroundColor": "nlbrand:surface.sunken",
+        "backgroundColor": "nlbrand:pageBackground",
         "fillType": "image",
         "fillVisible": true,
         "borderWidth": 0,
@@ -46857,7 +46857,7 @@
       },
       "props": {
         "layoutKind": "free",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "fillVisible": true,
         "fillOpacity": 0.85,
         "borderWidth": 0,
@@ -46972,7 +46972,7 @@
       },
       "props": {
         "layoutKind": "free",
-        "backgroundColor": "nlbrand:surface.sunken",
+        "backgroundColor": "nlbrand:pageBackground",
         "fillVisible": true,
         "borderRadius": 4,
         "borderColor": "nlbrand:container.border",
@@ -46999,7 +46999,7 @@
       },
       "props": {
         "fitMode": "cover",
-        "backgroundColor": "nlbrand:surface.sunken",
+        "backgroundColor": "nlbrand:pageBackground",
         "fillType": "image",
         "fillVisible": true,
         "borderWidth": 0,
@@ -47031,7 +47031,7 @@
       },
       "props": {
         "layoutKind": "free",
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "fillVisible": true,
         "fillOpacity": 0.85,
         "borderWidth": 0,
@@ -47171,7 +47171,7 @@
       "props": {
         "text": "▶",
         "fontSize": 20,
-        "color": "nlbrand:text.subtle",
+        "color": "nlbrand:subtleText",
         "textAlign": "center",
         "textVerticalAlign": "center",
         "textWrapMode": "nowrap"
@@ -47224,7 +47224,7 @@
         "visible": true
       },
       "props": {
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "fillVisible": true,
         "borderWidth": 0,
         "borderStyle": "none"
@@ -47335,7 +47335,7 @@
       "props": {
         "text": "▶",
         "fontSize": 20,
-        "color": "nlbrand:text.subtle",
+        "color": "nlbrand:subtleText",
         "textAlign": "center",
         "textVerticalAlign": "center",
         "textWrapMode": "nowrap"
@@ -47388,7 +47388,7 @@
         "visible": true
       },
       "props": {
-        "backgroundColor": "nlbrand:surface.overlay",
+        "backgroundColor": "nlbrand:raisedFill",
         "fillVisible": true,
         "borderWidth": 0,
         "borderStyle": "none"
@@ -47410,7 +47410,7 @@
       "props": {
         "text": "",
         "fontSize": 26,
-        "color": "nlbrand:text.subtle",
+        "color": "nlbrand:subtleText",
         "textAlign": "left",
         "textVerticalAlign": "center"
       }
@@ -47432,7 +47432,7 @@
       },
       "props": {
         "layoutKind": "free",
-        "backgroundColor": "nlbrand:surface.raised",
+        "backgroundColor": "nlbrand:panel",
         "fillVisible": true,
         "borderWidth": 0,
         "borderStyle": "none",
@@ -47491,7 +47491,7 @@
         "borderRadiusLinked": false,
         "borderRadiusTL": 15,
         "borderRadiusTR": 15,
-        "borderColor": "nlbrand:text.subtle",
+        "borderColor": "nlbrand:subtleText",
         "borderWidth": 6,
         "borderStyle": "solid"
       }
@@ -47511,7 +47511,7 @@
       },
       "props": {
         "layoutKind": "free",
-        "backgroundColor": "nlbrand:text.subtle",
+        "backgroundColor": "nlbrand:subtleText",
         "fillVisible": true,
         "borderRadius": 6,
         "borderWidth": 0,
@@ -47533,7 +47533,7 @@
       },
       "props": {
         "layoutKind": "free",
-        "backgroundColor": "nlbrand:surface.raised",
+        "backgroundColor": "nlbrand:panel",
         "fillVisible": true,
         "borderRadius": 4,
         "borderWidth": 0,
@@ -47557,7 +47557,7 @@
       },
       "props": {
         "layoutKind": "free",
-        "backgroundColor": "nlbrand:surface.raised",
+        "backgroundColor": "nlbrand:panel",
         "fillVisible": true,
         "borderWidth": 0,
         "borderStyle": "none",
@@ -47616,7 +47616,7 @@
         "borderRadiusLinked": false,
         "borderRadiusTL": 15,
         "borderRadiusTR": 15,
-        "borderColor": "nlbrand:text.subtle",
+        "borderColor": "nlbrand:subtleText",
         "borderWidth": 6,
         "borderStyle": "solid"
       }
@@ -47636,7 +47636,7 @@
       },
       "props": {
         "layoutKind": "free",
-        "backgroundColor": "nlbrand:text.subtle",
+        "backgroundColor": "nlbrand:subtleText",
         "fillVisible": true,
         "borderRadius": 6,
         "borderWidth": 0,
@@ -47658,7 +47658,7 @@
       },
       "props": {
         "layoutKind": "free",
-        "backgroundColor": "nlbrand:surface.raised",
+        "backgroundColor": "nlbrand:panel",
         "fillVisible": true,
         "borderRadius": 4,
         "borderWidth": 0,
@@ -47717,7 +47717,7 @@
         "borderRadiusLinked": false,
         "borderRadiusTL": 5,
         "borderRadiusTR": 5,
-        "borderColor": "nlbrand:text.subtle",
+        "borderColor": "nlbrand:subtleText",
         "borderWidth": 2,
         "borderStyle": "solid"
       }
@@ -47737,7 +47737,7 @@
       },
       "props": {
         "layoutKind": "free",
-        "backgroundColor": "nlbrand:text.subtle",
+        "backgroundColor": "nlbrand:subtleText",
         "fillVisible": true,
         "borderRadius": 2,
         "borderWidth": 0,
@@ -47818,7 +47818,7 @@
         "borderRadiusLinked": false,
         "borderRadiusTL": 5,
         "borderRadiusTR": 5,
-        "borderColor": "nlbrand:text.subtle",
+        "borderColor": "nlbrand:subtleText",
         "borderWidth": 2,
         "borderStyle": "solid"
       }
@@ -47838,7 +47838,7 @@
       },
       "props": {
         "layoutKind": "free",
-        "backgroundColor": "nlbrand:text.subtle",
+        "backgroundColor": "nlbrand:subtleText",
         "fillVisible": true,
         "borderRadius": 2,
         "borderWidth": 0,
@@ -47983,7 +47983,7 @@
                       "conditions": {
                         "hovered": true
                       },
-                      "value": "nlbrand:border.strong"
+                      "value": "nlbrand:hoverBorder"
                     }
                   ],
                   "transition": {
@@ -48120,7 +48120,7 @@
                       "conditions": {
                         "hovered": true
                       },
-                      "value": "nlbrand:border.strong"
+                      "value": "nlbrand:hoverBorder"
                     }
                   ],
                   "transition": {
@@ -48158,7 +48158,7 @@
       },
       "props": {
         "layoutKind": "free",
-        "backgroundColor": "nlbrand:surface.sunken",
+        "backgroundColor": "nlbrand:pageBackground",
         "fillVisible": true,
         "borderWidth": 0,
         "borderStyle": "none",
@@ -48248,7 +48248,7 @@
       },
       "props": {
         "layoutKind": "free",
-        "backgroundColor": "nlbrand:surface.sunken",
+        "backgroundColor": "nlbrand:pageBackground",
         "fillType": "color",
         "fillVisible": true,
         "borderRadiusLinked": false,
@@ -49800,7 +49800,7 @@
                       "conditions": {
                         "hovered": true
                       },
-                      "value": "nlbrand:border.strong"
+                      "value": "nlbrand:hoverBorder"
                     }
                   ],
                   "transition": {

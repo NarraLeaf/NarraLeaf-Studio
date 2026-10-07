@@ -64,6 +64,7 @@ describe("blueprintJsonValue helpers", () => {
     it("summarizes JSON values for compact node cards", () => {
         expect(summarizeJsonValue({ a: 1, b: 2, c: 3, d: 4 })).toBe("{ a, b, c, +1 }");
         expect(summarizeJsonValue([1, 2])).toBe("[2 items]");
+        expect(summarizeJsonValue([1, 2], count => `${count} 项`)).toBe("[2 项]");
         expect(summarizeJsonValue("abcdefghijklmnopqrstuvwxyz0123456789")).toBe(
             "\"abcdefghijklmnopqrstuvwxyz0123456...\"",
         );

@@ -28,6 +28,7 @@ import { useTranslation } from "@/lib/i18n";
 import type { UseTranslation } from "@/lib/i18n";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 import { cn } from "@/lib/utils/cn";
+import { formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
 
 const FIELD_INPUT =
     "w-full rounded-md border border-edge-strong bg-fill-subtle px-2 py-1 text-2xs text-fg outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/30";
@@ -182,7 +183,7 @@ function BlueprintVariableRow({
                     <span className={`text-2xs ${accentClass}`}>{scopeLabel}</span>
                     {v.valueType ? (
                         <span className="truncate rounded-md border border-edge bg-fill-subtle px-1 py-0.5 font-mono text-2xs text-fg-muted">
-                            {v.valueType}
+                            {formatBlueprintValueTypeLabel(v.valueType, t)}
                         </span>
                     ) : null}
                 </div>
