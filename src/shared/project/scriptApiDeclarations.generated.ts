@@ -1542,6 +1542,15 @@ declare module "@narraleaf/script" {
     	};
     	/** Dispatch a widget private event slot (for example \`init\` or \`mouseClick\`) on the owner-local blueprint. */
     	dispatchElementBlueprintEvent: (elementId: string, eventName: string, payload?: Record<string, unknown>, options?: UIHostAdapterElementEventOptions) => Promise<void>;
+    	/**
+    	 * Whether a press on this element is handled by the element itself: its own blueprint has a
+    	 * Mouse Click head, or an On Element Click head names it.
+    	 *
+    	 * Asked by a list of the controls in its rows: a press such a control answers is that control's,
+    	 * and the row does not raise Item Click for it - as a key pressed on the control already is not
+    	 * the row's. Optional because a host that dispatches nothing - an editor preview - has no answer.
+    	 */
+    	elementAnswersPress?: (elementId: string) => boolean;
     	/** Continue the current widget event from this element to its structural parent. */
     	continueElementEventBubble?: (elementId: string, eventName: string, payload?: Record<string, unknown>, options?: UIHostAdapterElementEventOptions) => Promise<boolean>;
     	/** Dispatch a surface-level event on the current surfaceMain blueprint. */
