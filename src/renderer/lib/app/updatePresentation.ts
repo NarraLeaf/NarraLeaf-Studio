@@ -77,6 +77,19 @@ export function updateIsOnOffer(state: UpdateState | null): state is UpdateState
     }
 }
 
+/** When Studio will try a failed download again on its own, as a clock time; null when it will not. */
+export function updateRetryTime(state: UpdateState): string | null {
+    if (state.status !== "error" || state.retryAt === undefined) {
+        return null;
+    }
+    return new Date(state.retryAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+/** The label of the button that downloads: "Try Again" once a download of this version has failed. */
+export function updateDownloadActionKey(state: UpdateState): "update.actions.retry" | "update.actions.download" {
+    return state.status === "error" ? "update.actions.retry" : "update.actions.download";
+}
+
 /** Whether the update in progress can be stopped. */
 export function updateCanCancel(state: UpdateState): boolean {
     return state.status === "downloading" || state.status === "preparing";

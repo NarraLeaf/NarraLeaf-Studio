@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
 import { useUpdateState } from "@/lib/app/useUpdateState";
-import { updateCanCancel, updateStatusKey } from "@/lib/app/updatePresentation";
+import { updateCanCancel, updateDownloadActionKey, updateRetryTime, updateStatusKey } from "@/lib/app/updatePresentation";
 import { Button } from "@/lib/components/elements";
 import { UpdateStepProgress } from "@/lib/components/elements/UpdateStepProgress";
 import { UPDATE_RELEASES_URL } from "@shared/constants/update";
@@ -81,11 +81,14 @@ export function SoftwareUpdatePanel() {
             <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="flex flex-col gap-1 min-w-0 grow basis-64">
                     <span className="text-sm font-medium text-fg">{t(updateStatusKey(state), { version })}</span>
-                    <span className="text-xs text-fg-subtle">
+                    <span className="text-xs text-fg-subtle break-words">
                         {state.status === "error" && state.error
                             ? state.error
                             : t("update.versions", { current: state.currentVersion })}
                     </span>
+                    {updateRetryTime(state) && (
+                        <span className="text-xs text-fg-subtle">{t("update.retryAt", { time: updateRetryTime(state) ?? "" })}</span>
+                    )}
                     {state.status === "manual" && (
                         <span className="text-xs text-fg-subtle">{t(unsupportedKey())}</span>
                     )}
@@ -127,7 +130,7 @@ export function SoftwareUpdatePanel() {
 
                     {state.canInstall && (state.status === "available" || (state.status === "error" && version)) && (
                         <Button size="sm" variant="primary" className="h-7" disabled={busy} onClick={() => void download()}>
-                            {t("update.actions.download")}
+                            {t(updateDownloadActionKey(state))}
                         </Button>
                     )}
 

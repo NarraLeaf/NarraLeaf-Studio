@@ -32,6 +32,8 @@ export const update = {
     versions: "Installed {current}",
     /** Under a ready update: the other way it gets applied. */
     readyHint: "Also applied when Studio quits.",
+    /** Under a failed download, while Studio is waiting to try it again on its own. `{time}` is a clock time. */
+    retryAt: "Studio will try again at {time}.",
     /** The button in the workspace title bar, left of the dock toggles. */
     indicator: {
         label: "Software update",
@@ -39,6 +41,8 @@ export const update = {
     actions: {
         check: "Check for Updates",
         download: "Download Update",
+        /** A download of the version on offer failed; pressing it checks again and downloads. */
+        retry: "Try Again",
         install: "Restart and Install",
         restart: "Restart to Update",
         cancel: "Cancel Update",

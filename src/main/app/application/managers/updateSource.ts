@@ -168,6 +168,11 @@ export interface ChooseUpdateSourceOptions {
     timeDownload?: (url: string) => Promise<number>;
     /** The author's choice in Settings; `auto` or absent asks both. */
     preference?: UpdateSourcePreference;
+    /**
+     * A source a download of a version just failed from. While the other source has that version
+     * too, it is used without timing either: the next attempt should not be a repeat of the failure.
+     */
+    avoid?: { version: string; source: UpdateSourceId } | null;
 }
 
 /**
@@ -197,6 +202,13 @@ export async function chooseUpdateSource(options: ChooseUpdateSourceOptions): Pr
     const holders = offers.filter(offer => compareVersions(offer.version, newest) === 0);
     if (holders.length === 1 || compareVersions(newest, options.currentVersion) <= 0) {
         return holders[0];
+    }
+    if (options.avoid?.version === newest) {
+        const other = holders.find(offer => offer.source !== options.avoid?.source);
+        if (other) {
+            options.log(`${newest} from ${other.source}: the download from ${options.avoid.source} failed`);
+            return other;
+        }
     }
     if (options.remembered?.version === newest) {
         const again = holders.find(offer => offer.source === options.remembered?.source);
