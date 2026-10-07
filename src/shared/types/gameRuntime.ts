@@ -864,7 +864,10 @@ export type GameCrashStoryPosition = {
 export type GameCrashReportRequest = {
     /** The failure as the crash screen has it, stack included. */
     details: string;
-    /** The language the shell is speaking, which is the machine's rather than the game's. */
+    /**
+     * The language the crash screen was drawn in: the game's, resolved to one of Studio's catalogues,
+     * or the machine's when no game language was known (`src/runtime/renderer/shellLocale.ts`).
+     */
     language: string;
     /** Where the story had got to, or null when nothing was running. */
     story: GameCrashStoryPosition | null;

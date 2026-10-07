@@ -11,23 +11,43 @@
  * (`@shared/i18n`, process-agnostic). Shared widget code therefore renders real text with no
  * dependency on the editor store.
  *
- * The locale is the machine's, fixed for the life of the window (see `../shellLocale`). There is
- * no picker and no setter: this is the game's shell speaking, not the game, and the one screen a
- * player actually reads out of it is the one drawn after the game has stopped working. All three
- * catalogs are in this bundle either way - the registry is imported whole - so following the
- * machine costs nothing over pinning English.
+ * The language is the shell's (see `../shellLocale`): the game's own, resolved to one of Studio's
+ * catalogues the way the game's other Studio words are, or the machine's while no game language is
+ * known. Everything this bundle says through `translate` is said inside the author's game, to the
+ * player reading it, so it is said in the language they are reading.
+ *
+ * It changes while the window is open - a language picked on a title screen applies without a
+ * restart - so the hook re-renders on a change and the plain functions read the answer at the moment
+ * they are called. There is no setter: the game decides the language, not the code that draws in it.
+ * All three catalogs are in this bundle either way, since the registry is imported whole.
  */
+import { useSyncExternalStore } from "react";
 import { createTranslator } from "@shared/i18n";
 import type {
     InterpolationParams,
     Locale,
+    LocaleCode,
     PluralKey,
     TranslationKey,
     Translator,
 } from "@shared/i18n";
-import { getShellLocale } from "../shellLocale";
+import { getShellLocale, subscribeShellLocale } from "../shellLocale";
 
-const translator: Translator = createTranslator(getShellLocale());
+const translators = new Map<LocaleCode, Translator>();
+
+/**
+ * The translator for the shell's language right now. One per language for the life of the page, so
+ * `useSyncExternalStore` sees a stable snapshot between changes.
+ */
+function currentTranslator(): Translator {
+    const locale = getShellLocale();
+    let translator = translators.get(locale);
+    if (!translator) {
+        translator = createTranslator(locale);
+        translators.set(locale, translator);
+    }
+    return translator;
+}
 
 export interface UseTranslation extends Translator {
     /** No-op in the runtime bundle: there is no Studio language picker here. */
@@ -35,32 +55,32 @@ export interface UseTranslation extends Translator {
 }
 
 const noop = (): void => undefined;
-const noopUnsubscribe = (): (() => void) => noop;
 
 /** Mirrors the editor `i18nStore` surface used by shared widget code, minus mutation. */
 export const i18nStore = {
-    getLocale(): Locale {
+    getLocale(): LocaleCode {
         return getShellLocale();
     },
     getTranslator(): Translator {
-        return translator;
+        return currentTranslator();
     },
-    subscribe(): () => void {
-        return noopUnsubscribe();
+    subscribe(listener: () => void): () => void {
+        return subscribeShellLocale(listener);
     },
     setLocale: noop,
 };
 
 export function useTranslation(): UseTranslation {
+    const translator = useSyncExternalStore(subscribeShellLocale, currentTranslator, currentTranslator);
     return { ...translator, setLocale: noop };
 }
 
 export function translate(key: TranslationKey, params?: InterpolationParams): string {
-    return translator.t(key, params);
+    return currentTranslator().t(key, params);
 }
 
 export function translateN(base: PluralKey, count: number, params?: InterpolationParams): string {
-    return translator.tn(base, count, params);
+    return currentTranslator().tn(base, count, params);
 }
 
 /** No-op: the runtime bundle has no persisted-language bootstrap. */

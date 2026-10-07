@@ -7,9 +7,10 @@ import { getShellLocale } from "./shellLocale";
  * to write it.
  *
  * Everything here has to hold with the game half-gone. The story position is three strings that were
- * recorded while the game was healthy, the language was resolved at module load, and the failure was
- * handed to the screen - nothing is computed out of a tree that has just stopped rendering, and
- * nothing here can throw its way into a second crash.
+ * recorded while the game was healthy, the language is the one the screen is drawn in (`shellLocale`,
+ * kept up to date by the game while it ran), and the failure was handed to the screen - nothing is
+ * computed out of a tree that has just stopped rendering, and nothing here can throw its way into a
+ * second crash.
  */
 
 /**
