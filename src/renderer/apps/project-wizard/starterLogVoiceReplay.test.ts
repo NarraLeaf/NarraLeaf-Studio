@@ -54,7 +54,8 @@ describe.each(["content", "content.zh", "content.ja"])("the Log page's replay bu
         expect(owned).toHaveLength(1);
         const graphs = Object.values(owned[0]!.graphs.events).map(event => event.graph);
         expect(graphs).toHaveLength(1);
-        const { nodes, edges } = graphs[0]!;
+        const nodes = graphs[0]?.nodes ?? {};
+        const edges = graphs[0]?.edges ?? [];
         const head = Object.values(nodes).find(node => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK);
         const play = Object.values(nodes).find(node => node.type === PLAY_VOICE);
         const field = Object.values(nodes).find(node => node.type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD);
