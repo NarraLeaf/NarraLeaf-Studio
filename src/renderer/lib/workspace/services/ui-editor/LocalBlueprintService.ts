@@ -79,6 +79,7 @@ import {
     widgetMainOwnerKey,
     widgetValueOwnerKey,
 } from "./blueprint/ownerKeys";
+import { cloneStoryActionBlueprintForPaste } from "./blueprint/cloneBlueprintForPaste";
 import { derivedBlueprintId } from "./blueprint/derivedBlueprintId";
 import { ownerKeyBelongsToSurface } from "@shared/blueprint/ownerKey";
 import { SCRIPTS_DIR } from "@shared/project/scriptsDirectory";
@@ -780,6 +781,46 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
 
     public getStoryActionBlueprintId(blueprintId: string): string | undefined {
         return getSlotBlueprintId(this.getBlueprintDocument(), storyActionOwnerKey(blueprintId));
+    }
+
+    /**
+     * Add a copy of a story blueprint under a new id, and answer the id - or null when it cannot be.
+     *
+     * What a copied story row gets instead of its source's id: a story blueprint is owned by the row
+     * that names it, so two rows naming one would share one graph, and editing either would change
+     * both. `source` is this project's own blueprint for a copy made here, or one carried on the
+     * clipboard from another project. Its name travels with it.
+     *
+     * The document is validated with the copy in it BEFORE it is written: a blueprint carried from
+     * another Studio is data nobody here wrote, and the mutation writes in place, so a copy that only
+     * failed validation afterwards would already be in the document. Not a history step of the
+     * blueprint's own - the copy is part of the paste that made it, as the blueprint
+     * `ensureStoryActionBlueprint` mints is part of the row it is made for.
+     */
+    public copyStoryActionBlueprint(source: Blueprint): string | null {
+        const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
+        const id = uuid.generate();
+        const copy = cloneStoryActionBlueprintForPaste(source, id);
+        if (!copy) {
+            return null;
+        }
+        const ownerKey = storyActionOwnerKey(id);
+        const current = this.getBlueprintDocument();
+        try {
+            assertValidBlueprintDocument({
+                ...current,
+                blueprints: { ...current.blueprints, [id]: copy },
+                ownerRecords: { ...current.ownerRecords, [ownerKey]: { blueprintId: id } },
+            });
+        } catch (error) {
+            console.warn("[blueprint] a copied story blueprint was not added", error);
+            return null;
+        }
+        this.applyBlueprintMutation(doc => {
+            doc.blueprints[id] = copy;
+            setPrivateOwnerBlueprint(doc, ownerKey, id);
+        });
+        return id;
     }
 
     /**

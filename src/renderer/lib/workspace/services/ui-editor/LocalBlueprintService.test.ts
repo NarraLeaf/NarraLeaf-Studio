@@ -764,6 +764,37 @@ describe("LocalBlueprintService ensure* helpers", () => {
     });
 });
 
+describe("copying a story blueprint for a copied row", () => {
+    it("adds the copy under a new id, owned by itself, with the source left as it was", () => {
+        const { service, graphDocument } = createHarness();
+        const sourceId = service.ensureStoryActionBlueprint();
+        const source = graphDocument.blueprintDocument.blueprints[sourceId];
+        source.name = "Open the gallery";
+
+        const copyId = service.copyStoryActionBlueprint(source);
+
+        expect(copyId).toBeTruthy();
+        expect(copyId).not.toBe(sourceId);
+        const copy = graphDocument.blueprintDocument.blueprints[copyId!];
+        expect(copy.owner).toEqual({ kind: "storyAction", blueprintId: copyId });
+        expect(copy.name).toBe("Open the gallery");
+        expect(service.getStoryActionBlueprintId(copyId!)).toBe(copyId);
+        // Two graphs, not one: editing the copy cannot reach the source.
+        expect(copy.graphs).not.toBe(source.graphs);
+        expect(service.getStoryActionBlueprintId(sourceId)).toBe(sourceId);
+    });
+
+    it("adds nothing for a blueprint the document would refuse", () => {
+        const { service, graphDocument, graphMutations } = createHarness();
+        const before = graphMutations.count;
+        const broken = { id: "carried", name: "Broken", owner: { kind: "storyAction", blueprintId: "carried" }, graphs: null } as unknown as Blueprint;
+
+        expect(service.copyStoryActionBlueprint(broken)).toBeNull();
+        expect(graphMutations.count).toBe(before);
+        expect(Object.keys(graphDocument.blueprintDocument.blueprints)).toEqual(["bp-main"]);
+    });
+});
+
 describe("removing a registry variable inside a live session", () => {
     it("states the removal and leaves the node sweep to the effect", () => {
         // ⚠ The sweep is DERIVED: the effect says the variable is gone, and every machine works out
