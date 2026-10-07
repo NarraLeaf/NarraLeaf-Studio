@@ -12,7 +12,7 @@ import { autoUpdater } from "electron-updater";
 import { spawn } from "child_process";
 import { readPreparedVersion, removeStagedCopy, UPDATE_WAIT_PID_ENV } from "./updateStaging";
 import { askGitCode, chooseUpdateSource, type UpdateOffer } from "./updateSource";
-import { UpdateManager } from "./updateManager";
+import { UPDATE_RETRY_DELAYS_MS, UpdateManager } from "./updateManager";
 
 // electron-updater reaches for Electron's app at import time, so the whole module is a stand-in:
 // the listeners the manager registers are captured and fired by hand, which is all any of these
@@ -81,6 +81,9 @@ function makeApp(options: { launchUpdateCheck: boolean; autoCheckSetting?: boole
     return {
         app: {
             getStartupExtras: () => extras,
+            // Read by the main translator, which words a failed download.
+            getCommandLineBuild: () => null,
+            getCommandLineCheck: () => null,
             getAppInfo: () => ({ version: "1.2.3" }),
             isPackaged: () => options.packaged ?? false,
             logger: {
@@ -93,6 +96,7 @@ function makeApp(options: { launchUpdateCheck: boolean; autoCheckSetting?: boole
                 get: (key: string) => {
                     if (key === UPDATE_AUTO_CHECK_KEY) return options.autoCheckSetting;
                     if (key === UPDATE_AUTO_DOWNLOAD_KEY) return options.autoDownloadSetting;
+                    if (key === "app.language") return "en";
                     return undefined;
                 },
             },
@@ -541,5 +545,117 @@ describe("UpdateManager incremental downloads", () => {
         // True hands the cancelled token to the updater's own full download, which rejects at once.
         await expect(result).resolves.toBe(true);
         expect(attempts).toBe(1);
+    });
+});
+
+describe("UpdateManager after a failed download", () => {
+    const realPlatform = process.platform;
+    const dropped = () => new Error("HttpError: 502 Bad Gateway\nHeaders: {}");
+    const settle = () => vi.advanceTimersByTimeAsync(0);
+
+    beforeEach(() => {
+        Object.defineProperty(process, "platform", { value: "win32" });
+        vi.useFakeTimers();
+        vi.mocked(autoUpdater.on).mockClear();
+        vi.mocked(autoUpdater.setFeedURL).mockClear();
+        vi.mocked(autoUpdater.downloadUpdate).mockReset().mockImplementation(() => new Promise(() => undefined));
+        // A check answers the way electron-updater does: it announces what it found before resolving.
+        vi.mocked(autoUpdater.checkForUpdates).mockReset().mockImplementation(async () => {
+            updaterListener<{ version: string }>("update-available")({ version: "1.2.4" });
+            return null as never;
+        });
+        vi.mocked(chooseUpdateSource).mockReset().mockResolvedValue(GITCODE_OFFER);
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        Object.defineProperty(process, "platform", { value: realPlatform });
+    });
+
+    function started(options: { autoDownloadSetting?: boolean } = {}) {
+        const made = makeApp({ launchUpdateCheck: false, packaged: true, ...options });
+        const manager = new UpdateManager(made.app);
+        manager.initialize();
+        return manager;
+    }
+
+    it("says the connection dropped, and schedules another try", async () => {
+        vi.mocked(autoUpdater.downloadUpdate).mockRejectedValueOnce(dropped());
+        const manager = started();
+
+        await manager.check();
+        await settle();
+
+        const state = manager.getState();
+        expect(state.status).toBe("error");
+        expect(state.availableVersion).toBe("1.2.4");
+        // The few words that name it, not the updater's message with its headers and stack.
+        expect(state.error).toContain("HTTP 502");
+        expect(state.error).not.toContain("Headers");
+        expect(state.retryAt).toBe(Date.now() + UPDATE_RETRY_DELAYS_MS[0]);
+    });
+
+    it("tries again from the other source when it comes to the retry", async () => {
+        vi.mocked(autoUpdater.downloadUpdate).mockRejectedValueOnce(dropped());
+        const manager = started();
+        await manager.check();
+        await settle();
+
+        await vi.advanceTimersByTimeAsync(UPDATE_RETRY_DELAYS_MS[0]);
+
+        expect(vi.mocked(chooseUpdateSource).mock.calls.at(-1)?.[0].avoid).toEqual({ version: "1.2.4", source: "gitcode" });
+        expect(autoUpdater.downloadUpdate).toHaveBeenCalledTimes(2);
+        expect(manager.getState().status).toBe("downloading");
+        expect(manager.getState().retryAt).toBeUndefined();
+    });
+
+    it("downloads on Try Again even with automatic downloads off, as a download the author asked for", async () => {
+        const manager = started({ autoDownloadSetting: false });
+        await manager.check();
+        expect(manager.getState().status).toBe("available");
+
+        vi.mocked(autoUpdater.downloadUpdate).mockRejectedValueOnce(dropped());
+        await manager.download();
+        await settle();
+        expect(manager.getState().status).toBe("error");
+
+        await manager.download();
+        await settle();
+
+        expect(autoUpdater.downloadUpdate).toHaveBeenCalledTimes(2);
+        expect(manager.getState().status).toBe("downloading");
+        expect(manager.isDownloadingOnRequest()).toBe(true);
+    });
+
+    it("stops trying on its own after the last scheduled attempt", async () => {
+        vi.mocked(autoUpdater.downloadUpdate).mockReset().mockRejectedValue(dropped());
+        const manager = started();
+        await manager.check();
+        await settle();
+
+        for (const delay of UPDATE_RETRY_DELAYS_MS) {
+            await vi.advanceTimersByTimeAsync(delay);
+        }
+        await vi.advanceTimersByTimeAsync(UPDATE_RETRY_DELAYS_MS.at(-1)! * 4);
+
+        expect(autoUpdater.downloadUpdate).toHaveBeenCalledTimes(1 + UPDATE_RETRY_DELAYS_MS.length);
+        expect(manager.getState().status).toBe("error");
+        expect(manager.getState().retryAt).toBeUndefined();
+    });
+
+    it("keeps the version on offer when a retry's check cannot reach anything", async () => {
+        vi.mocked(autoUpdater.downloadUpdate).mockRejectedValueOnce(dropped());
+        const manager = started();
+        await manager.check();
+        await settle();
+
+        vi.mocked(autoUpdater.checkForUpdates).mockRejectedValueOnce(new Error("net::ERR_INTERNET_DISCONNECTED"));
+        await vi.advanceTimersByTimeAsync(UPDATE_RETRY_DELAYS_MS[0]);
+
+        const state = manager.getState();
+        expect(state.status).toBe("error");
+        expect(state.availableVersion).toBe("1.2.4");
+        expect(state.error).toContain("net::ERR_INTERNET_DISCONNECTED");
+        expect(state.retryAt).toBe(Date.now() + UPDATE_RETRY_DELAYS_MS[1]);
     });
 });

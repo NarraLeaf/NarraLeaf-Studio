@@ -131,6 +131,11 @@ export interface UpdateState {
     fastRestart?: boolean;
     /** Failure text for "error", already human-readable. */
     error?: string;
+    /**
+     * In "error", after a download failed: when Studio will try it again on its own (epoch ms).
+     * Absent when no automatic retry is waiting.
+     */
+    retryAt?: number;
     /** Release notes URL for the version on offer. */
     releaseUrl?: string;
     /** False where the platform cannot self-update (macOS today) - the panel links out instead. */

@@ -20,12 +20,14 @@ export const update = {
     },
     versions: "当前版本 {current}",
     readyHint: "退出 Studio 时也会自动安装",
+    retryAt: "Studio 将在 {time} 自动重试",
     indicator: {
         label: "软件更新",
     },
     actions: {
         check: "检查更新",
         download: "下载更新",
+        retry: "重试",
         install: "重启并安装",
         restart: "重启并更新",
         cancel: "取消更新",
