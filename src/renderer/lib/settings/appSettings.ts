@@ -58,7 +58,7 @@ import {
     QUIT_CHECKPOINT_TIMEOUT_MIN_SECONDS,
     QUIT_CHECKPOINT_TIMEOUT_STEP_SECONDS,
 } from "@shared/constants/quit";
-import { isMacPlatform } from "@/lib/app/platform";
+import { isMacPlatform, isWindowsPlatform } from "@/lib/app/platform";
 import { LOCALE_META, SUPPORTED_LOCALES } from "@shared/i18n";
 import { deviceDefaultLocale } from "@/lib/i18n/deviceLocale";
 import { clearAllProjectStats } from "@/lib/stats/clearAllProjectStats";
@@ -373,8 +373,8 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "A new version is downloaded and prepared in the background. Restarting Studio applies it.",
         descriptionKey: "update.setting.autoDownload.description",
         defaultValue: true,
-        // Only a build that can install its own updates downloads them.
-        visible: () => !isMacPlatform(),
+        // Only Windows installs its own updates; elsewhere there is nothing for this to download.
+        visible: () => isWindowsPlatform(),
     },
     {
         // Rendered by `SETTING_PANELS.softwareUpdate`. Nothing is stored under this key: the state

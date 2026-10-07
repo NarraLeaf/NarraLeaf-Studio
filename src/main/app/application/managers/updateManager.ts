@@ -485,7 +485,11 @@ export class UpdateManager {
 
         this.preparePoll = setInterval(() => {
             void readPrepareProgress(layout).then(progress => {
-                if (progress !== null && this.prepareProcess === child && this.state.status === "preparing") {
+                if (progress === null || this.prepareProcess !== child || this.state.status !== "preparing") {
+                    return;
+                }
+                // Pushed only when it moves: every push reaches each window and rebuilds the tray menu.
+                if (progress !== this.state.prepareProgress) {
                     this.setState({ status: "preparing", prepareProgress: progress });
                 }
             });
