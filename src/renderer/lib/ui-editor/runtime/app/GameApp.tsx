@@ -11,6 +11,12 @@ import {
 import { AnimatePresence, MotionConfig, useReducedMotion } from "motion/react";
 import { DevTools, Sound, type LiveGame, type SavedGame, type Scene } from "narraleaf-react";
 import { createChoiceVoicePlayer, type ChoiceVoicePlayer } from "./choiceVoicePlayback";
+import {
+    createVoiceReplayer,
+    sentenceHasVoice,
+    stopStoryVoiceTake,
+    type VoiceReplayer,
+} from "./voiceReplayPlayback";
 import { createDialogClickTargets } from "./dialogClickTargets";
 import {
     readWrappedStorableNamespace,
@@ -2532,27 +2538,45 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, []);
 
     /**
-     * Replay one line's take in the dub language currently in force.
+     * Replays of spoken lines, one take at a time: see {@link createVoiceReplayer}.
      *
      * A fresh `Sound` per replay rather than the scene table's instance: the audio manager keys a
      * playing token by instance, so reusing it would fight with the line that is still on screen.
      * The bus comes from the compile, so a per-character voice bus - and the player's fader for it -
      * applies to a replay exactly as it does to the line itself.
+     *
+     * Built once per mount and held in a ref, like the choice player below: every read it needs is
+     * through a ref already.
      */
+    const voiceReplayerRef = useRef<VoiceReplayer | null>(null);
+    if (!voiceReplayerRef.current) {
+        voiceReplayerRef.current = createVoiceReplayer({
+            start: async unitId => {
+                const liveGame = nlrLiveGameRef.current;
+                const playback = nlrCompiledRef.current?.getVoicePlayback?.(unitId);
+                if (!liveGame || !playback) {
+                    return null;
+                }
+                return await liveGame.playSound(voiceReplaySound(playback));
+            },
+            stopStoryVoice: () => {
+                const liveGame = nlrLiveGameRef.current;
+                if (liveGame) {
+                    stopStoryVoiceTake(liveGame);
+                }
+            },
+            onError: (error, unitId) => reportVoicePlayFailure(unitId, error, "line"),
+        });
+    }
+
+    /** Replay one line's take in the dub language currently in force. */
     const playVoiceUnit = useCallback(async (unitId: string): Promise<boolean> => {
-        const liveGame = nlrLiveGameRef.current;
-        const playback = unitId ? nlrCompiledRef.current?.getVoicePlayback?.(unitId) : null;
-        if (!liveGame || !playback) {
+        // Asked before anything is stopped: a line with no take to play leaves what is speaking alone.
+        if (!unitId || !nlrLiveGameRef.current || !nlrCompiledRef.current?.getVoicePlayback?.(unitId)) {
             return false;
         }
-        try {
-            await liveGame.playSound(voiceReplaySound(playback));
-            return true;
-        } catch (error) {
-            reportVoicePlayFailure(unitId, error, "line");
-            return false;
-        }
-    }, [reportVoicePlayFailure]);
+        return voiceReplayerRef.current?.play(unitId) ?? false;
+    }, []);
 
     /**
      * Speak one choice option, at most one instance of that option at a time.
@@ -6346,7 +6370,12 @@ export function GameApp(props: GameAppProps): ReactNode {
                     return;
                 }
                 nlrCharacterPromptTokenRef.current?.cancel();
-                nlrCharacterPromptTokenRef.current = liveGame.onCharacterPrompt(({ character }) => {
+                nlrCharacterPromptTokenRef.current = liveGame.onCharacterPrompt(({ character, sentence }) => {
+                    // The story's next voiced line ends a replay still speaking, as it ends the take
+                    // before it - see `createVoiceReplayer`.
+                    if (sentenceHasVoice(sentence)) {
+                        voiceReplayerRef.current?.stop();
+                    }
                     const sourceName = readNlrCharacterName(character);
                     const nametag = translateCharacterName(sourceName);
                     currentDialogNametagRef.current = nametag;
