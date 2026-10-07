@@ -6,7 +6,7 @@ import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { createTranslator } from "@shared/i18n";
 import { i18nStore } from "@/lib/i18n";
 import { Services, type WorkspaceContext } from "../../services";
-import { componentWidgetMainOwnerKey, widgetMainOwnerKey } from "../../ui-editor/blueprint/ownerKeys";
+import { componentWidgetMainOwnerKey, storyActionOwnerKey, widgetMainOwnerKey } from "../../ui-editor/blueprint/ownerKeys";
 
 function blueprintDoc(): BlueprintDocument {
     return {
@@ -449,7 +449,7 @@ describe("story blueprints nobody named", () => {
         });
         return {
             schemaVersion: 1,
-            ownerRecords: { [`storyAction:${"s-1"}`]: { blueprintId: "s-1" }, [`storyAction:${"s-2"}`]: { blueprintId: "s-2" } },
+            ownerRecords: { [storyActionOwnerKey("s-1")]: { blueprintId: "s-1" }, [storyActionOwnerKey("s-2")]: { blueprintId: "s-2" } },
             blueprints: { "s-1": story("s-1"), "s-2": story("s-2") },
         } as unknown as BlueprintDocument;
     }
