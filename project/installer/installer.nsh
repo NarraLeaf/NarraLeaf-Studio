@@ -29,6 +29,18 @@
 
 ManifestDPIAware true
 
+; The names the prepared update uses inside the installation. Studio reads and tidies the same
+; folders (src/main/app/application/managers/updateStaging.ts, which draws the whole layout); a name
+; changed here has to be changed there.
+!define NL_STAGED ".nl-update"
+!define NL_REPLACED ".nl-replaced"
+!define NL_MARKER ".nl-prepared"
+!define NL_PROGRESS ".nl-progress"
+!define NL_CACHE "nl-cache"
+!define NL_CACHE_STASH_SUFFIX ".nl-cache"
+!define NL_NEXT_SUFFIX ".nl-next"
+!define NL_WAIT_PID_ENV "NARRALEAF_STUDIO_UPDATE_PID"
+
 ; Resolved against directories.buildResources (project/installer). Built by
 ; `node project/build/prepare-installer-webview.js`; see NlWebView.cpp for what it does.
 !addplugindir /x86-unicode "${BUILD_RESOURCES_DIR}\plugins\x86-unicode"
@@ -39,8 +51,29 @@ ManifestDPIAware true
 ; unreferenced variable as a warning, which electron-builder compiles with warnings as errors.
 
 ; ------------------------------------------------------------------------------------------------
-; The document, unpacked before any page runs.
+; Before any page: the two halves of a prepared update, which never reach a page at all, and then the
+; document the pages show.
+;
+; --nl-prepare is Studio unpacking the new version while it runs; it ends here, with the exit code
+; saying how it went. An update the app starts (--updated) whose version is already prepared is
+; applied here too, by swapping folders, and ends here as well. Anything else - no prepared copy, a
+; copy of another version, a folder that would not move - carries on into the ordinary install, which
+; is how every update ran before preparing existed. See "the prepared update" for both.
 !macro customInit
+  ${StdUtils.TestParameter} $0 "nl-prepare"
+  ${If} $0 == "true"
+    Call nlPrepare
+    Quit
+  ${EndIf}
+  ${If} ${isUpdated}
+    Call nlSwap
+  ${EndIf}
+  ; A silent install passes no page, so the cache root is moved aside here; otherwise the last page
+  ; before the files does it (nlInstFilesPre), once the folder is settled.
+  ${If} ${Silent}
+    Call nlStashCache
+  ${EndIf}
+
   InitPluginsDir
   File "/oname=$PLUGINSDIR\installer.html" "${BUILD_RESOURCES_DIR}\ui\installer.html"
 !macroend
@@ -92,7 +125,21 @@ ManifestDPIAware true
 ; down. A silent run is left to the template, which starts the app itself when asked to
 ; (templates/nsis/installSection.nsh); a silent run without --force-run, which is the app applying
 ; a downloaded update on its way out, starts nothing.
+;
+; The cache root goes back first, so the app finds it when it starts. A prepared update that ended up
+; here instead of in the swap left this installer's copy waiting under a name of its own; the
+; template has just put the same file in place as the base, so the waiting copy goes.
 !macro customInstall
+  Call nlRestoreCache
+  !ifdef APP_INSTALLER_STORE_FILE
+    ${If} $installMode == "all"
+      SetShellVarContext current
+    ${EndIf}
+    Delete "$LOCALAPPDATA\${APP_INSTALLER_STORE_FILE}${NL_NEXT_SUFFIX}"
+    ${If} $installMode == "all"
+      SetShellVarContext all
+    ${EndIf}
+  !endif
   ${If} ${isUpdated}
   ${AndIf} ${isForceRun}
   ${AndIfNot} ${Silent}
@@ -141,6 +188,8 @@ Var nlSize      ; human-readable install size, e.g. "1.1 GB"
 Var nlKiB       ; the same number unformatted, which is what the plugin measures the copy against
 Var nlLocked    ; "" not settled | "1" an existing install decides the folder | "0" the user does
 Var nlDir       ; the folder the user confirmed on whichever page asked; "" until one was left
+Var nlCacheStash ; where the cache root waits while the files around it are replaced; "" when it stayed
+Var nlPrepPct   ; the last percentage the prepare wrote, so the file is only rewritten when it moves
 
 ; --- the window ---------------------------------------------------------------------------------
 
@@ -635,6 +684,9 @@ Function nlInstFilesPre
   ${If} $nlDir != ""
     StrCpy $INSTDIR $nlDir
   ${EndIf}
+  ; Nothing can be cancelled from here on, so this is the moment to move the cache root out of the
+  ; way of the uninstall that comes first.
+  Call nlStashCache
 FunctionEnd
 
 Function nlInstFilesShow
@@ -676,7 +728,9 @@ FunctionEnd
 ; --- the update ---------------------------------------------------------------------------------
 ;
 ; The app applies an update by starting this installer with --updated --force-run and quitting
-; (src/main/app/application/managers/updateManager.ts). The run is not silent, so the window stays
+; (src/main/app/application/managers/updateManager.ts). When the new version was prepared while the
+; app ran, none of what follows happens: the swap in customInit applies it before any page, and
+; nothing is drawn ("the prepared update" below). Otherwise the run is not silent, so the window stays
 ; on screen from the moment the app closes until it is back: every page that would ask something
 ; passes straight through on --updated (nlInstallTick, nlStockPre, nlStockFinishPre, nlFinishPage),
 ; the document shows the update view, and the section ends by starting the app again and waiting
@@ -773,6 +827,425 @@ Function nlRelaunch
   ${Loop}
   Pop $R6
   Pop $R5
+FunctionEnd
+
+; --- the prepared update ------------------------------------------------------------------------
+;
+; An update in two halves, so that the part that takes minutes happens while the app is still in use
+; and the part that needs the app closed takes a moment.
+;
+; The first half is --nl-prepare (nlPrepare). The app runs this installer silently once the update
+; has downloaded, and it unpacks the new version into $INSTDIR\.nl-update, beside the running one,
+; writing the percentage unpacked into .nl-progress as it goes. The version goes into .nl-prepared
+; last of all, so a copy without it - unpacking stopped halfway, a machine turned off - is never
+; mistaken for a finished one. Nothing else is touched: no registry, no shortcuts, no running process.
+; The installer copies itself where the next differential download will look for it, under a name
+; of its own until the swap, because until then the old installer is still the right base.
+;
+; The second half is the update the app starts on its way out (nlSwap, from customInit on
+; --updated). When the prepared copy holds this installer's own version, the installer waits for the
+; app to exit, moves the old version's top-level entries into .nl-replaced, moves the new ones in,
+; records the new version where the template would, starts the app again if asked to (--force-run),
+; and deletes the old version - after the app is back, so nobody waits for it. Every entry is a
+; rename within one directory, which is instant on any disk. The cache root (nl-cache) is not one of
+; the entries: it stays where it is.
+;
+; A swap that cannot complete undoes what it moved and returns, and the ordinary install runs
+; instead. So does an all-users installation, which the app does not prepare: unpacking into
+; Program Files needs elevation, and an update in the background does not raise a UAC prompt.
+
+; The first entry of $INSTDIR the swap moves out, in $R2; "" once none is left.
+Function nlNextOldEntry
+  Push $3
+  Push $4
+  StrCpy $R2 ""
+  ClearErrors
+  FindFirst $3 $4 "$INSTDIR\*.*"
+  ${DoWhile} $4 != ""
+    ${If} $4 != "."
+    ${AndIf} $4 != ".."
+    ${AndIf} $4 != "${NL_STAGED}"
+    ${AndIf} $4 != "${NL_REPLACED}"
+    ${AndIf} $4 != "${NL_CACHE}"
+      StrCpy $R2 $4
+      ${Break}
+    ${EndIf}
+    FindNext $3 $4
+  ${Loop}
+  FindClose $3
+  Pop $4
+  Pop $3
+FunctionEnd
+
+; The first entry of the folder in $R3, in $R2; "" once none is left.
+Function nlNextEntryOf
+  Push $3
+  Push $4
+  StrCpy $R2 ""
+  ClearErrors
+  FindFirst $3 $4 "$R3\*.*"
+  ${DoWhile} $4 != ""
+    ${If} $4 != "."
+    ${AndIf} $4 != ".."
+      StrCpy $R2 $4
+      ${Break}
+    ${EndIf}
+    FindNext $3 $4
+  ${Loop}
+  FindClose $3
+  Pop $4
+  Pop $3
+FunctionEnd
+
+; Moves every entry of $R3 into $R4, retrying an entry that will not move for a few seconds - a file
+; the shell or a scanner has open for a moment. "1" in $R5 when everything moved, "0" when an entry
+; still would not.
+Function nlMoveAll
+  Push $R2
+  Push $6
+  StrCpy $R5 "1"
+  StrCpy $6 0
+  ${Do}
+    Call nlNextEntryOf
+    ${If} $R2 == ""
+      ${Break}
+    ${EndIf}
+    ClearErrors
+    Rename "$R3\$R2" "$R4\$R2"
+    ${If} ${Errors}
+      IntOp $6 $6 + 1
+      ${If} $6 > 20
+        StrCpy $R5 "0"
+        ${Break}
+      ${EndIf}
+      Sleep 250
+    ${Else}
+      StrCpy $6 0
+    ${EndIf}
+  ${Loop}
+  Pop $6
+  Pop $R2
+FunctionEnd
+
+; Whether any process is running from inside $INSTDIR: "1" or "0" in $R5.
+;
+; By image path, the way the template's own check works, but without starting PowerShell for it: a
+; snapshot of the process list, and the path of each process asked of the process itself.
+; PROCESSENTRY32W is 556 bytes in a 32-bit process - nine 32-bit fields and a 260-character name.
+Function nlRunningFromInstDir
+  Push $0
+  Push $1
+  Push $2
+  Push $3
+  Push $4
+  Push $6
+  StrCpy $R5 "0"
+  StrCpy $6 "$INSTDIR\"
+  StrLen $4 $6
+  System::Call "kernel32::GetCurrentProcessId() i .r3"
+  ; TH32CS_SNAPPROCESS
+  System::Call "kernel32::CreateToolhelp32Snapshot(i 2, i 0) p .r0"
+  ${If} $0 != -1
+  ${AndIf} $0 != 0
+    System::Call "*(i 556, i, i, i, i, i, i, i, i, &w260) p .r1"
+    System::Call "kernel32::Process32FirstW(p r0, p r1) i .r2"
+    ${DoWhile} $2 != 0
+      System::Call "*$1(i, i, i .r2)"
+      ${If} $2 != $3
+        ; PROCESS_QUERY_LIMITED_INFORMATION
+        System::Call "kernel32::OpenProcess(i 0x1000, i 0, i r2) p .r2"
+        ${If} $2 != 0
+          StrCpy $R6 ""
+          System::Call "kernel32::QueryFullProcessImageNameW(p r2, i 0, w .R6, *i ${NSIS_MAX_STRLEN})"
+          System::Call "kernel32::CloseHandle(p r2)"
+          StrCpy $R6 $R6 $4
+          ${If} $R6 == $6
+            StrCpy $R5 "1"
+            ${Break}
+          ${EndIf}
+        ${EndIf}
+      ${EndIf}
+      System::Call "*$1(i 556)"
+      System::Call "kernel32::Process32NextW(p r0, p r1) i .r2"
+    ${Loop}
+    System::Free $1
+    System::Call "kernel32::CloseHandle(p r0)"
+  ${EndIf}
+  Pop $6
+  Pop $4
+  Pop $3
+  Pop $2
+  Pop $1
+  Pop $0
+FunctionEnd
+
+; Writes how far the unpacking has got, as a whole percentage, for the app to read. Called by
+; Nsis7z::ExtractWithCallback with the bytes done and the bytes in all on the stack; only the larger
+; is taken as the total, so the order they arrive in does not matter. 64-bit arithmetic throughout,
+; because the bytes done times a hundred passes what an NSIS integer holds long before the end.
+Function nlPrepareProgress
+  Pop $R7
+  Pop $R8
+  System::Int64Op $R7 > $R8
+  Pop $R6
+  ${If} $R6 == 1
+    StrCpy $R6 $R7
+    StrCpy $R7 $R8
+    StrCpy $R8 $R6
+  ${EndIf}
+  System::Int64Op $R8 > 0
+  Pop $R6
+  ${If} $R6 == 1
+    System::Int64Op $R7 * 100
+    Pop $R6
+    System::Int64Op $R6 / $R8
+    Pop $R6
+    ${If} $R6 != $nlPrepPct
+      StrCpy $nlPrepPct $R6
+      ClearErrors
+      FileOpen $R5 "$INSTDIR\${NL_STAGED}\${NL_PROGRESS}" w
+      ${IfNot} ${Errors}
+        FileWrite $R5 "$R6"
+        FileClose $R5
+      ${EndIf}
+    ${EndIf}
+  ${EndIf}
+FunctionEnd
+
+; --nl-prepare. The exit code says how it went: 0 prepared, anything else not (the app then applies
+; the update with the ordinary install).
+Function nlPrepare
+  SetErrorLevel 1
+  ${If} $installMode == "all"
+    SetErrorLevel 4
+    Return
+  ${EndIf}
+  ${IfNot} ${FileExists} "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
+    SetErrorLevel 5
+    Return
+  ${EndIf}
+  !ifdef ZIP_COMPRESSION
+    ; Only the 7z package is unpacked here; a zip build applies its updates the ordinary way.
+    SetErrorLevel 6
+    Return
+  !endif
+
+  StrCpy $R0 "$INSTDIR\${NL_STAGED}"
+  SetOutPath "$INSTDIR"
+  RMDir /r "$R0"
+  ClearErrors
+  CreateDirectory "$R0"
+  ${If} ${Errors}
+    SetErrorLevel 2
+    Return
+  ${EndIf}
+  SetFileAttributes "$R0" HIDDEN
+
+  InitPluginsDir
+  StrCpy $nlPrepPct ""
+  SetOutPath "$R0"
+  !ifndef ZIP_COMPRESSION
+    !ifdef APP_64
+      File "/oname=$PLUGINSDIR\app-64.${COMPRESSION_METHOD}" "${APP_64}"
+      GetFunctionAddress $R9 nlPrepareProgress
+      Nsis7z::ExtractWithCallback "$PLUGINSDIR\app-64.${COMPRESSION_METHOD}" $R9
+      Delete "$PLUGINSDIR\app-64.${COMPRESSION_METHOD}"
+    !endif
+  !endif
+  File "/oname=$R0\${UNINSTALL_FILENAME}" "${UNINSTALLER_OUT_FILE}"
+  !ifdef UNINSTALLER_ICON
+    File "/oname=$R0\uninstallerIcon.ico" "${UNINSTALLER_ICON}"
+  !endif
+  SetOutPath "$INSTDIR"
+
+  ${IfNot} ${FileExists} "$R0\${APP_EXECUTABLE_FILENAME}"
+    SetErrorLevel 3
+    Return
+  ${EndIf}
+
+  !ifdef APP_INSTALLER_STORE_FILE
+    CopyFiles /SILENT "$EXEPATH" "$LOCALAPPDATA\${APP_INSTALLER_STORE_FILE}${NL_NEXT_SUFFIX}"
+  !endif
+
+  Delete "$R0\${NL_PROGRESS}"
+  ClearErrors
+  FileOpen $1 "$R0\${NL_MARKER}" w
+  ${If} ${Errors}
+    SetErrorLevel 7
+    Return
+  ${EndIf}
+  FileWrite $1 "${VERSION}"
+  FileClose $1
+  SetErrorLevel 0
+FunctionEnd
+
+; The second half: returns when there is nothing to swap or the swap could not complete, and quits
+; the installer when it did.
+Function nlSwap
+  StrCpy $R0 "$INSTDIR\${NL_STAGED}"
+  StrCpy $R1 "$INSTDIR\${NL_REPLACED}"
+  ${IfNot} ${FileExists} "$R0\${NL_MARKER}"
+    Return
+  ${EndIf}
+  ${If} $installMode == "all"
+    Return
+  ${EndIf}
+  ClearErrors
+  FileOpen $1 "$R0\${NL_MARKER}" r
+  FileRead $1 $2
+  FileClose $1
+  ${If} $2 != "${VERSION}"
+    Return
+  ${EndIf}
+  ${IfNot} ${FileExists} "$R0\${APP_EXECUTABLE_FILENAME}"
+    Return
+  ${EndIf}
+
+  ; The app starts this installer while it is still exiting, and says which process that is. A
+  ; process that is gone already, or a variable that is not there, costs nothing.
+  ReadEnvStr $1 "${NL_WAIT_PID_ENV}"
+  ${If} $1 != ""
+    ; SYNCHRONIZE
+    System::Call "kernel32::OpenProcess(i 0x00100000, i 0, i r1) p .r2"
+    ${If} $2 != 0
+      System::Call "kernel32::WaitForSingleObject(p r2, i 60000) i"
+      System::Call "kernel32::CloseHandle(p r2)"
+    ${EndIf}
+  ${EndIf}
+  ; And everything else running from the installation - the app's helper processes, a game preview
+  ; it started - for up to half a minute. Whatever is still there then is left to the ordinary
+  ; install, which closes it.
+  StrCpy $3 0
+  ${Do}
+    Call nlRunningFromInstDir
+    ${If} $R5 == "0"
+      ${Break}
+    ${EndIf}
+    IntOp $3 $3 + 1
+    ${If} $3 > 60
+      Return
+    ${EndIf}
+    Sleep 500
+  ${Loop}
+
+  SetOutPath "$INSTDIR"
+  RMDir /r "$R1"
+  ClearErrors
+  CreateDirectory "$R1"
+  ${If} ${Errors}
+    Return
+  ${EndIf}
+  SetFileAttributes "$R1" HIDDEN
+
+  ; Out with the old version, entry by entry.
+  StrCpy $3 0
+  ${Do}
+    Call nlNextOldEntry
+    ${If} $R2 == ""
+      ${Break}
+    ${EndIf}
+    ClearErrors
+    Rename "$INSTDIR\$R2" "$R1\$R2"
+    ${If} ${Errors}
+      IntOp $3 $3 + 1
+      ${If} $3 > 40
+        ; Put back what has already moved, and leave the update to the ordinary install.
+        StrCpy $R3 $R1
+        StrCpy $R4 $INSTDIR
+        Call nlMoveAll
+        RMDir "$R1"
+        Return
+      ${EndIf}
+      Sleep 250
+    ${Else}
+      StrCpy $3 0
+    ${EndIf}
+  ${Loop}
+
+  ; In with the new one. The marker goes first, so a copy that ended up half moved back is never
+  ; taken for a prepared one again.
+  Delete "$R0\${NL_MARKER}"
+  Delete "$R0\${NL_PROGRESS}"
+  StrCpy $R3 $R0
+  StrCpy $R4 $INSTDIR
+  Call nlMoveAll
+  ${If} $R5 != "1"
+    ; Every entry of $INSTDIR besides the three left alone is one that just came in.
+    ${Do}
+      Call nlNextOldEntry
+      ${If} $R2 == ""
+        ${Break}
+      ${EndIf}
+      ClearErrors
+      Rename "$INSTDIR\$R2" "$R0\$R2"
+      ${If} ${Errors}
+        ${Break}
+      ${EndIf}
+    ${Loop}
+    StrCpy $R3 $R1
+    StrCpy $R4 $INSTDIR
+    Call nlMoveAll
+    RMDir "$R1"
+    Return
+  ${EndIf}
+  RMDir "$R0"
+
+  ; What registryAddInstallInfo would write differently for the new version. The rest of the entry -
+  ; the folder, the uninstaller's path, the shortcuts - is the same as it was.
+  WriteRegStr SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" "DisplayName" "${UNINSTALL_DISPLAY_NAME}"
+  WriteRegStr SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" "DisplayVersion" "${VERSION}"
+  !ifdef ESTIMATED_SIZE
+    IntFmt $1 "0x%08X" ${ESTIMATED_SIZE}
+    WriteRegDWORD SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" "EstimatedSize" "$1"
+  !endif
+
+  ; The base the next differential download is computed against is now this installer.
+  !ifdef APP_INSTALLER_STORE_FILE
+    StrCpy $1 "$LOCALAPPDATA\${APP_INSTALLER_STORE_FILE}"
+    ${If} ${FileExists} "$1${NL_NEXT_SUFFIX}"
+      Delete "$1"
+      Rename "$1${NL_NEXT_SUFFIX}" "$1"
+    ${Else}
+      CopyFiles /SILENT "$EXEPATH" "$1"
+    ${EndIf}
+  !endif
+
+  ${If} ${isForceRun}
+    StrCpy $appExe "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
+    StrCpy $launchLink $appExe
+    Call nlRelaunch
+  ${EndIf}
+
+  RMDir /r "$R1"
+  SetErrorLevel 0
+  Quit
+FunctionEnd
+
+; Moves the cache root beside the installation for the length of an install that replaces every
+; file in it, so a few hundred megabytes of downloaded toolchains survive the update. Best-effort: a
+; parent folder that refuses the rename (Program Files, unelevated) leaves the cache where it was,
+; to be deleted with the rest as before.
+Function nlStashCache
+  StrCpy $nlCacheStash ""
+  ${If} ${FileExists} "$INSTDIR\${NL_CACHE}\*.*"
+    StrCpy $1 "$INSTDIR${NL_CACHE_STASH_SUFFIX}"
+    RMDir /r "$1"
+    ClearErrors
+    Rename "$INSTDIR\${NL_CACHE}" "$1"
+    ${IfNot} ${Errors}
+      StrCpy $nlCacheStash $1
+    ${EndIf}
+  ${EndIf}
+FunctionEnd
+
+; The other half, at the end of the install section. If it does not happen - the install stopped -
+; the app moves the stash back itself the next time it starts (cacheRoot.ts).
+Function nlRestoreCache
+  ${If} $nlCacheStash != ""
+  ${AndIf} ${FileExists} "$nlCacheStash\*.*"
+  ${AndIfNot} ${FileExists} "$INSTDIR\${NL_CACHE}\*.*"
+    Rename "$nlCacheStash" "$INSTDIR\${NL_CACHE}"
+  ${EndIf}
 FunctionEnd
 
 !define MUI_PAGE_CUSTOMFUNCTION_PRE nlInstFilesPre
