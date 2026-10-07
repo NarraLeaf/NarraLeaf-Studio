@@ -26,7 +26,7 @@ function packWithEntryBackground(backgroundColor: string | undefined): GameRunti
             revision: 1,
             brand: [
                 { id: "background", value: "#101317" },
-                { id: "surface.sunken", value: "#0A090D" },
+                { id: "pageBackground", value: "#0A090D" },
             ],
             ui: {
                 uidoc: {
@@ -63,7 +63,7 @@ describe("the colours a game waits in", () => {
     it("asks the shell's own question rather than answering it a second way", () => {
         // Same function the desktop window and the web export's generated page use. Held by
         // identity rather than by a colour, so a change to that rule cannot leave this one behind.
-        for (const authored of ["nlbrand:surface.sunken", "#FFF8F0", "transparent", undefined]) {
+        for (const authored of ["nlbrand:pageBackground", "#FFF8F0", "transparent", undefined]) {
             const pack = packWithEntryBackground(authored);
             expect(resolveRuntimeBootColors(pack).background)
                 .toBe(resolveGameRuntimeInitialBackgroundColor(pack));
@@ -71,7 +71,7 @@ describe("the colours a game waits in", () => {
     });
 
     it("follows a brand link into the pack's own palette", () => {
-        expect(resolveRuntimeBootColors(packWithEntryBackground("nlbrand:surface.sunken")).background)
+        expect(resolveRuntimeBootColors(packWithEntryBackground("nlbrand:pageBackground")).background)
             .toBe("#0a090d");
     });
 

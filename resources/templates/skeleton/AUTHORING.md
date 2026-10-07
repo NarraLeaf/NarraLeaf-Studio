@@ -142,6 +142,10 @@ title and from inside a game.
 - English notes follow the interface's register: they state what happens, plainly, without asides.
   The table is keyed by the English string, so two meanings need two strings (a slider's `Track`
   part and an audio track are not the same word).
+- A colour of the template's own (`editor/brand.json`) has an id with no dot and a name that says
+  what it paints. Project ▸ Design lists an author's colour by an id without a dot; a dotted id is a
+  control slot Studio seeds, and one Studio does not seed is listed nowhere. The name goes through the
+  tables like any other word, and the generator writes it into each tree's `brand.json`.
 
 ## 8. Tools
 

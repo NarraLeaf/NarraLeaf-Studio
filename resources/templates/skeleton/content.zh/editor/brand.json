@@ -23,12 +23,12 @@
     { "id": "textInput.border", "value": "nlbrand:secondary/0.5", "builtin": true },
     { "id": "textInput.text", "value": "nlbrand:foreground", "builtin": true },
 
-    { "id": "pageBackground", "name": "Page background", "value": "#0A090D" },
-    { "id": "panel", "name": "Panel", "value": "#15171D" },
-    { "id": "raisedFill", "name": "Raised fill", "value": "#222630" },
-    { "id": "subtleText", "name": "Subtle text", "value": "#6E7681" },
-    { "id": "hoverBorder", "name": "Hover border", "value": "nlbrand:primary/0.7" },
-    { "id": "selectedFill", "name": "Selected fill", "value": "#1D414D" }
+    { "id": "pageBackground", "name": "页面背景", "value": "#0A090D" },
+    { "id": "panel", "name": "面板", "value": "#15171D" },
+    { "id": "raisedFill", "name": "上层填充", "value": "#222630" },
+    { "id": "subtleText", "name": "弱化文字", "value": "#6E7681" },
+    { "id": "hoverBorder", "name": "悬停边框", "value": "nlbrand:primary/0.7" },
+    { "id": "selectedFill", "name": "选中填充", "value": "#1D414D" }
   ],
   "fonts": []
 }
