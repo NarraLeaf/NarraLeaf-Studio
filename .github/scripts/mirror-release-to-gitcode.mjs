@@ -25,24 +25,37 @@
  * and the last file the newest release is a partial one; an updater that finds no `latest.yml`
  * there treats GitCode as not having the version yet, which is true.
  *
+ * The upload crosses from wherever this runs into GitCode's storage in China, and from GitHub's
+ * runners a single connection manages a couple of hundred kilobytes a second - the first 1.4.4 copy
+ * spent half an hour on one 316 MB file. So the installers go up side by side, each on its own
+ * connection; a connection that has carried almost nothing for five minutes is dropped and the
+ * file started again on a fresh address; and every minute each upload says how far it has got,
+ * because a run that is quiet for an hour cannot be told from one that is stuck.
+ *
  * Re-running is safe: a file already there at the right size is skipped.
  *
  * The token comes from GITCODE_TOKEN, or from --token-file (one line; lines starting with # are
  * ignored). It is sent only to api.gitcode.com and never printed.
  */
-import { spawn } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
+import http from "node:http";
+import https from "node:https";
 import path from "node:path";
 
 const OWNER = "NarraLeaf";
 const REPO = "NarraLeaf-Studio";
 const API = process.env.GITCODE_API_URL || "https://api.gitcode.com/api/v5";
-const SITE = "https://gitcode.com";
+const SITE = process.env.GITCODE_SITE_URL || "https://gitcode.com";
 /** The branch the README-only repository was created with; releases are tagged against it. */
 const TARGET_BRANCH = "main";
 const GITHUB_RELEASE = `https://github.com/${OWNER}/${REPO}/releases/tag`;
 const UPLOAD_ATTEMPTS = 3;
+/** Installers uploaded at once. Each is its own connection, which is what a long, thin link rewards. */
+const PARALLEL_UPLOADS = 3;
+/** An upload slower than this for {@link STALL_WINDOW_MS} is abandoned and started again. */
+const STALL_BYTES_PER_SECOND = 10 * 1024;
+const STALL_WINDOW_MS = 5 * 60_000;
+const PROGRESS_EVERY_MS = 60_000;
 
 /** The same set release.yml attaches to the GitHub release. */
 const RELEASE_FILE = /\.(exe|dmg|zip|blockmap)$|^latest.*\.yml$/;
@@ -119,33 +132,101 @@ async function servedSize(tag, name) {
     }
 }
 
+/** `servedSize` a few times over a minute: GitCode lists a file a moment after its upload ends. */
+async function settledSize(tag, name, expected) {
+    let served = null;
+    for (let check = 0; check < 6; check += 1) {
+        served = await servedSize(tag, name);
+        if (served === expected) {
+            return served;
+        }
+        await new Promise(resolve => setTimeout(resolve, 10_000));
+    }
+    return served;
+}
+
 /**
- * PUT a file to the presigned URL GitCode hands out. curl rather than fetch: the storage behind it
- * wants a Content-Length, which a streamed fetch body does not send, and these files are too large
- * to hold in memory. The headers go through a config file because they carry signatures that the
- * shell has no business quoting.
+ * PUT a file to the presigned URL GitCode hands out, streamed from disk with the Content-Length the
+ * storage behind it insists on (a streamed fetch body has none, and these files are too large to
+ * hold in memory). Counts what it sends, so it can say how far it has got and give up on a
+ * connection that has stopped carrying anything.
  */
-function putFile(file, url, headers) {
-    const config = path.join(os.tmpdir(), `gitcode-upload-${process.pid}-${Date.now()}.txt`);
-    const lines = Object.entries(headers ?? {}).map(([key, value]) => `header = "${key}: ${String(value).replace(/"/g, '\\"')}"`);
-    fs.writeFileSync(config, `${lines.join("\n")}\n`);
+function putFile(file, url, headers, name) {
+    const size = fs.statSync(file).size;
+    const target = new URL(url);
+    const client = target.protocol === "http:" ? http : https;
     return new Promise(resolve => {
-        const child = spawn("curl", [
-            "-sS", "-X", "PUT", "-K", config, "--upload-file", file,
-            "--retry", "2", "--connect-timeout", "30",
-            "-o", process.platform === "win32" ? "NUL" : "/dev/null",
-            "-w", "%{http_code}",
-            url,
-        ], { stdio: ["ignore", "pipe", "pipe"] });
-        let out = "";
-        let err = "";
-        child.stdout.on("data", chunk => { out += chunk; });
-        child.stderr.on("data", chunk => { err += chunk; });
-        child.on("close", code => {
-            fs.rmSync(config, { force: true });
-            resolve({ ok: code === 0 && /^2\d\d$/.test(out.trim()), status: out.trim(), error: err.trim() });
+        const started = Date.now();
+        let sent = 0;
+        let windowStart = started;
+        let windowSent = 0;
+        let finished = false;
+        const finish = result => {
+            if (finished) {
+                return;
+            }
+            finished = true;
+            clearInterval(watch);
+            // An abandoned upload must not go on reading the file into a closed connection.
+            body.destroy();
+            resolve(result);
+        };
+        const request = client.request(target, {
+            method: "PUT",
+            headers: { ...(headers ?? {}), "Content-Length": String(size) },
+        }, response => {
+            response.resume();
+            response.on("end", () => finish({
+                ok: response.statusCode >= 200 && response.statusCode < 300,
+                status: String(response.statusCode),
+                error: "",
+            }));
         });
+        request.on("error", error => finish({ ok: false, status: "", error: error.message }));
+        const body = fs.createReadStream(file);
+        body.on("data", chunk => {
+            sent += chunk.length;
+            windowSent += chunk.length;
+        });
+        body.pipe(request);
+
+        let lastReport = started;
+        const watch = setInterval(() => {
+            const now = Date.now();
+            if (now - lastReport >= PROGRESS_EVERY_MS) {
+                lastReport = now;
+                const rate = sent / Math.max((now - started) / 1000, 0.001);
+                console.log(`  ${name}: ${formatSize(sent)} of ${formatSize(size)} (${formatSize(rate)}/s)`);
+            }
+            if (now - windowStart >= STALL_WINDOW_MS) {
+                if (windowSent / ((now - windowStart) / 1000) < STALL_BYTES_PER_SECOND && sent < size) {
+                    request.destroy(new Error(`under ${formatSize(STALL_BYTES_PER_SECOND)}/s for ${STALL_WINDOW_MS / 60_000} minutes`));
+                    return;
+                }
+                windowStart = now;
+                windowSent = 0;
+            }
+        }, 5_000);
     });
+}
+
+/** Run `work` over `items`, at most `limit` at a time; rejects with the first failure once all have ended. */
+async function inPool(items, limit, work) {
+    const queue = [...items];
+    const failures = [];
+    const lane = async () => {
+        for (let item = queue.shift(); item !== undefined; item = queue.shift()) {
+            try {
+                await work(item);
+            } catch (error) {
+                failures.push(error);
+            }
+        }
+    };
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, lane));
+    if (failures.length > 0) {
+        throw failures[0];
+    }
 }
 
 function formatSize(bytes) {
@@ -193,13 +274,13 @@ async function main() {
         throw new Error(`Reading the release answered ${release.status}: ${release.text.slice(0, 500)}`);
     }
 
-    for (const file of files) {
+    const upload = async file => {
         const name = path.basename(file);
         const size = fs.statSync(file).size;
         const already = await servedSize(tag, name);
         if (already === size) {
             console.log(`= ${name} (${formatSize(size)}) is already there.`);
-            continue;
+            return;
         }
         if (already !== null) {
             throw new Error(`${name} is already on GitCode at ${already} bytes, not ${size}. Delete it from the release page and run this again.`);
@@ -213,14 +294,15 @@ async function main() {
                 console.log(`  ${name}: no upload address (answered ${target.status}), attempt ${attempt}/${UPLOAD_ATTEMPTS}`);
                 continue;
             }
+            console.log(`  ${name}: uploading ${formatSize(size)}${attempt > 1 ? `, attempt ${attempt}/${UPLOAD_ATTEMPTS}` : ""}`);
             const started = Date.now();
-            const put = await putFile(file, url, target.json.headers);
+            const put = await putFile(file, url, target.json.headers, name);
             const seconds = Math.max((Date.now() - started) / 1000, 0.001);
             if (!put.ok) {
                 console.log(`  ${name}: upload answered ${put.status || "nothing"} ${put.error}, attempt ${attempt}/${UPLOAD_ATTEMPTS}`);
                 continue;
             }
-            const served = await servedSize(tag, name);
+            const served = await settledSize(tag, name, size);
             if (served !== size) {
                 console.log(`  ${name}: GitCode serves ${served ?? "nothing"} bytes after the upload, expected ${size}, attempt ${attempt}/${UPLOAD_ATTEMPTS}`);
                 continue;
@@ -231,6 +313,12 @@ async function main() {
         if (!done) {
             throw new Error(`${name} did not reach GitCode after ${UPLOAD_ATTEMPTS} attempts.`);
         }
+    };
+
+    // Everything but the feeds side by side; the feeds once the rest is there, one at a time.
+    await inPool(files.filter(file => !isFeed(file)), PARALLEL_UPLOADS, upload);
+    for (const feed of files.filter(isFeed)) {
+        await upload(feed);
     }
     console.log(`${tag} is on GitCode: ${SITE}/${OWNER}/${REPO}/releases/${tag}`);
 }

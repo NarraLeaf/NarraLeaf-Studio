@@ -20,12 +20,14 @@ export const update = {
     },
     versions: "使用中 {current}",
     readyHint: "Studio の終了時にも適用される",
+    retryAt: "{time} に自動で再試行する",
     indicator: {
         label: "ソフトウェア更新",
     },
     actions: {
         check: "更新を確認",
         download: "更新をダウンロード",
+        retry: "再試行",
         install: "再起動してインストール",
         restart: "再起動して更新",
         cancel: "更新を中止",

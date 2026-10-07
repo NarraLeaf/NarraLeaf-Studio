@@ -140,6 +140,32 @@ describe("chooseUpdateSource", () => {
         expect(timed).toBe(0);
     });
 
+    it("passes over the source a download of this version just failed from, without timing", async () => {
+        const { fetcher } = bothAt("1.4.4", "1.4.4");
+        let timed = 0;
+        const offer = await chooseUpdateSource({
+            fetch: fetcher,
+            currentVersion: "1.4.3",
+            log: noLog,
+            remembered: { version: "1.4.4", source: "gitcode" },
+            avoid: { version: "1.4.4", source: "gitcode" },
+            timeDownload: async () => ++timed,
+        });
+        expect(offer?.source).toBe("github");
+        expect(timed).toBe(0);
+    });
+
+    it("still uses the source that failed when it is the only one with the version", async () => {
+        const { fetcher } = bothAt("1.4.3", "1.4.4");
+        const offer = await chooseUpdateSource({
+            fetch: fetcher,
+            currentVersion: "1.4.3",
+            log: noLog,
+            avoid: { version: "1.4.4", source: "gitcode" },
+        });
+        expect(offer?.source).toBe("gitcode");
+    });
+
     it("asks only the source chosen in Settings", async () => {
         for (const preference of ["github", "gitcode"] as const) {
             const { fetcher, asked } = bothAt("1.4.4", "1.4.4");

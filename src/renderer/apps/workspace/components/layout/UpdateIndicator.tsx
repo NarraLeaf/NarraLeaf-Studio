@@ -7,8 +7,10 @@ import { useUpdateState } from "@/lib/app/useUpdateState";
 import {
     registerUpdatePanel,
     updateCanCancel,
+    updateDownloadActionKey,
     updateIsOnOffer,
     updateProgress,
+    updateRetryTime,
     updateStatusKey,
 } from "@/lib/app/updatePresentation";
 import { Button } from "@/lib/components/elements";
@@ -152,6 +154,7 @@ function UpdatePanelBody({ state, status, onDone }: { state: UpdateState; status
     };
 
     const releaseUrl = state.releaseUrl ?? UPDATE_RELEASES_URL;
+    const retryTime = updateRetryTime(state);
     const openReleases = () => {
         void getInterface().app.openExternal(releaseUrl).catch(() => undefined);
         onDone();
@@ -161,11 +164,19 @@ function UpdatePanelBody({ state, status, onDone }: { state: UpdateState; status
         <div className="flex flex-col gap-2">
             <div className="flex flex-col gap-0.5">
                 <span className="text-sm font-medium text-fg">{status}</span>
-                <span className="text-xs text-fg-subtle">
+                {/* Clamped: a failure that is not a dropped connection is shown by its first line, which
+                    can still run long; the whole of it is in the tooltip and the log. */}
+                <span
+                    className="text-xs text-fg-subtle line-clamp-3 break-words"
+                    data-tip={state.status === "error" && state.error ? state.error : undefined}
+                >
                     {state.status === "error" && state.error
                         ? state.error
                         : t("update.versions", { current: state.currentVersion })}
                 </span>
+                {retryTime && (
+                    <span className="text-xs text-fg-subtle">{t("update.retryAt", { time: retryTime })}</span>
+                )}
             </div>
 
             <UpdateStepProgress state={state} />
@@ -197,7 +208,7 @@ function UpdatePanelBody({ state, status, onDone }: { state: UpdateState; status
                         disabled={busy}
                         onClick={() => run(() => getInterface().app.update.download())}
                     >
-                        {t("update.actions.download")}
+                        {t(updateDownloadActionKey(state))}
                     </Button>
                 )}
                 {state.status === "manual" && (

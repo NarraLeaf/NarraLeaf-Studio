@@ -42,8 +42,11 @@ jobs:
   mirror:
     name: mirror ${{ inputs.tag }}
     runs-on: ubuntu-latest
-    # A few hundred megabytes cross the Pacific into GitCode's storage; it is not quick.
-    timeout-minutes: 90
+    # A few hundred megabytes cross the Pacific into GitCode's storage at a couple of hundred
+    # kilobytes a second per connection: the first copy, of 1.4.4, did not finish one 316 MB file in
+    # half an hour. The script uploads side by side and drops stalled connections; this is the room
+    # left for a slow day.
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
         with:

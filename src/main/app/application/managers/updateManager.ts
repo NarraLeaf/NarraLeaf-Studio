@@ -27,7 +27,7 @@ import {
     updaterCacheDir,
     type InstallLayout,
 } from "./updateStaging";
-import { DifferentialRetry } from "./updateDifferentialRetry";
+import { classifyDifferentialFailure, DifferentialRetry, summarizeDifferentialFailure } from "./updateDifferentialRetry";
 import { askGitCode, chooseUpdateSource, type UpdateFetch, type UpdateOffer, type UpdateSourceId } from "./updateSource";
 import { releaseDirectoryFeed } from "./releaseDirectoryProvider";
 import { getMainTranslator } from "../i18n";
@@ -50,6 +50,13 @@ const PACKAGED_FEED = { provider: "github", owner: "NarraLeaf", repo: "NarraLeaf
  * it, so the proxy the measurement goes through is the one the download will.
  */
 const UPDATER_SESSION = "electron-updater";
+
+/**
+ * When a failed download is tried again on its own, one entry per attempt. Short enough that a
+ * network that dropped for a minute is not left waiting for the six-hourly recheck, few enough that
+ * a source that is down is not asked over and over; after the last, the recheck takes over.
+ */
+export const UPDATE_RETRY_DELAYS_MS: readonly number[] = [2 * 60_000, 10 * 60_000, 30 * 60_000];
 
 /** A check that hangs is worse than one that fails: the panel would spin forever. */
 const CHECK_TIMEOUT_MS = 15_000;
@@ -123,6 +130,22 @@ export class UpdateManager {
     private sourceChoice: { version: string; source: UpdateSourceId } | null = null;
     /** What the source the updater is pointed at offers; its page is where "Release notes" goes. */
     private offer: UpdateOffer | null = null;
+    /**
+     * The source a download of a version failed from. The next attempt at that version passes it
+     * over while the other source has the version too, so a retry is not a repeat of the failure.
+     */
+    private failedSource: { version: string; source: UpdateSourceId } | null = null;
+    /** The automatic retry waiting to run after a failed download, and when it will. */
+    private retryTimer: ReturnType<typeof setTimeout> | null = null;
+    private retryAt: number | null = null;
+    /** How many automatic retries the version on offer has had; see {@link UPDATE_RETRY_DELAYS_MS}. */
+    private retryCount = 0;
+    /**
+     * Set while a retry's check is in flight. The version it finds is downloaded whatever the
+     * automatic-download setting says - someone asked for this download, or Studio started it
+     * itself - and `byRequest` carries which, for the quit guard.
+     */
+    private pendingRetry: { byRequest: boolean } | null = null;
     private readonly differentialRetry = new DifferentialRetry({
         log: message => this.app.logger.info("[Update]", message),
         networkError: summary => new Error(getMainTranslator(this.app).t("update.errors.connection", { reason: summary })),
@@ -213,6 +236,7 @@ export class UpdateManager {
     }
 
     public dispose(): void {
+        this.clearRetryTimer();
         for (const timer of [this.autoCheckTimer, this.cleanUpTimer]) {
             if (timer) {
                 clearTimeout(timer);
@@ -273,11 +297,13 @@ export class UpdateManager {
             this.setState({ status: "checking", error: undefined });
         });
         autoUpdater.on("update-available", info => {
-            if (this.takesOnItsOwn(info.version)) {
+            const retry = this.pendingRetry;
+            this.pendingRetry = null;
+            if (retry || this.takesOnItsOwn(info.version)) {
                 // Straight to downloading, without passing through "available": every surface that
                 // announces an offer would otherwise announce one that is already being acted on.
                 this.state = { ...this.state, availableVersion: info.version, releaseUrl: this.releaseUrlFor(info.version), error: undefined };
-                void this.beginDownload(false);
+                void this.beginDownload(retry?.byRequest ?? false);
                 return;
             }
             this.setState({
@@ -288,6 +314,8 @@ export class UpdateManager {
             });
         });
         autoUpdater.on("update-not-available", () => {
+            this.pendingRetry = null;
+            this.forgetFailures();
             this.setState({ status: "idle", availableVersion: undefined, error: undefined });
         });
         autoUpdater.on("download-progress", progress => {
@@ -305,6 +333,7 @@ export class UpdateManager {
         autoUpdater.on("update-downloaded", info => {
             this.downloadToken = null;
             this.downloadByRequest = false;
+            this.forgetFailures();
             this.downloaded = info.downloadedFile ? { file: info.downloadedFile, version: info.version } : null;
             void this.prepare(info.version);
         });
@@ -338,7 +367,7 @@ export class UpdateManager {
         }
 
         if (this.canSelfUpdate()) {
-            this.setState({ status: "checking", error: undefined });
+            this.setState({ status: "checking", error: undefined, retryAt: undefined });
             await this.pointAtSource();
             try {
                 await autoUpdater.checkForUpdates();
@@ -369,6 +398,7 @@ export class UpdateManager {
                 currentVersion: this.state.currentVersion,
                 preference,
                 remembered: this.sourceChoice,
+                avoid: this.failedSource,
                 log: message => this.app.logger.info("[Update]", message),
             });
         } catch (error) {
@@ -461,9 +491,79 @@ export class UpdateManager {
         return this.state;
     }
 
-    /** Start downloading the offered update, because the author pressed Download. */
+    /**
+     * Start downloading the offered update, because the author pressed Download - or Try Again, after
+     * a download failed, which checks first so the source can change (see {@link retry}).
+     */
     public async download(): Promise<UpdateState> {
+        if (this.canSelfUpdate() && this.state.status === "error" && this.state.availableVersion) {
+            return this.retry(true, true);
+        }
         return this.startDownload(true);
+    }
+
+    /**
+     * Try a failed download again.
+     *
+     * Through a check rather than straight into the updater's download: the updater downloads from
+     * the source the last check pointed it at, and the one that just failed should be passed over
+     * while the other has the version. `pressed` is the author asking, which starts the automatic
+     * retries over and takes back a decline.
+     */
+    private async retry(byRequest: boolean, pressed: boolean): Promise<UpdateState> {
+        if (BUSY_STATUSES.has(this.state.status)) {
+            return this.state;
+        }
+        this.clearRetryTimer();
+        if (pressed) {
+            this.retryCount = 0;
+            this.declinedVersion = null;
+        }
+        this.pendingRetry = { byRequest };
+        await this.check();
+        // A check that found nothing new to download (or failed in a way the listener did not see)
+        // must not leave the flag for a later, unrelated offer.
+        this.pendingRetry = null;
+        return this.state;
+    }
+
+    /**
+     * After a download failed: try again in a while, unless every automatic attempt has been made,
+     * or Studio is not to download on its own and this download was not asked for.
+     */
+    private scheduleRetry(byRequest: boolean): void {
+        this.clearRetryTimer();
+        if (!byRequest && !this.autoDownloadEnabled()) {
+            return;
+        }
+        const delay = UPDATE_RETRY_DELAYS_MS[this.retryCount];
+        if (delay === undefined) {
+            this.app.logger.info("[Update] No automatic retries left; the next check tries again.");
+            return;
+        }
+        this.retryCount += 1;
+        this.retryAt = Date.now() + delay;
+        this.app.logger.info(`[Update] Trying the download again in ${Math.round(delay / 1000)} s (attempt ${this.retryCount}/${UPDATE_RETRY_DELAYS_MS.length}).`);
+        this.retryTimer = setTimeout(() => {
+            this.retryTimer = null;
+            this.retryAt = null;
+            void this.retry(byRequest, false);
+        }, delay);
+    }
+
+    private clearRetryTimer(): void {
+        if (this.retryTimer) {
+            clearTimeout(this.retryTimer);
+        }
+        this.retryTimer = null;
+        this.retryAt = null;
+    }
+
+    /** A download finished, or the version is gone: nothing about earlier failures applies any more. */
+    private forgetFailures(): void {
+        this.clearRetryTimer();
+        this.retryCount = 0;
+        this.failedSource = null;
     }
 
     private async startDownload(byRequest: boolean): Promise<UpdateState> {
@@ -480,6 +580,7 @@ export class UpdateManager {
     }
 
     private async beginDownload(byRequest: boolean): Promise<UpdateState> {
+        this.clearRetryTimer();
         const token = new CancellationToken();
         this.downloadToken = token;
         this.downloadByRequest = byRequest;
@@ -508,6 +609,8 @@ export class UpdateManager {
      */
     public cancel(): UpdateState {
         const version = this.state.availableVersion ?? null;
+        this.clearRetryTimer();
+        this.pendingRetry = null;
         if (this.state.status === "downloading" && this.downloadToken) {
             const token = this.downloadToken;
             this.downloadToken = null;
@@ -721,23 +824,56 @@ export class UpdateManager {
 
     /**
      * Report a failure. One that happened while checking says nothing about any version, so the one
-     * on offer is dropped with it; one that happened while downloading keeps it, because that
-     * version is still there to retry.
+     * on offer is dropped with it - unless the check was a retry's, of a version found before. One
+     * that happened while downloading keeps it, because that version is still there to retry, and
+     * schedules the retry.
+     *
+     * The updater reports the same failure twice (its `error` event, then the rejected promise),
+     * hence the early return for a message already showing.
      */
     private fail(error: unknown): void {
-        if (this.state.status === "error" && this.state.error === describeError(error)) {
+        const message = this.describeFailure(error);
+        if (this.state.status === "error" && this.state.error === message) {
             return;
         }
         const duringCheck = this.state.status === "checking";
+        const duringDownload = this.state.status === "downloading";
+        const retry = this.pendingRetry;
+        this.pendingRetry = null;
+
+        if (duringDownload && this.offer && this.offer.version === this.state.availableVersion) {
+            this.failedSource = { version: this.offer.version, source: this.offer.source };
+        }
+        if (duringDownload) {
+            this.scheduleRetry(this.downloadByRequest);
+        } else if (duringCheck && retry && this.state.availableVersion) {
+            this.scheduleRetry(retry.byRequest);
+        }
+        const keepsVersion = !duringCheck || (retry !== null && Boolean(this.state.availableVersion));
         this.setState({
             status: "error",
-            error: describeError(error),
-            ...(duringCheck ? { availableVersion: undefined } : {}),
+            error: message,
+            ...(keepsVersion ? {} : { availableVersion: undefined }),
+            retryAt: this.retryTimer ? this.retryAt ?? undefined : undefined,
             transferredBytes: undefined,
             totalBytes: undefined,
             bytesPerSecond: undefined,
             prepareProgress: undefined,
         });
+    }
+
+    /**
+     * What a failure is called on screen. A dropped connection by the few words that name it - the
+     * updater's own message carries a stack and a signed URL several hundred characters long -
+     * and anything else by its first line. The whole of it is in the log either way.
+     */
+    private describeFailure(error: unknown): string {
+        const raw = describeError(error);
+        if (classifyDifferentialFailure(raw) === "network") {
+            return getMainTranslator(this.app).t("update.errors.connection", { reason: summarizeDifferentialFailure(raw) });
+        }
+        const firstLine = raw.split("\n", 1)[0].trim();
+        return firstLine.length > 200 ? `${firstLine.slice(0, 199)}…` : firstLine;
     }
 
     private setState(patch: Partial<UpdateState> & { status: UpdateStatus }): void {
