@@ -57,11 +57,19 @@ export const update = {
     setting: {
         checkOnLaunch: {
             label: "Check for updates automatically",
-            description: "Asks GitHub shortly after Studio starts, and every few hours while it runs.",
+            description: "Asks for a newer version shortly after Studio starts, and every few hours while it runs.",
         },
         autoDownload: {
             label: "Download updates automatically",
             description: "A new version is downloaded and prepared in the background. Restarting Studio applies it.",
+        },
+        source: {
+            label: "Update download source",
+            description: "Where new versions are downloaded from. Automatic compares GitHub and GitCode and uses the faster one.",
+            options: {
+                auto: "Automatic",
+                gitcode: "GitCode (mainland China)",
+            },
         },
     },
     /**
