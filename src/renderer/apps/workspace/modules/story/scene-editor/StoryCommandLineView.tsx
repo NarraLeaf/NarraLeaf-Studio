@@ -91,6 +91,8 @@ export type StoryCommandLineContextValue = {
     appTagName?: StoryRowLookups["appTagName"];
     /** The name of a UI page, for the `/quit` row that names one. Same derivation. */
     surfaceName?: StoryRowLookups["surfaceName"];
+    /** The name of an input action, for the rows that wait for one. Same derivation. */
+    inputActionName?: StoryRowLookups["inputActionName"];
     /**
      * The name a `/blueprint` row's blueprint goes by. Here rather than per row for the reason the
      * whole context is: one subscription to the blueprint document per editor tab, not one per row.
@@ -170,6 +172,8 @@ export function StoryCommandLineProvider({ slashAtAlias, commandContext, childre
         appTagName: appTagId => commandContext?.appTags.find(tag => tag.id === appTagId)?.name ?? null,
         // The same reading, for the page a `/quit` row lands on.
         surfaceName: surfaceId => commandContext?.surfaces.find(page => page.id === surfaceId)?.name ?? null,
+        // And for the action a `/waitinput`, `/hold` or `/mash` row waits for.
+        inputActionName: actionId => commandContext?.inputActions.find(action => action.id === actionId)?.name ?? null,
         blueprintName,
         commandContext,
     }), [assets, blueprintName, commandContext, commandT, hideParamNames, slashAtAlias, tracks]);

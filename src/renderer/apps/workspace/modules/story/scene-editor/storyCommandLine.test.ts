@@ -36,6 +36,7 @@ const CONTEXT: StoryCommandContext = {
     labels: ["intro", "after refusal"],
     appTags: [{ id: "release", name: "main" }, { id: "demo", name: "Demo" }],
     surfaces: [],
+    inputActions: [],
     variables: [
         { name: "gold", ref: { scope: "scene", variableId: "var_gold" }, valueType: "number", defaultValue: 10 },
     ],

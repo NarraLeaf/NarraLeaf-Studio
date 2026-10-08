@@ -502,6 +502,22 @@ export const storyInspector = {
         skipHint: "プレイヤーはクリックかスキップキーで動画を途中で終えられる",
     },
 
+    /** `/rumble`, `/input`, `/waitinput`, `/hold`, `/mash` - the player's-hands rows. */
+    input: {
+        shape: "振動パターン",
+        leftMotor: "左モーター (0-1)",
+        rightMotor: "右モーター (0-1)",
+        waitForRumble: "振動の終了を待つ",
+        state: "状態",
+        action: "入力アクション",
+        anyAction: "任意の入力アクション",
+        holdSeconds: "長押し (秒)",
+        pressCount: "押下回数",
+        timeout: "制限時間 (秒)",
+        result: "結果変数",
+        noResult: "なし",
+    },
+
     nvl: {
         hint: "子の行は NVL モードで動く。下の変形は、NVL のレイヤーが入ってくるときの動き",
         motionLabel: "NVL の登場アニメーション",

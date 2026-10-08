@@ -1,4 +1,5 @@
 import type { StoryExpression } from "./expression";
+import type { StoryInputActionPayload } from "./input";
 import { resolveAssetVariantMember, type AssetVariantMap } from "../assetSet";
 import type { WeatherSeedRef } from "../../weather/model";
 
@@ -256,7 +257,17 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 2 as const;
 // reason is what a v26 Studio would *play*: a `play` that no longer has a `create` above it, and does
 // not carry `hideOnEnd`, would be read as the bare transport verb and leave its last frame over every
 // scene after it, and a non-waiting play would hold the story for the length of the clip.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 27 as const;
+// v28 adds the `input` action payload: the rows that address the player's hands rather than the
+// stage - `/rumble` shakes the pad, `/input lock` takes the story out of the player's hands for a
+// passage, and `/waitinput`, `/hold` and `/mash` wait for one gesture (optionally against a deadline,
+// writing whether the player made it into a boolean variable). None of it could be written before:
+// the closest a story came was `/wait click`, which takes any click and cannot fail.
+// No migration. A v27 document cannot contain one, so the ladder gets no new step. The bump is not
+// optional, and the reason is what a v27 Studio would *play*: `compileStoryAction` ends in an
+// unconditional `return []`, so every waiting row would compile to nothing - a QTE the story runs
+// straight through, its result variable never written, and the branch after it always taking the
+// same arm. Refusing the document is the point.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 28 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -1187,7 +1198,9 @@ export type StoryActionPayload =
            * JSON, which is what makes the row survive a round trip through the project file.
            */
           params: Record<string, StoryPluginActionParamValue>;
-      };
+      }
+    /** The player's hands: a pad that shakes, a locked passage, a row that waits for a gesture. */
+    | StoryInputActionPayload;
 
 /** A JSON-serializable parameter value carried by a `{action:"plugin"}` block. */
 export type StoryPluginActionParamValue =

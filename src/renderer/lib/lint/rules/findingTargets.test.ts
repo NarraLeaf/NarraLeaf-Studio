@@ -533,6 +533,18 @@ const FIXTURES: Record<RegisteredLintRuleId, Case[]> = {
             uiDocument: uiDocument({ surfaces: [{ id: "map", name: "Map", rootElementId: "map-root" }], elements: [element({ id: "map-root", type: "nl.root" })] }),
         }),
     }],
+    "story/input-action-missing": [{
+        context: () => createTestLintContext({
+            stories: [story("s1", "Main", [scene("sc1", "Chase", [action("w1", { action: "input", operation: "wait", actionId: "gone" })])])],
+            uiDocument: uiDocument({ surfaces: [], elements: [], extra: { actions: {} } }),
+        }),
+    }],
+    "story/input-locked-dialogue": [{
+        context: () => stories(story("s1", "Main", [scene("sc1", "Cutscene", [
+            action("l1", { action: "input", operation: "lock" }),
+            narration("n1"),
+        ])])),
+    }],
     "story/ending-name-duplicate": [{
         context: () => stories(story("s1", "Main", [scene("sc1", "A", [ending("e1", "Bad End")]), scene("sc2", "B", [ending("e2", "Bad End")])])),
     }],

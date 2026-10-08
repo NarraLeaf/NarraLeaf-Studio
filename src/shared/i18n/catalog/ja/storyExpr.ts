@@ -58,6 +58,7 @@ export const storyExpr = {
         unknownLabel: "このシーンに \"{value}\" というラベルはない",
         unknownAppTag: "\"{value}\" というビルドバリアントはない",
         unknownSurface: "\"{value}\" というページはない",
+        unknownInputAction: "\"{value}\" という入力アクションはない",
         unknownVariable: "\"{value}\" という変数がない",
         unknownForm: "{characterName} に \"{value}\" という表情はない",
         notPuppetCharacter: "{value} はランタイムが描くものではないので、設定できるモーションもスキンもない",

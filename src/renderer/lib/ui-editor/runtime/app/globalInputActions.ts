@@ -37,6 +37,7 @@ import type { PersistentVariableRuntimeTable } from "@shared/types/variables/reg
 import type { BehaviorGraphEventControl } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import { dispatchGlobalBlueprintEvent } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
+import { announceStoryInputActions } from "@/lib/ui-editor/runtime/input/storyInputWait";
 import type { HostAdapterBundle } from "./types";
 
 /** What running the global blueprint needs, whichever route the input came by. */
@@ -67,6 +68,11 @@ export async function answerGlobalInputActions(
     if (payloads.length === 0) {
         return;
     }
+    // A story row waiting for the player (`/waitinput`, `/hold`, `/mash`) hears what the global
+    // blueprint hears, by the same rule and at the same moment. The row lets go only once this input
+    // has finished (see `storyInputWait`), so the press that ends a wait is not also the press that
+    // advances the line after it.
+    announceStoryInputActions(payloads);
     const { blueprintDocument, persistentVariables, core, globalHost } = input;
     const store = core.scopeBridge.getSurfaceStore(globalHost.runtimeScopeId);
     await Promise.all(payloads.map(payload => dispatchGlobalBlueprintEvent({

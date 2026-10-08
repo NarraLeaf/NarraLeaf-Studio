@@ -1563,6 +1563,78 @@ describe("story/transition-unavailable", () => {
     });
 });
 
+// --- story/input-action-missing / story/input-locked-dialogue ----------------
+
+describe("input rows", () => {
+    const input = (id: string, payload: Record<string, unknown>): BlockSpec =>
+        ({ id, kind: "action", payload: { action: "input", ...payload } });
+    const line = (id: string): BlockSpec =>
+        ({ id, kind: "nodeAction", payload: { action: "narration", text: { textId: `t-${id}`, value: "line", role: "narration" } } });
+    const withActions = (...actionIds: string[]): UIDocument =>
+        ({
+            surfaces: [],
+            elements: {},
+            actions: Object.fromEntries(actionIds.map(id => [id, { id, name: id, bindings: [] }])),
+        } as unknown as UIDocument);
+
+    it("reports a wait for an action the project no longer declares", () => {
+        const findings = run(
+            "story/input-action-missing",
+            createTestLintContext({
+                stories: [story("s1", "Main", [scene("sc1", "Chase", [
+                    input("ok", { operation: "wait", actionId: "confirm" }),
+                    input("gone", { operation: "mash", actionId: "dodge", count: 5, timeoutMs: 3000 }),
+                    input("any", { operation: "hold", holdMs: 1000 }),
+                ])])],
+                uiDocument: withActions("confirm"),
+            }),
+        );
+        expect(findings.map(finding => finding.location)).toMatchObject([{ blockId: "gone" }]);
+        expect(findings[0].messageKey).toBe("lint.rule.storyInputActionMissing.timed");
+    });
+
+    it("stays quiet when the interface document could not be read", () => {
+        expect(run(
+            "story/input-action-missing",
+            createTestLintContext({
+                stories: [story("s1", "Main", [scene("sc1", "Chase", [input("w", { operation: "wait", actionId: "confirm" })])])],
+                uiDocument: null,
+            }),
+        )).toEqual([]);
+    });
+
+    it("reports the first line a locked passage cannot advance, once", () => {
+        const findings = run(
+            "story/input-locked-dialogue",
+            createTestLintContext({
+                stories: [story("s1", "Main", [scene("sc1", "Cutscene", [
+                    line("before"),
+                    input("lock", { operation: "lock" }),
+                    line("stuck"),
+                    line("alsoStuck"),
+                    input("unlock", { operation: "unlock" }),
+                    line("after"),
+                ])])],
+            }),
+        );
+        expect(findings.map(finding => finding.location)).toMatchObject([{ blockId: "stuck" }]);
+    });
+
+    it("says nothing about a passage that unlocks before its next line", () => {
+        expect(run(
+            "story/input-locked-dialogue",
+            createTestLintContext({
+                stories: [story("s1", "Main", [scene("sc1", "Cutscene", [
+                    input("lock", { operation: "lock" }),
+                    { id: "w", kind: "action", payload: { action: "wait", mode: "duration", durationMs: 1000 } },
+                    input("unlock", { operation: "unlock" }),
+                    line("after"),
+                ])])],
+            }),
+        )).toEqual([]);
+    });
+});
+
 // --- story/quit-page-missing ------------------------------------------------
 
 describe("story/quit-page-missing", () => {

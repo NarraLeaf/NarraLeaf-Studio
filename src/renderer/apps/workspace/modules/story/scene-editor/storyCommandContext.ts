@@ -365,6 +365,11 @@ export function buildStoryCommandContext(input: {
      * bargain the audio tracks above take.
      */
     surfaces?: readonly { id: string; name: string }[];
+    /**
+     * The project's input actions. Omitted where no project is open, which leaves the waiting
+     * commands reporting every action name as unknown - the same bargain the pages above take.
+     */
+    inputActions?: readonly { id: string; name: string }[];
 }): StoryCommandContext {
     // What a `/show` row can name after the character: a preset character's poses, a layered one's
     // tags (across every axis — the engine resolves each against the group that owns it, so the
@@ -422,6 +427,7 @@ export function buildStoryCommandContext(input: {
         labels: sceneLabelNames(input.scene),
         appTags: appTagRefs(input.appTags),
         surfaces: (input.surfaces ?? []).map(surface => ({ id: surface.id, name: surface.name })),
+        inputActions: (input.inputActions ?? []).map(action => ({ id: action.id, name: action.name })),
         variables: variableEntries(
             input.document,
             input.scene,

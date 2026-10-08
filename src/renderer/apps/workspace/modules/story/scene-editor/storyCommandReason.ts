@@ -201,6 +201,7 @@ function resolutionReason(issue: StoryCommandResolutionIssue, token: string): St
         case "unknownLabel":
         case "unknownAppTag":
         case "unknownSurface":
+        case "unknownInputAction":
         case "unknownVariable":
         case "duplicateVariable":
         case "reservedVariableName":

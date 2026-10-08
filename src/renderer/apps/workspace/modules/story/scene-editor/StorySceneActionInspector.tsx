@@ -12,6 +12,7 @@ import type {
     StoryEndingPage,
     StoryGroupKind,
     StoryLiteralValue,
+    StoryRumblePresetId,
     StoryScene,
     StorySceneId,
     StoryTransitionRef,
@@ -41,6 +42,8 @@ import {
     storyGroupWaits,
     storyPersistentDefs,
     storyTransitionKindOf,
+    STORY_RUMBLE_DEFAULT_PRESET,
+    STORY_RUMBLE_PRESET_IDS,
     videoLeaveFadeMs,
     videoPlayHidesOnEnd,
     videoPlayWaits,
@@ -66,6 +69,7 @@ import { audioBusStatusLine } from "@/lib/story/audioBusStatus";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
 import { useProjectAppTags } from "@/lib/story/useProjectAppTags";
 import { useProjectSurfaces } from "@/lib/story/useProjectSurfaces";
+import { useProjectInputActions } from "@/lib/story/useProjectInputActions";
 import { BGM_OBJECT_NAME } from "./storyCommandValues";
 import { useTranslation } from "@/lib/i18n";
 import type { Translator, TranslationKey } from "@shared/i18n";
@@ -892,6 +896,138 @@ function SetVariableEditor(props: {
     );
 }
 
+type InputPayload = Extract<StoryActionPayload, { action: "input" }>;
+
+/** The rumble shapes the picker offers, `stop` last - the one that ends a rumble rather than starting one. */
+const RUMBLE_PICKER_VALUES = [...STORY_RUMBLE_PRESET_IDS, "stop"] as const;
+
+/**
+ * The inspector for `/rumble`, `/input`, `/waitinput`, `/hold` and `/mash`.
+ *
+ * One editor for the one payload arm, switching on the operation the way the row's own line does.
+ * The result variable offers boolean variables only: the row writes `true` or `false`, so a number
+ * would be a choice the command line refuses and the compiler cannot honour.
+ */
+function InputActionEditor(props: {
+    document: StoryDocument;
+    sceneId: StorySceneId;
+    payload: InputPayload;
+    onChange: (payload: StoryBlock["payload"]) => void;
+}) {
+    const { t } = useTranslation();
+    const { payload, onChange } = props;
+    const actions = useProjectInputActions();
+    const variables = useStoryVariableOptions(props.document, props.sceneId);
+
+    if (payload.operation === "rumble" || payload.operation === "stopRumble") {
+        const shape = payload.operation === "stopRumble" ? "stop" : payload.preset ?? STORY_RUMBLE_DEFAULT_PRESET;
+        const shapeOptions: SelectOption[] = RUMBLE_PICKER_VALUES.map(value => ({
+            value,
+            label: t(`story.enumValue.${value}` as TranslationKey),
+        }));
+        const setShape = (next: string) => {
+            if (next === "stop") {
+                onChange({ action: "input", operation: "stopRumble" });
+                return;
+            }
+            const base = payload.operation === "rumble" ? payload : { action: "input" as const, operation: "rumble" as const };
+            onChange({ ...base, preset: next as StoryRumblePresetId });
+        };
+        return (
+            <div className="grid grid-cols-1 gap-3">
+                <SelectField label={t("storyInspector.input.shape")} options={shapeOptions} value={shape} onChange={next => setShape(String(next))} />
+                {payload.operation === "rumble" && (
+                    <>
+                        <FieldGrid cols={2}>
+                            <NumberField
+                                label={t("storyInspector.input.leftMotor")}
+                                value={payload.strongMagnitude}
+                                onChange={value => onChange({ ...payload, strongMagnitude: value === undefined ? undefined : Math.min(1, Math.max(0, value)) })}
+                            />
+                            <NumberField
+                                label={t("storyInspector.input.rightMotor")}
+                                value={payload.weakMagnitude}
+                                onChange={value => onChange({ ...payload, weakMagnitude: value === undefined ? undefined : Math.min(1, Math.max(0, value)) })}
+                            />
+                        </FieldGrid>
+                        <SecondsField label={t("storyInspector.field.duration")} value={payload.durationMs} onChange={durationMs => onChange({ ...payload, durationMs })} />
+                        <ToggleField
+                            label={t("storyInspector.input.waitForRumble")}
+                            checked={payload.wait === true}
+                            onChange={checked => onChange({ ...payload, wait: checked ? true : undefined })}
+                        />
+                    </>
+                )}
+            </div>
+        );
+    }
+
+    if (payload.operation === "lock" || payload.operation === "unlock") {
+        return (
+            <SelectField
+                label={t("storyInspector.input.state")}
+                options={[
+                    { value: "lock", label: t("story.enumValue.lock") },
+                    { value: "unlock", label: t("story.enumValue.unlock") },
+                ]}
+                value={payload.operation}
+                onChange={next => onChange({ action: "input", operation: next === "unlock" ? "unlock" : "lock" })}
+            />
+        );
+    }
+
+    const actionOptions: SelectOption[] = [
+        { value: "", label: t("storyInspector.input.anyAction") },
+        ...actions.map(action => ({ value: action.id, label: action.name })),
+    ];
+    // Keyed by scope and id together: two scopes may hold the same id-shaped word.
+    const resultOptions: SelectOption[] = [
+        { value: "", label: t("storyInspector.input.noResult") },
+        ...(["scene", "saved", "persistent"] as const).flatMap(scope => variables[scope]
+            .filter(option => option.valueType === "boolean")
+            .map(option => ({ value: `${scope}:${option.id}`, label: option.name }))),
+    ];
+    const resultValue = payload.resultTarget ? `${payload.resultTarget.scope}:${payload.resultTarget.variableId}` : "";
+    const setResult = (next: string) => {
+        const split = next.indexOf(":");
+        if (split < 0) {
+            onChange({ ...payload, resultTarget: undefined });
+            return;
+        }
+        onChange({ ...payload, resultTarget: makeVariableRef(next.slice(0, split) as StoryVariableScope, next.slice(split + 1)) });
+    };
+    return (
+        <div className="grid grid-cols-1 gap-3">
+            <SelectField
+                label={t("storyInspector.input.action")}
+                options={actionOptions}
+                value={payload.actionId ?? ""}
+                onChange={next => onChange({ ...payload, actionId: next ? String(next) : undefined })}
+            />
+            {payload.operation === "hold" && (
+                <SecondsField
+                    label={t("storyInspector.input.holdSeconds")}
+                    value={payload.holdMs}
+                    onChange={holdMs => onChange({ ...payload, holdMs: holdMs ?? 1000 })}
+                />
+            )}
+            {payload.operation === "mash" && (
+                <NumberField
+                    label={t("storyInspector.input.pressCount")}
+                    value={payload.count}
+                    onChange={count => onChange({ ...payload, count: Math.max(1, Math.round(count ?? 1)) })}
+                />
+            )}
+            <SecondsField
+                label={t("storyInspector.input.timeout")}
+                value={payload.timeoutMs}
+                onChange={timeoutMs => onChange({ ...payload, timeoutMs })}
+            />
+            <SelectField label={t("storyInspector.input.result")} options={resultOptions} value={resultValue} onChange={next => setResult(String(next))} />
+        </div>
+    );
+}
+
 function StoryActionBlueprintEditor(props: {
     payload: Extract<StoryActionPayload, { action: "blueprint" }>;
     onChange: (payload: StoryBlock["payload"]) => void;
@@ -1006,6 +1142,9 @@ function ActionPayloadFields(props: {
     }
     if (payload.action === "blueprint") {
         return <StoryActionBlueprintEditor payload={payload} onChange={props.onChange} />;
+    }
+    if (payload.action === "input") {
+        return <InputActionEditor document={props.document} sceneId={props.sceneId} payload={payload} onChange={props.onChange} />;
     }
     if (payload.action === "wait") {
         return (

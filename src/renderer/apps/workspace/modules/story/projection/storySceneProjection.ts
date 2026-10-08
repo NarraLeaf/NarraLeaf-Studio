@@ -361,6 +361,25 @@ function formatAction(
         // where a row prints the channels it states.
         return payload.operation === "reset" ? "/reset camera" : "/transform camera";
     }
+    if (payload.action === "input") {
+        // A summary, as the camera's is: the verb and its one deciding word. The action is named by
+        // its id because this projection has no project to look the name up in.
+        switch (payload.operation) {
+            case "rumble":
+                return `/rumble${payload.preset ? ` ${payload.preset}` : ""}`;
+            case "stopRumble":
+                return "/rumble stop";
+            case "lock":
+            case "unlock":
+                return `/input ${payload.operation}`;
+            case "wait":
+                return `/waitinput${payload.actionId ? ` ${payload.actionId}` : ""}`;
+            case "hold":
+                return `/hold${payload.actionId ? ` ${payload.actionId}` : ""} ${formatStorySecondsLabel(payload.holdMs)}`;
+            case "mash":
+                return `/mash${payload.actionId ? ` ${payload.actionId}` : ""} ${payload.count}`;
+        }
+    }
     if (payload.action === "plugin") {
         // The action id, not the plugin's label: this projection is the exported script, which has to
         // round-trip through `#data` and be readable by whoever installs the plugin next - and the id
