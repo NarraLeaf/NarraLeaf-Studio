@@ -5,6 +5,7 @@ import type {
     UILayout,
     UISurface,
 } from "@shared/types/ui-editor/document";
+import type { UIElementNavigation } from "@shared/types/ui-editor/navigation";
 import type { UIPageAnimationSettings } from "@shared/types/ui-editor/pageAnimation";
 import type { UIStructField } from "@shared/types/ui-editor/struct";
 import type { UIEditorClipboardPayload } from "@/lib/ui-editor/commands/uiEditorClipboard";
@@ -98,6 +99,7 @@ type ProjectMember =
     | "renameInputAction"
     | "setInputActionBindings"
     | "deleteInputAction"
+    | "resetNavigationActionBindings"
     | "setSurfaceActionEnabled"
     | "updateSurfaceActionEnablement"
     | "createSurface"
@@ -120,6 +122,7 @@ type ProjectMember =
     | "setComponentElementValueBinding"
     | "updateComponentElementProps"
     | "updateComponentElementAnimation"
+    | "updateComponentElementNavigation"
     | "updateComponentElementExtra"
     | "renameComponentElement"
     | "reorderComponentChildren"
@@ -168,6 +171,7 @@ export class ComponentDocumentServiceAdapter implements UIDocumentServiceSurface
     public readonly renameInputAction = this.project("renameInputAction");
     public readonly setInputActionBindings = this.project("setInputActionBindings");
     public readonly deleteInputAction = this.project("deleteInputAction");
+    public readonly resetNavigationActionBindings = this.project("resetNavigationActionBindings");
     // A definition has no surface record and answers no input action; asked about this editor's own
     // surface, the project's service finds none and changes nothing.
     public readonly setSurfaceActionEnabled = this.project("setSurfaceActionEnabled");
@@ -193,6 +197,7 @@ export class ComponentDocumentServiceAdapter implements UIDocumentServiceSurface
     public readonly setComponentElementValueBinding = this.project("setComponentElementValueBinding");
     public readonly updateComponentElementProps = this.project("updateComponentElementProps");
     public readonly updateComponentElementAnimation = this.project("updateComponentElementAnimation");
+    public readonly updateComponentElementNavigation = this.project("updateComponentElementNavigation");
     public readonly updateComponentElementExtra = this.project("updateComponentElementExtra");
     public readonly renameComponentElement = this.project("renameComponentElement");
     public readonly reorderComponentChildren = this.project("reorderComponentChildren");
@@ -422,6 +427,17 @@ export class ComponentDocumentServiceAdapter implements UIDocumentServiceSurface
             return;
         }
         this.base.updateComponentElementAnimation(this.componentId, elementId, animation, options);
+    }
+
+    public updateElementNavigation(
+        elementId: string,
+        navigation: UIElementNavigation | null,
+        options: { mergeKey?: string } = {},
+    ): void {
+        if (this.isVirtualRoot(elementId)) {
+            return;
+        }
+        this.base.updateComponentElementNavigation(this.componentId, elementId, navigation, options);
     }
 
     public renameElement(elementId: string, name: string): void {

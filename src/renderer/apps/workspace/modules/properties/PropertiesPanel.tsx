@@ -121,6 +121,7 @@ import {
 } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 import { ElementStateBar } from "@/lib/ui-editor/widget-modules/shared/appearance/ElementStateBar";
+import { createElementNavigationField } from "./fields/elementNavigationFields";
 import { ElementAnimationField } from "@/lib/ui-editor/widget-modules/shared/page-animation/ElementAnimationField";
 import { InteractionSoundField } from "@/lib/ui-editor/widget-modules/shared/sound/InteractionSoundField";
 import { hasUIInteractionSounds, uiElementTypeTakesInteractionSounds } from "@shared/types/ui-editor/interactionSounds";
@@ -697,8 +698,10 @@ function mergeInspectorWithLayoutSchema(
     const layoutFields = layoutSchema.fields ?? [];
     const stateField = createElementStateField(element);
     const soundField = createElementInteractionSoundField(element, t);
+    const navigationField = createElementNavigationField(element, t);
     const animationField = createElementAnimationField(element, t);
-    const closingFields = soundField ? [soundField, animationField] : [animationField];
+    const closingFields = [soundField, navigationField, animationField]
+        .filter((field): field is FieldDefinition<UIInspectorData> => field !== null);
     const baseTitle = inspectorSchema.title ?? element.name ?? t("properties.layout.uiElement");
     const baseId = `ui-element:${element.id}`;
 
@@ -755,7 +758,9 @@ function createLinkedComponentInspectorSchema(
         fields: [
             ...(layoutSchema.fields ?? []),
             // An instance may animate even though its props come from the definition: how it arrives
-            // belongs to where it was placed, the same way its position does.
+            // belongs to where it was placed, the same way its position does. So does how the player
+            // reaches it.
+            ...[createElementNavigationField(element, t)].filter((field): field is FieldDefinition<UIInspectorData> => field !== null),
             createElementAnimationField(element, t),
             defineField<UIInspectorData, any>({
                 id: "component.params",

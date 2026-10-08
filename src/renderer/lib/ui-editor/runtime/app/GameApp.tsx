@@ -6,6 +6,7 @@ import {
     useRef,
     useState,
     useSyncExternalStore,
+    type PointerEvent as ReactPointerEvent,
     type ReactNode,
     type SyntheticEvent,
 } from "react";
@@ -226,6 +227,8 @@ import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { resolveKeyboardDispatchScope } from "@/lib/ui-editor/runtime/input/keyboardDispatchScope";
 import { keepPointerPressOffKeyboardFocus } from "@/lib/ui-editor/runtime/input/pointerKeyboardFocus";
+import { notePointerOverGame, notePointerPressOnGame } from "@/lib/ui-editor/runtime/navigation/focusNavigation";
+import { resolveRuntimeInputVocabulary } from "@shared/types/ui-editor/navigation";
 import { GAME_ROOT_ATTRIBUTE } from "@/lib/ui-editor/runtime/input/keyboardFocusHandover";
 import {
     listenForGameKeys,
@@ -5924,6 +5927,16 @@ export function GameApp(props: GameAppProps): ReactNode {
     );
     const drawsOwnNvlPage = useMemo(() => projectDrawsNvlPage(bundle.ui.uidoc), [bundle.ui.uidoc]);
 
+    // The element the game draws into, for the key and pad listeners below to find the controls
+    // navigation moves between. Read per press: the root is set after this effect first runs.
+    const gameRootRef = useRef<HTMLDivElement | null>(null);
+    // The project's actions, and the navigation actions at their defaults wherever the project has
+    // not rebound them (`resolveRuntimeInputVocabulary`).
+    const runtimeVocabulary = useMemo(
+        () => resolveRuntimeInputVocabulary(bundle.ui.uidoc.actions),
+        [bundle.ui.uidoc.actions],
+    );
+
     useEffect(() => {
         const scope = resolveKeyboardDispatchScope({
             gameReady: Boolean(host.ready && core && globalHostAdapterBundle),
@@ -5940,7 +5953,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         const dispatch = {
             blueprintDocument: bundle.ui.localBlueprints,
             persistentVariables: bundle.ui.persistentVariables,
-            vocabulary: bundle.ui.uidoc.actions,
+            vocabulary: runtimeVocabulary,
+            readGameRoot: () => gameRootRef.current,
             core,
             globalHost: globalHostAdapterBundle,
             // An entry when one owns the keyboard; otherwise the stage, when the story is what the
@@ -5985,6 +5999,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         isNvlModeInGame,
         isStoryOnScreen,
         nextInGame,
+        runtimeVocabulary,
         stageKeyboardSurfaces,
     ]);
 
@@ -6030,6 +6045,17 @@ export function GameApp(props: GameAppProps): ReactNode {
      * root exists, which is not on the first render.
      */
     const [gameRoot, setGameRoot] = useState<HTMLDivElement | null>(null);
+    useLayoutEffect(() => {
+        gameRootRef.current = gameRoot;
+    }, [gameRoot]);
+    // The pointer resting on a control is where the next arrow starts, and pointing hides the ring
+    // the keys drew (`focusNavigation`).
+    const notePointerMoveForNavigation = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+        notePointerOverGame(event.currentTarget, event);
+    }, []);
+    const notePointerDownForNavigation = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+        notePointerPressOnGame(event.currentTarget);
+    }, []);
     const offerPointerInputToGlobal = useCallback((event: Event) => {
         if (!gameRoot || !globalBlueprintDispatchRef.current) {
             return;
@@ -6736,6 +6762,8 @@ export function GameApp(props: GameAppProps): ReactNode {
                 // The keyboard focus is the keyboard's: a click on a control answers the click and
                 // leaves the next key to the game, see `pointerKeyboardFocus`.
                 onMouseDownCapture={keepPointerPressOffKeyboardFocus}
+                onPointerMoveCapture={notePointerMoveForNavigation}
+                onPointerDownCapture={notePointerDownForNavigation}
                 onClick={offerSyntheticPointerInputToGlobal}
                 onDoubleClick={offerSyntheticPointerInputToGlobal}
                 onAuxClick={offerSyntheticPointerInputToGlobal}

@@ -23,6 +23,7 @@ import {
     isUIListScrolledToEnd,
     resolveUIListScrollMetrics,
 } from "@shared/types/ui-editor/list";
+import { focusNavigationTarget } from "@/lib/ui-editor/runtime/navigation/focusNavigation";
 import { resolvePageAnimationMotion } from "@/lib/ui-editor/runtime/pageAnimation";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import type { UIStructDef } from "@shared/types/ui-editor/struct";
@@ -566,8 +567,9 @@ export function ListRenderer(props: WidgetRendererProps) {
     /**
      * The row the keyboard enters this list on: the one it last left, else the selected one, else the
      * first. The list is one stop on Tab however many rows it has - the rest are reached with the
-     * arrows - so a menu of four options or a backlog of two hundred lines costs the same one press
-     * to pass. See `listRowKeyboardMove` for the keys.
+     * arrows, which navigation moves between rows like any other controls - so a menu of four options
+     * or a backlog of two hundred lines costs the same one press to pass. Home and End are the
+     * list's own (`listRowKeyboardMove`).
      */
     const [keyboardRowIndex, setKeyboardRowIndex] = useState<number | null>(null);
     const tabStopRowIndex = count > 0
@@ -596,7 +598,7 @@ export function ListRenderer(props: WidgetRendererProps) {
             const row = Array.from(event.currentTarget.parentElement?.children ?? [])
                 .find(sibling => sibling.getAttribute("data-ui-list-item-index") === String(next));
             if (row instanceof HTMLElement) {
-                row.focus();
+                focusNavigationTarget(row);
             }
         },
         [handleListItemClick],

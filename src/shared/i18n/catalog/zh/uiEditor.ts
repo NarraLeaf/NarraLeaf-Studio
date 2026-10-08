@@ -105,6 +105,18 @@ export const uiEditor = {
         answered: {
             other: "{count} 个界面",
         },
+        navigationTitle: "导航",
+        navigation: {
+            up: "向上",
+            down: "向下",
+            left: "向左",
+            right: "向右",
+            next: "下一个控件",
+            previous: "上一个控件",
+            confirm: "确认",
+            cancel: "取消",
+        },
+        resetBindings: "恢复默认绑定",
         noBindings: "未绑定",
         addBinding: "添加绑定",
         removeBinding: "移除 {binding}",

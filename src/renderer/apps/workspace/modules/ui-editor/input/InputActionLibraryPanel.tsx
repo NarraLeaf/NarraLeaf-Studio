@@ -9,7 +9,13 @@ import {
     type UIInputActionDef,
     type UIInputBinding,
 } from "@shared/types/ui-editor/inputAction";
+import {
+    isUINavigationActionId,
+    UI_NAVIGATION_INTENTS,
+    uiNavigationActionId,
+} from "@shared/types/ui-editor/navigation";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import { inputActionDisplayName } from "@/lib/ui-editor/inputActionNames";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
@@ -97,6 +103,16 @@ export function InputActionLibraryPanel({ documentService, uiService, open, onOp
         return documentService.onDocumentChanged(refresh);
     }, [documentService]);
 
+    // The project's own actions, and Studio's navigation actions below them in a group of their own:
+    // always there, in a fixed order, named by Studio.
+    const authorActions = useMemo(() => actions.filter(action => !isUINavigationActionId(action.id)), [actions]);
+    const navigationActions = useMemo(
+        () => UI_NAVIGATION_INTENTS
+            .map(intent => actions.find(action => action.id === uiNavigationActionId(intent)))
+            .filter((action): action is UIInputActionDef => Boolean(action)),
+        [actions],
+    );
+
     // `actions` is a fresh array on every document change, so this recounts exactly as often as the
     // numbers can move and no more.
     const answeredCounts = useMemo(() => countAnsweringSurfaces(documentService), [actions, documentService]);
@@ -161,7 +177,7 @@ export function InputActionLibraryPanel({ documentService, uiService, open, onOp
             const preset = UI_INPUT_ACTION_PRESETS.find(entry => entry.id === presetId);
             const suggestedName = preset && preset.id !== "blank"
                 ? t(`uiEditor.inputActions.presets.${preset.id}` as never)
-                : t("uiEditor.naming.inputAction", { index: actions.length + 1 });
+                : t("uiEditor.naming.inputAction", { index: authorActions.length + 1 });
             const name = inputDialog
                 ? await inputDialog.show({
                       title: t("uiEditor.inputActions.createTitle"),
@@ -175,7 +191,7 @@ export function InputActionLibraryPanel({ documentService, uiService, open, onOp
             }
             documentService.createInputAction(name, preset?.bindings ?? []);
         },
-        [actions.length, documentService, inputDialog, t],
+        [authorActions.length, documentService, inputDialog, t],
     );
 
     const openCreateMenu = useCallback(
@@ -238,6 +254,24 @@ export function InputActionLibraryPanel({ documentService, uiService, open, onOp
         (event: MouseEvent<HTMLButtonElement | HTMLDivElement>, action: UIInputActionDef) => {
             event.preventDefault();
             event.stopPropagation();
+            if (isUINavigationActionId(action.id)) {
+                // Studio's action, not the project's: it keeps its name and cannot be deleted, and the
+                // one thing to undo is a rebinding.
+                const rebound = Boolean(documentService?.getDocument().actions?.[action.id]);
+                setMenuItems([
+                    {
+                        id: "reset",
+                        label: t("uiEditor.inputActions.resetBindings"),
+                        ...freeze.menuRow(!rebound),
+                        onClick: () => {
+                            hideMenu();
+                            documentService?.resetNavigationActionBindings(action.id);
+                        },
+                    },
+                ]);
+                showMenu(event);
+                return;
+            }
             setMenuItems([
                 {
                     id: "rename",
@@ -261,7 +295,7 @@ export function InputActionLibraryPanel({ documentService, uiService, open, onOp
             ]);
             showMenu(event);
         },
-        [freeze, handleDelete, handleRename, hideMenu, showMenu, t],
+        [documentService, freeze, handleDelete, handleRename, hideMenu, showMenu, t],
     );
 
     const setBindings = useCallback(
@@ -271,11 +305,64 @@ export function InputActionLibraryPanel({ documentService, uiService, open, onOp
         [documentService],
     );
 
+    const renderRow = (action: UIInputActionDef) => {
+        const name = inputActionDisplayName(action, t);
+        return (
+            <div
+                key={action.id}
+                ref={node => {
+                    if (node) {
+                        rowRefs.current.set(action.id, node);
+                    } else {
+                        rowRefs.current.delete(action.id);
+                    }
+                }}
+                data-input-action-id={action.id}
+                data-canvas-highlight={answeredHere.has(action.id) ? "true" : undefined}
+                className={cn(
+                    "group rounded-md border border-edge bg-fill-subtle px-2 py-2 transition-colors",
+                    // The same frame the component library draws round the
+                    // definition behind a selected instance.
+                    answeredHere.has(action.id) && "border-primary ring-1 ring-inset ring-primary",
+                    flashId === action.id && "bg-primary/15",
+                )}
+                onContextMenu={event => openActionMenu(event, action)}
+            >
+                <div className="flex items-center gap-2">
+                    <div
+                        className="min-w-0 flex-1 truncate text-left text-xs font-medium text-fg"
+                        data-tip={name}
+                    >
+                        {name}
+                    </div>
+                    <span className="shrink-0 text-2xs text-fg-subtle">
+                        {tn("uiEditor.inputActions.answered", answeredCounts[action.id] ?? 0)}
+                    </span>
+                    <button
+                        type="button"
+                        className="grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-fg"
+                        onClick={event => openActionMenu(event, action)}
+                        data-tip={t("uiEditor.inputActions.actionOptions")}
+                        aria-label={t("uiEditor.inputActions.actionOptions")}
+                    >
+                        <MoreVertical className="h-3.5 w-3.5" aria-hidden />
+                    </button>
+                </div>
+                <div className="mt-2">
+                    <InputBindingList
+                        bindings={action.bindings}
+                        onChange={bindings => setBindings(action, bindings)}
+                    />
+                </div>
+            </div>
+        );
+    };
+
     return (
         <StackSection
             sectionId="inputActions"
             title={t("uiEditor.inputActions.title")}
-            count={actions.length}
+            count={authorActions.length}
             actions={
                 <ToolbarButton
                     size="xs"
@@ -292,61 +379,17 @@ export function InputActionLibraryPanel({ documentService, uiService, open, onOp
             {/* The section's own scroller: it gets every pixel the section is given, and a
                 wheel that reaches its end stops there. */}
             <div ref={listRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-2">
-                {actions.length === 0 ? (
+                {authorActions.length === 0 ? (
                     <div className="rounded-md border border-dashed border-edge px-3 py-4 text-center text-xs text-fg-subtle">
                         {t("uiEditor.inputActions.empty")}
                     </div>
                 ) : (
-                    actions.map(action => (
-                        <div
-                            key={action.id}
-                            ref={node => {
-                                if (node) {
-                                    rowRefs.current.set(action.id, node);
-                                } else {
-                                    rowRefs.current.delete(action.id);
-                                }
-                            }}
-                            data-input-action-id={action.id}
-                            data-canvas-highlight={answeredHere.has(action.id) ? "true" : undefined}
-                            className={cn(
-                                "group rounded-md border border-edge bg-fill-subtle px-2 py-2 transition-colors",
-                                // The same frame the component library draws round the
-                                // definition behind a selected instance.
-                                answeredHere.has(action.id) && "border-primary ring-1 ring-inset ring-primary",
-                                flashId === action.id && "bg-primary/15",
-                            )}
-                            onContextMenu={event => openActionMenu(event, action)}
-                        >
-                            <div className="flex items-center gap-2">
-                                <div
-                                    className="min-w-0 flex-1 truncate text-left text-xs font-medium text-fg"
-                                    data-tip={action.name}
-                                >
-                                    {action.name}
-                                </div>
-                                <span className="shrink-0 text-2xs text-fg-subtle">
-                                    {tn("uiEditor.inputActions.answered", answeredCounts[action.id] ?? 0)}
-                                </span>
-                                <button
-                                    type="button"
-                                    className="grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-fg"
-                                    onClick={event => openActionMenu(event, action)}
-                                    data-tip={t("uiEditor.inputActions.actionOptions")}
-                                    aria-label={t("uiEditor.inputActions.actionOptions")}
-                                >
-                                    <MoreVertical className="h-3.5 w-3.5" aria-hidden />
-                                </button>
-                            </div>
-                            <div className="mt-2">
-                                <InputBindingList
-                                    bindings={action.bindings}
-                                    onChange={bindings => setBindings(action, bindings)}
-                                />
-                            </div>
-                        </div>
-                    ))
+                    authorActions.map(renderRow)
                 )}
+                <div className="px-1 pt-2 text-2xs font-medium text-fg-subtle">
+                    {t("uiEditor.inputActions.navigationTitle")}
+                </div>
+                {navigationActions.map(renderRow)}
             </div>
             <ContextMenu
                 items={menuItems}

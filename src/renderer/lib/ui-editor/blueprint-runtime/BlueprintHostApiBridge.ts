@@ -162,6 +162,7 @@ import {
     isUsableAppearanceModel,
     syncTextAppearanceDefaultRowsFromProps,
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
+import { resolveRuntimeInputVocabulary } from "@shared/types/ui-editor/navigation";
 
 export type DevModeWidgetRuntimePatch = {
     /**
@@ -2619,7 +2620,7 @@ function normalizeGamePreferenceValue(
  */
 function readInputActionHeld(document: UIDocument, surfaceId: string, actionId: string): boolean {
     const trimmedId = actionId.trim();
-    const def = trimmedId ? document.actions?.[trimmedId] : undefined;
+    const def = trimmedId ? resolveRuntimeInputVocabulary(document.actions)[trimmedId] : undefined;
     if (!def) {
         return false;
     }

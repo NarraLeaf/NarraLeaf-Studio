@@ -7,6 +7,7 @@ import {
 } from "./contributedWidgets";
 import type { UIInputActionDef, UISurfaceActionEnablement } from "./inputAction";
 import { getUIListChildSlot, isListLikeWidgetType, isUIListScrollbarSlot, UI_LIST_LIKE_WIDGET_TYPES } from "./list";
+import type { UIElementNavigation, UISurfaceNavigation } from "./navigation";
 import type { UIPageAnimationSettings } from "./pageAnimation";
 import { getUISliderChildSlot } from "./slider";
 import type { UIStructDef, UIStructId } from "./struct";
@@ -223,6 +224,8 @@ export type UISurfaceSettings = {
      */
     backgroundImage?: UISurfaceBackgroundImage;
     pageAnimation?: UIPageAnimationSettings;
+    /** Where the focus starts when this Surface opens, and whether it is put there. See `navigation.ts`. */
+    navigation?: UISurfaceNavigation;
     /**
      * What the asset set this Surface's own background names resolves to, per locale. Build-written
      * exactly as {@link UIElement.assetVariants} is, and here rather than on the Surface so the
@@ -382,6 +385,15 @@ export type UIElement = {
      * even though its props come from the definition.
      */
     animation?: UIPageAnimationSettings;
+    /**
+     * How the player reaches this element without a pointer - whether it can hold the focus, where
+     * a direction goes from it, whether it is a group. Absent on almost every element: a control is
+     * reachable without saying so. Read it through `navigation.ts`.
+     *
+     * Its own field for the reason {@link animation} is: it belongs to the placement, every type has
+     * one, and a linked component instance may set it.
+     */
+    navigation?: UIElementNavigation;
     extra?: Record<string, unknown>;
     /**
      * What each asset set THIS element names resolves to, per locale.

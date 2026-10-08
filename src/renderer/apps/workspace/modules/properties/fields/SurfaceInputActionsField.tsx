@@ -10,6 +10,7 @@ import {
     requestInputActionPanelFocus,
 } from "@/apps/workspace/modules/ui-editor/input/inputActionPanelFocus";
 import { useTranslation } from "@/lib/i18n";
+import { inputActionDisplayName } from "@/lib/ui-editor/inputActionNames";
 import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -91,9 +92,9 @@ export function SurfaceInputActionsField({ data }: CustomFieldProps<SceneEditorC
                                     uiService?.panels.show(UI_SURFACES_PANEL_ID);
                                     requestInputActionPanelFocus(action.id);
                                 }}
-                                data-tip={t("properties.scene.input.reveal", { name: action.name })}
+                                data-tip={t("properties.scene.input.reveal", { name: inputActionDisplayName(action, t) })}
                             >
-                                {action.name}
+                                {inputActionDisplayName(action, t)}
                             </button>
                             <div className="shrink-0 truncate text-2xs text-fg-subtle">{bindingsOf(action)}</div>
                             <button
@@ -102,8 +103,8 @@ export function SurfaceInputActionsField({ data }: CustomFieldProps<SceneEditorC
                                 onClick={() =>
                                     data.documentService.setSurfaceActionEnabled(surfaceId, action.id, false)
                                 }
-                                aria-label={t("properties.scene.input.removeAction", { name: action.name })}
-                                data-tip={t("properties.scene.input.removeAction", { name: action.name })}
+                                aria-label={t("properties.scene.input.removeAction", { name: inputActionDisplayName(action, t) })}
+                                data-tip={t("properties.scene.input.removeAction", { name: inputActionDisplayName(action, t) })}
                             >
                                 <X className="h-3 w-3" aria-hidden />
                             </button>

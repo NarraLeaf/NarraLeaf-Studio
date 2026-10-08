@@ -59,6 +59,7 @@ import type { LintContext } from "../context";
 import type { LintFinding, LintLocation, LintRule } from "../types";
 import { REFERENCE_KIND_BY_OPTIONS_SOURCE } from "./blueprint";
 import { listQuitRows } from "./story";
+import { resolveRuntimeInputVocabulary } from "@shared/types/ui-editor/navigation";
 
 /**
  * `ui` - pages and widgets that do not do what the canvas suggests they do.
@@ -1464,7 +1465,7 @@ function runGestureAnsweredTwice(ctx: LintContext): LintFinding[] {
             continue;
         }
         for (const enablement of enablements) {
-            const action = document.actions?.[enablement.actionId];
+            const action = resolveRuntimeInputVocabulary(document.actions)[enablement.actionId];
             if (!action) {
                 // An enablement naming an action the project does not define. Inert at run time and
                 // reported where the vocabulary is; nothing here can collide with it.

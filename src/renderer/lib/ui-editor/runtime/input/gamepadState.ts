@@ -28,6 +28,7 @@
 import {
     BLUEPRINT_GAMEPAD_AXES,
     BLUEPRINT_GAMEPAD_BUTTONS,
+    BLUEPRINT_GAMEPAD_PHYSICAL_BUTTON_COUNT,
     normalizeBlueprintGamepadButtonIndex,
     type BlueprintGamepadAxis,
 } from "@shared/types/blueprint/gamepad";
@@ -96,7 +97,40 @@ function isStandardPad(pad: Gamepad | null | undefined): pad is Gamepad {
     return Boolean(pad && pad.mapping === "standard");
 }
 
-function readUnion(pads: Array<Gamepad | null>): { buttons: Set<string>; axes: Record<BlueprintGamepadAxis, number>; connected: boolean } {
+/** How far the left stick goes before it reads as pressed one way, and how far back before it lets go. */
+export const GAMEPAD_STICK_PRESS = 0.5;
+export const GAMEPAD_STICK_RELEASE = 0.35;
+
+const LEFT_STICK_BUTTONS = [
+    { button: "Left Stick Up", axis: 1, sign: -1 },
+    { button: "Left Stick Down", axis: 1, sign: 1 },
+    { button: "Left Stick Left", axis: 0, sign: -1 },
+    { button: "Left Stick Right", axis: 0, sign: 1 },
+] as const;
+
+/**
+ * The left stick as four buttons. A direction goes down past {@link GAMEPAD_STICK_PRESS} and comes
+ * back up only under {@link GAMEPAD_STICK_RELEASE}, so a thumb resting near the threshold does not
+ * press it over and over. Only the stronger axis counts: a diagonal is whichever way it leans more,
+ * which is what a menu with no diagonals can use.
+ */
+function readLeftStickButtons(pad: Gamepad, previous: ReadonlySet<string>, into: Set<string>): void {
+    const x = pad.axes[0] ?? 0;
+    const y = pad.axes[1] ?? 0;
+    for (const entry of LEFT_STICK_BUTTONS) {
+        const along = (entry.axis === 0 ? x : y) * entry.sign;
+        const across = Math.abs(entry.axis === 0 ? y : x);
+        const threshold = previous.has(entry.button) ? GAMEPAD_STICK_RELEASE : GAMEPAD_STICK_PRESS;
+        if (along >= threshold && along >= across) {
+            into.add(entry.button);
+        }
+    }
+}
+
+function readUnion(
+    pads: Array<Gamepad | null>,
+    previous: ReadonlySet<string> = new Set(),
+): { buttons: Set<string>; axes: Record<BlueprintGamepadAxis, number>; connected: boolean } {
     const buttons = new Set<string>();
     let first: Gamepad | null = null;
     for (const pad of pads) {
@@ -106,7 +140,8 @@ function readUnion(pads: Array<Gamepad | null>): { buttons: Set<string>; axes: R
         if (!first) {
             first = pad;
         }
-        const count = Math.min(pad.buttons.length, BLUEPRINT_GAMEPAD_BUTTONS.length);
+        readLeftStickButtons(pad, previous, buttons);
+        const count = Math.min(pad.buttons.length, BLUEPRINT_GAMEPAD_PHYSICAL_BUTTON_COUNT);
         for (let index = 0; index < count; index += 1) {
             if (pad.buttons[index]?.pressed) {
                 const name = normalizeBlueprintGamepadButtonIndex(index);
@@ -204,7 +239,7 @@ export function createGamepadTracker(host: UIGamepadHost | null | undefined): UI
         if (!host) {
             return;
         }
-        const live = readUnion(host.getGamepads());
+        const live = readUnion(host.getGamepads(), buttons);
         if (hostIsAway(host)) {
             forget(live);
             return;

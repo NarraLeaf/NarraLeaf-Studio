@@ -8,10 +8,12 @@ import React, {
     useState,
     useSyncExternalStore,
 } from "react";
-import type { CSSProperties, FocusEvent, MouseEvent, PointerEvent, WheelEvent } from "react";
+import type { CSSProperties, FocusEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent, PointerEvent, WheelEvent } from "react";
 import { MotionConfigContext } from "motion/react";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
+import { normalizeUIElementNavigation } from "@shared/types/ui-editor/navigation";
+import { elementNavigationAttributes } from "@/lib/ui-editor/runtime/navigation/focusNavigation";
 import {
     useWidgetRuntimeElementState,
     useWidgetRuntimeElementKey,
@@ -716,6 +718,31 @@ export function EditorNodeWrapper({
         [dispatchWidgetEvent, isDirectElementEvent, widgetRuntimeStore],
     );
 
+    // How the player reaches this element without a pointer (`focusNavigation`). In a running game
+    // only: the canvas has no focus to move. A box an author made reachable is a control of its own -
+    // a Tab stop, pressed by Enter and Space the way a button is, which is also how a pad's Confirm
+    // presses it.
+    const navigationProps = useMemo(() => {
+        if (!interactive || !blueprintRuntime) {
+            return {};
+        }
+        const navigation = normalizeUIElementNavigation(element.navigation);
+        const attributes: Record<string, unknown> = elementNavigationAttributes(navigation);
+        if (navigation?.focusable === "always") {
+            attributes.tabIndex = 0;
+            attributes.onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+                if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) {
+                    return;
+                }
+                event.preventDefault();
+                if (!event.repeat) {
+                    event.currentTarget.click();
+                }
+            };
+        }
+        return attributes;
+    }, [blueprintRuntime, element.navigation, interactive]);
+
     /** Where this node is placed, state offset included. Its own channel, so a gesture cannot take it. */
     const placedLeft = enteredOffsetsInFlow ? 0 : layout.x + Math.min(0, layout.width) + placedEnteredOffsets.x;
     const placedTop = enteredOffsetsInFlow ? 0 : layout.y + Math.min(0, layout.height) + placedEnteredOffsets.y;
@@ -1111,6 +1138,7 @@ export function EditorNodeWrapper({
         <EnteredStateProvider value={broadcastState}>
         <div
             ref={containerRef}
+            {...navigationProps}
             data-ui-element-id={interactive ? element.id : undefined}
             // Which drawing this is, for measuring one row or one placement rather than whichever
             // copy of the element the page happens to hold first. See `surfaceMeasurement`.

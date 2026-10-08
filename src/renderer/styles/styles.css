@@ -543,13 +543,14 @@ input[data-floating-item]:focus-visible {
 }
 
 /*
- * Keyboard focus on a running game's controls - a button, a switch, a list row - the same three
- * `GAME_KEYBOARD_CONTROL_SELECTOR` names in runtime/input/pointerKeyboardFocus.ts.
+ * The navigation focus on a running game's controls - a button, a switch, a slider, a list row, a box
+ * an author made reachable - the targets `focusNavigation` (runtime/navigation) moves between.
  *
  * A game's interface is the author's, not Studio's, so this is not Studio's ring: it is the
  * platform's own (`auto`), which the browser draws to be seen on any background. It is only there
- * for the keyboard - `:focus-visible`, and a click does not focus these at all - so a player who
- * never touches Tab never sees it.
+ * while the player moves by keys or pad - the game root's `data-nl-nav-modality` says which, set by
+ * the navigation itself, where `:focus-visible` would be the browser's guess about a pad it cannot
+ * see - so a player who only points never sees it, and a click does not focus these at all.
  *
  * Drawn on a layer of its own over the control rather than as the control's outline, and inside its
  * edge. The widgets inside a control are positioned, and a positioned child paints over its parent's
@@ -558,13 +559,15 @@ input[data-floating-item]:focus-visible {
  * row is a plain flex item until then, so it becomes the box its ring is drawn in only while it has
  * the focus; its widgets are laid out inside their own boxes and do not move.
  */
-.ui-editor-surface [data-ui-list-item-index][tabindex]:focus-visible {
+[data-nl-nav-modality="keys"] .ui-editor-surface [data-ui-list-item-index][tabindex]:focus {
     position: relative;
 }
 
-.ui-editor-surface [role="button"][tabindex]:focus-visible::after,
-.ui-editor-surface [role="switch"][tabindex]:focus-visible::after,
-.ui-editor-surface [data-ui-list-item-index][tabindex]:focus-visible::after {
+[data-nl-nav-modality="keys"] .ui-editor-surface [role="button"][tabindex]:focus::after,
+[data-nl-nav-modality="keys"] .ui-editor-surface [role="switch"][tabindex]:focus::after,
+[data-nl-nav-modality="keys"] .ui-editor-surface [role="slider"][tabindex]:focus::after,
+[data-nl-nav-modality="keys"] .ui-editor-surface [data-ui-list-item-index][tabindex]:focus::after,
+[data-nl-nav-modality="keys"] .ui-editor-surface [data-ui-nav-focusable="always"]:focus::after {
     content: "";
     position: absolute;
     inset: 0;
@@ -572,6 +575,10 @@ input[data-floating-item]:focus-visible {
     pointer-events: none;
     outline: -webkit-focus-ring-color auto 2px;
     outline-offset: -2px;
+}
+
+[data-nl-nav-modality] .ui-editor-surface [data-ui-nav-focusable="always"]:focus {
+    outline: none;
 }
 
 /*

@@ -4,9 +4,14 @@
  *
  * The owner is the keyboard owner. A modal layer that owns the keys owns the pad too; a page under
  * it hears nothing. There is no text-entry gate: a pad cannot type into a field, so the keyboard's
- * `isTextEntryTarget` exemption would only swallow presses that have nowhere else to go. There is
- * also no focused-control claim: v1 has no focus ring on the pad, so A always raises its action
- * rather than "pressing" a Tab-focused button.
+ * `isTextEntryTarget` exemption would only swallow presses that have nowhere else to go.
+ *
+ * The pad moves the same focus the keyboard does (`focusNavigation`). Its D-pad and left stick raise
+ * the navigation actions by default, and when the owner answers nothing a press raised, navigation
+ * moves the focus (`navigationDefaults`); held, they repeat, as a held arrow key does. A on a focused
+ * control presses that control and raises nothing else - the pad's half of the claim a focused button
+ * makes on Enter - so the Start button a player moved to starts the game rather than also advancing
+ * the line behind the menu.
  *
  * After the owner, the controls: every mounted widget with a gamepad head on a drawing that holds
  * the keys (`gamepadControls`). That is the order a key goes in - the global, then the owner, then the
@@ -29,6 +34,7 @@
  */
 
 import { UI_SURFACE_INPUT_ACTION_EVENT } from "@shared/types/ui-editor/inputActionEvent";
+import { uiNavigationIntentRepeats } from "@shared/types/ui-editor/navigation";
 import type { BehaviorGraphEventControl } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import {
     dispatchGlobalBlueprintEvent,
@@ -50,6 +56,7 @@ import type { AmbientSurfaceTarget } from "./ambientSurfaceEvents";
 import { isDialogueSlotSurface } from "./engineNvlKeys";
 import { answerGlobalInputActions } from "./globalInputActions";
 import type { GameKeyboardDispatch, KeyboardOwner } from "./keyboardOwner";
+import { claimNavigationConfirm, raisedNavigationIntents, runNavigationDefaults } from "./navigationDefaults";
 
 export type GameGamepadDispatch = GameKeyboardDispatch;
 
@@ -142,13 +149,22 @@ export async function dispatchGameGamepad(
     const eventControl = createEventPropagationControl();
     const owner = input.readKeyboardOwner();
     const controls = captureGamepadControls();
-    const raisesActions = edge.type === "down";
-    const raisedActions = raisesActions
-        ? resolveGlobalInputActionPayloads({
-            vocabulary: input.vocabulary,
-            signal: { kind: "gamepad", button: edge.button },
-        })
+    const signal = { kind: "gamepad" as const, button: edge.button };
+    let raisesActions = edge.type === "down";
+    let raisedActions = raisesActions
+        ? resolveGlobalInputActionPayloads({ vocabulary: input.vocabulary, signal })
         : [];
+    if (raisesActions) {
+        const gameRoot = input.readGameRoot?.() ?? null;
+        const actionIds = raisedActions.map(action => action.actionId);
+        if (claimNavigationConfirm(gameRoot, actionIds)) {
+            // The focused control took the press; see the module comment.
+            raisesActions = false;
+            raisedActions = [];
+        } else {
+            runNavigationDefaults({ gameRoot, owner, vocabulary: input.vocabulary, signal, actionIds });
+        }
+    }
     const { blueprintDocument, persistentVariables, core, globalHost } = input;
     await dispatchGlobalBlueprintEvent({
         blueprintDocument,
@@ -188,15 +204,79 @@ export function listenForGamepads(input: GameGamepadDispatch): () => void {
     const unsubHeld = tracker.onHeldButtons(buttons => {
         hold.setGamepadButtons(buttons);
     });
+    const repeat = createNavigationRepeat(input, button => tracker.read().buttons.has(button));
     const unsubEdge = tracker.onEdge(edge => {
         noteInputDevice("gamepad");
+        repeat.edge(edge);
         queue = queue.then(() => dispatchGameGamepad(input, edge)).catch(input.onError);
     });
     tracker.start();
     return () => {
         unsubEdge();
         unsubHeld();
+        repeat.stop();
         tracker.stop();
         hold.setGamepadButtons(new Set());
+    };
+}
+
+/** How long a held direction waits before it repeats, and how often it repeats after that. */
+export const GAMEPAD_NAVIGATION_REPEAT_DELAY_MS = 400;
+export const GAMEPAD_NAVIGATION_REPEAT_INTERVAL_MS = 120;
+
+/**
+ * A held D-pad direction moving the focus again and again, as a held arrow key does.
+ *
+ * The pad sends one edge per press, so the repeats are made here: only for a button whose press
+ * raised a navigation move, only while it stays down, and only the move - like a key's repeats, they
+ * are not presses, and no head or action hears them. A second button going down ends the first one's
+ * repeat: the newest press is the one the player means.
+ */
+function createNavigationRepeat(input: GameGamepadDispatch, isHeld: (button: string) => boolean) {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let held: string | null = null;
+    const clear = () => {
+        if (timer) {
+            clearTimeout(timer);
+        }
+        timer = null;
+        held = null;
+    };
+    const step = (button: string) => {
+        if (held !== button || !isHeld(button)) {
+            clear();
+            return;
+        }
+        const signal = { kind: "gamepad" as const, button };
+        runNavigationDefaults({
+            gameRoot: input.readGameRoot?.() ?? null,
+            owner: input.readKeyboardOwner(),
+            vocabulary: input.vocabulary,
+            signal,
+            actionIds: resolveGlobalInputActionPayloads({ vocabulary: input.vocabulary, signal }).map(action => action.actionId),
+            repeat: true,
+        });
+        timer = setTimeout(() => step(button), GAMEPAD_NAVIGATION_REPEAT_INTERVAL_MS);
+    };
+    return {
+        edge(edge: UIGamepadButtonEdge) {
+            if (edge.type === "up") {
+                if (held === edge.button) {
+                    clear();
+                }
+                return;
+            }
+            clear();
+            const actionIds = resolveGlobalInputActionPayloads({
+                vocabulary: input.vocabulary,
+                signal: { kind: "gamepad", button: edge.button },
+            }).map(action => action.actionId);
+            if (![...raisedNavigationIntents(actionIds)].some(uiNavigationIntentRepeats)) {
+                return;
+            }
+            held = edge.button;
+            timer = setTimeout(() => step(edge.button), GAMEPAD_NAVIGATION_REPEAT_DELAY_MS);
+        },
+        stop: clear,
     };
 }

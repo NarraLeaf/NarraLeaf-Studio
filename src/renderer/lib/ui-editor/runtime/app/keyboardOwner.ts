@@ -57,6 +57,13 @@
  * it (`keyInputClaimedByControl`): Enter on a button the player moved to with Tab presses that button
  * and does not also advance the story.
  *
+ * ## Navigation
+ *
+ * The arrows, Tab and Escape raise the navigation actions (`nl.nav.*`) by default. When the owner
+ * answers nothing the key raised, navigation does what they ask (`navigationDefaults`) - before any
+ * graph runs, so the browser's own Tab can still be stopped. A held arrow's repeats move the focus
+ * too, and reach nothing else.
+ *
  * Comments in English per project convention.
  */
 
@@ -74,11 +81,13 @@ import {
     resolveGlobalInputActionPayloads,
     resolveSurfaceInputActionHits,
 } from "@/lib/ui-editor/runtime/input/surfaceInputActions";
+import { isSyntheticKeyPress } from "@/lib/ui-editor/runtime/input/syntheticKeyPress";
 import type { AmbientSurfaceTarget } from "./ambientSurfaceEvents";
 import { isDialogueSlotSurface, type DialogueAdvanceObserver, type EngineNvlKeys } from "./engineNvlKeys";
 import { answerGlobalInputActions, type GlobalBlueprintDispatch } from "./globalInputActions";
 import { isTextEntryTarget } from "./isTextEntryTarget";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
+import { runNavigationDefaults } from "./navigationDefaults";
 import type { HostAdapterBundle } from "./types";
 
 /** One drawn entry that might own the keyboard. */
@@ -181,10 +190,18 @@ export function resolveKeyboardOwnerLane<TEntry>(input: {
 }
 
 export type GameKeyboardDispatch = GlobalBlueprintDispatch & {
-    /** The project's action vocabulary, as `UIDocument.actions` holds it. */
+    /**
+     * The vocabulary a running game routes by: the project's actions, as `UIDocument.actions` holds
+     * them, and the navigation actions (`resolveRuntimeInputVocabulary`).
+     */
     vocabulary: UIDocument["actions"];
     /** The keyboard owner at this instant. Read once per press, when the key arrives. */
     readKeyboardOwner: () => KeyboardOwner | null;
+    /**
+     * The element the game draws into, where navigation finds the controls (`focusNavigation`).
+     * Absent where nothing is drawn - a test of the routing alone - and navigation then does nothing.
+     */
+    readGameRoot?: () => Element | null;
     onError: (error: unknown) => void;
 };
 
@@ -286,11 +303,33 @@ export async function dispatchGameKey(
     if (isTextEntryTarget(event.target)) {
         return;
     }
-    // A held key's repeats are not presses; see the module comment.
-    if (eventName === "keyDown" && event.repeat) {
+    // A pad's Confirm pressing a control the way Enter does: the control has answered it, and the
+    // game never heard a key (see `syntheticKeyPress`).
+    if (isSyntheticKeyPress(event)) {
         return;
     }
     const payload = keyboardBlueprintPayload(event);
+    const navigationRoot = gameRootForKey(input, event);
+    // A held key's repeats are not presses; see the module comment. They still move the focus, as an
+    // arrow held down in any list does - navigation is the one thing a repeat is for.
+    if (eventName === "keyDown" && event.repeat) {
+        if (!keyInputClaimedByControl(event)) {
+            const signal = { kind: "key" as const, event: payload as BlueprintKeyboardEventLike };
+            const actionIds = resolveGlobalInputActionPayloads({ vocabulary: input.vocabulary, signal })
+                .map(action => action.actionId);
+            if (runNavigationDefaults({
+                gameRoot: navigationRoot,
+                owner: input.readKeyboardOwner(),
+                vocabulary: input.vocabulary,
+                signal,
+                actionIds,
+                repeat: true,
+            })) {
+                event.preventDefault();
+            }
+        }
+        return;
+    }
     const eventControl = getOrCreateDomEventPropagationControl(event);
     // Inert for a key today, and kept anyway. An element head is a subscription rather than a claim,
     // so nothing a widget runs can silence the keys any more - the one case that ever mattered,
@@ -312,6 +351,17 @@ export async function dispatchGameKey(
             signal: { kind: "key", event: payload as BlueprintKeyboardEventLike },
         })
         : [];
+    // Navigation goes now, while the browser's default for the key - Tab's own move, an arrow's
+    // scroll - can still be stopped, and before any graph can change who holds the keys.
+    if (raisesActions && runNavigationDefaults({
+        gameRoot: navigationRoot,
+        owner,
+        vocabulary: input.vocabulary,
+        signal: { kind: "key", event: payload as BlueprintKeyboardEventLike },
+        actionIds: raisedActions.map(action => action.actionId),
+    })) {
+        event.preventDefault();
+    }
     const { blueprintDocument, persistentVariables, core, globalHost } = input;
     await dispatchGlobalBlueprintEvent({
         blueprintDocument,
@@ -338,6 +388,21 @@ export async function dispatchGameKey(
         && raisedActions.some(action => engineNvl.actionIds.has(action.actionId))) {
         await engineNvl.advance();
     }
+}
+
+/**
+ * The game root a key may move the focus in, or null when the key was pressed somewhere that is not
+ * the game's - a field in a Dev Mode panel, a button in the window's own chrome. Tab there moves
+ * between that thing's controls, not the game's.
+ */
+function gameRootForKey(input: GameKeyboardDispatch, event: KeyboardEvent): Element | null {
+    const root = input.readGameRoot?.() ?? null;
+    const target = event.target;
+    if (!root || typeof Element === "undefined" || !(target instanceof Element)) {
+        return root;
+    }
+    const document = target.ownerDocument;
+    return target === document.body || target === document.documentElement || root.contains(target) ? root : null;
 }
 
 /**

@@ -27,6 +27,7 @@ import { resolveGlobalInputActionPayloads } from "@/lib/ui-editor/runtime/input/
 import { readInputEventPoint, readSurfaceHitNodes, takeGlobalInputTurn } from "@/lib/ui-editor/runtime/input/surfaceInputDom";
 import { claimTouchStroke } from "@/lib/ui-editor/runtime/input/touchGesture";
 import { isWheelPointerGesture, readInputEventTime, wheelGestureGate } from "@/lib/ui-editor/runtime/input/wheelGesture";
+import { resolveRuntimeInputVocabulary } from "@shared/types/ui-editor/navigation";
 
 /**
  * The attribute that marks what a runtime plugin draws over the stage.
@@ -82,7 +83,7 @@ export function offerUnclaimedPointerInput(input: UnclaimedPointerInput): boolea
     const rect = root.getBoundingClientRect();
     const scale = Number.isFinite(input.scale) && input.scale > 0 ? input.scale : 1;
     const payloads = resolveGlobalInputActionPayloads({
-        vocabulary: document.actions,
+        vocabulary: resolveRuntimeInputVocabulary(document.actions),
         signal: {
             kind: "pointer",
             gesture: gesture.gesture,

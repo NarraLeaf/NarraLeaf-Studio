@@ -215,6 +215,13 @@ import {
     type UISwitchElementExtra,
 } from "@shared/types/ui-editor/switch";
 import {
+    isUINavigationActionId,
+    normalizeUIElementNavigation,
+    readUINavigationActionIntent,
+    resolveRuntimeInputVocabulary,
+    type UIElementNavigation,
+} from "@shared/types/ui-editor/navigation";
+import {
     isDefaultUIPageAnimationSettings,
     normalizeUIPageAnimationSettings,
     type UIPageAnimationSettings,
@@ -740,6 +747,19 @@ function applyElementAnimation(element: UIElement, animation: UIPageAnimationSet
         return;
     }
     element.animation = normalized;
+}
+
+/**
+ * Write an element's navigation record, or take it away. A record that says nothing a default would
+ * not is stored as none, for the reason an element's animation is.
+ */
+function applyElementNavigation(element: UIElement, navigation: UIElementNavigation | null): void {
+    const normalized = navigation ? normalizeUIElementNavigation(navigation) : null;
+    if (!normalized) {
+        delete element.navigation;
+        return;
+    }
+    element.navigation = normalized;
 }
 
 /** What a template import touched: the surfaces added, any library components it
@@ -1525,9 +1545,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }, { history: this.componentHistory(componentId) });
     }
 
-    /** What the gestures of this project mean, keyed by id. */
+    /**
+     * What the gestures of this project mean, keyed by id - the project's own actions and the
+     * navigation actions, at the bindings the project gave them or at their defaults
+     * (`resolveRuntimeInputVocabulary`). The vocabulary a running game routes by, so what the panel
+     * shows is what a player gets.
+     */
     public getInputActions(): Record<string, UIInputActionDef> {
-        return this.getDocument().actions ?? {};
+        return resolveRuntimeInputVocabulary(this.getDocument().actions);
     }
 
     /**
@@ -1558,7 +1583,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     /** Rename one vocabulary entry. Surfaces store the id, so nothing they answer moves. */
     public renameInputAction(actionId: string, name: string): void {
         const nextName = name.trim();
-        if (!nextName) {
+        // A navigation action is named by Studio, in the author's language, not by the document.
+        if (!nextName || isUINavigationActionId(actionId)) {
             return;
         }
         this.mutateDocument(document => {
@@ -1580,9 +1606,40 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         this.mutateDocument(document => {
             const action = document.actions?.[actionId];
             if (!action) {
+                // A navigation action the project has not rebound before: rebinding it is what
+                // writes its entry. Until then the document carries nothing for it.
+                const intent = readUINavigationActionIntent(actionId);
+                if (intent) {
+                    document.actions = {
+                        ...(document.actions ?? {}),
+                        [actionId]: { id: actionId, name: intent, bindings: normalizeUIInputBindings(bindings) },
+                    };
+                }
                 return;
             }
             action.bindings = normalizeUIInputBindings(bindings);
+        }, { history: false });
+    }
+
+    /**
+     * Put a navigation action back on its default bindings, by dropping the entry the project wrote
+     * for it. The surfaces that answer it keep answering it: it never stopped existing.
+     */
+    public resetNavigationActionBindings(actionId: string): void {
+        if (!isUINavigationActionId(actionId)) {
+            return;
+        }
+        this.mutateDocument(document => {
+            if (!document.actions?.[actionId]) {
+                return;
+            }
+            const actions = { ...document.actions };
+            delete actions[actionId];
+            if (Object.keys(actions).length > 0) {
+                document.actions = actions;
+            } else {
+                delete document.actions;
+            }
         }, { history: false });
     }
 
@@ -1594,6 +1651,11 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
      * later action minted onto the same id would inherit those replies without anyone asking for it.
      */
     public deleteInputAction(actionId: string): void {
+        // A navigation action is not the project's to delete; `resetNavigationActionBindings` is what
+        // undoes a rebinding.
+        if (isUINavigationActionId(actionId)) {
+            return;
+        }
         this.mutateDocument(document => {
             if (!document.actions?.[actionId]) {
                 return;
@@ -1601,7 +1663,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             const actions = { ...document.actions };
             delete actions[actionId];
             document.actions = actions;
-            const remaining = new Set(Object.keys(actions));
+            // The navigation actions are defined whether the document holds an entry for them or not.
+            const remaining = new Set(Object.keys(resolveRuntimeInputVocabulary(actions)));
             for (const surface of document.surfaces) {
                 if (!surface.actions) {
                     continue;
@@ -1870,6 +1933,34 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 ? {
                       surfaceId,
                       mergeKey: options.mergeKey ?? `animation:${elementId}`,
+                  }
+                : false,
+        });
+    }
+
+    /**
+     * How the player reaches this element without a pointer. `null` clears it.
+     *
+     * Allowed on a linked component instance, as its animation is: it belongs to where the instance
+     * was placed. Which element is up from a Back button depends on the page it is on.
+     */
+    public updateElementNavigation(
+        elementId: string,
+        navigation: UIElementNavigation | null,
+        options: { mergeKey?: string } = {},
+    ): void {
+        const surfaceId = this.getElementSurfaceId(elementId);
+        this.mutateDocument(document => {
+            const element = document.elements[elementId];
+            if (!element) {
+                return;
+            }
+            applyElementNavigation(element, navigation);
+        }, {
+            history: surfaceId
+                ? {
+                      surfaceId,
+                      mergeKey: options.mergeKey ?? `navigation:${elementId}`,
                   }
                 : false,
         });
@@ -4485,6 +4576,23 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             applyElementAnimation(element, animation);
             component.updatedAt = new Date().toISOString();
         }, { history: this.componentHistory(componentId, options.mergeKey ?? `animation:${elementId}`) });
+    }
+
+    public updateComponentElementNavigation(
+        componentId: string,
+        elementId: string,
+        navigation: UIElementNavigation | null,
+        options: { mergeKey?: string } = {},
+    ): void {
+        this.mutateDocument(document => {
+            const component = (document.components ?? []).find(item => item.id === componentId);
+            const element = component?.elements[elementId];
+            if (!component || !element) {
+                return;
+            }
+            applyElementNavigation(element, navigation);
+            component.updatedAt = new Date().toISOString();
+        }, { history: this.componentHistory(componentId, options.mergeKey ?? `navigation:${elementId}`) });
     }
 
     public updateComponentElementExtra(
