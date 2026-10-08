@@ -1421,6 +1421,7 @@ export const story = {
         inputUnlock: "解除输入锁定",
         inputActionNamed: "「{name}」",
         inputAnyAction: "任意输入",
+        inputActionUnknown: "输入动作",
         inputWait: "等待{action}",
         inputHold: "按住{action} {seconds} 秒",
         inputMash: "连按{action} {count} 次",

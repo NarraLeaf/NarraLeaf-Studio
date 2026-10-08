@@ -104,12 +104,22 @@ export function waitForStoryInput(
         let deadline: ReturnType<typeof setTimeout> | null = null;
         let holdTimer: ReturnType<typeof setTimeout> | null = null;
         let presses = 0;
+        // Deaf until the task this row started in has finished. A row can start in the middle of an
+        // input's dispatch - the engine's own dialogue box advances on its click listener, the story
+        // runs on to this row, and the same click then bubbles up to the game root and is announced.
+        // Counting it would pass a wait the instant it began, with the press that led into it. No
+        // player can press anything within one task, so nothing real is lost.
+        let listening = false;
+        const listenTimer = setTimeout(() => {
+            listening = true;
+        }, 0);
 
         const finish = (result: boolean): void => {
             if (settled) {
                 return;
             }
             settled = true;
+            clearTimeout(listenTimer);
             unsubscribe();
             if (deadline !== null) {
                 clearTimeout(deadline);
@@ -184,7 +194,7 @@ export function waitForStoryInput(
 
         const unsubscribe = onStoryInputActions(ids => {
             const actionId = matching(ids);
-            if (actionId === null || settled) {
+            if (actionId === null || settled || !listening) {
                 return;
             }
             if (request.operation === "wait") {

@@ -13,11 +13,13 @@ function press(...actionIds: string[]): void {
     announceStoryInputActions(actionIds.map(actionId => ({ actionId })));
 }
 
-function start(request: StoryInputWaitRequest, signal?: AbortSignal): { result: () => boolean | undefined } {
+/** Start a row and let it begin listening, the way it does one task after it starts. */
+async function start(request: StoryInputWaitRequest, signal?: AbortSignal): Promise<{ result: () => boolean | undefined }> {
     let result: boolean | undefined;
     void waitForStoryInput(request, deps, signal).then(value => {
         result = value;
     });
+    await vi.advanceTimersByTimeAsync(0);
     return { result: () => result };
 }
 
@@ -32,7 +34,7 @@ afterEach(() => {
 
 describe("wait", () => {
     it("settles on the named action, after the input has finished dispatching", async () => {
-        const wait = start({ operation: "wait", actionId: "confirm" });
+        const wait = await start({ operation: "wait", actionId: "confirm" });
         press("dodge");
         await vi.advanceTimersByTimeAsync(0);
         expect(wait.result()).toBeUndefined();
@@ -45,14 +47,14 @@ describe("wait", () => {
     });
 
     it("takes any action when none is named", async () => {
-        const wait = start({ operation: "wait" });
+        const wait = await start({ operation: "wait" });
         press("dodge");
         await vi.advanceTimersByTimeAsync(0);
         expect(wait.result()).toBe(true);
     });
 
     it("fails when the deadline passes first", async () => {
-        const wait = start({ operation: "wait", actionId: "confirm", timeoutMs: 2000 });
+        const wait = await start({ operation: "wait", actionId: "confirm", timeoutMs: 2000 });
         await vi.advanceTimersByTimeAsync(2000);
         expect(wait.result()).toBe(false);
         press("confirm");
@@ -62,16 +64,30 @@ describe("wait", () => {
 
     it("lets go on abort", async () => {
         const abort = new AbortController();
-        const wait = start({ operation: "wait", actionId: "confirm" }, abort.signal);
+        const wait = await start({ operation: "wait", actionId: "confirm" }, abort.signal);
         abort.abort();
         await vi.advanceTimersByTimeAsync(0);
         expect(wait.result()).toBe(false);
     });
 });
 
+describe("the press that led into the row", () => {
+    it("is not counted, even though it is announced after the row has started", async () => {
+        // The engine's dialogue box advances on its own click listener, and the story reaches the
+        // row before that click has bubbled up to where it is announced.
+        let result: boolean | undefined;
+        void waitForStoryInput({ operation: "wait", actionId: "confirm", timeoutMs: 1000 }, deps).then(value => {
+            result = value;
+        });
+        press("confirm");
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(result).toBe(false);
+    });
+});
+
 describe("mash", () => {
     it("counts presses of the action and nothing else", async () => {
-        const mash = start({ operation: "mash", actionId: "confirm", count: 3, timeoutMs: 1000 });
+        const mash = await start({ operation: "mash", actionId: "confirm", count: 3, timeoutMs: 1000 });
         press("confirm");
         press("dodge");
         press("confirm");
@@ -83,7 +99,7 @@ describe("mash", () => {
     });
 
     it("fails a count not reached in time", async () => {
-        const mash = start({ operation: "mash", actionId: "confirm", count: 3, timeoutMs: 1000 });
+        const mash = await start({ operation: "mash", actionId: "confirm", count: 3, timeoutMs: 1000 });
         press("confirm");
         await vi.advanceTimersByTimeAsync(1000);
         expect(mash.result()).toBe(false);
@@ -92,7 +108,7 @@ describe("mash", () => {
 
 describe("hold", () => {
     it("completes once the action has been down long enough and is let go", async () => {
-        const hold = start({ operation: "hold", actionId: "confirm", holdMs: 500 });
+        const hold = await start({ operation: "hold", actionId: "confirm", holdMs: 500 });
         held.add("confirm");
         await vi.advanceTimersByTimeAsync(600);
         // Reached, but still down: the release of a mouse button is a click, which must land while
@@ -104,7 +120,7 @@ describe("hold", () => {
     });
 
     it("starts over when let go early, rather than failing", async () => {
-        const hold = start({ operation: "hold", actionId: "confirm", holdMs: 500 });
+        const hold = await start({ operation: "hold", actionId: "confirm", holdMs: 500 });
         held.add("confirm");
         await vi.advanceTimersByTimeAsync(300);
         held.delete("confirm");
@@ -118,13 +134,13 @@ describe("hold", () => {
 
     it("does not count a key that was already down when the row started", async () => {
         held.add("confirm");
-        const hold = start({ operation: "hold", actionId: "confirm", holdMs: 200, timeoutMs: 1000 });
+        const hold = await start({ operation: "hold", actionId: "confirm", holdMs: 200, timeoutMs: 1000 });
         await vi.advanceTimersByTimeAsync(1000);
         expect(hold.result()).toBe(false);
     });
 
     it("is not failed by the deadline once the hold is complete", async () => {
-        const hold = start({ operation: "hold", actionId: "confirm", holdMs: 200, timeoutMs: 400 });
+        const hold = await start({ operation: "hold", actionId: "confirm", holdMs: 200, timeoutMs: 400 });
         held.add("confirm");
         await vi.advanceTimersByTimeAsync(800);
         held.delete("confirm");

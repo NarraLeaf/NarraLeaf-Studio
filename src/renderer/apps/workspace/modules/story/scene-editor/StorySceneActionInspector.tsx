@@ -594,6 +594,8 @@ export function ActionInspector(props: {
     const resolveMotionName = useStoryMotionNames();
     const blueprintName = useStoryBlueprintNames();
     const variableOptions = useStoryVariableOptions(props.document, props.sceneId);
+    const projectSurfaces = useProjectSurfaces();
+    const projectInputActions = useProjectInputActions();
     const subject = describeBlockSubject(
         block,
         props.characters,
@@ -603,6 +605,10 @@ export function ActionInspector(props: {
         resolveMotionName,
         projectVariableNameOf(variableOptions),
         blueprintName,
+        {
+            surfaceName: surfaceId => projectSurfaces.find(page => page.id === surfaceId)?.name ?? null,
+            inputActionName: actionId => projectInputActions.find(action => action.id === actionId)?.name ?? null,
+        },
     );
     /**
      * The read-only clamp for a frozen workspace, and why it is a `<fieldset>` rather than a

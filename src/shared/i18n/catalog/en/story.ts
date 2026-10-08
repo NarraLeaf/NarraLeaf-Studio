@@ -1633,6 +1633,7 @@ export const story = {
         inputUnlock: "Unlock player input",
         inputActionNamed: "\"{name}\"",
         inputAnyAction: "any input",
+        inputActionUnknown: "an input action",
         inputWait: "Wait for {action}",
         inputHold: "Hold {action} for {seconds}s",
         inputMash: "Press {action} {count} times",

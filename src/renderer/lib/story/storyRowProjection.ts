@@ -823,10 +823,14 @@ function describeInput(payload: Extract<StoryActionPayload, { action: "input" }>
         case "wait":
         case "hold":
         case "mash": {
+            // Three readings, never two: a named action, "any action" for a row that names none, and a
+            // neutral word for one this surface cannot name - which must not read as "any".
             const name = payload.actionId ? lookups.inputActionName?.(payload.actionId) ?? null : null;
             const action = name
                 ? translate("story.describe.inputActionNamed", { name })
-                : translate("story.describe.inputAnyAction");
+                : payload.actionId
+                    ? translate("story.describe.inputActionUnknown")
+                    : translate("story.describe.inputAnyAction");
             if (payload.operation === "hold") {
                 return translate("story.describe.inputHold", { action, seconds: storyMsToSeconds(payload.holdMs) });
             }

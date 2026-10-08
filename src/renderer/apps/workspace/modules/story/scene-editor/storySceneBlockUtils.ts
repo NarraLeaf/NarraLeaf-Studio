@@ -719,6 +719,8 @@ export function describeBlockSubject(
     resolveMotionName?: (animationId: string) => string | null,
     projectVariableName?: StoryRowLookups["projectVariableName"],
     blueprintName?: StoryRowLookups["blueprintName"],
+    /** The project-level names a row may point at: the page a `/quit` lands on, the action a wait waits for. */
+    projectNames?: Pick<StoryRowLookups, "surfaceName" | "inputActionName">,
 ): string {
     return describeStoryBlock(block, {
         character: characterRowLookup(characters),
@@ -728,6 +730,7 @@ export function describeBlockSubject(
         motionName: resolveMotionName,
         projectVariableName,
         blueprintName,
+        ...projectNames,
     });
 }
 

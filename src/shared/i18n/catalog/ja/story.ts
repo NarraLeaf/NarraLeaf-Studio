@@ -1479,6 +1479,7 @@ export const story = {
         inputUnlock: "入力ロックを解除",
         inputActionNamed: "「{name}」",
         inputAnyAction: "任意の入力",
+        inputActionUnknown: "入力アクション",
         inputWait: "{action}を待つ",
         inputHold: "{action}を {seconds} 秒長押し",
         inputMash: "{action}を {count} 回押す",
