@@ -484,8 +484,8 @@ export function EditorGroup({ group }: EditorGroupProps) {
                 // rather than spend 8px of height on a gutter under the tabs — at this scale the
                 // thumb is nearly as wide as the strip and says little. What it replaces the thumb
                 // with is a short fade at each clipped edge: a mask on the scroller (`nl-edge-fade`),
-                // which fades the tabs themselves and so holds on the wallpaper's clear header too.
-                <div className="nl-header-surface relative bg-surface-sunken border-b border-edge">
+                // which fades the tabs themselves and so holds on the wallpaper's clear frame too.
+                <div className="nl-frame-surface relative bg-surface-sunken border-b border-edge">
                     <div
                         ref={stripRef}
                         className="nl-no-scrollbar nl-edge-fade relative overflow-x-auto outline-none"
@@ -551,7 +551,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
                                                       ? "bg-primary/[0.08] text-fg"
                                                       : isSelected
                                                         ? "bg-fill text-fg"
-                                                        : "nl-header-surface bg-surface-sunken text-fg-muted hover:bg-surface hover:text-fg"
+                                                        : "nl-frame-surface bg-surface-sunken text-fg-muted hover:bg-surface hover:text-fg"
                                             }
                                         `}
                                         onClick={(e) => handleTabClick(tab.id, e)}

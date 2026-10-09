@@ -675,8 +675,8 @@ export const workspace = {
             editorPlateOpacity: "编辑器底色不透明度",
             sidebarPlate: "侧边栏底色",
             sidebarPlateOpacity: "侧边栏底色不透明度",
-            headerPlate: "顶栏底色",
-            headerPlateOpacity: "顶栏底色不透明度",
+            framePlate: "框架底色",
+            framePlateOpacity: "框架底色不透明度",
             fill: {
                 cover: "缩放填满",
                 contain: "适应",

@@ -189,12 +189,12 @@ export interface GlobalStateType extends Record<string, any> {
     /** Opacity of the dock plate while it is on, as a percentage; clamped to 10–100 when read. */
     "ui.backgroundSidebarOpacity": number;
     /**
-     * Whether the header strips (title bar, tab strips, dock and section headers) keep their paint
-     * over the wallpaper; absent means off. Meaningless without `ui.backgroundImage`.
+     * Whether the window's frame (title bar, tab strips, rails, status bar, panel headers) keeps its
+     * paint over the wallpaper; absent means off. Meaningless without `ui.backgroundImage`.
      */
-    "ui.backgroundHeaderFill": boolean;
-    /** Opacity of the header plate while it is on, as a percentage; clamped to 10–100 when read. */
-    "ui.backgroundHeaderOpacity": number;
+    "ui.backgroundFrameFill": boolean;
+    /** Opacity of the frame plate while it is on, as a percentage; clamped to 10–100 when read. */
+    "ui.backgroundFrameOpacity": number;
     /**
      * User keybinding rebinds as one `catalogId -> chord` map. One key rather than one key per
      * binding because catalog ids contain dots, which the dotted-path settings store would split

@@ -137,7 +137,7 @@ export function StatusBar() {
                     className={`flex shrink-0 items-stretch justify-between overflow-hidden border-t transition-colors duration-300 ${
                         experimental
                             ? "border-warning/60 bg-warning/20"
-                            : running ? "border-primary bg-primary" : "border-edge bg-surface-sunken"
+                            : running ? "border-primary bg-primary" : "nl-frame-surface border-edge bg-surface-sunken"
                     }`}
                     style={{
                         height: STATUS_BAR_HEIGHT,

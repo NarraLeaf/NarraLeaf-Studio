@@ -1558,7 +1558,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     return (
         <div className="nl-editor-surface h-full flex flex-col">
             {/* Header */}
-            <div className="flex items-center justify-between px-3 py-2 border-b border-edge">
+            <div className="nl-frame-surface flex items-center justify-between px-3 py-2 border-b border-edge bg-surface-sunken">
             <div className="flex items-center gap-2">
                 <span className="text-xs text-fg-muted">{panelTitle}</span>
             </div>
@@ -1809,7 +1809,7 @@ export function ComparisonElementInspector({
         <ReadOnlyInspection>
             <div
                 data-comparison-strip
-                className="shrink-0 border-b border-edge bg-surface-canvas/60 px-3 py-2 text-2xs text-fg-subtle"
+                className="nl-frame-surface shrink-0 border-b border-edge bg-surface-canvas/60 px-3 py-2 text-2xs text-fg-subtle"
             >
                 <span className="font-medium text-fg-muted">
                     {t("documentDiff.inspector.version", { version: selection.versionLabel })}

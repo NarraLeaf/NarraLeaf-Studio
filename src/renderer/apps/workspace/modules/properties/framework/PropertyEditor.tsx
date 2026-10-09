@@ -85,7 +85,7 @@ function PropertyEditorInner<TData>({
     return (
         <div className={`text-fg ${className}`}>
             {hasTabs && (
-                <div className="border-b border-edge bg-surface-canvas/60">
+                <div className="nl-frame-surface border-b border-edge bg-surface-canvas/60">
                     <div className="flex flex-wrap gap-3 px-3 py-2 text-sm">
                         {sortedTabs.map((tab) => (
                             <button

@@ -379,7 +379,7 @@ export function StackSection({
                 {/* The sunken surface sits under the header rather than on it, so the hover fill -
                     the one every row and the Accordion's header use - lands on top of it instead of
                     replacing it. The whole row lights, actions included: it is one target. */}
-                <div className="nl-header-surface shrink-0 bg-surface-sunken">
+                <div className="nl-frame-surface shrink-0 bg-surface-sunken">
                     {/* Exactly `h-9`, border included: the layout counts every header as
                         SECTION_HEADER_HEIGHT when it shares the panel out. */}
                     <PanelHeader size="sm" className="h-9 gap-1 pl-1.5 pr-2 transition-colors duration-150 hover:bg-fill">

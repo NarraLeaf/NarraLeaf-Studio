@@ -98,7 +98,7 @@ export function BlueprintEditorLayout({
     }, [onMemberPanelFocusContainedChange]);
 
     // No right border: the resize seam on that edge is the line (see `EditorSidebarResizeHandle`).
-    const leftPanelClasses = `absolute inset-y-0 left-0 z-10 flex shrink-0 flex-col bg-surface-sunken transition-transform duration-200 ease-out ${
+    const leftPanelClasses = `nl-sidebar-surface absolute inset-y-0 left-0 z-10 flex shrink-0 flex-col bg-surface-sunken transition-transform duration-200 ease-out ${
         isLeftCollapsed ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100 pointer-events-auto"
     }`;
 
@@ -136,7 +136,7 @@ export function BlueprintEditorLayout({
                 } as CSSProperties}
             >
                 <aside className={leftPanelClasses} style={{ width: panelWidth }}>
-                    <div className="flex shrink-0 items-center justify-between border-b border-edge px-2 py-1.5">
+                    <div className="nl-frame-surface flex shrink-0 items-center justify-between border-b border-edge bg-surface-sunken px-2 py-1.5">
                         <span className="text-2xs font-medium text-fg-subtle">
                             {t("blueprint.panelLabel")}
                         </span>

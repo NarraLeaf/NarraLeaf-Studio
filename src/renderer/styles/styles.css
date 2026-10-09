@@ -661,28 +661,66 @@ input[data-floating-item]:focus-visible {
 }
 
 /*
- * The header strips under a wallpaper: the title bar, the editor tab strips, the dock headers and
- * the collapsible section headers inside a dock. Each keeps `bg-surface-sunken` for the window
- * without a wallpaper and adds this, which repaints that sunken fill at the header plate's alpha
- * (`--nl-header-surface-alpha`, published like the other two). Clear by default, so the picture
- * reaches the top edge of the window; the fallback matches, for a frame where the class is set and
- * the property is not yet. Inside a dock the strip lies over the dock's own plate, so a clear header
- * shows the dock rather than the picture whenever the dock is solid.
+ * The window's frame under a wallpaper: the title bar, the editor tab strips, the activity rails, the
+ * version panel, the status bar, and the header strips of the docks and of the panels inside editors.
+ * Each keeps its own fill for the window without a wallpaper and adds this, which repaints it as the
+ * sunken fill at the frame plate's alpha (`--nl-frame-surface-alpha`, published like the other two).
+ * Clear by default, so the picture reaches every edge of the window; the fallback matches, for a
+ * frame where the class is set and the property is not yet. Inside a dock a header strip lies over the
+ * dock's own plate, so a clear header shows the dock rather than the picture whenever the dock is solid.
  *
- * A header nested in a header (an inactive tab in its strip) adds no second coat, and a hover that
+ * A frame surface nested in another (an inactive tab in its strip) adds no second coat, and a hover that
  * would light it with the opaque base paint lights it with the translucent fill instead: an opaque
  * block flashing up in a clear strip reads as a hole cut through it, not as a hover.
  */
-.nl-has-workspace-bg .nl-header-surface {
-    background-color: rgb(var(--nl-surface-sunken) / var(--nl-header-surface-alpha, 0));
+.nl-has-workspace-bg .nl-frame-surface {
+    background-color: rgb(var(--nl-surface-sunken) / var(--nl-frame-surface-alpha, 0));
 }
 
-.nl-has-workspace-bg .nl-header-surface .nl-header-surface {
+.nl-has-workspace-bg .nl-frame-surface .nl-frame-surface {
     background-color: transparent;
 }
 
-.nl-has-workspace-bg .nl-header-surface .hover\:bg-surface:hover {
+.nl-has-workspace-bg .nl-frame-surface .hover\:bg-surface:hover {
     background-color: var(--nl-fill);
+}
+
+/*
+ * Opaque fills inside a frame surface that have to hide what scrolls under them: the version
+ * panel's sticky headers and its rows' hover chip. A clear plate cannot occlude, so under a
+ * wallpaper they keep at least most of the sunken paint and blur what passes beneath, which keeps
+ * their text legible over the rows at any plate setting without standing as solid bars when the
+ * plate is clear.
+ */
+.nl-has-workspace-bg .nl-frame-surface .nl-frame-sticky {
+    background-color: rgb(var(--nl-surface-sunken) / max(var(--nl-frame-surface-alpha, 0), 0.6));
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+}
+
+/*
+ * The UI editor's canvas under a wallpaper. Clear around the page, as the blueprint canvas is, so the
+ * page sits on the window's picture instead of in a black hole cut out of it. The page's rectangle
+ * keeps the stage colour (`SurfaceStageBacking`, hidden otherwise), because a transparent page shows
+ * the stage in the game, never the author's wallpaper. The off-page veil, which marks what lies past
+ * the edge, is drawn in the base colour: what it covers reads as the wallpaper dimmed, the same paint
+ * the window has wherever a plate is half on.
+ */
+.nl-has-workspace-bg .nl-canvas-surface {
+    background-color: transparent;
+}
+
+.nl-stage-backing {
+    display: none;
+}
+
+.nl-has-workspace-bg .nl-stage-backing {
+    display: block;
+    background-color: rgb(var(--nl-surface-canvas));
+}
+
+.nl-has-workspace-bg .nl-off-page-veil {
+    background-color: rgb(var(--nl-surface) / 0.6);
 }
 
 /*

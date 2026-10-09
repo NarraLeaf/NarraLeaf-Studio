@@ -337,7 +337,7 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
             // "what is this" has a different answer while a past version is on screen - which is
             // also the state the author is most likely to be asking from.
             data-help-topic={onRevision ? "versionViewing" : "versionControl"}
-            className="flex shrink-0 flex-col border-r border-edge bg-surface-sunken"
+            className="nl-frame-surface flex shrink-0 flex-col border-r border-edge bg-surface-sunken"
             style={{ width: VERSION_RAIL_EXPANDED_WIDTH }}
         >
             <div className="group/help flex h-12 shrink-0 items-center border-b border-edge px-3">
@@ -1758,7 +1758,7 @@ function HistoryList({ surface, rows: allRows }: { surface: VersionSurface; rows
                 reachable while the list is scrolled: the collapse, the filter, and the way to drop a
                 comparison base. Each of the three can leave the list looking empty, so each of them
                 has to be visible from wherever the author ended up. */}
-            <div className="sticky top-0 z-10 bg-surface-sunken px-3 pb-1 pt-2">
+            <div className="nl-frame-sticky sticky top-0 z-10 bg-surface-sunken px-3 pb-1 pt-2">
                 <div className="flex items-center justify-between gap-2">
                     <span className="text-2xs tracking-wide text-fg-subtle">
                         {t("workspace.shell.versionControl.history")}
@@ -1875,7 +1875,7 @@ function HistoryList({ surface, rows: allRows }: { surface: VersionSurface; rows
                         the thing the eye lands on. Sticky under the header so the day the author is
                         reading stays named while they scroll through it. */}
                     {day && (
-                        <div className="sticky top-7 z-[5] bg-surface-sunken px-3 pb-0.5 pt-1.5 text-2xs text-fg-subtle">
+                        <div className="nl-frame-sticky sticky top-7 z-[5] bg-surface-sunken px-3 pb-0.5 pt-1.5 text-2xs text-fg-subtle">
                             {day}
                         </div>
                     )}
@@ -1961,7 +1961,7 @@ function HistoryList({ surface, rows: allRows }: { surface: VersionSurface; rows
                                 // exactly the colour of the row being hovered: the text disappears
                                 // and the chip itself does not appear. Same trick, same reason, as
                                 // the sticky header these rows scroll under.
-                                "absolute right-2 top-1 z-10 rounded-md bg-surface-sunken",
+                                "nl-frame-sticky absolute right-2 top-1 z-10 rounded-md bg-surface-sunken",
                                 "opacity-0 transition-opacity",
                                 "pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100",
                                 "focus-within:pointer-events-auto focus-within:opacity-100",

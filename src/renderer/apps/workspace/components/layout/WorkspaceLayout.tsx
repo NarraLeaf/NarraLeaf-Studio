@@ -850,8 +850,9 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     // images all keep their own opaque paints, so real content never reads as see-through.
     //
     // Three plates are the author's to set in the dialog: the editor's reading surfaces
-    // (`.nl-editor-surface`), the docks (`.nl-sidebar-surface`) and the header strips
-    // (`.nl-header-surface`: this title bar, the tab strips, the dock and section headers). Each
+    // (`.nl-editor-surface`), the docks (`.nl-sidebar-surface`) and the window's frame
+    // (`.nl-frame-surface`: this title bar, the tab strips, the rails, the status bar, the panel
+    // headers). Each
     // switch and opacity becomes an alpha published here, on the same element as the class, so it
     // applies exactly where the wallpaper does.
     const { settings: backgroundSettings, url: backgroundUrl } = useWorkspaceBackgroundImage();
@@ -880,7 +881,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 )}
                 {/* Title Bar with Action Bar and Control Bar */}
                 <TitleBar
-                    className="nl-header-surface"
+                    className="nl-frame-surface"
                     title=""
                     iconSrc={iconSrc}
                     center={titleBarSearchVisible ? <TitleBarSearchBox /> : undefined}

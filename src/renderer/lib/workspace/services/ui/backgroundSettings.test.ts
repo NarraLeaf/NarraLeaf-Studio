@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     BACKGROUND_EDITOR_ALPHA_VAR,
-    BACKGROUND_HEADER_ALPHA_VAR,
+    BACKGROUND_FRAME_ALPHA_VAR,
     BACKGROUND_KEYS,
     BACKGROUND_SIDEBAR_ALPHA_VAR,
     DEFAULT_BACKGROUND,
@@ -24,14 +24,14 @@ describe("readBackgroundSettings: plates", () => {
         expect(settings.sidebarOpacity).toBe(100);
     });
 
-    it("leaves the header strips clear on a profile that has never set them", () => {
-        // The picture reaches the window's top edge unless the author asks for the strips back.
+    it("leaves the window's frame clear on a profile that has never set them", () => {
+        // The picture reaches the window's edges unless the author asks for the strips back.
         const settings = read({ [BACKGROUND_KEYS.image]: "a.png" });
-        expect(settings.headerFill).toBe(false);
-        expect(settings.headerOpacity).toBe(100);
-        expect(read({ [BACKGROUND_KEYS.headerFill]: true }).headerFill).toBe(true);
-        expect(read({ [BACKGROUND_KEYS.headerFill]: "true" }).headerFill).toBe(false);
-        expect(read({ [BACKGROUND_KEYS.headerOpacity]: 3 }).headerOpacity).toBe(10);
+        expect(settings.frameFill).toBe(false);
+        expect(settings.frameOpacity).toBe(100);
+        expect(read({ [BACKGROUND_KEYS.frameFill]: true }).frameFill).toBe(true);
+        expect(read({ [BACKGROUND_KEYS.frameFill]: "true" }).frameFill).toBe(false);
+        expect(read({ [BACKGROUND_KEYS.frameOpacity]: 3 }).frameOpacity).toBe(10);
     });
 
     it("keeps a stored switch and ignores anything that is not a boolean", () => {
@@ -70,24 +70,24 @@ describe("backgroundPlateAlpha", () => {
         expect(backgroundPlateAlpha(true, 100)).toBe("1");
     });
 
-    it("publishes one property per plate: editor and docks opaque, headers clear by default", () => {
+    it("publishes one property per plate: editor and docks opaque, frame clear by default", () => {
         expect(backgroundPlateStyle(DEFAULT_BACKGROUND)).toEqual({
             [BACKGROUND_EDITOR_ALPHA_VAR]: "1",
             [BACKGROUND_SIDEBAR_ALPHA_VAR]: "1",
-            [BACKGROUND_HEADER_ALPHA_VAR]: "0",
+            [BACKGROUND_FRAME_ALPHA_VAR]: "0",
         });
         expect(
             backgroundPlateStyle({
                 ...DEFAULT_BACKGROUND,
                 editorFill: false,
                 sidebarOpacity: 60,
-                headerFill: true,
-                headerOpacity: 45,
+                frameFill: true,
+                frameOpacity: 45,
             }),
         ).toEqual({
             [BACKGROUND_EDITOR_ALPHA_VAR]: "0",
             [BACKGROUND_SIDEBAR_ALPHA_VAR]: "0.6",
-            [BACKGROUND_HEADER_ALPHA_VAR]: "0.45",
+            [BACKGROUND_FRAME_ALPHA_VAR]: "0.45",
         });
     });
 });

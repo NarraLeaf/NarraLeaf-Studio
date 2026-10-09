@@ -105,7 +105,7 @@ export function LeftSidebarSelector({
         <TooltipGroup
             side="right"
             data-workspace-sidebar-rail=""
-            className="bg-surface-sunken border-r border-edge flex flex-col items-center py-2 px-1 gap-1"
+            className="nl-frame-surface bg-surface-sunken border-r border-edge flex flex-col items-center py-2 px-1 gap-1"
             onContextMenu={(event) => openMenu(event)}
         >
             <SidebarPanelRail

@@ -34,14 +34,14 @@ export const BACKGROUND_PLATE_OPACITY_STEP = 5;
 
 /**
  * The custom properties the plates take their alpha from: `.nl-editor-surface` (the editor's
- * reading surfaces), `.nl-sidebar-surface` (the docks) and `.nl-header-surface` (the title bar, the
- * tab strips and the panel headers) in styles.css. Published on the workspace
+ * reading surfaces), `.nl-sidebar-surface` (the docks) and `.nl-frame-surface` (the window's frame:
+ * title bar, tab strips, rails, status bar, panel headers) in styles.css. Published on the workspace
  * root next to `.nl-has-workspace-bg`, so they exist exactly where a wallpaper does and every other
  * window keeps its opaque paint.
  */
 export const BACKGROUND_EDITOR_ALPHA_VAR = "--nl-editor-surface-alpha";
 export const BACKGROUND_SIDEBAR_ALPHA_VAR = "--nl-sidebar-surface-alpha";
-export const BACKGROUND_HEADER_ALPHA_VAR = "--nl-header-surface-alpha";
+export const BACKGROUND_FRAME_ALPHA_VAR = "--nl-frame-surface-alpha";
 
 export interface BackgroundSettings {
     /** File name inside the userData/backgrounds cache, or null when no background is set. */
@@ -70,14 +70,15 @@ export interface BackgroundSettings {
     /** Percent, 10–100: the dock plate's opacity while `sidebarFill` is on. */
     sidebarOpacity: number;
     /**
-     * Whether the header strips (the title bar, the editor tab strips, the dock and section headers)
-     * keep their sunken paint over the wallpaper. Off by default: they carry a few large labels and
-     * icons rather than small text, and a picture that stops short of the window's top edge reads as
-     * a panel laid on the editor rather than as the window's own background.
+     * Whether the window's frame (the title bar, the editor tab strips, the activity rails, the
+     * version panel, the status bar, and the header strips of the docks and of the panels inside
+     * editors) keeps its sunken paint over the wallpaper. Off by default: the frame carries a few
+     * labels and icons rather than small text, and a picture that stops short of the window's edges
+     * reads as a panel laid on the editor rather than as the window's own background.
      */
-    headerFill: boolean;
-    /** Percent, 10–100: the header plate's opacity while `headerFill` is on. */
-    headerOpacity: number;
+    frameFill: boolean;
+    /** Percent, 10–100: the frame plate's opacity while `frameFill` is on. */
+    frameOpacity: number;
 }
 
 export const BACKGROUND_KEYS: Record<keyof BackgroundSettings, string> = {
@@ -90,8 +91,8 @@ export const BACKGROUND_KEYS: Record<keyof BackgroundSettings, string> = {
     editorOpacity: "ui.backgroundEditorOpacity",
     sidebarFill: "ui.backgroundSidebarFill",
     sidebarOpacity: "ui.backgroundSidebarOpacity",
-    headerFill: "ui.backgroundHeaderFill",
-    headerOpacity: "ui.backgroundHeaderOpacity",
+    frameFill: "ui.backgroundFrameFill",
+    frameOpacity: "ui.backgroundFrameOpacity",
 };
 
 export const DEFAULT_BACKGROUND: BackgroundSettings = {
@@ -104,8 +105,8 @@ export const DEFAULT_BACKGROUND: BackgroundSettings = {
     editorOpacity: 100,
     sidebarFill: true,
     sidebarOpacity: 100,
-    headerFill: false,
-    headerOpacity: 100,
+    frameFill: false,
+    frameOpacity: 100,
 };
 
 /** A stored switch, or the default when what is stored is not a boolean (absent, or hand-edited). */
@@ -140,8 +141,8 @@ export function readBackgroundSettings(get: (key: string) => unknown): Backgroun
         editorOpacity: readPlateOpacity(get(BACKGROUND_KEYS.editorOpacity), DEFAULT_BACKGROUND.editorOpacity),
         sidebarFill: readSwitch(get(BACKGROUND_KEYS.sidebarFill), DEFAULT_BACKGROUND.sidebarFill),
         sidebarOpacity: readPlateOpacity(get(BACKGROUND_KEYS.sidebarOpacity), DEFAULT_BACKGROUND.sidebarOpacity),
-        headerFill: readSwitch(get(BACKGROUND_KEYS.headerFill), DEFAULT_BACKGROUND.headerFill),
-        headerOpacity: readPlateOpacity(get(BACKGROUND_KEYS.headerOpacity), DEFAULT_BACKGROUND.headerOpacity),
+        frameFill: readSwitch(get(BACKGROUND_KEYS.frameFill), DEFAULT_BACKGROUND.frameFill),
+        frameOpacity: readPlateOpacity(get(BACKGROUND_KEYS.frameOpacity), DEFAULT_BACKGROUND.frameOpacity),
     };
 }
 
@@ -162,7 +163,7 @@ export function backgroundPlateStyle(settings: BackgroundSettings): Record<strin
     return {
         [BACKGROUND_EDITOR_ALPHA_VAR]: backgroundPlateAlpha(settings.editorFill, settings.editorOpacity),
         [BACKGROUND_SIDEBAR_ALPHA_VAR]: backgroundPlateAlpha(settings.sidebarFill, settings.sidebarOpacity),
-        [BACKGROUND_HEADER_ALPHA_VAR]: backgroundPlateAlpha(settings.headerFill, settings.headerOpacity),
+        [BACKGROUND_FRAME_ALPHA_VAR]: backgroundPlateAlpha(settings.frameFill, settings.frameOpacity),
     };
 }
 
