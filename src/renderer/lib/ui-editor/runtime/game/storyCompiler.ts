@@ -3784,12 +3784,11 @@ function compileInputAction(
     if (!isStoryInputWaitPayload(payload)) {
         return [];
     }
-    // Resolved now, so a deleted variable is the diagnostic every other write reports rather than a
-    // row that waits and then has nowhere to put its answer.
+    // Resolved now, so a deleted variable is the diagnostic every other write reports. Only the write
+    // goes with it: the wait is still the row's point, and dropping the row would let the player walk
+    // straight past a gesture the scene was built around - the assignment is what "skipped" means in
+    // that diagnostic, exactly as it is for a `/set`.
     const slot = payload.resultTarget ? resolveVariableSlot(ctx, payload.resultTarget, block.id) : null;
-    if (payload.resultTarget && !slot) {
-        return [];
-    }
     const persistence = ctx.persistence;
     const request = {
         operation: payload.operation,
