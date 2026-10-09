@@ -296,7 +296,10 @@ export function InputActionLibraryPanel({ documentService, uiService, open, onOp
 
     const renderRow = (action: UIInputActionDef) => {
         const name = action.name;
+        // The slot the intent fills, unless its own name already says it - the starter project names
+        // its navigation intents after their slots.
         const slotName = action.navigationSlot ? navigationSlotName(action.navigationSlot, t) : null;
+        const slotTag = slotName && slotName !== action.name ? slotName : null;
         return (
             <div
                 key={action.id}
@@ -325,12 +328,12 @@ export function InputActionLibraryPanel({ documentService, uiService, open, onOp
                     >
                         {name}
                     </div>
-                    {slotName && (
+                    {slotTag && (
                         <span
                             className="shrink-0 truncate rounded-md bg-fill px-1.5 py-0.5 text-2xs text-fg-muted"
-                            data-tip={t("uiEditor.inputActions.navigationTag", { slot: slotName })}
+                            data-tip={t("uiEditor.inputActions.navigationTag", { slot: slotTag })}
                         >
-                            {slotName}
+                            {slotTag}
                         </span>
                     )}
                     <span className="shrink-0 text-2xs text-fg-subtle">
@@ -400,6 +403,7 @@ export function InputActionLibraryPanel({ documentService, uiService, open, onOp
                                 </div>
                                 <Select
                                     className="w-36 shrink-0"
+                                    fullWidth
                                     size="sm"
                                     options={slotOptions}
                                     value={filledBy?.id ?? ""}
