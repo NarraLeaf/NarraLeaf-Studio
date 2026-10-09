@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_GAMEPAD_BUTTON_DOWN,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAMEPAD_BUTTON_DOWN,
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_PREFERENCE_KEY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED,
@@ -131,5 +133,17 @@ describe("blueprint event head dispatch resolution", () => {
 
         expect(collectGlobalEventHeadNodeIdsForDispatch(nodes, "windowCloseRequested")).toEqual(["close"]);
         expect(collectSurfaceEventHeadNodeIdsForDispatch(nodes, "windowCloseRequested")).toEqual(["close"]);
+    });
+});
+
+describe("a head that hears any gamepad button", () => {
+    const nodes = {
+        any: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_GAMEPAD_BUTTON_DOWN },
+        stick: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAMEPAD_BUTTON_DOWN, params: { button: "Left Stick Up" } },
+    };
+
+    it("hears the pad's own buttons, and not the left stick pushed one way - which a head can still name", () => {
+        expect(collectGlobalEventHeadNodeIdsForDispatch(nodes, "gamepadButtonDown", { button: "A" })).toEqual(["any"]);
+        expect(collectGlobalEventHeadNodeIdsForDispatch(nodes, "gamepadButtonDown", { button: "Left Stick Up" })).toEqual(["stick"]);
     });
 });

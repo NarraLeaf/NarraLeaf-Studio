@@ -9,7 +9,7 @@ import {
     resolveGlobalLifecycleEventHeadTypes,
     resolveSurfaceLifecycleEventHeadTypes,
 } from "@shared/types/ui-editor/blueprintLifecycle";
-import { formatBlueprintGamepadButton } from "./gamepad";
+import { formatBlueprintGamepadButton, isPhysicalBlueprintGamepadButton } from "./gamepad";
 
 /** Persisted on BlueprintGraphIr.meta to disambiguate slot semantics (events vs functions vs macros). */
 export type BlueprintGraphKind = "event" | "function" | "macro";
@@ -536,6 +536,10 @@ function matchesDispatchPayload(
     }
     if (isFilteredGamepadEventHeadType(node.type)) {
         return matchesGamepadButtonDispatch(node, eventPayload);
+    }
+    if (node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_GAMEPAD_BUTTON_DOWN
+        || node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_GAMEPAD_BUTTON_UP) {
+        return isPhysicalBlueprintGamepadButton(eventPayload?.button);
     }
     if (node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED) {
         return matchesPreferenceChangeDispatch(node, eventPayload);

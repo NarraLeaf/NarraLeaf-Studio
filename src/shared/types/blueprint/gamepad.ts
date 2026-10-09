@@ -100,6 +100,16 @@ export function isBlueprintGamepadButton(value: unknown): value is BlueprintGame
  * Aliases and case fold first, then the canonical list. An empty string is the same answer as an
  * unconfigured head: it matches nothing, rather than matching everything.
  */
+/**
+ * Whether a button name is one of the pad's own buttons rather than a direction of the left stick.
+ * A stick direction is a binding an intent can use beside the D-pad, and a head can name it; a head
+ * that hears any button does not hear a thumb resting on the stick.
+ */
+export function isPhysicalBlueprintGamepadButton(value: unknown): boolean {
+    const index = (BLUEPRINT_GAMEPAD_BUTTONS as readonly string[]).indexOf(formatBlueprintGamepadButton(value));
+    return index >= 0 && index < BLUEPRINT_GAMEPAD_PHYSICAL_BUTTON_COUNT;
+}
+
 export function formatBlueprintGamepadButton(value: unknown): string {
     if (typeof value !== "string") {
         return "";
