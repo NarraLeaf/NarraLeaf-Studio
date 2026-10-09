@@ -57,6 +57,7 @@ export const storyExpr = {
         unknownLabel: "No label named \"{value}\" in this scene.",
         unknownAppTag: "No build variant named \"{value}\".",
         unknownSurface: "No page named \"{value}\".",
+        unknownInputAction: "No input action named \"{value}\".",
         unknownVariable: "No variable named \"{value}\".",
         unknownForm: "{characterName} has no \"{value}\" expression.",
         notPuppetCharacter: "{value} is not drawn by a runtime, so it has no motion or skin to set.",

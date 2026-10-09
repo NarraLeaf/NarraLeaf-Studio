@@ -22,6 +22,7 @@ import {
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintValueRuntimeStore";
 import { isInlineTextEditableElement } from "@/lib/ui-editor/interaction/inlineTextEdit";
 import { BuiltinWidgetModules } from "@/lib/ui-editor/widget-modules/builtin";
+import { UI_INPUT_HINT_WORDS, uiInputHintLabelKeyProp, uiInputHintLabelProp } from "@shared/types/ui-editor/inputHints";
 import { extractUiTranslationRows } from "@/lib/workspace/services/localization/localizationModel";
 import { extractUITextEntries, type UITextExtractionInput } from "@/lib/workspace/services/search/sources/uiTextSource";
 
@@ -59,9 +60,14 @@ const removePluginSource = registerContributedWidgetSource({
 afterAll(removePluginSource);
 
 /** Props that might hold words on some widget, beyond each widget's own string defaults. */
-const CANDIDATE_TEXT_PROPS = ["text", "label", "placeholder", "title", "caption", "value", "hint", "tooltip", "alt"];
+const CANDIDATE_TEXT_PROPS = [
+    "text", "label", "placeholder", "title", "caption", "value", "hint", "tooltip", "alt",
+    // The input hint bar's words, one prop per move it names.
+    ...UI_INPUT_HINT_WORDS.map(uiInputHintLabelProp),
+];
 /** Props that might name a translation key. */
 const CANDIDATE_KEY_PROPS = [
+    ...UI_INPUT_HINT_WORDS.map(uiInputHintLabelKeyProp),
     "localizationKey",
     "placeholderLocalizationKey",
     "labelLocalizationKey",
@@ -315,10 +321,8 @@ describe("interface text sites", () => {
 
     it("the interface CLI notes a key only where the table gives the site one", () => {
         const keyed = BUILTIN_WIDGET_TYPES.filter(type => (describeWidget(type)?.notes ?? []).some(note => note.includes("is read from that translation key")));
-        const expected = BUILTIN_WIDGET_TYPES.filter(type => {
-            const site = uiTextSiteOf(type);
-            return site?.role === "words" && Boolean(site.keyProp) && site.canvasDrawsKey;
-        });
+        const expected = BUILTIN_WIDGET_TYPES.filter(type =>
+            uiTextSitesOf(type).some(site => site.role === "words" && Boolean(site.keyProp) && site.canvasDrawsKey));
         expect(sorted(keyed)).toEqual(sorted(expected));
     });
 

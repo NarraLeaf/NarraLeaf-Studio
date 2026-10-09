@@ -3,6 +3,7 @@ import {
     useContext,
     useEffect,
     useLayoutEffect,
+    useMemo,
     useRef,
     useState,
     type CSSProperties,
@@ -27,6 +28,13 @@ import {
 } from "@/lib/ui-editor/runtime/input/surfaceInputDom";
 import { GlobalInputActionContext } from "@/lib/ui-editor/runtime/input/globalInputActionContext";
 import { releaseKeyboardFocus, takeKeyboardFocus } from "@/lib/ui-editor/runtime/input/keyboardFocusHandover";
+import { readCurrentInputDevice } from "@/lib/ui-editor/runtime/input/inputDeviceState";
+import {
+    NAV_SCOPE_ATTRIBUTE,
+    scheduleNavigationEntry,
+    surfaceNavigationAttributes,
+} from "@/lib/ui-editor/runtime/navigation/focusNavigation";
+import { readUISurfaceNavigation, resolveRuntimeInputVocabulary } from "@shared/types/ui-editor/navigation";
 import { readPointerInputGesture, type UIPointerInputGesture } from "@/lib/ui-editor/runtime/input/pointerInputGesture";
 import { getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
 import {
@@ -172,6 +180,13 @@ export type GameSurfaceRendererProps = {
      * preview - which then never touches the focus.
      */
     holdsKeyboardFocus?: boolean;
+    /**
+     * How the pad and the arrows reach this stage surface while the story is on screen (see
+     * `focusNavigation`): `choice` - the choice menu, moved on as soon as it appears - or `controls`
+     * - the quick menu and the like, reached only once the player steps into them. A surface that
+     * holds the keyboard focus is a navigation scope without saying so.
+     */
+    stageNavigationScope?: "choice" | "controls";
 };
 
 export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
@@ -199,6 +214,7 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         elementAnimations = false,
         reducedMotion = false,
         holdsKeyboardFocus,
+        stageNavigationScope,
     } = props;
     // Kept as values, not write-only tick setters: the element tree is memoised on its inputs, and
     // "a store I subscribed to fired" is an input that does not show up in any prop.
@@ -269,7 +285,8 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
      */
     const laneInteractive = interactive;
     const laneKeyboardInteractive = keyboardInteractive;
-    const actionVocabulary = document.actions;
+    // The navigation actions too: a surface may answer one with a gesture an author bound to it.
+    const actionVocabulary = useMemo(() => resolveRuntimeInputVocabulary(document.actions), [document.actions]);
     const surfaceActions = surface.actions;
     /**
      * Whether this surface is a lane at all.
@@ -544,10 +561,16 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         // the keys in the same commit that reveals it, and is hidden until that frame is painted.
         let frame = 0;
         let attempts = 0;
+        let stopEntry: (() => void) | null = null;
         const take = () => {
             const outcome = takeKeyboardFocus(shell, rememberedFocusRef.current);
             if (outcome !== "refused") {
                 rememberedFocusRef.current = null;
+                // Holding the keys, with nothing of its own focused yet: a player on keys or a pad
+                // gets a control to start from (`UISurfaceNavigation.autoFocus`).
+                if (outcome === "held" && shell.ownerDocument.activeElement === shell) {
+                    stopEntry = scheduleNavigationEntry(shell, readCurrentInputDevice);
+                }
                 return;
             }
             attempts += 1;
@@ -562,9 +585,28 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
             if (frame && typeof cancelAnimationFrame === "function") {
                 cancelAnimationFrame(frame);
             }
+            stopEntry?.();
             rememberedFocusRef.current = releaseKeyboardFocus(shell) ?? rememberedFocusRef.current;
         };
     }, [hasRootElement, holdsKeyboardFocus]);
+
+    // A stage menu holds no keyboard focus - the story hears its keys from the window - but a player
+    // on keys or a pad still gets its first option to start from when it appears.
+    useEffect(() => {
+        const shell = shellRef.current;
+        if (stageNavigationScope !== "choice" || !shell || !hasRootElement || passive || concealed === true) {
+            return undefined;
+        }
+        return scheduleNavigationEntry(shell, readCurrentInputDevice);
+    }, [concealed, hasRootElement, passive, stageNavigationScope]);
+
+    const navigationScope = holdsKeyboardFocus === true
+        ? "owner"
+        : stageNavigationScope === "choice" ? "stage" : stageNavigationScope;
+    const navigationAttributes = useMemo(
+        () => navigationScope ? surfaceNavigationAttributes(readUISurfaceNavigation(surface)) : {},
+        [navigationScope, surface],
+    );
 
     const shellStyle: CSSProperties = {
         position: "relative",
@@ -611,6 +653,8 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
             className="ui-editor-surface"
             data-ui-surface-id={surface.id}
             data-ui-surface-kind={surface.kind}
+            {...navigationAttributes}
+            {...{ [NAV_SCOPE_ATTRIBUTE]: navigationScope }}
             style={shellStyle}
             // Display-only, all the way down: see `passive`. A concealed surface is off the screen,
             // so it takes nothing either.

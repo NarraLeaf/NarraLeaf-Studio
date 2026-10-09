@@ -45,6 +45,8 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "story/cut-point-orphan",
     "story/rows-after-ending",
     "story/quit-page-missing",
+    "story/input-action-missing",
+    "story/input-locked-dialogue",
     "story/ending-name-duplicate",
     "story/cut-point-unreachable",
     "story/stage-object-missing",
@@ -109,7 +111,7 @@ const JA_KEYS = flattenCatalog(ja);
 describe("lint rule registry", () => {
     it("contains exactly the planned rule set", () => {
         expect([...LINT_RULES].map(rule => rule.id).sort()).toEqual([...EXPECTED_RULE_IDS].sort());
-        expect(LINT_RULES).toHaveLength(79);
+        expect(LINT_RULES).toHaveLength(81);
     });
 
     it("gives every rule a unique id", () => {

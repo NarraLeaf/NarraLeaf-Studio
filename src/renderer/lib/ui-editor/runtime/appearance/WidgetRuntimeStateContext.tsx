@@ -94,6 +94,25 @@ export function WidgetRuntimeInstanceProvider(props: {
     );
 }
 
+/**
+ * Whether this subtree is where the keyboard or pad focus is: an element that holds it, or the row
+ * of a list that does. (Its ancestors light up too, through `WidgetRuntimeStateStore.setFocusWithin`:
+ * a pointer on a control is on everything around it as well.)
+ *
+ * The focus is drawn with the look the author gave the pointer. A Start button with a hover state
+ * is selected the same way whether a mouse rests on it or a D-pad moved to it, and its label inside
+ * changes colour with it, exactly as the pointer over the button is over the label too. So the
+ * whole subtree reads as hovered, the way it would under a pointer (`useWidgetRuntimeElementState`).
+ */
+const NavigationFocusContext = createContext(false);
+
+export function NavigationFocusProvider(props: { focused: boolean; children: React.ReactNode }): React.ReactElement {
+    const inherited = useContext(NavigationFocusContext);
+    return (
+        <NavigationFocusContext.Provider value={inherited || props.focused}>{props.children}</NavigationFocusContext.Provider>
+    );
+}
+
 export function useWidgetRuntimeStateStore(): WidgetRuntimeStateStore | null {
     return useContext(WidgetRuntimeStateContext);
 }
@@ -174,6 +193,7 @@ function buildElementSignature(
         signals.active ? "1" : "0",
         signals.focused ? "1" : "0",
         signals.disabled ? "1" : "0",
+        store.isFocusWithin(elementId) ? "1" : "0",
     ].join("|");
 }
 
@@ -189,6 +209,7 @@ export function useWidgetRuntimeElementState(
     const runtimeElementKey = useWidgetRuntimeElementKey(elementId);
     const instance = useContext(WidgetRuntimeInstanceContext);
     const runtimeScopeId = useContext(WidgetRuntimeScopeContext);
+    const insideFocus = useContext(NavigationFocusContext);
     /**
      * The key a writer that knows nothing about rows would have used.
      *
@@ -210,7 +231,10 @@ export function useWidgetRuntimeElementState(
         if (!store) {
             return STATIC_WIDGET_RUNTIME_ELEMENT_STATE;
         }
-        const signals = store.getSignalsForElement(runtimeElementKey, interactionDisabled);
+        const own = store.getSignalsForElement(runtimeElementKey, interactionDisabled);
+        // The focus looks like the pointer: see `NavigationFocusContext`.
+        const focusLit = own.focused || insideFocus || store.isFocusWithin(runtimeElementKey);
+        const signals = focusLit && !own.hovered ? { ...own, hovered: true } : own;
         return {
             variantOverrideId:
                 store.getVariantOverride(runtimeElementKey)
@@ -221,5 +245,5 @@ export function useWidgetRuntimeElementState(
                 store.getDisplayableMotion(runtimeElementKey)
                 ?? (templateKey ? store.getDisplayableMotion(templateKey) : null),
         };
-    }, [instance?.selected, interactionDisabled, runtimeElementKey, signature, store, templateKey]);
+    }, [insideFocus, instance?.selected, interactionDisabled, runtimeElementKey, signature, store, templateKey]);
 }

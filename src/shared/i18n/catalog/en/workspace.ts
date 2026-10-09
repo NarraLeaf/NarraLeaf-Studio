@@ -785,6 +785,8 @@ export const workspace = {
             editorPlateOpacity: "Editor background opacity",
             sidebarPlate: "Sidebar background",
             sidebarPlateOpacity: "Sidebar background opacity",
+            framePlate: "Frame background",
+            framePlateOpacity: "Frame background opacity",
             fill: {
                 cover: "Scale to fill",
                 contain: "Fit",

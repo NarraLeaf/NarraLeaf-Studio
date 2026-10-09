@@ -1,6 +1,14 @@
 import type { LocaleNamespace } from "../types";
 
 export const game = {
+    // The hint bar's own words for the moves Studio names, read by the player (`playerWords.ts`).
+    inputHints: {
+        select: "选择",
+        confirm: "确认",
+        back: "返回",
+        advance: "继续",
+        stageControls: "菜单",
+    },
     saveLoad: {
         refused: "该存档无法读取。游戏从当前位置继续。",
         refusedOtherStory: "该存档来自另一个版本的故事。游戏从当前位置继续。",

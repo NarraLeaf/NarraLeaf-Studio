@@ -159,6 +159,30 @@ describe("createGamepadTracker", () => {
         tracker.dispose();
     });
 
+    it("reads the left stick as four buttons, pressed past halfway and let go only well back", () => {
+        const host = hostWith([pad({ axes: [0, 0, 0, 0] })]);
+        const tracker = createGamepadTracker(host);
+        const edges: string[] = [];
+        tracker.onEdge(edge => edges.push(`${edge.type}:${edge.button}`));
+        tracker.start();
+        const lean = (x: number, y: number) => {
+            host.pads = [pad({ axes: [x, y, 0, 0] })];
+            host.tick();
+        };
+        lean(0, 0.4);
+        expect(edges).toEqual([]);
+        lean(0, 0.7);
+        // Easing back towards the threshold is not a second press.
+        lean(0, 0.45);
+        lean(0, 0.6);
+        lean(0, 0.2);
+        // A diagonal is whichever way it leans more.
+        lean(-0.8, 0.6);
+        lean(0, 0);
+        expect(edges).toEqual(["down:Left Stick Down", "up:Left Stick Down", "down:Left Stick Left", "up:Left Stick Left"]);
+        tracker.dispose();
+    });
+
     it("deadzones axes of the first standard pad", () => {
         const host = hostWith([
             pad({ axes: [0.05, -0.5, 0.9, 0] }),

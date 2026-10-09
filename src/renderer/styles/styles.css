@@ -543,13 +543,18 @@ input[data-floating-item]:focus-visible {
 }
 
 /*
- * Keyboard focus on a running game's controls - a button, a switch, a list row - the same three
- * `GAME_KEYBOARD_CONTROL_SELECTOR` names in runtime/input/pointerKeyboardFocus.ts.
+ * The navigation focus on a running game's controls - a button, a switch, a slider, a list row, a box
+ * an author made reachable - the targets `focusNavigation` (runtime/navigation) moves between.
  *
  * A game's interface is the author's, not Studio's, so this is not Studio's ring: it is the
  * platform's own (`auto`), which the browser draws to be seen on any background. It is only there
- * for the keyboard - `:focus-visible`, and a click does not focus these at all - so a player who
- * never touches Tab never sees it.
+ * while the player moves by keys or pad - the game root's `data-nl-nav-modality` says which, set by
+ * the navigation itself, where `:focus-visible` would be the browser's guess about a pad it cannot
+ * see - so a player who only points never sees it, and a click does not focus these at all.
+ *
+ * And only for a control the author gave no hover look. One that has one is drawn with it while it
+ * has the focus - a Start button lights up for a D-pad exactly as it does for a mouse - and carries
+ * `data-nl-nav-hover`, which takes the ring away (`noteFocusInGame`).
  *
  * Drawn on a layer of its own over the control rather than as the control's outline, and inside its
  * edge. The widgets inside a control are positioned, and a positioned child paints over its parent's
@@ -558,13 +563,16 @@ input[data-floating-item]:focus-visible {
  * row is a plain flex item until then, so it becomes the box its ring is drawn in only while it has
  * the focus; its widgets are laid out inside their own boxes and do not move.
  */
-.ui-editor-surface [data-ui-list-item-index][tabindex]:focus-visible {
+[data-nl-nav-modality="keys"] .ui-editor-surface [data-ui-list-item-index][tabindex]:focus:not([data-nl-nav-hover]) {
     position: relative;
 }
 
-.ui-editor-surface [role="button"][tabindex]:focus-visible::after,
-.ui-editor-surface [role="switch"][tabindex]:focus-visible::after,
-.ui-editor-surface [data-ui-list-item-index][tabindex]:focus-visible::after {
+[data-nl-nav-modality="keys"] .ui-editor-surface [role="button"][tabindex]:focus:not([data-nl-nav-hover])::after,
+[data-nl-nav-modality="keys"] .ui-editor-surface [role="switch"][tabindex]:focus:not([data-nl-nav-hover])::after,
+[data-nl-nav-modality="keys"] .ui-editor-surface [role="slider"][tabindex]:focus:not([data-nl-nav-hover])::after,
+[data-nl-nav-modality="keys"] .ui-editor-surface [data-ui-list-item-index][tabindex]:focus:not([data-nl-nav-hover])::after,
+[data-nl-nav-modality="keys"] .ui-editor-surface [data-ui-nav-focusable="always"]:focus:not([data-nl-nav-hover])::after,
+[data-nl-nav-modality="keys"] .ui-editor-surface [data-ui-nav-focusable="press"]:focus:not([data-nl-nav-hover])::after {
     content: "";
     position: absolute;
     inset: 0;
@@ -572,6 +580,11 @@ input[data-floating-item]:focus-visible {
     pointer-events: none;
     outline: -webkit-focus-ring-color auto 2px;
     outline-offset: -2px;
+}
+
+[data-nl-nav-modality] .ui-editor-surface [data-ui-nav-focusable="always"]:focus,
+[data-nl-nav-modality] .ui-editor-surface [data-ui-nav-focusable="press"]:focus {
+    outline: none;
 }
 
 /*
@@ -645,6 +658,104 @@ input[data-floating-item]:focus-visible {
 
 .nl-has-workspace-bg .nl-sidebar-surface .nl-editor-surface {
     background-color: transparent;
+}
+
+/*
+ * The window's frame under a wallpaper: the title bar, the editor tab strips, the activity rails, the
+ * version panel, the status bar, and the header strips of the docks and of the panels inside editors.
+ * Each keeps its own fill for the window without a wallpaper and adds this, which repaints it as the
+ * sunken fill at the frame plate's alpha (`--nl-frame-surface-alpha`, published like the other two).
+ * Clear by default, so the picture reaches every edge of the window; the fallback matches, for a
+ * frame where the class is set and the property is not yet. Inside a dock a header strip lies over the
+ * dock's own plate, so a clear header shows the dock rather than the picture whenever the dock is solid.
+ *
+ * A frame surface nested in another (an inactive tab in its strip) adds no second coat, and a hover that
+ * would light it with the opaque base paint lights it with the translucent fill instead: an opaque
+ * block flashing up in a clear strip reads as a hole cut through it, not as a hover.
+ */
+.nl-has-workspace-bg .nl-frame-surface {
+    background-color: rgb(var(--nl-surface-sunken) / var(--nl-frame-surface-alpha, 0));
+}
+
+.nl-has-workspace-bg .nl-frame-surface .nl-frame-surface {
+    background-color: transparent;
+}
+
+.nl-has-workspace-bg .nl-frame-surface .hover\:bg-surface:hover {
+    background-color: var(--nl-fill);
+}
+
+/*
+ * Opaque fills inside a frame surface that have to hide what scrolls under them: the version
+ * panel's sticky headers and its rows' hover chip. A clear plate cannot occlude, so under a
+ * wallpaper they keep at least most of the sunken paint and blur what passes beneath, which keeps
+ * their text legible over the rows at any plate setting without standing as solid bars when the
+ * plate is clear.
+ */
+.nl-has-workspace-bg .nl-frame-surface .nl-frame-sticky {
+    background-color: rgb(var(--nl-surface-sunken) / max(var(--nl-frame-surface-alpha, 0), 0.6));
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+}
+
+/*
+ * The UI editor's canvas under a wallpaper. Clear around the page, as the blueprint canvas is, so the
+ * page sits on the window's picture instead of in a black hole cut out of it. The page's rectangle
+ * keeps the stage colour (`SurfaceStageBacking`, hidden otherwise), because a transparent page shows
+ * the stage in the game, never the author's wallpaper. The off-page veil, which marks what lies past
+ * the edge, is drawn in the base colour: what it covers reads as the wallpaper dimmed, the same paint
+ * the window has wherever a plate is half on.
+ */
+.nl-has-workspace-bg .nl-canvas-surface {
+    background-color: transparent;
+}
+
+.nl-stage-backing {
+    display: none;
+}
+
+.nl-has-workspace-bg .nl-stage-backing {
+    display: block;
+    background-color: rgb(var(--nl-surface-canvas));
+}
+
+.nl-has-workspace-bg .nl-off-page-veil {
+    background-color: rgb(var(--nl-surface) / 0.6);
+}
+
+/*
+ * A horizontal scroller that fades out at a clipped edge (the editor tab strip). The fade is a mask
+ * on the scroller rather than a gradient of the strip's colour laid over it, so it works on any
+ * fill, the wallpaper's translucent header included: what fades is the content, not a guess at the
+ * paint behind it. Set by `data-fade-start` / `data-fade-end`; the mask is drawn in the scroller's
+ * own box, so it stays at the edges while the content slides.
+ */
+.nl-edge-fade[data-fade-start],
+.nl-edge-fade[data-fade-end] {
+    --nl-edge-fade-start: 0px;
+    --nl-edge-fade-end: 0px;
+    -webkit-mask-image: linear-gradient(
+        to right,
+        transparent,
+        #000 var(--nl-edge-fade-start),
+        #000 calc(100% - var(--nl-edge-fade-end)),
+        transparent
+    );
+    mask-image: linear-gradient(
+        to right,
+        transparent,
+        #000 var(--nl-edge-fade-start),
+        #000 calc(100% - var(--nl-edge-fade-end)),
+        transparent
+    );
+}
+
+.nl-edge-fade[data-fade-start] {
+    --nl-edge-fade-start: 1.5rem;
+}
+
+.nl-edge-fade[data-fade-end] {
+    --nl-edge-fade-end: 1.5rem;
 }
 
 /*

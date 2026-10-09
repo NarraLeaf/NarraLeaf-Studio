@@ -123,6 +123,8 @@ export type LintRuleId =
     | "story/cut-point-unreachable"
     | "story/rows-after-ending"
     | "story/quit-page-missing"
+    | "story/input-action-missing"
+    | "story/input-locked-dialogue"
     | "story/ending-name-duplicate"
     | "story/stage-object-missing"
     | "story/stage-object-duplicate"

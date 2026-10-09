@@ -6,8 +6,9 @@
  * Xbox layout the Gamepad API's `"standard"` mapping already uses (A/B/X/Y, LB/RB, …), not a
  * second vocabulary authors would have to learn beside it.
  *
- * Analogue sticks are not buttons. They are continuous, so they are read through query nodes rather
- * than bound; the D-pad is buttons 12–15 and is bindable. Non-standard pads are ignored rather than
+ * Analogue sticks are not buttons. They are continuous, so they are read through query nodes; the
+ * D-pad is buttons 12–15 and is bindable. The left stick also reads as four virtual buttons, one per
+ * direction it is pushed far enough, so a menu that moves with the D-pad moves with the stick too. Non-standard pads are ignored rather than
  * remapped: v1 has no remap table, and a pad whose `mapping` is not `"standard"` has no agreed
  * index for any of these names.
  *
@@ -39,7 +40,17 @@ export const BLUEPRINT_GAMEPAD_BUTTONS = [
     "D-pad Left",
     "D-pad Right",
     "Home",
+    // Not buttons on the pad: the left stick pushed far enough one way, read as a button so it can be
+    // bound beside the D-pad (menus move with either) and heard by a head. After the physical ones,
+    // which keep their index order; see BLUEPRINT_GAMEPAD_PHYSICAL_BUTTON_COUNT.
+    "Left Stick Up",
+    "Left Stick Down",
+    "Left Stick Left",
+    "Left Stick Right",
 ] as const;
+
+/** How many of the names above are the standard mapping's buttons 0-16. The rest are stick directions. */
+export const BLUEPRINT_GAMEPAD_PHYSICAL_BUTTON_COUNT = 17;
 
 export type BlueprintGamepadButton = (typeof BLUEPRINT_GAMEPAD_BUTTONS)[number];
 
@@ -112,7 +123,7 @@ export function formatBlueprintGamepadButton(value: unknown): string {
  * a pad does not have (Home is 16 and some pads stop at 15) is simply not pressed.
  */
 export function normalizeBlueprintGamepadButtonIndex(index: number): string {
-    if (!Number.isInteger(index) || index < 0 || index >= BLUEPRINT_GAMEPAD_BUTTONS.length) {
+    if (!Number.isInteger(index) || index < 0 || index >= BLUEPRINT_GAMEPAD_PHYSICAL_BUTTON_COUNT) {
         return "";
     }
     return BLUEPRINT_GAMEPAD_BUTTONS[index];

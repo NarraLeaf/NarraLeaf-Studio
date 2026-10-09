@@ -1754,6 +1754,8 @@ function actionSentence(
                     }),
                 ],
             };
+        case "input":
+            return inputSentence(payload, lookups, commandId);
         case "blueprint":
             // `/blueprint` takes no arguments, so the line would say strictly less than the row's own
             // sentence (which names the bound blueprint). The prose stands.
@@ -1766,6 +1768,84 @@ function actionSentence(
             // switch stays exhaustive, which is what makes the next payload added here a compile
             // error rather than a row that silently renders as nothing.
             return null;
+    }
+}
+
+/**
+ * The player's-hands rows: `/rumble`, `/input`, `/waitinput`, `/hold`, `/mash`.
+ *
+ * The action is printed by its name and never its id, exactly as `/quit` prints its page - and, like
+ * that page, it prints blank when no action answers to the id any more, so the line reads as the
+ * "any action" row it would now re-parse as rather than naming something that is gone.
+ */
+function inputSentence(
+    payload: Extract<StoryActionPayload, { action: "input" }>,
+    lookups: StoryCommandLineLookups,
+    commandId: string,
+): Sentence {
+    switch (payload.operation) {
+        case "rumble":
+            return {
+                commandId,
+                args: [
+                    positional("preset", payload.preset, {
+                        enum: true,
+                        apply: next => ({ ...payload, preset: next as typeof payload.preset }),
+                    }),
+                    arg("left", payload.strongMagnitude === undefined ? undefined : String(payload.strongMagnitude), {
+                        apply: next => ({ ...payload, strongMagnitude: Number(next) }),
+                    }),
+                    arg("right", payload.weakMagnitude === undefined ? undefined : String(payload.weakMagnitude), {
+                        apply: next => ({ ...payload, weakMagnitude: Number(next) }),
+                    }),
+                    arg("d", seconds(payload.durationMs), { apply: next => ({ ...payload, durationMs: msOf(next) }) }),
+                    arg("wait", payload.wait ? "true" : undefined, {
+                        apply: next => ({ ...payload, wait: next === "true" ? true : undefined }),
+                    }),
+                ],
+            };
+        case "stopRumble":
+            return { commandId, args: [positional("preset", "stop", { enum: true })] };
+        case "lock":
+        case "unlock":
+            return {
+                commandId,
+                args: [positional("state", payload.operation, {
+                    enum: true,
+                    apply: next => ({ action: "input", operation: next === "unlock" ? "unlock" : "lock" }),
+                })],
+            };
+        case "wait":
+        case "hold":
+        case "mash": {
+            const actions = lookups.commandContext?.inputActions ?? [];
+            const name = payload.actionId ? actions.find(action => action.id === payload.actionId)?.name ?? "" : "";
+            const head: (Arg | null)[] = [
+                positional("action", name, actions.length === 0 ? {} : {
+                    choices: actions.map(action => ({ value: action.id, label: action.name })),
+                    ...(payload.actionId ? { editValue: payload.actionId } : {}),
+                    apply: next => ({ ...payload, actionId: next }),
+                }),
+            ];
+            if (payload.operation === "hold") {
+                head.push(positional("seconds", seconds(payload.holdMs), {
+                    apply: next => ({ ...payload, holdMs: msOf(next) }),
+                }));
+            }
+            if (payload.operation === "mash") {
+                head.push(positional("count", String(payload.count), {
+                    apply: next => ({ ...payload, count: Math.max(1, Math.round(Number(next))) }),
+                }));
+            }
+            return {
+                commandId,
+                args: [
+                    ...head,
+                    arg("timeout", seconds(payload.timeoutMs), { apply: next => ({ ...payload, timeoutMs: msOf(next) }) }),
+                    arg("into", payload.resultTarget ? variableRefShortLabel(payload.resultTarget, lookups) : undefined),
+                ],
+            };
+        }
     }
 }
 

@@ -134,6 +134,8 @@ import {
 } from "@shared/types/audioTrack";
 import { parseTranslatedRuns } from "@shared/utils/localizationText";
 import { resolveStoryAssetVariant, resolveStoryGroupRunMode, type StoryAssetVariants } from "@shared/types/story";
+import { isStoryInputWaitPayload, resolveStoryRumble, type StoryInputActionPayload } from "@shared/types/story";
+import type { StoryInputHost } from "@/lib/ui-editor/runtime/input/storyInputHost";
 import {
     composeStoryFilter,
     isEmptyStoryTransformProps,
@@ -951,6 +953,8 @@ type SceneCompileContext = {
     onEndingReached?: (ending: StoryEndingReach) => void;
     /** Host hook for a `/quit` row; see {@link CompileInput.onQuitToPage}. */
     onQuitToPage?: (surfaceId: string) => void;
+    /** The player's hands, for the `input` rows; see {@link CompileInput.storyInput}. */
+    storyInput?: StoryInputHost;
     /** Blueprint document for compiling story-action blueprints referenced by this scene. */
     blueprintDocument?: BlueprintDocument;
     /** Game localization resolver; absent when the project has no localization or the host passes none. */
@@ -1207,6 +1211,15 @@ type CompileInput = {
      * compile to nothing.
      */
     onQuitToPage?: (surfaceId: string) => void;
+    /**
+     * What an `input` row asks of the running game: shaking the pad, locking the player out, and
+     * listening for an action (`/rumble`, `/input`, `/waitinput`, `/hold`, `/mash`).
+     *
+     * Absent for the same callers `onEndingReached` is absent for, and their input rows compile to
+     * nothing: a build sweep has no pad to shake, and a scene preview that stopped at a wait would be a
+     * preview that never settles.
+     */
+    storyInput?: StoryInputHost;
     /** Game localization (bundle payload + current-locale getter); see {@link StoryLocalizationRuntime}. */
     localization?: StoryLocalizationRuntime;
     /** Game voice (bundle payload + current voice-language getter); see {@link StoryVoiceRuntime}. */
@@ -1417,6 +1430,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             devtools: input.devtools,
             onEndingReached: input.onEndingReached,
             onQuitToPage: input.onQuitToPage,
+            storyInput: input.storyInput,
             blueprintDocument: input.blueprintDocument,
             localization,
             voicedUnitIds,
@@ -1670,6 +1684,7 @@ async function buildLaunchEntryScene(params: {
         devtools: input.devtools,
         onEndingReached: input.onEndingReached,
         onQuitToPage: input.onQuitToPage,
+        storyInput: input.storyInput,
         blueprintDocument: input.blueprintDocument,
         localization: params.localization,
         voicedUnitIds: params.voicedUnitIds,
@@ -3706,8 +3721,98 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
         return await compileCameraAction(ctx, block, payload);
     }
 
+    if (payload.action === "input") {
+        return compileInputAction(ctx, block, payload);
+    }
+
     return [];
 }
+
+/**
+ * An `input` row: the player's hands rather than the stage.
+ *
+ * Every operation is a call into {@link CompileInput.storyInput}, because none of them is something
+ * the engine does: the engine has no pad, and the lock is the host's suspension of the engine's own
+ * advance. With no host the row compiles to nothing - see the field for which compiles that is.
+ *
+ *  - **`rumble`** that does not wait is a `Script`, so it starts and the story moves on in the same
+ *    step. Its cleaner stops the pad, so rolling back past the row does not leave it shaking. One that
+ *    waits is an awaited action, so the story holds for the rumble's length and a rollback or a load
+ *    cuts it off.
+ *  - **`lock` / `unlock`** are `Script`s whose cleaners do the opposite, so rolling back past a lock
+ *    gives the player the story back and rolling back past an unlock takes it away again.
+ *  - **`wait` / `hold` / `mash`** are awaited actions: the story waits on the row exactly as it waits
+ *    on a line of dialogue, a save taken meanwhile replays the row, and a skip stops at it. The
+ *    outcome goes into the row's boolean variable, if it names one, only when the row was not
+ *    abandoned - a rollback mid-wait must not leave behind an answer the player never gave.
+ */
+function compileInputAction(
+    ctx: SceneCompileContext,
+    block: Extract<StoryBlock, { kind: "action" }>,
+    payload: StoryInputActionPayload,
+): NlrStatement[] {
+    const host = ctx.storyInput;
+    if (!host) {
+        return [];
+    }
+    if (payload.operation === "rumble") {
+        const shape = resolveStoryRumble(payload);
+        if (payload.wait) {
+            return [recordStatement(ctx, createStoryAwaitedAction({
+                run: async (_scriptCtx, signal) => {
+                    await host.rumble(shape, { wait: true, signal });
+                },
+            }), block)];
+        }
+        return [recordStatement(ctx, Script.execute(() => {
+            void host.rumble(shape, { wait: false });
+            return () => host.stopRumble();
+        }), block)];
+    }
+    if (payload.operation === "stopRumble") {
+        return [recordStatement(ctx, Script.execute(() => {
+            host.stopRumble();
+        }), block)];
+    }
+    if (payload.operation === "lock" || payload.operation === "unlock") {
+        const locked = payload.operation === "lock";
+        return [recordStatement(ctx, Script.execute(() => {
+            host.setAdvanceLocked(locked);
+            return () => host.setAdvanceLocked(!locked);
+        }), block)];
+    }
+    if (!isStoryInputWaitPayload(payload)) {
+        return [];
+    }
+    // Resolved now, so a deleted variable is the diagnostic every other write reports rather than a
+    // row that waits and then has nowhere to put its answer.
+    const slot = payload.resultTarget ? resolveVariableSlot(ctx, payload.resultTarget, block.id) : null;
+    if (payload.resultTarget && !slot) {
+        return [];
+    }
+    const persistence = ctx.persistence;
+    const request = {
+        operation: payload.operation,
+        ...(payload.actionId ? { actionId: payload.actionId } : {}),
+        ...(payload.operation === "hold" ? { holdMs: payload.holdMs } : {}),
+        ...(payload.operation === "mash" ? { count: payload.count } : {}),
+        ...(typeof payload.timeoutMs === "number" ? { timeoutMs: payload.timeoutMs } : {}),
+    };
+    return [recordStatement(ctx, createStoryAwaitedAction({
+        run: async (scriptCtx, signal) => {
+            const passed = await host.waitForInput(request, signal);
+            if (signal.aborted || !slot) {
+                return;
+            }
+            if (slot.kind === "host") {
+                void persistence?.set(slot.key, passed);
+                return;
+            }
+            scriptCtx.storable.getNamespace(slot.namespace).set(slot.key, passed as any);
+        },
+    }), block)];
+}
+
 
 /**
  * Restart one looping transform on a pre-posed element - the launch scene's half of

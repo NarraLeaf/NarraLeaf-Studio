@@ -81,6 +81,8 @@ const OPERABLE_BY_TYPE: Record<string, boolean> = {
     "nl.dialog.sentence": false,
     "nl.nvl.texts": false,
     "nl.image": false,
+    // Draws what the buttons do; nothing the player does to it means anything.
+    "nl.inputHints": false,
     "nl.video": false,
     "nl.puppet": false,
     "nl.frame": false,

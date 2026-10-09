@@ -72,6 +72,7 @@ export function buildLookups(
             (scope === "saved" ? savedById.get(variableId) : persistentByKey.get(variableId)) ?? null,
         appTagName: appTagId => data.appTags.find(tag => tag.id === appTagId)?.name ?? null,
         surfaceName: surfaceId => data.surfaces.find(surface => surface.id === surfaceId)?.name ?? null,
+        inputActionName: actionId => data.inputActions.find(action => action.id === actionId)?.name ?? null,
         audioTrackName: trackId => data.audioTracks.find(track => track.id === trackId)?.name ?? null,
         ...(scene ? { scene } : {}),
         ...(document ? { scenes: document.scenes, document } : {}),

@@ -46,6 +46,7 @@ const UNTRANSLATED_LABELS = new Set([
     "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD",
     "LB", "RB", "LT", "RT", "Back", "Start", "L3", "R3", "Home",
     "D-pad Up", "D-pad Down", "D-pad Left", "D-pad Right",
+    "Left Stick Up", "Left Stick Down", "Left Stick Left", "Left Stick Right",
     "LeftX", "LeftY", "RightX", "RightY",
 ]);
 

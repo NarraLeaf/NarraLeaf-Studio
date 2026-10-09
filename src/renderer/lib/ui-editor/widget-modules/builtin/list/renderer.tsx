@@ -23,6 +23,7 @@ import {
     isUIListScrolledToEnd,
     resolveUIListScrollMetrics,
 } from "@shared/types/ui-editor/list";
+import { focusNavigationTarget } from "@/lib/ui-editor/runtime/navigation/focusNavigation";
 import { resolvePageAnimationMotion } from "@/lib/ui-editor/runtime/pageAnimation";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import type { UIStructDef } from "@shared/types/ui-editor/struct";
@@ -36,6 +37,7 @@ import {
     useWidgetRuntimeElementKey,
     useWidgetRuntimeSnapshot,
     useWidgetRuntimeStateStore,
+    NavigationFocusProvider,
     WidgetRuntimeInstanceProvider,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { composeListHostEffectStyle } from "@/lib/ui-editor/widget-modules/shared/effects/effectStyleComposer";
@@ -566,10 +568,13 @@ export function ListRenderer(props: WidgetRendererProps) {
     /**
      * The row the keyboard enters this list on: the one it last left, else the selected one, else the
      * first. The list is one stop on Tab however many rows it has - the rest are reached with the
-     * arrows - so a menu of four options or a backlog of two hundred lines costs the same one press
-     * to pass. See `listRowKeyboardMove` for the keys.
+     * arrows, which navigation moves between rows like any other controls - so a menu of four options
+     * or a backlog of two hundred lines costs the same one press to pass. Home and End are the
+     * list's own (`listRowKeyboardMove`).
      */
     const [keyboardRowIndex, setKeyboardRowIndex] = useState<number | null>(null);
+    /** The row that has the focus right now, drawn as hovered (`NavigationFocusProvider`). */
+    const [focusedRowIndex, setFocusedRowIndex] = useState<number | null>(null);
     const tabStopRowIndex = count > 0
         ? Math.min(count - 1, Math.max(0, keyboardRowIndex ?? (selectedIndex >= 0 && selectedIndex < count ? selectedIndex : 0)))
         : -1;
@@ -596,7 +601,7 @@ export function ListRenderer(props: WidgetRendererProps) {
             const row = Array.from(event.currentTarget.parentElement?.children ?? [])
                 .find(sibling => sibling.getAttribute("data-ui-list-item-index") === String(next));
             if (row instanceof HTMLElement) {
-                row.focus();
+                focusNavigationTarget(row);
             }
         },
         [handleListItemClick],
@@ -638,10 +643,22 @@ export function ListRenderer(props: WidgetRendererProps) {
             // In a running game a row is a control the keyboard reaches, as a button is: Enter and
             // Space raise Item Click exactly as a click does. On the canvas it is only a drawing.
             tabIndex: isRuntime ? (i === tabStopRowIndex ? 0 : -1) : undefined,
+            // The row holding the focus is drawn the way the pointer resting on it would draw it,
+            // and says so the way the pointer does - Item Hover - so a hover look a graph paints
+            // follows the D-pad too.
             onFocus: isRuntime
                 ? (event: FocusEvent<HTMLDivElement>) => {
                       if (event.target === event.currentTarget) {
                           setKeyboardRowIndex(i);
+                          setFocusedRowIndex(i);
+                          handleListItemHover(scope);
+                      }
+                  }
+                : undefined,
+            onBlur: isRuntime
+                ? (event: FocusEvent<HTMLDivElement>) => {
+                      if (event.target === event.currentTarget) {
+                          setFocusedRowIndex(current => (current === i ? null : current));
                       }
                   }
                 : undefined,
@@ -658,11 +675,13 @@ export function ListRenderer(props: WidgetRendererProps) {
                     instanceKey={instanceKey}
                 />
                 <WidgetRuntimeInstanceProvider instance={{ key: instanceKey, selected }}>
-                    {renderChildren?.({
-                        childrenIds: itemTemplateIds,
-                        listItemScope: scope,
-                        instanceKey,
-                    })}
+                    <NavigationFocusProvider focused={isRuntime && i === focusedRowIndex}>
+                        {renderChildren?.({
+                            childrenIds: itemTemplateIds,
+                            listItemScope: scope,
+                            instanceKey,
+                        })}
+                    </NavigationFocusProvider>
                 </WidgetRuntimeInstanceProvider>
             </>
         );

@@ -90,6 +90,14 @@ export function liveBlocks(scene: StoryScene): StoryBlock[] {
     return listSceneBlocksInDocumentOrder(scene, { skipSubtree: block => Boolean(block.disabled) });
 }
 
+/** Whether a row holds the story until the player advances it: a line, a choice, a `/wait click`. */
+function waitsForAdvance(block: StoryBlock): boolean {
+    if (block.kind === "nodeAction") {
+        return block.payload.action !== "choiceOption";
+    }
+    return block.kind === "action" && block.payload.action === "wait" && block.payload.mode === "click";
+}
+
 /** A live `/quit` row and the page it names - trimmed, and empty when it names none. */
 export type QuitRow = SceneCursor & { block: StoryBlock; surfaceId: string };
 
@@ -1086,6 +1094,104 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                     location: storyLocation(entry, scene, block.id),
                     target: blockTarget(entry, scene, block.id),
                 });
+            }
+            return findings;
+        },
+    },
+    {
+        /**
+         * A `/waitinput`, `/hold` or `/mash` row waiting for an input action the project no longer
+         * declares.
+         *
+         * No input can ever perform it, so the row waits until its time limit and fails, or - with no
+         * limit - forever, and the player is left on a frame nothing they press moves. An error for the
+         * reason the quit rule's deleted page is one: the run cannot recover from it.
+         *
+         * A row with no action waits for any of them and is never reported.
+         */
+        id: "story/input-action-missing",
+        category: "story",
+        defaultSeverity: "error",
+        slug: "storyInputActionMissing",
+        run(ctx) {
+            // Quiet when the interface document could not be read, as `quit-page-missing` is: every
+            // action would look deleted.
+            if (!ctx.uiDocument) {
+                return [];
+            }
+            const declared = new Set(Object.keys(ctx.uiDocument.actions ?? {}));
+            const findings: LintFinding[] = [];
+            for (const { entry, scene } of eachScene(ctx)) {
+                for (const block of liveBlocks(scene)) {
+                    if (block.kind !== "action" || block.payload.action !== "input") {
+                        continue;
+                    }
+                    const payload = block.payload;
+                    if (payload.operation !== "wait" && payload.operation !== "hold" && payload.operation !== "mash") {
+                        continue;
+                    }
+                    if (!payload.actionId || declared.has(payload.actionId)) {
+                        continue;
+                    }
+                    findings.push({
+                        ruleId: "story/input-action-missing",
+                        // Named by neither id nor name: the id is not something an author can look up,
+                        // and the name went with the action.
+                        messageKey: payload.timeoutMs === undefined
+                            ? "lint.rule.storyInputActionMissing.message"
+                            : "lint.rule.storyInputActionMissing.timed",
+                        location: storyLocation(entry, scene, block.id),
+                        target: blockTarget(entry, scene, block.id),
+                    });
+                }
+            }
+            return findings;
+        },
+    },
+    {
+        /**
+         * A line the player has to advance, inside a passage `/input lock` has taken out of their
+         * hands.
+         *
+         * While locked, a click, the advance key and auto-forward do nothing, so a dialogue line, a
+         * choice or a `/wait click` there can never be passed and the run is stuck. Reported once per
+         * locked passage, at the first such row: the fix is one `/input unlock` above it, and the rows
+         * after it read the same until that is done.
+         *
+         * The scene is read top to bottom, branches included, starting unlocked. That is an
+         * approximation in both directions - a branch that unlocks makes its sibling look unlocked,
+         * and a lock carried in from another scene is not seen - which is why this is a warning.
+         */
+        id: "story/input-locked-dialogue",
+        category: "story",
+        defaultSeverity: "warning",
+        slug: "storyInputLockedDialogue",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            for (const { entry, scene } of eachScene(ctx)) {
+                let locked = false;
+                let reported = false;
+                for (const block of liveBlocks(scene)) {
+                    if (block.kind === "action" && block.payload.action === "input") {
+                        if (block.payload.operation === "lock") {
+                            locked = true;
+                            reported = false;
+                        } else if (block.payload.operation === "unlock") {
+                            locked = false;
+                        }
+                        continue;
+                    }
+                    if (!locked || reported || !waitsForAdvance(block)) {
+                        continue;
+                    }
+                    reported = true;
+                    findings.push({
+                        ruleId: "story/input-locked-dialogue",
+                        messageKey: "lint.rule.storyInputLockedDialogue.message",
+                        location: storyLocation(entry, scene, block.id),
+                        target: blockTarget(entry, scene, block.id),
+                    });
+                }
             }
             return findings;
         },

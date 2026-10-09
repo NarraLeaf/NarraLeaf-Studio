@@ -43,6 +43,7 @@ import {
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS,
     BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT,
 } from "@shared/types/blueprint/graph";
+import { defaultUINavigationBindings, uiNavigationActionId } from "@shared/types/ui-editor/navigation";
 
 function ownerKeyForTest(owner: BlueprintOwnerRef): string {
     switch (owner.kind) {
@@ -1792,7 +1793,36 @@ describe("UIDocumentService input actions", () => {
         const { service } = createHarness();
 
         expect(service.createInputAction("   ")).toBeNull();
-        expect(service.getInputActions()).toEqual({});
+        expect(service.getDocument().actions ?? {}).toEqual({});
+    });
+
+    it("offers the navigation actions without writing them, and writes one only once it is rebound", () => {
+        const { service } = createHarness();
+        const confirm = uiNavigationActionId("confirm");
+        expect(service.getInputActions()[confirm]?.bindings).toEqual(defaultUINavigationBindings("confirm"));
+        expect(service.getDocument().actions ?? {}).toEqual({});
+
+        service.setInputActionBindings(confirm, [{ kind: "gamepad", button: "X" }]);
+        expect(service.getDocument().actions?.[confirm]?.bindings).toEqual([{ kind: "gamepad", button: "X" }]);
+        expect(service.getInputActions()[confirm]?.bindings).toEqual([{ kind: "gamepad", button: "X" }]);
+
+        // Not the project's to rename or delete; only to put back.
+        service.renameInputAction(confirm, "Press");
+        service.deleteInputAction(confirm);
+        expect(service.getDocument().actions?.[confirm]?.name).toBe("confirm");
+        service.resetNavigationActionBindings(confirm);
+        expect(service.getDocument().actions ?? {}).toEqual({});
+        expect(service.getInputActions()[confirm]?.bindings).toEqual(defaultUINavigationBindings("confirm"));
+    });
+
+    it("keeps a surface's answer to a navigation action when another action is deleted", () => {
+        const { service } = createHarness();
+        const surfaceId = service.getDocument().surfaces[0]!.id;
+        const other = service.createInputAction("Other")!;
+        service.setSurfaceActionEnabled(surfaceId, uiNavigationActionId("left"), true);
+        service.setSurfaceActionEnabled(surfaceId, other.id, true);
+        service.deleteInputAction(other.id);
+        expect(service.getDocument().surfaces[0]!.actions).toEqual([{ actionId: uiNavigationActionId("left") }]);
     });
 
     it("renames and rebinds an entry in place, so surfaces keep answering it", () => {

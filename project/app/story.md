@@ -29,7 +29,7 @@ so does a `--category` value that is not one of the ones there are.
 ## Finding a command
 
 ```sh
-node project/app/story.js commands                 # all 52, by category
+node project/app/story.js commands                 # all 57, by category
 node project/app/story.js commands sound           # search token, id, params, examples
 node project/app/story.js commands --category flow
 node project/app/story.js commands --limit 0     # the first 60 otherwise

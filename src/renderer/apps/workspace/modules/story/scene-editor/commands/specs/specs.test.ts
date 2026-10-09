@@ -39,6 +39,7 @@ const CONTEXT: StoryCommandContext = {
     labels: ["intro", "after refusal"],
     appTags: [{ id: "release", name: "main" }, { id: "demo", name: "Demo" }],
     surfaces: [{ id: "u1", name: "Map" }, { id: "u2", name: "Title" }],
+    inputActions: [{ id: "act_confirm", name: "Confirm" }, { id: "act_dodge", name: "Dodge" }],
     variables: [
         { name: "gold", ref: { scope: "scene", variableId: "var_gold" }, valueType: "number", defaultValue: 10 },
         { name: "met", ref: { scope: "saved", variableId: "var_met" }, valueType: "boolean" },
@@ -1293,6 +1294,61 @@ describe("logic and effects", () => {
  * same parse → resolve → build the editor uses makes that impossible: an example either works or the
  * suite is red.
  */
+describe("input commands", () => {
+    it("/rumble stores the preset it names and only the numbers the line states", () => {
+        expect(build("/rumble")).toMatchObject({ payload: { action: "input", operation: "rumble" } });
+        expect((build("/rumble") as { payload: object }).payload).not.toHaveProperty("preset");
+        expect(build("/rumble impact d=0.4 wait")).toMatchObject({
+            payload: { action: "input", operation: "rumble", preset: "impact", durationMs: 400, wait: true },
+        });
+        expect(build("/rumble custom left=1 right=0.3")).toMatchObject({
+            payload: { preset: "custom", strongMagnitude: 1, weakMagnitude: 0.3 },
+        });
+    });
+
+    it("/rumble stop is the stop operation and carries nothing else", () => {
+        expect((build("/rumble stop") as { payload: object }).payload).toEqual({ action: "input", operation: "stopRumble" });
+    });
+
+    it("/rumble refuses a motor outside 0..1", () => {
+        expect(commandLineIssues("/rumble custom left=2")).not.toEqual([]);
+    });
+
+    it("/input lock and unlock", () => {
+        expect(build("/input lock")).toMatchObject({ payload: { action: "input", operation: "lock" } });
+        expect(build("/input unlock")).toMatchObject({ payload: { action: "input", operation: "unlock" } });
+    });
+
+    it("/waitinput resolves the action by name and stores its id", () => {
+        expect(build("/waitinput Confirm timeout=2 into=met")).toMatchObject({
+            payload: {
+                action: "input",
+                operation: "wait",
+                actionId: "act_confirm",
+                timeoutMs: 2000,
+                resultTarget: { scope: "saved", variableId: "var_met" },
+            },
+        });
+        expect(issuesOf("/waitinput Jump")).toEqual(["unknownInputAction"]);
+    });
+
+    it("/waitinput with no action waits for any of them", () => {
+        expect((build("/waitinput") as { payload: object }).payload).not.toHaveProperty("actionId");
+    });
+
+    it("/hold and /mash may skip the action and lead with their number", () => {
+        expect(build("/hold 1.5")).toMatchObject({ payload: { operation: "hold", holdMs: 1500 } });
+        expect((build("/hold 1.5") as { payload: object }).payload).not.toHaveProperty("actionId");
+        expect(build("/hold Confirm 2")).toMatchObject({ payload: { operation: "hold", actionId: "act_confirm", holdMs: 2000 } });
+        expect(build("/mash 10 timeout=3")).toMatchObject({ payload: { operation: "mash", count: 10, timeoutMs: 3000 } });
+        expect(build("/mash Dodge 5")).toMatchObject({ payload: { operation: "mash", actionId: "act_dodge", count: 5 } });
+    });
+
+    it("refuses a result variable that is not a boolean", () => {
+        expect(issuesOf("/waitinput Confirm into=gold")).toEqual(["expressionTypeMismatch"]);
+    });
+});
+
 describe("manual examples", () => {
     const specs = listCommandSpecs();
 

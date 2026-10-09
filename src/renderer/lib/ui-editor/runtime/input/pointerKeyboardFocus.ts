@@ -21,15 +21,14 @@
  * Comments in English per project convention.
  */
 
+import { CONTROL_TARGET_SELECTOR } from "../navigation/focusNavigation";
+
 /**
- * The controls a game draws that take the keyboard focus to be pressed: a button, a switch, a list
- * row. The focus ring in `styles.css` is drawn for the same three.
+ * The controls a game draws that take the keyboard focus to be pressed - a button, a switch, a list
+ * row - and the boxes an author made reachable by navigation. One list, kept by `focusNavigation`,
+ * which the focus ring in `styles.css` is drawn for too.
  */
-export const GAME_KEYBOARD_CONTROL_SELECTOR = [
-    '[role="button"][tabindex]',
-    '[role="switch"][tabindex]',
-    "[data-ui-list-item-index][tabindex]",
-].join(", ");
+export const GAME_KEYBOARD_CONTROL_SELECTOR = CONTROL_TARGET_SELECTOR;
 
 /** Anything a press can put the focus on. The nearest one to the press is the one that would get it. */
 const FOCUSABLE_SELECTOR = "input, textarea, select, button, a[href], [contenteditable], [tabindex]";

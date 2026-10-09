@@ -521,6 +521,22 @@ export const storyInspector = {
         skipHint: "The player can end the video early by clicking or pressing the skip key.",
     },
 
+    /** `/rumble`, `/input`, `/waitinput`, `/hold`, `/mash` - the player's-hands rows. */
+    input: {
+        shape: "Shape",
+        leftMotor: "Left motor (0-1)",
+        rightMotor: "Right motor (0-1)",
+        waitForRumble: "Wait for the rumble to end",
+        state: "State",
+        action: "Input action",
+        anyAction: "Any input action",
+        holdSeconds: "Hold (s)",
+        pressCount: "Presses",
+        timeout: "Time limit (s)",
+        result: "Result variable",
+        noResult: "None",
+    },
+
     nvl: {
         hint: "Child rows run in NVL mode. The transform below animates the NVL layer as it enters.",
         motionLabel: "NVL enter animation",

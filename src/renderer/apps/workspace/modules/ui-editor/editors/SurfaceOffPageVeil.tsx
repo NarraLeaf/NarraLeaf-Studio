@@ -31,6 +31,10 @@ export function computeOffPageVeilBands(designSize: Size, reach: number = OFF_PA
  *
  * Mount inside the transformed canvas node, after the page and under the reference frames; it is
  * positioned in design pixels and takes no pointer events, so a press goes through to the element.
+ *
+ * Under a wallpaper the canvas is clear and the veil is drawn in the window's base colour instead
+ * (`.nl-off-page-veil` in styles.css), so what lies past the edge is the wallpaper, dimmed, rather
+ * than a black frame cut into it.
  */
 export function SurfaceOffPageVeil({ designSize }: { designSize: Size }) {
     const bands = computeOffPageVeilBands(designSize);
@@ -39,10 +43,28 @@ export function SurfaceOffPageVeil({ designSize }: { designSize: Size }) {
             {bands.map((band, index) => (
                 <div
                     key={index}
-                    className="absolute bg-surface-canvas/70"
+                    className="nl-off-page-veil absolute bg-surface-canvas/70"
                     style={{ left: band.left, top: band.top, width: band.width, height: band.height }}
                 />
             ))}
         </div>
+    );
+}
+
+/**
+ * The stage under the page, drawn only under a wallpaper. Without one the canvas is the stage colour
+ * already; with one the canvas is clear, and a page that leaves parts of itself transparent (a Game UI
+ * surface, a page with no background) would show the wallpaper there, which the player never sees.
+ * So the page's own rectangle keeps the colour the game puts behind it.
+ *
+ * Mount inside the transformed canvas node, first, under the reference layers and the page.
+ */
+export function SurfaceStageBacking({ designSize }: { designSize: Size }) {
+    return (
+        <div
+            className="nl-stage-backing pointer-events-none absolute left-0 top-0"
+            style={{ width: designSize.width, height: designSize.height }}
+            aria-hidden="true"
+        />
     );
 }

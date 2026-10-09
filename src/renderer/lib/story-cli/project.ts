@@ -243,6 +243,8 @@ export type ProjectData = {
     audioTracks: { id: string; name: string }[];
     appTags: { id: string; name: string }[];
     surfaces: { id: string; name: string }[];
+    /** The project's input actions, for `/waitinput`, `/hold` and `/mash`. */
+    inputActions: { id: string; name: string }[];
     assetSets: { id: string; name: string; type: string }[];
 };
 
@@ -331,6 +333,7 @@ export function readProjectData(projectDir: string): ProjectData {
         audioTracks: (audioFile?.tracks ?? []).map(track => ({ id: track.id, name: track.name })),
         appTags: (appTagFile?.tags ?? []).map(tag => ({ id: tag.id, name: tag.name })),
         surfaces: (ui?.surfaces ?? []).map(surface => ({ id: surface.id, name: surface.name })),
+        inputActions: Object.values(ui?.actions ?? {}).map(action => ({ id: action.id, name: action.name })),
         assetSets: [],
     };
 }
@@ -364,6 +367,7 @@ export function buildContext(
         audioTracks: data.audioTracks,
         appTags: data.appTags,
         surfaces: data.surfaces,
+        inputActions: data.inputActions,
     });
 }
 
@@ -400,6 +404,7 @@ export function emptyProjectData(): ProjectData {
         audioTracks: [],
         appTags: [],
         surfaces: [],
+        inputActions: [],
         assetSets: [],
     };
 }

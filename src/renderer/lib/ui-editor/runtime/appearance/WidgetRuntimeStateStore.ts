@@ -142,6 +142,9 @@ export class WidgetRuntimeStateStore {
     private readonly hoverTargetIds = new Set<string>();
     private activePointerId: string | null = null;
     private focusedId: string | null = null;
+    private pointerHoverSuppressed = false;
+    /** Every element the focus is on or inside, by runtime key: what a pointer on it would hover. */
+    private readonly focusWithinIds = new Set<string>();
     private readonly variantOverrides = new Map<string, string>();
     private readonly sliderProperties = new Map<string, UISliderRuntimeValue>();
     private readonly switchProperties = new Map<string, UISwitchRuntimeValue>();
@@ -303,6 +306,12 @@ export class WidgetRuntimeStateStore {
                 changed = true;
             }
         }
+        for (const id of [...this.focusWithinIds]) {
+            if (belongsToScope(id)) {
+                this.focusWithinIds.delete(id);
+                changed = true;
+            }
+        }
 
         if (belongsToScope(this.activePointerId)) {
             this.activePointerId = null;
@@ -394,6 +403,43 @@ export class WidgetRuntimeStateStore {
         }
         this.activePointerId = id;
         this.emit();
+    }
+
+    /**
+     * While the player moves by keys or a pad, the pointer resting somewhere is not pointing at
+     * anything: the focus is what is selected, and a second control drawn hovered under a mouse
+     * nobody is holding would look selected too. The hover is kept, not cleared - it comes back the
+     * moment the pointer moves and the game says so.
+     */
+    setPointerHoverSuppressed(suppressed: boolean): void {
+        if (this.pointerHoverSuppressed === suppressed) {
+            return;
+        }
+        this.pointerHoverSuppressed = suppressed;
+        this.emit();
+    }
+
+    /**
+     * Whether the focus is on this element or on something inside it.
+     *
+     * A pointer resting on a save slot's hit area is resting on the slot as well, and the slot draws
+     * its hover look; the focus on that hit area has to light the slot the same way. Each element's
+     * box says so for itself as the focus enters and leaves it (`EditorNodeWrapper`).
+     */
+    setFocusWithin(id: string, within: boolean): void {
+        if (within ? this.focusWithinIds.has(id) : !this.focusWithinIds.has(id)) {
+            return;
+        }
+        if (within) {
+            this.focusWithinIds.add(id);
+        } else {
+            this.focusWithinIds.delete(id);
+        }
+        this.emit();
+    }
+
+    isFocusWithin(id: string): boolean {
+        return this.focusWithinIds.has(id);
     }
 
     setFocusedTarget(id: string | null): void {
@@ -694,7 +740,7 @@ export class WidgetRuntimeStateStore {
 
     getSignalsForElement(elementId: string, interactionDisabled: boolean | undefined): SystemInteractionSignals {
         return {
-            hovered: this.hoverTargetIds.has(elementId),
+            hovered: !this.pointerHoverSuppressed && this.hoverTargetIds.has(elementId),
             // The store never sets this: selection belongs to the row a list is drawing, which this
             // store has no dimension for. `useWidgetRuntimeElementState` merges it in from the row
             // context, so the default here is the honest answer for anything outside a list.

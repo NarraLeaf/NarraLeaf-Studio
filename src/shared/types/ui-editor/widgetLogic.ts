@@ -592,6 +592,20 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
     },
     "nl.text": createTextWidgetLogicApi("Text logic"),
     "nl.dialog.sentence": createTextWidgetLogicApi("Sentence logic"),
+    /**
+     * The input hint bar draws what the buttons do; nothing a player does to it means anything, so it
+     * has no logic of its own. Other graphs show, hide and restyle it like any displayable widget.
+     */
+    "nl.inputHints": {
+        supportsPrivateBlueprint: false,
+        events: [],
+        commands: [...baseCommands],
+        readableState: [
+            { id: "visible", displayName: "Visible" },
+            { id: "enabled", displayName: "Enabled" },
+        ],
+        writableProps: [],
+    },
     "nl.image": {
         supportsPrivateBlueprint: true,
         blueprintLabel: "Image logic",

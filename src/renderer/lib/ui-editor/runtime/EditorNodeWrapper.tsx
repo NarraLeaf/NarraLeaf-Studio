@@ -8,11 +8,20 @@ import React, {
     useState,
     useSyncExternalStore,
 } from "react";
-import type { CSSProperties, FocusEvent, MouseEvent, PointerEvent, WheelEvent } from "react";
+import type { CSSProperties, FocusEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent, PointerEvent, WheelEvent } from "react";
 import { MotionConfigContext } from "motion/react";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
+import { normalizeUIElementNavigation, uiElementHasHoverLook } from "@shared/types/ui-editor/navigation";
+import { isOperableWidgetType } from "@shared/types/ui-editor/inputAction";
 import {
+    elementNavigationAttributes,
+    HOVER_LOOK_ATTRIBUTE,
+    NAV_FOCUSABLE_ATTRIBUTE,
+    NAV_FOCUSABLE_PRESS,
+} from "@/lib/ui-editor/runtime/navigation/focusNavigation";
+import {
+    NavigationFocusProvider,
     useWidgetRuntimeElementState,
     useWidgetRuntimeElementKey,
     useWidgetRuntimeStateStore,
@@ -701,6 +710,8 @@ export function EditorNodeWrapper({
             if (isDirectElementEvent(e.target)) {
                 widgetRuntimeStore?.setFocusedTarget(runtimeElementKey);
             }
+            // On it or inside it: drawn the way a pointer resting there would draw it.
+            widgetRuntimeStore?.setFocusWithin(runtimeElementKey, true);
             dispatchWidgetEvent("focus", e.target, undefined, getOrCreateDomEventPropagationControl(e.nativeEvent));
         },
         [dispatchWidgetEvent, isDirectElementEvent, runtimeElementKey, widgetRuntimeStore],
@@ -711,10 +722,58 @@ export function EditorNodeWrapper({
             if (isDirectElementEvent(e.target)) {
                 widgetRuntimeStore?.setFocusedTarget(null);
             }
+            const next = e.relatedTarget;
+            if (!(next instanceof Node) || !e.currentTarget.contains(next)) {
+                widgetRuntimeStore?.setFocusWithin(runtimeElementKey, false);
+            }
             dispatchWidgetEvent("blur", e.target, undefined, getOrCreateDomEventPropagationControl(e.nativeEvent));
         },
-        [dispatchWidgetEvent, isDirectElementEvent, widgetRuntimeStore],
+        [dispatchWidgetEvent, isDirectElementEvent, runtimeElementKey, widgetRuntimeStore],
     );
+
+    // A drawing that leaves while the focus is inside it takes no blur with it.
+    useEffect(() => () => widgetRuntimeStore?.setFocusWithin(runtimeElementKey, false), [runtimeElementKey, widgetRuntimeStore]);
+
+    // How the player reaches this element without a pointer (`focusNavigation`). In a running game
+    // only: the canvas has no focus to move. A box an author made reachable is a control of its own -
+    // a Tab stop, pressed by Enter and Space the way a button is, which is also how a pad's Confirm
+    // presses it.
+    const navigationProps = useMemo(() => {
+        if (!interactive || !blueprintRuntime) {
+            return {};
+        }
+        const navigation = normalizeUIElementNavigation(element.navigation);
+        // An element whose own logic answers a click is a control, whatever widget it is - a save
+        // slot drawn as a container with a Mouse Click head is pressed like a button. Reachable as
+        // an author's `always` is, unless the author said `never`.
+        const answersPress = !navigation?.focusable
+            && !isOperableWidgetType(element.type)
+            && blueprintRuntime.elementAnswersPress?.(element.id) === true;
+        const reachable = navigation?.focusable === "always" || answersPress;
+        const attributes: Record<string, unknown> = elementNavigationAttributes(navigation);
+        if (answersPress) {
+            // Marked apart from an author's `always`: on the stage a box that answers a click is
+            // the area a click reads the story on with, not a control (`isNavigationTarget`).
+            attributes[NAV_FOCUSABLE_ATTRIBUTE] = NAV_FOCUSABLE_PRESS;
+        }
+        // Drawn with its own hover look when it has the focus, so it needs no ring (`styles.css`).
+        if (uiElementHasHoverLook(element)) {
+            attributes[HOVER_LOOK_ATTRIBUTE] = "";
+        }
+        if (reachable) {
+            attributes.tabIndex = 0;
+            attributes.onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+                if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) {
+                    return;
+                }
+                event.preventDefault();
+                if (!event.repeat) {
+                    event.currentTarget.click();
+                }
+            };
+        }
+        return attributes;
+    }, [blueprintRuntime, element, interactive]);
 
     /** Where this node is placed, state offset included. Its own channel, so a gesture cannot take it. */
     const placedLeft = enteredOffsetsInFlow ? 0 : layout.x + Math.min(0, layout.width) + placedEnteredOffsets.x;
@@ -1111,6 +1170,7 @@ export function EditorNodeWrapper({
         <EnteredStateProvider value={broadcastState}>
         <div
             ref={containerRef}
+            {...navigationProps}
             data-ui-element-id={interactive ? element.id : undefined}
             // Which drawing this is, for measuring one row or one placement rather than whichever
             // copy of the element the page happens to hold first. See `surfaceMeasurement`.
@@ -1130,7 +1190,10 @@ export function EditorNodeWrapper({
             onFocus={interactive && (widgetRuntimeStore || blueprintRuntime) ? onFocus : undefined}
             onBlur={interactive && (widgetRuntimeStore || blueprintRuntime) ? onBlur : undefined}
         >
-            {children}
+            {/* Holding the keyboard or pad focus draws this subtree as hovered: see `NavigationFocusProvider`. */}
+            <NavigationFocusProvider focused={runtimeElementState.signals.focused}>
+                {children}
+            </NavigationFocusProvider>
         </div>
         </EnteredStateProvider>
     );

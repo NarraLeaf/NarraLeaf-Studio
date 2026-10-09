@@ -6,6 +6,8 @@ import {
     useRef,
     useState,
     useSyncExternalStore,
+    type FocusEvent as ReactFocusEvent,
+    type PointerEvent as ReactPointerEvent,
     type ReactNode,
     type SyntheticEvent,
 } from "react";
@@ -199,7 +201,8 @@ import {
     resumeAfterLocaleRestart,
 } from "./localeRestart";
 import { createDisplayAwakeController, DISPLAY_AWAKE_RECHECK_MS } from "./displayAwake";
-import { createSkipRunController } from "./skipRunController";
+import { createSkipRunController, type SkipRunController } from "./skipRunController";
+import { createGameStoryInputHost, type GameStoryInputHost } from "@/lib/ui-editor/runtime/input/storyInputHost";
 import { createSessionGate } from "./sessionGate";
 import {
     createStoryStartGate,
@@ -225,6 +228,19 @@ import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { resolveKeyboardDispatchScope } from "@/lib/ui-editor/runtime/input/keyboardDispatchScope";
 import { keepPointerPressOffKeyboardFocus } from "@/lib/ui-editor/runtime/input/pointerKeyboardFocus";
+import { provideInputHints, resolveInputHints } from "@/lib/ui-editor/runtime/input/inputHints";
+import { readCurrentInputDevice } from "@/lib/ui-editor/runtime/input/inputDeviceState";
+import { readGamepadSnapshot } from "@/lib/ui-editor/runtime/input/gamepadState";
+import { detectUIInputHintControllerFamily } from "@shared/types/ui-editor/inputHints";
+import { isEntrySurface } from "@shared/types/ui-editor/entrySurface";
+import {
+    describeNavigationState,
+    NAV_MODALITY_ATTRIBUTE,
+    noteFocusInGame,
+    notePointerOverGame,
+    notePointerPressOnGame,
+} from "@/lib/ui-editor/runtime/navigation/focusNavigation";
+import { resolveRuntimeInputVocabulary } from "@shared/types/ui-editor/navigation";
 import { GAME_ROOT_ATTRIBUTE } from "@/lib/ui-editor/runtime/input/keyboardFocusHandover";
 import {
     listenForGameKeys,
@@ -233,6 +249,7 @@ import {
     type KeyboardOwner,
 } from "./keyboardOwner";
 import { listenForGamepads } from "./gamepadInput";
+import { ownerCanGoBack } from "./navigationDefaults";
 import {
     createDialogueAdvanceRecord,
     projectDrawsNvlPage,
@@ -3045,6 +3062,58 @@ export function GameApp(props: GameAppProps): ReactNode {
     const stableEndingReached = useCallback((ending: StoryEndingReach) => endingReachedRef.current(ending), []);
     const stableQuitToPage = useCallback((surfaceId: string) => quitToPageRef.current(surfaceId), []);
 
+    /**
+     * The skip loop, while one is installed - read by the story input host to keep a skipped-through
+     * `/rumble` off the player's hands.
+     */
+    const skipControllerRef = useRef<SkipRunController | null>(null);
+    /**
+     * What the `input` rows ask of the game (`/rumble`, `/input lock`, `/waitinput`, `/hold`, `/mash`).
+     *
+     * One for the life of the app, for the reason the two hooks above are stable: a compiled story is
+     * kept and replayed, so whatever it was handed must still reach the running game three
+     * playthroughs later. Everything it touches is read through refs when a row runs.
+     *
+     * The lock is the same engine suspension a page drawn over the stage takes (`holdStageAdvance`),
+     * taken on the game that is live when the row runs, so releasing it wakes auto-forward the same
+     * way. It belongs to the playthrough and is not saved: entering a game, loading a save and losing
+     * the session all hand the player the story back (see the `reset` calls).
+     */
+    const [storyInputHost] = useState<GameStoryInputHost>(() => createGameStoryInputHost({
+        isSkipping: () => {
+            const controller = skipControllerRef.current;
+            return controller ? controller.isRunning() || controller.isSkipping() : false;
+        },
+        readActions: () => currentBundleRef.current.ui.uidoc.actions,
+        holdAdvance: () => {
+            const heldLiveGame = nlrLiveGameRef.current;
+            const preference = (heldLiveGame?.game as {
+                preference?: {
+                    getPreference?: (key: string) => unknown;
+                    setPreference?: (key: string, value: unknown) => void;
+                };
+            } | undefined)?.preference;
+            const hold = holdStageAdvance({
+                suspendAdvance: () => heldLiveGame?.getGameState()?.suspendAdvance() ?? null,
+                isSessionCurrent: () => nlrLiveGameRef.current === heldLiveGame,
+                isAutoForwardOn: () => preference?.getPreference?.("autoForward") === true,
+                rearmAutoForward: () => {
+                    engineNudgeDepthRef.current += 1;
+                    try {
+                        preference?.setPreference?.("autoForward", true);
+                    } catch {
+                        // A session torn down between the check and the write; nothing left to wake.
+                    } finally {
+                        engineNudgeDepthRef.current -= 1;
+                    }
+                },
+            });
+            return hold.held ? hold : null;
+        },
+    }));
+    // A session going away takes its lock and its rumble with it.
+    useEffect(() => () => storyInputHost.reset(), [nlrSession, storyInputHost]);
+
     const handleQuitToPage = useCallback((surfaceId: string) => {
         void quitGame(surfaceId).catch(error => {
             host.log("error", `[${host.id}] the quit page could not be opened: ${normalizeError(error)}`);
@@ -3333,6 +3402,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                 apply: savedGame => {
                     const game = activeLiveGame();
                     game.game.router.clear().cleanHistory();
+                    // The lock a row took belongs to the run being replaced; the loaded one starts
+                    // in the player's hands, wherever its save was taken.
+                    storyInputHost.reset();
                     // A loaded save is a playthrough of its own: the box opens the author's way,
                     // not the way the game it replaced last left it.
                     startPlaythroughPreferences(
@@ -4224,6 +4296,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             savedVariables: bundle.ui.savedVariables,
             onEndingReached: stableEndingReached,
             onQuitToPage: stableQuitToPage,
+            storyInput: storyInputHost,
             persistence: storyPersistence?.port,
             // A story row's `Log` node, and a story script's `ctx.devtools`, write to the stream a
             // Surface blueprint's host API already writes to - so one Output panel carries both, and
@@ -4818,6 +4891,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             (liveGame.game as { preference?: PreferenceStoreLike }).preference,
             currentBundleRef.current.preferences,
         );
+        storyInputHost.reset();
         liveGame.newGame();
         // A fresh playthrough starts the stopwatch from nothing. A load overwrites this moments
         // later with the reading it inherited; nothing else in the file resets it.
@@ -5866,6 +5940,16 @@ export function GameApp(props: GameAppProps): ReactNode {
     );
     const drawsOwnNvlPage = useMemo(() => projectDrawsNvlPage(bundle.ui.uidoc), [bundle.ui.uidoc]);
 
+    // The element the game draws into, for the key and pad listeners below to find the controls
+    // navigation moves between. Read per press: the root is set after this effect first runs.
+    const gameRootRef = useRef<HTMLDivElement | null>(null);
+    // The project's actions, and the navigation actions at their defaults wherever the project has
+    // not rebound them (`resolveRuntimeInputVocabulary`).
+    const runtimeVocabulary = useMemo(
+        () => resolveRuntimeInputVocabulary(bundle.ui.uidoc.actions),
+        [bundle.ui.uidoc.actions],
+    );
+
     useEffect(() => {
         const scope = resolveKeyboardDispatchScope({
             gameReady: Boolean(host.ready && core && globalHostAdapterBundle),
@@ -5882,7 +5966,9 @@ export function GameApp(props: GameAppProps): ReactNode {
         const dispatch = {
             blueprintDocument: bundle.ui.localBlueprints,
             persistentVariables: bundle.ui.persistentVariables,
-            vocabulary: bundle.ui.uidoc.actions,
+            vocabulary: runtimeVocabulary,
+            readGameRoot: () => gameRootRef.current,
+            isEntrySurface: (surfaceId: string) => isEntrySurface(bundle.ui.uidoc, surfaceId),
             core,
             globalHost: globalHostAdapterBundle,
             // An entry when one owns the keyboard; otherwise the stage, when the story is what the
@@ -5906,15 +5992,48 @@ export function GameApp(props: GameAppProps): ReactNode {
                         advance: nextInGame,
                     }),
                     dialogueAdvance: dialogueAdvances,
+                    // A Confirm nothing on the stage answered reads on, as a click on the stage does -
+                    // so a project that never bound its dialogue box to a key or a pad is still
+                    // playable with one (`navigationDefaults`).
+                    storyAdvance: {
+                        actionIds: dialogueAdvances.actionIds(dialogueAdvanceActionIds),
+                        advance: nextInGame,
+                    },
                 };
             },
             onError: (err: unknown) => host.log("error", normalizeError(err)),
         };
         const stopKeys = listenForGameKeys(window, dispatch);
         const stopPads = listenForGamepads(dispatch);
+        // What the buttons do right now, for any input hint bar on screen - read by the rules the
+        // presses above are routed by (`inputHints`).
+        const stopHints = provideInputHints(() => {
+            const gameRoot = gameRootRef.current;
+            if (!gameRoot) {
+                return null;
+            }
+            const owner = dispatch.readKeyboardOwner();
+            const device = readCurrentInputDevice();
+            const surfaces = !owner ? [] : "stage" in owner ? owner.stage.map(target => target.surface) : [owner.surface];
+            const answered = [...new Set(surfaces.flatMap(surface => (surface.actions ?? []).map(entry => entry.actionId)))];
+            return {
+                device,
+                controller: detectUIInputHintControllerFamily(readGamepadSnapshot().controllerId),
+                hints: resolveInputHints({
+                    device: device === "gamepad" ? "gamepad" : "key",
+                    vocabulary: runtimeVocabulary,
+                    lane: !owner ? null : "stage" in owner ? "stage" : "page",
+                    answered,
+                    navigation: describeNavigationState(gameRoot),
+                    canGoBack: ownerCanGoBack(owner, dispatch.isEntrySurface),
+                    storyAdvances: Boolean(owner && "stage" in owner && owner.storyAdvance),
+                }),
+            };
+        });
         return () => {
             stopKeys();
             stopPads();
+            stopHints();
         };
     }, [
         bundle,
@@ -5927,6 +6046,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         isNvlModeInGame,
         isStoryOnScreen,
         nextInGame,
+        runtimeVocabulary,
         stageKeyboardSurfaces,
     ]);
 
@@ -5972,6 +6092,36 @@ export function GameApp(props: GameAppProps): ReactNode {
      * root exists, which is not on the first render.
      */
     const [gameRoot, setGameRoot] = useState<HTMLDivElement | null>(null);
+    useLayoutEffect(() => {
+        gameRootRef.current = gameRoot;
+    }, [gameRoot]);
+    // The pointer resting on a control is where the next arrow starts, and pointing hides the ring
+    // the keys drew (`focusNavigation`).
+    const notePointerMoveForNavigation = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+        notePointerOverGame(event.currentTarget, event);
+    }, []);
+    const notePointerDownForNavigation = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+        notePointerPressOnGame(event.currentTarget);
+    }, []);
+    // A focused control is drawn with its own hover look when it has one, the ring otherwise.
+    const noteFocusForNavigation = useCallback((event: ReactFocusEvent<HTMLDivElement>) => {
+        noteFocusInGame(event.target);
+    }, []);
+    // While the player moves by keys or a pad, a mouse resting on a control does not draw it hovered
+    // as well: one control is selected at a time (`setPointerHoverSuppressed`).
+    useEffect(() => {
+        if (!gameRoot || typeof MutationObserver === "undefined") {
+            return undefined;
+        }
+        const sync = () => widgetRuntimeStore.setPointerHoverSuppressed(gameRoot.getAttribute(NAV_MODALITY_ATTRIBUTE) === "keys");
+        sync();
+        const observer = new MutationObserver(sync);
+        observer.observe(gameRoot, { attributes: true, attributeFilter: [NAV_MODALITY_ATTRIBUTE] });
+        return () => {
+            observer.disconnect();
+            widgetRuntimeStore.setPointerHoverSuppressed(false);
+        };
+    }, [gameRoot, widgetRuntimeStore]);
     const offerPointerInputToGlobal = useCallback((event: Event) => {
         if (!gameRoot || !globalBlueprintDispatchRef.current) {
             return;
@@ -6038,7 +6188,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             // `skip` is the author's permission to skip at all, and `isStoryOnScreen` is what keeps
             // a held key on a title screen - or a mode left on under a settings screen - from
             // advancing the story behind it.
-            canSkip: () => isStoryOnScreen() && readPreference("skip") !== false,
+            // A passage a story row has locked is not the player's to skip either.
+            canSkip: () => isStoryOnScreen() && readPreference("skip") !== false && !storyInputHost.isAdvanceLocked(),
             isBlocked: () => {
                 // A session that went away mid-hold ends the run rather than ticking into nothing.
                 if (!nlrLiveGameRef.current?.getGameState()) {
@@ -6062,6 +6213,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 }
             },
         });
+        skipControllerRef.current = controller;
         const onKeyDown = (event: KeyboardEvent) => controller.handleKeyDown(event);
         const onKeyUp = (event: KeyboardEvent) => controller.handleKeyUp(event);
         // A window that loses focus mid-hold never delivers the keyup, and the run would go on
@@ -6079,12 +6231,15 @@ export function GameApp(props: GameAppProps): ReactNode {
         window.addEventListener("blur", onBlur);
         return () => {
             controller.stop();
+            if (skipControllerRef.current === controller) {
+                skipControllerRef.current = null;
+            }
             unsubscribePreferences();
             window.removeEventListener("keydown", onKeyDown);
             window.removeEventListener("keyup", onKeyUp);
             window.removeEventListener("blur", onBlur);
         };
-    }, [isStoryOnScreen, nlrSession, subscribeGamePreferences]);
+    }, [isStoryOnScreen, nlrSession, storyInputHost, subscribeGamePreferences]);
 
     /**
      * Keep the display awake while the story advances on its own.
@@ -6673,6 +6828,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                 // The keyboard focus is the keyboard's: a click on a control answers the click and
                 // leaves the next key to the game, see `pointerKeyboardFocus`.
                 onMouseDownCapture={keepPointerPressOffKeyboardFocus}
+                onPointerMoveCapture={notePointerMoveForNavigation}
+                onPointerDownCapture={notePointerDownForNavigation}
+                onFocusCapture={noteFocusForNavigation}
                 onClick={offerSyntheticPointerInputToGlobal}
                 onDoubleClick={offerSyntheticPointerInputToGlobal}
                 onAuxClick={offerSyntheticPointerInputToGlobal}

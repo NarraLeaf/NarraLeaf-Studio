@@ -262,6 +262,14 @@ export function BackgroundImageDialog() {
                     onToggle={on => write("sidebarFill", on)}
                     onOpacity={value => write("sidebarOpacity", value)}
                 />
+                <PlateRow
+                    label={t("workspace.shell.background.framePlate")}
+                    opacityLabel={t("workspace.shell.background.framePlateOpacity")}
+                    on={current.frameFill}
+                    opacity={current.frameOpacity}
+                    onToggle={on => write("frameFill", on)}
+                    onOpacity={value => write("frameOpacity", value)}
+                />
             </div>
         </Modal>
     );
