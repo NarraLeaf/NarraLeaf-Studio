@@ -23,6 +23,8 @@ export function navigationActionName(intent: UINavigationIntent, t: TranslateFn)
             return t("uiEditor.inputActions.navigation.confirm");
         case "cancel":
             return t("uiEditor.inputActions.navigation.cancel");
+        case "menu":
+            return t("uiEditor.inputActions.navigation.menu");
     }
 }
 

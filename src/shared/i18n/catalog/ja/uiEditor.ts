@@ -118,6 +118,7 @@ export const uiEditor = {
             previous: "前のコントロール",
             confirm: "決定",
             cancel: "キャンセル",
+            menu: "ステージのコントロール",
         },
         resetBindings: "既定の割り当てに戻す",
         noBindings: "割り当てなし",

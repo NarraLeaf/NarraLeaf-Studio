@@ -304,9 +304,9 @@ export function StageSlotSurfaceBody(props: {
     /** Display-only slot: no widget inside takes pointer events (notification toasts). */
     passive?: boolean;
     /**
-     * The keys and the pad move between its controls while the story is on screen - the choice
-     * menu's. Every other slot is reached by pointing, or not at all: the quick menu during dialogue
-     * is not where a D-pad press should land.
+     * The keys and the pad move between its controls as soon as it is on screen - the choice menu's.
+     * Every other slot's controls are reached only once the player steps into them on purpose: the
+     * quick menu during dialogue is not where a D-pad press should land (`toggleStageControls`).
      */
     navigable?: boolean;
 }) {
@@ -433,7 +433,7 @@ export function StageSlotSurfaceBody(props: {
                     passive={passive || covered || !pressable}
                     concealed={concealed}
                     keyboardInteractive={hearsKeys}
-                    stageNavigationScope={navigable && hearsKeys}
+                    stageNavigationScope={!hearsKeys || passive ? undefined : navigable ? "choice" : "controls"}
                     // A Game UI slot has no page animation of its own - it appears when the scene
                     // says so - but the widgets on it can still arrive and leave on their own terms.
                     elementAnimations

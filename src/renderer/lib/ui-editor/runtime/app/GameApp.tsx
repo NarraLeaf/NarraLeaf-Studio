@@ -5978,6 +5978,13 @@ export function GameApp(props: GameAppProps): ReactNode {
                         advance: nextInGame,
                     }),
                     dialogueAdvance: dialogueAdvances,
+                    // A Confirm nothing on the stage answered reads on, as a click on the stage does -
+                    // so a project that never bound its dialogue box to a key or a pad is still
+                    // playable with one (`navigationDefaults`).
+                    storyAdvance: {
+                        actionIds: dialogueAdvances.actionIds(dialogueAdvanceActionIds),
+                        advance: nextInGame,
+                    },
                 };
             },
             onError: (err: unknown) => host.log("error", normalizeError(err)),

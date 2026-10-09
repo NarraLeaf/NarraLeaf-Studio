@@ -134,6 +134,7 @@ export const uiEditor = {
             previous: "Previous control",
             confirm: "Confirm",
             cancel: "Cancel",
+            menu: "Stage controls",
         },
         resetBindings: "Restore default bindings",
         noBindings: "No bindings",

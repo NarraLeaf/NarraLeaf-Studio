@@ -181,11 +181,12 @@ export type GameSurfaceRendererProps = {
      */
     holdsKeyboardFocus?: boolean;
     /**
-     * A stage surface the pad and the arrows can move on while the story is on screen - the choice
-     * menu (see `focusNavigation`). A surface that holds the keyboard focus is a navigation scope
-     * without saying so.
+     * How the pad and the arrows reach this stage surface while the story is on screen (see
+     * `focusNavigation`): `choice` - the choice menu, moved on as soon as it appears - or `controls`
+     * - the quick menu and the like, reached only once the player steps into them. A surface that
+     * holds the keyboard focus is a navigation scope without saying so.
      */
-    stageNavigationScope?: boolean;
+    stageNavigationScope?: "choice" | "controls";
 };
 
 export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
@@ -213,7 +214,7 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         elementAnimations = false,
         reducedMotion = false,
         holdsKeyboardFocus,
-        stageNavigationScope = false,
+        stageNavigationScope,
     } = props;
     // Kept as values, not write-only tick setters: the element tree is memoised on its inputs, and
     // "a store I subscribed to fired" is an input that does not show up in any prop.
@@ -593,13 +594,15 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
     // on keys or a pad still gets its first option to start from when it appears.
     useEffect(() => {
         const shell = shellRef.current;
-        if (!stageNavigationScope || !shell || !hasRootElement || passive || concealed === true) {
+        if (stageNavigationScope !== "choice" || !shell || !hasRootElement || passive || concealed === true) {
             return undefined;
         }
         return scheduleNavigationEntry(shell, readCurrentInputDevice);
     }, [concealed, hasRootElement, passive, stageNavigationScope]);
 
-    const navigationScope = holdsKeyboardFocus === true ? "owner" : stageNavigationScope ? "stage" : undefined;
+    const navigationScope = holdsKeyboardFocus === true
+        ? "owner"
+        : stageNavigationScope === "choice" ? "stage" : stageNavigationScope;
     const navigationAttributes = useMemo(
         () => navigationScope ? surfaceNavigationAttributes(readUISurfaceNavigation(surface)) : {},
         [navigationScope, surface],

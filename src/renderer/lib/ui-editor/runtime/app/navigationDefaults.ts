@@ -26,8 +26,10 @@ import { readUINavigationActionIntent, type UINavigationIntent } from "@shared/t
 import { resolveSurfaceInputActionHits, type UIInputSignal } from "@/lib/ui-editor/runtime/input/surfaceInputActions";
 import {
     confirmNavigationFocus,
+    leaveStageControls,
     moveNavigationFocus,
     stepNavigationFocus,
+    toggleStageControls,
 } from "@/lib/ui-editor/runtime/navigation/focusNavigation";
 import type { AmbientSurfaceTarget } from "./ambientSurfaceEvents";
 import type { KeyboardOwner } from "./keyboardOwner";
@@ -111,9 +113,13 @@ export function runNavigationDefaults(input: {
                 handled = stepNavigationFocus(gameRoot, intent === "next" ? 1 : -1) || handled;
                 break;
             case "cancel": {
-                // Back out of the page or layer that holds the keys. The stage has nothing to back
-                // out of: a story on screen is where Back ends.
-                if (input.repeat || "stage" in owner) {
+                // Back out of the page or layer that holds the keys. On the stage there is only the
+                // stage's controls to back out of: a story on screen is where Back ends.
+                if (input.repeat) {
+                    break;
+                }
+                if ("stage" in owner) {
+                    handled = leaveStageControls(gameRoot) || handled;
                     break;
                 }
                 const navigation = owner.host.hostAdapter.blueprintRuntime?.hostApi?.navigation;
@@ -123,8 +129,25 @@ export function runNavigationDefaults(input: {
                 }
                 break;
             }
-            case "confirm":
-                // Claimed before the press's actions ran, or not at all: see `claimNavigationConfirm`.
+            case "confirm": {
+                // A focused control claimed it before the press's actions ran (see
+                // `claimNavigationConfirm`). What is left is the stage with nothing focused: the
+                // press reads the story on, as a click on the stage does - unless one of the
+                // actions it raised is already known to.
+                const story = "stage" in owner ? owner.storyAdvance : null;
+                if (!story || input.repeat || input.actionIds.some(actionId => story.actionIds.has(actionId))) {
+                    break;
+                }
+                void Promise.resolve()
+                    .then(() => story.advance())
+                    .catch(() => undefined);
+                handled = true;
+                break;
+            }
+            case "menu":
+                if (!input.repeat && "stage" in owner) {
+                    handled = toggleStageControls(gameRoot) || handled;
+                }
                 break;
         }
     }

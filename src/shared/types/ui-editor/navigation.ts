@@ -174,12 +174,15 @@ export function readUISurfaceNavigation(surface: Pick<UISurface, "settings"> | n
 // === The actions that move the focus ====================================================
 
 /**
- * What the player can ask navigation to do. Each is an input action with a reserved id, so the
+ * What the player can ask navigation to do. On the stage, with nothing focused, Confirm also reads
+ * the story on - the press a click on the stage is - and Menu steps into the stage's own controls.
+ *
+ * Each is an input action with a reserved id, so the
  * buttons that raise it are bindings an author can see and change, a surface can answer it with a
  * graph of its own, and the global blueprint can listen to it - the intent system the rest of the
  * game's input already goes through, rather than keys wired into the runtime.
  */
-export const UI_NAVIGATION_INTENTS = ["up", "down", "left", "right", "next", "previous", "confirm", "cancel"] as const;
+export const UI_NAVIGATION_INTENTS = ["up", "down", "left", "right", "next", "previous", "confirm", "cancel", "menu"] as const;
 
 export type UINavigationIntent = (typeof UI_NAVIGATION_INTENTS)[number];
 
@@ -219,6 +222,9 @@ const UI_NAVIGATION_DEFAULT_BINDINGS: Readonly<Record<UINavigationIntent, readon
     previous: [{ kind: "key", key: "Shift+Tab" }],
     confirm: [{ kind: "key", key: "Enter" }, { kind: "key", key: "Space" }, { kind: "gamepad", button: "A" }],
     cancel: [{ kind: "key", key: "Escape" }, { kind: "gamepad", button: "B" }],
+    // Into the controls on the stage and back out - the quick menu during dialogue, which the D-pad
+    // does not wander onto by itself. A pad's alone: a keyboard player has a mouse to reach it with.
+    menu: [{ kind: "gamepad", button: "Y" }],
 };
 
 export function defaultUINavigationBindings(intent: UINavigationIntent): UIInputBinding[] {

@@ -46,7 +46,10 @@ import {
 
 // === What the DOM says ====================================================================
 
-/** On a surface's shell: `owner` while it owns the keyboard, `stage` on a stage menu the pad can reach. */
+/**
+ * On a surface's shell: `owner` while it owns the keyboard, `stage` on the choice menu, `controls` on
+ * the stage's other surfaces - reachable only once the player steps into them (`toggleStageControls`).
+ */
 export const NAV_SCOPE_ATTRIBUTE = "data-ui-nav-scope";
 /** On a surface's shell: the element the focus starts on. */
 export const NAV_DEFAULT_ATTRIBUTE = "data-ui-nav-default";
@@ -183,6 +186,8 @@ type GameNavigationState = {
      * it is drawn with is a new element. Going back lands where the player left.
      */
     lastFocus: Map<string, { elementId: string; row: string | null }>;
+    /** Whether the player has stepped into the stage's controls (`toggleStageControls`). */
+    stageControls: boolean;
 };
 
 const gameStates = new WeakMap<Element, GameNavigationState>();
@@ -190,7 +195,7 @@ const gameStates = new WeakMap<Element, GameNavigationState>();
 function stateOf(gameRoot: Element): GameNavigationState {
     let state = gameStates.get(gameRoot);
     if (!state) {
-        state = { pointerTarget: null, regionMemory: new WeakMap(), lastPointer: null, lastFocus: new Map() };
+        state = { pointerTarget: null, regionMemory: new WeakMap(), lastPointer: null, lastFocus: new Map(), stageControls: false };
         gameStates.set(gameRoot, state);
     }
     return state;
@@ -220,7 +225,77 @@ export function resolveNavigationScope(gameRoot: Element): HTMLElement | null {
             .filter(shell => shell.closest("[inert]") === null);
         return shells[shells.length - 1] ?? null;
     };
-    return pick("owner") ?? pick("stage");
+    const owner = pick("owner");
+    const state = stateOf(gameRoot);
+    if (owner) {
+        // Something opened over the story took the keys; the story's controls are not where the
+        // player will be when it closes.
+        state.stageControls = false;
+        return owner;
+    }
+    const choice = pick("stage");
+    if (choice) {
+        state.stageControls = false;
+        return choice;
+    }
+    // The controls on the stage - the quick menu, the dialogue box's own buttons - only while the
+    // player has asked for them (`toggleStageControls`). Several surfaces at once, so the scope is
+    // the game root and the targets are the ones inside a `controls` shell.
+    return state.stageControls && gameRoot instanceof HTMLElement ? gameRoot : null;
+}
+
+/** Whether `scope` is the stage's controls, which are spread over several surfaces. */
+function isStageControlsScope(scope: HTMLElement): boolean {
+    return scope.hasAttribute(GAME_ROOT_ATTRIBUTE);
+}
+
+/** The stage's controls, while the player has stepped into them. */
+function stageControlTargets(gameRoot: HTMLElement): HTMLElement[] {
+    return collectNavigationTargets(gameRoot);
+}
+
+/**
+ * Step into the controls on the stage - the quick menu, the buttons on the dialogue box - or back
+ * out of them. During dialogue the D-pad does not wander onto the quick menu: a press meant to read
+ * on must not land on Save. So the controls are a place the player goes to on purpose, and leaves
+ * the same way or with Cancel.
+ *
+ * Returns whether anything changed. Nothing does while a page or a choice holds the navigation, or
+ * when the stage has no controls to go to.
+ */
+export function toggleStageControls(gameRoot: Element): boolean {
+    if (!(gameRoot instanceof HTMLElement)) {
+        return false;
+    }
+    const state = stateOf(gameRoot);
+    if (state.stageControls) {
+        return leaveStageControls(gameRoot);
+    }
+    if (resolveNavigationScope(gameRoot)) {
+        return false;
+    }
+    state.stageControls = true;
+    const targets = stageControlTargets(gameRoot);
+    const entry = targets.length > 0 ? navigationEntryTarget(gameRoot, targets) : null;
+    if (!entry || !focusNavigationTarget(entry)) {
+        state.stageControls = false;
+        return false;
+    }
+    return true;
+}
+
+/** Leave the stage's controls, if the player is in them. The next press is the story's again. */
+export function leaveStageControls(gameRoot: Element): boolean {
+    const state = stateOf(gameRoot);
+    if (!state.stageControls) {
+        return false;
+    }
+    state.stageControls = false;
+    const active = gameRoot.ownerDocument.activeElement;
+    if (active instanceof HTMLElement && active.closest(`[${NAV_SCOPE_ATTRIBUTE}="controls"]`)) {
+        active.blur();
+    }
+    return true;
 }
 
 function isDrawn(element: HTMLElement): boolean {
@@ -235,6 +310,10 @@ function isDrawn(element: HTMLElement): boolean {
 /** Whether `element` may hold the focus as a navigation target inside `scope`. */
 export function isNavigationTarget(element: Element, scope: HTMLElement): element is HTMLElement {
     if (!(element instanceof HTMLElement) || !scope.contains(element) || !element.matches(NAVIGATION_TARGET_SELECTOR)) {
+        return false;
+    }
+    if (isStageControlsScope(scope)
+        && element.closest(`[${NAV_SCOPE_ATTRIBUTE}]`)?.getAttribute(NAV_SCOPE_ATTRIBUTE) !== "controls") {
         return false;
     }
     if (element.closest("[inert]") !== null || element.getAttribute("aria-disabled") === "true") {
@@ -677,4 +756,6 @@ export function notePointerOverGame(gameRoot: Element, event: Pick<PointerEvent,
 /** A press anywhere is pointing: the ring goes until the keys move the focus again. */
 export function notePointerPressOnGame(gameRoot: Element): void {
     setModality(gameRoot, "pointer");
+    // A player who reaches for the mouse has left the stage's controls by the keys.
+    stateOf(gameRoot).stageControls = false;
 }

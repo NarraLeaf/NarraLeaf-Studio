@@ -122,3 +122,85 @@ describe("Confirm", () => {
         expect(clicked).toHaveBeenCalledTimes(1);
     });
 });
+
+describe("on the stage", () => {
+    function mountStage() {
+        document.body.innerHTML = `
+            <div ${GAME_ROOT_ATTRIBUTE}>
+                <div class="ui-editor-surface" data-ui-surface-id="dialogue" data-ui-nav-scope="controls"></div>
+                <div class="ui-editor-surface" data-ui-surface-id="quick" data-ui-nav-scope="controls">
+                    <div id="auto" role="button" tabindex="0" data-box="0,500,60,20"></div>
+                    <div id="save" role="button" tabindex="0" data-box="70,500,60,20"></div>
+                </div>
+            </div>
+        `;
+        for (const element of Array.from(document.querySelectorAll<HTMLElement>("[data-box]"))) {
+            const [left, top, width, height] = element.dataset.box!.split(",").map(Number);
+            element.getBoundingClientRect = () => ({
+                left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}),
+            }) as DOMRect;
+        }
+        return {
+            root: document.querySelector(`[${GAME_ROOT_ATTRIBUTE}]`)!,
+            by: (id: string) => document.getElementById(id) as HTMLElement,
+        };
+    }
+    const DIALOGUE: UISurface = { ...PAGE, id: "dialogue" };
+    const ADVANCE: UIInputActionDef = {
+        id: "advance",
+        name: "Advance",
+        bindings: [{ kind: "key", key: "Space" }, { kind: "gamepad", button: "A" }],
+    };
+    function stageOwner(answers: UISurface["actions"], advance: () => void, knownToAdvance: string[] = []): KeyboardOwner {
+        return {
+            stage: [{ surface: { ...DIALOGUE, actions: answers }, hostAdapter: {} as never, runtimeScopeId: "dialogue" }],
+            storyAdvance: { actionIds: new Set(knownToAdvance), advance },
+        };
+    }
+
+    it("reads the story on for a Confirm nothing on the stage answers, as a click on it would", async () => {
+        const { root } = mountStage();
+        const advance = vi.fn();
+        // The project has an Advance bound to A that nothing answers - the press still reads on.
+        expect(runNavigationDefaults({ gameRoot: root, owner: stageOwner([], advance), ...press(pad("A"), { advance: ADVANCE }) })).toBe(true);
+        expect(runNavigationDefaults({ gameRoot: root, owner: stageOwner([], advance), ...press(key(" ")) })).toBe(true);
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(advance).toHaveBeenCalledTimes(2);
+    });
+
+    it("leaves reading on to the dialogue box that answers the press, or to an action known to read on", async () => {
+        const { root } = mountStage();
+        const advance = vi.fn();
+        const answered = stageOwner([{ actionId: ADVANCE.id }], advance);
+        expect(runNavigationDefaults({ gameRoot: root, owner: answered, ...press(pad("A"), { advance: ADVANCE }) })).toBe(false);
+        const known = stageOwner([], advance, [ADVANCE.id]);
+        expect(runNavigationDefaults({ gameRoot: root, owner: known, ...press(pad("A"), { advance: ADVANCE }) })).toBe(false);
+        await Promise.resolve();
+        expect(advance).not.toHaveBeenCalled();
+    });
+
+    it("steps into the stage's controls with Menu, presses one with Confirm, and leaves with Cancel", async () => {
+        const { root, by } = mountStage();
+        const advance = vi.fn();
+        const owner = stageOwner([], advance);
+        // The D-pad does not wander onto the quick menu during dialogue.
+        expect(runNavigationDefaults({ gameRoot: root, owner, ...press(pad("D-pad Right")) })).toBe(false);
+        expect(runNavigationDefaults({ gameRoot: root, owner, ...press(pad("Y")) })).toBe(true);
+        expect(document.activeElement).toBe(by("auto"));
+        runNavigationDefaults({ gameRoot: root, owner, ...press(pad("D-pad Right")) });
+        expect(document.activeElement).toBe(by("save"));
+        const clicked = vi.fn();
+        by("save").addEventListener("click", clicked);
+        expect(claimNavigationConfirm(root, press(pad("A")).actionIds)).toBe(true);
+        expect(clicked).toHaveBeenCalledTimes(1);
+        expect(runNavigationDefaults({ gameRoot: root, owner, ...press(pad("B")) })).toBe(true);
+        expect(document.activeElement).toBe(document.body);
+        // Out again, A reads the story on.
+        expect(claimNavigationConfirm(root, press(pad("A")).actionIds)).toBe(false);
+        runNavigationDefaults({ gameRoot: root, owner, ...press(pad("A")) });
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(advance).toHaveBeenCalledTimes(1);
+    });
+});

@@ -130,6 +130,12 @@ export type KeyboardOwner =
            * `createDialogueAdvanceRecord`). Absent where nothing learns from it.
            */
           dialogueAdvance?: DialogueAdvanceObserver | null;
+          /**
+           * Reading the story on, for a Confirm nothing on the stage answered (`navigationDefaults`):
+           * the click on the stage a mouse player would make. `actionIds` are the actions known to
+           * read on already - a press that raised one of them has done it, and must not do it twice.
+           */
+          storyAdvance?: { actionIds: ReadonlySet<string>; advance: () => Promise<void> | void } | null;
       };
 
 /** The surfaces an owner hears a key through: the entry's one, or every one on the stage. */

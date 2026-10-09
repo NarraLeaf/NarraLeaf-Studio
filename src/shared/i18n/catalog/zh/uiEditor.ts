@@ -115,6 +115,7 @@ export const uiEditor = {
             previous: "上一个控件",
             confirm: "确认",
             cancel: "取消",
+            menu: "舞台控件",
         },
         resetBindings: "恢复默认绑定",
         noBindings: "未绑定",
