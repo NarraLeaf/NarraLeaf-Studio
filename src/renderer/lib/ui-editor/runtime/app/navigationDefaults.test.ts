@@ -18,6 +18,15 @@ import {
 import { NAV_ENABLED_ATTRIBUTE } from "@/lib/ui-editor/runtime/navigation/focusNavigation";
 import { GAME_ROOT_ATTRIBUTE } from "@/lib/ui-editor/runtime/input/keyboardFocusHandover";
 import { resolveGlobalInputActionPayloads, type UIInputSignal } from "@/lib/ui-editor/runtime/input/surfaceInputActions";
+import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import {
+    BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
+    BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN,
+} from "@shared/types/blueprint/graph";
+import { GLOBAL_MAIN_OWNER_KEY, surfaceMainOwnerKey } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 import type { KeyboardOwner } from "./keyboardOwner";
 import { claimNavigationConfirm, runNavigationDefaults } from "./navigationDefaults";
 import type { HostAdapterBundle } from "./types";
@@ -146,6 +155,42 @@ describe("a page that answers the press itself", () => {
     });
 });
 
+/** Graphs for the page (`PAGE`) and the global blueprint, each a list of head nodes. */
+function graphs(heads: { page?: Record<string, unknown>[]; global?: Record<string, unknown>[] }): BlueprintDocument {
+    const blueprint = (id: string, nodes: Record<string, unknown>[] = []) => ({
+        id,
+        graphs: { events: { main: { graph: { nodes: Object.fromEntries(nodes.map((node, index) => [`n${index}`, node])) } } } },
+    });
+    return {
+        ownerRecords: {
+            [surfaceMainOwnerKey(PAGE.id)]: { blueprintId: "page-bp" },
+            [GLOBAL_MAIN_OWNER_KEY]: { blueprintId: "global-bp" },
+        },
+        blueprints: { "page-bp": blueprint("page-bp", heads.page), "global-bp": blueprint("global-bp", heads.global) },
+    } as unknown as BlueprintDocument;
+}
+
+const keyHead = (key: string) => ({ type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN, params: { [BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME]: key } });
+
+describe("a graph that names the key itself", () => {
+    it("keeps it from navigation, on the page or on the global blueprint, so one Escape closes one page", () => {
+        const { root } = mount();
+        const pageBack = vi.fn(async () => undefined);
+        for (const blueprintDocument of [graphs({ page: [keyHead("Escape")] }), graphs({ global: [keyHead("Escape")] })]) {
+            expect(runNavigationDefaults({ gameRoot: root, owner: pageOwner([], pageBack), blueprintDocument, ...press(key("Escape")) })).toBe(false);
+        }
+        expect(pageBack).not.toHaveBeenCalled();
+    });
+
+    it("leaves it to navigation when the graph hears every key, or names another one", () => {
+        const { root } = mount();
+        const pageBack = vi.fn(async () => undefined);
+        const blueprintDocument = graphs({ page: [{ type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN }, keyHead("F5")] });
+        expect(runNavigationDefaults({ gameRoot: root, owner: pageOwner([], pageBack), blueprintDocument, ...press(key("Escape")) })).toBe(true);
+        expect(pageBack).toHaveBeenCalledTimes(1);
+    });
+});
+
 describe("Confirm", () => {
     it("is a focused control's to take, and nobody's while nothing is focused", () => {
         const { root, by } = mount();
@@ -206,6 +251,19 @@ describe("on the stage", () => {
         await Promise.resolve();
         await Promise.resolve();
         expect(advance).toHaveBeenCalledTimes(2);
+    });
+
+    it("leaves reading on to the global blueprint when it answers another intent the press raised", async () => {
+        const { root } = mountStage();
+        const advance = vi.fn();
+        const blueprintDocument = graphs({
+            global: [{ type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION, params: { [BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID]: ADVANCE.id } }],
+        });
+        const pressed = press(pad("A"), { advance: ADVANCE });
+        expect(runNavigationDefaults({ gameRoot: root, owner: stageOwner([], advance), blueprintDocument, ...pressed })).toBe(false);
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(advance).not.toHaveBeenCalled();
     });
 
     it("leaves reading on to the dialogue box that answers the press, or to an action known to read on", async () => {

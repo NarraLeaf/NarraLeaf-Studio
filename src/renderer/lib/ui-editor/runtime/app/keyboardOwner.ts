@@ -330,6 +330,7 @@ export async function dispatchGameKey(
                 owner: input.readKeyboardOwner(),
                 isEntrySurface: input.isEntrySurface,
                 vocabulary: input.vocabulary,
+                blueprintDocument: input.blueprintDocument,
                 signal,
                 actionIds,
                 repeat: true,
@@ -374,6 +375,7 @@ export async function dispatchGameKey(
         owner,
         isEntrySurface: input.isEntrySurface,
         vocabulary: input.vocabulary,
+        blueprintDocument: input.blueprintDocument,
         signal: { kind: "key", event: payload as BlueprintKeyboardEventLike },
         actionIds: raisedActions.map(action => action.actionId),
     })) {

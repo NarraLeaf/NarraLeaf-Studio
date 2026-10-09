@@ -645,6 +645,26 @@ export function collectGlobalEventHeadNodeIdsForDispatch(
         .sort();
 }
 
+/**
+ * Whether any of these nodes is a head that names this press by its key or button - `On Key Down`
+ * set to Escape, `Gamepad Button Down` set to B - rather than hearing every press, as `Any Key Down`
+ * does.
+ *
+ * What a graph that names a key says is "this key means something here", and a press it names is
+ * one the focus system leaves to it (`navigationDefaults`). A head that hears every key says nothing
+ * about this one.
+ */
+export function namesInputPress(
+    nodes: Record<string, { type: string; params?: Record<string, unknown> }> | undefined,
+    eventName: string,
+    eventPayload: Record<string, unknown>,
+): boolean {
+    const allowed = new Set([...resolveSurfaceEventHeadTypes(eventName), ...resolveGlobalEventHeadTypes(eventName)]);
+    return Object.values(nodes ?? {}).some(node => allowed.has(node.type)
+        && (isFilteredKeyboardEventHeadType(node.type) || isFilteredGamepadEventHeadType(node.type))
+        && matchesDispatchPayload(node, eventPayload));
+}
+
 /** True if this node type is the Story Action Blueprint "On Call" entry head. */
 export function isStoryActionCallHeadType(nodeType: string): boolean {
     return nodeType === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL;

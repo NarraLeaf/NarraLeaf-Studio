@@ -9,10 +9,15 @@
  * does: moves the focus, steps it along like Tab, or goes back. A project whose intents fill no slot
  * has no navigation, and every press is the graphs' alone.
  *
- * "Answer nothing" is every action the press raised, not only the navigation ones. A page that binds
- * its own action to the Right arrow means the Right arrow on that page; navigation stepping in as
- * well would answer one key twice. The global blueprint does not take a press from navigation: it
- * listens to everything, as its key heads always have, and answers on top of whatever is on screen.
+ * "Answer nothing" is every action the press raised, not only the navigation ones, and every graph
+ * that names the key or button itself. A page that binds its own action to the Right arrow, or has an
+ * `On Key Down` set to Escape, means that key on that page; navigation stepping in as well would
+ * answer one key twice - two pages closing for one Escape. The same goes for a global graph that
+ * names the key: it is the game's own meaning for that key, wherever the player is. A global graph
+ * that hears an intent is different - it listens to everything, as it always has, and answers on
+ * top of whatever is on screen - except that the stage's Confirm does not read the story on when the
+ * global blueprint answers another intent the press raised, which is how a project that reads on from
+ * its global blueprint already does it.
  *
  * Confirm is the exception, and comes first. A control the focus is on takes Confirm for itself, the
  * way a focused button takes Enter (`keyInputClaimedByControl`): A on a focused Start button starts
@@ -22,8 +27,13 @@
  * Comments in English per project convention.
  */
 
+import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIInputActionDef } from "@shared/types/ui-editor/inputAction";
-import { raisedUINavigationSlots } from "@shared/types/ui-editor/navigation";
+import {
+    blueprintNamesInputPress,
+    globalBlueprintAnswersInputAction,
+} from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
+import { raisedUINavigationSlots, resolveUINavigationSlots } from "@shared/types/ui-editor/navigation";
 import { resolveSurfaceInputActionHits, type UIInputSignal } from "@/lib/ui-editor/runtime/input/surfaceInputActions";
 import {
     confirmNavigationFocus,
@@ -72,6 +82,20 @@ export function ownerCanGoBack(owner: KeyboardOwner | null, isEntrySurface: ((su
  * Returns whether navigation did something, so a key it used can keep its browser default from also
  * running (Tab moving the focus a second time, an arrow scrolling).
  */
+/** Whether a graph on what holds the keys, or on the global blueprint, names this key or button. */
+function pressNamedByGraphs(blueprintDocument: BlueprintDocument, owner: KeyboardOwner, signal: UIInputSignal): boolean {
+    const press = signal.kind === "key"
+        ? { eventName: "keyDown", eventPayload: signal.event as Record<string, unknown> }
+        : signal.kind === "gamepad"
+            ? { eventName: "gamepadButtonDown", eventPayload: { button: signal.button } as Record<string, unknown> }
+            : null;
+    if (!press) {
+        return false;
+    }
+    const surfaceIds: (string | null)[] = [null, ...ownerSurfaces(owner).map(({ surface }) => surface.id)];
+    return surfaceIds.some(surfaceId => blueprintNamesInputPress({ blueprintDocument, surfaceId, ...press }));
+}
+
 export function runNavigationDefaults(input: {
     gameRoot: Element | null;
     owner: KeyboardOwner | null;
@@ -82,6 +106,11 @@ export function runNavigationDefaults(input: {
     actionIds: readonly string[];
     /** A key held down and repeating: only the moves repeat, as an arrow held in a list does. */
     repeat?: boolean;
+    /**
+     * The game's graphs, to tell whether one of them names this key or button (see the module
+     * comment). Absent in a test of the routing alone, which then has no graphs to defer to.
+     */
+    blueprintDocument?: BlueprintDocument;
 }): boolean {
     const { gameRoot, owner } = input;
     if (!gameRoot || !owner) {
@@ -96,7 +125,7 @@ export function runNavigationDefaults(input: {
         enablements: surface.actions,
         signal: input.signal,
     }).length > 0);
-    if (answered) {
+    if (answered || (input.blueprintDocument && pressNamedByGraphs(input.blueprintDocument, owner, input.signal))) {
         return false;
     }
     let handled = false;
@@ -139,6 +168,12 @@ export function runNavigationDefaults(input: {
                 // actions it raised is already known to.
                 const story = "stage" in owner ? owner.storyAdvance : null;
                 if (!story || input.repeat || input.actionIds.some(actionId => story.actionIds.has(actionId))) {
+                    break;
+                }
+                const blueprintDocument = input.blueprintDocument;
+                const confirmActionId = resolveUINavigationSlots(input.vocabulary).confirm;
+                if (blueprintDocument && input.actionIds.some(actionId =>
+                    actionId !== confirmActionId && globalBlueprintAnswersInputAction(blueprintDocument, actionId))) {
                     break;
                 }
                 void Promise.resolve()
