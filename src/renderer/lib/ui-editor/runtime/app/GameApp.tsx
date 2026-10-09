@@ -232,7 +232,6 @@ import { provideInputHints, resolveInputHints } from "@/lib/ui-editor/runtime/in
 import { readCurrentInputDevice } from "@/lib/ui-editor/runtime/input/inputDeviceState";
 import { readGamepadSnapshot } from "@/lib/ui-editor/runtime/input/gamepadState";
 import { detectUIInputHintControllerFamily } from "@shared/types/ui-editor/inputHints";
-import { isEntrySurface } from "@shared/types/ui-editor/entrySurface";
 import { hasUINavigationSlots } from "@shared/types/ui-editor/navigation";
 import { GameNavigationContext } from "@/lib/ui-editor/runtime/navigation/gameNavigationContext";
 import {
@@ -251,7 +250,7 @@ import {
     type KeyboardOwner,
 } from "./keyboardOwner";
 import { listenForGamepads } from "./gamepadInput";
-import { ownerCanGoBack } from "./navigationDefaults";
+import { ownerCanGoBack, type NavigationBack } from "./navigationDefaults";
 import {
     createDialogueAdvanceRecord,
     projectDrawsNvlPage,
@@ -1852,6 +1851,44 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
         return goBackPage();
     }, [goBackPage, layerStack]);
+
+    /**
+     * Back as the focus system's Back slot means it: a step back from what holds the keys, and nothing
+     * when there is no step to take (`navigationDefaults`).
+     *
+     * Narrower than `goBack` in two places. A modal layer on top holds the keys, and one that refuses
+     * dismissal is the end of it - Back does not fall through and close the page under the dialog the
+     * player was looking at. And a page is only left for one under it that is a different page: the
+     * page the stack started on is where Back ends, however the game came back to it - a Title button
+     * on a menu that opened the Title again rather than closing the menu leaves a stack of Title,
+     * Config, Title, and backing out of that Title into Config is not a step back anywhere a player
+     * recognises. The splash a game starts on replaces itself with the Title, so the Title is where
+     * the stack starts.
+     */
+    const navigationBack = useMemo<NavigationBack>(() => {
+        const topModalLayer = () => {
+            const layers = layerStack.getState();
+            const top = layers[layers.length - 1];
+            return top?.modal ? top : null;
+        };
+        return {
+            canGoBack: () => {
+                const layer = topModalLayer();
+                if (layer) {
+                    return layer.dismissible;
+                }
+                const stack = navigation.getState().navStack;
+                return stack.length > 1 && stack[stack.length - 1]!.surfaceId !== stack[0]!.surfaceId;
+            },
+            goBack: () => {
+                if (topModalLayer()) {
+                    layerStack.dismissTop();
+                    return;
+                }
+                void goBackPage().catch(() => undefined);
+            },
+        };
+    }, [goBackPage, layerStack, navigation]);
 
     /**
      * `Show Layer`. The owner is whichever surface asked, which is what makes the layer die with it.
@@ -5968,7 +6005,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             persistentVariables: bundle.ui.persistentVariables,
             vocabulary: runtimeVocabulary,
             readGameRoot: () => gameRootRef.current,
-            isEntrySurface: (surfaceId: string) => isEntrySurface(bundle.ui.uidoc, surfaceId),
+            back: navigationBack,
             core,
             globalHost: globalHostAdapterBundle,
             // An entry when one owns the keyboard; otherwise the stage, when the story is what the
@@ -6025,7 +6062,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     lane: !owner ? null : "stage" in owner ? "stage" : "page",
                     answered,
                     navigation: describeNavigationState(gameRoot),
-                    canGoBack: ownerCanGoBack(owner, dispatch.isEntrySurface),
+                    canGoBack: ownerCanGoBack(owner, dispatch.back),
                     storyAdvances: Boolean(owner && "stage" in owner && owner.storyAdvance),
                 }),
             };
@@ -6045,6 +6082,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         host,
         isNvlModeInGame,
         isStoryOnScreen,
+        navigationBack,
         nextInGame,
         runtimeVocabulary,
         stageKeyboardSurfaces,

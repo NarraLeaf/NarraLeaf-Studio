@@ -167,7 +167,7 @@ export async function dispatchGameGamepad(
             runNavigationDefaults({
                 gameRoot,
                 owner,
-                isEntrySurface: input.isEntrySurface,
+                back: input.back,
                 vocabulary: input.vocabulary,
                 blueprintDocument: input.blueprintDocument,
                 signal,
@@ -261,7 +261,7 @@ function createNavigationRepeat(input: GameGamepadDispatch, isHeld: (button: str
         runNavigationDefaults({
             gameRoot: input.readGameRoot?.() ?? null,
             owner: input.readKeyboardOwner(),
-            isEntrySurface: input.isEntrySurface,
+            back: input.back,
             vocabulary: input.vocabulary,
             blueprintDocument: input.blueprintDocument,
             signal,

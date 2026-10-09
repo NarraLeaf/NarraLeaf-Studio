@@ -61,12 +61,14 @@ function mount() {
     };
 }
 
-function pageOwner(actions: UISurface["actions"] = [], pageBack = vi.fn(async () => undefined)): KeyboardOwner {
-    const host = {
-        hostAdapter: { blueprintRuntime: { hostApi: { navigation: { pageBack } } } },
-        runtimeScopeId: "page:1",
-    } as unknown as HostAdapterBundle;
+function pageOwner(actions: UISurface["actions"] = []): KeyboardOwner {
+    const host = { hostAdapter: {}, runtimeScopeId: "page:1" } as unknown as HostAdapterBundle;
     return { surface: { ...PAGE, actions }, host };
+}
+
+/** Where Back goes, as the game answers it: `canGo` false is the page the stack started on. */
+function backTo(canGo = true) {
+    return { canGoBack: () => canGo, goBack: vi.fn() };
 }
 
 const GALLERY_NEXT: UIInputActionDef = { id: "galleryNext", name: "Next picture", bindings: [{ kind: "key", key: "ArrowDown" }] };
@@ -120,25 +122,20 @@ describe("a navigation press nothing on screen answers", () => {
         expect([...raisedUINavigationSlots(shiftTab.vocabulary, shiftTab.actionIds)]).toEqual(["previous"]);
     });
 
-    it("goes nowhere from the page the game starts on, however much the page stack holds under it", () => {
+    it("goes nowhere when the game says there is no step back - the page the stack started on, a dialog that will not close", () => {
         const { root } = mount();
-        const pageBack = vi.fn(async () => undefined);
-        const title = pageOwner([], pageBack);
-        expect(runNavigationDefaults({
-            gameRoot: root,
-            owner: title,
-            isEntrySurface: surfaceId => surfaceId === PAGE.id,
-            ...press(pad("B")),
-        })).toBe(false);
-        expect(pageBack).not.toHaveBeenCalled();
+        const back = backTo(false);
+        expect(runNavigationDefaults({ gameRoot: root, owner: pageOwner(), back, ...press(pad("B")) })).toBe(false);
+        expect(back.goBack).not.toHaveBeenCalled();
     });
 
     it("backs out of the page that holds the keys, and out of nothing on the stage", () => {
         const { root } = mount();
-        const pageBack = vi.fn(async () => undefined);
-        expect(runNavigationDefaults({ gameRoot: root, owner: pageOwner([], pageBack), ...press(pad("B")) })).toBe(true);
-        expect(pageBack).toHaveBeenCalledTimes(1);
-        expect(runNavigationDefaults({ gameRoot: root, owner: { stage: [] }, ...press(key("Escape")) })).toBe(false);
+        const back = backTo();
+        expect(runNavigationDefaults({ gameRoot: root, owner: pageOwner(), back, ...press(pad("B")) })).toBe(true);
+        expect(back.goBack).toHaveBeenCalledTimes(1);
+        expect(runNavigationDefaults({ gameRoot: root, owner: { stage: [] }, back, ...press(key("Escape")) })).toBe(false);
+        expect(back.goBack).toHaveBeenCalledTimes(1);
     });
 });
 
@@ -175,19 +172,19 @@ const keyHead = (key: string) => ({ type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOW
 describe("a graph that names the key itself", () => {
     it("keeps it from navigation, on the page or on the global blueprint, so one Escape closes one page", () => {
         const { root } = mount();
-        const pageBack = vi.fn(async () => undefined);
+        const back = backTo();
         for (const blueprintDocument of [graphs({ page: [keyHead("Escape")] }), graphs({ global: [keyHead("Escape")] })]) {
-            expect(runNavigationDefaults({ gameRoot: root, owner: pageOwner([], pageBack), blueprintDocument, ...press(key("Escape")) })).toBe(false);
+            expect(runNavigationDefaults({ gameRoot: root, owner: pageOwner(), back, blueprintDocument, ...press(key("Escape")) })).toBe(false);
         }
-        expect(pageBack).not.toHaveBeenCalled();
+        expect(back.goBack).not.toHaveBeenCalled();
     });
 
     it("leaves it to navigation when the graph hears every key, or names another one", () => {
         const { root } = mount();
-        const pageBack = vi.fn(async () => undefined);
+        const back = backTo();
         const blueprintDocument = graphs({ page: [{ type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN }, keyHead("F5")] });
-        expect(runNavigationDefaults({ gameRoot: root, owner: pageOwner([], pageBack), blueprintDocument, ...press(key("Escape")) })).toBe(true);
-        expect(pageBack).toHaveBeenCalledTimes(1);
+        expect(runNavigationDefaults({ gameRoot: root, owner: pageOwner(), back, blueprintDocument, ...press(key("Escape")) })).toBe(true);
+        expect(back.goBack).toHaveBeenCalledTimes(1);
     });
 });
 

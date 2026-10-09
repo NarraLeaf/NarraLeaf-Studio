@@ -87,7 +87,7 @@ import { isDialogueSlotSurface, type DialogueAdvanceObserver, type EngineNvlKeys
 import { answerGlobalInputActions, type GlobalBlueprintDispatch } from "./globalInputActions";
 import { isTextEntryTarget } from "./isTextEntryTarget";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
-import { claimNavigationConfirm, runNavigationDefaults } from "./navigationDefaults";
+import { claimNavigationConfirm, runNavigationDefaults, type NavigationBack } from "./navigationDefaults";
 import type { HostAdapterBundle } from "./types";
 
 /** One drawn entry that might own the keyboard. */
@@ -208,8 +208,8 @@ export type GameKeyboardDispatch = GlobalBlueprintDispatch & {
      * Absent where nothing is drawn - a test of the routing alone - and navigation then does nothing.
      */
     readGameRoot?: () => Element | null;
-    /** Whether a surface is the one the game starts on, where navigation's Back goes nowhere. */
-    isEntrySurface?: (surfaceId: string) => boolean;
+    /** Where navigation's Back goes from a page or a layer (`NavigationBack`). Absent, nowhere. */
+    back?: NavigationBack;
     onError: (error: unknown) => void;
 };
 
@@ -328,7 +328,7 @@ export async function dispatchGameKey(
             if (runNavigationDefaults({
                 gameRoot: navigationRoot,
                 owner: input.readKeyboardOwner(),
-                isEntrySurface: input.isEntrySurface,
+                back: input.back,
                 vocabulary: input.vocabulary,
                 blueprintDocument: input.blueprintDocument,
                 signal,
@@ -373,7 +373,7 @@ export async function dispatchGameKey(
     if (raisesActions && runNavigationDefaults({
         gameRoot: navigationRoot,
         owner,
-        isEntrySurface: input.isEntrySurface,
+        back: input.back,
         vocabulary: input.vocabulary,
         blueprintDocument: input.blueprintDocument,
         signal: { kind: "key", event: payload as BlueprintKeyboardEventLike },

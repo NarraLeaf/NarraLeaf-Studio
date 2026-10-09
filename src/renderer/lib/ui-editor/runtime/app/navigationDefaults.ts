@@ -68,13 +68,21 @@ export function claimNavigationConfirm(
 }
 
 /**
- * Whether Back has somewhere to go from what holds the keys: a page or layer, unless it is the page
- * the game starts on. The page stack can hold more under the title - a Title button on a menu that
- * opened the title again rather than closing the menu - but backing out of the title into that menu
- * is not a step back anywhere a player recognises. The hint bar asks the same question.
+ * Where the Back slot goes from a page or a layer, as the game that holds the stacks answers it: a
+ * modal layer that may be dismissed closes, a page goes back to a different page under it, and
+ * anything else is where Back ends (see `GameApp`'s `navigationBack`).
  */
-export function ownerCanGoBack(owner: KeyboardOwner | null, isEntrySurface: ((surfaceId: string) => boolean) | undefined): boolean {
-    return Boolean(owner && !("stage" in owner) && !isEntrySurface?.(owner.surface.id));
+export type NavigationBack = {
+    canGoBack: () => boolean;
+    goBack: () => void;
+};
+
+/**
+ * Whether Back has somewhere to go from what holds the keys. Never from the stage, where the story
+ * on screen is where Back ends. The hint bar asks the same question.
+ */
+export function ownerCanGoBack(owner: KeyboardOwner | null, back: NavigationBack | undefined): boolean {
+    return Boolean(owner && !("stage" in owner) && back?.canGoBack());
 }
 
 /**
@@ -99,8 +107,8 @@ function pressNamedByGraphs(blueprintDocument: BlueprintDocument, owner: Keyboar
 export function runNavigationDefaults(input: {
     gameRoot: Element | null;
     owner: KeyboardOwner | null;
-    /** Whether a surface is the one the game starts on, where Back goes nowhere (`ownerCanGoBack`). */
-    isEntrySurface?: (surfaceId: string) => boolean;
+    /** Where Back goes from a page or a layer (`ownerCanGoBack`). Absent, it goes nowhere. */
+    back?: NavigationBack;
     vocabulary: Readonly<Record<string, UIInputActionDef>> | undefined;
     signal: UIInputSignal;
     actionIds: readonly string[];
@@ -151,14 +159,11 @@ export function runNavigationDefaults(input: {
                     handled = leaveStageControls(gameRoot) || handled;
                     break;
                 }
-                if (!ownerCanGoBack(owner, input.isEntrySurface)) {
+                if (!ownerCanGoBack(owner, input.back)) {
                     break;
                 }
-                const navigation = owner.host.hostAdapter.blueprintRuntime?.hostApi?.navigation;
-                if (navigation) {
-                    void navigation.pageBack().catch(() => undefined);
-                    handled = true;
-                }
+                input.back?.goBack();
+                handled = true;
                 break;
             }
             case "confirm": {
