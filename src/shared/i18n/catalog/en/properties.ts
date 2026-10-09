@@ -95,6 +95,8 @@ export const properties = {
         right: "Right",
         byLayout: "By layout",
         neighborsTip: "Where each direction goes when the focus leaves this element. By layout picks the nearest control in that direction.",
+        // Two targets that would read the same in one list: "Button 2". `{index}` is the position among those.
+        numbered: "{name} {index}",
     },
     // The sounds an element plays when it is pointed at and when it is clicked.
     interactionSound: {

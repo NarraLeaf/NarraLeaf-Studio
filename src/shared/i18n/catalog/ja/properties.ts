@@ -92,6 +92,7 @@ export const properties = {
         right: "右",
         byLayout: "レイアウト通り",
         neighborsTip: "フォーカスがこの要素を離れるときの各方向の移動先。レイアウト通りはその方向で最も近いコントロール",
+        numbered: "{name} {index}",
     },
     interactionSound: {
         title: "効果音",

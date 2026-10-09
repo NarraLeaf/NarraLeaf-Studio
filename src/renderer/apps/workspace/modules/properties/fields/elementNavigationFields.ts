@@ -5,7 +5,6 @@ import type {
     SelectOption,
     ToggleFieldDefinition,
 } from "@/apps/workspace/modules/properties/framework/types";
-import { widgetKindName } from "@/lib/ui-editor/blueprint-nodes/widgetKindName";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import type { Translator } from "@shared/i18n";
 import { isOperableWidgetType } from "@shared/types/ui-editor/inputAction";
@@ -18,40 +17,35 @@ import {
     type UIFocusability,
     type UINavigationDirection,
 } from "@shared/types/ui-editor/navigation";
+import { navigationTargetOptions } from "./navigationTargetOptions";
 
 type TranslateFn = Translator["t"];
 
 /** The value a direction's select shows for "wherever the layout says". */
 const BY_LAYOUT = "";
 
-function elementLabel(element: UIElement): string {
-    return element.name?.trim() || widgetKindName(element.type);
-}
-
-/** The elements an override may name: everything drawn on the same surface, but the element itself. */
-function neighborOptions(data: UIInspectorData, t: TranslateFn): SelectOption[] {
+/**
+ * The elements an override may name: what the focus can rest on in the same surface, but the element
+ * itself and the groups that hold it - moving into those is not moving to a neighbour.
+ */
+function neighborOptions(data: UIInspectorData, direction: UINavigationDirection, t: TranslateFn): SelectOption[] {
     const document: UIDocument = data.documentService.getDocument();
-    let root: UIElement | undefined = data.element;
-    while (root?.parentId && document.elements[root.parentId]) {
+    const exclude = new Set<string>([data.element.id]);
+    let root: UIElement = data.element;
+    while (root.parentId && document.elements[root.parentId] && !exclude.has(root.parentId)) {
         root = document.elements[root.parentId];
+        exclude.add(root.id);
     }
-    const options: SelectOption[] = [{ value: BY_LAYOUT, label: t("properties.navigation.byLayout") }];
-    const visit = (elementId: string, depth: number) => {
-        const element = document.elements[elementId];
-        if (!element) {
-            return;
-        }
-        if (depth > 0 && element.id !== data.element.id) {
-            options.push({ value: element.id, label: elementLabel(element) });
-        }
-        for (const childId of element.childrenIds) {
-            visit(childId, depth + 1);
-        }
-    };
-    if (root) {
-        visit(root.id, 0);
-    }
-    return options;
+    return [
+        { value: BY_LAYOUT, label: t("properties.navigation.byLayout") },
+        ...navigationTargetOptions({
+            document,
+            rootId: root.id,
+            t,
+            exclude,
+            current: readUIElementNavigation(data.element).neighbors?.[direction],
+        }),
+    ];
 }
 
 /** Write one change to the element's record, as one undo entry per field visited. */
@@ -163,7 +157,7 @@ export function createElementNavigationField(element: UIElement, t: TranslateFn)
             type: "select",
             label: directionLabel(direction, t),
             ...(direction === "up" ? { tip: t("properties.navigation.neighborsTip") } : {}),
-            options: data => neighborOptions(data, t),
+            options: data => neighborOptions(data, direction, t),
             getValue: data => readUIElementNavigation(data.element).neighbors?.[direction] ?? BY_LAYOUT,
             setValue: (data, value) => write(data, `neighbor.${direction}`, current => ({
                 ...current,

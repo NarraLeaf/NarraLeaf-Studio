@@ -22,7 +22,7 @@ import type {
     TextFieldDefinition,
     ToggleFieldDefinition,
 } from "../framework/types";
-import { widgetKindName } from "@/lib/ui-editor/blueprint-nodes/widgetKindName";
+import { navigationTargetOptions } from "../fields/navigationTargetOptions";
 import {
     normalizeUISurfaceNavigation,
     readUISurfaceNavigation,
@@ -93,24 +93,17 @@ function SurfacePageAnimationField({ data }: CustomFieldProps<SceneEditorContext
     return createElement(PageAnimationEditor, { settings, onChange: update, showChildTiming: true });
 }
 
-/** The elements on a surface, for its "initial focus" select, in outline order. */
+/** The elements a surface's focus may start on, for its select, in outline order. */
 function surfaceElementOptions(data: SceneEditorContext, t: TranslateFn): SelectOption[] {
-    const document = data.documentService.getDocument();
-    const options: SelectOption[] = [{ value: "", label: t("properties.scene.navigation.defaultFocusAuto") }];
-    const visit = (elementId: string, depth: number) => {
-        const element = document.elements[elementId];
-        if (!element) {
-            return;
-        }
-        if (depth > 0) {
-            options.push({ value: element.id, label: element.name?.trim() || widgetKindName(element.type) });
-        }
-        for (const childId of element.childrenIds) {
-            visit(childId, depth + 1);
-        }
-    };
-    visit(data.surface.rootElementId, 0);
-    return options;
+    return [
+        { value: "", label: t("properties.scene.navigation.defaultFocusAuto") },
+        ...navigationTargetOptions({
+            document: data.documentService.getDocument(),
+            rootId: data.surface.rootElementId,
+            t,
+            current: readUISurfaceNavigation(data.surface).defaultFocusElementId,
+        }),
+    ];
 }
 
 function updateSurfaceNavigation(

@@ -92,6 +92,7 @@ export const properties = {
         right: "右",
         byLayout: "按布局",
         neighborsTip: "焦点离开该元素时各方向的去处。按布局即该方向上最近的控件",
+        numbered: "{name} {index}",
     },
     interactionSound: {
         title: "音效",
