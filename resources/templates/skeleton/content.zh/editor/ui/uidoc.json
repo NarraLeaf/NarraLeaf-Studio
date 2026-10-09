@@ -49914,7 +49914,7 @@
       "bindings": [
         {
           "kind": "key",
-          "key": "ArrowUp"
+          "key": "Arrow Up"
         },
         {
           "kind": "gamepad",
@@ -49933,7 +49933,7 @@
       "bindings": [
         {
           "kind": "key",
-          "key": "ArrowDown"
+          "key": "Arrow Down"
         },
         {
           "kind": "gamepad",
@@ -49952,7 +49952,7 @@
       "bindings": [
         {
           "kind": "key",
-          "key": "ArrowLeft"
+          "key": "Arrow Left"
         },
         {
           "kind": "gamepad",
@@ -49971,7 +49971,7 @@
       "bindings": [
         {
           "kind": "key",
-          "key": "ArrowRight"
+          "key": "Arrow Right"
         },
         {
           "kind": "gamepad",

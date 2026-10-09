@@ -265,10 +265,10 @@ export function raisedUINavigationSlots(actions: SlotCarrier, actionIds: readonl
  * virtual buttons (`Left Stick Up`, ...), which is what lets it share the D-pad's rows.
  */
 export const UI_NAVIGATION_SLOT_PRESET_BINDINGS: Readonly<Record<UINavigationSlot, readonly UIInputBinding[]>> = {
-    up: [{ kind: "key", key: "ArrowUp" }, { kind: "gamepad", button: "D-pad Up" }, { kind: "gamepad", button: "Left Stick Up" }],
-    down: [{ kind: "key", key: "ArrowDown" }, { kind: "gamepad", button: "D-pad Down" }, { kind: "gamepad", button: "Left Stick Down" }],
-    left: [{ kind: "key", key: "ArrowLeft" }, { kind: "gamepad", button: "D-pad Left" }, { kind: "gamepad", button: "Left Stick Left" }],
-    right: [{ kind: "key", key: "ArrowRight" }, { kind: "gamepad", button: "D-pad Right" }, { kind: "gamepad", button: "Left Stick Right" }],
+    up: [{ kind: "key", key: "Arrow Up" }, { kind: "gamepad", button: "D-pad Up" }, { kind: "gamepad", button: "Left Stick Up" }],
+    down: [{ kind: "key", key: "Arrow Down" }, { kind: "gamepad", button: "D-pad Down" }, { kind: "gamepad", button: "Left Stick Down" }],
+    left: [{ kind: "key", key: "Arrow Left" }, { kind: "gamepad", button: "D-pad Left" }, { kind: "gamepad", button: "Left Stick Left" }],
+    right: [{ kind: "key", key: "Arrow Right" }, { kind: "gamepad", button: "D-pad Right" }, { kind: "gamepad", button: "Left Stick Right" }],
     next: [{ kind: "key", key: "Tab" }],
     previous: [{ kind: "key", key: "Shift+Tab" }],
     confirm: [{ kind: "key", key: "Enter" }, { kind: "key", key: "Space" }, { kind: "gamepad", button: "A" }],

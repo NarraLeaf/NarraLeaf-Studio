@@ -62,7 +62,7 @@ describe("the hints on a page", () => {
 
     it("lists the keyboard's keys for a keyboard player", () => {
         expect(summary(resolveInputHints(context({ device: "key", answered: ["dismiss"] })))).toEqual([
-            "select:ArrowUp",
+            "select:Arrow Up",
             "confirm:Enter/Space",
             "Close:Escape",
         ]);
