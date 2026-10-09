@@ -292,6 +292,12 @@ const BLUEPRINT_KEYBOARD_KEY_ALIASES: Record<string, string> = {
     right: "arrowright",
     up: "arrowup",
     down: "arrowdown",
+    // The labels the arrows are written with (`BLUEPRINT_KEYBOARD_KEY_LABELS`). Without these a
+    // binding written as its label read back as a key no keyboard has, and stopped matching the arrow.
+    "arrow left": "arrowleft",
+    "arrow right": "arrowright",
+    "arrow up": "arrowup",
+    "arrow down": "arrowdown",
 };
 
 const BLUEPRINT_KEYBOARD_KEY_LABELS: Record<string, string> = {

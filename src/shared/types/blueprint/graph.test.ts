@@ -147,3 +147,13 @@ describe("a head that hears any gamepad button", () => {
         expect(collectGlobalEventHeadNodeIdsForDispatch(nodes, "gamepadButtonDown", { button: "Left Stick Up" })).toEqual(["stick"]);
     });
 });
+
+describe("a key binding written as its label", () => {
+    it("reads back as the same key, so writing it again changes nothing and it still matches the key", () => {
+        for (const key of ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Escape", " ", "Shift+Tab"]) {
+            const written = formatBlueprintKeyboardBinding(key);
+            expect(formatBlueprintKeyboardBinding(written), key).toBe(written);
+        }
+        expect(blueprintKeyboardBindingMatchesEvent("Arrow Down", { key: "ArrowDown" })).toBe(true);
+    });
+});
