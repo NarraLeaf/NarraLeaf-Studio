@@ -46,6 +46,7 @@ import { NodeWrapperMotionDriver, nodeWrapperTransform, type NodeWrapperPose } f
 import { uiDrawingAttributeValue } from "./surfaceMeasurement";
 import { localPointerPoint, readElementPointerPositions } from "./elementPointerPosition";
 import { isTextEntryTarget } from "./app/isTextEntryTarget";
+import { isSyntheticKeyPress } from "./input/syntheticKeyPress";
 import { offerUIElementHoverSound, playUIElementInteractionSound } from "./interactionSounds";
 import { readUIInteractionSoundAssetId } from "@shared/types/ui-editor/interactionSounds";
 import { EnteredStateProvider, variantOverrideIdFor } from "@/lib/ui-editor/hooks/enteredStateContext";
@@ -491,8 +492,9 @@ export function EditorNodeWrapper({
         // The field's own Submit/Value Changed events are dispatched by its renderer, not here.
         const onKeyDown = (event: KeyboardEvent) => {
             // A held key's repeats are not presses: `On Key Down` answers the key going down, once,
-            // as the game's own keys do (`keyboardOwner`).
-            if (isTextEntryTarget(event.target) || event.repeat) {
+            // as the game's own keys do (`keyboardOwner`). Nor is the Enter a pad's Confirm presses
+            // a focused control with: nobody pressed a key (`syntheticKeyPress`).
+            if (isTextEntryTarget(event.target) || event.repeat || isSyntheticKeyPress(event)) {
                 return;
             }
             const eventControl = getOrCreateDomEventPropagationControl(event);
