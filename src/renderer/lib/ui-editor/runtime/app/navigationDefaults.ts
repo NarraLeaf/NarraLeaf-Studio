@@ -74,9 +74,21 @@ export function claimNavigationConfirm(gameRoot: Element | null, actionIds: read
  * Returns whether navigation did something, so a key it used can keep its browser default from also
  * running (Tab moving the focus a second time, an arrow scrolling).
  */
+/**
+ * Whether Back has somewhere to go from what holds the keys: a page or layer, unless it is the page
+ * the game starts on. The page stack can hold more under the title - a Title button on a menu that
+ * opened the title again rather than closing the menu - but backing out of the title into that menu
+ * is not a step back anywhere a player recognises. The hint bar asks the same question.
+ */
+export function ownerCanGoBack(owner: KeyboardOwner | null, isEntrySurface: ((surfaceId: string) => boolean) | undefined): boolean {
+    return Boolean(owner && !("stage" in owner) && !isEntrySurface?.(owner.surface.id));
+}
+
 export function runNavigationDefaults(input: {
     gameRoot: Element | null;
     owner: KeyboardOwner | null;
+    /** Whether a surface is the one the game starts on, where Back goes nowhere (`ownerCanGoBack`). */
+    isEntrySurface?: (surfaceId: string) => boolean;
     vocabulary: Readonly<Record<string, UIInputActionDef>> | undefined;
     signal: UIInputSignal;
     actionIds: readonly string[];
@@ -120,6 +132,9 @@ export function runNavigationDefaults(input: {
                 }
                 if ("stage" in owner) {
                     handled = leaveStageControls(gameRoot) || handled;
+                    break;
+                }
+                if (!ownerCanGoBack(owner, input.isEntrySurface)) {
                     break;
                 }
                 const navigation = owner.host.hostAdapter.blueprintRuntime?.hostApi?.navigation;

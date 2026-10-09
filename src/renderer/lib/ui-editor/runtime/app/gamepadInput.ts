@@ -162,7 +162,7 @@ export async function dispatchGameGamepad(
             raisesActions = false;
             raisedActions = [];
         } else {
-            runNavigationDefaults({ gameRoot, owner, vocabulary: input.vocabulary, signal, actionIds });
+            runNavigationDefaults({ gameRoot, owner, isEntrySurface: input.isEntrySurface, vocabulary: input.vocabulary, signal, actionIds });
         }
     }
     const { blueprintDocument, persistentVariables, core, globalHost } = input;
@@ -251,6 +251,7 @@ function createNavigationRepeat(input: GameGamepadDispatch, isHeld: (button: str
         runNavigationDefaults({
             gameRoot: input.readGameRoot?.() ?? null,
             owner: input.readKeyboardOwner(),
+            isEntrySurface: input.isEntrySurface,
             vocabulary: input.vocabulary,
             signal,
             actionIds: resolveGlobalInputActionPayloads({ vocabulary: input.vocabulary, signal }).map(action => action.actionId),

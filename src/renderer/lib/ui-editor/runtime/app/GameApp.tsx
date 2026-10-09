@@ -249,6 +249,7 @@ import {
     type KeyboardOwner,
 } from "./keyboardOwner";
 import { listenForGamepads } from "./gamepadInput";
+import { ownerCanGoBack } from "./navigationDefaults";
 import {
     createDialogueAdvanceRecord,
     projectDrawsNvlPage,
@@ -5967,6 +5968,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             persistentVariables: bundle.ui.persistentVariables,
             vocabulary: runtimeVocabulary,
             readGameRoot: () => gameRootRef.current,
+            isEntrySurface: (surfaceId: string) => isEntrySurface(bundle.ui.uidoc, surfaceId),
             core,
             globalHost: globalHostAdapterBundle,
             // An entry when one owns the keyboard; otherwise the stage, when the story is what the
@@ -6023,7 +6025,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     lane: !owner ? null : "stage" in owner ? "stage" : "page",
                     answered,
                     navigation: describeNavigationState(gameRoot),
-                    canGoBack: Boolean(owner && !("stage" in owner) && !isEntrySurface(bundle.ui.uidoc, owner.surface.id)),
+                    canGoBack: ownerCanGoBack(owner, dispatch.isEntrySurface),
                     storyAdvances: Boolean(owner && "stage" in owner && owner.storyAdvance),
                 }),
             };

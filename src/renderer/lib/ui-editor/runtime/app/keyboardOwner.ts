@@ -208,6 +208,8 @@ export type GameKeyboardDispatch = GlobalBlueprintDispatch & {
      * Absent where nothing is drawn - a test of the routing alone - and navigation then does nothing.
      */
     readGameRoot?: () => Element | null;
+    /** Whether a surface is the one the game starts on, where navigation's Back goes nowhere. */
+    isEntrySurface?: (surfaceId: string) => boolean;
     onError: (error: unknown) => void;
 };
 
@@ -326,6 +328,7 @@ export async function dispatchGameKey(
             if (runNavigationDefaults({
                 gameRoot: navigationRoot,
                 owner: input.readKeyboardOwner(),
+                isEntrySurface: input.isEntrySurface,
                 vocabulary: input.vocabulary,
                 signal,
                 actionIds,
@@ -362,6 +365,7 @@ export async function dispatchGameKey(
     if (raisesActions && runNavigationDefaults({
         gameRoot: navigationRoot,
         owner,
+        isEntrySurface: input.isEntrySurface,
         vocabulary: input.vocabulary,
         signal: { kind: "key", event: payload as BlueprintKeyboardEventLike },
         actionIds: raisedActions.map(action => action.actionId),

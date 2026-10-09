@@ -87,6 +87,19 @@ describe("a navigation press nothing on screen answers", () => {
         expect([...raisedNavigationIntents(shiftTab.actionIds)]).toEqual(["previous"]);
     });
 
+    it("goes nowhere from the page the game starts on, however much the page stack holds under it", () => {
+        const { root } = mount();
+        const pageBack = vi.fn(async () => undefined);
+        const title = pageOwner([], pageBack);
+        expect(runNavigationDefaults({
+            gameRoot: root,
+            owner: title,
+            isEntrySurface: surfaceId => surfaceId === PAGE.id,
+            ...press(pad("B")),
+        })).toBe(false);
+        expect(pageBack).not.toHaveBeenCalled();
+    });
+
     it("backs out of the page that holds the keys, and out of nothing on the stage", () => {
         const { root } = mount();
         const pageBack = vi.fn(async () => undefined);
