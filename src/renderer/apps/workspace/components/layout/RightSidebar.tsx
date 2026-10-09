@@ -71,7 +71,7 @@ export function RightSidebar({ panelId, onClose, width }: RightSidebarProps) {
             tabIndex={-1}
         >
             {/* Panel Header */}
-            <div className="h-12 flex items-center justify-between px-4 bg-surface-sunken border-b border-edge">
+            <div className="nl-header-surface h-12 flex items-center justify-between px-4 bg-surface-sunken border-b border-edge">
                 <div className="flex items-center gap-2">
                     <span className="text-fg-muted">{panel.icon}</span>
                     <h2 className="text-sm font-medium text-fg">{panel.titleKey ? t(panel.titleKey) : panel.title}</h2>

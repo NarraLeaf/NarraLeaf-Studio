@@ -25,7 +25,7 @@ export type BackgroundAnchor = (typeof BACKGROUND_ANCHORS)[number];
 export const BACKGROUND_BLUR_MAX = 40;
 
 /**
- * Range of the two plate sliders, in percent. No 0: with a plate switched on, a fully clear plate
+ * Range of the plate sliders, in percent. No 0: with a plate switched on, a fully clear plate
  * would be the switch's off position under another name.
  */
 export const BACKGROUND_PLATE_OPACITY_MIN = 10;
@@ -33,13 +33,15 @@ export const BACKGROUND_PLATE_OPACITY_MAX = 100;
 export const BACKGROUND_PLATE_OPACITY_STEP = 5;
 
 /**
- * The custom properties the two plates take their alpha from: `.nl-editor-surface` (the editor's
- * reading surfaces) and `.nl-sidebar-surface` (the docks) in styles.css. Published on the workspace
+ * The custom properties the plates take their alpha from: `.nl-editor-surface` (the editor's
+ * reading surfaces), `.nl-sidebar-surface` (the docks) and `.nl-header-surface` (the title bar, the
+ * tab strips and the panel headers) in styles.css. Published on the workspace
  * root next to `.nl-has-workspace-bg`, so they exist exactly where a wallpaper does and every other
  * window keeps its opaque paint.
  */
 export const BACKGROUND_EDITOR_ALPHA_VAR = "--nl-editor-surface-alpha";
 export const BACKGROUND_SIDEBAR_ALPHA_VAR = "--nl-sidebar-surface-alpha";
+export const BACKGROUND_HEADER_ALPHA_VAR = "--nl-header-surface-alpha";
 
 export interface BackgroundSettings {
     /** File name inside the userData/backgrounds cache, or null when no background is set. */
@@ -67,6 +69,15 @@ export interface BackgroundSettings {
     sidebarFill: boolean;
     /** Percent, 10–100: the dock plate's opacity while `sidebarFill` is on. */
     sidebarOpacity: number;
+    /**
+     * Whether the header strips (the title bar, the editor tab strips, the dock and section headers)
+     * keep their sunken paint over the wallpaper. Off by default: they carry a few large labels and
+     * icons rather than small text, and a picture that stops short of the window's top edge reads as
+     * a panel laid on the editor rather than as the window's own background.
+     */
+    headerFill: boolean;
+    /** Percent, 10–100: the header plate's opacity while `headerFill` is on. */
+    headerOpacity: number;
 }
 
 export const BACKGROUND_KEYS: Record<keyof BackgroundSettings, string> = {
@@ -79,6 +90,8 @@ export const BACKGROUND_KEYS: Record<keyof BackgroundSettings, string> = {
     editorOpacity: "ui.backgroundEditorOpacity",
     sidebarFill: "ui.backgroundSidebarFill",
     sidebarOpacity: "ui.backgroundSidebarOpacity",
+    headerFill: "ui.backgroundHeaderFill",
+    headerOpacity: "ui.backgroundHeaderOpacity",
 };
 
 export const DEFAULT_BACKGROUND: BackgroundSettings = {
@@ -91,6 +104,8 @@ export const DEFAULT_BACKGROUND: BackgroundSettings = {
     editorOpacity: 100,
     sidebarFill: true,
     sidebarOpacity: 100,
+    headerFill: false,
+    headerOpacity: 100,
 };
 
 /** A stored switch, or the default when what is stored is not a boolean (absent, or hand-edited). */
@@ -125,6 +140,8 @@ export function readBackgroundSettings(get: (key: string) => unknown): Backgroun
         editorOpacity: readPlateOpacity(get(BACKGROUND_KEYS.editorOpacity), DEFAULT_BACKGROUND.editorOpacity),
         sidebarFill: readSwitch(get(BACKGROUND_KEYS.sidebarFill), DEFAULT_BACKGROUND.sidebarFill),
         sidebarOpacity: readPlateOpacity(get(BACKGROUND_KEYS.sidebarOpacity), DEFAULT_BACKGROUND.sidebarOpacity),
+        headerFill: readSwitch(get(BACKGROUND_KEYS.headerFill), DEFAULT_BACKGROUND.headerFill),
+        headerOpacity: readPlateOpacity(get(BACKGROUND_KEYS.headerOpacity), DEFAULT_BACKGROUND.headerOpacity),
     };
 }
 
@@ -140,11 +157,12 @@ export function backgroundPlateAlpha(on: boolean, opacity: number): string {
     return opacity >= BACKGROUND_PLATE_OPACITY_MAX ? "1" : String(opacity / 100);
 }
 
-/** Both plate properties, for the workspace root's inline style. */
+/** Every plate property, for the workspace root's inline style. */
 export function backgroundPlateStyle(settings: BackgroundSettings): Record<string, string> {
     return {
         [BACKGROUND_EDITOR_ALPHA_VAR]: backgroundPlateAlpha(settings.editorFill, settings.editorOpacity),
         [BACKGROUND_SIDEBAR_ALPHA_VAR]: backgroundPlateAlpha(settings.sidebarFill, settings.sidebarOpacity),
+        [BACKGROUND_HEADER_ALPHA_VAR]: backgroundPlateAlpha(settings.headerFill, settings.headerOpacity),
     };
 }
 

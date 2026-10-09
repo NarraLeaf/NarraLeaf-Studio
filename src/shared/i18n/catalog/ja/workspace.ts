@@ -701,6 +701,8 @@ export const workspace = {
             editorPlateOpacity: "エディタの下地の不透明度",
             sidebarPlate: "サイドバーの下地",
             sidebarPlateOpacity: "サイドバーの下地の不透明度",
+            headerPlate: "ヘッダーの下地",
+            headerPlateOpacity: "ヘッダーの下地の不透明度",
             fill: {
                 cover: "拡大して埋める",
                 contain: "収める",

@@ -128,6 +128,8 @@ export const NON_REGISTRY_PREFERENCE_KEYS: readonly string[] = [
     "ui.backgroundEditorOpacity",
     "ui.backgroundSidebarFill",
     "ui.backgroundSidebarOpacity",
+    "ui.backgroundHeaderFill",
+    "ui.backgroundHeaderOpacity",
     "story.actionCreator.starredActionIds",
 ];
 
@@ -155,6 +157,8 @@ export const UNEXPORTED_PREFERENCE_KEYS: readonly string[] = [
     "ui.backgroundEditorOpacity",
     "ui.backgroundSidebarFill",
     "ui.backgroundSidebarOpacity",
+    "ui.backgroundHeaderFill",
+    "ui.backgroundHeaderOpacity",
     "versionControl.authorName",
     "versionControl.authorEmail",
     // Also the identity, for the same reason and one more of its own. The label is what

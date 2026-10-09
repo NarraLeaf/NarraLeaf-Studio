@@ -483,13 +483,14 @@ export function EditorGroup({ group }: EditorGroupProps) {
                 // The strip is chrome on a 36px row, so it hides its scrollbar (`nl-no-scrollbar`)
                 // rather than spend 8px of height on a gutter under the tabs — at this scale the
                 // thumb is nearly as wide as the strip and says little. What it replaces the thumb
-                // with is a short fade at each clipped edge, drawn HERE rather than inside the
-                // scroller: an absolutely positioned child of a scroller is positioned against the
-                // content, so it would slide away with the tabs.
-                <div className="relative bg-surface-sunken border-b border-edge">
+                // with is a short fade at each clipped edge: a mask on the scroller (`nl-edge-fade`),
+                // which fades the tabs themselves and so holds on the wallpaper's clear header too.
+                <div className="nl-header-surface relative bg-surface-sunken border-b border-edge">
                     <div
                         ref={stripRef}
-                        className="nl-no-scrollbar relative overflow-x-auto outline-none"
+                        className="nl-no-scrollbar nl-edge-fade relative overflow-x-auto outline-none"
+                        data-fade-start={stripOverflow.left ? "" : undefined}
+                        data-fade-end={stripOverflow.right ? "" : undefined}
                         tabIndex={0}
                         onMouseDown={(e) => {
                             e.stopPropagation();
@@ -550,7 +551,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
                                                       ? "bg-primary/[0.08] text-fg"
                                                       : isSelected
                                                         ? "bg-fill text-fg"
-                                                        : "bg-surface-sunken text-fg-muted hover:bg-surface hover:text-fg"
+                                                        : "nl-header-surface bg-surface-sunken text-fg-muted hover:bg-surface hover:text-fg"
                                             }
                                         `}
                                         onClick={(e) => handleTabClick(tab.id, e)}
@@ -635,18 +636,6 @@ export function EditorGroup({ group }: EditorGroupProps) {
                             </button>
                         </div>
                     </div>
-                    {stripOverflow.left && (
-                        <span
-                            className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-surface-sunken to-transparent"
-                            aria-hidden
-                        />
-                    )}
-                    {stripOverflow.right && (
-                        <span
-                            className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-surface-sunken to-transparent"
-                            aria-hidden
-                        />
-                    )}
                     <ShortcutContextMenu
                         shortcuts={TAB_MENU_SHORTCUTS}
                         items={tabMenuItems}
