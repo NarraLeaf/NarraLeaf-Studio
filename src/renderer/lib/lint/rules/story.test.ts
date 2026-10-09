@@ -1620,6 +1620,27 @@ describe("input rows", () => {
         expect(findings.map(finding => finding.location)).toMatchObject([{ blockId: "stuck" }]);
     });
 
+    it("says nothing about a choice in a locked passage, which the lock does not reach", () => {
+        // The engine's advance suspension stops the stage click, the dialogue box, the advance key
+        // and the skip key; a menu's options are picked as normal, so a cutscene may end in one.
+        const choice: BlockSpec = {
+            id: "menu",
+            kind: "nodeAction",
+            payload: { action: "choice" },
+            children: [{
+                id: "opt",
+                kind: "nodeAction",
+                payload: { action: "choiceOption", text: { textId: "t-opt", value: "Go", role: "choiceOption" } },
+            }],
+        };
+        expect(run(
+            "story/input-locked-dialogue",
+            createTestLintContext({
+                stories: [story("s1", "Main", [scene("sc1", "Cutscene", [input("lock", { operation: "lock" }), choice])])],
+            }),
+        )).toEqual([]);
+    });
+
     it("says nothing about a passage that unlocks before its next line", () => {
         expect(run(
             "story/input-locked-dialogue",

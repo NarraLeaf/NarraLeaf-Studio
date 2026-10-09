@@ -457,15 +457,15 @@ export const lint = {
         },
         storyInputLockedDialogue: {
             title: "Line inside a locked passage",
-            description: "A line, choice or /wait click after /input lock with no /input unlock before it",
+            description: "A line or /wait click after /input lock with no /input unlock before it",
             message: "Player input is locked here, so this row cannot be advanced. Add /input unlock before it",
             help:
-                "/input lock stops clicks, the advance key, auto-forward and skipping until an /input unlock row runs.\n"
+                "/input lock stops clicking to advance, the advance key, auto-forward and skipping until an /input unlock row runs. Choices can still be picked.\n"
                 + "\n"
-                + "A dialogue line, a choice or a /wait click inside a locked passage waits for an advance the player cannot give, and the story stops there.\n"
+                + "A dialogue line or a /wait click inside a locked passage waits for an advance the player cannot give, and the story stops there.\n"
                 + "\n"
                 + "- Add an /input unlock row before the line.\n"
-                + "- The scene is read from top to bottom, branches included, so a passage that unlocks in every branch can still be reported.",
+                + "- Branches are not checked one at a time: a lock or unlock inside one branch also counts for the rows written after it. A passage that locks or unlocks inside a branch can be reported when it is fine, or missed.",
         },
         storyEndingNameDuplicate: {
             title: "Two endings with one name",

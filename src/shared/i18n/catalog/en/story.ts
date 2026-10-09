@@ -1486,7 +1486,7 @@ export const story = {
         // The detail carries the half the name cannot - the run ends without an ending being recorded.
         quit: { label: "Quit to page", detail: "End this playthrough at this line and show a page. No ending is recorded" },
         rumble: { label: "Rumble", detail: "Vibrate the player's controller. Pick a preset, or set each motor" },
-        input: { label: "Input lock", detail: "Lock or unlock player input. While locked, clicks, the advance key, auto-forward and skipping do nothing. Unlock before the next line of dialogue" },
+        input: { label: "Input lock", detail: "Lock or unlock player input. While locked, clicking to advance, the advance key, auto-forward and skipping do nothing; choices can still be picked. Unlock before the next line of dialogue" },
         waitInput: { label: "Wait for input", detail: "Wait until the player performs an input action, optionally within a time limit" },
         hold: { label: "Hold", detail: "Wait until the player holds an input action down for a number of seconds" },
         mash: { label: "Mash", detail: "Wait until the player presses an input action a number of times" },

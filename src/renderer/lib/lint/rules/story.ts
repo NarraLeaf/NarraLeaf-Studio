@@ -90,10 +90,17 @@ export function liveBlocks(scene: StoryScene): StoryBlock[] {
     return listSceneBlocksInDocumentOrder(scene, { skipSubtree: block => Boolean(block.disabled) });
 }
 
-/** Whether a row holds the story until the player advances it: a line, a choice, a `/wait click`. */
+/**
+ * Whether a row holds the story until the player advances it: a line of narration or dialogue, or a
+ * `/wait click`.
+ *
+ * A choice is not one. `/input lock` takes the engine's advance away - a click on the stage or the
+ * dialogue box, the advance key, the skip key - and a menu is answered by picking one of its
+ * options, which that does not reach: a choice inside a locked passage is played as normal.
+ */
 function waitsForAdvance(block: StoryBlock): boolean {
     if (block.kind === "nodeAction") {
-        return block.payload.action !== "choiceOption";
+        return block.payload.action === "narration" || block.payload.action === "dialogue";
     }
     return block.kind === "action" && block.payload.action === "wait" && block.payload.mode === "click";
 }
@@ -1153,14 +1160,16 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
          * A line the player has to advance, inside a passage `/input lock` has taken out of their
          * hands.
          *
-         * While locked, a click, the advance key and auto-forward do nothing, so a dialogue line, a
-         * choice or a `/wait click` there can never be passed and the run is stuck. Reported once per
-         * locked passage, at the first such row: the fix is one `/input unlock` above it, and the rows
-         * after it read the same until that is done.
+         * While locked, a click, the advance key and auto-forward do nothing, so a dialogue line or a
+         * `/wait click` there can never be passed and the run is stuck. A choice is not reported: its
+         * options are still picked as normal (see `waitsForAdvance`). Reported once per locked
+         * passage, at the first such row: the fix is one `/input unlock` above it, and the rows after
+         * it read the same until that is done.
          *
          * The scene is read top to bottom, branches included, starting unlocked. That is an
-         * approximation in both directions - a branch that unlocks makes its sibling look unlocked,
-         * and a lock carried in from another scene is not seen - which is why this is a warning.
+         * approximation in both directions - a lock or unlock inside one branch carries on into its
+         * siblings and the rows after them, and a lock carried in from another scene is not seen -
+         * which is why this is a warning.
          */
         id: "story/input-locked-dialogue",
         category: "story",

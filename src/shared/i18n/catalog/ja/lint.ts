@@ -449,15 +449,15 @@ export const lint = {
         },
         storyInputLockedDialogue: {
             title: "ロック中の台詞",
-            description: "/input lock の後、/input unlock より前にある台詞、選択肢、/wait click",
+            description: "/input lock の後、/input unlock より前にある台詞や /wait click",
             message: "ここではプレイヤーの入力がロックされているため、この行は進められない。前に /input unlock を置く",
             help:
-                "/input lock はクリック、送りキー、オート、スキップを /input unlock 行が実行されるまで無効にする\n"
+                "/input lock はクリックでの送り、送りキー、オート、スキップを /input unlock 行が実行されるまで無効にする。選択肢は通常どおり選べる\n"
                 + "\n"
-                + "ロック中の台詞、選択肢、/wait click はプレイヤーの送りを待つが、プレイヤーは送れないため物語がそこで止まる\n"
+                + "ロック中の台詞や /wait click はプレイヤーの送りを待つが、プレイヤーは送れないため物語がそこで止まる\n"
                 + "\n"
                 + "- その行の前に /input unlock 行を置く\n"
-                + "- 場面は分岐も含めて上から順に読むため、すべての分岐で解除している場合でも報告されることがある",
+                + "- 分岐ごとには調べない。分岐内のロックや解除はその後に書かれた行にも及ぶため、分岐内でロックや解除をする場面は誤って報告されることも、見逃されることもある",
         },
         storyEndingNameDuplicate: {
             title: "同じ名前の 2 つのエンディング",
