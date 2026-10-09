@@ -3117,8 +3117,16 @@ export function GameApp(props: GameAppProps): ReactNode {
      * taken on the game that is live when the row runs, so releasing it wakes auto-forward the same
      * way. It belongs to the playthrough and is not saved: entering a game, loading a save and losing
      * the session all hand the player the story back (see the `reset` calls).
+     *
+     * A waiting row asks whether the stage is covered, so a press on a page or a modal layer drawn over
+     * it does not answer the story and the row's time stands still under it. The instant reading
+     * (`isStageCoveredNow`) is the one the global blueprint's `Is Game Overlay` gives, read through a
+     * ref because the host outlives the render that built it.
      */
+    const isStageCoveredNowRef = useRef(isStageCoveredNow);
+    isStageCoveredNowRef.current = isStageCoveredNow;
     const [storyInputHost] = useState<GameStoryInputHost>(() => createGameStoryInputHost({
+        isStageCovered: () => isStageCoveredNowRef.current(),
         isSkipping: () => {
             const controller = skipControllerRef.current;
             return controller ? controller.isRunning() || controller.isSkipping() : false;

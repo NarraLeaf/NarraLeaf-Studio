@@ -13,6 +13,7 @@ function hostWith(overrides: { isSkipping?: () => boolean } = {}) {
         isSkipping: overrides.isSkipping ?? (() => false),
         readActions: () => ({}),
         holdAdvance,
+        isStageCovered: () => false,
     });
     return { host, holdAdvance, releases };
 }

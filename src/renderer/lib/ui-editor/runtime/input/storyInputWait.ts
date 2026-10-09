@@ -10,9 +10,10 @@
  *
  * Every action the game performs is announced here by {@link announceStoryInputActions}, which the
  * one funnel all three routes share calls (`answerGlobalInputActions`: keys, pads, and pointer input
- * whichever lane it landed on). So the row hears exactly what the global blueprint's `On Action` hears,
- * under the same rules - not while a text field has focus, not a gesture a control under the pointer
- * has spoken for.
+ * whichever lane it landed on). So the row hears what the global blueprint's `On Action` hears, under
+ * the same rules - not while a text field has focus, not a gesture a control under the pointer has
+ * spoken for - less what is made while the stage is covered (below), which the global hears and the
+ * story does not.
  *
  * # Holding
  *
@@ -28,6 +29,17 @@
  *
  * The timer is a `setTimeout` rather than an animation frame: a window the OS has occluded stops
  * painting, and a hold that only advanced on frames would never complete behind it.
+ *
+ * # While something covers the stage
+ *
+ * A page or a modal layer drawn over the stage - the settings screen, a confirm dialog - has the
+ * player's hands, and the story behind it is paused: the engine takes no advance while one is up.
+ * A waiting row pauses with it. A press made there is an answer to the page, not to the story, so it
+ * does not count; and the time spent there is not time the player had, so neither the deadline nor a
+ * hold moves until the stage is uncovered again. The cover is read when it matters (a press, a timer
+ * tick) through {@link StoryInputWaitDeps.isStageCovered}, the same reading the global blueprint's
+ * `Is Game Overlay` gives, rather than pushed here: a row is short-lived, and reading the one answer
+ * keeps the game from having to track who is waiting.
  *
  * Comments in English per project convention.
  */
@@ -79,9 +91,20 @@ export function onStoryInputActions(listener: ActionListener): () => void {
 /** How often a hold re-reads the tracker. Fine enough that a one-second hold lands within a frame or two. */
 const HOLD_POLL_MS = 16;
 
+/**
+ * How often a deadline looks at whether the stage is covered. A cover that comes or goes between two
+ * looks is counted from the next one, so this is the most a deadline can be off by per cover.
+ */
+const DEADLINE_POLL_MS = 50;
+
 export type StoryInputWaitDeps = {
     /** Whether this action's bindings are down right now; with no action, whether any action's are. */
     isActionHeld: (actionId: string | undefined) => boolean;
+    /**
+     * Whether a page or a modal layer is drawn over the stage right now. While it is, presses do not
+     * count and the row's time stands still (see the module comment). Absent: never covered.
+     */
+    isStageCovered?: () => boolean;
     now?: () => number;
 };
 
@@ -95,6 +118,7 @@ export function waitForStoryInput(
     signal?: AbortSignal,
 ): Promise<boolean> {
     const now = deps.now ?? (() => Date.now());
+    const covered = deps.isStageCovered ?? (() => false);
     return new Promise<boolean>(resolve => {
         if (signal?.aborted) {
             resolve(false);
@@ -158,43 +182,84 @@ export function waitForStoryInput(
         };
 
         // `hold` - see the module comment. `armed` once the action has been seen up since the row
-        // started; `heldSince` while it has been down without a break; `reached` once it has been
-        // down long enough.
+        // started; `heldFor` how long it has been down without a break, counted between two readings
+        // that both saw it down (`holding`); `reached` once it has been down long enough.
         //
         // A reached hold settles when the player lets go, not the moment the time is up. A mouse
         // button coming up is a click, and a click is an advance: settling first would put the next
         // line on screen just in time for the release to click straight past it. Waiting for the
         // release lets that click land while the row is still waiting, where it does nothing.
+        //
+        // While the stage is covered the action is not read at all: what the player does on a menu is
+        // not a hold of this row, so the count neither grows nor breaks, and it carries on from where
+        // it was if the action is still down once the stage is back.
         let armed = false;
-        let heldSince: number | null = null;
+        let holding = false;
+        let heldFor = 0;
         let reached = false;
+        let lastPoll = now();
         const pollHold = (): void => {
             holdTimer = null;
             if (settled) {
                 return;
             }
-            const held = deps.isActionHeld(request.actionId);
-            if (reached) {
-                if (!held) {
-                    finish(true);
-                    return;
-                }
-            } else if (!held) {
-                armed = true;
-                heldSince = null;
-            } else if (armed) {
-                heldSince ??= now();
-                if (now() - heldSince >= Math.max(0, request.holdMs ?? 0)) {
-                    reached = true;
-                    clearDeadline();
+            const at = now();
+            const elapsed = at - lastPoll;
+            lastPoll = at;
+            if (covered()) {
+                holding = false;
+            } else {
+                const held = deps.isActionHeld(request.actionId);
+                if (reached) {
+                    if (!held) {
+                        finish(true);
+                        return;
+                    }
+                } else if (!held) {
+                    armed = true;
+                    holding = false;
+                    heldFor = 0;
+                } else if (armed) {
+                    if (holding) {
+                        heldFor += elapsed;
+                    }
+                    holding = true;
+                    if (heldFor >= Math.max(0, request.holdMs ?? 0)) {
+                        reached = true;
+                        clearDeadline();
+                    }
                 }
             }
             holdTimer = setTimeout(pollHold, HOLD_POLL_MS);
         };
 
+        // The deadline counts only time the stage was uncovered (see the module comment), so it is a
+        // stopwatch read on a short timer rather than one timer for the whole length.
+        let timeLeft = typeof request.timeoutMs === "number" && Number.isFinite(request.timeoutMs) && request.timeoutMs >= 0
+            ? request.timeoutMs
+            : null;
+        let lastTick = now();
+        const tickDeadline = (): void => {
+            deadline = null;
+            if (settled || timeLeft === null) {
+                return;
+            }
+            const at = now();
+            if (!covered()) {
+                timeLeft -= at - lastTick;
+            }
+            lastTick = at;
+            if (timeLeft <= 0) {
+                finish(false);
+                return;
+            }
+            deadline = setTimeout(tickDeadline, Math.min(timeLeft, DEADLINE_POLL_MS));
+        };
+
         const unsubscribe = onStoryInputActions(ids => {
             const actionId = matching(ids);
-            if (actionId === null || settled || !listening) {
+            // A press made while something covers the stage was made on that, not on the story.
+            if (actionId === null || settled || !listening || covered()) {
                 return;
             }
             if (request.operation === "wait") {
@@ -214,8 +279,8 @@ export function waitForStoryInput(
         if (request.operation === "hold") {
             pollHold();
         }
-        if (typeof request.timeoutMs === "number" && Number.isFinite(request.timeoutMs) && request.timeoutMs >= 0) {
-            deadline = setTimeout(() => finish(false), request.timeoutMs);
+        if (timeLeft !== null) {
+            tickDeadline();
         }
     });
 }

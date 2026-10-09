@@ -53,6 +53,11 @@ export type GameStoryInputHostDeps = {
      * because releasing has to wake auto-forward as well.
      */
     holdAdvance: () => { release: () => void } | null;
+    /**
+     * Whether a page or a modal layer is drawn over the stage at this instant. A waiting row neither
+     * hears presses nor spends its time while one is (see `storyInputWait`).
+     */
+    isStageCovered: () => boolean;
 };
 
 /** Whether one action's bindings are down, read the way `Is Action Held` reads them minus the surface. */
@@ -99,6 +104,7 @@ export function createGameStoryInputHost(deps: GameStoryInputHostDeps): GameStor
                     ? isActionHeld(actions[actionId])
                     : Object.values(actions).some(def => isActionHeld(def));
             },
+            isStageCovered: deps.isStageCovered,
         }, signal),
         reset: () => {
             setAdvanceLocked(false);
