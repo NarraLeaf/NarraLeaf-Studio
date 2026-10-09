@@ -571,7 +571,8 @@ input[data-floating-item]:focus-visible {
 [data-nl-nav-modality="keys"] .ui-editor-surface [role="switch"][tabindex]:focus:not([data-nl-nav-hover])::after,
 [data-nl-nav-modality="keys"] .ui-editor-surface [role="slider"][tabindex]:focus:not([data-nl-nav-hover])::after,
 [data-nl-nav-modality="keys"] .ui-editor-surface [data-ui-list-item-index][tabindex]:focus:not([data-nl-nav-hover])::after,
-[data-nl-nav-modality="keys"] .ui-editor-surface [data-ui-nav-focusable="always"]:focus:not([data-nl-nav-hover])::after {
+[data-nl-nav-modality="keys"] .ui-editor-surface [data-ui-nav-focusable="always"]:focus:not([data-nl-nav-hover])::after,
+[data-nl-nav-modality="keys"] .ui-editor-surface [data-ui-nav-focusable="press"]:focus:not([data-nl-nav-hover])::after {
     content: "";
     position: absolute;
     inset: 0;
@@ -581,7 +582,8 @@ input[data-floating-item]:focus-visible {
     outline-offset: -2px;
 }
 
-[data-nl-nav-modality] .ui-editor-surface [data-ui-nav-focusable="always"]:focus {
+[data-nl-nav-modality] .ui-editor-surface [data-ui-nav-focusable="always"]:focus,
+[data-nl-nav-modality] .ui-editor-surface [data-ui-nav-focusable="press"]:focus {
     outline: none;
 }
 

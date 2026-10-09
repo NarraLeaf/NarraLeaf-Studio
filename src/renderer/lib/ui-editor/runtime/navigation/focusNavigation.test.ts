@@ -266,6 +266,27 @@ describe("a scope opening", () => {
     });
 });
 
+describe("a box that answers a click", () => {
+    it("is reached on a page, and not on the stage, where it is the area a click reads on with", () => {
+        const { root, by } = mount(`
+            <div class="ui-editor-surface" data-ui-nav-scope="owner" tabindex="-1">
+                <div id="slot" data-ui-element-id="slot" data-ui-nav-focusable="press" tabindex="0" data-box="0,0,200,150"></div>
+            </div>
+        `);
+        moveNavigationFocus(root, "down");
+        expect(document.activeElement).toBe(by("slot"));
+        document.body.innerHTML = `<div ${GAME_ROOT_ATTRIBUTE}>
+            <div class="ui-editor-surface" data-ui-nav-scope="stage">
+                <div id="area" data-ui-element-id="area" data-ui-nav-focusable="press" tabindex="0" data-box="0,0,1920,640"></div>
+                ${button("choice", "0,700,200,40")}
+            </div></div>`;
+        const stage = document.querySelector<HTMLElement>(`[${GAME_ROOT_ATTRIBUTE}]`)!;
+        layOut(stage);
+        moveNavigationFocus(stage, "down");
+        expect(document.activeElement).toBe(document.getElementById("choice"));
+    });
+});
+
 describe("how the focus is drawn", () => {
     it("with the author's hover look where the control has one, and with the ring where it has none", () => {
         const { by } = mount(`

@@ -127,7 +127,9 @@ describe("on the stage", () => {
     function mountStage() {
         document.body.innerHTML = `
             <div ${GAME_ROOT_ATTRIBUTE}>
-                <div class="ui-editor-surface" data-ui-surface-id="dialogue" data-ui-nav-scope="controls"></div>
+                <div class="ui-editor-surface" data-ui-surface-id="dialogue" data-ui-nav-scope="controls">
+                    <div id="advance-area" data-ui-element-id="advance-area" data-ui-nav-focusable="press" tabindex="0" data-box="0,0,1920,640"></div>
+                </div>
                 <div class="ui-editor-surface" data-ui-surface-id="quick" data-ui-nav-scope="controls">
                     <div id="auto" role="button" tabindex="0" data-box="0,500,60,20"></div>
                     <div id="save" role="button" tabindex="0" data-box="70,500,60,20"></div>
@@ -187,6 +189,7 @@ describe("on the stage", () => {
         // The D-pad does not wander onto the quick menu during dialogue.
         expect(runNavigationDefaults({ gameRoot: root, owner, ...press(pad("D-pad Right")) })).toBe(false);
         expect(runNavigationDefaults({ gameRoot: root, owner, ...press(pad("Y")) })).toBe(true);
+        // Not the dialogue box's click-to-read-on area at the top of the screen: the quick menu.
         expect(document.activeElement).toBe(by("auto"));
         runNavigationDefaults({ gameRoot: root, owner, ...press(pad("D-pad Right")) });
         expect(document.activeElement).toBe(by("save"));

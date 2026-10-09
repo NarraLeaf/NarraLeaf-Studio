@@ -59,6 +59,12 @@ export const NAV_AUTO_FOCUS_ATTRIBUTE = "data-ui-nav-autofocus";
 export const NAV_WRAP_ATTRIBUTE = "data-ui-nav-wrap";
 /** On an element's box: `always` or `never`. */
 export const NAV_FOCUSABLE_ATTRIBUTE = "data-ui-nav-focusable";
+/**
+ * The value of {@link NAV_FOCUSABLE_ATTRIBUTE} on a box the runtime made reachable because its own
+ * logic answers a click - a save slot's hit area. Reachable on a page; not on the stage, where such a
+ * box is the area a click reads the story on with, and Confirm already does that.
+ */
+export const NAV_FOCUSABLE_PRESS = "press";
 /** On an element's box: it is a group. */
 export const NAV_REGION_ATTRIBUTE = "data-ui-nav-region";
 /** On a group's box: coming back in lands where the player left. */
@@ -118,7 +124,7 @@ function offerDirectionToControl(target: HTMLElement, direction: UINavigationDir
  * The controls, and the boxes an author made reachable: everything navigation lands on that a click
  * must not leave the focus on (`pointerKeyboardFocus`), and that answers Enter itself.
  */
-export const CONTROL_TARGET_SELECTOR = `${GAME_CONTROL_SELECTOR}, [${NAV_FOCUSABLE_ATTRIBUTE}="always"]`;
+export const CONTROL_TARGET_SELECTOR = `${GAME_CONTROL_SELECTOR}, [${NAV_FOCUSABLE_ATTRIBUTE}="always"], [${NAV_FOCUSABLE_ATTRIBUTE}="${NAV_FOCUSABLE_PRESS}"]`;
 
 /** A field the player types into. Reachable, and never taken from the player by a passing pointer. */
 const TEXT_ENTRY_SELECTOR = 'input:not([type="hidden"]):not([disabled]), textarea:not([disabled])';
@@ -319,8 +325,11 @@ export function isNavigationTarget(element: Element, scope: HTMLElement): elemen
     if (!(element instanceof HTMLElement) || !scope.contains(element) || !element.matches(NAVIGATION_TARGET_SELECTOR)) {
         return false;
     }
-    if (isStageControlsScope(scope)
-        && element.closest(`[${NAV_SCOPE_ATTRIBUTE}]`)?.getAttribute(NAV_SCOPE_ATTRIBUTE) !== "controls") {
+    const shellScope = element.closest(`[${NAV_SCOPE_ATTRIBUTE}]`)?.getAttribute(NAV_SCOPE_ATTRIBUTE);
+    if (isStageControlsScope(scope) && shellScope !== "controls") {
+        return false;
+    }
+    if (element.getAttribute(NAV_FOCUSABLE_ATTRIBUTE) === NAV_FOCUSABLE_PRESS && shellScope !== "owner") {
         return false;
     }
     if (element.closest("[inert]") !== null || element.getAttribute("aria-disabled") === "true") {

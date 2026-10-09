@@ -14,7 +14,12 @@ import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import { normalizeUIElementNavigation, uiElementHasHoverLook } from "@shared/types/ui-editor/navigation";
 import { isOperableWidgetType } from "@shared/types/ui-editor/inputAction";
-import { elementNavigationAttributes, HOVER_LOOK_ATTRIBUTE } from "@/lib/ui-editor/runtime/navigation/focusNavigation";
+import {
+    elementNavigationAttributes,
+    HOVER_LOOK_ATTRIBUTE,
+    NAV_FOCUSABLE_ATTRIBUTE,
+    NAV_FOCUSABLE_PRESS,
+} from "@/lib/ui-editor/runtime/navigation/focusNavigation";
 import {
     NavigationFocusProvider,
     useWidgetRuntimeElementState,
@@ -745,9 +750,12 @@ export function EditorNodeWrapper({
             && !isOperableWidgetType(element.type)
             && blueprintRuntime.elementAnswersPress?.(element.id) === true;
         const reachable = navigation?.focusable === "always" || answersPress;
-        const attributes: Record<string, unknown> = elementNavigationAttributes(
-            answersPress ? { ...(navigation ?? {}), focusable: "always" } : navigation,
-        );
+        const attributes: Record<string, unknown> = elementNavigationAttributes(navigation);
+        if (answersPress) {
+            // Marked apart from an author's `always`: on the stage a box that answers a click is
+            // the area a click reads the story on with, not a control (`isNavigationTarget`).
+            attributes[NAV_FOCUSABLE_ATTRIBUTE] = NAV_FOCUSABLE_PRESS;
+        }
         // Drawn with its own hover look when it has the focus, so it needs no ring (`styles.css`).
         if (uiElementHasHoverLook(element)) {
             attributes[HOVER_LOOK_ATTRIBUTE] = "";
