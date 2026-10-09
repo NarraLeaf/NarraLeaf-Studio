@@ -98,7 +98,9 @@ export function BlueprintEditorLayout({
     }, [onMemberPanelFocusContainedChange]);
 
     // No right border: the resize seam on that edge is the line (see `EditorSidebarResizeHandle`).
-    const leftPanelClasses = `nl-sidebar-surface absolute inset-y-0 left-0 z-10 flex shrink-0 flex-col bg-surface-sunken transition-transform duration-200 ease-out ${
+    // Solid under a wallpaper too, never a dock plate (`nl-sidebar-surface`): over a graph the panel
+    // floats on the canvas, so a thinned plate would show nodes and wires through the member names.
+    const leftPanelClasses = `absolute inset-y-0 left-0 z-10 flex shrink-0 flex-col bg-surface-sunken transition-transform duration-200 ease-out ${
         isLeftCollapsed ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100 pointer-events-auto"
     }`;
 
