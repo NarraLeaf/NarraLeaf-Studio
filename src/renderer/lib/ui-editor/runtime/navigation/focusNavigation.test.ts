@@ -277,13 +277,18 @@ describe("how the focus is drawn", () => {
                         <div data-ui-element-id="row-bg" data-ui-hover-look></div>
                     </div>
                 </div>
+                <div data-ui-element-id="slot" data-ui-hover-look>
+                    <div id="hit" data-ui-element-id="hit" data-ui-nav-focusable="always" tabindex="0" data-box="0,200,100,40"></div>
+                </div>
             </div>
         `);
-        for (const id of ["start", "plain", "row"]) {
+        for (const id of ["start", "plain", "row", "hit"]) {
             noteFocusInGame(by(id));
         }
         expect(by("start").hasAttribute(FOCUS_SHOWS_HOVER_ATTRIBUTE)).toBe(true);
         expect(by("plain").hasAttribute(FOCUS_SHOWS_HOVER_ATTRIBUTE)).toBe(false);
         expect(by("row").hasAttribute(FOCUS_SHOWS_HOVER_ATTRIBUTE)).toBe(true);
+        // A save slot's hover look, drawn when its hit area has the focus.
+        expect(by("hit").hasAttribute(FOCUS_SHOWS_HOVER_ATTRIBUTE)).toBe(true);
     });
 });

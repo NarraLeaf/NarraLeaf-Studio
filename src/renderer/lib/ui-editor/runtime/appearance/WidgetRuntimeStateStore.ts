@@ -143,6 +143,8 @@ export class WidgetRuntimeStateStore {
     private activePointerId: string | null = null;
     private focusedId: string | null = null;
     private pointerHoverSuppressed = false;
+    /** Every element the focus is on or inside, by runtime key: what a pointer on it would hover. */
+    private readonly focusWithinIds = new Set<string>();
     private readonly variantOverrides = new Map<string, string>();
     private readonly sliderProperties = new Map<string, UISliderRuntimeValue>();
     private readonly switchProperties = new Map<string, UISwitchRuntimeValue>();
@@ -304,6 +306,12 @@ export class WidgetRuntimeStateStore {
                 changed = true;
             }
         }
+        for (const id of [...this.focusWithinIds]) {
+            if (belongsToScope(id)) {
+                this.focusWithinIds.delete(id);
+                changed = true;
+            }
+        }
 
         if (belongsToScope(this.activePointerId)) {
             this.activePointerId = null;
@@ -409,6 +417,29 @@ export class WidgetRuntimeStateStore {
         }
         this.pointerHoverSuppressed = suppressed;
         this.emit();
+    }
+
+    /**
+     * Whether the focus is on this element or on something inside it.
+     *
+     * A pointer resting on a save slot's hit area is resting on the slot as well, and the slot draws
+     * its hover look; the focus on that hit area has to light the slot the same way. Each element's
+     * box says so for itself as the focus enters and leaves it (`EditorNodeWrapper`).
+     */
+    setFocusWithin(id: string, within: boolean): void {
+        if (within ? this.focusWithinIds.has(id) : !this.focusWithinIds.has(id)) {
+            return;
+        }
+        if (within) {
+            this.focusWithinIds.add(id);
+        } else {
+            this.focusWithinIds.delete(id);
+        }
+        this.emit();
+    }
+
+    isFocusWithin(id: string): boolean {
+        return this.focusWithinIds.has(id);
     }
 
     setFocusedTarget(id: string | null): void {

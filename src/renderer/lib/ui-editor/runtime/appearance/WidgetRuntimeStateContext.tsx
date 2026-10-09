@@ -96,7 +96,8 @@ export function WidgetRuntimeInstanceProvider(props: {
 
 /**
  * Whether this subtree is where the keyboard or pad focus is: an element that holds it, or the row
- * of a list that does.
+ * of a list that does. (Its ancestors light up too, through `WidgetRuntimeStateStore.setFocusWithin`:
+ * a pointer on a control is on everything around it as well.)
  *
  * The focus is drawn with the look the author gave the pointer. A Start button with a hover state
  * is selected the same way whether a mouse rests on it or a D-pad moved to it, and its label inside
@@ -192,6 +193,7 @@ function buildElementSignature(
         signals.active ? "1" : "0",
         signals.focused ? "1" : "0",
         signals.disabled ? "1" : "0",
+        store.isFocusWithin(elementId) ? "1" : "0",
     ].join("|");
 }
 
@@ -231,7 +233,8 @@ export function useWidgetRuntimeElementState(
         }
         const own = store.getSignalsForElement(runtimeElementKey, interactionDisabled);
         // The focus looks like the pointer: see `NavigationFocusContext`.
-        const signals = (own.focused || insideFocus) && !own.hovered ? { ...own, hovered: true } : own;
+        const focusLit = own.focused || insideFocus || store.isFocusWithin(runtimeElementKey);
+        const signals = focusLit && !own.hovered ? { ...own, hovered: true } : own;
         return {
             variantOverrideId:
                 store.getVariantOverride(runtimeElementKey)

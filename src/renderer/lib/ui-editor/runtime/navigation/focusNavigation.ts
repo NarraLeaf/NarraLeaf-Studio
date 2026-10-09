@@ -780,7 +780,20 @@ function focusShowsHoverLook(target: HTMLElement): boolean {
         return false;
     }
     const box = owningElementBox(target);
-    return Boolean(box && (box.matches(selector) || box.querySelector(selector)));
+    if (box && (box.matches(selector) || box.querySelector(selector))) {
+        return true;
+    }
+    // A box around the control that holds no other control is part of it - a save slot around its
+    // hit area - and lights up with it (`setFocusWithin`). A box that holds others is the page's.
+    for (let node = box?.parentElement ?? null; node; node = node.parentElement) {
+        if (node.hasAttribute(NAV_SCOPE_ATTRIBUTE) || node.querySelectorAll(NAVIGATION_TARGET_SELECTOR).length > 1) {
+            return false;
+        }
+        if (node.matches(selector)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 /**

@@ -13,6 +13,7 @@ import { MotionConfigContext } from "motion/react";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import { normalizeUIElementNavigation, uiElementHasHoverLook } from "@shared/types/ui-editor/navigation";
+import { isOperableWidgetType } from "@shared/types/ui-editor/inputAction";
 import { elementNavigationAttributes, HOVER_LOOK_ATTRIBUTE } from "@/lib/ui-editor/runtime/navigation/focusNavigation";
 import {
     NavigationFocusProvider,
@@ -704,6 +705,8 @@ export function EditorNodeWrapper({
             if (isDirectElementEvent(e.target)) {
                 widgetRuntimeStore?.setFocusedTarget(runtimeElementKey);
             }
+            // On it or inside it: drawn the way a pointer resting there would draw it.
+            widgetRuntimeStore?.setFocusWithin(runtimeElementKey, true);
             dispatchWidgetEvent("focus", e.target, undefined, getOrCreateDomEventPropagationControl(e.nativeEvent));
         },
         [dispatchWidgetEvent, isDirectElementEvent, runtimeElementKey, widgetRuntimeStore],
@@ -714,10 +717,17 @@ export function EditorNodeWrapper({
             if (isDirectElementEvent(e.target)) {
                 widgetRuntimeStore?.setFocusedTarget(null);
             }
+            const next = e.relatedTarget;
+            if (!(next instanceof Node) || !e.currentTarget.contains(next)) {
+                widgetRuntimeStore?.setFocusWithin(runtimeElementKey, false);
+            }
             dispatchWidgetEvent("blur", e.target, undefined, getOrCreateDomEventPropagationControl(e.nativeEvent));
         },
-        [dispatchWidgetEvent, isDirectElementEvent, widgetRuntimeStore],
+        [dispatchWidgetEvent, isDirectElementEvent, runtimeElementKey, widgetRuntimeStore],
     );
+
+    // A drawing that leaves while the focus is inside it takes no blur with it.
+    useEffect(() => () => widgetRuntimeStore?.setFocusWithin(runtimeElementKey, false), [runtimeElementKey, widgetRuntimeStore]);
 
     // How the player reaches this element without a pointer (`focusNavigation`). In a running game
     // only: the canvas has no focus to move. A box an author made reachable is a control of its own -
@@ -728,12 +738,21 @@ export function EditorNodeWrapper({
             return {};
         }
         const navigation = normalizeUIElementNavigation(element.navigation);
-        const attributes: Record<string, unknown> = elementNavigationAttributes(navigation);
+        // An element whose own logic answers a click is a control, whatever widget it is - a save
+        // slot drawn as a container with a Mouse Click head is pressed like a button. Reachable as
+        // an author's `always` is, unless the author said `never`.
+        const answersPress = !navigation?.focusable
+            && !isOperableWidgetType(element.type)
+            && blueprintRuntime.elementAnswersPress?.(element.id) === true;
+        const reachable = navigation?.focusable === "always" || answersPress;
+        const attributes: Record<string, unknown> = elementNavigationAttributes(
+            answersPress ? { ...(navigation ?? {}), focusable: "always" } : navigation,
+        );
         // Drawn with its own hover look when it has the focus, so it needs no ring (`styles.css`).
         if (uiElementHasHoverLook(element)) {
             attributes[HOVER_LOOK_ATTRIBUTE] = "";
         }
-        if (navigation?.focusable === "always") {
+        if (reachable) {
             attributes.tabIndex = 0;
             attributes.onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
                 if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) {
