@@ -543,18 +543,20 @@ input[data-floating-item]:focus-visible {
 }
 
 /*
- * The navigation focus on a running game's controls - a button, a switch, a slider, a list row, a box
- * an author made reachable - the targets `focusNavigation` (runtime/navigation) moves between.
+ * The focus on a running game's controls - a button, a switch, a slider, a list row, a box an author
+ * made reachable - the targets `focusNavigation` (runtime/navigation) moves between.
  *
  * A game's interface is the author's, not Studio's, so this is not Studio's ring: it is the
- * platform's own (`auto`), which the browser draws to be seen on any background. It is only there
- * while the player moves by keys or pad - the game root's `data-nl-nav-modality` says which, set by
- * the navigation itself, where `:focus-visible` would be the browser's guess about a pad it cannot
- * see - so a player who only points never sees it, and a click does not focus these at all.
+ * platform's own (`auto`), which the browser draws to be seen on any background. In a game with
+ * navigation (`data-nl-nav` on its root) it is only there while the player moves by keys or pad -
+ * the root's `data-nl-nav-modality` says which, set by the navigation itself, where `:focus-visible`
+ * would be the browser's guess about a pad it cannot see - so a player who only points never sees
+ * it, and a click does not focus these at all. A game without navigation has only Tab, and keeps
+ * the browser's `:focus-visible` it always had.
  *
- * And only for a control the author gave no hover look. One that has one is drawn with it while it
- * has the focus - a Start button lights up for a D-pad exactly as it does for a mouse - and carries
- * `data-nl-nav-hover`, which takes the ring away (`noteFocusInGame`).
+ * And only for a control the author gave no focused look. One that has one is drawn with it while it
+ * has the focus - the `focused` state of its appearance, beside `hovered` - and carries
+ * `data-nl-nav-own-look`, which takes the ring away (`noteFocusInGame`).
  *
  * Drawn on a layer of its own over the control rather than as the control's outline, and inside its
  * edge. The widgets inside a control are positioned, and a positioned child paints over its parent's
@@ -563,16 +565,20 @@ input[data-floating-item]:focus-visible {
  * row is a plain flex item until then, so it becomes the box its ring is drawn in only while it has
  * the focus; its widgets are laid out inside their own boxes and do not move.
  */
-[data-nl-nav-modality="keys"] .ui-editor-surface [data-ui-list-item-index][tabindex]:focus:not([data-nl-nav-hover]) {
+[data-nl-nav-modality="keys"] .ui-editor-surface [data-ui-list-item-index][tabindex]:focus:not([data-nl-nav-own-look]),
+.ui-editor-surface:not([data-nl-nav] *) [data-ui-list-item-index][tabindex]:focus-visible:not([data-nl-nav-own-look]) {
     position: relative;
 }
 
-[data-nl-nav-modality="keys"] .ui-editor-surface [role="button"][tabindex]:focus:not([data-nl-nav-hover])::after,
-[data-nl-nav-modality="keys"] .ui-editor-surface [role="switch"][tabindex]:focus:not([data-nl-nav-hover])::after,
-[data-nl-nav-modality="keys"] .ui-editor-surface [role="slider"][tabindex]:focus:not([data-nl-nav-hover])::after,
-[data-nl-nav-modality="keys"] .ui-editor-surface [data-ui-list-item-index][tabindex]:focus:not([data-nl-nav-hover])::after,
-[data-nl-nav-modality="keys"] .ui-editor-surface [data-ui-nav-focusable="always"]:focus:not([data-nl-nav-hover])::after,
-[data-nl-nav-modality="keys"] .ui-editor-surface [data-ui-nav-focusable="press"]:focus:not([data-nl-nav-hover])::after {
+[data-nl-nav-modality="keys"] .ui-editor-surface [role="button"][tabindex]:focus:not([data-nl-nav-own-look])::after,
+[data-nl-nav-modality="keys"] .ui-editor-surface [role="switch"][tabindex]:focus:not([data-nl-nav-own-look])::after,
+[data-nl-nav-modality="keys"] .ui-editor-surface [role="slider"][tabindex]:focus:not([data-nl-nav-own-look])::after,
+[data-nl-nav-modality="keys"] .ui-editor-surface [data-ui-list-item-index][tabindex]:focus:not([data-nl-nav-own-look])::after,
+[data-nl-nav-modality="keys"] .ui-editor-surface [data-ui-nav-focusable="always"]:focus:not([data-nl-nav-own-look])::after,
+[data-nl-nav-modality="keys"] .ui-editor-surface [data-ui-nav-focusable="press"]:focus:not([data-nl-nav-own-look])::after,
+.ui-editor-surface:not([data-nl-nav] *) [role="button"][tabindex]:focus-visible:not([data-nl-nav-own-look])::after,
+.ui-editor-surface:not([data-nl-nav] *) [role="switch"][tabindex]:focus-visible:not([data-nl-nav-own-look])::after,
+.ui-editor-surface:not([data-nl-nav] *) [data-ui-list-item-index][tabindex]:focus-visible:not([data-nl-nav-own-look])::after {
     content: "";
     position: absolute;
     inset: 0;

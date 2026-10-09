@@ -233,14 +233,16 @@ import { readCurrentInputDevice } from "@/lib/ui-editor/runtime/input/inputDevic
 import { readGamepadSnapshot } from "@/lib/ui-editor/runtime/input/gamepadState";
 import { detectUIInputHintControllerFamily } from "@shared/types/ui-editor/inputHints";
 import { isEntrySurface } from "@shared/types/ui-editor/entrySurface";
+import { hasUINavigationSlots } from "@shared/types/ui-editor/navigation";
+import { GameNavigationContext } from "@/lib/ui-editor/runtime/navigation/gameNavigationContext";
 import {
     describeNavigationState,
+    NAV_ENABLED_ATTRIBUTE,
     NAV_MODALITY_ATTRIBUTE,
     noteFocusInGame,
     notePointerOverGame,
     notePointerPressOnGame,
 } from "@/lib/ui-editor/runtime/navigation/focusNavigation";
-import { resolveRuntimeInputVocabulary } from "@shared/types/ui-editor/navigation";
 import { GAME_ROOT_ATTRIBUTE } from "@/lib/ui-editor/runtime/input/keyboardFocusHandover";
 import {
     listenForGameKeys,
@@ -5943,12 +5945,10 @@ export function GameApp(props: GameAppProps): ReactNode {
     // The element the game draws into, for the key and pad listeners below to find the controls
     // navigation moves between. Read per press: the root is set after this effect first runs.
     const gameRootRef = useRef<HTMLDivElement | null>(null);
-    // The project's actions, and the navigation actions at their defaults wherever the project has
-    // not rebound them (`resolveRuntimeInputVocabulary`).
-    const runtimeVocabulary = useMemo(
-        () => resolveRuntimeInputVocabulary(bundle.ui.uidoc.actions),
-        [bundle.ui.uidoc.actions],
-    );
+    // The project's actions, the navigation slots among them: what a running game routes by.
+    const runtimeVocabulary = useMemo(() => bundle.ui.uidoc.actions ?? {}, [bundle.ui.uidoc.actions]);
+    // Whether the project has keyboard and pad navigation at all: some intent fills a slot.
+    const navigationEnabled = useMemo(() => hasUINavigationSlots(runtimeVocabulary), [runtimeVocabulary]);
 
     useEffect(() => {
         const scope = resolveKeyboardDispatchScope({
@@ -6097,12 +6097,18 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [gameRoot]);
     // The pointer resting on a control is where the next arrow starts, and pointing hides the ring
     // the keys drew (`focusNavigation`).
+    // Only with navigation on: a game without it leaves the ring to the browser's `:focus-visible`,
+    // as it always did, and has no modality for the pointer to set.
     const notePointerMoveForNavigation = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-        notePointerOverGame(event.currentTarget, event);
-    }, []);
+        if (navigationEnabled) {
+            notePointerOverGame(event.currentTarget, event);
+        }
+    }, [navigationEnabled]);
     const notePointerDownForNavigation = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-        notePointerPressOnGame(event.currentTarget);
-    }, []);
+        if (navigationEnabled) {
+            notePointerPressOnGame(event.currentTarget);
+        }
+    }, [navigationEnabled]);
     // A focused control is drawn with its own hover look when it has one, the ring otherwise.
     const noteFocusForNavigation = useCallback((event: ReactFocusEvent<HTMLDivElement>) => {
         noteFocusInGame(event.target);
@@ -6819,12 +6825,15 @@ export function GameApp(props: GameAppProps): ReactNode {
     const content = (
         <GlobalInputActionContext.Provider value={globalInputActionAnswerer}>
         <MotionConfig reducedMotion="never">
+        <GameNavigationContext.Provider value={navigationEnabled}>
             <div
                 ref={setGameRoot}
                 className="nl-motion-keep relative h-full w-full overflow-hidden"
                 // Where this game's keyboard focus may be moved about: a focus outside it is the
                 // window's, and stays where it is (see `keyboardFocusHandover`).
                 {...{ [GAME_ROOT_ATTRIBUTE]: "" }}
+                // Whether the keys and the pad move a focus here at all (`focusNavigation`).
+                {...(navigationEnabled ? { [NAV_ENABLED_ATTRIBUTE]: "" } : {})}
                 // The keyboard focus is the keyboard's: a click on a control answers the click and
                 // leaves the next key to the game, see `pointerKeyboardFocus`.
                 onMouseDownCapture={keepPointerPressOffKeyboardFocus}
@@ -6943,6 +6952,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     </AnimatePresence>
                 </SurfaceStackBox>
             </div>
+        </GameNavigationContext.Provider>
         </MotionConfig>
         </GlobalInputActionContext.Provider>
     );

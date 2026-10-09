@@ -6,7 +6,6 @@ import {
     getInputBindingLabel,
 } from "@/apps/workspace/modules/ui-editor/input/inputBindingLabels";
 import { useTranslation } from "@/lib/i18n";
-import { inputActionDisplayName } from "@/lib/ui-editor/inputActionNames";
 import type { UIInputActionDef } from "@shared/types/ui-editor/inputAction";
 
 type AddSurfaceActionsDialogProps = {
@@ -137,7 +136,7 @@ export function AddSurfaceActionsDialog({
                             onCheckedChange={() => toggle(action.id)}
                             className="min-h-8 rounded-md px-2 hover:bg-edge-subtle"
                         >
-                            <span className="min-w-0 flex-1 truncate text-fg">{inputActionDisplayName(action, t)}</span>
+                            <span className="min-w-0 flex-1 truncate text-fg">{action.name}</span>
                             <span className="shrink-0 truncate text-2xs text-fg-subtle">
                                 {bindingsOf(action)}
                             </span>

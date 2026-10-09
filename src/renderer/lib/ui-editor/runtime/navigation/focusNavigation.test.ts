@@ -16,7 +16,8 @@ import {
     NAV_MODALITY_ATTRIBUTE,
     NAVIGATE_EVENT,
     noteFocusInGame,
-    FOCUS_SHOWS_HOVER_ATTRIBUTE,
+    FOCUS_SHOWS_OWN_LOOK_ATTRIBUTE,
+    NAV_ENABLED_ATTRIBUTE,
     notePointerOverGame,
     resolveNavigationScope,
     stepNavigationFocus,
@@ -33,7 +34,7 @@ function layOut(root: ParentNode): void {
 }
 
 function mount(html: string): { root: HTMLElement; by: (id: string) => HTMLElement } {
-    document.body.innerHTML = `<div ${GAME_ROOT_ATTRIBUTE}>${html}</div>`;
+    document.body.innerHTML = `<div ${GAME_ROOT_ATTRIBUTE} ${NAV_ENABLED_ATTRIBUTE}>${html}</div>`;
     const root = document.querySelector<HTMLElement>(`[${GAME_ROOT_ATTRIBUTE}]`)!;
     layOut(root);
     return { root, by: id => document.getElementById(id) as HTMLElement };
@@ -275,7 +276,7 @@ describe("a box that answers a click", () => {
         `);
         moveNavigationFocus(root, "down");
         expect(document.activeElement).toBe(by("slot"));
-        document.body.innerHTML = `<div ${GAME_ROOT_ATTRIBUTE}>
+        document.body.innerHTML = `<div ${GAME_ROOT_ATTRIBUTE} ${NAV_ENABLED_ATTRIBUTE}>
             <div class="ui-editor-surface" data-ui-nav-scope="stage">
                 <div id="area" data-ui-element-id="area" data-ui-nav-focusable="press" tabindex="0" data-box="0,0,1920,640"></div>
                 ${button("choice", "0,700,200,40")}
@@ -288,17 +289,17 @@ describe("a box that answers a click", () => {
 });
 
 describe("how the focus is drawn", () => {
-    it("with the author's hover look where the control has one, and with the ring where it has none", () => {
+    it("with the author's focused look where the control has one, and with the ring where it has none", () => {
         const { by } = mount(`
             <div class="ui-editor-surface" data-ui-nav-scope="owner" tabindex="-1">
-                <div data-ui-element-id="start" data-ui-hover-look><div id="start" role="button" tabindex="0" data-box="0,0,100,40"></div></div>
+                <div data-ui-element-id="start" data-ui-focus-look><div id="start" role="button" tabindex="0" data-box="0,0,100,40"></div></div>
                 <div data-ui-element-id="plain"><div id="plain" role="button" tabindex="0" data-box="0,50,100,40"></div></div>
                 <div data-ui-element-id="list">
                     <div id="row" data-ui-list-item-index="0" tabindex="0" data-box="0,100,100,40">
-                        <div data-ui-element-id="row-bg" data-ui-hover-look></div>
+                        <div data-ui-element-id="row-bg" data-ui-focus-look></div>
                     </div>
                 </div>
-                <div data-ui-element-id="slot" data-ui-hover-look>
+                <div data-ui-element-id="slot" data-ui-focus-look>
                     <div id="hit" data-ui-element-id="hit" data-ui-nav-focusable="always" tabindex="0" data-box="0,200,100,40"></div>
                 </div>
             </div>
@@ -306,10 +307,10 @@ describe("how the focus is drawn", () => {
         for (const id of ["start", "plain", "row", "hit"]) {
             noteFocusInGame(by(id));
         }
-        expect(by("start").hasAttribute(FOCUS_SHOWS_HOVER_ATTRIBUTE)).toBe(true);
-        expect(by("plain").hasAttribute(FOCUS_SHOWS_HOVER_ATTRIBUTE)).toBe(false);
-        expect(by("row").hasAttribute(FOCUS_SHOWS_HOVER_ATTRIBUTE)).toBe(true);
-        // A save slot's hover look, drawn when its hit area has the focus.
-        expect(by("hit").hasAttribute(FOCUS_SHOWS_HOVER_ATTRIBUTE)).toBe(true);
+        expect(by("start").hasAttribute(FOCUS_SHOWS_OWN_LOOK_ATTRIBUTE)).toBe(true);
+        expect(by("plain").hasAttribute(FOCUS_SHOWS_OWN_LOOK_ATTRIBUTE)).toBe(false);
+        expect(by("row").hasAttribute(FOCUS_SHOWS_OWN_LOOK_ATTRIBUTE)).toBe(true);
+        // A save slot's focused look, drawn when its hit area has the focus.
+        expect(by("hit").hasAttribute(FOCUS_SHOWS_OWN_LOOK_ATTRIBUTE)).toBe(true);
     });
 });

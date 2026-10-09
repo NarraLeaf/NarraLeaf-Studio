@@ -12,14 +12,15 @@ import type { CSSProperties, FocusEvent, KeyboardEvent as ReactKeyboardEvent, Mo
 import { MotionConfigContext } from "motion/react";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
-import { normalizeUIElementNavigation, uiElementHasHoverLook } from "@shared/types/ui-editor/navigation";
+import { normalizeUIElementNavigation, uiElementHasFocusLook } from "@shared/types/ui-editor/navigation";
 import { isOperableWidgetType } from "@shared/types/ui-editor/inputAction";
 import {
     elementNavigationAttributes,
-    HOVER_LOOK_ATTRIBUTE,
+    FOCUS_LOOK_ATTRIBUTE,
     NAV_FOCUSABLE_ATTRIBUTE,
     NAV_FOCUSABLE_PRESS,
 } from "@/lib/ui-editor/runtime/navigation/focusNavigation";
+import { useGameNavigationEnabled } from "@/lib/ui-editor/runtime/navigation/gameNavigationContext";
 import {
     NavigationFocusProvider,
     useWidgetRuntimeElementState,
@@ -738,9 +739,16 @@ export function EditorNodeWrapper({
     // only: the canvas has no focus to move. A box an author made reachable is a control of its own -
     // a Tab stop, pressed by Enter and Space the way a button is, which is also how a pad's Confirm
     // presses it.
+    const navigationEnabled = useGameNavigationEnabled();
     const navigationProps = useMemo(() => {
         if (!interactive || !blueprintRuntime) {
             return {};
+        }
+        // Drawn with its own focused look when it has the focus, so it needs no ring (`styles.css`).
+        // Whatever moved the focus there - navigation, or Tab in a game that has none.
+        const ownLook = uiElementHasFocusLook(element) ? { [FOCUS_LOOK_ATTRIBUTE]: "" } : {};
+        if (!navigationEnabled) {
+            return ownLook;
         }
         const navigation = normalizeUIElementNavigation(element.navigation);
         // An element whose own logic answers a click is a control, whatever widget it is - a save
@@ -750,15 +758,11 @@ export function EditorNodeWrapper({
             && !isOperableWidgetType(element.type)
             && blueprintRuntime.elementAnswersPress?.(element.id) === true;
         const reachable = navigation?.focusable === "always" || answersPress;
-        const attributes: Record<string, unknown> = elementNavigationAttributes(navigation);
+        const attributes: Record<string, unknown> = { ...elementNavigationAttributes(navigation), ...ownLook };
         if (answersPress) {
             // Marked apart from an author's `always`: on the stage a box that answers a click is
             // the area a click reads the story on with, not a control (`isNavigationTarget`).
             attributes[NAV_FOCUSABLE_ATTRIBUTE] = NAV_FOCUSABLE_PRESS;
-        }
-        // Drawn with its own hover look when it has the focus, so it needs no ring (`styles.css`).
-        if (uiElementHasHoverLook(element)) {
-            attributes[HOVER_LOOK_ATTRIBUTE] = "";
         }
         if (reachable) {
             attributes.tabIndex = 0;
@@ -773,7 +777,7 @@ export function EditorNodeWrapper({
             };
         }
         return attributes;
-    }, [blueprintRuntime, element, interactive]);
+    }, [blueprintRuntime, element, interactive, navigationEnabled]);
 
     /** Where this node is placed, state offset included. Its own channel, so a gesture cannot take it. */
     const placedLeft = enteredOffsetsInFlow ? 0 : layout.x + Math.min(0, layout.width) + placedEnteredOffsets.x;
@@ -1190,8 +1194,8 @@ export function EditorNodeWrapper({
             onFocus={interactive && (widgetRuntimeStore || blueprintRuntime) ? onFocus : undefined}
             onBlur={interactive && (widgetRuntimeStore || blueprintRuntime) ? onBlur : undefined}
         >
-            {/* Holding the keyboard or pad focus draws this subtree as hovered: see `NavigationFocusProvider`. */}
-            <NavigationFocusProvider focused={runtimeElementState.signals.focused}>
+            {/* Holding the focus draws this subtree as focused: see `NavigationFocusProvider`. */}
+            <NavigationFocusProvider focused={runtimeElementState.holdsFocus}>
                 {children}
             </NavigationFocusProvider>
         </div>

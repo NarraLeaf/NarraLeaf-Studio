@@ -215,11 +215,11 @@ import {
     type UISwitchElementExtra,
 } from "@shared/types/ui-editor/switch";
 import {
-    isUINavigationActionId,
     normalizeUIElementNavigation,
-    readUINavigationActionIntent,
-    resolveRuntimeInputVocabulary,
+    UI_NAVIGATION_SLOT_PRESET_BINDINGS,
+    UI_NAVIGATION_SLOTS,
     type UIElementNavigation,
+    type UINavigationSlot,
 } from "@shared/types/ui-editor/navigation";
 import {
     isDefaultUIPageAnimationSettings,
@@ -1545,14 +1545,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }, { history: this.componentHistory(componentId) });
     }
 
-    /**
-     * What the gestures of this project mean, keyed by id - the project's own actions and the
-     * navigation actions, at the bindings the project gave them or at their defaults
-     * (`resolveRuntimeInputVocabulary`). The vocabulary a running game routes by, so what the panel
-     * shows is what a player gets.
-     */
+    /** What the gestures of this project mean, keyed by id. */
     public getInputActions(): Record<string, UIInputActionDef> {
-        return resolveRuntimeInputVocabulary(this.getDocument().actions);
+        return this.getDocument().actions ?? {};
     }
 
     /**
@@ -1583,8 +1578,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     /** Rename one vocabulary entry. Surfaces store the id, so nothing they answer moves. */
     public renameInputAction(actionId: string, name: string): void {
         const nextName = name.trim();
-        // A navigation action is named by Studio, in the author's language, not by the document.
-        if (!nextName || isUINavigationActionId(actionId)) {
+        if (!nextName) {
             return;
         }
         this.mutateDocument(document => {
@@ -1606,15 +1600,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         this.mutateDocument(document => {
             const action = document.actions?.[actionId];
             if (!action) {
-                // A navigation action the project has not rebound before: rebinding it is what
-                // writes its entry. Until then the document carries nothing for it.
-                const intent = readUINavigationActionIntent(actionId);
-                if (intent) {
-                    document.actions = {
-                        ...(document.actions ?? {}),
-                        [actionId]: { id: actionId, name: intent, bindings: normalizeUIInputBindings(bindings) },
-                    };
-                }
                 return;
             }
             action.bindings = normalizeUIInputBindings(bindings);
@@ -1622,25 +1607,63 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     }
 
     /**
-     * Put a navigation action back on its default bindings, by dropping the entry the project wrote
-     * for it. The surfaces that answer it keep answering it: it never stopped existing.
+     * Put an intent in a navigation slot, or take it out of the one it fills (`slot` null).
+     *
+     * A slot holds one intent, so the intent that held it before gives it up in the same step: the
+     * panel offers every intent for every slot, and picking one is the whole of moving it.
      */
-    public resetNavigationActionBindings(actionId: string): void {
-        if (!isUINavigationActionId(actionId)) {
-            return;
-        }
+    public setInputActionNavigationSlot(actionId: string, slot: UINavigationSlot | null): void {
         this.mutateDocument(document => {
-            if (!document.actions?.[actionId]) {
+            const action = document.actions?.[actionId];
+            if (!action || (action.navigationSlot ?? null) === slot) {
                 return;
             }
-            const actions = { ...document.actions };
-            delete actions[actionId];
-            if (Object.keys(actions).length > 0) {
-                document.actions = actions;
+            for (const other of Object.values(document.actions ?? {})) {
+                if (slot && other.id !== actionId && other.navigationSlot === slot) {
+                    delete other.navigationSlot;
+                }
+            }
+            if (slot) {
+                action.navigationSlot = slot;
             } else {
-                delete document.actions;
+                delete action.navigationSlot;
             }
         }, { history: false });
+    }
+
+    /**
+     * Give every empty navigation slot an intent of its own, bound to the keys and pad buttons a
+     * player expects (`UI_NAVIGATION_SLOT_PRESET_BINDINGS`), named in the author's language.
+     *
+     * The way an existing project takes up keyboard and pad navigation: the bindings are written into
+     * the project as the template's are, and are the author's from then on. A slot already filled is
+     * left as the author filled it. Returns how many intents were made.
+     */
+    public fillEmptyNavigationSlots(names: Readonly<Record<UINavigationSlot, string>>): number {
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        let created = 0;
+        this.mutateDocument(document => {
+            created = 0;
+            const filled = new Set(Object.values(document.actions ?? {}).map(action => action.navigationSlot).filter(Boolean));
+            const actions = { ...(document.actions ?? {}) };
+            for (const slot of UI_NAVIGATION_SLOTS) {
+                if (filled.has(slot)) {
+                    continue;
+                }
+                const id = uuidService.generate();
+                actions[id] = {
+                    id,
+                    name: names[slot],
+                    bindings: normalizeUIInputBindings(UI_NAVIGATION_SLOT_PRESET_BINDINGS[slot]),
+                    navigationSlot: slot,
+                };
+                created += 1;
+            }
+            if (created > 0) {
+                document.actions = actions;
+            }
+        }, { history: false });
+        return created;
     }
 
     /**
@@ -1651,11 +1674,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
      * later action minted onto the same id would inherit those replies without anyone asking for it.
      */
     public deleteInputAction(actionId: string): void {
-        // A navigation action is not the project's to delete; `resetNavigationActionBindings` is what
-        // undoes a rebinding.
-        if (isUINavigationActionId(actionId)) {
-            return;
-        }
         this.mutateDocument(document => {
             if (!document.actions?.[actionId]) {
                 return;
@@ -1663,8 +1681,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             const actions = { ...document.actions };
             delete actions[actionId];
             document.actions = actions;
-            // The navigation actions are defined whether the document holds an entry for them or not.
-            const remaining = new Set(Object.keys(resolveRuntimeInputVocabulary(actions)));
+            const remaining = new Set(Object.keys(actions));
             for (const surface of document.surfaces) {
                 if (!surface.actions) {
                     continue;

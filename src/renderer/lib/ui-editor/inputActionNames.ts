@@ -1,12 +1,11 @@
 import type { Translator } from "@shared/i18n";
-import type { UIInputActionDef } from "@shared/types/ui-editor/inputAction";
-import { readUINavigationActionIntent, type UINavigationIntent } from "@shared/types/ui-editor/navigation";
+import { UI_NAVIGATION_SLOTS, type UINavigationSlot } from "@shared/types/ui-editor/navigation";
 
 type TranslateFn = Translator["t"];
 
-/** What a navigation action is called, in the author's language. */
-export function navigationActionName(intent: UINavigationIntent, t: TranslateFn): string {
-    switch (intent) {
+/** What a navigation slot is called, in the author's language. */
+export function navigationSlotName(slot: UINavigationSlot, t: TranslateFn): string {
+    switch (slot) {
         case "up":
             return t("uiEditor.inputActions.navigation.up");
         case "down":
@@ -28,12 +27,7 @@ export function navigationActionName(intent: UINavigationIntent, t: TranslateFn)
     }
 }
 
-/**
- * The name an author reads for an action: its own for one the project made, Studio's for a
- * navigation action - whose stored name is only its intent, written when the project first rebound
- * it, and not something to show.
- */
-export function inputActionDisplayName(action: Pick<UIInputActionDef, "id" | "name">, t: TranslateFn): string {
-    const intent = readUINavigationActionIntent(action.id);
-    return intent ? navigationActionName(intent, t) : action.name;
+/** Every slot's name, for the intents Studio makes when the author asks it to fill the empty ones. */
+export function navigationSlotNames(t: TranslateFn): Record<UINavigationSlot, string> {
+    return Object.fromEntries(UI_NAVIGATION_SLOTS.map(slot => [slot, navigationSlotName(slot, t)])) as Record<UINavigationSlot, string>;
 }

@@ -5,7 +5,7 @@ import {
     uiInputHintGamepadGlyph,
     uiInputHintKeyGlyph,
 } from "./inputHints";
-import { uiElementHasHoverLook } from "./navigation";
+import { uiElementHasFocusLook } from "./navigation";
 
 describe("the hint bar's glyphs", () => {
     it("reads the pad family off the controller's id", () => {
@@ -37,12 +37,12 @@ describe("the hint bar's glyphs", () => {
     });
 });
 
-describe("a look for being hovered", () => {
-    it("is an appearance row that applies while hovered, wherever the widget keeps its appearance", () => {
-        const hovered = { props: { appearance: { variants: [{ propertyGroups: { color: { rows: [{ value: "#fff" }, { conditions: { hovered: true }, value: "#f00" }] } } }] } } };
-        const pressedOnly = { props: { appearance: { variants: [{ propertyGroups: { color: { rows: [{ conditions: { active: true }, value: "#f00" }] } } }] } } };
-        expect(uiElementHasHoverLook(hovered)).toBe(true);
-        expect(uiElementHasHoverLook(pressedOnly)).toBe(false);
-        expect(uiElementHasHoverLook({ props: {} })).toBe(false);
+describe("a look for holding the focus", () => {
+    it("is an appearance row that applies while focused, wherever the widget keeps its appearance", () => {
+        const focused = { props: { appearance: { variants: [{ propertyGroups: { color: { rows: [{ value: "#fff" }, { conditions: { focused: true }, value: "#f00" }] } } }] } } };
+        const hoveredOnly = { props: { appearance: { variants: [{ propertyGroups: { color: { rows: [{ conditions: { hovered: true }, value: "#f00" }] } } }] } } };
+        expect(uiElementHasFocusLook(focused)).toBe(true);
+        expect(uiElementHasFocusLook(hoveredOnly)).toBe(false);
+        expect(uiElementHasFocusLook({ props: {} })).toBe(false);
     });
 });

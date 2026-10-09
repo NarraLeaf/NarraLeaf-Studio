@@ -98,6 +98,8 @@ export type UiActionStatement = {
     id: string;
     name: string;
     bindings: ({ kind: "pointer"; gesture: string } | { kind: "key"; key: string } | { kind: "gamepad"; button: string })[];
+    /** The navigation slot the action fills, from a `navigation <slot>` line. */
+    navigationSlot?: string;
 };
 
 export type UiDocumentStatement = {

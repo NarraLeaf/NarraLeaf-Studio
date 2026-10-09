@@ -1,12 +1,13 @@
 /**
- * What a navigation action does when nothing on screen answers it.
+ * What a navigation slot does when nothing on screen answers the press that filled it.
  *
- * The navigation actions (`nl.nav.*`, see `@shared/types/ui-editor/navigation`) are input actions: a
- * key or a pad button raises them by the bindings the vocabulary gives them, the global blueprint
- * hears them like any other, and a surface can answer one with a graph of its own. That last is what
- * makes them the author's to change - a gallery whose arrows page through pictures answers Left and
- * Right itself. When the surfaces that hold the keys answer nothing a press raised, the press is
- * navigation's, and it does what a menu does: moves the focus, steps it along like Tab, or goes back.
+ * A slot (`@shared/types/ui-editor/navigation`) is filled by one of the project's own intents, and a
+ * press raises that intent by its bindings like any other: the global blueprint hears it, and a
+ * surface can answer it with a graph of its own. That last is what keeps it the author's - a gallery
+ * whose arrows page through pictures answers Move Left and Move Right itself. When the surfaces that
+ * hold the keys answer nothing a press raised, the press is navigation's, and it does what a menu
+ * does: moves the focus, steps it along like Tab, or goes back. A project whose intents fill no slot
+ * has no navigation, and every press is the graphs' alone.
  *
  * "Answer nothing" is every action the press raised, not only the navigation ones. A page that binds
  * its own action to the Right arrow means the Right arrow on that page; navigation stepping in as
@@ -22,7 +23,7 @@
  */
 
 import type { UIInputActionDef } from "@shared/types/ui-editor/inputAction";
-import { readUINavigationActionIntent, type UINavigationIntent } from "@shared/types/ui-editor/navigation";
+import { raisedUINavigationSlots } from "@shared/types/ui-editor/navigation";
 import { resolveSurfaceInputActionHits, type UIInputSignal } from "@/lib/ui-editor/runtime/input/surfaceInputActions";
 import {
     confirmNavigationFocus,
@@ -41,39 +42,21 @@ function ownerSurfaces(owner: KeyboardOwner): readonly AmbientSurfaceTarget[] {
     return [{ surface: owner.surface, hostAdapter: owner.host.hostAdapter, runtimeScopeId: owner.host.runtimeScopeId }];
 }
 
-/** The navigation intents among the actions a press raised. */
-export function raisedNavigationIntents(actionIds: readonly string[]): Set<UINavigationIntent> {
-    const intents = new Set<UINavigationIntent>();
-    for (const actionId of actionIds) {
-        const intent = readUINavigationActionIntent(actionId);
-        if (intent) {
-            intents.add(intent);
-        }
-    }
-    // Shift+Tab is also Tab: a key binding without modifiers matches a press with them. The one that
-    // names Shift is the one the player meant.
-    if (intents.has("previous")) {
-        intents.delete("next");
-    }
-    return intents;
-}
-
 /**
  * Whether a focused control takes this press as its Confirm. When it does, the control has been
  * pressed by the time this returns, and the press must raise nothing else.
  */
-export function claimNavigationConfirm(gameRoot: Element | null, actionIds: readonly string[]): boolean {
-    if (!gameRoot || !raisedNavigationIntents(actionIds).has("confirm")) {
+export function claimNavigationConfirm(
+    gameRoot: Element | null,
+    vocabulary: Readonly<Record<string, UIInputActionDef>> | undefined,
+    actionIds: readonly string[],
+): boolean {
+    if (!gameRoot || !raisedUINavigationSlots(vocabulary, actionIds).has("confirm")) {
         return false;
     }
     return confirmNavigationFocus(gameRoot);
 }
 
-/**
- * Do what the press's navigation intents ask, unless what holds the keys answers the press itself.
- * Returns whether navigation did something, so a key it used can keep its browser default from also
- * running (Tab moving the focus a second time, an arrow scrolling).
- */
 /**
  * Whether Back has somewhere to go from what holds the keys: a page or layer, unless it is the page
  * the game starts on. The page stack can hold more under the title - a Title button on a menu that
@@ -84,6 +67,11 @@ export function ownerCanGoBack(owner: KeyboardOwner | null, isEntrySurface: ((su
     return Boolean(owner && !("stage" in owner) && !isEntrySurface?.(owner.surface.id));
 }
 
+/**
+ * Do what the slots the press filled ask, unless what holds the keys answers the press itself.
+ * Returns whether navigation did something, so a key it used can keep its browser default from also
+ * running (Tab moving the focus a second time, an arrow scrolling).
+ */
 export function runNavigationDefaults(input: {
     gameRoot: Element | null;
     owner: KeyboardOwner | null;
@@ -99,8 +87,8 @@ export function runNavigationDefaults(input: {
     if (!gameRoot || !owner) {
         return false;
     }
-    const intents = raisedNavigationIntents(input.actionIds);
-    if (intents.size === 0) {
+    const slots = raisedUINavigationSlots(input.vocabulary, input.actionIds);
+    if (slots.size === 0) {
         return false;
     }
     const answered = ownerSurfaces(owner).some(({ surface }) => resolveSurfaceInputActionHits({
@@ -112,17 +100,17 @@ export function runNavigationDefaults(input: {
         return false;
     }
     let handled = false;
-    for (const intent of intents) {
-        switch (intent) {
+    for (const slot of slots) {
+        switch (slot) {
             case "up":
             case "down":
             case "left":
             case "right":
-                handled = moveNavigationFocus(gameRoot, intent) || handled;
+                handled = moveNavigationFocus(gameRoot, slot) || handled;
                 break;
             case "next":
             case "previous":
-                handled = stepNavigationFocus(gameRoot, intent === "next" ? 1 : -1) || handled;
+                handled = stepNavigationFocus(gameRoot, slot === "next" ? 1 : -1) || handled;
                 break;
             case "cancel": {
                 // Back out of the page or layer that holds the keys. On the stage there is only the

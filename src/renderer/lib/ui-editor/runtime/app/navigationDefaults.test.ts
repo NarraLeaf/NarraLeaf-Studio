@@ -1,19 +1,25 @@
 // @vitest-environment jsdom
 /**
- * What the navigation actions do when nothing on screen answers them, and when they stand down: a
- * page that answers the press itself keeps it, a focused control takes Confirm for itself, Shift+Tab
- * is only Previous, and Back leaves a page but not the story.
+ * What the navigation slots do when nothing on screen answers the intents that fill them, and when
+ * they stand down: a project that fills no slot has no navigation, a page that answers the press
+ * itself keeps it, a focused control takes Confirm for itself, Shift+Tab is only Previous, and Back
+ * leaves a page but not the story.
  *
  * Comments in English per project convention.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { UIInputActionDef } from "@shared/types/ui-editor/inputAction";
-import { resolveRuntimeInputVocabulary, uiNavigationActionId } from "@shared/types/ui-editor/navigation";
+import {
+    raisedUINavigationSlots,
+    UI_NAVIGATION_SLOT_PRESET_BINDINGS,
+    UI_NAVIGATION_SLOTS,
+} from "@shared/types/ui-editor/navigation";
+import { NAV_ENABLED_ATTRIBUTE } from "@/lib/ui-editor/runtime/navigation/focusNavigation";
 import { GAME_ROOT_ATTRIBUTE } from "@/lib/ui-editor/runtime/input/keyboardFocusHandover";
 import { resolveGlobalInputActionPayloads, type UIInputSignal } from "@/lib/ui-editor/runtime/input/surfaceInputActions";
 import type { KeyboardOwner } from "./keyboardOwner";
-import { claimNavigationConfirm, raisedNavigationIntents, runNavigationDefaults } from "./navigationDefaults";
+import { claimNavigationConfirm, runNavigationDefaults } from "./navigationDefaults";
 import type { HostAdapterBundle } from "./types";
 
 const PAGE: UISurface = {
@@ -27,7 +33,7 @@ const PAGE: UISurface = {
 
 function mount() {
     document.body.innerHTML = `
-        <div ${GAME_ROOT_ATTRIBUTE}>
+        <div ${GAME_ROOT_ATTRIBUTE} ${NAV_ENABLED_ATTRIBUTE}>
             <div class="ui-editor-surface" data-ui-nav-scope="owner" tabindex="-1">
                 <div id="a" role="button" tabindex="0" data-box="0,0,100,40"></div>
                 <div id="b" role="button" tabindex="0" data-box="0,50,100,40"></div>
@@ -56,8 +62,16 @@ function pageOwner(actions: UISurface["actions"] = [], pageBack = vi.fn(async ()
 
 const GALLERY_NEXT: UIInputActionDef = { id: "galleryNext", name: "Next picture", bindings: [{ kind: "key", key: "ArrowDown" }] };
 
-function press(signal: UIInputSignal, actions: Record<string, UIInputActionDef> = {}) {
-    const vocabulary = resolveRuntimeInputVocabulary(actions);
+/** A project's intents filling every slot, bound as the starter project binds them. */
+const SLOTTED: Record<string, UIInputActionDef> = Object.fromEntries(UI_NAVIGATION_SLOTS.map(slot => [`nav.${slot}`, {
+    id: `nav.${slot}`,
+    name: slot,
+    bindings: [...UI_NAVIGATION_SLOT_PRESET_BINDINGS[slot]],
+    navigationSlot: slot,
+}]));
+
+function press(signal: UIInputSignal, actions: Record<string, UIInputActionDef> = {}, slotted = true) {
+    const vocabulary = { ...(slotted ? SLOTTED : {}), ...actions };
     const actionIds = resolveGlobalInputActionPayloads({ vocabulary, signal }).map(action => action.actionId);
     return { vocabulary, signal, actionIds };
 }
@@ -67,6 +81,16 @@ const pad = (button: string): UIInputSignal => ({ kind: "gamepad", button });
 
 afterEach(() => {
     document.body.innerHTML = "";
+});
+
+describe("a project whose intents fill no slot", () => {
+    it("has no navigation: the arrows, Confirm and Back are only the intents the project bound to them", () => {
+        const { root } = mount();
+        const owner = pageOwner();
+        expect(runNavigationDefaults({ gameRoot: root, owner, ...press(key("ArrowDown"), {}, false) })).toBe(false);
+        expect(runNavigationDefaults({ gameRoot: root, owner, ...press(pad("B"), {}, false) })).toBe(false);
+        expect(document.activeElement).toBe(document.body);
+    });
 });
 
 describe("a navigation press nothing on screen answers", () => {
@@ -83,8 +107,8 @@ describe("a navigation press nothing on screen answers", () => {
 
     it("is only Previous on Shift+Tab, though plain Tab's binding matches it too", () => {
         const shiftTab = press(key("Tab", true));
-        expect(shiftTab.actionIds).toEqual(expect.arrayContaining([uiNavigationActionId("next"), uiNavigationActionId("previous")]));
-        expect([...raisedNavigationIntents(shiftTab.actionIds)]).toEqual(["previous"]);
+        expect(shiftTab.actionIds).toEqual(expect.arrayContaining(["nav.next", "nav.previous"]));
+        expect([...raisedUINavigationSlots(shiftTab.vocabulary, shiftTab.actionIds)]).toEqual(["previous"]);
     });
 
     it("goes nowhere from the page the game starts on, however much the page stack holds under it", () => {
@@ -110,9 +134,9 @@ describe("a navigation press nothing on screen answers", () => {
 });
 
 describe("a page that answers the press itself", () => {
-    it("keeps it, whether it answers a navigation action or its own action on the same key", () => {
+    it("keeps it, whether it answers the intent in the slot or its own intent on the same key", () => {
         const { root } = mount();
-        const answersDown = pageOwner([{ actionId: uiNavigationActionId("down") }]);
+        const answersDown = pageOwner([{ actionId: "nav.down" }]);
         expect(runNavigationDefaults({ gameRoot: root, owner: answersDown, ...press(key("ArrowDown")) })).toBe(false);
 
         const gallery = pageOwner([{ actionId: GALLERY_NEXT.id }]);
@@ -128,9 +152,9 @@ describe("Confirm", () => {
         const clicked = vi.fn();
         by("a").addEventListener("click", clicked);
         const confirm = press(pad("A")).actionIds;
-        expect(claimNavigationConfirm(root, confirm)).toBe(false);
+        expect(claimNavigationConfirm(root, SLOTTED, confirm)).toBe(false);
         runNavigationDefaults({ gameRoot: root, owner: pageOwner(), ...press(pad("D-pad Down")) });
-        expect(claimNavigationConfirm(root, confirm)).toBe(true);
+        expect(claimNavigationConfirm(root, SLOTTED, confirm)).toBe(true);
         // `a` answers no Enter of its own, so the press clicks it.
         expect(clicked).toHaveBeenCalledTimes(1);
     });
@@ -139,7 +163,7 @@ describe("Confirm", () => {
 describe("on the stage", () => {
     function mountStage() {
         document.body.innerHTML = `
-            <div ${GAME_ROOT_ATTRIBUTE}>
+            <div ${GAME_ROOT_ATTRIBUTE} ${NAV_ENABLED_ATTRIBUTE}>
                 <div class="ui-editor-surface" data-ui-surface-id="dialogue" data-ui-nav-scope="controls">
                     <div id="advance-area" data-ui-element-id="advance-area" data-ui-nav-focusable="press" tabindex="0" data-box="0,0,1920,640"></div>
                 </div>
@@ -208,12 +232,12 @@ describe("on the stage", () => {
         expect(document.activeElement).toBe(by("save"));
         const clicked = vi.fn();
         by("save").addEventListener("click", clicked);
-        expect(claimNavigationConfirm(root, press(pad("A")).actionIds)).toBe(true);
+        expect(claimNavigationConfirm(root, SLOTTED, press(pad("A")).actionIds)).toBe(true);
         expect(clicked).toHaveBeenCalledTimes(1);
         expect(runNavigationDefaults({ gameRoot: root, owner, ...press(pad("B")) })).toBe(true);
         expect(document.activeElement).toBe(document.body);
         // Out again, A reads the story on.
-        expect(claimNavigationConfirm(root, press(pad("A")).actionIds)).toBe(false);
+        expect(claimNavigationConfirm(root, SLOTTED, press(pad("A")).actionIds)).toBe(false);
         runNavigationDefaults({ gameRoot: root, owner, ...press(pad("A")) });
         await Promise.resolve();
         await Promise.resolve();

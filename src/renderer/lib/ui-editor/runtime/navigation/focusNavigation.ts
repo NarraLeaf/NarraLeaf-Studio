@@ -1,7 +1,8 @@
 /**
  * The focus a running game moves between its controls, and the operations that move it.
  *
- * One focus for every device (see `@shared/types/ui-editor/navigation`). It is the browser's own
+ * The first of navigation's three layers (see `@shared/types/ui-editor/navigation`): one focus for
+ * every device, moved by whatever intents the project put in the slots. It is the browser's own
  * keyboard focus - so a focused button already hears Enter, a list row already knows it is the row,
  * and the focus and blur heads already fire - with three things the browser does not give a game:
  *
@@ -21,9 +22,15 @@
  * the way the keyboard always found them, less what an author took out (`data-ui-nav-focusable`
  * `never`, on it or around it) and plus what an author put in (`always`, on an element's own box).
  *
- * The ring is drawn by `styles.css` while the game root's {@link NAV_MODALITY_ATTRIBUTE} says the
- * player is moving by keys or pad, and not while they are pointing - one rule for both, where
- * `:focus-visible` would be the browser's guess about a pad it cannot see.
+ * A focused control is drawn with the `focused` state of its own appearance when the author gave it
+ * one, and with the platform's ring otherwise. The ring is drawn by `styles.css` while the game
+ * root's {@link NAV_MODALITY_ATTRIBUTE} says the player is moving by keys or pad, and not while they
+ * are pointing - one rule for both, where `:focus-visible` would be the browser's guess about a pad
+ * it cannot see.
+ *
+ * None of it runs in a game whose intents fill no slot: its root does not carry
+ * {@link NAV_ENABLED_ATTRIBUTE}, there is no scope, and the keyboard's focus is the browser's alone,
+ * as it was before navigation existed.
  *
  * Comments in English per project convention.
  */
@@ -71,15 +78,17 @@ export const NAV_REGION_ATTRIBUTE = "data-ui-nav-region";
 export const NAV_REMEMBER_ATTRIBUTE = "data-ui-nav-remember";
 /** On an element's box: where the focus starts unless the surface names one. */
 export const NAV_PREFERRED_ATTRIBUTE = "data-ui-nav-preferred";
-/** On an element's box: it has a look of its own for being hovered (`uiElementHasHoverLook`). */
-export const HOVER_LOOK_ATTRIBUTE = "data-ui-hover-look";
+/** On an element's box: it has a look of its own for holding the focus (`uiElementHasFocusLook`). */
+export const FOCUS_LOOK_ATTRIBUTE = "data-ui-focus-look";
 /**
- * On a focused control: it is drawn with its own hover look rather than the ring. Set as the focus
+ * On a focused control: it is drawn with its own focused look rather than the ring. Set as the focus
  * arrives (`noteFocusInGame`), whichever way it arrived.
  */
-export const FOCUS_SHOWS_HOVER_ATTRIBUTE = "data-nl-nav-hover";
+export const FOCUS_SHOWS_OWN_LOOK_ATTRIBUTE = "data-nl-nav-own-look";
 /** On the game root: `keys` while the player moves by keyboard or pad, `pointer` while pointing. */
 export const NAV_MODALITY_ATTRIBUTE = "data-nl-nav-modality";
+/** On the game root: the project's intents fill at least one navigation slot. */
+export const NAV_ENABLED_ATTRIBUTE = "data-nl-nav";
 
 export function navNeighborAttribute(direction: UINavigationDirection): string {
     return `data-ui-nav-${direction}`;
@@ -233,6 +242,9 @@ function setModality(gameRoot: Element, modality: "keys" | "pointer"): void {
  * in the instant one hands over to the next, since the later one is drawn above - else a stage menu.
  */
 export function resolveNavigationScope(gameRoot: Element): HTMLElement | null {
+    if (!gameRoot.hasAttribute(NAV_ENABLED_ATTRIBUTE)) {
+        return null;
+    }
     const pick = (value: string): HTMLElement | null => {
         const shells = Array.from(gameRoot.querySelectorAll<HTMLElement>(`[${NAV_SCOPE_ATTRIBUTE}="${value}"]`))
             .filter(shell => shell.closest("[inert]") === null);
@@ -777,11 +789,11 @@ export function notePointerPressOnGame(gameRoot: Element): void {
 }
 
 /**
- * Whether a control is drawn with an author's hover look when it has the focus: its own element, or
- * something inside it - a button's label, a list row's template - has one.
+ * Whether a control is drawn with an author's focused look when it has the focus: its own element,
+ * or something inside it - a button's label, a list row's template - has one.
  */
-function focusShowsHoverLook(target: HTMLElement): boolean {
-    const selector = `[${HOVER_LOOK_ATTRIBUTE}]`;
+function focusShowsOwnLook(target: HTMLElement): boolean {
+    const selector = `[${FOCUS_LOOK_ATTRIBUTE}]`;
     if (target.matches(selector) || target.querySelector(selector)) {
         return true;
     }
@@ -806,15 +818,15 @@ function focusShowsHoverLook(target: HTMLElement): boolean {
 }
 
 /**
- * The focus arrived on something in the game - by navigation, by a page giving it back, by a list's
- * Home key. A control the author gave a hover look is drawn with that look instead of the ring; one
- * with nothing of its own falls back to the ring, so a focused control is never invisible.
+ * The focus arrived on something in the game - by navigation, by Tab, by a page giving it back, by a
+ * list's Home key. A control the author gave a focused look is drawn with that look instead of the
+ * ring; one with nothing of its own falls back to the ring, so a focused control is never invisible.
  */
 export function noteFocusInGame(target: EventTarget | null): void {
     if (typeof HTMLElement === "undefined" || !(target instanceof HTMLElement) || !target.matches(CONTROL_TARGET_SELECTOR)) {
         return;
     }
-    target.toggleAttribute(FOCUS_SHOWS_HOVER_ATTRIBUTE, focusShowsHoverLook(target));
+    target.toggleAttribute(FOCUS_SHOWS_OWN_LOOK_ATTRIBUTE, focusShowsOwnLook(target));
 }
 
 /** What navigation looks like right now, for the hint bar to say what the buttons do. */

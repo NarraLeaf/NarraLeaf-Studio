@@ -34,7 +34,7 @@ import {
     scheduleNavigationEntry,
     surfaceNavigationAttributes,
 } from "@/lib/ui-editor/runtime/navigation/focusNavigation";
-import { readUISurfaceNavigation, resolveRuntimeInputVocabulary } from "@shared/types/ui-editor/navigation";
+import { readUISurfaceNavigation } from "@shared/types/ui-editor/navigation";
 import { readPointerInputGesture, type UIPointerInputGesture } from "@/lib/ui-editor/runtime/input/pointerInputGesture";
 import { getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
 import {
@@ -285,8 +285,7 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
      */
     const laneInteractive = interactive;
     const laneKeyboardInteractive = keyboardInteractive;
-    // The navigation actions too: a surface may answer one with a gesture an author bound to it.
-    const actionVocabulary = useMemo(() => resolveRuntimeInputVocabulary(document.actions), [document.actions]);
+    const actionVocabulary = document.actions;
     const surfaceActions = surface.actions;
     /**
      * Whether this surface is a lane at all.

@@ -290,7 +290,7 @@ export const widgets = {
         wordConfirm: "決定",
         wordBack: "戻る",
         wordAdvance: "送り",
-        wordStageControls: "ステージのコントロール",
+        wordStageControls: "クイックメニュー",
     },
     video: {
         title: "動画",

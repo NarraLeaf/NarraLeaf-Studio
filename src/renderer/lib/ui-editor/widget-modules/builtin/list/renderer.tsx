@@ -24,6 +24,7 @@ import {
     resolveUIListScrollMetrics,
 } from "@shared/types/ui-editor/list";
 import { focusNavigationTarget } from "@/lib/ui-editor/runtime/navigation/focusNavigation";
+import { useGameNavigationEnabled } from "@/lib/ui-editor/runtime/navigation/gameNavigationContext";
 import { resolvePageAnimationMotion } from "@/lib/ui-editor/runtime/pageAnimation";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import type { UIStructDef } from "@shared/types/ui-editor/struct";
@@ -568,12 +569,13 @@ export function ListRenderer(props: WidgetRendererProps) {
     /**
      * The row the keyboard enters this list on: the one it last left, else the selected one, else the
      * first. The list is one stop on Tab however many rows it has - the rest are reached with the
-     * arrows, which navigation moves between rows like any other controls - so a menu of four options
-     * or a backlog of two hundred lines costs the same one press to pass. Home and End are the
-     * list's own (`listRowKeyboardMove`).
+     * arrows - so a menu of four options or a backlog of two hundred lines costs the same one press
+     * to pass. In a game with navigation the arrows are navigation's, which moves between rows like
+     * any other controls; without it they are the list's. See `listRowKeyboardMove`.
      */
     const [keyboardRowIndex, setKeyboardRowIndex] = useState<number | null>(null);
-    /** The row that has the focus right now, drawn as hovered (`NavigationFocusProvider`). */
+    const navigationEnabled = useGameNavigationEnabled();
+    /** The row that has the focus right now, drawn as focused (`NavigationFocusProvider`). */
     const [focusedRowIndex, setFocusedRowIndex] = useState<number | null>(null);
     const tabStopRowIndex = count > 0
         ? Math.min(count - 1, Math.max(0, keyboardRowIndex ?? (selectedIndex >= 0 && selectedIndex < count ? selectedIndex : 0)))
@@ -593,7 +595,7 @@ export function ListRenderer(props: WidgetRendererProps) {
                 }
                 return;
             }
-            const next = listRowKeyboardMove(event.key, scope.index, scope.count);
+            const next = listRowKeyboardMove(event.key, scope.index, scope.count, !navigationEnabled);
             if (next === null) {
                 return;
             }
@@ -601,10 +603,14 @@ export function ListRenderer(props: WidgetRendererProps) {
             const row = Array.from(event.currentTarget.parentElement?.children ?? [])
                 .find(sibling => sibling.getAttribute("data-ui-list-item-index") === String(next));
             if (row instanceof HTMLElement) {
-                focusNavigationTarget(row);
+                if (navigationEnabled) {
+                    focusNavigationTarget(row);
+                } else {
+                    row.focus();
+                }
             }
         },
-        [handleListItemClick],
+        [handleListItemClick, navigationEnabled],
     );
     // Resolved once for the whole list rather than per row: every row gets the same motion, and only
     // the delay differs. `initial={false}` on the presence below is what keeps a list that is simply

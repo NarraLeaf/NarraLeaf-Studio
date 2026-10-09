@@ -3,21 +3,32 @@
  *
  * A game is played with a mouse, a keyboard and a gamepad, and only the first can point. The other
  * two need a focus - one control that is "the one" - and a way to move it: up, down, left, right,
- * and in and out of a group. That is one system for both of them, not one per device. The keyboard's
- * arrows and the pad's D-pad move the same focus by the same rules, and a mouse resting on a control
- * makes that control the place the next arrow press starts from. Each device only differs in the
- * buttons that raise the moves, and those are input actions like any other (see
- * {@link UI_NAVIGATION_ACTIONS}).
+ * and in and out of a group. That is one system for both of them, not one per device, built in three
+ * layers, each of which knows nothing about the one above it:
  *
- * This file is the data half: what an element and a surface say about it. The runtime that reads it
- * lives in `runtime/navigation`.
+ *  1. **The focus.** Which control holds it, where a direction takes it, what an element says about
+ *     being reached ({@link UIElementNavigation}) and how a focused control looks - the `focused`
+ *     state of its appearance, the author's to draw as `hovered` is, with the platform's ring only
+ *     for a control that has no look of its own.
+ *  2. **The intents.** The focus is moved by a fixed set of operations, the slots
+ *     ({@link UI_NAVIGATION_SLOTS}): move up, confirm, back, and so on. A slot does nothing by itself.
+ *     It is filled by one of the project's own intents (`UIInputActionDef.navigationSlot`), and the
+ *     bindings of that intent are what move the focus. A project whose intents fill no slot has no
+ *     navigation, and nothing in the runtime makes one up for it: the default keys are content, and a
+ *     new project gets them from its template the way it gets every other intent.
+ *  3. **The devices.** A key, a pad button, a pointer gesture: bindings of an intent, nothing more.
+ *     A pad is not special to navigation - it raises intents as a keyboard does, and a graph that
+ *     wants the pad itself reads it with its own nodes.
+ *
+ * This file is the data half: what an element, a surface and an intent say about it. The runtime
+ * that reads it lives in `runtime/navigation`.
  *
  * ## An element
  *
  * Every control a game draws is reachable by default - a button, a switch, a list row, a choice -
  * because an author who placed a button wants it pressed, and making every one of them opt in would
- * leave every existing project unreachable from a pad. So {@link UIElementNavigation} is a list of
- * exceptions, absent on almost every element:
+ * leave a project unreachable from a pad the day it fills the slots. So {@link UIElementNavigation}
+ * is a list of exceptions, absent on almost every element:
  *
  *  - `focusable: "never"` takes the element, and everything inside it, out of navigation. A panel of
  *    decorative buttons, a control that only means something to a mouse.
@@ -44,6 +55,7 @@
  */
 
 import type { UIElement, UIElementId, UISurface } from "./document";
+import type { AppearanceSystemCondition } from "./appearance";
 import type { UIInputActionDef, UIInputBinding } from "./inputAction";
 
 export const UI_NAVIGATION_DIRECTIONS = ["up", "down", "left", "right"] as const;
@@ -171,49 +183,88 @@ export function readUISurfaceNavigation(surface: Pick<UISurface, "settings"> | n
     return normalizeUISurfaceNavigation(surface?.settings?.navigation) ?? {};
 }
 
-// === The actions that move the focus ====================================================
+// === The slots the intents fill ==========================================================
 
 /**
  * What the player can ask navigation to do. On the stage, with nothing focused, Confirm also reads
- * the story on - the press a click on the stage is - and Menu steps into the stage's own controls.
+ * the story on - the press a click on the stage is - and Menu steps into the stage's own buttons.
  *
- * Each is an input action with a reserved id, so the
- * buttons that raise it are bindings an author can see and change, a surface can answer it with a
- * graph of its own, and the global blueprint can listen to it - the intent system the rest of the
- * game's input already goes through, rather than keys wired into the runtime.
+ * Fixed: the focus system knows these operations and no others. Which buttons perform one is not
+ * fixed - that is the intent a project puts in the slot.
  */
-export const UI_NAVIGATION_INTENTS = ["up", "down", "left", "right", "next", "previous", "confirm", "cancel", "menu"] as const;
+export const UI_NAVIGATION_SLOTS = ["up", "down", "left", "right", "next", "previous", "confirm", "cancel", "menu"] as const;
 
-export type UINavigationIntent = (typeof UI_NAVIGATION_INTENTS)[number];
+export type UINavigationSlot = (typeof UI_NAVIGATION_SLOTS)[number];
 
-/** The prefix no author action can carry: ids an author creates are generated, never dotted. */
-export const UI_NAVIGATION_ACTION_PREFIX = "nl.nav.";
-
-export function uiNavigationActionId(intent: UINavigationIntent): string {
-    return `${UI_NAVIGATION_ACTION_PREFIX}${intent}`;
+export function isUINavigationSlot(value: unknown): value is UINavigationSlot {
+    return typeof value === "string" && (UI_NAVIGATION_SLOTS as readonly string[]).includes(value);
 }
 
-export function readUINavigationActionIntent(actionId: string): UINavigationIntent | null {
-    if (!actionId.startsWith(UI_NAVIGATION_ACTION_PREFIX)) {
-        return null;
+/** The slots a held button repeats, as a held arrow key does in a text field. */
+export function uiNavigationSlotRepeats(slot: UINavigationSlot): boolean {
+    return slot === "up" || slot === "down" || slot === "left" || slot === "right"
+        || slot === "next" || slot === "previous";
+}
+
+type SlotCarrier = Readonly<Record<string, Pick<UIInputActionDef, "navigationSlot">>> | undefined;
+
+/**
+ * Which intent fills each slot, read from the project's intents.
+ *
+ * Stored on the intent rather than in a table of its own, so an intent that is deleted takes its slot
+ * with it and nothing can point at an intent that is not there. Normalising the library already
+ * keeps one intent per slot (`normalizeUIInputActionLibrary`); this reads the same rule again for a
+ * caller holding a table that never went through it.
+ */
+export function resolveUINavigationSlots(actions: SlotCarrier): Partial<Record<UINavigationSlot, string>> {
+    const slots: Partial<Record<UINavigationSlot, string>> = {};
+    for (const [actionId, action] of Object.entries(actions ?? {})) {
+        const slot = action?.navigationSlot;
+        if (isUINavigationSlot(slot) && !slots[slot]) {
+            slots[slot] = actionId;
+        }
     }
-    const intent = actionId.slice(UI_NAVIGATION_ACTION_PREFIX.length);
-    return (UI_NAVIGATION_INTENTS as readonly string[]).includes(intent) ? (intent as UINavigationIntent) : null;
+    return slots;
 }
 
-export function isUINavigationActionId(actionId: string): boolean {
-    return readUINavigationActionIntent(actionId) !== null;
+/** Whether any of the project's intents fills a slot: whether the game has navigation at all. */
+export function hasUINavigationSlots(actions: SlotCarrier): boolean {
+    return Object.values(actions ?? {}).some(action => isUINavigationSlot(action?.navigationSlot));
 }
 
 /**
- * What each intent is bound to until an author says otherwise.
+ * The slots a press fills: the slots of the intents it raised.
  *
- * The keyboard has had arrows, Tab, Enter and Escape for this longer than games have had pads, and
- * the pad's are the ones every console menu uses. Both sticks of a pad are not bindings - the left
- * one reaches here as four virtual buttons (`Left Stick Up`, ...), which is what lets it share the
- * D-pad's rows.
+ * Shift+Tab is also Tab - a key binding without modifiers matches a press with them - so when both
+ * Next and Previous are raised the one that names Shift is the one the player meant.
  */
-const UI_NAVIGATION_DEFAULT_BINDINGS: Readonly<Record<UINavigationIntent, readonly UIInputBinding[]>> = {
+export function raisedUINavigationSlots(actions: SlotCarrier, actionIds: readonly string[]): Set<UINavigationSlot> {
+    const slots = resolveUINavigationSlots(actions);
+    const raised = new Set(actionIds);
+    const out = new Set<UINavigationSlot>();
+    for (const slot of UI_NAVIGATION_SLOTS) {
+        const actionId = slots[slot];
+        if (actionId && raised.has(actionId)) {
+            out.add(slot);
+        }
+    }
+    if (out.has("previous")) {
+        out.delete("next");
+    }
+    return out;
+}
+
+/**
+ * What an intent created for a slot starts bound to, when the author asks Studio to fill the empty
+ * slots - and what the starter project's navigation intents carry.
+ *
+ * A preset, spent the moment the intent exists, exactly as `UI_INPUT_ACTION_PRESETS` are: the
+ * bindings are written into the project and are the author's from then on. The runtime never reads
+ * this table. The keyboard has had arrows, Tab, Enter and Escape for this longer than games have had
+ * pads, and the pad's are the ones every console menu uses; the left stick reaches here as four
+ * virtual buttons (`Left Stick Up`, ...), which is what lets it share the D-pad's rows.
+ */
+export const UI_NAVIGATION_SLOT_PRESET_BINDINGS: Readonly<Record<UINavigationSlot, readonly UIInputBinding[]>> = {
     up: [{ kind: "key", key: "ArrowUp" }, { kind: "gamepad", button: "D-pad Up" }, { kind: "gamepad", button: "Left Stick Up" }],
     down: [{ kind: "key", key: "ArrowDown" }, { kind: "gamepad", button: "D-pad Down" }, { kind: "gamepad", button: "Left Stick Down" }],
     left: [{ kind: "key", key: "ArrowLeft" }, { kind: "gamepad", button: "D-pad Left" }, { kind: "gamepad", button: "Left Stick Left" }],
@@ -222,52 +273,21 @@ const UI_NAVIGATION_DEFAULT_BINDINGS: Readonly<Record<UINavigationIntent, readon
     previous: [{ kind: "key", key: "Shift+Tab" }],
     confirm: [{ kind: "key", key: "Enter" }, { kind: "key", key: "Space" }, { kind: "gamepad", button: "A" }],
     cancel: [{ kind: "key", key: "Escape" }, { kind: "gamepad", button: "B" }],
-    // Into the controls on the stage and back out - the quick menu during dialogue, which the D-pad
+    // Into the buttons on the stage and back out - the quick menu during dialogue, which the D-pad
     // does not wander onto by itself. A pad's alone: a keyboard player has a mouse to reach it with.
     menu: [{ kind: "gamepad", button: "Y" }],
 };
 
-export function defaultUINavigationBindings(intent: UINavigationIntent): UIInputBinding[] {
-    return UI_NAVIGATION_DEFAULT_BINDINGS[intent].map(binding => ({ ...binding }));
-}
-
-/** The intents a held button repeats, as a held arrow key does in a text field. */
-export function uiNavigationIntentRepeats(intent: UINavigationIntent): boolean {
-    return intent === "up" || intent === "down" || intent === "left" || intent === "right"
-        || intent === "next" || intent === "previous";
-}
-
 /**
- * The vocabulary a running game routes by: the project's own actions, and the navigation actions.
+ * Whether an element has a look of its own for holding the focus: an appearance row that applies
+ * while it is focused.
  *
- * A navigation action the document holds an entry for is that entry - an author who rebound Confirm
- * changed it there - and one it does not hold is the default. Nothing is written into the document
- * for a default, so a project that never touched navigation carries nothing for it, and a Studio
- * that changes a default changes it for every such project.
+ * A focused control is drawn with that look, and the platform's focus ring is only the fallback for
+ * a control the author gave none - so this is the question that decides between them. Searched
+ * through the whole of the props rather than one known path, because every widget keeps its
+ * appearance under its own shape.
  */
-export function resolveRuntimeInputVocabulary(
-    actions: Readonly<Record<string, UIInputActionDef>> | undefined,
-): Record<string, UIInputActionDef> {
-    const out: Record<string, UIInputActionDef> = { ...(actions ?? {}) };
-    for (const intent of UI_NAVIGATION_INTENTS) {
-        const id = uiNavigationActionId(intent);
-        if (!out[id]) {
-            out[id] = { id, name: intent, bindings: defaultUINavigationBindings(intent) };
-        }
-    }
-    return out;
-}
-
-/**
- * Whether an element has a look of its own for being pointed at: an appearance row that applies
- * while it is hovered.
- *
- * A focused control is drawn with that look (`NavigationFocusContext`), and the platform's focus
- * ring is only the fallback for a control the author gave no hover look - so this is the question
- * that decides between them. Searched through the whole of the props rather than one known path,
- * because every widget keeps its appearance under its own shape.
- */
-export function uiElementHasHoverLook(element: Pick<UIElement, "props"> | null | undefined): boolean {
+export function uiElementHasFocusLook(element: Pick<UIElement, "props"> | null | undefined): boolean {
     const visit = (value: unknown, depth: number): boolean => {
         if (!value || typeof value !== "object" || depth > 12) {
             return false;
@@ -276,8 +296,8 @@ export function uiElementHasHoverLook(element: Pick<UIElement, "props"> | null |
             return value.some(entry => visit(entry, depth + 1));
         }
         const record = value as Record<string, unknown>;
-        const conditions = record.conditions;
-        if (conditions && typeof conditions === "object" && (conditions as Record<string, unknown>).hovered === true) {
+        const conditions = record.conditions as AppearanceSystemCondition | null | undefined;
+        if (conditions && typeof conditions === "object" && conditions.focused === true) {
             return true;
         }
         return Object.values(record).some(entry => visit(entry, depth + 1));

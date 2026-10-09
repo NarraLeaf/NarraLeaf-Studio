@@ -1,23 +1,35 @@
 /**
  * What the hint bar lists: the moves while there is something to move between, the actions the
- * screen answers by their own names, Advance and Stage controls on the stage, Back where there is
- * somewhere to go back to - and each button once.
+ * screen answers by their own names, Advance and the quick menu on the stage, Back where there is
+ * somewhere to go back to - and each button once. The moves are the intents in the navigation slots,
+ * and a project that fills none has none to list.
  *
  * Comments in English per project convention.
  */
 import { describe, expect, it } from "vitest";
 import type { UIInputActionDef } from "@shared/types/ui-editor/inputAction";
-import { resolveRuntimeInputVocabulary } from "@shared/types/ui-editor/navigation";
+import {
+    UI_NAVIGATION_SLOT_PRESET_BINDINGS,
+    UI_NAVIGATION_SLOTS,
+} from "@shared/types/ui-editor/navigation";
 import { resolveInputHints, type InputHintContext } from "./inputHints";
 
 const DISMISS: UIInputActionDef = { id: "dismiss", name: "Close", bindings: [{ kind: "key", key: "Escape" }, { kind: "gamepad", button: "B" }] };
 const BACKLOG: UIInputActionDef = { id: "backlog", name: "Log", bindings: [{ kind: "gamepad", button: "LB" }] };
 const ADVANCE: UIInputActionDef = { id: "advance", name: "Read on", bindings: [{ kind: "key", key: "Space" }, { kind: "gamepad", button: "A" }] };
 
+/** A project's intents filling every slot, bound as the starter project binds them. */
+const SLOTTED: Record<string, UIInputActionDef> = Object.fromEntries(UI_NAVIGATION_SLOTS.map(slot => [`nav.${slot}`, {
+    id: `nav.${slot}`,
+    name: slot,
+    bindings: [...UI_NAVIGATION_SLOT_PRESET_BINDINGS[slot]],
+    navigationSlot: slot,
+}]));
+
 function context(overrides: Partial<InputHintContext>): InputHintContext {
     return {
         device: "gamepad",
-        vocabulary: resolveRuntimeInputVocabulary({ dismiss: DISMISS, backlog: BACKLOG, advance: ADVANCE }),
+        vocabulary: { ...SLOTTED, dismiss: DISMISS, backlog: BACKLOG, advance: ADVANCE },
         lane: "page",
         answered: [],
         navigation: { scope: "owner", targets: 4, stageControlsAvailable: false },
@@ -41,6 +53,11 @@ describe("the hints on a page", () => {
 
     it("says nothing about going back from the page the game starts on", () => {
         expect(summary(resolveInputHints(context({ canGoBack: false })))).toEqual(["select:D-pad Up", "confirm:A"]);
+    });
+
+    it("lists no moves in a project whose intents fill no slot, only what the page answers", () => {
+        const vocabulary = { dismiss: DISMISS, backlog: BACKLOG, advance: ADVANCE };
+        expect(summary(resolveInputHints(context({ vocabulary, answered: ["dismiss"] })))).toEqual(["Close:B"]);
     });
 
     it("lists the keyboard's keys for a keyboard player", () => {

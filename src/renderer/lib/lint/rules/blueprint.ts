@@ -54,7 +54,6 @@ import { blueprintNodeTitleKey } from "@/apps/workspace/modules/blueprint-lite/b
 import { anchorComponentId, anchorElementId } from "@shared/blueprint/ownerShape";
 import type { LintContext } from "../context";
 import type { LintFinding, LintLocation, LintRule } from "../types";
-import { resolveRuntimeInputVocabulary } from "@shared/types/ui-editor/navigation";
 
 /**
  * `blueprint` - graphs that cannot do what they say.
@@ -203,7 +202,7 @@ function buildReferenceUniverse(ctx: LintContext): BlueprintReferenceUniverse {
         );
         // Keyed by the table's key, which is the identity a graph stores - the same reading
         // `normalizeUIInputActionLibrary` takes.
-        universe.inputAction = new Set(Object.keys(resolveRuntimeInputVocabulary(ctx.uiDocument.actions)));
+        universe.inputAction = new Set(Object.keys(ctx.uiDocument.actions ?? {}));
     }
     if (ctx.storiesComplete) {
         const stories = new Set<string>();

@@ -293,7 +293,7 @@ export const widgets = {
         wordConfirm: "Confirm",
         wordBack: "Back",
         wordAdvance: "Advance",
-        wordStageControls: "Stage controls",
+        wordStageControls: "Quick menu",
     },
     video: {
         title: "Video",

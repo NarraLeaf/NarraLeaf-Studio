@@ -320,7 +320,11 @@ surface "Gallery" id=demo-gallery kind=appSurface size=1920x1080
   `Get Component Param`; `type=text` makes it words a player reads, which a
   widget inside the definition shows with `bind <prop> = param <id>`.
 - **`struct <id>`** and **`action <id> <name>`** declare the two document-wide
-  tables: item shapes, and what a gesture means.
+  tables: item shapes, and what a gesture means. Under an action, `pointer`,
+  `key` and `gamepad` lines are its bindings, and `navigation <slot>` puts it in
+  one of the focus system's slots (`up`, `down`, `left`, `right`, `next`,
+  `previous`, `confirm`, `cancel`, `menu`): its bindings then move the focus. A
+  project whose actions fill no slot has no keyboard or pad navigation.
 - **`document <name> [id=] [entry=]`** names the document itself. `entry=` makes
   a page - by id or by name - the one the game starts on; leaving it out leaves
   the entry where it is, so applying one surface's block can never move it. A

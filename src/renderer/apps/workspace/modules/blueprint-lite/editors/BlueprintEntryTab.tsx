@@ -219,7 +219,6 @@ import {
     listBlueprintSetFramePageTargetOptions,
 } from "@/lib/ui-editor/blueprint-nodes/frameTargetSurfaceOptions";
 import { interfaceDocumentFreezeScope, useLiveUndoOverride } from "../../ui-editor/uiLiveSession";
-import { navigationActionName } from "@/lib/ui-editor/inputActionNames";
 
 function getActiveIr(bp: Blueprint, view: BlueprintEditorGraphView | null): BlueprintGraphIr | null {
     if (!view) {
@@ -1934,7 +1933,6 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                         pickedId: String(node.params?.[BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID] ?? ""),
                         unnamedLabel: t("blueprint.options.unnamedInputAction"),
                         missingLabel: () => t("blueprint.options.missingInputAction"),
-                        navigationLabel: intent => navigationActionName(intent, t),
                     }),
                 };
                 continue;

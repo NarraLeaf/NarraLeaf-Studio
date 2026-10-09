@@ -9,13 +9,10 @@ import {
     type UIInputActionDef,
     type UIInputBinding,
 } from "@shared/types/ui-editor/inputAction";
-import {
-    isUINavigationActionId,
-    UI_NAVIGATION_INTENTS,
-    uiNavigationActionId,
-} from "@shared/types/ui-editor/navigation";
+import { UI_NAVIGATION_SLOTS, type UINavigationSlot } from "@shared/types/ui-editor/navigation";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
-import { inputActionDisplayName } from "@/lib/ui-editor/inputActionNames";
+import { navigationSlotName, navigationSlotNames } from "@/lib/ui-editor/inputActionNames";
+import { Select, type SelectOption } from "@/lib/components/elements/Select";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
@@ -103,15 +100,25 @@ export function InputActionLibraryPanel({ documentService, uiService, open, onOp
         return documentService.onDocumentChanged(refresh);
     }, [documentService]);
 
-    // The project's own actions, and Studio's navigation actions below them in a group of their own:
-    // always there, in a fixed order, named by Studio.
-    const authorActions = useMemo(() => actions.filter(action => !isUINavigationActionId(action.id)), [actions]);
-    const navigationActions = useMemo(
-        () => UI_NAVIGATION_INTENTS
-            .map(intent => actions.find(action => action.id === uiNavigationActionId(intent)))
-            .filter((action): action is UIInputActionDef => Boolean(action)),
-        [actions],
+    // Which intent fills each navigation slot. The slots are the focus system's and fixed; the
+    // intents are the project's, and any of them can fill one (see `navigation.ts`).
+    const slotActions = useMemo(() => {
+        const out: Partial<Record<UINavigationSlot, UIInputActionDef>> = {};
+        for (const action of actions) {
+            if (action.navigationSlot && !out[action.navigationSlot]) {
+                out[action.navigationSlot] = action;
+            }
+        }
+        return out;
+    }, [actions]);
+    const slotOptions = useMemo<SelectOption[]>(
+        () => [
+            { value: "", label: t("uiEditor.inputActions.navigationNone") },
+            ...actions.map(action => ({ value: action.id, label: action.name })),
+        ],
+        [actions, t],
     );
+    const emptySlots = UI_NAVIGATION_SLOTS.filter(slot => !slotActions[slot]).length;
 
     // `actions` is a fresh array on every document change, so this recounts exactly as often as the
     // numbers can move and no more.
@@ -177,7 +184,7 @@ export function InputActionLibraryPanel({ documentService, uiService, open, onOp
             const preset = UI_INPUT_ACTION_PRESETS.find(entry => entry.id === presetId);
             const suggestedName = preset && preset.id !== "blank"
                 ? t(`uiEditor.inputActions.presets.${preset.id}` as never)
-                : t("uiEditor.naming.inputAction", { index: authorActions.length + 1 });
+                : t("uiEditor.naming.inputAction", { index: actions.length + 1 });
             const name = inputDialog
                 ? await inputDialog.show({
                       title: t("uiEditor.inputActions.createTitle"),
@@ -191,7 +198,7 @@ export function InputActionLibraryPanel({ documentService, uiService, open, onOp
             }
             documentService.createInputAction(name, preset?.bindings ?? []);
         },
-        [authorActions.length, documentService, inputDialog, t],
+        [actions.length, documentService, inputDialog, t],
     );
 
     const openCreateMenu = useCallback(
@@ -254,24 +261,6 @@ export function InputActionLibraryPanel({ documentService, uiService, open, onOp
         (event: MouseEvent<HTMLButtonElement | HTMLDivElement>, action: UIInputActionDef) => {
             event.preventDefault();
             event.stopPropagation();
-            if (isUINavigationActionId(action.id)) {
-                // Studio's action, not the project's: it keeps its name and cannot be deleted, and the
-                // one thing to undo is a rebinding.
-                const rebound = Boolean(documentService?.getDocument().actions?.[action.id]);
-                setMenuItems([
-                    {
-                        id: "reset",
-                        label: t("uiEditor.inputActions.resetBindings"),
-                        ...freeze.menuRow(!rebound),
-                        onClick: () => {
-                            hideMenu();
-                            documentService?.resetNavigationActionBindings(action.id);
-                        },
-                    },
-                ]);
-                showMenu(event);
-                return;
-            }
             setMenuItems([
                 {
                     id: "rename",
@@ -295,7 +284,7 @@ export function InputActionLibraryPanel({ documentService, uiService, open, onOp
             ]);
             showMenu(event);
         },
-        [documentService, freeze, handleDelete, handleRename, hideMenu, showMenu, t],
+        [freeze, handleDelete, handleRename, hideMenu, showMenu, t],
     );
 
     const setBindings = useCallback(
@@ -306,7 +295,8 @@ export function InputActionLibraryPanel({ documentService, uiService, open, onOp
     );
 
     const renderRow = (action: UIInputActionDef) => {
-        const name = inputActionDisplayName(action, t);
+        const name = action.name;
+        const slotName = action.navigationSlot ? navigationSlotName(action.navigationSlot, t) : null;
         return (
             <div
                 key={action.id}
@@ -335,6 +325,14 @@ export function InputActionLibraryPanel({ documentService, uiService, open, onOp
                     >
                         {name}
                     </div>
+                    {slotName && (
+                        <span
+                            className="shrink-0 truncate rounded bg-fill px-1.5 py-0.5 text-2xs text-fg-muted"
+                            data-tip={t("uiEditor.inputActions.navigationTag", { slot: slotName })}
+                        >
+                            {slotName}
+                        </span>
+                    )}
                     <span className="shrink-0 text-2xs text-fg-subtle">
                         {tn("uiEditor.inputActions.answered", answeredCounts[action.id] ?? 0)}
                     </span>
@@ -362,7 +360,7 @@ export function InputActionLibraryPanel({ documentService, uiService, open, onOp
         <StackSection
             sectionId="inputActions"
             title={t("uiEditor.inputActions.title")}
-            count={authorActions.length}
+            count={actions.length}
             actions={
                 <ToolbarButton
                     size="xs"
@@ -379,17 +377,59 @@ export function InputActionLibraryPanel({ documentService, uiService, open, onOp
             {/* The section's own scroller: it gets every pixel the section is given, and a
                 wheel that reaches its end stops there. */}
             <div ref={listRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-2">
-                {authorActions.length === 0 ? (
+                {actions.length === 0 ? (
                     <div className="rounded-md border border-dashed border-edge px-3 py-4 text-center text-xs text-fg-subtle">
                         {t("uiEditor.inputActions.empty")}
                     </div>
                 ) : (
-                    authorActions.map(renderRow)
+                    actions.map(renderRow)
                 )}
+                {/* The focus system's operations, in their fixed order, each filled by one of the
+                    intents above - or by none, and then the game has no such operation. */}
                 <div className="px-1 pt-2 text-2xs font-medium text-fg-subtle">
                     {t("uiEditor.inputActions.navigationTitle")}
                 </div>
-                {navigationActions.map(renderRow)}
+                <div className="space-y-1 rounded-md border border-edge bg-fill-subtle px-2 py-2">
+                    {UI_NAVIGATION_SLOTS.map(slot => {
+                        const slotName = navigationSlotName(slot, t);
+                        const filledBy = slotActions[slot];
+                        return (
+                            <div key={slot} className="flex items-center gap-2" data-navigation-slot={slot}>
+                                <div className="min-w-0 flex-1 truncate text-xs text-fg" data-tip={slotName}>
+                                    {slotName}
+                                </div>
+                                <Select
+                                    className="w-36 shrink-0"
+                                    size="sm"
+                                    options={slotOptions}
+                                    value={filledBy?.id ?? ""}
+                                    portalMenu
+                                    ariaLabel={slotName}
+                                    readOnly={!documentService || freeze.frozen}
+                                    onChange={value => {
+                                        const actionId = String(value);
+                                        if (actionId) {
+                                            documentService?.setInputActionNavigationSlot(actionId, slot);
+                                        } else if (filledBy) {
+                                            documentService?.setInputActionNavigationSlot(filledBy.id, null);
+                                        }
+                                    }}
+                                />
+                            </div>
+                        );
+                    })}
+                    {emptySlots > 0 && (
+                        <ToolbarButton
+                            size="xs"
+                            className="mt-1 w-full justify-center"
+                            onClick={() => documentService?.fillEmptyNavigationSlots(navigationSlotNames(t))}
+                            {...freeze.writes(!documentService, t("uiEditor.inputActions.fillNavigationSlots"))}
+                            aria-label={t("uiEditor.inputActions.fillNavigationSlots")}
+                        >
+                            {t("uiEditor.inputActions.fillNavigationSlots")}
+                        </ToolbarButton>
+                    )}
+                </div>
             </div>
             <ContextMenu
                 items={menuItems}

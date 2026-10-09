@@ -24,6 +24,7 @@ import { formatBlueprintKeyboardBinding } from "../blueprint/graph";
 import { formatBlueprintGamepadButton } from "../blueprint/gamepad";
 import type { UIDocument } from "./document";
 import type { UIInputActionSource } from "./inputActionEvent";
+import { isUINavigationSlot, type UINavigationSlot } from "./navigation";
 import { getWidgetLogicApi } from "./widgetLogic";
 
 /**
@@ -100,6 +101,12 @@ export type UIInputActionDef = {
     name: string;
     /** The bindings a surface gets unless it overrides them. */
     bindings: UIInputBinding[];
+    /**
+     * The navigation operation this intent performs, if any (see `navigation.ts`): its bindings move
+     * the focus, confirm, back out. One intent per slot - the library keeps the first that claims
+     * one - and absent on every intent of a project that has no keyboard or pad navigation.
+     */
+    navigationSlot?: UINavigationSlot;
 };
 
 /**
@@ -332,6 +339,7 @@ export function normalizeUIInputActionDef(value: unknown): UIInputActionDef | nu
         id,
         name,
         bindings: normalizeUIInputBindings(raw.bindings),
+        ...(isUINavigationSlot(raw.navigationSlot) ? { navigationSlot: raw.navigationSlot } : {}),
     };
 }
 
@@ -347,10 +355,21 @@ export function normalizeUIInputActionLibrary(value: unknown): Record<string, UI
         return {};
     }
     const out: Record<string, UIInputActionDef> = {};
+    // A slot is one intent. A second one claiming it - two documents merged, a hand edit - loses the
+    // claim, rather than leaving which of them moves the focus to the order the runtime reads them in.
+    const claimed = new Set<UINavigationSlot>();
     for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-        const action = normalizeUIInputActionDef(entry);
+        let action = normalizeUIInputActionDef(entry);
         if (!action) {
             continue;
+        }
+        if (action.navigationSlot) {
+            if (claimed.has(action.navigationSlot)) {
+                const { navigationSlot: _dropped, ...rest } = action;
+                action = rest;
+            } else {
+                claimed.add(action.navigationSlot);
+            }
         }
         out[key] = action.id === key ? action : { ...action, id: key };
     }

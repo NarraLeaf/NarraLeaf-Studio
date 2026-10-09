@@ -288,7 +288,7 @@ export const widgets = {
         wordConfirm: "确认",
         wordBack: "返回",
         wordAdvance: "推进",
-        wordStageControls: "舞台控件",
+        wordStageControls: "快捷菜单",
     },
     video: {
         title: "视频",

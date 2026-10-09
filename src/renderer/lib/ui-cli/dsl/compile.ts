@@ -18,6 +18,7 @@
 import type { UIInputActionDef } from "@shared/types/ui-editor/inputAction";
 import type { UIStructDef, UIStructFieldType } from "@shared/types/ui-editor/struct";
 import { UI_STRUCT_FIELD_TYPES } from "@shared/types/ui-editor/struct";
+import { isUINavigationSlot } from "@shared/types/ui-editor/navigation";
 import { UI_STAGE_SLOT_IDS } from "@shared/types/ui-editor/stageSlots";
 import {
     isUIPageParamId,
@@ -211,6 +212,7 @@ class CompileContext {
                       ? { kind: "gamepad", button: binding.button }
                       : { kind: "key", key: binding.key },
             ),
+            ...(isUINavigationSlot(statement.navigationSlot) ? { navigationSlot: statement.navigationSlot } : {}),
         };
     }
 

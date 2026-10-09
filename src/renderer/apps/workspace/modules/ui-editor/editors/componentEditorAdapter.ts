@@ -99,7 +99,8 @@ type ProjectMember =
     | "renameInputAction"
     | "setInputActionBindings"
     | "deleteInputAction"
-    | "resetNavigationActionBindings"
+    | "setInputActionNavigationSlot"
+    | "fillEmptyNavigationSlots"
     | "setSurfaceActionEnabled"
     | "updateSurfaceActionEnablement"
     | "createSurface"
@@ -171,7 +172,8 @@ export class ComponentDocumentServiceAdapter implements UIDocumentServiceSurface
     public readonly renameInputAction = this.project("renameInputAction");
     public readonly setInputActionBindings = this.project("setInputActionBindings");
     public readonly deleteInputAction = this.project("deleteInputAction");
-    public readonly resetNavigationActionBindings = this.project("resetNavigationActionBindings");
+    public readonly setInputActionNavigationSlot = this.project("setInputActionNavigationSlot");
+    public readonly fillEmptyNavigationSlots = this.project("fillEmptyNavigationSlots");
     // A definition has no surface record and answers no input action; asked about this editor's own
     // surface, the project's service finds none and changes nothing.
     public readonly setSurfaceActionEnabled = this.project("setSurfaceActionEnabled");

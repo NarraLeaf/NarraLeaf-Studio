@@ -36,7 +36,6 @@ import {
     type UIStageSurface,
 } from "@shared/types/ui-editor/document";
 import { UI_GRAPH_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/graph";
-import { resolveRuntimeInputVocabulary } from "@shared/types/ui-editor/navigation";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
 import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { GAME_ROOT_ATTRIBUTE } from "@/lib/ui-editor/runtime/input/keyboardFocusHandover";
@@ -313,7 +312,7 @@ function runningGame(options: { learnFrom?: string } = {}) {
     running.push(listenForGameKeys(window, {
         blueprintDocument,
         persistentVariables: {},
-        vocabulary: resolveRuntimeInputVocabulary(document.actions),
+        vocabulary: document.actions,
         core,
         globalHost: titleHost,
         readKeyboardOwner,
@@ -558,8 +557,9 @@ describe("the keys on the stage", () => {
 
         // One stop on Tab for the whole menu: the first option.
         expect([0, 1, 2].map(index => rowAt(index).tabIndex)).toEqual([0, -1, -1]);
-        // jsdom lays nothing out; the arrows move between rows by where they are drawn, one under
-        // the other.
+        // jsdom lays nothing out. This project fills no navigation slot, so the arrows are the list's
+        // own; with navigation they would move between rows by where they are drawn, one under the
+        // other, and this is how they would be drawn.
         for (const index of [0, 1, 2]) {
             rowAt(index).getBoundingClientRect = () => ({
                 left: 0, top: index * 60, right: 600, bottom: index * 60 + 60, width: 600, height: 60,

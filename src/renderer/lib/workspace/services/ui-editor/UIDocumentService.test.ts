@@ -43,7 +43,7 @@ import {
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS,
     BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT,
 } from "@shared/types/blueprint/graph";
-import { defaultUINavigationBindings, uiNavigationActionId } from "@shared/types/ui-editor/navigation";
+import { UI_NAVIGATION_SLOT_PRESET_BINDINGS, UI_NAVIGATION_SLOTS } from "@shared/types/ui-editor/navigation";
 
 function ownerKeyForTest(owner: BlueprintOwnerRef): string {
     switch (owner.kind) {
@@ -1793,36 +1793,55 @@ describe("UIDocumentService input actions", () => {
         const { service } = createHarness();
 
         expect(service.createInputAction("   ")).toBeNull();
-        expect(service.getDocument().actions ?? {}).toEqual({});
+        expect(service.getInputActions()).toEqual({});
     });
 
-    it("offers the navigation actions without writing them, and writes one only once it is rebound", () => {
+    it("has no navigation until one of the project's intents fills a slot - nothing is offered by default", () => {
         const { service } = createHarness();
-        const confirm = uiNavigationActionId("confirm");
-        expect(service.getInputActions()[confirm]?.bindings).toEqual(defaultUINavigationBindings("confirm"));
-        expect(service.getDocument().actions ?? {}).toEqual({});
-
-        service.setInputActionBindings(confirm, [{ kind: "gamepad", button: "X" }]);
-        expect(service.getDocument().actions?.[confirm]?.bindings).toEqual([{ kind: "gamepad", button: "X" }]);
-        expect(service.getInputActions()[confirm]?.bindings).toEqual([{ kind: "gamepad", button: "X" }]);
-
-        // Not the project's to rename or delete; only to put back.
-        service.renameInputAction(confirm, "Press");
-        service.deleteInputAction(confirm);
-        expect(service.getDocument().actions?.[confirm]?.name).toBe("confirm");
-        service.resetNavigationActionBindings(confirm);
-        expect(service.getDocument().actions ?? {}).toEqual({});
-        expect(service.getInputActions()[confirm]?.bindings).toEqual(defaultUINavigationBindings("confirm"));
+        expect(service.getInputActions()).toEqual({});
+        const confirm = service.createInputAction("Press")!;
+        expect(service.getInputActions()[confirm.id]?.navigationSlot).toBeUndefined();
     });
 
-    it("keeps a surface's answer to a navigation action when another action is deleted", () => {
+    it("puts an intent in a slot, moves the slot to another intent, and takes it out again", () => {
         const { service } = createHarness();
-        const surfaceId = service.getDocument().surfaces[0]!.id;
-        const other = service.createInputAction("Other")!;
-        service.setSurfaceActionEnabled(surfaceId, uiNavigationActionId("left"), true);
-        service.setSurfaceActionEnabled(surfaceId, other.id, true);
-        service.deleteInputAction(other.id);
-        expect(service.getDocument().surfaces[0]!.actions).toEqual([{ actionId: uiNavigationActionId("left") }]);
+        const press = service.createInputAction("Press", [{ kind: "gamepad", button: "A" }])!;
+        const select = service.createInputAction("Select", [{ kind: "key", key: "Enter" }])!;
+
+        service.setInputActionNavigationSlot(press.id, "confirm");
+        expect(service.getInputActions()[press.id]?.navigationSlot).toBe("confirm");
+
+        // One intent per slot: the one that held it gives it up.
+        service.setInputActionNavigationSlot(select.id, "confirm");
+        expect(service.getInputActions()[select.id]?.navigationSlot).toBe("confirm");
+        expect(service.getInputActions()[press.id]?.navigationSlot).toBeUndefined();
+
+        service.setInputActionNavigationSlot(select.id, null);
+        expect(service.getInputActions()[select.id]?.navigationSlot).toBeUndefined();
+    });
+
+    it("fills only the empty slots, each with an intent of its own bound as a player expects", () => {
+        const { service } = createHarness();
+        const back = service.createInputAction("Close", [{ kind: "key", key: "Backspace" }])!;
+        service.setInputActionNavigationSlot(back.id, "cancel");
+
+        const names = Object.fromEntries(UI_NAVIGATION_SLOTS.map(slot => [slot, `slot ${slot}`])) as Record<(typeof UI_NAVIGATION_SLOTS)[number], string>;
+        expect(service.fillEmptyNavigationSlots(names)).toBe(UI_NAVIGATION_SLOTS.length - 1);
+        const actions = Object.values(service.getInputActions());
+        const confirm = actions.find(action => action.navigationSlot === "confirm")!;
+        expect(confirm.name).toBe("slot confirm");
+        expect(confirm.bindings).toEqual(UI_NAVIGATION_SLOT_PRESET_BINDINGS.confirm);
+        // The author's own Back is left as it was.
+        expect(actions.filter(action => action.navigationSlot === "cancel").map(action => action.id)).toEqual([back.id]);
+        expect(service.fillEmptyNavigationSlots(names)).toBe(0);
+    });
+
+    it("takes the slot with the intent when the intent is deleted", () => {
+        const { service } = createHarness();
+        const confirm = service.createInputAction("Confirm")!;
+        service.setInputActionNavigationSlot(confirm.id, "confirm");
+        service.deleteInputAction(confirm.id);
+        expect(Object.values(service.getInputActions()).some(action => action.navigationSlot === "confirm")).toBe(false);
     });
 
     it("renames and rebinds an entry in place, so surfaces keep answering it", () => {
