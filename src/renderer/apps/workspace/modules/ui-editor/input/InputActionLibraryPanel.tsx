@@ -327,7 +327,7 @@ export function InputActionLibraryPanel({ documentService, uiService, open, onOp
                     </div>
                     {slotName && (
                         <span
-                            className="shrink-0 truncate rounded bg-fill px-1.5 py-0.5 text-2xs text-fg-muted"
+                            className="shrink-0 truncate rounded-md bg-fill px-1.5 py-0.5 text-2xs text-fg-muted"
                             data-tip={t("uiEditor.inputActions.navigationTag", { slot: slotName })}
                         >
                             {slotName}
