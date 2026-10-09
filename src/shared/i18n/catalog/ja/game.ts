@@ -7,6 +7,14 @@ import type { LocaleNamespace } from "../types";
  * すなわち開発モードの問題パネル、なければログに書く。
  */
 export const game = {
+    // The hint bar's own words for the moves Studio names, read by the player (`playerWords.ts`).
+    inputHints: {
+        select: "選択",
+        confirm: "決定",
+        back: "戻る",
+        advance: "次へ",
+        stageControls: "メニュー",
+    },
     saveLoad: {
         refused: "このセーブは読み込めなかった。ゲームは現在の位置から続く",
         refusedOtherStory: "このセーブは別のバージョンのストーリーで書かれている。ゲームは現在の位置から続く",

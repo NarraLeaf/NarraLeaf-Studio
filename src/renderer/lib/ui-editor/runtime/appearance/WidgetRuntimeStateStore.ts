@@ -142,6 +142,7 @@ export class WidgetRuntimeStateStore {
     private readonly hoverTargetIds = new Set<string>();
     private activePointerId: string | null = null;
     private focusedId: string | null = null;
+    private pointerHoverSuppressed = false;
     private readonly variantOverrides = new Map<string, string>();
     private readonly sliderProperties = new Map<string, UISliderRuntimeValue>();
     private readonly switchProperties = new Map<string, UISwitchRuntimeValue>();
@@ -393,6 +394,20 @@ export class WidgetRuntimeStateStore {
             return;
         }
         this.activePointerId = id;
+        this.emit();
+    }
+
+    /**
+     * While the player moves by keys or a pad, the pointer resting somewhere is not pointing at
+     * anything: the focus is what is selected, and a second control drawn hovered under a mouse
+     * nobody is holding would look selected too. The hover is kept, not cleared - it comes back the
+     * moment the pointer moves and the game says so.
+     */
+    setPointerHoverSuppressed(suppressed: boolean): void {
+        if (this.pointerHoverSuppressed === suppressed) {
+            return;
+        }
+        this.pointerHoverSuppressed = suppressed;
         this.emit();
     }
 
@@ -694,7 +709,7 @@ export class WidgetRuntimeStateStore {
 
     getSignalsForElement(elementId: string, interactionDisabled: boolean | undefined): SystemInteractionSignals {
         return {
-            hovered: this.hoverTargetIds.has(elementId),
+            hovered: !this.pointerHoverSuppressed && this.hoverTargetIds.has(elementId),
             // The store never sets this: selection belongs to the row a list is drawing, which this
             // store has no dimension for. `useWidgetRuntimeElementState` merges it in from the row
             // context, so the default here is the honest answer for anything outside a list.

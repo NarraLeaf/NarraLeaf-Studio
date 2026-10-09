@@ -129,3 +129,34 @@ export const UI_TEXT_SITES: readonly UITextSite[] = [
         storySlot: "nvl",
     },
 ];
+
+/**
+ * Widgets of Studio's own that hold words in more than one prop, each a site of its own the way a
+ * plugin's declared words are (`uiTextSitesFromPluginDeclaration`): read by every reader that walks a
+ * page's words - the translation table, the lint, the key list - and answered no by the questions only
+ * a one-site widget has (typing in place, value bindings).
+ *
+ * The input hint bar's words for the moves Studio names. Empty, they are Studio's own in the player's
+ * language; written, they are the author's and are translated like any other words.
+ */
+const INPUT_HINT_SITE_LABELS: ReadonlyArray<readonly [word: string, en: string, zh: string, ja: string]> = [
+    ["select", "Select hint", "选择提示", "選択のヒント"],
+    ["confirm", "Confirm hint", "确认提示", "決定のヒント"],
+    ["back", "Back hint", "返回提示", "戻るのヒント"],
+    ["advance", "Advance hint", "推进提示", "送りのヒント"],
+    ["stageControls", "Stage controls hint", "舞台控件提示", "ステージのコントロールのヒント"],
+];
+
+export const UI_MULTI_TEXT_SITES: Readonly<Record<string, readonly UITextSite[]>> = {
+    "nl.inputHints": INPUT_HINT_SITE_LABELS.map(([word, en, zh, ja]) => ({
+        widgetType: "nl.inputHints",
+        textProp: `${word}Label`,
+        role: "words" as const,
+        keyProp: `${word}LabelLocalizationKey`,
+        canvasDrawsKey: true,
+        typedOnCanvas: false,
+        valueBinding: "none" as const,
+        label: en,
+        localizedLabel: { en, zh, ja },
+    })),
+};

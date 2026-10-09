@@ -37,6 +37,7 @@ import {
     useWidgetRuntimeElementKey,
     useWidgetRuntimeSnapshot,
     useWidgetRuntimeStateStore,
+    NavigationFocusProvider,
     WidgetRuntimeInstanceProvider,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { composeListHostEffectStyle } from "@/lib/ui-editor/widget-modules/shared/effects/effectStyleComposer";
@@ -572,6 +573,8 @@ export function ListRenderer(props: WidgetRendererProps) {
      * list's own (`listRowKeyboardMove`).
      */
     const [keyboardRowIndex, setKeyboardRowIndex] = useState<number | null>(null);
+    /** The row that has the focus right now, drawn as hovered (`NavigationFocusProvider`). */
+    const [focusedRowIndex, setFocusedRowIndex] = useState<number | null>(null);
     const tabStopRowIndex = count > 0
         ? Math.min(count - 1, Math.max(0, keyboardRowIndex ?? (selectedIndex >= 0 && selectedIndex < count ? selectedIndex : 0)))
         : -1;
@@ -640,10 +643,22 @@ export function ListRenderer(props: WidgetRendererProps) {
             // In a running game a row is a control the keyboard reaches, as a button is: Enter and
             // Space raise Item Click exactly as a click does. On the canvas it is only a drawing.
             tabIndex: isRuntime ? (i === tabStopRowIndex ? 0 : -1) : undefined,
+            // The row holding the focus is drawn the way the pointer resting on it would draw it,
+            // and says so the way the pointer does - Item Hover - so a hover look a graph paints
+            // follows the D-pad too.
             onFocus: isRuntime
                 ? (event: FocusEvent<HTMLDivElement>) => {
                       if (event.target === event.currentTarget) {
                           setKeyboardRowIndex(i);
+                          setFocusedRowIndex(i);
+                          handleListItemHover(scope);
+                      }
+                  }
+                : undefined,
+            onBlur: isRuntime
+                ? (event: FocusEvent<HTMLDivElement>) => {
+                      if (event.target === event.currentTarget) {
+                          setFocusedRowIndex(current => (current === i ? null : current));
                       }
                   }
                 : undefined,
@@ -660,11 +675,13 @@ export function ListRenderer(props: WidgetRendererProps) {
                     instanceKey={instanceKey}
                 />
                 <WidgetRuntimeInstanceProvider instance={{ key: instanceKey, selected }}>
-                    {renderChildren?.({
-                        childrenIds: itemTemplateIds,
-                        listItemScope: scope,
-                        instanceKey,
-                    })}
+                    <NavigationFocusProvider focused={isRuntime && i === focusedRowIndex}>
+                        {renderChildren?.({
+                            childrenIds: itemTemplateIds,
+                            listItemScope: scope,
+                            instanceKey,
+                        })}
+                    </NavigationFocusProvider>
                 </WidgetRuntimeInstanceProvider>
             </>
         );

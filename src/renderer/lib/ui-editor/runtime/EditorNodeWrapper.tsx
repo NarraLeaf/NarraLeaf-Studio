@@ -12,9 +12,10 @@ import type { CSSProperties, FocusEvent, KeyboardEvent as ReactKeyboardEvent, Mo
 import { MotionConfigContext } from "motion/react";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
-import { normalizeUIElementNavigation } from "@shared/types/ui-editor/navigation";
-import { elementNavigationAttributes } from "@/lib/ui-editor/runtime/navigation/focusNavigation";
+import { normalizeUIElementNavigation, uiElementHasHoverLook } from "@shared/types/ui-editor/navigation";
+import { elementNavigationAttributes, HOVER_LOOK_ATTRIBUTE } from "@/lib/ui-editor/runtime/navigation/focusNavigation";
 import {
+    NavigationFocusProvider,
     useWidgetRuntimeElementState,
     useWidgetRuntimeElementKey,
     useWidgetRuntimeStateStore,
@@ -728,6 +729,10 @@ export function EditorNodeWrapper({
         }
         const navigation = normalizeUIElementNavigation(element.navigation);
         const attributes: Record<string, unknown> = elementNavigationAttributes(navigation);
+        // Drawn with its own hover look when it has the focus, so it needs no ring (`styles.css`).
+        if (uiElementHasHoverLook(element)) {
+            attributes[HOVER_LOOK_ATTRIBUTE] = "";
+        }
         if (navigation?.focusable === "always") {
             attributes.tabIndex = 0;
             attributes.onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -741,7 +746,7 @@ export function EditorNodeWrapper({
             };
         }
         return attributes;
-    }, [blueprintRuntime, element.navigation, interactive]);
+    }, [blueprintRuntime, element, interactive]);
 
     /** Where this node is placed, state offset included. Its own channel, so a gesture cannot take it. */
     const placedLeft = enteredOffsetsInFlow ? 0 : layout.x + Math.min(0, layout.width) + placedEnteredOffsets.x;
@@ -1158,7 +1163,10 @@ export function EditorNodeWrapper({
             onFocus={interactive && (widgetRuntimeStore || blueprintRuntime) ? onFocus : undefined}
             onBlur={interactive && (widgetRuntimeStore || blueprintRuntime) ? onBlur : undefined}
         >
-            {children}
+            {/* Holding the keyboard or pad focus draws this subtree as hovered: see `NavigationFocusProvider`. */}
+            <NavigationFocusProvider focused={runtimeElementState.signals.focused}>
+                {children}
+            </NavigationFocusProvider>
         </div>
         </EnteredStateProvider>
     );

@@ -552,6 +552,10 @@ input[data-floating-item]:focus-visible {
  * the navigation itself, where `:focus-visible` would be the browser's guess about a pad it cannot
  * see - so a player who only points never sees it, and a click does not focus these at all.
  *
+ * And only for a control the author gave no hover look. One that has one is drawn with it while it
+ * has the focus - a Start button lights up for a D-pad exactly as it does for a mouse - and carries
+ * `data-nl-nav-hover`, which takes the ring away (`noteFocusInGame`).
+ *
  * Drawn on a layer of its own over the control rather than as the control's outline, and inside its
  * edge. The widgets inside a control are positioned, and a positioned child paints over its parent's
  * outline: a choice row is one container filling the row from edge to edge, and an outline on the
@@ -559,15 +563,15 @@ input[data-floating-item]:focus-visible {
  * row is a plain flex item until then, so it becomes the box its ring is drawn in only while it has
  * the focus; its widgets are laid out inside their own boxes and do not move.
  */
-[data-nl-nav-modality="keys"] .ui-editor-surface [data-ui-list-item-index][tabindex]:focus {
+[data-nl-nav-modality="keys"] .ui-editor-surface [data-ui-list-item-index][tabindex]:focus:not([data-nl-nav-hover]) {
     position: relative;
 }
 
-[data-nl-nav-modality="keys"] .ui-editor-surface [role="button"][tabindex]:focus::after,
-[data-nl-nav-modality="keys"] .ui-editor-surface [role="switch"][tabindex]:focus::after,
-[data-nl-nav-modality="keys"] .ui-editor-surface [role="slider"][tabindex]:focus::after,
-[data-nl-nav-modality="keys"] .ui-editor-surface [data-ui-list-item-index][tabindex]:focus::after,
-[data-nl-nav-modality="keys"] .ui-editor-surface [data-ui-nav-focusable="always"]:focus::after {
+[data-nl-nav-modality="keys"] .ui-editor-surface [role="button"][tabindex]:focus:not([data-nl-nav-hover])::after,
+[data-nl-nav-modality="keys"] .ui-editor-surface [role="switch"][tabindex]:focus:not([data-nl-nav-hover])::after,
+[data-nl-nav-modality="keys"] .ui-editor-surface [role="slider"][tabindex]:focus:not([data-nl-nav-hover])::after,
+[data-nl-nav-modality="keys"] .ui-editor-surface [data-ui-list-item-index][tabindex]:focus:not([data-nl-nav-hover])::after,
+[data-nl-nav-modality="keys"] .ui-editor-surface [data-ui-nav-focusable="always"]:focus:not([data-nl-nav-hover])::after {
     content: "";
     position: absolute;
     inset: 0;

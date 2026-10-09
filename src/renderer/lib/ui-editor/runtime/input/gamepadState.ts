@@ -51,6 +51,8 @@ export type UIGamepadSnapshot = {
     axes: Readonly<Record<BlueprintGamepadAxis, number>>;
     /** At least one `mapping === "standard"` pad is connected. */
     connected: boolean;
+    /** What the browser calls the first connected pad - what the hint bar reads its glyphs off. */
+    controllerId?: string;
 };
 
 export const NO_GAMEPAD_AXES: Readonly<Record<BlueprintGamepadAxis, number>> = {
@@ -130,7 +132,7 @@ function readLeftStickButtons(pad: Gamepad, previous: ReadonlySet<string>, into:
 function readUnion(
     pads: Array<Gamepad | null>,
     previous: ReadonlySet<string> = new Set(),
-): { buttons: Set<string>; axes: Record<BlueprintGamepadAxis, number>; connected: boolean } {
+): { buttons: Set<string>; axes: Record<BlueprintGamepadAxis, number>; connected: boolean; controllerId?: string } {
     const buttons = new Set<string>();
     let first: Gamepad | null = null;
     for (const pad of pads) {
@@ -157,7 +159,7 @@ function readUnion(
             axes[BLUEPRINT_GAMEPAD_AXES[i]] = applyDeadzone(first.axes[i] ?? 0);
         }
     }
-    return { buttons, axes, connected: first !== null };
+    return { buttons, axes, connected: first !== null, ...(first ? { controllerId: first.id } : {}) };
 }
 
 function edgesBetween(previous: ReadonlySet<string>, next: ReadonlySet<string>): UIGamepadButtonEdge[] {
@@ -187,6 +189,7 @@ export function createGamepadTracker(host: UIGamepadHost | null | undefined): UI
     let buttons = new Set<string>();
     let axes: Record<BlueprintGamepadAxis, number> = { ...NO_GAMEPAD_AXES };
     let connected = false;
+    let controllerId: string | undefined;
     let running = false;
     let frame = 0;
     const edgeListeners = new Set<(edge: UIGamepadButtonEdge) => void>();
@@ -196,6 +199,7 @@ export function createGamepadTracker(host: UIGamepadHost | null | undefined): UI
         buttons: new Set(buttons),
         axes: { ...axes },
         connected,
+        ...(controllerId ? { controllerId } : {}),
     });
 
     const publishHeld = (): void => {
@@ -210,6 +214,9 @@ export function createGamepadTracker(host: UIGamepadHost | null | undefined): UI
         buttons = next.buttons;
         axes = next.axes;
         connected = next.connected;
+        if ("controllerId" in next) {
+            controllerId = next.controllerId;
+        }
         const changed = previous.size !== buttons.size || [...previous].some(name => !buttons.has(name));
         if (emitEdges) {
             for (const edge of edgesBetween(previous, buttons)) {

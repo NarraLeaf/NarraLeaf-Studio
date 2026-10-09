@@ -6,6 +6,7 @@ import {
     useRef,
     useState,
     useSyncExternalStore,
+    type FocusEvent as ReactFocusEvent,
     type PointerEvent as ReactPointerEvent,
     type ReactNode,
     type SyntheticEvent,
@@ -227,7 +228,18 @@ import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { resolveKeyboardDispatchScope } from "@/lib/ui-editor/runtime/input/keyboardDispatchScope";
 import { keepPointerPressOffKeyboardFocus } from "@/lib/ui-editor/runtime/input/pointerKeyboardFocus";
-import { notePointerOverGame, notePointerPressOnGame } from "@/lib/ui-editor/runtime/navigation/focusNavigation";
+import { provideInputHints, resolveInputHints } from "@/lib/ui-editor/runtime/input/inputHints";
+import { readCurrentInputDevice } from "@/lib/ui-editor/runtime/input/inputDeviceState";
+import { readGamepadSnapshot } from "@/lib/ui-editor/runtime/input/gamepadState";
+import { detectUIInputHintControllerFamily } from "@shared/types/ui-editor/inputHints";
+import { isEntrySurface } from "@shared/types/ui-editor/entrySurface";
+import {
+    describeNavigationState,
+    NAV_MODALITY_ATTRIBUTE,
+    noteFocusInGame,
+    notePointerOverGame,
+    notePointerPressOnGame,
+} from "@/lib/ui-editor/runtime/navigation/focusNavigation";
 import { resolveRuntimeInputVocabulary } from "@shared/types/ui-editor/navigation";
 import { GAME_ROOT_ATTRIBUTE } from "@/lib/ui-editor/runtime/input/keyboardFocusHandover";
 import {
@@ -5991,9 +6003,35 @@ export function GameApp(props: GameAppProps): ReactNode {
         };
         const stopKeys = listenForGameKeys(window, dispatch);
         const stopPads = listenForGamepads(dispatch);
+        // What the buttons do right now, for any input hint bar on screen - read by the rules the
+        // presses above are routed by (`inputHints`).
+        const stopHints = provideInputHints(() => {
+            const gameRoot = gameRootRef.current;
+            if (!gameRoot) {
+                return null;
+            }
+            const owner = dispatch.readKeyboardOwner();
+            const device = readCurrentInputDevice();
+            const surfaces = !owner ? [] : "stage" in owner ? owner.stage.map(target => target.surface) : [owner.surface];
+            const answered = [...new Set(surfaces.flatMap(surface => (surface.actions ?? []).map(entry => entry.actionId)))];
+            return {
+                device,
+                controller: detectUIInputHintControllerFamily(readGamepadSnapshot().controllerId),
+                hints: resolveInputHints({
+                    device: device === "gamepad" ? "gamepad" : "key",
+                    vocabulary: runtimeVocabulary,
+                    lane: !owner ? null : "stage" in owner ? "stage" : "page",
+                    answered,
+                    navigation: describeNavigationState(gameRoot),
+                    canGoBack: Boolean(owner && !("stage" in owner) && !isEntrySurface(bundle.ui.uidoc, owner.surface.id)),
+                    storyAdvances: Boolean(owner && "stage" in owner && owner.storyAdvance),
+                }),
+            };
+        });
         return () => {
             stopKeys();
             stopPads();
+            stopHints();
         };
     }, [
         bundle,
@@ -6063,6 +6101,25 @@ export function GameApp(props: GameAppProps): ReactNode {
     const notePointerDownForNavigation = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
         notePointerPressOnGame(event.currentTarget);
     }, []);
+    // A focused control is drawn with its own hover look when it has one, the ring otherwise.
+    const noteFocusForNavigation = useCallback((event: ReactFocusEvent<HTMLDivElement>) => {
+        noteFocusInGame(event.target);
+    }, []);
+    // While the player moves by keys or a pad, a mouse resting on a control does not draw it hovered
+    // as well: one control is selected at a time (`setPointerHoverSuppressed`).
+    useEffect(() => {
+        if (!gameRoot || typeof MutationObserver === "undefined") {
+            return undefined;
+        }
+        const sync = () => widgetRuntimeStore.setPointerHoverSuppressed(gameRoot.getAttribute(NAV_MODALITY_ATTRIBUTE) === "keys");
+        sync();
+        const observer = new MutationObserver(sync);
+        observer.observe(gameRoot, { attributes: true, attributeFilter: [NAV_MODALITY_ATTRIBUTE] });
+        return () => {
+            observer.disconnect();
+            widgetRuntimeStore.setPointerHoverSuppressed(false);
+        };
+    }, [gameRoot, widgetRuntimeStore]);
     const offerPointerInputToGlobal = useCallback((event: Event) => {
         if (!gameRoot || !globalBlueprintDispatchRef.current) {
             return;
@@ -6771,6 +6828,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 onMouseDownCapture={keepPointerPressOffKeyboardFocus}
                 onPointerMoveCapture={notePointerMoveForNavigation}
                 onPointerDownCapture={notePointerDownForNavigation}
+                onFocusCapture={noteFocusForNavigation}
                 onClick={offerSyntheticPointerInputToGlobal}
                 onDoubleClick={offerSyntheticPointerInputToGlobal}
                 onAuxClick={offerSyntheticPointerInputToGlobal}

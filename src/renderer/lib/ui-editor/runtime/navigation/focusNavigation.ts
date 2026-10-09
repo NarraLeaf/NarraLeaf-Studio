@@ -65,6 +65,13 @@ export const NAV_REGION_ATTRIBUTE = "data-ui-nav-region";
 export const NAV_REMEMBER_ATTRIBUTE = "data-ui-nav-remember";
 /** On an element's box: where the focus starts unless the surface names one. */
 export const NAV_PREFERRED_ATTRIBUTE = "data-ui-nav-preferred";
+/** On an element's box: it has a look of its own for being hovered (`uiElementHasHoverLook`). */
+export const HOVER_LOOK_ATTRIBUTE = "data-ui-hover-look";
+/**
+ * On a focused control: it is drawn with its own hover look rather than the ring. Set as the focus
+ * arrives (`noteFocusInGame`), whichever way it arrived.
+ */
+export const FOCUS_SHOWS_HOVER_ATTRIBUTE = "data-nl-nav-hover";
 /** On the game root: `keys` while the player moves by keyboard or pad, `pointer` while pointing. */
 export const NAV_MODALITY_ATTRIBUTE = "data-nl-nav-modality";
 
@@ -758,4 +765,56 @@ export function notePointerPressOnGame(gameRoot: Element): void {
     setModality(gameRoot, "pointer");
     // A player who reaches for the mouse has left the stage's controls by the keys.
     stateOf(gameRoot).stageControls = false;
+}
+
+/**
+ * Whether a control is drawn with an author's hover look when it has the focus: its own element, or
+ * something inside it - a button's label, a list row's template - has one.
+ */
+function focusShowsHoverLook(target: HTMLElement): boolean {
+    const selector = `[${HOVER_LOOK_ATTRIBUTE}]`;
+    if (target.matches(selector) || target.querySelector(selector)) {
+        return true;
+    }
+    if (target.hasAttribute(LIST_ROW_ATTRIBUTE)) {
+        return false;
+    }
+    const box = owningElementBox(target);
+    return Boolean(box && (box.matches(selector) || box.querySelector(selector)));
+}
+
+/**
+ * The focus arrived on something in the game - by navigation, by a page giving it back, by a list's
+ * Home key. A control the author gave a hover look is drawn with that look instead of the ring; one
+ * with nothing of its own falls back to the ring, so a focused control is never invisible.
+ */
+export function noteFocusInGame(target: EventTarget | null): void {
+    if (typeof HTMLElement === "undefined" || !(target instanceof HTMLElement) || !target.matches(CONTROL_TARGET_SELECTOR)) {
+        return;
+    }
+    target.toggleAttribute(FOCUS_SHOWS_HOVER_ATTRIBUTE, focusShowsHoverLook(target));
+}
+
+/** What navigation looks like right now, for the hint bar to say what the buttons do. */
+export type NavigationStateSummary = {
+    /** Where the focus moves: a page or layer, the choice menu, the stage's controls, or nowhere. */
+    scope: "owner" | "choice" | "controls" | null;
+    /** How many controls the focus can land on there. */
+    targets: number;
+    /** Whether the stage has controls the player could step into (`toggleStageControls`). */
+    stageControlsAvailable: boolean;
+};
+
+export function describeNavigationState(gameRoot: Element): NavigationStateSummary {
+    const scope = resolveNavigationScope(gameRoot);
+    const kind = !scope
+        ? null
+        : isStageControlsScope(scope)
+            ? "controls"
+            : scope.getAttribute(NAV_SCOPE_ATTRIBUTE) === "owner" ? "owner" : "choice";
+    return {
+        scope: kind,
+        targets: scope ? collectNavigationTargets(scope).length : 0,
+        stageControlsAvailable: kind === null && gameRoot instanceof HTMLElement && stageControlTargets(gameRoot).length > 0,
+    };
 }

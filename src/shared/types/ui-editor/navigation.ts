@@ -257,3 +257,30 @@ export function resolveRuntimeInputVocabulary(
     }
     return out;
 }
+
+/**
+ * Whether an element has a look of its own for being pointed at: an appearance row that applies
+ * while it is hovered.
+ *
+ * A focused control is drawn with that look (`NavigationFocusContext`), and the platform's focus
+ * ring is only the fallback for a control the author gave no hover look - so this is the question
+ * that decides between them. Searched through the whole of the props rather than one known path,
+ * because every widget keeps its appearance under its own shape.
+ */
+export function uiElementHasHoverLook(element: Pick<UIElement, "props"> | null | undefined): boolean {
+    const visit = (value: unknown, depth: number): boolean => {
+        if (!value || typeof value !== "object" || depth > 12) {
+            return false;
+        }
+        if (Array.isArray(value)) {
+            return value.some(entry => visit(entry, depth + 1));
+        }
+        const record = value as Record<string, unknown>;
+        const conditions = record.conditions;
+        if (conditions && typeof conditions === "object" && (conditions as Record<string, unknown>).hovered === true) {
+            return true;
+        }
+        return Object.values(record).some(entry => visit(entry, depth + 1));
+    };
+    return visit(element?.props, 0);
+}

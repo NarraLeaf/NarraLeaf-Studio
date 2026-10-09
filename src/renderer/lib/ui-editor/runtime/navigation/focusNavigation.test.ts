@@ -15,6 +15,8 @@ import {
     moveNavigationFocus,
     NAV_MODALITY_ATTRIBUTE,
     NAVIGATE_EVENT,
+    noteFocusInGame,
+    FOCUS_SHOWS_HOVER_ATTRIBUTE,
     notePointerOverGame,
     resolveNavigationScope,
     stepNavigationFocus,
@@ -261,5 +263,27 @@ describe("a scope opening", () => {
         expect(enterNavigationScope(by("page"), "key")).toBe("focused");
         expect(document.activeElement).toBe(by("b"));
         expect(enterNavigationScope(by("quiet"), "key")).toBe("skipped");
+    });
+});
+
+describe("how the focus is drawn", () => {
+    it("with the author's hover look where the control has one, and with the ring where it has none", () => {
+        const { by } = mount(`
+            <div class="ui-editor-surface" data-ui-nav-scope="owner" tabindex="-1">
+                <div data-ui-element-id="start" data-ui-hover-look><div id="start" role="button" tabindex="0" data-box="0,0,100,40"></div></div>
+                <div data-ui-element-id="plain"><div id="plain" role="button" tabindex="0" data-box="0,50,100,40"></div></div>
+                <div data-ui-element-id="list">
+                    <div id="row" data-ui-list-item-index="0" tabindex="0" data-box="0,100,100,40">
+                        <div data-ui-element-id="row-bg" data-ui-hover-look></div>
+                    </div>
+                </div>
+            </div>
+        `);
+        for (const id of ["start", "plain", "row"]) {
+            noteFocusInGame(by(id));
+        }
+        expect(by("start").hasAttribute(FOCUS_SHOWS_HOVER_ATTRIBUTE)).toBe(true);
+        expect(by("plain").hasAttribute(FOCUS_SHOWS_HOVER_ATTRIBUTE)).toBe(false);
+        expect(by("row").hasAttribute(FOCUS_SHOWS_HOVER_ATTRIBUTE)).toBe(true);
     });
 });
