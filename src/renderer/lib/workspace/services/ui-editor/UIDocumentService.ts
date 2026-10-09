@@ -216,9 +216,12 @@ import {
 } from "@shared/types/ui-editor/switch";
 import {
     normalizeUIElementNavigation,
+    normalizeUISurfaceNavigation,
+    UI_NAVIGATION_DIRECTIONS,
     UI_NAVIGATION_SLOT_PRESET_BINDINGS,
     UI_NAVIGATION_SLOTS,
     type UIElementNavigation,
+    type UINavigationDirection,
     type UINavigationSlot,
 } from "@shared/types/ui-editor/navigation";
 import {
@@ -760,6 +763,112 @@ function applyElementNavigation(element: UIElement, navigation: UIElementNavigat
         return;
     }
     element.navigation = normalized;
+}
+
+/**
+ * Point an element's neighbours somewhere else, or nowhere. `retarget` answers for each id the record
+ * names: the id it should name now, or undefined to drop that direction. Writes only when something
+ * changed, so an element whose neighbours all stay is left exactly as it was.
+ */
+function retargetElementNeighbors(element: UIElement, retarget: (elementId: UIElementId) => UIElementId | undefined): void {
+    const neighbors = element.navigation?.neighbors;
+    if (!neighbors) {
+        return;
+    }
+    const next: Partial<Record<UINavigationDirection, UIElementId>> = {};
+    let changed = false;
+    for (const direction of UI_NAVIGATION_DIRECTIONS) {
+        const target = neighbors[direction];
+        if (!target) {
+            continue;
+        }
+        const retargeted = retarget(target);
+        if (retargeted !== target) {
+            changed = true;
+        }
+        if (retargeted) {
+            next[direction] = retargeted;
+        }
+    }
+    if (changed) {
+        applyElementNavigation(element, { ...element.navigation, neighbors: next });
+    }
+}
+
+/** The same for the element a page's focus starts on. */
+function retargetSurfaceFocus(
+    settings: UISurfaceSettings | undefined,
+    retarget: (elementId: UIElementId) => UIElementId | undefined,
+): void {
+    const target = settings?.navigation?.defaultFocusElementId;
+    if (!settings || !target) {
+        return;
+    }
+    const retargeted = retarget(target);
+    if (retargeted === target) {
+        return;
+    }
+    const next = normalizeUISurfaceNavigation({ ...settings.navigation, defaultFocusElementId: retargeted });
+    if (next) {
+        settings.navigation = next;
+    } else {
+        delete settings.navigation;
+    }
+}
+
+/**
+ * Carry an element's navigation record onto its copy. The record names other elements by id, so the
+ * copy cannot keep it as it was: a neighbour copied along with the element becomes that neighbour's
+ * copy, and one left behind stays only where `reaches` says the copy still can get to it (a paste on
+ * the page it was copied from). Anything else is dropped rather than left naming an element on
+ * another page, or one that is not there at all.
+ */
+function carryCopiedElementNavigation(
+    copy: UIElement,
+    elementIdMap: Readonly<Record<string, string>>,
+    reaches: (elementId: UIElementId) => boolean = () => false,
+): void {
+    retargetElementNeighbors(copy, target => elementIdMap[target] ?? (reaches(target) ? target : undefined));
+}
+
+/**
+ * Carry a page's starting focus onto the copy of its settings: the copy of the element it named, or
+ * nothing when that element did not come along. Read from the source, so it holds however the rest of
+ * the settings were remapped on their way here.
+ */
+function carryCopiedSurfaceNavigation(
+    copy: UISurfaceSettings | undefined,
+    source: UISurfaceSettings | undefined,
+    elementIdMap: Readonly<Record<string, string>>,
+): void {
+    const target = source?.navigation?.defaultFocusElementId;
+    if (!copy || !target) {
+        return;
+    }
+    copy.navigation = { ...copy.navigation, defaultFocusElementId: target };
+    retargetSurfaceFocus(copy, id => elementIdMap[id]);
+}
+
+/**
+ * Drop every navigation reference to elements that are gone - a neighbour, or the element a page's
+ * focus starts on - in the same edit that removes them, so the record never outlives what it names
+ * and Undo brings both back together.
+ */
+function dropNavigationReferencesTo(
+    removed: ReadonlySet<UIElementId>,
+    elements: Record<UIElementId, UIElement>,
+    surfaces: readonly UISurface[] = [],
+): void {
+    if (removed.size === 0) {
+        return;
+    }
+    const retarget = (id: UIElementId) => (removed.has(id) ? undefined : id);
+    for (const element of Object.values(elements)) {
+        retargetElementNeighbors(element, retarget);
+    }
+    for (const surface of surfaces) {
+        retargetSurfaceFocus(surface.settings, retarget);
+    }
 }
 
 /** What a template import touched: the surfaces added, any library components it
@@ -2061,9 +2170,15 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
         const lifted: string[] = [];
         this.mutateDocument(doc => {
+            const dissolved = new Set<string>();
             for (const containerId of containerIds) {
-                lifted.push(...(applyUngroupContainer(doc, surfaceId, containerId) ?? []));
+                const children = applyUngroupContainer(doc, surfaceId, containerId);
+                if (children) {
+                    lifted.push(...children);
+                    dissolved.add(containerId);
+                }
             }
+            dropNavigationReferencesTo(dissolved, doc.elements, doc.surfaces);
         }, {
             history: { surfaceId },
         });
@@ -2153,6 +2268,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             for (const id of toRemove) {
                 delete document.elements[id];
             }
+            dropNavigationReferencesTo(toRemove, document.elements, document.surfaces);
         }, {
             history: surfaceId ? { surfaceId } : false,
         });
@@ -2990,6 +3106,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             for (const id of toRemove) {
                 delete document.elements[id];
             }
+            dropNavigationReferencesTo(toRemove, document.elements, document.surfaces);
         });
     }
 
@@ -3215,6 +3332,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 ? remapSurfaceDuplicateReferenceValue(cloneJson(sourceSurface.settings), remapContext)
                 : undefined,
         };
+        carryCopiedSurfaceNavigation(duplicatedSurface.settings, sourceSurface.settings, elementIdMap);
 
         localBp?.applyBlueprintMutation(bpDoc => {
             for (const sourceOwnerRecord of Object.values(ownerRecordsToClone)) {
@@ -3266,6 +3384,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             if (copy.valueBindings) {
                 copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
             }
+            carryCopiedElementNavigation(copy, elementIdMap);
             duplicatedElements[newElementId] = copy;
         }
 
@@ -3543,6 +3662,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 if (copy.valueBindings) {
                     copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
                 }
+                carryCopiedElementNavigation(copy, elementIdMap);
                 elements[copy.id] = copy;
             }
             const newRoot = elements[elementIdMap[source.rootElementId]];
@@ -3729,6 +3849,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const remappedSettings = sourceSurface.settings
             ? remapSurfaceDuplicateReferenceValue(cloneJson(sourceSurface.settings), remapContext)
             : undefined;
+        carryCopiedSurfaceNavigation(remappedSettings, sourceSurface.settings, elementIdMap);
 
         const sourcePageParams = getUIPageParams(sourceSurface);
         const newSurface: UISurface = placement.kind === "stageSurface"
@@ -3805,6 +3926,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             if (copy.valueBindings) {
                 copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
             }
+            carryCopiedElementNavigation(copy, elementIdMap);
             importedElements[newElementId] = copy;
         }
 
@@ -4011,6 +4133,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const root = componentElements[rootElementId];
         if (!root) {
             return null;
+        }
+        // The definition is a tree of its own: a neighbour left on the page is out of its reach.
+        for (const copy of Object.values(componentElements)) {
+            carryCopiedElementNavigation(copy, elementIdMap);
         }
 
         // Carry the logic across with the layout. Template import already does exactly this in the
@@ -4367,6 +4493,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             if (copy.valueBindings) {
                 copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
             }
+            carryCopiedElementNavigation(copy, idMap);
             elements[copy.id] = copy;
         }
         const component: UIComponentDefinition = {
@@ -4701,6 +4828,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             for (const id of toRemove) {
                 delete component.elements[id];
             }
+            dropNavigationReferencesTo(toRemove, component.elements);
             component.updatedAt = new Date().toISOString();
         }, { history: this.componentHistory(componentId) });
     }
@@ -4785,9 +4913,15 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 return;
             }
             const view = componentAsDocument(doc, liveComponent, surfaceId);
+            const dissolved = new Set<string>();
             for (const containerId of containerIds) {
-                lifted.push(...(applyUngroupContainer(view, surfaceId, containerId) ?? []));
+                const children = applyUngroupContainer(view, surfaceId, containerId);
+                if (children) {
+                    lifted.push(...children);
+                    dissolved.add(containerId);
+                }
             }
+            dropNavigationReferencesTo(dissolved, liveComponent.elements);
             liveComponent.updatedAt = new Date().toISOString();
         }, { history: this.componentHistory(componentId) });
         return lifted;
@@ -5041,6 +5175,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                       ? elementIdMap[source.parentId]
                       : null;
                 copy.childrenIds = source.childrenIds.filter(childId => elementIdMap[childId]).map(childId => elementIdMap[childId]);
+                carryCopiedElementNavigation(copy, elementIdMap, target => Boolean(liveComponent.elements[target]));
                 liveComponent.elements[newId] = copy;
                 const partSlot = isTop && fillsPartSlots ? getUIStructuralChildSlot(liveParent.type, copy.extra) : null;
                 const pointer = partSlot ? getUIStructuralSlotPointerProp(liveParent.type, partSlot) : null;
@@ -5187,6 +5322,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 if (copy.valueBindings) {
                     copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
                 }
+                carryCopiedElementNavigation(copy, idMap);
                 if (oldId === liveRoot.id) {
                     copy.layout = {
                         ...copy.layout,
@@ -5425,6 +5561,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 if (copy.valueBindings) {
                     copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
                 }
+                // A neighbour that stayed behind is still a neighbour when the paste lands on its page.
+                carryCopiedElementNavigation(copy, elementIdMap, target => allowed.has(target));
                 if (isTop && isListLikeWidgetType(parentEl.type)) {
                     const slot = copy.extra?.listSlot;
                     if (slot !== "itemTemplate" && slot !== "scrollbarTrack" && slot !== "scrollbarThumb") {

@@ -2358,3 +2358,162 @@ describe("UIDocumentService clearing a Blueprint Value binding", () => {
         expect(closedTabIds).toEqual([]);
     });
 });
+
+describe("UIDocumentService navigation references", () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.clearAllTimers();
+        vi.useRealTimers();
+    });
+
+    function control(id: string, type = "nl.button", navigation?: UIElement["navigation"]): UIElement {
+        return {
+            id,
+            type,
+            name: id,
+            parentId: null,
+            childrenIds: [],
+            layout: { x: 0, y: 0, width: 120, height: 40 },
+            ...(navigation ? { navigation } : {}),
+        };
+    }
+
+    /** Written straight into the document under `parentId`, ids and all, as the duplicate test seeds its page. */
+    function place(service: UIDocumentService, parentId: string, ...elements: UIElement[]): void {
+        const document = service.getDocument();
+        for (const element of elements) {
+            document.elements[element.id] = { ...element, parentId };
+            document.elements[parentId]!.childrenIds.push(element.id);
+        }
+    }
+
+    function setStartingFocus(service: UIDocumentService, surfaceId: string, navigation: Record<string, unknown>): void {
+        service.updateSurface(surfaceId, surface => {
+            surface.settings = { ...surface.settings, navigation };
+        });
+    }
+
+    it("points a duplicated page's neighbours and starting focus at the copies, and drops a neighbour on another page", () => {
+        const { service } = createHarness({ withLocalBlueprint: true });
+        place(service, service.getDocument().surfaces[0]!.rootElementId, control("elsewhere"));
+        const page = service.createSurface({ kind: "appSurface", host: "app", name: "Menu" });
+        place(
+            service,
+            page.rootElementId,
+            control("start", "nl.button", { neighbors: { down: "quit", up: "elsewhere" } }),
+            control("quit", "nl.button", { neighbors: { up: "start" } }),
+        );
+        setStartingFocus(service, page.id, { defaultFocusElementId: "quit", autoFocus: "always" });
+
+        const copy = service.duplicateSurface(page.id)!;
+
+        const document = service.getDocument();
+        const [start, quit] = document.elements[copy.rootElementId]!.childrenIds.map(id => document.elements[id]!);
+        expect(start.navigation).toEqual({ neighbors: { down: quit.id } });
+        expect(quit.navigation).toEqual({ neighbors: { up: start.id } });
+        expect(copy.settings?.navigation).toEqual({ defaultFocusElementId: quit.id, autoFocus: "always" });
+        // The page it was copied from still says what it said.
+        expect(document.elements.start!.navigation).toEqual({ neighbors: { down: "quit", up: "elsewhere" } });
+    });
+
+    it("drops a starting focus that names no element on the page being copied", () => {
+        const { service } = createHarness({ withLocalBlueprint: true });
+        const page = service.createSurface({ kind: "appSurface", host: "app", name: "Menu" });
+        setStartingFocus(service, page.id, { defaultFocusElementId: "gone", autoFocus: "always" });
+
+        const copy = service.duplicateSurface(page.id)!;
+
+        expect(copy.settings?.navigation).toEqual({ autoFocus: "always" });
+    });
+
+    it("drops the neighbours and the starting focus that named a deleted element", () => {
+        const { service } = createHarness();
+        const page = service.createSurface({ kind: "appSurface", host: "app", name: "Menu" });
+        place(
+            service,
+            page.rootElementId,
+            control("start", "nl.button", { neighbors: { down: "quit", right: "options" } }),
+            control("quit"),
+            control("options"),
+        );
+        setStartingFocus(service, page.id, { defaultFocusElementId: "quit" });
+
+        service.deleteElements(["quit"]);
+
+        const document = service.getDocument();
+        expect(document.elements.start!.navigation).toEqual({ neighbors: { right: "options" } });
+        expect(document.surfaces.find(surface => surface.id === page.id)!.settings?.navigation).toBeUndefined();
+    });
+
+    it("drops a neighbour that named a group once the group is dissolved", () => {
+        const { service } = createHarness();
+        const page = service.createSurface({ kind: "appSurface", host: "app", name: "Menu" });
+        place(service, page.rootElementId, control("start", "nl.button", { neighbors: { left: "group" } }), control("group", "nl.container"));
+
+        expect(service.ungroupContainers(page.id, ["group"])).toEqual([]);
+
+        expect(service.getDocument().elements.start!.navigation).toBeUndefined();
+    });
+
+    it("keeps a pasted neighbour that is still on the page, follows one copied along, and drops one left on another page", () => {
+        const { service } = createHarness({ withLocalBlueprint: true });
+        const page = service.createSurface({ kind: "appSurface", host: "app", name: "Menu" });
+        const other = service.createSurface({ kind: "appSurface", host: "app", name: "Options" });
+        place(
+            service,
+            page.rootElementId,
+            control("start", "nl.button", { neighbors: { down: "quit", right: "stay" } }),
+            control("quit"),
+            control("stay"),
+        );
+        const document = service.getDocument();
+        const payload = {
+            v: 1 as const,
+            sourceSurfaceId: page.id,
+            topLevelElementIds: ["start", "quit"],
+            elements: { start: cloneElement(document.elements.start!), quit: cloneElement(document.elements.quit!) },
+            widgetMainBlueprints: {},
+            widgetValueBlueprints: {},
+        };
+        const pastedNavigation = (surfaceRootId: string) => {
+            const result = service.pasteClipboardPayload(surfaceRoot(surfaceRootId), surfaceRootId, null, payload);
+            if (!result.ok) {
+                throw new Error(`paste refused: ${result.reason}`);
+            }
+            const [start, quit] = result.newRootIds;
+            return { navigation: service.getDocument().elements[start!]!.navigation, quit };
+        };
+        const surfaceRoot = (rootId: string) => service.getDocument().surfaces.find(surface => surface.rootElementId === rootId)!.id;
+
+        const samePage = pastedNavigation(page.rootElementId);
+        expect(samePage.navigation).toEqual({ neighbors: { down: samePage.quit, right: "stay" } });
+
+        const otherPage = pastedNavigation(other.rootElementId);
+        expect(otherPage.navigation).toEqual({ neighbors: { down: otherPage.quit } });
+    });
+
+    it("points a duplicated component's neighbours at the copies", () => {
+        const { service } = createHarness();
+        const component = service.createEmptyComponent("Menu");
+        const definition = service.getDocument().components!.find(item => item.id === component.id)!;
+        for (const element of [
+            control("start", "nl.button", { neighbors: { down: "quit", up: "missing" } }),
+            control("quit"),
+        ]) {
+            definition.elements[element.id] = { ...element, parentId: definition.rootElementId };
+            definition.elements[definition.rootElementId]!.childrenIds.push(element.id);
+        }
+
+        const [copy] = service.duplicateComponents([component.id]);
+
+        const [start, quit] = copy!.elements[copy!.rootElementId]!.childrenIds.map(id => copy!.elements[id]!);
+        expect(start.navigation).toEqual({ neighbors: { down: quit.id } });
+    });
+
+    function cloneElement(element: UIElement): UIElement {
+        return JSON.parse(JSON.stringify(element)) as UIElement;
+    }
+});
