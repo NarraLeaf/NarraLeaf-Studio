@@ -268,7 +268,7 @@ export const widgets = {
         showForKeysAndGamepad: "键盘与手柄",
         showForGamepad: "仅手柄",
         showForAlways: "所有设备",
-        showForTip: "提示栏列出按键当前的作用。使用鼠标时控件就在眼前，默认不显示",
+        showForTip: "显示提示的输入设备。使用其他输入设备时不显示提示",
         glyphStyle: "按键图标",
         glyphAuto: "跟随已连接的手柄",
         glyphXbox: "Xbox",
