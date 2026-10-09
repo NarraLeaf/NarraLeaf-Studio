@@ -167,6 +167,18 @@ describe("the pointer and the keys", () => {
         expect(document.activeElement).toBe(by("c"));
     });
 
+    it("is pointing again the moment the mouse moves, even over nothing the focus could land on", () => {
+        const { root, by } = mount(`
+            <div class="ui-editor-surface" data-ui-nav-scope="owner" tabindex="-1">
+                ${button("a", "0,0,100,40")}<div id="picture" data-box="0,100,300,200"></div>
+            </div>
+        `);
+        moveNavigationFocus(root, "down");
+        expect(root.getAttribute(NAV_MODALITY_ATTRIBUTE)).toBe("keys");
+        notePointerOverGame(root, { clientX: 150, clientY: 150, target: by("picture"), pointerType: "mouse" });
+        expect(root.getAttribute(NAV_MODALITY_ATTRIBUTE)).toBe("pointer");
+    });
+
     it("ignores a pointer that has not moved", () => {
         const { root, by } = mount(`
             <div class="ui-editor-surface" data-ui-nav-scope="owner" tabindex="-1">

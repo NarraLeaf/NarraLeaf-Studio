@@ -761,13 +761,15 @@ export function notePointerOverGame(gameRoot: Element, event: Pick<PointerEvent,
     if (!moved || event.pointerType === "touch") {
         return;
     }
+    // Moving the mouse is pointing, wherever it moves: the hover looks the keys put away come back
+    // at once, over the story as much as over a menu, not only once the pointer finds a control.
+    setModality(gameRoot, "pointer");
     const scope = resolveNavigationScope(gameRoot);
     const under = event.target instanceof Element ? event.target.closest(NAVIGATION_TARGET_SELECTOR) : null;
     if (!scope || !under || !isNavigationTarget(under, scope) || under === state.pointerTarget) {
         return;
     }
     state.pointerTarget = under;
-    setModality(gameRoot, "pointer");
     const active = scope.ownerDocument.activeElement;
     if (active instanceof HTMLElement && active !== under && isNavigationTarget(active, scope)
         && !active.matches(TEXT_ENTRY_SELECTOR)) {
