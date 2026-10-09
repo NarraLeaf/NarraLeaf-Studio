@@ -33,7 +33,7 @@ export type StoryInputHost = {
 
 /** A host the game owns: the interface plus what the game does to it between playthroughs. */
 export type GameStoryInputHost = StoryInputHost & {
-    /** Let go of everything a story row took: the lock, and any rumble still running. */
+    /** Let go of everything a story row took: the lock, any rumble still running, and every wait. */
     reset: () => void;
 };
 
@@ -72,6 +72,8 @@ function isActionHeld(def: UIInputActionDef | undefined): boolean {
 export function createGameStoryInputHost(deps: GameStoryInputHostDeps): GameStoryInputHost {
     let lock: { release: () => void } | null = null;
     let locked = false;
+    /** How to drop each wait still in flight - see `reset`. */
+    const pendingWaits = new Set<() => void>();
 
     const setAdvanceLocked = (next: boolean): void => {
         if (next === locked) {
@@ -97,16 +99,49 @@ export function createGameStoryInputHost(deps: GameStoryInputHostDeps): GameStor
         stopRumble: () => stopGamepadRumble(),
         setAdvanceLocked,
         isAdvanceLocked: () => locked,
-        waitForInput: (request, signal) => waitForStoryInput(request, {
-            isActionHeld: actionId => {
-                const actions = deps.readActions() ?? {};
-                return actionId
-                    ? isActionHeld(actions[actionId])
-                    : Object.values(actions).some(def => isActionHeld(def));
-            },
-            isStageCovered: deps.isStageCovered,
-        }, signal),
+        waitForInput: (request, signal) => new Promise<boolean>(resolve => {
+            // The wait's own controller, aborted by the row's signal or by `reset`: either way
+            // `waitForStoryInput` takes its timers and its listener down.
+            const controller = new AbortController();
+            let dropped = false;
+            const forward = (): void => controller.abort();
+            const drop = (): void => {
+                dropped = true;
+                controller.abort();
+            };
+            pendingWaits.add(drop);
+            if (signal.aborted) {
+                controller.abort();
+            } else {
+                signal.addEventListener("abort", forward, { once: true });
+            }
+            void waitForStoryInput(request, {
+                isActionHeld: actionId => {
+                    const actions = deps.readActions() ?? {};
+                    return actionId
+                        ? isActionHeld(actions[actionId])
+                        : Object.values(actions).some(def => isActionHeld(def));
+                },
+                isStageCovered: deps.isStageCovered,
+            }, controller.signal).then(passed => {
+                pendingWaits.delete(drop);
+                signal.removeEventListener("abort", forward);
+                // A wait `reset` dropped never settles. Its run is being replaced - a new game, a
+                // load, the session going away - so there is no row to move past and no answer to
+                // write, and settling `false` would write one into the run that replaces it before
+                // the engine got round to abandoning the row. The engine abandons it on its own when
+                // it resets the stack (see `storyAwaitedAction`).
+                if (!dropped) {
+                    resolve(passed);
+                }
+            });
+        }),
         reset: () => {
+            // A `/hold` polls the pad and the keys until it settles, and every wait listens for
+            // actions: one left running past the run it belonged to keeps doing both for nobody.
+            for (const drop of [...pendingWaits]) {
+                drop();
+            }
             setAdvanceLocked(false);
             stopGamepadRumble();
         },

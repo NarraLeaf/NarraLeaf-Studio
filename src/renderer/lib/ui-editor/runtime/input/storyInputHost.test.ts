@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { STORY_RUMBLE_PRESETS } from "@shared/types/story";
 import { createGameStoryInputHost } from "./storyInputHost";
+import { announceStoryInputActions } from "./storyInputWait";
 
 function hostWith(overrides: { isSkipping?: () => boolean } = {}) {
     const releases: ReturnType<typeof vi.fn>[] = [];
@@ -9,13 +10,15 @@ function hostWith(overrides: { isSkipping?: () => boolean } = {}) {
         releases.push(release);
         return { release };
     });
+    // Read by every poll of a `/hold`, so a spy on it shows whether one is still running.
+    const readActions = vi.fn(() => ({}));
     const host = createGameStoryInputHost({
         isSkipping: overrides.isSkipping ?? (() => false),
-        readActions: () => ({}),
+        readActions,
         holdAdvance,
         isStageCovered: () => false,
     });
-    return { host, holdAdvance, releases };
+    return { host, holdAdvance, releases, readActions };
 }
 
 describe("createGameStoryInputHost", () => {
@@ -37,6 +40,44 @@ describe("createGameStoryInputHost", () => {
         host.reset();
         expect(releases[0]).toHaveBeenCalledTimes(1);
         expect(host.isAdvanceLocked()).toBe(false);
+    });
+
+    it("drops every wait on reset: no more polling, no listener, and no answer", async () => {
+        vi.useFakeTimers();
+        try {
+            const { host, readActions } = hostWith();
+            let settled = false;
+            void host.waitForInput({ operation: "hold", actionId: "confirm", holdMs: 1000 }, new AbortController().signal)
+                .then(() => {
+                    settled = true;
+                });
+            void host.waitForInput({ operation: "wait", timeoutMs: 5000 }, new AbortController().signal)
+                .then(() => {
+                    settled = true;
+                });
+            await vi.advanceTimersByTimeAsync(100);
+            expect(readActions).toHaveBeenCalled();
+
+            host.reset();
+            readActions.mockClear();
+            await vi.advanceTimersByTimeAsync(10_000);
+            announceStoryInputActions([{ actionId: "confirm" }]);
+            await vi.advanceTimersByTimeAsync(0);
+            expect(readActions).not.toHaveBeenCalled();
+            expect(vi.getTimerCount()).toBe(0);
+            // The run it belonged to is being replaced: settling would hand that run an answer.
+            expect(settled).toBe(false);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("still ends a wait the usual way when the row is abandoned", async () => {
+        const { host } = hostWith();
+        const abort = new AbortController();
+        const result = host.waitForInput({ operation: "wait" }, abort.signal);
+        abort.abort();
+        await expect(result).resolves.toBe(false);
     });
 
     it("plays no rumble while the player is skipping", async () => {
