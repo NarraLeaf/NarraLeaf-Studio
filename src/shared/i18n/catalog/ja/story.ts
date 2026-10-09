@@ -1480,6 +1480,7 @@ export const story = {
         inputActionNamed: "「{name}」",
         inputAnyAction: "任意の入力",
         inputActionUnknown: "入力アクション",
+        inputActionNotFound: "不明な入力アクション",
         inputWait: "{action}を待つ",
         inputHold: "{action}を {seconds} 秒長押し",
         inputMash: "{action}を {count} 回押す",

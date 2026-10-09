@@ -1774,9 +1774,14 @@ function actionSentence(
 /**
  * The player's-hands rows: `/rumble`, `/input`, `/waitinput`, `/hold`, `/mash`.
  *
- * The action is printed by its name and never its id, exactly as `/quit` prints its page - and, like
- * that page, it prints blank when no action answers to the id any more, so the line reads as the
- * "any action" row it would now re-parse as rather than naming something that is gone.
+ * The action is printed by its name and never its id, exactly as `/quit` prints its page. Unlike that
+ * page it is NOT printed blank when no action answers to the id any more: the action slot may be left
+ * out, so a blank one reads - and re-parses - as a wait for ANY action, and retyping the line would
+ * quietly turn the row into one. It prints the unknown-action word instead, the way a jump prints
+ * "unknown scene": the row says something is missing, and a retyped line stops at a name it cannot
+ * resolve rather than becoming a different row.
+ *
+ * A motor strength edited on the line is clamped to 0-1, as the inspector clamps it.
  */
 function inputSentence(
     payload: Extract<StoryActionPayload, { action: "input" }>,
@@ -1793,10 +1798,10 @@ function inputSentence(
                         apply: next => ({ ...payload, preset: next as typeof payload.preset }),
                     }),
                     arg("left", payload.strongMagnitude === undefined ? undefined : String(payload.strongMagnitude), {
-                        apply: next => ({ ...payload, strongMagnitude: Number(next) }),
+                        apply: next => ({ ...payload, strongMagnitude: motorStrength(next) }),
                     }),
                     arg("right", payload.weakMagnitude === undefined ? undefined : String(payload.weakMagnitude), {
-                        apply: next => ({ ...payload, weakMagnitude: Number(next) }),
+                        apply: next => ({ ...payload, weakMagnitude: motorStrength(next) }),
                     }),
                     arg("d", seconds(payload.durationMs), { apply: next => ({ ...payload, durationMs: msOf(next) }) }),
                     arg("wait", payload.wait ? "true" : undefined, {
@@ -1819,7 +1824,9 @@ function inputSentence(
         case "hold":
         case "mash": {
             const actions = lookups.commandContext?.inputActions ?? [];
-            const name = payload.actionId ? actions.find(action => action.id === payload.actionId)?.name ?? "" : "";
+            const name = payload.actionId
+                ? actions.find(action => action.id === payload.actionId)?.name ?? translate("story.describe.inputActionNotFound")
+                : "";
             const head: (Arg | null)[] = [
                 positional("action", name, actions.length === 0 ? {} : {
                     choices: actions.map(action => ({ value: action.id, label: action.name })),
@@ -1847,6 +1854,12 @@ function inputSentence(
             };
         }
     }
+}
+
+/** A rumble motor's strength from an inline edit: 0-1, as the inspector stores it; not a number clears it. */
+function motorStrength(next: string): number | undefined {
+    const value = Number(next);
+    return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : undefined;
 }
 
 function blockSentence(block: StoryBlock, lookups: StoryCommandLineLookups): Sentence | null {

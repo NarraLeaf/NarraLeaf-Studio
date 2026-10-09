@@ -1634,6 +1634,8 @@ export const story = {
         inputActionNamed: "\"{name}\"",
         inputAnyAction: "any input",
         inputActionUnknown: "an input action",
+        /** A command line naming an action no longer in the project, as `sceneUnknown` names a scene. */
+        inputActionNotFound: "unknown input action",
         inputWait: "Wait for {action}",
         inputHold: "Hold {action} for {seconds}s",
         inputMash: "Press {action} {count} times",
