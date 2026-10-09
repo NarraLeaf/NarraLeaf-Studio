@@ -49877,7 +49877,8 @@
           "kind": "gamepad",
           "button": "B"
         }
-      ]
+      ],
+      "navigationSlot": "cancel"
     },
     "closeLog": {
       "id": "closeLog",
@@ -49906,6 +49907,134 @@
           "gesture": "longPress"
         }
       ]
+    },
+    "navUp": {
+      "id": "navUp",
+      "name": "向上",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "ArrowUp"
+        },
+        {
+          "kind": "gamepad",
+          "button": "D-pad Up"
+        },
+        {
+          "kind": "gamepad",
+          "button": "Left Stick Up"
+        }
+      ],
+      "navigationSlot": "up"
+    },
+    "navDown": {
+      "id": "navDown",
+      "name": "向下",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "ArrowDown"
+        },
+        {
+          "kind": "gamepad",
+          "button": "D-pad Down"
+        },
+        {
+          "kind": "gamepad",
+          "button": "Left Stick Down"
+        }
+      ],
+      "navigationSlot": "down"
+    },
+    "navLeft": {
+      "id": "navLeft",
+      "name": "向左",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "ArrowLeft"
+        },
+        {
+          "kind": "gamepad",
+          "button": "D-pad Left"
+        },
+        {
+          "kind": "gamepad",
+          "button": "Left Stick Left"
+        }
+      ],
+      "navigationSlot": "left"
+    },
+    "navRight": {
+      "id": "navRight",
+      "name": "向右",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "ArrowRight"
+        },
+        {
+          "kind": "gamepad",
+          "button": "D-pad Right"
+        },
+        {
+          "kind": "gamepad",
+          "button": "Left Stick Right"
+        }
+      ],
+      "navigationSlot": "right"
+    },
+    "navNext": {
+      "id": "navNext",
+      "name": "下一个控件",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Tab"
+        }
+      ],
+      "navigationSlot": "next"
+    },
+    "navPrevious": {
+      "id": "navPrevious",
+      "name": "上一个控件",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Shift+Tab"
+        }
+      ],
+      "navigationSlot": "previous"
+    },
+    "navConfirm": {
+      "id": "navConfirm",
+      "name": "确认",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Enter"
+        },
+        {
+          "kind": "key",
+          "key": "Space"
+        },
+        {
+          "kind": "gamepad",
+          "button": "A"
+        }
+      ],
+      "navigationSlot": "confirm"
+    },
+    "navMenu": {
+      "id": "navMenu",
+      "name": "快捷菜单",
+      "bindings": [
+        {
+          "kind": "gamepad",
+          "button": "Y"
+        }
+      ],
+      "navigationSlot": "menu"
     }
   },
   "meta": {
