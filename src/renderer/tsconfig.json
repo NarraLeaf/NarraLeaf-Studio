@@ -15,6 +15,10 @@
     // `rootDir` here: an inherited rootDir puts the generator's own transient
     // entry outside it and the plugin API types stop building.
     "noEmit": true,
+    // Each run keeps what it learned in .cache/tsc (gitignored, one file per project and per
+    // checkout), so the next run rechecks only what changed. Delete the file for a cold check.
+    "incremental": true,
+    "tsBuildInfoFile": "../../.cache/tsc/renderer.tsbuildinfo",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

@@ -24,6 +24,10 @@
         "typeRoots": ["../../node_modules/@types"],
         "types": ["node", "react", "react-dom"],
         "noEmit": true,
+        // The renderer's typecheck cache describes the renderer's program, not this one; sharing
+        // the file would make each run throw away the other's.
+        "incremental": false,
+        "tsBuildInfoFile": null,
         "declaration": false,
         "emitDeclarationOnly": false
     },

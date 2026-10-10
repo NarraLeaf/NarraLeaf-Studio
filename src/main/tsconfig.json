@@ -13,6 +13,10 @@
     // side. That is a hard error under the TypeScript 7 preview `yarn lint:oxc`
     // type-checks with, and dead weight under the 5.x compiler `yarn lint` uses.
     "noEmit": true,
+    // Each run keeps what it learned in .cache/tsc (gitignored, one file per project and per
+    // checkout), so the next run rechecks only what changed. Delete the file for a cold check.
+    "incremental": true,
+    "tsBuildInfoFile": "../../.cache/tsc/main.tsbuildinfo",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
