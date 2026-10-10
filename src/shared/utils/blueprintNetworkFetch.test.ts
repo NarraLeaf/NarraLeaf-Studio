@@ -381,3 +381,93 @@ describe("the network allowlist", () => {
         expect(fetchSpy).not.toHaveBeenCalled();
     });
 });
+
+/**
+ * The last say a main process has over where the request goes (`refuseDestination`), and the
+ * header no caller may choose.
+ *
+ * The guard Studio passes keeps the node off its own loopback services; what is pinned here is that
+ * the performer asks it about every address it is about to request - the written one and each hop -
+ * and that a refusal leaves before a byte does.
+ */
+describe("the destination guard", () => {
+    const refuseStudio = vi.fn(async (url: string) => (url.includes(":54080") ? "Studio's own service" : null));
+
+    afterEach(() => {
+        refuseStudio.mockClear();
+    });
+
+    it("refuses the written address before anything is sent", async () => {
+        const fetchSpy = forbiddenFetch();
+        vi.stubGlobal("fetch", fetchSpy);
+
+        const result = await executeBlueprintNetworkFetch(
+            request({ url: "http://127.0.0.1:54080/mcp", method: "POST", body: "{}" }),
+            { allowHttp: true, redirects: "check", refuseDestination: refuseStudio },
+        );
+
+        expect(result).toMatchObject({ outcome: "networkError", error: "Studio's own service" });
+        expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("refuses a redirect into a refused address before the hop is issued", async () => {
+        const fetchSpy = respondByUrl({
+            "https://api.example.com/v1/notice": { status: 307, location: "http://localhost:54080/mcp" },
+        });
+        vi.stubGlobal("fetch", fetchSpy);
+
+        const result = await executeBlueprintNetworkFetch(
+            request({ url: "https://api.example.com/v1/notice", method: "POST", body: "{}" }),
+            { allowHttp: true, redirects: "check", refuseDestination: refuseStudio },
+        );
+
+        expect(result).toMatchObject({ outcome: "networkError", error: "Studio's own service" });
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+        expect(refuseStudio.mock.calls.map(([url]) => url)).toEqual([
+            "https://api.example.com/v1/notice",
+            "http://localhost:54080/mcp",
+        ]);
+    });
+
+    it("lets every other address through, the author's own local API included", async () => {
+        const fetchSpy = respondWith('{"ok":true}');
+        vi.stubGlobal("fetch", fetchSpy);
+
+        const result = await executeBlueprintNetworkFetch(
+            request({ url: "http://localhost:3000/api" }),
+            { allowHttp: true, redirects: "check", refuseDestination: refuseStudio },
+        );
+
+        expect(result.outcome).toBe("success");
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("reads a guard that fails as a refusal", async () => {
+        const fetchSpy = forbiddenFetch();
+        vi.stubGlobal("fetch", fetchSpy);
+
+        const result = await executeBlueprintNetworkFetch(request(), {
+            allowHttp: true,
+            redirects: "check",
+            refuseDestination: async () => {
+                throw new Error("resolver gone");
+            },
+        });
+
+        expect(result.outcome).toBe("networkError");
+        expect(result.error).toContain("resolver gone");
+        expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("never sends a Host header the graph set, and keeps the others", async () => {
+        const fetchSpy = respondWith('{"ok":true}');
+        vi.stubGlobal("fetch", fetchSpy);
+
+        await executeBlueprintNetworkFetch(
+            request({ headers: { Host: "127.0.0.1:54080", authorization: "Bearer x" } }),
+            { allowHttp: true, redirects: "check" },
+        );
+
+        expect(fetchSpy.mock.calls[0][1]?.headers).toEqual({ authorization: "Bearer x" });
+    });
+});

@@ -64,18 +64,28 @@ export function parseRemoteAssetUrl(url: string): URL {
  * `validators` carries what the server said last time. When they are present the request is
  * conditional, so a Refresh of an unchanged asset costs one round trip and no bytes - which is the
  * entire reason the record stores them.
+ *
+ * `refuseDestination` is the IPC handler's check that the address is not one of the loopback
+ * services Studio itself serves (see `@shared/utils/ownLoopbackGuard`): the renderer names the URL,
+ * and its answer comes back as bytes, so without it a plugin could read the dev debug server's log
+ * feed through here. It is asked about the address actually requested (after the author's download
+ * rewrites) and about where the redirects ended; an answer from a refused address is discarded
+ * unread.
  */
 export async function fetchRemoteAsset(
     url: string,
     validators?: RemoteAssetValidators,
+    refuseDestination?: (url: string) => Promise<string | null>,
 ): Promise<RemoteAssetFetchResult> {
     parseRemoteAssetUrl(url);
+    const target = applyDownloadRewrite(url);
+    await refuseOwnService(target, refuseDestination);
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REMOTE_ASSET_FETCH_TIMEOUT_MS);
     let response: Response;
     try {
-        response = await studioFetch(applyDownloadRewrite(url), {
+        response = await studioFetch(target, {
             redirect: "follow",
             signal: controller.signal,
             headers: conditionalHeaders(validators),
@@ -98,6 +108,12 @@ export async function fetchRemoteAsset(
         );
     } finally {
         clearTimeout(timer);
+    }
+
+    // `follow` hands the chain to the platform, so the hops are not seen one by one; where it ended
+    // is. Checked before anything of the answer is read or handed back.
+    if (response.url && response.url !== target) {
+        await refuseOwnService(response.url, refuseDestination, () => void response.body?.cancel().catch(() => undefined));
     }
 
     if (response.status === 304) {
@@ -131,6 +147,18 @@ export async function fetchRemoteAsset(
         // said the answer is not the file.
         contentType: response.headers.get("content-type") ?? undefined,
     };
+}
+
+async function refuseOwnService(
+    url: string,
+    refuseDestination: ((url: string) => Promise<string | null>) | undefined,
+    discard?: () => void,
+): Promise<void> {
+    const refused = refuseDestination ? await refuseDestination(url) : null;
+    if (refused) {
+        discard?.();
+        throw new RemoteAssetFetchError(RemoteAssetFetchErrorCode.Refused, `${refused} (${url})`);
+    }
 }
 
 function conditionalHeaders(validators?: RemoteAssetValidators): Record<string, string> {

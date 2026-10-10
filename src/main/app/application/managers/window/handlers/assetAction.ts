@@ -8,6 +8,7 @@ import { RemoteAssetFetchErrorCode, type RemoteAssetFetchResult } from "@shared/
 import { fileExtensionFromBytes, MEDIA_SNIFF_PREFIX_BYTES } from "@shared/utils/mediaSniff";
 import { fetchRemoteAsset, RemoteAssetFetchError } from "../../remoteAssetFetcher";
 import { refuseDistrustedWindow } from "../../../utils/projectTrustGate";
+import { refuseOwnLoopbackDestination } from "../../../utils/ownLoopbackDestination";
 import { dialogTranslator, showOpenDialog, showSaveDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
@@ -41,7 +42,10 @@ export class AssetFetchRemoteHandler extends IPCHandler<IPCEventType.assetFetchR
             // rest of the interface uses for a distrusted project rather than printing this one.
             return this.failed(new RemoteAssetFetchError(RemoteAssetFetchErrorCode.Distrusted, distrusted));
         }
-        return this.tryUse(() => fetchRemoteAsset(data.url, data.validators));
+        // The address is the renderer's, so the loopback services Studio serves are refused here
+        // as they are for the Fetch node - see `ownLoopbackDestination`.
+        const app = window.getApp();
+        return this.tryUse(() => fetchRemoteAsset(data.url, data.validators, url => refuseOwnLoopbackDestination(app, url)));
     }
 }
 

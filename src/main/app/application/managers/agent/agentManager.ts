@@ -377,6 +377,11 @@ export class AgentManager implements AgentMainToolHost {
         this.server?.notifyToolsChanged();
     }
 
+    /** The port the MCP endpoint is listening on, or null while it is not. */
+    public livePort(): number | null {
+        return this.server?.port ?? null;
+    }
+
     public endpointUrl(): string | null {
         const port = this.server?.port;
         return port ? agentEndpointUrl(port) : null;

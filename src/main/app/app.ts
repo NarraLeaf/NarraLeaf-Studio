@@ -404,6 +404,16 @@ export class App extends BaseApp {
         return this.agentManager;
     }
 
+    /** The base app's ports, and the agent MCP endpoint's while it is listening. */
+    public override ownLoopbackPorts(): number[] {
+        const ports = super.ownLoopbackPorts();
+        const agentPort = this.agentManager?.livePort() ?? null;
+        if (agentPort !== null) {
+            ports.push(agentPort);
+        }
+        return ports;
+    }
+
     /** Everything Studio knows about newer versions of itself. See {@link UpdateManager}. */
     public getUpdateManager(): UpdateManager {
         return this.updateManager;
