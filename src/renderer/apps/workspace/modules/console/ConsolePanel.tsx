@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Download, ListFilter, Terminal, Trash2 } from "lucide-react";
 import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
@@ -18,6 +18,8 @@ import {
 } from "@/lib/workspace/services/core/ConsoleService";
 import { Services } from "@/lib/workspace/services/services";
 import { useWorkspace } from "../../context";
+import { tabStripOverflow, type StripOverflow } from "../../components/layout/tabStripOverflow";
+import { tabStripRevealScrollLeft } from "../../components/layout/tabStripReveal";
 import { PanelComponentProps } from "../types";
 import { consoleChannelDescription, consoleChannelLabel, consoleSourceLabel } from "./consoleChannelText";
 import { buildConsoleExportContent, consoleEntryText } from "./consoleExport";
@@ -107,6 +109,8 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
     );
     const [progressByChannel, setProgressByChannel] = useState<Record<ConsoleChannelId, ConsoleProgress | null>>({});
     const scrollRef = useRef<HTMLDivElement | null>(null);
+    const pageStripRef = useRef<HTMLDivElement | null>(null);
+    const [pageStripOverflow, setPageStripOverflow] = useState<StripOverflow>({ left: false, right: false });
     const filterMenuRef = useRef<HTMLDivElement | null>(null);
     const filterMenuPanelRef = useRef<HTMLDivElement | null>(null);
     const hostWindow = useHostWindow();
@@ -225,6 +229,51 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
         }
     }, [activeChannel, visibleEntries]);
 
+    // The fades follow the page strip: its scroll, and anything that changes how much of it fits -
+    // the dock being resized, a page registering or leaving.
+    useEffect(() => {
+        const strip = pageStripRef.current;
+        if (!strip) {
+            return;
+        }
+        const sync = () => {
+            const next = tabStripOverflow(strip);
+            setPageStripOverflow(prev => (prev.left === next.left && prev.right === next.right ? prev : next));
+        };
+        sync();
+        strip.addEventListener("scroll", sync, { passive: true });
+        const observer = new ResizeObserver(sync);
+        observer.observe(strip);
+        // The pages too: a count gaining a digit widens a page that has shrunk to its contents.
+        for (const page of Array.from(strip.children)) {
+            observer.observe(page);
+        }
+        return () => {
+            strip.removeEventListener("scroll", sync);
+            observer.disconnect();
+        };
+    }, [channels.length]);
+
+    // The page being read stays in view when the strip scrolls: picked from the strip, or brought
+    // forward by a run that asks for its own page.
+    useLayoutEffect(() => {
+        const strip = pageStripRef.current;
+        const tab = strip?.querySelector<HTMLElement>(`[data-console-channel="${CSS.escape(activeChannel)}"]`);
+        if (!strip || !tab) {
+            return;
+        }
+        const stripRect = strip.getBoundingClientRect();
+        const tabRect = tab.getBoundingClientRect();
+        const next = tabStripRevealScrollLeft(
+            { scrollLeft: strip.scrollLeft, clientWidth: strip.clientWidth, scrollWidth: strip.scrollWidth },
+            { offsetLeft: tabRect.left - stripRect.left + strip.scrollLeft, width: tabRect.width },
+            24,
+        );
+        if (next !== null) {
+            strip.scrollLeft = next;
+        }
+    }, [activeChannel, channels.length]);
+
     useEffect(() => {
         if (!filterMenuOpen) {
             return;
@@ -288,7 +337,21 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
     return (
         <div className="flex h-full min-h-0 flex-col bg-surface text-fg-muted">
             <div className="flex h-9 shrink-0 items-center justify-between border-b border-edge bg-surface-sunken">
-                <div className="flex h-full min-w-0 overflow-x-auto" role="tablist" aria-label={t("console.channelsAria")}>
+                {/* The pages shrink to their own width before the strip scrolls, and when it still has
+                    to scroll it draws no scrollbar: an 8px gutter under 36px of tabs cost them their
+                    height and left the last one cut off under the toolbar. A fade at a clipped edge
+                    says there is more, as on the editor's tab strip, and the wheel scrolls it. */}
+                <div
+                    ref={pageStripRef}
+                    className="nl-no-scrollbar nl-edge-fade flex h-full min-w-0 overflow-x-auto"
+                    data-fade-start={pageStripOverflow.left ? "" : undefined}
+                    data-fade-end={pageStripOverflow.right ? "" : undefined}
+                    onWheel={event => {
+                        event.currentTarget.scrollLeft += event.deltaY;
+                    }}
+                    role="tablist"
+                    aria-label={t("console.channelsAria")}
+                >
                     {channels.map(channel => {
                         const active = activeChannel === channel.id;
                         // The lines the page would show under the level filter, not every line it
@@ -304,8 +367,9 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                                 type="button"
                                 role="tab"
                                 aria-selected={active}
+                                data-console-channel={channel.id}
                                 data-tip={consoleChannelDescription(t, channel)} aria-label={consoleChannelDescription(t, channel)}
-                                className={`relative flex min-w-28 cursor-default items-center justify-center gap-2 px-4 text-xs transition-colors ${
+                                className={`relative flex w-28 min-w-max cursor-default items-center justify-center gap-2 px-3 text-xs transition-colors ${
                                     active
                                         ? "bg-surface text-fg"
                                         : "text-fg-muted hover:bg-fill-subtle hover:text-fg"
