@@ -6,6 +6,7 @@ import {
     AGENT_MENU_ACTIONS,
     AGENT_MENU_COPY_KINDS,
     AGENT_MENU_GROUP_ID,
+    AGENT_MENU_MNEMONIC,
     agentMenuStateKind,
     agentMenuStatusLine,
     buildAgentMenuItems,
@@ -72,6 +73,15 @@ describe("the Agent menu's status line", () => {
         expect(agentMenuStateKind(on, { paused: false, busy: false })).toBe("idle");
         // Before main has answered, nothing is claimed about access.
         expect(agentMenuStateKind(null, { paused: false, busy: false })).toBe("idle");
+    });
+});
+
+describe("the Agent menu's access key", () => {
+    it("is a letter no other Studio menu on the bar claims, and one its name carries in English and Chinese", () => {
+        // File (F) and Help (H) in `modules/actions`, Edit (E) in `WorkspaceHistoryMenu`.
+        expect(["F", "E", "H"]).not.toContain(AGENT_MENU_MNEMONIC);
+        expect(en("workspace.agent.appMenu.title").toUpperCase()).toContain(AGENT_MENU_MNEMONIC);
+        expect(zh("workspace.agent.appMenu.title").toUpperCase()).toContain(AGENT_MENU_MNEMONIC);
     });
 });
 

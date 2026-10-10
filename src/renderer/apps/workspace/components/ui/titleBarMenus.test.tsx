@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { MnemonicLabel, TitleBarMenus, useMnemonicReveal, useTitleBarMenu } from "./titleBarMenus";
+import { MnemonicLabel, mnemonicsInBrackets, TitleBarMenus, useMnemonicReveal, useTitleBarMenu } from "./titleBarMenus";
 
 /**
  * What makes a row of menus read as a menu bar rather than as three independent popups.
@@ -364,6 +364,17 @@ describe("a menu's accelerator on its label", () => {
     it("leaves a menu with no accelerator alone", () => {
         const { container } = render(<MnemonicLabel label="Plugins" reveal />);
         expect(container.innerHTML).toBe("Plugins");
+    });
+
+    it("brackets the letter in a Chinese or Japanese bar even where the label carries it", () => {
+        // `Agent` among `文件(F)` and `帮助(H)` reads as one more menu of the same bar.
+        const { container } = render(<MnemonicLabel label="Agent" mnemonic="A" reveal={false} bracketed />);
+        expect(container.textContent).toBe("Agent(A)");
+        expect(mnemonicsInBrackets("zh")).toBe(true);
+        expect(mnemonicsInBrackets("ja")).toBe(true);
+        expect(mnemonicsInBrackets("zh-TW")).toBe(true);
+        expect(mnemonicsInBrackets("en")).toBe(false);
+        expect(mnemonicsInBrackets("fr")).toBe(false);
     });
 });
 

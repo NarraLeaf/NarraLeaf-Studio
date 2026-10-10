@@ -21,6 +21,13 @@ import { Separator, type ActionDefinition, type ActionMenuItem } from "../../reg
 /** The group's id. Exempt from the freeze in `freezeActionPolicy`: nothing here writes the project. */
 export const AGENT_MENU_GROUP_ID = "narraleaf-studio:agent";
 
+/**
+ * The letter Alt reaches the menu by on the in-app bar, beside File (F), Edit (E) and Help (H): the
+ * one its name starts with in English and Chinese, and free in every language. Like Alt+H, it yields
+ * to the UI editor's align chord while that binding is live (see `TitleBarMenus`).
+ */
+export const AGENT_MENU_MNEMONIC = "A";
+
 export const AGENT_MENU_ACTIONS = {
     status: "narraleaf-studio:agent-status",
     portMoved: "narraleaf-studio:agent-port-moved",

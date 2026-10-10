@@ -8,7 +8,7 @@ import type { AgentFollowService, AgentFollowState } from "@/lib/workspace/servi
 import type { AgentCopyConfigKind, AgentQuickTogglePatch } from "@shared/agent/workspaceAccess";
 import { useRegistry } from "@/apps/workspace/registry";
 import { useWorkspace } from "../../context";
-import { AGENT_MENU_GROUP_ID, agentCopyKindLabel, agentMenuStateKind, buildAgentMenuItems } from "./agentMenuModel";
+import { AGENT_MENU_GROUP_ID, AGENT_MENU_MNEMONIC, agentCopyKindLabel, agentMenuStateKind, buildAgentMenuItems } from "./agentMenuModel";
 import { AGENT_LOG_PANEL_ID } from "./agentLogIds";
 import { adoptAgentQuickState, useAgentQuickState } from "./useAgentQuickState";
 
@@ -134,6 +134,7 @@ export function AgentMenu() {
             labelKey: "workspace.agent.appMenu.title",
             order: AGENT_MENU_ORDER,
             menuSlot: "top-level",
+            mnemonic: AGENT_MENU_MNEMONIC,
             items,
         });
         return () => unregisterActionGroup(AGENT_MENU_GROUP_ID);

@@ -15,7 +15,7 @@ import {
     isRowOnOpenPath,
 } from "./actionMenuModel";
 import { applyFreezeToActionMenuItems, isFreezeExemptActionGroup } from "./freezeActionPolicy";
-import { MnemonicLabel, useMnemonicReveal, useTitleBarMenu } from "./titleBarMenus";
+import { MnemonicLabel, mnemonicsInBrackets, useMnemonicReveal, useTitleBarMenu } from "./titleBarMenus";
 import { MenuShortcut } from "@/lib/components/elements/MenuShortcut";
 import { useWorkspaceFreezeReason } from "../../hooks/useWorkspaceFrozen";
 import { useFreezeUnavailableReason } from "./freezeGuard";
@@ -54,7 +54,7 @@ interface ActionDropdownProps {
  * one is open.
  */
 export function ActionDropdown({ group, iconOnly = false, preFrozen = false }: ActionDropdownProps) {
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
     const { workspace, context } = useWorkspace();
     const freeze = useWorkspaceFreezeReason();
     const frozenReason = useFreezeUnavailableReason();
@@ -311,6 +311,7 @@ export function ActionDropdown({ group, iconOnly = false, preFrozen = false }: A
                                 label={String(groupLabel)}
                                 mnemonic={group.mnemonic}
                                 reveal={revealMnemonic}
+                                bracketed={mnemonicsInBrackets(locale)}
                             />
                         </span>
                         <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? "rotate-180" : ""}`} />
@@ -552,7 +553,7 @@ function SubmenuPanel({ children }: { children: React.ReactNode }) {
 const HOVER_CLOSE_DELAY_MS = 400;
 
 function MenuLevel(props: MenuLevelProps) {
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
     const revealMnemonic = useMnemonicReveal();
     const { path, items, openPath, focusPath, setOpenPath, setFocusPath, onActionClick, hoverOpenTimerRef, hoverCloseTimerRef, focusContext, shortcuts, disabledTitle } = props;
     const parentPath = path;
@@ -666,6 +667,7 @@ function MenuLevel(props: MenuLevelProps) {
                                         label={String(item.labelKey ? t(item.labelKey) : item.label)}
                                         mnemonic={isActionMenuSubmenu(item) ? item.mnemonic : undefined}
                                         reveal={revealMnemonic}
+                                        bracketed={mnemonicsInBrackets(locale)}
                                     />
                                 </span>
                             </span>
