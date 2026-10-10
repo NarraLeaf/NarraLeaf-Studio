@@ -265,8 +265,8 @@ export const settings = {
             label: "ダウンロード先の書き換え",
         },
         useSystemProxy: {
-            label: "このコンピュータのプロキシを使う",
-            description: "Studio のダウンロードはこのコンピュータのプロキシを使います",
+            label: "システムのプロキシ設定を使用",
+            description: "Studio のダウンロードはオペレーティングシステムに設定されたプロキシを経由する",
         },
         pluginRegistryUrl: {
             label: "プラグインレジストリの URL",
