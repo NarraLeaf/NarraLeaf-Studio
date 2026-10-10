@@ -12,9 +12,12 @@ import { measureAgentWrite, revealAgentWrite, type AgentHighlightRect } from "./
  *
  * - The offscreen host `ui_screenshot` renders pages into, so they get the brand palette, the
  *   plugins' renderers and the asset resolution the editor's own canvas gets.
- * - Follow mode: when an agent writes, the editor tab it wrote to is opened or brought forward, and
- *   what changed is outlined for a moment. Inside Studio only - nothing here focuses a window - and
- *   a tab the author is typing in is not taken away from them: the agent's tab then opens behind it.
+ * - Follow mode, a Studio-wide setting that is on by default: when an agent writes, the editor tab it
+ *   wrote to is opened or brought forward, and what changed is outlined for a moment - every write,
+ *   so the author sees what the agent does without reading its transcript. The two things it leaves
+ *   alone both protect typing: nothing here focuses a window, so an author typing in another
+ *   application keeps the keyboard, and a text field the author is typing in inside Studio keeps
+ *   its tab - the agent's tab then opens behind it.
  *   The Agent log panel asks for the same outline when the author clicks a past write
  *   (`AgentFollowService.requestHighlight`); see `revealAgentWrite` for the shared half.
  *

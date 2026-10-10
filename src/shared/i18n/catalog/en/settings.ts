@@ -356,6 +356,10 @@ export const settings = {
         agentAccess: {
             label: "MCP endpoint",
         },
+        agentFollow: {
+            label: "Follow the agent's edits",
+            description: "Open each page, scene or blueprint an agent changes, bring it to the front and outline the change.",
+        },
         projectTrust: {
             label: "Trusted projects",
             description: "Projects that Studio did not create, and whether they may run.",

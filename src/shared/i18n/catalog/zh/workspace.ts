@@ -395,7 +395,7 @@ export const workspace = {
         menu: {
             pause: "暂停 Agent",
             resume: "恢复 Agent",
-            follow: "跟随 Agent 的编辑",
+            follow: "跟随 Agent 的修改",
         },
         tooltip: "Agent 选项",
         appMenu: {

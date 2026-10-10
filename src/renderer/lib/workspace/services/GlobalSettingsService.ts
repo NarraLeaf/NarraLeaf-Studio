@@ -10,6 +10,7 @@ import { Service } from "./Service";
 export class GlobalSettingsService extends Service<GlobalSettingsService> {
     private cache: Record<string, any> = {};
     private changeToken: AppEventToken | null = null;
+    private readonly keyListeners = new Map<string, Set<(value: unknown) => void>>();
 
     protected async init(_ctx: WorkspaceContext): Promise<void> {
         const result = throwException(await getInterface().app.state.getAllGlobalState());
@@ -20,6 +21,10 @@ export class GlobalSettingsService extends Service<GlobalSettingsService> {
         // of the workspace, and `get` would keep serving the value from before the change.
         this.changeToken = getInterface().app.state.onGlobalStateChanged?.(change => {
             this.cache[change.key] = change.value;
+            // Iterated over a copy: a listener may unsubscribe from inside its own callback.
+            for (const listener of [...(this.keyListeners.get(change.key) ?? [])]) {
+                listener(change.value);
+            }
         }) ?? null;
     }
 
@@ -27,6 +32,24 @@ export class GlobalSettingsService extends Service<GlobalSettingsService> {
         this.changeToken?.cancel();
         this.changeToken = null;
         this.cache = {};
+        this.keyListeners.clear();
+    }
+
+    /**
+     * Follow one key as it changes in any window - this one, another workspace, or Settings - as the
+     * main process broadcasts it. A reset arrives as `undefined`, so the listener resolves the
+     * default itself, the same as every other reader of an unset key.
+     */
+    onChange(key: string, listener: (value: unknown) => void): () => void {
+        let listeners = this.keyListeners.get(key);
+        if (!listeners) {
+            listeners = new Set();
+            this.keyListeners.set(key, listeners);
+        }
+        listeners.add(listener);
+        return () => {
+            this.keyListeners.get(key)?.delete(listener);
+        };
     }
 
     async get<T = any>(key: string, defaultValue?: T): Promise<T | undefined> {

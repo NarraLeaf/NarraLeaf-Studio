@@ -341,6 +341,10 @@ export const settings = {
         agentAccess: {
             label: "MCP 端点",
         },
+        agentFollow: {
+            label: "跟随 Agent 的修改",
+            description: "Agent 每次修改时打开对应的页面、场景或蓝图，切到前台并标出改动",
+        },
         projectTrust: {
             label: "受信任的项目",
             description: "非 Studio 创建的项目，以及它们是否可以运行。",

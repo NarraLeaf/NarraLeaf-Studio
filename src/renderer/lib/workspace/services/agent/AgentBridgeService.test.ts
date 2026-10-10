@@ -41,8 +41,8 @@ function createHarness(options: { livePhase?: string } = {}) {
                         };
                     case Services.AgentFollow:
                         return follow;
-                    case Services.PanelState:
-                        return { getPanelState: () => undefined, setPanelState: () => undefined };
+                    case Services.GlobalSettings:
+                        return { getSync: () => undefined, set: async () => undefined, onChange: () => () => undefined };
                     case Services.Live:
                         return { getView: () => ({ phase: options.livePhase ?? "idle" }) };
                     case Services.AudioTracks:

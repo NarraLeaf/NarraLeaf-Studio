@@ -4,7 +4,8 @@ import { Separator, type ActionDefinition, type ActionMenuItem } from "../../reg
 
 /**
  * The Agent menu's rows, as data: a read-only line saying which agent is connected and what it is
- * doing, the author's two session switches (pause, follow), the log, and the three things that
+ * doing, the author's two switches over it (pause, for this session; follow, which is the Studio-wide
+ * setting of the same name in Settings ▸ Agent access), the log, and the three things that
  * belong to agent access as a whole (the endpoint, write access, connection configuration and the
  * skill), then the way to the full settings. While access is off, only the status line, the switch
  * that turns it on and the way to settings. When the endpoint had to move to another port, a second

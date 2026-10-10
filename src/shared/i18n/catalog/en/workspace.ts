@@ -438,7 +438,7 @@ export const workspace = {
         menu: {
             pause: "Pause agent",
             resume: "Resume agent",
-            follow: "Follow agent edits",
+            follow: "Follow the agent's edits",
         },
         tooltip: "Agent options",
         // The Agent menu on the menu bar (`AgentMenu`). Pause, resume and follow are `menu.*` above.

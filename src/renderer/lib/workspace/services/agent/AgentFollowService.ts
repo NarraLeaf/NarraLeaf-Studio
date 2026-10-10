@@ -10,8 +10,11 @@
  * - **Pause** is for this session only and refuses every write (`paused`) until it is lifted. It is
  *   deliberately not remembered: a paused agent the author forgot about across a restart would look
  *   like a broken connection.
- * - **Follow** is remembered per project, in the editor state `.nlstudio` keeps, and is on by
- *   default - the point of an agent working in the open project is that the author watches it.
+ * - **Follow** is a Studio-wide setting (`AGENT_FOLLOW_KEY`, the "Follow the agent's edits" row in
+ *   Settings ▸ Agent access), on by default: every write an agent makes takes the editor's foreground,
+ *   because seeing what the agent is doing must not depend on reading its transcript. The Agent menu
+ *   and the status bar cell switch the same setting through {@link setFollow}; there is no
+ *   per-project copy. Switched anywhere - another window, Settings - it applies here at once.
  *
  * Comments in English per project convention.
  */
@@ -19,7 +22,8 @@
 import { EventEmitter } from "../ui/EventEmitter";
 import { Service } from "../Service";
 import { Services, type WorkspaceContext } from "../services";
-import type { PanelStateService } from "../core/PanelStateService";
+import type { GlobalSettingsService } from "../GlobalSettingsService";
+import { AGENT_FOLLOW_DEFAULT, AGENT_FOLLOW_KEY, resolveAgentFollow } from "@shared/agent/follow";
 
 /** Where an agent's write landed, for follow mode. */
 export type AgentWriteTarget =
@@ -81,29 +85,33 @@ type AgentFollowEvents = {
     highlight: AgentWriteTarget;
 };
 
-const PANEL_STATE_ID = "narraleaf-studio:agent";
-
 export class AgentFollowService extends Service<AgentFollowService> {
     private readonly events = new EventEmitter<AgentFollowEvents>();
-    private state: AgentFollowState = { paused: false, follow: true, activity: null, clientName: null, lastCallAt: null, lastWrite: null, active: false };
-    private panelState: PanelStateService | null = null;
+    private state: AgentFollowState = { paused: false, follow: AGENT_FOLLOW_DEFAULT, activity: null, clientName: null, lastCallAt: null, lastWrite: null, active: false };
+    private settings: GlobalSettingsService | null = null;
+    private stopFollowingSetting: (() => void) | null = null;
     private lastWriteTimer: ReturnType<typeof setTimeout> | null = null;
     private idleTimer: ReturnType<typeof setTimeout> | null = null;
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
-        const panelState = ctx.services.get<PanelStateService>(Services.PanelState);
-        await depend([panelState]);
-        this.panelState = panelState;
-        const stored = panelState.getPanelState<{ follow?: boolean }>(PANEL_STATE_ID);
+        const settings = ctx.services.get<GlobalSettingsService>(Services.GlobalSettings);
+        await depend([settings]);
+        this.settings = settings;
         this.state = {
             paused: false,
-            follow: stored?.follow ?? true,
+            follow: resolveAgentFollow(settings.getSync(AGENT_FOLLOW_KEY)),
             activity: null,
             clientName: null,
             lastCallAt: null,
             lastWrite: null,
             active: false,
         };
+        this.stopFollowingSetting = settings.onChange(AGENT_FOLLOW_KEY, value => {
+            const follow = resolveAgentFollow(value);
+            if (follow !== this.state.follow) {
+                this.update({ follow });
+            }
+        });
     }
 
     public override dispose(_ctx: WorkspaceContext): void {
@@ -112,7 +120,9 @@ export class AgentFollowService extends Service<AgentFollowService> {
             this.lastWriteTimer = null;
         }
         this.clearIdleTimer();
-        this.panelState = null;
+        this.stopFollowingSetting?.();
+        this.stopFollowingSetting = null;
+        this.settings = null;
         this.events.clear();
     }
 
@@ -153,12 +163,19 @@ export class AgentFollowService extends Service<AgentFollowService> {
         }
     }
 
+    /**
+     * Switch follow mode - the Studio-wide setting, not something of this project's. Applied here at
+     * once; the write reaches the other windows and Settings through the main process's broadcast,
+     * whose echo back to this window then changes nothing.
+     */
     public setFollow(follow: boolean): void {
         if (this.state.follow === follow) {
             return;
         }
         this.update({ follow });
-        this.panelState?.setPanelState(PANEL_STATE_ID, { follow });
+        void this.settings?.set(AGENT_FOLLOW_KEY, follow).catch(error => {
+            console.warn("[agent] Failed to save the follow setting.", error);
+        });
     }
 
     public beginCall(callId: string, tool: string, clientName: string | null): void {

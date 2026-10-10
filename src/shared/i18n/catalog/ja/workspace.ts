@@ -406,7 +406,7 @@ export const workspace = {
         menu: {
             pause: "エージェントを一時停止",
             resume: "エージェントを再開",
-            follow: "エージェントの編集を追う",
+            follow: "エージェントの変更を追う",
         },
         tooltip: "エージェントのオプション",
         appMenu: {

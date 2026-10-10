@@ -110,6 +110,18 @@ describe("the Agent menu's rows", () => {
             .toBe("恢复 Agent");
     });
 
+    it("names the follow row as the Settings row it switches, in every language, and switches it", () => {
+        // One setting with two ways in: the menu row and the Settings row must read as the same switch.
+        for (const t of [en, zh, createTranslator("ja").t]) {
+            expect(t("workspace.agent.menu.follow")).toBe(t("settings.items.agentFollow.label"));
+        }
+        const model = input();
+        const row = buildAgentMenuItems(model).filter(isActionMenuAction).find(item => item.id === AGENT_MENU_ACTIONS.follow);
+        expect(row).toMatchObject({ checked: true, label: "跟随 Agent 的修改" });
+        row?.onClick(undefined as never);
+        expect(model.run.toggleFollow).toHaveBeenCalled();
+    });
+
     it("holds the access switches until main has answered", () => {
         const items = buildAgentMenuItems(input({ quick: null })).filter(isActionMenuAction);
         expect(items.find(item => item.id === AGENT_MENU_ACTIONS.enable)?.disabled).toBe(true);

@@ -350,6 +350,10 @@ export const settings = {
         agentAccess: {
             label: "MCP エンドポイント",
         },
+        agentFollow: {
+            label: "エージェントの変更を追う",
+            description: "エージェントが変更するたびに、そのページ・シーン・ブループリントを開いて前面に出し、変更箇所を枠で囲んで示す",
+        },
         projectTrust: {
             label: "信頼済みプロジェクト",
             description: "Studio が作成していないプロジェクトと、実行を許可するかどうか。",
