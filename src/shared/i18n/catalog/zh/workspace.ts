@@ -387,6 +387,8 @@ export const workspace = {
             editing: "Agent 正在编辑：{name}",
             working: "Agent 正在工作",
             connected: "Agent：{client}",
+            edited: "Agent 刚刚编辑：{name}",
+            unknownClient: "外部 Agent",
             paused: "Agent 已暂停",
         },
         menu: {

@@ -52,6 +52,7 @@ import { describeWidget, listWidgetModules, nearestWidgetTypes } from "../catalo
 import { collectTree, deriveElementId, elementPathSegments, findComponent, findSurface, type TextKeys } from "../model";
 import type { UiAssignment, UiElementNode, UiFile, UiStatement } from "./ast";
 import { PARAM_KEY_SUFFIX } from "./parse";
+import { compactBase, expandAppearanceGroups } from "./compact";
 
 export type CompiledSurface = {
     surface: UISurface;
@@ -535,11 +536,41 @@ class CompileContext {
         }
 
 
-        const layout = applyAssignments({ x: 0, y: 0, width: 0, height: 0 }, node.assignments.filter(a => a.target === "layout")) as UILayout;
-        const props = applyAssignments({}, node.assignments.filter(a => a.target === "props"));
+        // A `+defaults` element (the short form, see `compact.ts`) starts from its widget's defaults.
+        const base = node.fillDefaults ? compactBase(node.type, node.withoutDefaults?.keys ?? []) : { props: {}, layout: {}, unknownWithout: [] };
+        if (node.withoutDefaults && !node.fillDefaults) {
+            this.report(
+                "warning",
+                "ui.without_needs_defaults",
+                `"${label}" has a \`without\` line but no \`+defaults\` on its header, so there are no defaults to leave out: the line does nothing.`,
+                node.withoutDefaults.line,
+            );
+        } else if (base.unknownWithout.length > 0) {
+            this.report(
+                "warning",
+                "ui.without_unknown",
+                `${node.type} has no default ${base.unknownWithout.map(key => `"${key}"`).join(", ")} to leave out.`,
+                node.withoutDefaults?.line ?? node.line,
+            );
+        }
+        const layout = applyAssignments({ x: 0, y: 0, width: 0, height: 0, ...base.layout }, node.assignments.filter(a => a.target === "layout")) as UILayout;
+        const props = applyAssignments(base.props, node.assignments.filter(a => a.target === "props"));
         const style = applyAssignments({}, node.assignments.filter(a => a.target === "style"));
         const extra = applyAssignments({}, node.assignments.filter(a => a.target === "extra"));
         const elementKeys = applyAssignments({}, node.assignments.filter(a => a.target === "element"));
+
+        // Appearance groups the short form wrote as a bare key are rebuilt before anything reads the
+        // props, so the checks below see the element the long form would have written.
+        const unresolvedGroups = expandAppearanceGroups(node.type, props);
+        if (unresolvedGroups.length > 0) {
+            this.report(
+                "error",
+                "ui.appearance_group_without_prop",
+                `"${label}" lists appearance group(s) ${unresolvedGroups.map(key => `"${key}"`).join(", ")} by key alone, which repeats the prop of that name - but the element has no such prop.`,
+                node.line,
+                "Write the prop, or write the group out in full: {\"key\": ..., \"rows\": [{\"conditions\": null, \"value\": ...}]}.",
+            );
+        }
 
         this.settleTextSource(node, props);
 

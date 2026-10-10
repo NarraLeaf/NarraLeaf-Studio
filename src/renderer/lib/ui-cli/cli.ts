@@ -84,6 +84,8 @@ const USAGE = `ui - query the widget catalogue, read an interface, write one as 
   surfaces [search]           Surfaces, components and the owner= lines blueprint wants. Needs --project.
   show                        Print a project's interface in the text format. Needs --project.
                               --surface <name|id> --component <name|id> --out [file]
+                              --compact leaves out props at their widget's default (+defaults) and
+                              appearance groups that only repeat a prop; apply restores them.
   check [file.ui]             Check a text file, or the whole project when given no file.
   apply <file.ui>             Compile a text file into the project. Needs --project.
                               Writes nothing without --write.
@@ -140,7 +142,7 @@ const COMMANDS: Record<string, CommandSpec> = {
     },
     surfaces: { flags: { project: "string" }, run: commandSurfaces },
     show: {
-        flags: { project: "string", surface: "string", component: "string", out: "string" },
+        flags: { project: "string", surface: "string", component: "string", out: "string", compact: "boolean" },
         run: commandShow,
     },
     check: { flags: { project: "string" }, run: commandCheck },
@@ -277,7 +279,12 @@ function commandShow(args: Args, io: CliIo): number {
     const blueprints = readBlueprintIndex(projectDir);
     const shown = uiShowCommand(
         { document, blueprints, textKeys: readTextKeys(projectDir) },
-        { surface: stringFlag(args, "surface"), component: stringFlag(args, "component"), projectHint: projectDir },
+        {
+            surface: stringFlag(args, "surface"),
+            component: stringFlag(args, "component"),
+            compact: args.flags.compact === true,
+            projectHint: projectDir,
+        },
     );
     const out = args.flags.out;
     if (shown.text === undefined || out === undefined) {

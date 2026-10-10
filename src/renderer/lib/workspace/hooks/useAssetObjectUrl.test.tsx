@@ -14,6 +14,7 @@ import {
     clearCharacterAvatarAssets,
     registerCharacterAvatarAssets,
 } from "@/lib/ui-editor/runtime/characterAvatarAssets";
+import { AssetLoadTrackerContext, type AssetLoadTracker } from "@/lib/ui-editor/runtime/assetLoadTracker";
 import { useAssetObjectUrl } from "./useAssetObjectUrl";
 
 /**
@@ -285,3 +286,71 @@ function Probe() {
     useAssetObjectUrl("picture");
     return null;
 }
+
+/**
+ * The load tracker a screenshot host mounts. What it must be told is "a lookup is in flight" for
+ * exactly as long as one is - a lookup it never hears end would hold every screenshot to its deadline,
+ * and one it never hears start lets the photograph be taken before the picture exists.
+ */
+describe("useAssetObjectUrl under a load tracker", () => {
+    function tracking() {
+        const open = new Map<number, string>();
+        let next = 0;
+        const tracker: AssetLoadTracker = {
+            begin: label => {
+                const token = next++;
+                open.set(token, label);
+                return () => open.delete(token);
+            },
+        };
+        const wrapper = ({ children }: { children: React.ReactNode }) => (
+            <AssetLoadTrackerContext.Provider value={tracker}>{children}</AssetLoadTrackerContext.Provider>
+        );
+        return { open, wrapper };
+    }
+
+    it("holds a lookup open until its bytes are back", async () => {
+        imageAsset("picture");
+        let finish: (value: typeof fetchResult) => void = () => undefined;
+        const pending = new Promise<typeof fetchResult>(resolve => {
+            finish = resolve;
+        });
+        const realFetchResult = { success: true, data: { data: new Uint8Array([1]) } };
+        const { open, wrapper } = tracking();
+        // The mocked service reads `fetchResult` when called: hand it a promise to hold the read open.
+        fetchResult = pending as unknown as typeof fetchResult;
+
+        const { result } = renderHook(() => useAssetObjectUrl("picture"), { wrapper });
+        await waitFor(() => expect([...open.values()]).toEqual(["picture"]));
+        expect(result.current.url).toBeNull();
+
+        await act(async () => {
+            finish(realFetchResult);
+        });
+        await waitFor(() => expect(result.current.url).toBe("blob:test/1"));
+        expect(open.size).toBe(0);
+    });
+
+    it("ends the lookup when it fails, and when the widget goes away mid-read", async () => {
+        imageAsset("picture");
+        fetchResult = { success: false, error: "unreadable" };
+        const first = tracking();
+        const { result } = renderHook(() => useAssetObjectUrl("picture"), { wrapper: first.wrapper });
+        await waitFor(() => expect(result.current.error).toBe("unreadable"));
+        expect(first.open.size).toBe(0);
+
+        fetchResult = new Promise(() => undefined) as unknown as typeof fetchResult;
+        const second = tracking();
+        const { unmount } = renderHook(() => useAssetObjectUrl("picture"), { wrapper: second.wrapper });
+        await waitFor(() => expect(second.open.size).toBe(1));
+        unmount();
+        expect(second.open.size).toBe(0);
+    });
+
+    it("opens nothing for an answer it has without asking anyone", async () => {
+        const { open, wrapper } = tracking();
+        const { result } = renderHook(() => useAssetObjectUrl("gone"), { wrapper });
+        await waitFor(() => expect(result.current.error).toBe("Asset not found: gone"));
+        expect(open.size).toBe(0);
+    });
+});

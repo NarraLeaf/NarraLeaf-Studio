@@ -5,7 +5,7 @@
  * Comments in English per project convention.
  */
 
-import type { ReactElement } from "react";
+import { createElement, type ReactElement } from "react";
 import { getInterface } from "@/lib/app/bridge";
 import type { UIComponentDefinition, UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { readUIComponentEditorSurfaceComponentId } from "@shared/types/ui-editor/componentInstanceKey";
@@ -34,7 +34,10 @@ import { AGENT_HISTORY_LABEL, assetsService, listAssets, resolveAsset, resolveCo
 import { applyUiPatch, readUiPatchOps, type UIPatchTarget } from "../uiPatch";
 import { listUiSubtree, resolveUiElementRef, uiElementPath, type UIElementPool } from "../uiElementRefs";
 import { designRectFromClientRects, planScreenshot, type ScreenshotRect } from "../screenshotGeometry";
-import { blobToDataUrl, rasterizeElement, settle } from "../domRaster";
+import { blobToDataUrl, rasterizeElement } from "../domRaster";
+import { OffscreenCapture, waitForOffscreenPage } from "../offscreenCapture";
+import { AssetLoadTrackerContext } from "@/lib/ui-editor/runtime/assetLoadTracker";
+import { AssetResolutionReporterContext } from "@/lib/ui-editor/runtime/useAssetResolutionReport";
 
 function uiDocumentService(ctx: WorkspaceContext): UIDocumentService {
     return ctx.services.get<UIDocumentService>(Services.UIDocument);
@@ -243,14 +246,40 @@ export const uiScreenshot: AgentToolHandler = async (args, tool) => {
         targetElement = found.element;
     }
 
+    // The page is drawn under a capture that hears every asset lookup start and end and every slot's
+    // outcome, so the photograph waits for pictures still on their way and names the ones that failed.
+    const capture = new OffscreenCapture(() => {
+        const names: Record<string, string> = {};
+        for (const asset of listAssets(ctx, [AssetType.Image, AssetType.Video])) {
+            names[asset.id] = asset.name;
+        }
+        return names;
+    });
+    const tracked = createElement(
+        AssetLoadTrackerContext.Provider,
+        { value: capture },
+        createElement(AssetResolutionReporterContext.Provider, { value: capture.report }, rendered),
+    );
+    // The nearest element of this page's own pool: an element inside a placed component carries the
+    // definition's id, which the page does not have, so the walk goes on up to the placement.
+    const describe = (node: Element): string | null => {
+        for (let at = node.closest("[data-ui-element-id]"); at; at = at.parentElement?.closest("[data-ui-element-id]") ?? null) {
+            const element = pool[at.getAttribute("data-ui-element-id") ?? ""];
+            if (element) {
+                return uiElementPath(pool, element);
+            }
+        }
+        return null;
+    };
+
     let mounted;
     try {
-        mounted = await offscreen.render(rendered, design.width, design.height);
+        mounted = await offscreen.render(tracked, design.width, design.height);
     } catch (error) {
         throw refuse("unavailable", error instanceof Error ? error.message : String(error));
     }
     try {
-        await settle();
+        const readiness = await waitForOffscreenPage(mounted.box, capture, { describe });
         const page = mounted.box.firstElementChild as HTMLElement | null;
         if (!page) {
             throw refuse("unavailable", `"${name}" rendered nothing.`);
@@ -266,13 +295,17 @@ export const uiScreenshot: AgentToolHandler = async (args, tool) => {
         if (!plan) {
             throw refuse("unavailable", `Element "${elementRef}" is outside the page, so there is nothing to show.`);
         }
-        const raster = await rasterizeElement({ node: page, design, plan, resolveFontFace: family => fontFaceForFamily(ctx, family) });
+        const raster = await rasterizeElement({ node: page, design, plan, describe, resolveFontFace: family => fontFaceForFamily(ctx, family) });
         const elementCount = listUiSubtree(pool, rootId).length;
+        const notDrawn = [...new Set([...capture.failedSlots(), ...raster.missing])];
         const summary = [
             `"${name}"${targetElement ? `, cropped to ${uiElementPath(pool, targetElement)}` : ""}: ${plan.width}x${plan.height} px`
                 + ` (design ${design.width}x${design.height}, ${elementCount} elements).`,
             surface?.kind === "stageSurface" ? "Transparent areas are where the game stage shows through." : "",
-            raster.missing.length > 0 ? `Not drawn: ${raster.missing.length} resource(s) that could not be read.` : "",
+            readiness.outstanding.length > 0
+                ? `Photographed after ${Math.round(readiness.elapsedMs / 1000)}s with these still arriving, so they may be absent or half-drawn: ${listForSummary(readiness.outstanding)}.`
+                : "",
+            notDrawn.length > 0 ? `Not drawn: ${listForSummary(notDrawn)}.` : "",
         ].filter(Boolean).join(" ");
         return {
             ok: true,
@@ -287,12 +320,20 @@ export const uiScreenshot: AgentToolHandler = async (args, tool) => {
                 width: plan.width,
                 height: plan.height,
                 source: plan.source,
+                ...(notDrawn.length > 0 ? { notDrawn } : {}),
+                ...(readiness.outstanding.length > 0 ? { stillArriving: readiness.outstanding } : {}),
             },
         };
     } finally {
         mounted.release();
     }
 };
+
+/** A list for one line of the summary: the first dozen, then a count. */
+function listForSummary(items: readonly string[]): string {
+    const shown = items.slice(0, 12).join("; ");
+    return items.length > 12 ? `${shown}; and ${items.length - 12} more` : shown;
+}
 
 // ── Templates ────────────────────────────────────────────────────────────────────────────────────
 

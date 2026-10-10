@@ -324,8 +324,12 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "ui_show",
         "Read a page as text",
-        "Prints a page or component in the `.ui` text format, ids and props included, with its `revision`. To change something: show, edit, apply.",
-        { surface: { type: "string", description: "Page name or id." }, component: { type: "string", description: "Component name or id." } },
+        "Prints a page or component in the `.ui` text format, ids and props included, with its `revision`. To change something: show, edit, apply. Short by default: an element line ending in `+defaults` holds its widget's default for every prop not written (a `without` line names defaults it does not hold), and a bare key in an appearance's `propertyGroups` is a row repeating that prop. ui_apply restores both exactly, so the short text can be edited and applied as it is.",
+        {
+            surface: { type: "string", description: "Page name or id." },
+            component: { type: "string", description: "Component name or id." },
+            compact: { type: "boolean", default: true, description: "Leave out props at their default and appearance rows that repeat a prop. False prints every stored value." },
+        },
     ),
     ws(
         "ui_selection",

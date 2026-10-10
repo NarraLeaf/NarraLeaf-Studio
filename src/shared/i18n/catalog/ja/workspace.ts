@@ -398,6 +398,8 @@ export const workspace = {
             editing: "エージェントが編集中：{name}",
             working: "エージェントが作業中",
             connected: "エージェント：{client}",
+            edited: "エージェントが編集しました：{name}",
+            unknownClient: "外部エージェント",
             paused: "エージェントは一時停止中",
         },
         menu: {

@@ -238,6 +238,11 @@ export type UiShowOptions = {
     /** Print only this component definition (name or id). */
     component?: string;
     /**
+     * The short form: props at their widget's default and appearance groups that only repeat a prop
+     * are left out, marked so that applying the text back restores them exactly (`dsl/compact.ts`).
+     */
+    compact?: boolean;
+    /**
      * How to tell the reader to list what exists when a name matches nothing: the command line passes
      * the project directory, so the hint reads `ui surfaces --project <dir>`.
      */
@@ -289,6 +294,7 @@ export function uiShowCommand(input: UiProjectInput, options: UiShowOptions = {}
         includeSharedTables: !options.surface && !options.component,
         blueprintsByElement: input.blueprints.byElement,
         keyWords: input.textKeys?.keys,
+        compact: options.compact === true,
     });
     io.out(text.trimEnd());
     return { ...io.finish(0), text, subject };

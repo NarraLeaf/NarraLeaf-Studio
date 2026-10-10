@@ -526,6 +526,7 @@ node project/app/ui.js show --project D:/path/to/project
 node project/app/ui.js show --project D:/path/to/project --surface Title
 node project/app/ui.js show --project D:/path/to/project --component "Save slot"
 node project/app/ui.js show --project D:/path/to/project --surface Title --out title.ui
+node project/app/ui.js show --project D:/path/to/project --surface Title --compact
 ```
 
 `show` prints in the same format `apply` reads, ids and props included, so the
@@ -533,6 +534,32 @@ way to change something that exists is to dump it, edit two lines and apply it
 back. Printing the shipped skeleton and compiling the result gives the same
 document - twelve surfaces, three components and some two hundred and fifty elements of it - which is
 asserted in `dsl/roundTrip.test.ts`.
+
+`--compact` prints the short form, about half the size: a stored element carries
+every prop its widget was created with, default or not, and a container's
+`appearance` restates each of them once more. The short form leaves out what is
+only repetition, marked so that `apply` puts it back exactly - the short text of
+the skeleton applies back to the same document too, asserted in the same file.
+
+```
+        Rule: nl.container id=066f4e9c-faa0-469d-9503-cb31edc2230e @146,292 300x2 +defaults
+            without stackWrap
+            backgroundColor = nlbrand:primary
+            appearance = {"defaultVariantId":"default","variants":[{"id":"default","name":"Default","propertyGroups":["backgroundColor","borderRadius",...]}]}
+```
+
+- **`+defaults`** at the end of an element line: every prop and layout key the
+  widget has a default for, and the lines below do not write, is that default.
+  A dotted line (`imageFill.assetId = ...`) changes one field of a default
+  record and keeps the rest of it.
+- **`without <key> ...`** under such an element names defaults it does not hold
+  (a layout key as `layout.<key>`), so they are not filled in.
+- **A bare key in `propertyGroups`** (`"borderRadius"`) is a group with one
+  unconditional row holding the element's own value of that prop - or the
+  widget's default, for a prop the element does not hold. Change the prop and
+  the row follows it; write the group out in full to give it a value of its own.
+
+Defaults that depend on a language (a new text's words) are never left out.
 
 ## Writing
 

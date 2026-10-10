@@ -430,6 +430,8 @@ export const workspace = {
             editing: "Agent editing: {name}",
             working: "Agent working",
             connected: "Agent: {client}",
+            edited: "Agent edited: {name}",
+            unknownClient: "external agent",
             paused: "Agent paused",
         },
         menu: {

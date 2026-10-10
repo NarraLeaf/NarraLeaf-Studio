@@ -44,7 +44,18 @@ export type AgentFollowState = {
     clientName: string | null;
     /** When the last call ended, epoch milliseconds; null before any call. */
     lastCallAt: number | null;
+    /**
+     * What the agent last changed, for a few seconds after it landed.
+     *
+     * A call is usually over in well under a second, so a cell that named only the call in flight
+     * would flash too briefly to read. The author watching is the point of the feature, so the last
+     * write stays named long enough to be seen ({@link LAST_WRITE_VISIBLE_MS}) and then goes.
+     */
+    lastWrite: { name: string } | null;
 };
+
+/** How long the status bar keeps naming the last thing the agent changed. */
+export const LAST_WRITE_VISIBLE_MS = 4000;
 
 type AgentFollowEvents = {
     changed: AgentFollowState;
@@ -55,8 +66,9 @@ const PANEL_STATE_ID = "narraleaf-studio:agent";
 
 export class AgentFollowService extends Service<AgentFollowService> {
     private readonly events = new EventEmitter<AgentFollowEvents>();
-    private state: AgentFollowState = { paused: false, follow: true, activity: null, clientName: null, lastCallAt: null };
+    private state: AgentFollowState = { paused: false, follow: true, activity: null, clientName: null, lastCallAt: null, lastWrite: null };
     private panelState: PanelStateService | null = null;
+    private lastWriteTimer: ReturnType<typeof setTimeout> | null = null;
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const panelState = ctx.services.get<PanelStateService>(Services.PanelState);
@@ -69,10 +81,15 @@ export class AgentFollowService extends Service<AgentFollowService> {
             activity: null,
             clientName: null,
             lastCallAt: null,
+            lastWrite: null,
         };
     }
 
     public override dispose(_ctx: WorkspaceContext): void {
+        if (this.lastWriteTimer) {
+            clearTimeout(this.lastWriteTimer);
+            this.lastWriteTimer = null;
+        }
         this.panelState = null;
         this.events.clear();
     }
@@ -126,6 +143,14 @@ export class AgentFollowService extends Service<AgentFollowService> {
      */
     public noteWrite(target: AgentWriteTarget): void {
         this.events.emit("wrote", target);
+        if (this.lastWriteTimer) {
+            clearTimeout(this.lastWriteTimer);
+        }
+        this.update({ lastWrite: { name: target.name } });
+        this.lastWriteTimer = setTimeout(() => {
+            this.lastWriteTimer = null;
+            this.update({ lastWrite: null });
+        }, LAST_WRITE_VISIBLE_MS);
     }
 
     private update(patch: Partial<AgentFollowState>): void {

@@ -165,9 +165,12 @@ export const uiShow: AgentToolHandler = async (args, { ctx, request, follow }) =
         name = document.name || "interface";
     }
     follow.describeCall(request.callId, name);
+    // Short unless asked otherwise: a page printed whole is mostly defaults, which an agent pays for by
+    // the token, and the short text applies back to the same document (`ui-cli/dsl/compact.ts`).
+    const compact = readOptionalBoolean(args, "compact") ?? true;
     const shown = showUi(context, target?.kind === "surface"
-        ? { surface: target.surfaceId }
-        : target?.kind === "component" ? { component: target.componentId } : {});
+        ? { surface: target.surfaceId, compact }
+        : target?.kind === "component" ? { component: target.componentId, compact } : { compact });
     if (shown.exitCode !== 0) {
         throw refuse("not_found", shown.err.join(" "));
     }

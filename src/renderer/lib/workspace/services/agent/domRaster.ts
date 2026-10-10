@@ -9,8 +9,10 @@
  * - **Styles** are copied from each element's computed style onto its clone, property by property.
  *   That is what makes the copy independent of Studio's stylesheets (and of the engine's Tailwind v4
  *   sheet that shadows them), at the price of a large string. Pseudo-elements are carried as rules.
- *   Animations and transitions are switched off on the copy: the computed values already hold the
- *   state being shown, and an animation restarting inside the image would photograph its first frame.
+ *   Animations and transitions are first finished on the page itself - a photograph shows where an
+ *   enter animation or a hover transition comes to rest, not the frame it happened to be on - and
+ *   then switched off on the copy, where one restarting inside the image would photograph its first
+ *   frame. An endless animation (a spinner) has no end to jump to and is shown as it stands.
  * - **Images** - `<img>`, CSS `url()`s, a canvas's pixels, a video's current frame - are inlined as
  *   data URLs. `blob:` and `app:` addresses are read through `fetch`, which never leaves the machine;
  *   anything else is dropped, because the renderer does not touch the network.
@@ -39,6 +41,11 @@ export type RasterizeOptions = {
     resolveFontFace?: (family: string) => Promise<string | null>;
     /** How long to wait for images and fonts before photographing what there is. */
     resourceTimeoutMs?: number;
+    /**
+     * What the author calls the thing `node` is part of (an element's page path), for the list of
+     * what could not be drawn; null when it is not part of anything nameable.
+     */
+    describe?: (node: Element) => string | null;
 };
 
 export type RasterizeResult = {
@@ -59,25 +66,15 @@ export async function waitForPageResources(node: HTMLElement, timeoutMs: number)
     await Promise.race([Promise.all([...loads, fonts]), delay(timeoutMs)]);
 }
 
-/**
- * Let the page settle after mounting: two macrotasks for effects and the first layout, then a short
- * pause for anything an effect started. Timers, not animation frames - a window macOS considers
- * occluded runs no frames at all, and a screenshot must not hang on one.
- */
-export async function settle(ms = 60): Promise<void> {
-    await delay(0);
-    await delay(0);
-    await delay(ms);
-}
-
 export async function rasterizeElement(options: RasterizeOptions): Promise<RasterizeResult> {
     const { node, design, plan } = options;
     await waitForPageResources(node, options.resourceTimeoutMs ?? 5000);
+    finishAnimations(node);
 
     const inliner = new ResourceInliner();
     const pseudoRules: string[] = [];
     const families = new Set<string>();
-    const clone = cloneWithStyles(node, { inliner, pseudoRules, families, nextPseudo: { value: 0 } });
+    const clone = cloneWithStyles(node, { inliner, pseudoRules, families, nextPseudo: { value: 0 }, describe: options.describe });
     if (!(clone instanceof HTMLElement)) {
         throw new Error("The page could not be copied.");
     }
@@ -124,7 +121,32 @@ export async function rasterizeElement(options: RasterizeOptions): Promise<Raste
         plan.width,
         plan.height,
     );
-    return { png: stripDataUrl(canvas.toDataURL("image/png")), missing: inliner.missing };
+    return { png: stripDataUrl(canvas.toDataURL("image/png")), missing: [...new Set(inliner.missing)] };
+}
+
+/**
+ * Jump every finite animation and transition under `node` to its end.
+ *
+ * Only the Web Animations the browser runs - CSS animations, CSS transitions, `element.animate()` -
+ * are reachable this way. That covers widget chrome; the page and element enter animations are
+ * motion tweens, which an off-screen render without a blueprint runtime already resolves to their
+ * resting pose (reduced motion), so there is nothing of theirs to finish.
+ */
+export function finishAnimations(node: Element): void {
+    if (typeof node.getAnimations !== "function") {
+        return;
+    }
+    for (const animation of node.getAnimations({ subtree: true })) {
+        try {
+            const timing = animation.effect?.getComputedTiming();
+            if (timing && timing.endTime === Infinity) {
+                continue;
+            }
+            animation.finish();
+        } catch {
+            // An animation that cannot be finished (no effect, a zero playback rate) stays as it stands.
+        }
+    }
 }
 
 /** Downscale a PNG/JPEG data URL so its longer edge is at most `maxSize`, as base64 PNG. */
@@ -157,7 +179,14 @@ type CloneContext = {
     pseudoRules: string[];
     families: Set<string>;
     nextPseudo: { value: number };
+    describe?: (node: Element) => string | null;
 };
+
+/** How a resource of `node` is named in the list of what was not drawn. */
+function resourceLabel(node: Element, what: string, context: CloneContext): string {
+    const owner = context.describe?.(node);
+    return owner ? `${what} of ${owner}` : what;
+}
 
 const SKIPPED_TAGS = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "LINK", "META"]);
 
@@ -191,7 +220,7 @@ function cloneWithStyles(source: Node, context: CloneContext): Node | null {
         clone.removeAttribute("loading");
         const src = element.currentSrc || element.src;
         if (src) {
-            context.inliner.inline(src, dataUrl => {
+            context.inliner.inline(src, resourceLabel(element, "the image", context), dataUrl => {
                 if (dataUrl) {
                     clone.setAttribute("src", dataUrl);
                 } else {
@@ -216,20 +245,34 @@ function replacementFor(element: Element, context: CloneContext): Element | null
         try {
             image.setAttribute("src", element.toDataURL("image/png"));
         } catch {
-            context.inliner.missing.push("a canvas whose pixels could not be read");
+            context.inliner.missing.push(resourceLabel(element, "a canvas whose pixels could not be read", context));
         }
         return image;
     }
     if (element instanceof HTMLVideoElement) {
         const image = document.createElement("img");
-        try {
-            const canvas = document.createElement("canvas");
-            canvas.width = element.videoWidth || element.clientWidth || 1;
-            canvas.height = element.videoHeight || element.clientHeight || 1;
-            canvas.getContext("2d")?.drawImage(element, 0, 0, canvas.width, canvas.height);
-            image.setAttribute("src", canvas.toDataURL("image/png"));
-        } catch {
-            context.inliner.missing.push("a video frame");
+        // HAVE_CURRENT_DATA: below it there is no frame, and drawing one would paint a black box.
+        if (element.readyState >= 2) {
+            try {
+                const canvas = document.createElement("canvas");
+                canvas.width = element.videoWidth || element.clientWidth || 1;
+                canvas.height = element.videoHeight || element.clientHeight || 1;
+                canvas.getContext("2d")?.drawImage(element, 0, 0, canvas.width, canvas.height);
+                image.setAttribute("src", canvas.toDataURL("image/png"));
+                return image;
+            } catch {
+                // Fall through to the poster.
+            }
+        }
+        const poster = element.getAttribute("poster");
+        if (poster) {
+            context.inliner.inline(poster, resourceLabel(element, "the video poster", context), dataUrl => {
+                if (dataUrl) {
+                    image.setAttribute("src", dataUrl);
+                }
+            });
+        } else if (element.currentSrc || element.getAttribute("src")) {
+            context.inliner.missing.push(resourceLabel(element, "the video frame", context));
         }
         return image;
     }
@@ -254,7 +297,7 @@ function copyComputedStyle(source: Element, clone: Element, context: CloneContex
     for (const property of URL_PROPERTIES) {
         const value = computed.getPropertyValue(property);
         if (value && value.includes("url(")) {
-            context.inliner.inlineCssValue(value, inlined => target.setProperty(property, inlined));
+            context.inliner.inlineCssValue(value, resourceLabel(source, property, context), inlined => target.setProperty(property, inlined));
         }
     }
     collectFamilies(computed.getPropertyValue("font-family"), context.families);
@@ -278,7 +321,7 @@ function copyPseudoElements(source: Element, clone: Element, context: CloneConte
         context.pseudoRules.push(`.${className}${pseudo}{${declarations.join(";")}}`);
         const rule = context.pseudoRules[ruleIndex];
         if (rule.includes("url(")) {
-            context.inliner.inlineCssValue(rule, inlined => {
+            context.inliner.inlineCssValue(rule, resourceLabel(source, `the ${pseudo} picture`, context), inlined => {
                 context.pseudoRules[ruleIndex] = inlined;
             });
         }
@@ -334,7 +377,7 @@ async function embedFonts(
                 }
                 const index = rules.length;
                 rules.push(rule.cssText);
-                inliner.inlineCssValue(rule.cssText, inlined => {
+                inliner.inlineCssValue(rule.cssText, `the font "${family}"`, inlined => {
                     rules[index] = inlined;
                 });
             }
@@ -352,18 +395,19 @@ class ResourceInliner {
     private readonly cache = new Map<string, Promise<string | null>>();
     private readonly pending: Promise<void>[] = [];
 
-    public inline(url: string, apply: (dataUrl: string | null) => void): void {
-        this.pending.push(this.read(url).then(apply));
+    /** `label` names the resource in {@link missing} if it cannot be read. */
+    public inline(url: string, label: string, apply: (dataUrl: string | null) => void): void {
+        this.pending.push(this.read(url, label).then(apply));
     }
 
     /** Replace every `url(...)` in a CSS value or rule with its data URL; unreadable ones become `none`-safe empties. */
-    public inlineCssValue(value: string, apply: (inlined: string) => void): void {
+    public inlineCssValue(value: string, label: string, apply: (inlined: string) => void): void {
         const urls = [...value.matchAll(/url\((['"]?)(.*?)\1\)/g)].map(match => match[2]);
         if (urls.length === 0) {
             return;
         }
         this.pending.push(
-            Promise.all(urls.map(url => this.read(url).then(dataUrl => [url, dataUrl] as const))).then(pairs => {
+            Promise.all(urls.map(url => this.read(url, label).then(dataUrl => [url, dataUrl] as const))).then(pairs => {
                 let next = value;
                 for (const [url, dataUrl] of pairs) {
                     next = next.split(url).join(dataUrl ?? "data:,");
@@ -380,7 +424,7 @@ class ResourceInliner {
         }
     }
 
-    private read(url: string): Promise<string | null> {
+    private read(url: string, label: string): Promise<string | null> {
         if (url.startsWith("data:")) {
             return Promise.resolve(url);
         }
@@ -389,28 +433,43 @@ class ResourceInliner {
             cached = this.fetchAsDataUrl(url);
             this.cache.set(url, cached);
         }
-        return cached;
+        // Each requester is named in the list, not only the first: two elements showing one picture
+        // that cannot be read are two holes in the photograph.
+        return cached.then(dataUrl => {
+            if (dataUrl === null) {
+                this.missing.push(`${label} (${describeAddress(url)})`);
+            }
+            return dataUrl;
+        });
     }
 
     private async fetchAsDataUrl(url: string): Promise<string | null> {
         // Local addresses only: the renderer never reaches the network, and a page that names a remote
         // picture is photographed without it rather than fetched.
         if (!/^(blob:|app:|file:)/i.test(url) && !url.startsWith(location.origin)) {
-            this.missing.push(url);
             return null;
         }
         try {
             const response = await fetch(url);
             if (!response.ok) {
-                this.missing.push(url);
                 return null;
             }
             return await blobToDataUrl(await response.blob());
         } catch {
-            this.missing.push(url);
             return null;
         }
     }
+}
+
+/** An address as the list of missing resources shows it: a blob's random name says nothing to anyone. */
+function describeAddress(url: string): string {
+    if (/^blob:/i.test(url)) {
+        return "a picture loaded in Studio that is no longer readable";
+    }
+    if (/^https?:/i.test(url) && !url.startsWith(location.origin)) {
+        return `remote address ${url}, not fetched`;
+    }
+    return url.length > 120 ? `${url.slice(0, 117)}...` : url;
 }
 
 export function blobToDataUrl(blob: Blob): Promise<string> {

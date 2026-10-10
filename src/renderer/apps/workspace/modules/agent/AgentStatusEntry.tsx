@@ -15,7 +15,9 @@ const NO_SUBSCRIPTION = () => () => {};
  * holds the author's two switches - pause, and follow.
  *
  * Silent until an agent has called this window, so a project nobody connects an agent to never
- * shows it.
+ * shows it. From the first call on it stays, naming the client - or "external agent" for one that
+ * called without introducing itself - so the author can always find the pause switch. The last write
+ * stays named for a few seconds after it lands; a call alone is over too fast to read.
  *
  * Comments in English per project convention.
  */
@@ -49,7 +51,7 @@ export function AgentStatusEntry() {
         ];
     }, [follow, state, t]);
 
-    if (!follow || !state || (state.clientName === null && state.activity === null && !state.paused)) {
+    if (!follow || !state || (state.lastCallAt === null && state.activity === null && !state.paused)) {
         return null;
     }
 
@@ -59,14 +61,16 @@ export function AgentStatusEntry() {
             ? state.activity.target
                 ? t("workspace.agent.status.editing", { name: state.activity.target })
                 : t("workspace.agent.status.working")
-            : t("workspace.agent.status.connected", { client: state.clientName ?? "MCP" });
+            : state.lastWrite
+                ? t("workspace.agent.status.edited", { name: state.lastWrite.name })
+                : t("workspace.agent.status.connected", { client: state.clientName ?? t("workspace.agent.status.unknownClient") });
 
     return (
         <>
             <StatusEntry
                 onClick={showMenu}
                 tooltip={t("workspace.agent.tooltip")}
-                emphasis={state.paused || state.activity !== null}
+                emphasis={state.paused || state.activity !== null || state.lastWrite !== null}
                 dataAttributes={{ "data-agent-status": state.paused ? "paused" : state.activity ? "busy" : "idle" }}
             >
                 {state.paused ? <CirclePause className="h-3 w-3" /> : <Bot className="h-3 w-3" />}

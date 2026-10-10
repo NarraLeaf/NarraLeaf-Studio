@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useOptionalWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
 import type { WorkspaceContext } from "@/lib/workspace/services/services";
@@ -19,6 +19,7 @@ import {
     useAssetBytesSource,
     type AssetBytesResult,
 } from "@/lib/ui-editor/assets/assetBytesSource";
+import { AssetLoadTrackerContext } from "@/lib/ui-editor/runtime/assetLoadTracker";
 
 interface AssetObjectUrlState {
     url: string | null;
@@ -51,6 +52,11 @@ export function useAssetObjectUrl(requestedAssetId?: string | null, assetType: A
      * ladder below runs exactly as it always has.
      */
     const assetBytesSource = useAssetBytesSource();
+    /**
+     * Told when a lookup below goes asynchronous and when it is over, so a host photographing the
+     * page knows a picture is still on its way. Null everywhere but under such a host.
+     */
+    const loadTracker = useContext(AssetLoadTrackerContext);
     const [state, setState] = useState<AssetObjectUrlState>({
         url: null,
         metadata: null,
@@ -143,13 +149,14 @@ export function useAssetObjectUrl(requestedAssetId?: string | null, assetType: A
          */
         if (assetBytesSource && requestedAssetId) {
             let cancelled = false;
+            const loaded = loadTracker?.begin(requestedAssetId);
             setState(prev => ({
                 ...prev,
                 loading: true,
                 error: null,
             }));
 
-            (async () => {
+            void (async () => {
                 let result: AssetBytesResult;
                 try {
                     result = await assetBytesSource.read(requestedAssetId, assetType);
@@ -200,10 +207,11 @@ export function useAssetObjectUrl(requestedAssetId?: string | null, assetType: A
                     loading: false,
                     error: null,
                 });
-            })();
+            })().finally(() => loaded?.());
 
             return () => {
                 cancelled = true;
+                loaded?.();
             };
         }
 
@@ -308,13 +316,14 @@ export function useAssetObjectUrl(requestedAssetId?: string | null, assetType: A
             }
 
             let cancelled = false;
+            const loaded = loadTracker?.begin(assetId);
             setState(prev => ({
                 ...prev,
                 loading: true,
                 error: null,
             }));
 
-            (async () => {
+            void (async () => {
                 try {
                     const result = await getInterface().devMode.resolveAssetUrl(assetId, assetType);
                     if (cancelled) {
@@ -353,10 +362,11 @@ export function useAssetObjectUrl(requestedAssetId?: string | null, assetType: A
                         error: err instanceof Error ? err.message : String(err),
                     });
                 }
-            })();
+            })().finally(() => loaded?.());
 
             return () => {
                 cancelled = true;
+                loaded?.();
             };
         }
 
@@ -379,13 +389,14 @@ export function useAssetObjectUrl(requestedAssetId?: string | null, assetType: A
         }
 
         let cancelled = false;
+        const loaded = loadTracker?.begin(assetId);
         setState(prev => ({
             ...prev,
             loading: true,
             error: null,
         }));
 
-        (async () => {
+        void (async () => {
             const result = await assetsService.fetch(asset);
             if (cancelled) {
                 return;
@@ -432,10 +443,11 @@ export function useAssetObjectUrl(requestedAssetId?: string | null, assetType: A
                 loading: false,
                 error: null,
             });
-        })();
+        })().finally(() => loaded?.());
 
         return () => {
             cancelled = true;
+            loaded?.();
         };
         // The source's identity, not the object: a provider that rebuilds its value every render
         // would otherwise restart every fetch on the surface.
@@ -447,6 +459,7 @@ export function useAssetObjectUrl(requestedAssetId?: string | null, assetType: A
         contentGeneration,
         setRevision,
         assetBytesSource?.id ?? null,
+        loadTracker,
     ]);
 
     useEffect(() => {
