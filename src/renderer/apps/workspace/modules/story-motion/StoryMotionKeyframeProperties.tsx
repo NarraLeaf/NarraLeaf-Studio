@@ -175,10 +175,9 @@ function createStoryMotionKeyframeSchema(
                 id: "summary",
                 type: "info",
                 items: data => {
-                    const meta = getStoryMotionPropertyMeta(data.track.property);
                     return [
                         { label: t("motion.keyframe.motionLabel"), getValue: () => data.asset.name },
-                        { label: t("motion.property"), getValue: () => meta.label },
+                        { label: t("motion.property"), getValue: () => t(`motion.propertyLabel.${data.track.property}`) },
                         { label: t("motion.keyframe.time"), getValue: () => formatStoryMotionTime(data.keyframe.timeMs) },
                     ];
                 },
@@ -205,7 +204,7 @@ function createStoryMotionKeyframeSchema(
                 label: t("motion.keyframe.easing"),
                 options: [
                     { value: "", label: t("motion.keyframe.easingDefault") },
-                    ...STORY_MOTION_EASING_OPTIONS,
+                    ...STORY_MOTION_EASING_OPTIONS.map(option => ({ value: option.value, label: t(`motion.easingOption.${option.value}`) })),
                     { value: CUSTOM_EASING_OPTION, label: t("motion.keyframe.easingCustom") },
                 ],
                 getValue: data => {
@@ -324,9 +323,11 @@ function positionInput(
             if (!Number.isFinite(next)) {
                 return;
             }
-            const current = readPosition(data.keyframe.value);
-            const value: Required<StoryAlignPositionValue> = {
-                ...current,
+            // Only the axes this keyframe already writes, plus the one typed: an align axis written
+            // here would be an absolute stage position, pulling the target off the place its row
+            // gave it. A field shows the neutral value for an axis it does not write.
+            const value: StoryAlignPositionValue = {
+                ...writtenPosition(data.keyframe.value),
                 [key]: next,
             };
             updateKeyframe(keyframe => ({
@@ -337,21 +338,16 @@ function positionInput(
     };
 }
 
-function readPosition(value: StoryAnimationKeyframeValue): Required<StoryAlignPositionValue> {
-    if (!value || typeof value !== "object") {
-        return {
-            xalign: 0.5,
-            yalign: 0.55,
-            xoffset: 0,
-            yoffset: 0,
-        };
+function writtenPosition(value: StoryAnimationKeyframeValue): StoryAlignPositionValue {
+    const written: StoryAlignPositionValue = {};
+    if (value && typeof value === "object") {
+        for (const axis of ["xalign", "yalign", "xoffset", "yoffset"] as const) {
+            if (typeof value[axis] === "number" && Number.isFinite(value[axis])) {
+                written[axis] = value[axis];
+            }
+        }
     }
-    return {
-        xalign: readPositionValue(value, "xalign", 0.5),
-        yalign: readPositionValue(value, "yalign", 0.55),
-        xoffset: readPositionValue(value, "xoffset", 0),
-        yoffset: readPositionValue(value, "yoffset", 0),
-    };
+    return written;
 }
 
 function readPositionValue(

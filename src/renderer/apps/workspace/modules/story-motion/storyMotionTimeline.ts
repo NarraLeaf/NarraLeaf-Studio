@@ -72,7 +72,12 @@ const STORY_MOTION_NAMED_EASINGS: Record<string, (t: number) => number> = {
     anticipate,
 };
 
-export const STORY_MOTION_EASING_OPTIONS: { value: string; label: string }[] = [
+export type StoryMotionEasingName =
+    | "linear" | "easeIn" | "easeOut" | "easeInOut" | "circIn" | "circOut" | "circInOut"
+    | "backIn" | "backOut" | "backInOut" | "anticipate";
+
+/** The named easings, in menu order. `label` is the English name; the interface reads `motion.easingOption.<value>`. */
+export const STORY_MOTION_EASING_OPTIONS: { value: StoryMotionEasingName; label: string }[] = [
     { value: "linear", label: "Linear" },
     { value: "easeIn", label: "Ease in" },
     { value: "easeOut", label: "Ease out" },
@@ -85,6 +90,10 @@ export const STORY_MOTION_EASING_OPTIONS: { value: string; label: string }[] = [
     { value: "backInOut", label: "Back in-out" },
     { value: "anticipate", label: "Anticipate" },
 ];
+
+export function isStoryMotionEasingName(value: unknown): value is StoryMotionEasingName {
+    return STORY_MOTION_EASING_OPTIONS.some(option => option.value === value);
+}
 
 export function resolveStoryMotionEasing(easing?: string | number[]): (t: number) => number {
     const parsed = typeof easing === "string" ? parseStoryEasing(easing) : easing;
@@ -423,7 +432,9 @@ function interpolateValue(
 }
 
 function defaultValueForProperty(property: StoryAnimationTrackProperty): StoryAnimationKeyframeValue {
-    if (property === "position") return DEFAULT_PREVIEW_STATE.position;
+    // Offsets only: an align axis in a motion keyframe is an absolute stage position, and a new
+    // track carrying the preview's centre would pull whatever it moves to the middle of the stage.
+    if (property === "position") return { xoffset: 0, yoffset: 0 };
     if (property === "opacity") return DEFAULT_PREVIEW_STATE.opacity;
     if (property === "zoom") return DEFAULT_PREVIEW_STATE.zoom;
     if (property === "scaleX") return DEFAULT_PREVIEW_STATE.scaleX;
