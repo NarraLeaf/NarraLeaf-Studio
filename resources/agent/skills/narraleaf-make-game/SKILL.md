@@ -65,6 +65,8 @@ paused, and the directories you may import files from.
   that folder under *Settings -> Agent access* (or to copy the files into the project folder).
 - **No project open** - fine for a new game (step 2). For an existing one, ask for its folder.
 
+The same switches are in Studio's menu bar, under *Agent* (Chinese Studio: *智能体*).
+
 Checkpoint: you know whether you can write, which project is open, and where assets may come from.
 
 ## Step 1 - Brief
