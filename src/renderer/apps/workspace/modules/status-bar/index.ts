@@ -24,6 +24,7 @@ import {
 
 export {
     StatusEntry,
+    StatusBarAgentContext,
     StatusBarEntryIdContext,
     StatusBarExperimentalContext,
     StatusBarRunningContext,

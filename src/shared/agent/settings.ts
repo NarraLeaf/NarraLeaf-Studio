@@ -58,7 +58,26 @@ export type AgentSettingsSnapshot = {
     url: string;
     /** Why the endpoint is not running although it is enabled, when it failed to start. */
     error: string | null;
+    /** The command a stdio-only client runs to reach the endpoint through {@link AGENT_MCP_STDIO_FLAG}. */
+    stdio: AgentStdioCommand;
 };
+
+/**
+ * The command line that starts Studio as a stdio bridge: a process that opens no window, reads
+ * JSON-RPC from its standard input and forwards each message to the live endpoint. For clients that
+ * can only launch a local program (Claude Desktop without a bridge of its own, some IDEs).
+ *
+ * It carries no token: the bridge reads the token and the address from {@link AGENT_SETTINGS_FILE_NAME}
+ * itself, so a pasted configuration keeps working after the token is replaced or the port moves.
+ */
+export type AgentStdioCommand = {
+    /** Absolute path of the executable. */
+    command: string;
+    args: string[];
+};
+
+/** The command-line flag that turns a Studio launch into the stdio bridge. */
+export const AGENT_MCP_STDIO_FLAG = "--mcp-stdio";
 
 /** The changes the Settings window may ask for. Anything absent is left as it is. */
 export type AgentSettingsPatch = {
@@ -84,18 +103,25 @@ export function agentEndpointUrl(port: number): string {
 /** The name a client registers the server under. Short, because some clients prefix tool names with it. */
 export const AGENT_CLIENT_SERVER_KEY = "narraleaf";
 
-export type AgentClientConfigKind = "claudeCode" | "json" | "opencode";
+export type AgentClientConfigKind = "claudeCode" | "json" | "opencode" | "stdio";
 
 /**
  * Ready-to-paste configuration for one kind of client.
  *
- * Built in one place so the three shapes cannot drift apart: Claude Code takes a command line, most
- * clients (Claude Desktop through a bridge, Cursor, Gemini CLI) read the `mcpServers` JSON shape,
- * and opencode has its own `mcp` block with `type: "remote"`.
+ * Built in one place so the shapes cannot drift apart: Claude Code takes a command line, most
+ * clients (Cursor, Gemini CLI, Claude Desktop through mcp-remote) read the `mcpServers` JSON shape,
+ * opencode has its own `mcp` block with `type: "remote"`, and a client that only launches local
+ * programs gets the same `mcpServers` shape naming Studio's own executable with
+ * {@link AGENT_MCP_STDIO_FLAG}. That last one needs `stdio`, which only main can fill in.
  */
-export function buildAgentClientConfig(kind: AgentClientConfigKind, url: string, token: string): string {
+export function buildAgentClientConfig(kind: AgentClientConfigKind, url: string, token: string, stdio?: AgentStdioCommand): string {
     const headers = { Authorization: `Bearer ${token}` };
     switch (kind) {
+        case "stdio":
+            if (!stdio) {
+                throw new Error("The stdio configuration needs the command that starts Studio");
+            }
+            return JSON.stringify({ mcpServers: { [AGENT_CLIENT_SERVER_KEY]: { command: stdio.command, args: stdio.args } } }, null, 2);
         case "claudeCode":
             return `claude mcp add --transport http ${AGENT_CLIENT_SERVER_KEY} ${url} --header "Authorization: Bearer ${token}"`;
         case "json":

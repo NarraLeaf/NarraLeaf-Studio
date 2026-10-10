@@ -50,11 +50,19 @@ Or put `mcp-configs/claude-code.mcp.json` into your working folder as `.mcp.json
 
 ### Claude Desktop
 
-Claude Desktop's configuration file starts local programs, so a small bridge connects it to Studio's
-address. With Node.js installed, merge `mcp-configs/claude-desktop.json` into
-`claude_desktop_config.json` (*Settings -> Developer -> Edit Config*) and restart Claude Desktop. It
-uses `mcp-remote`, a third-party npm package, to forward the connection. If your Claude Desktop
-offers adding a custom connector by URL, you can use the address and token there instead.
+Claude Desktop's configuration file starts local programs, and Studio can be that program: started
+with `--mcp-stdio`, it opens no window and forwards the connection to the Studio you have open
+(starting Studio first if it is not running). In Studio, *Copy configuration -> stdio* gives the
+entry with the path to Studio filled in; merge it, or `mcp-configs/claude-desktop.json` with
+`<STUDIO_EXECUTABLE>` replaced, into `claude_desktop_config.json` (*Settings -> Developer -> Edit
+Config*) and restart Claude Desktop. The path is the program itself, for example
+`/Applications/NarraLeaf Studio.app/Contents/MacOS/NarraLeaf Studio` on macOS. No token goes into
+this entry: the bridge reads it from Studio's settings.
+
+If that does not work for you, `mcp-configs/claude-desktop-mcp-remote.json` does the same through
+`mcp-remote`, a third-party npm package (needs Node.js; fill in `<PORT>` and `<TOKEN>`). If your
+Claude Desktop offers adding a custom connector by URL, you can use the address and token there
+instead.
 
 ### opencode
 
@@ -80,8 +88,9 @@ in your working folder). The `context.fileName` entry makes Gemini read `AGENTS.
 ### Any other MCP client
 
 Streamable HTTP transport, URL `http://127.0.0.1:<PORT>/mcp`, header
-`Authorization: Bearer <TOKEN>`. For a client that only starts local (stdio) programs, use a bridge
-such as `mcp-remote`, as in the Claude Desktop example.
+`Authorization: Bearer <TOKEN>`. For a client that only starts local (stdio) programs, run Studio
+itself with `--mcp-stdio` (*Copy configuration -> stdio*), or a bridge such as `mcp-remote`, as in the
+Claude Desktop example.
 
 ## 3. Give your agent the skill
 

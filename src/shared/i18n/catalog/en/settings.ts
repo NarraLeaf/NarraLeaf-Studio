@@ -530,6 +530,8 @@ export const settings = {
         copyClaudeCode: "Claude Code",
         copyJson: "JSON",
         copyOpencode: "opencode",
+        copyStdio: "stdio",
+        copyStdioHint: "For clients that can only start a local program, such as Claude Desktop. The client runs Studio as a bridge; the configuration holds no token.",
         copied: "Copied",
         importRoots: "Folders agents may import from",
         importRootsHint: "Agents can always import files from inside the project.",

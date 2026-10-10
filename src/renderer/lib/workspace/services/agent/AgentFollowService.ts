@@ -52,10 +52,22 @@ export type AgentFollowState = {
      * write stays named long enough to be seen ({@link LAST_WRITE_VISIBLE_MS}) and then goes.
      */
     lastWrite: { name: string } | null;
+    /**
+     * An agent is at work in this project: a call is in flight, one ended less than
+     * {@link AGENT_ACTIVE_IDLE_MS} ago, or the author paused it. The status bar takes the agent wash
+     * for as long as this holds.
+     *
+     * Not "a call is in flight": an agent spends most of its time between calls, thinking, and a bar
+     * that changed colour with every call would flicker through a whole working session.
+     */
+    active: boolean;
 };
 
 /** How long the status bar keeps naming the last thing the agent changed. */
 export const LAST_WRITE_VISIBLE_MS = 4000;
+
+/** How long after its last call an agent still counts as at work. */
+export const AGENT_ACTIVE_IDLE_MS = 15000;
 
 type AgentFollowEvents = {
     changed: AgentFollowState;
@@ -66,9 +78,10 @@ const PANEL_STATE_ID = "narraleaf-studio:agent";
 
 export class AgentFollowService extends Service<AgentFollowService> {
     private readonly events = new EventEmitter<AgentFollowEvents>();
-    private state: AgentFollowState = { paused: false, follow: true, activity: null, clientName: null, lastCallAt: null, lastWrite: null };
+    private state: AgentFollowState = { paused: false, follow: true, activity: null, clientName: null, lastCallAt: null, lastWrite: null, active: false };
     private panelState: PanelStateService | null = null;
     private lastWriteTimer: ReturnType<typeof setTimeout> | null = null;
+    private idleTimer: ReturnType<typeof setTimeout> | null = null;
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const panelState = ctx.services.get<PanelStateService>(Services.PanelState);
@@ -82,6 +95,7 @@ export class AgentFollowService extends Service<AgentFollowService> {
             clientName: null,
             lastCallAt: null,
             lastWrite: null,
+            active: false,
         };
     }
 
@@ -90,6 +104,7 @@ export class AgentFollowService extends Service<AgentFollowService> {
             clearTimeout(this.lastWriteTimer);
             this.lastWriteTimer = null;
         }
+        this.clearIdleTimer();
         this.panelState = null;
         this.events.clear();
     }
@@ -107,8 +122,15 @@ export class AgentFollowService extends Service<AgentFollowService> {
     }
 
     public setPaused(paused: boolean): void {
-        if (this.state.paused !== paused) {
+        if (this.state.paused === paused) {
+            return;
+        }
+        if (paused) {
+            this.clearIdleTimer();
+            this.update({ paused, active: true });
+        } else {
             this.update({ paused });
+            this.scheduleIdle();
         }
     }
 
@@ -121,7 +143,8 @@ export class AgentFollowService extends Service<AgentFollowService> {
     }
 
     public beginCall(callId: string, tool: string, clientName: string | null): void {
-        this.update({ activity: { callId, tool, target: null }, clientName: clientName ?? this.state.clientName });
+        this.clearIdleTimer();
+        this.update({ activity: { callId, tool, target: null }, clientName: clientName ?? this.state.clientName, active: true });
     }
 
     /** Name what the call in flight is about, once the handler has resolved it. */
@@ -134,6 +157,7 @@ export class AgentFollowService extends Service<AgentFollowService> {
     public endCall(callId: string): void {
         if (this.state.activity?.callId === callId) {
             this.update({ activity: null, lastCallAt: Date.now() });
+            this.scheduleIdle();
         }
     }
 
@@ -151,6 +175,24 @@ export class AgentFollowService extends Service<AgentFollowService> {
             this.lastWriteTimer = null;
             this.update({ lastWrite: null });
         }, LAST_WRITE_VISIBLE_MS);
+    }
+
+    /** Count the agent as idle once {@link AGENT_ACTIVE_IDLE_MS} pass with no call. Paused stays active. */
+    private scheduleIdle(): void {
+        this.clearIdleTimer();
+        this.idleTimer = setTimeout(() => {
+            this.idleTimer = null;
+            if (!this.state.paused && this.state.activity === null) {
+                this.update({ active: false });
+            }
+        }, AGENT_ACTIVE_IDLE_MS);
+    }
+
+    private clearIdleTimer(): void {
+        if (this.idleTimer) {
+            clearTimeout(this.idleTimer);
+            this.idleTimer = null;
+        }
     }
 
     private update(patch: Partial<AgentFollowState>): void {

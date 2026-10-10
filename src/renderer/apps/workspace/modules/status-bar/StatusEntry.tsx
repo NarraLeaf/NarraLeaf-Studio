@@ -16,6 +16,14 @@ export const StatusBarRunningContext = createContext(false);
 export const StatusBarExperimentalContext = createContext(false);
 
 /**
+ * True while an agent connected over MCP is at work in this project, i.e. the whole status bar is
+ * washed in the binding colour - the author watching the agent sees at a glance that edits are not
+ * theirs. Provided by {@link StatusBar}; the experimental and running washes both win over it, so a
+ * play-test the agent starts still reads as a run.
+ */
+export const StatusBarAgentContext = createContext(false);
+
+/**
  * The registry id of the entry being rendered, supplied by {@link StatusBar} so that the cell can
  * label itself.
  *
@@ -65,6 +73,7 @@ export function StatusEntry({
 }) {
     const running = useContext(StatusBarRunningContext);
     const experimental = useContext(StatusBarExperimentalContext);
+    const agent = useContext(StatusBarAgentContext);
     const entryId = useContext(StatusBarEntryIdContext);
     const attributes = { "data-status-bar-entry-id": entryId, ...dataAttributes };
     // The tint change eases over 300ms to match the whole-bar transition in StatusBar, so the ink
@@ -77,9 +86,13 @@ export function StatusEntry({
             ? `${toneOverride ?? (emphasis ? "text-warning" : "text-warning/85")} ${
                 onClick ? "cursor-default hover:bg-warning/20 hover:text-warning" : ""
             }`
-            : `${toneOverride ?? (emphasis ? "text-fg-muted" : "text-fg-subtle")} ${
-                onClick ? "cursor-default hover:bg-fill hover:text-fg" : ""
-            }`;
+            : agent
+                ? `${toneOverride ?? (emphasis ? "text-binding" : "text-binding/85")} ${
+                    onClick ? "cursor-default hover:bg-binding/20 hover:text-binding" : ""
+                }`
+                : `${toneOverride ?? (emphasis ? "text-fg-muted" : "text-fg-subtle")} ${
+                    onClick ? "cursor-default hover:bg-fill hover:text-fg" : ""
+                }`;
     const className = `flex h-full items-center gap-1.5 px-2 text-2xs transition-colors duration-300 ${tone}`;
     if (!onClick) {
         return (

@@ -467,6 +467,8 @@ export const settings = {
         copyClaudeCode: "Claude Code",
         copyJson: "JSON",
         copyOpencode: "opencode",
+        copyStdio: "stdio",
+        copyStdioHint: "适用于只能启动本地程序的客户端（如 Claude Desktop），客户端将以桥接方式运行 Studio，配置中不含令牌",
         copied: "已复制",
         importRoots: "允许导入素材的文件夹",
         importRootsHint: "工程目录内的文件始终允许导入",

@@ -34,6 +34,7 @@ import { defaultTestEdition } from "../../utils/testEdition";
 import { resolveDefaultProjectDirectory } from "../../defaultProjectDirectory";
 import { AgentMcpServer, type AgentCallContext, type AgentMcpHost } from "./agentMcpServer";
 import { AgentSettingsStore, mintAgentToken } from "./agentSettingsStore";
+import { agentStdioCommand } from "./agentStdioMain";
 import { chooseAgentWorkspace, type AgentRoutingChoice } from "./agentRouting";
 import {
     AGENT_MAIN_TOOL_HANDLERS,
@@ -109,6 +110,7 @@ export class AgentManager implements AgentMainToolHost {
             running: livePort !== null,
             url: agentEndpointUrl(livePort ?? settings.port),
             error: settings.enabled && livePort === null ? this.lastError : null,
+            stdio: agentStdioCommand(this.app.electronApp),
         };
     }
 

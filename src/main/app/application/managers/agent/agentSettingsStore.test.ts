@@ -102,6 +102,14 @@ describe("buildAgentClientConfig", () => {
         });
     });
 
+    it("gives stdio-only clients Studio's own executable as a bridge, with no token in it", () => {
+        const stdio = { command: "/Applications/NarraLeaf Studio.app/Contents/MacOS/NarraLeaf Studio", args: ["--mcp-stdio"] };
+        const text = buildAgentClientConfig("stdio", url, token, stdio);
+        expect(JSON.parse(text)).toEqual({ mcpServers: { narraleaf: stdio } });
+        expect(text).not.toContain(token);
+        expect(() => buildAgentClientConfig("stdio", url, token)).toThrow();
+    });
+
     it("gives opencode its remote block", () => {
         expect(JSON.parse(buildAgentClientConfig("opencode", url, token))).toEqual({
             mcp: { narraleaf: { type: "remote", url, headers: { Authorization: "Bearer abc" } } },

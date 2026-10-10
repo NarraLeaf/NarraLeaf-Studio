@@ -16,10 +16,16 @@ import {
 } from "@shared/agent/settings";
 import { SETTING_CONTROL_WIDTH } from "../components/settingControlWidth";
 
-const CONFIG_KINDS: { kind: AgentClientConfigKind; labelKey: "settings.agent.copyClaudeCode" | "settings.agent.copyJson" | "settings.agent.copyOpencode" }[] = [
+const CONFIG_KINDS: {
+    kind: AgentClientConfigKind;
+    labelKey: "settings.agent.copyClaudeCode" | "settings.agent.copyJson" | "settings.agent.copyOpencode" | "settings.agent.copyStdio";
+    tipKey?: "settings.agent.copyStdioHint";
+}[] = [
     { kind: "claudeCode", labelKey: "settings.agent.copyClaudeCode" },
     { kind: "json", labelKey: "settings.agent.copyJson" },
     { kind: "opencode", labelKey: "settings.agent.copyOpencode" },
+    // For clients that only launch local programs: Studio's own executable as a stdio bridge.
+    { kind: "stdio", labelKey: "settings.agent.copyStdio", tipKey: "settings.agent.copyStdioHint" },
 ];
 
 /**
@@ -92,7 +98,7 @@ export function AgentAccessPanel() {
         if (!settings) {
             return;
         }
-        await copyTextToClipboard(buildAgentClientConfig(kind, settings.url, settings.token));
+        await copyTextToClipboard(buildAgentClientConfig(kind, settings.url, settings.token, settings.stdio));
         setCopied(kind);
         if (copiedTimer.current) {
             clearTimeout(copiedTimer.current);
@@ -194,8 +200,14 @@ export function AgentAccessPanel() {
             </Row>
             <Row label={t("settings.agent.copyConfig")} description={t("settings.agent.copyConfigHint")} wide>
                 <div className="flex flex-wrap justify-end gap-2">
-                    {CONFIG_KINDS.map(({ kind, labelKey }) => (
-                        <Button key={kind} size="sm" variant="secondary" onClick={() => void copy(kind)}>
+                    {CONFIG_KINDS.map(({ kind, labelKey, tipKey }) => (
+                        <Button
+                            key={kind}
+                            size="sm"
+                            variant="secondary"
+                            data-tip={tipKey ? t(tipKey) : undefined}
+                            onClick={() => void copy(kind)}
+                        >
                             {copied === kind ? t("settings.agent.copied") : t(labelKey)}
                         </Button>
                     ))}
