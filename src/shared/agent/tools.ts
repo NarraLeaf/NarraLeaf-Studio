@@ -111,14 +111,13 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     main(
         "agent_guide",
         "Read the guide",
-        "Returns one chapter of the NarraLeaf game-making guide as Markdown: `workflow` (the end-to-end order of work - read it before starting a game), `story-format`, `ui-format`, `blueprint-format`, `ui-design`, `script-adaptation`, `verify-and-ship`, `troubleshooting`. The same text is served as MCP resources `narraleaf://guide/<chapter>`.",
+        "Returns one chapter of the NarraLeaf game-making guide as Markdown: `workflow` (the end-to-end order of work - read it before starting a game), `story-format`, `ui-format`, `blueprint-format`, `ui-design`, `script-adaptation`, `verify-and-ship`, `troubleshooting`. A plugin that offers its own tools may ship a chapter too, named `plugin:<pluginId>` (`plugin:narraleaf.gallery` for the Gallery's EXTRA page). Without a chapter, lists every chapter there is. The same text is served as MCP resources `narraleaf://guide/<chapter>` and `narraleaf://guide/plugin/<pluginId>`.",
         {
             chapter: {
                 type: "string",
-                enum: ["workflow", "story-format", "ui-format", "blueprint-format", "ui-design", "script-adaptation", "verify-and-ship", "troubleshooting"],
+                description: "A chapter id from the list above, or `plugin:<pluginId>`. Leave it out to list the chapters.",
             },
         },
-        ["chapter"],
     ),
 
     // ── Projects ─────────────────────────────────────────────────────────────────────────────────

@@ -87,7 +87,7 @@ describe("AgentSettingsStore", () => {
 });
 
 describe("buildAgentClientConfig", () => {
-    const url = "http://127.0.0.1:47219/mcp";
+    const url = "http://127.0.0.1:54080/mcp";
     const token = "abc";
 
     it("gives Claude Code a command line", () => {

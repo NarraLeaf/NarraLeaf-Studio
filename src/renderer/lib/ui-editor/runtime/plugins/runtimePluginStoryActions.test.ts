@@ -50,6 +50,8 @@ async function writePlugin(id: string, body: string): Promise<RuntimePluginDescr
             network: [],
             widgetText: {},
             structs: [],
+            agentTools: [],
+            agentGuide: "",
         },
         permissions: [],
     };

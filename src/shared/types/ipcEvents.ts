@@ -4,6 +4,7 @@ import type { ProjectTrustRecord } from "./projectTrust";
 import type { AgentCallRequest, AgentCallResult } from "../agent/protocol";
 import type { AgentSettingsPatch, AgentSettingsSnapshot } from "../agent/settings";
 import type { AgentCopyConfigKind, AgentMainActivity, AgentQuickState, AgentQuickTogglePatch } from "../agent/workspaceAccess";
+import type { AgentPluginToolDescriptor } from "../agent/pluginTools";
 import type { ProjectSessionHolder, ProjectSessionLockOutcome } from "./projectSession";
 import { IPCMessageType, IPCType } from "./ipc";
 import { FsRequestResult, PlatformInfo } from "./os";
@@ -296,6 +297,7 @@ export enum IPCEventType {
     agentExportSkill = "agent.quick.exportSkill",
     agentRevealExportedSkill = "agent.quick.revealExportedSkill",
     workspaceAgentActivity = "workspace.agentActivity",
+    agentReportPluginTools = "agent.reportPluginTools",
     workspaceResolveAssetUrl = "workspace.resolveAssetUrl",
     workspaceResolveAllAssetUrls = "workspace.resolveAllAssetUrls",
     workspaceResolveImageAssetUrl = "workspace.resolveImageAssetUrl",
@@ -2765,6 +2767,18 @@ export type IPCWorkspaceEvents = {
         type: IPCMessageType.message,
         consumer: IPCType.Client,
         data: AgentMainActivity;
+        response: never;
+    };
+    /**
+     * The agent tools this workspace's plugins have registered, the whole set, sent on every change.
+     * Main lists them in `tools/list` and routes calls to them here; a window's tools go when it
+     * closes. Read as untrusted (a workspace runs plugin code): main checks every descriptor and
+     * keeps only the ones that fit `readAgentPluginToolDescriptor`.
+     */
+    [IPCEventType.agentReportPluginTools]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: { tools: AgentPluginToolDescriptor[] };
         response: never;
     };
     [IPCEventType.workspaceResolveAssetUrl]: {

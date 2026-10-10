@@ -29,6 +29,8 @@ function manifest(runtimeData: string[]): NormalizedPluginManifestV2 {
             network: [],
             widgetText: {},
             structs: [],
+            agentTools: [],
+            agentGuide: "",
         },
         permissions: [],
     };

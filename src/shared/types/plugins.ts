@@ -407,6 +407,32 @@ export type PluginContributes = {
      * any plugin code runs. Ids must start with the plugin id.
      */
     structs?: PluginStructContribution[];
+    /**
+     * Tools this plugin offers the AI agents an author connects to Studio (the built-in MCP
+     * endpoint), registered by the studio entry with `app.services.agent.registerTool`.
+     *
+     * Declared here, and refused at registration when not, for the reason `tests` are: the install
+     * prompt is read before any plugin code runs, and an outside program reaching into the plugin is
+     * something the author should be told about there. Unlike `tests` it derives an install
+     * permission (`kind: "agentTools"`), because a tool is callable by somebody other than the author
+     * the moment the plugin loads - and `write` is part of the declaration, so a tool that starts
+     * changing the project in a later version asks again.
+     */
+    agentTools?: PluginAgentToolContribution[];
+    /**
+     * Package-relative path to a Markdown chapter for agents (`agent/guide.md`), served by
+     * `agent_guide` as `plugin:<pluginId>` and as the resource `narraleaf://guide/plugin/<pluginId>`.
+     * Empty when the plugin ships none.
+     */
+    agentGuide?: string;
+};
+
+/** One tool a plugin offers AI agents, as its manifest declares it. */
+export type PluginAgentToolContribution = {
+    /** `<pluginId>.<tool>`: lower case, digits, `_`, `.` and `-`. */
+    name: string;
+    /** The tool changes the project. Must match the registration. */
+    write: boolean;
 };
 
 /**

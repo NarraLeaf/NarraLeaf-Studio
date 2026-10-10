@@ -43,6 +43,27 @@ export type AgentSettingsFile = {
     /** The endpoint as it is being served right now, or null while it is not. */
     url: string | null;
     allowedImportRoots: AgentImportRoot[];
+    /**
+     * Plugins whose agent tools the author switched off. A deny list rather than an allow list:
+     * a plugin's tools are on unless the author says otherwise, because the install prompt already
+     * told them the plugin offers tools (`contributes.agentTools`), and every call still passes the
+     * switches above - nothing a plugin offers writes unless `allowWrites` is on.
+     */
+    blockedPluginTools: string[];
+};
+
+/** One installed plugin that offers agent tools, as Settings lists it. */
+export type AgentPluginToolsSetting = {
+    pluginId: string;
+    /** The manifest's name; the panel shows the plugin's `localized` name for the editor language. */
+    name: string;
+    localized?: Record<string, { name?: string; description?: string }>;
+    /** How many tools it declares, and how many of them change the project. */
+    tools: number;
+    writeTools: number;
+    /** The author has not switched them off. */
+    allowed: boolean;
+    builtIn: boolean;
 };
 
 /** What the Settings window is shown. */
@@ -60,6 +81,8 @@ export type AgentSettingsSnapshot = {
     error: string | null;
     /** The command a stdio-only client runs to reach the endpoint through {@link AGENT_MCP_STDIO_FLAG}. */
     stdio: AgentStdioCommand;
+    /** Installed, enabled plugins that offer agent tools, with whether the author allows them. */
+    pluginTools: AgentPluginToolsSetting[];
 };
 
 /**
@@ -86,6 +109,8 @@ export type AgentSettingsPatch = {
     port?: number;
     /** Remove this directory from the allowed list. Adding one goes through the folder picker. */
     removeImportRoot?: string;
+    /** Allow or switch off one plugin's agent tools. */
+    pluginTools?: { pluginId: string; allowed: boolean };
 };
 
 /** Lowest port the setting accepts; below it are ports that need privileges on most systems. */
@@ -143,6 +168,7 @@ export function defaultAgentSettings(token: string): AgentSettingsFile {
         token,
         url: null,
         allowedImportRoots: [],
+        blockedPluginTools: [],
     };
 }
 
@@ -178,5 +204,8 @@ export function normalizeAgentSettings(value: unknown, mintToken: () => string):
         token,
         url: typeof record.url === "string" ? record.url : null,
         allowedImportRoots: roots,
+        blockedPluginTools: Array.isArray(record.blockedPluginTools)
+            ? [...new Set(record.blockedPluginTools.filter((id): id is string => typeof id === "string" && id.length > 0 && id.length <= 200))]
+            : [],
     };
 }

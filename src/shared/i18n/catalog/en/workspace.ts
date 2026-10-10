@@ -422,6 +422,7 @@ export const workspace = {
             blueprintEdit: "blueprint edit",
             replaceText: "text replacement",
             agentEdit: "agent edit",
+            agentPluginEdit: "agent: {tool}",
         },
     },
     // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.
@@ -482,6 +483,7 @@ export const workspace = {
         },
         // The Agent log panel (`AgentLogPanel`).
         log: {
+            pluginTool: "A tool of the plugin {plugin}",
             filter: {
                 all: "All calls",
                 writes: "Changes only",

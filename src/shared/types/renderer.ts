@@ -2,6 +2,7 @@ import type { ProjectTrustRecord } from "./projectTrust";
 import type { AgentCallRequest, AgentCallResult } from "../agent/protocol";
 import type { AgentSettingsPatch, AgentSettingsSnapshot } from "../agent/settings";
 import type { AgentCopyConfigKind, AgentMainActivity, AgentQuickState, AgentQuickTogglePatch } from "../agent/workspaceAccess";
+import type { AgentPluginToolDescriptor } from "../agent/pluginTools";
 import type { ProjectSessionHolder, ProjectSessionLockOutcome } from "./projectSession";
 import type { ExternalScriptEditor, ScriptOpenTargetId } from "./scriptEditors";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
@@ -463,6 +464,8 @@ export interface RendererPreloadedInterface {
         revealExportedSkill(): Promise<RequestStatus<{ revealed: boolean }>>;
         /** A call main answered itself, for the Agent log. */
         onActivity(handler: (activity: AgentMainActivity) => void): AppEventToken;
+        /** The agent tools this workspace's plugins registered, the whole set. Main lists them in `tools/list`. */
+        reportPluginTools(tools: readonly AgentPluginToolDescriptor[]): void;
     };
     projectTrust: {
         query(projectPath: string): Promise<RequestStatus<{

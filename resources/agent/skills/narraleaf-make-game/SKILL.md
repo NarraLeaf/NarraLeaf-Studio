@@ -233,10 +233,16 @@ wired to save, load, settings and backlog logic that a rebuilt page would lose.
    - [ ] the same control looks the same on every page;
    - [ ] every button has a visible hover and pressed state;
    - [ ] it looks like a visual novel, not a web dashboard (`ui-design` explains).
-4. `ui_usage {type}` shows how the skeleton itself uses a widget, in pasteable `.ui` text - the
+4. **The Extra page's content.** When the project has the Gallery plugin (the skeleton does:
+   `agent_status` lists `narraleaf_gallery__*` tools for the project), fill the EXTRA page with the
+   gallery tools - every CG with its differentials, a recollection per key scene, the soundtrack,
+   voice lines if the game is voiced. Read `agent_guide {chapter:"plugin:narraleaf.gallery"}` first,
+   then `narraleaf_gallery__list` and `narraleaf_gallery__add_entries`. The page shows the catalog by
+   itself; restyle it like any other page.
+5. `ui_usage {type}` shows how the skeleton itself uses a widget, in pasteable `.ui` text - the
    fastest way to get a new element right. `ui_templates` / `ui_template_apply` add a ready-made set
    of pages from Studio's template store when the author prefers one; restyle it the same way.
-5. When the author says "this" or "the selected one", `ui_selection` tells you what they selected.
+6. When the author says "this" or "the selected one", `ui_selection` tells you what they selected.
 
 Checkpoint: every page screenshot passes the checklist, and the title shows the game's title and art.
 
@@ -254,6 +260,11 @@ unlock. Read `blueprint-format`, then:
 
 Prefer settings to blueprints where one exists: a button's click and hover sounds are its
 `clickSound` / `hoverSound` props, not a graph.
+
+**Gallery unlocks.** Recollections, music and voice lines unlock themselves as the player reaches,
+hears and is told them. A CG needs an Unlock Gallery node: set a persistent variable in the story
+where the CG appears, and unlock from the title page's open event - the recipe is in
+`agent_guide {chapter:"plugin:narraleaf.gallery"}`.
 
 Checkpoint: every new control does what it says, checked in step 8.
 
@@ -283,7 +294,7 @@ is clean.
 
 - what was made: scenes, routes and endings, characters, pages restyled, behaviour added;
 - **every placeholder asset still in the game** and what it stands for;
-- anything left for them to do in Studio (leftover demo content, gallery entries, files to convert,
+- anything left for them to do in Studio (leftover demo content, files to convert,
   untranslated languages, the app icon and signing);
 - the file to open (the build result's `artifacts`), and that they can keep editing in Studio and
   ask you for more.

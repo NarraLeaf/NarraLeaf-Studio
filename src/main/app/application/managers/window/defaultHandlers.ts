@@ -206,6 +206,7 @@ import {
     AgentCopyConfigHandler,
     AgentExportSkillHandler,
     AgentQuickStateHandler,
+    AgentReportPluginToolsHandler,
     AgentQuickToggleHandler,
     AgentRevealExportedSkillHandler,
 } from "./handlers/agentQuickAction";
@@ -320,6 +321,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new AgentSettingsRegenerateTokenHandler(),
         new AgentSettingsAddImportRootHandler(),
         new AgentQuickStateHandler(),
+        new AgentReportPluginToolsHandler(),
         new AgentQuickToggleHandler(),
         new AgentCopyConfigHandler(),
         new AgentExportSkillHandler(),

@@ -276,6 +276,8 @@ describe("game runtime artifact compiler", () => {
                 network: [],
                 widgetText: {},
                 structs: [],
+                agentTools: [],
+                agentGuide: "",
             },
             permissions: [],
         };
@@ -979,6 +981,8 @@ describe("game runtime artifact compiler", () => {
                 network: [],
                 widgetText: {},
                 structs: [],
+                agentTools: [],
+                agentGuide: "",
             },
             permissions: [],
         };
@@ -1732,6 +1736,8 @@ async function writeSidecarPlugin(input: {
             network: [],
             widgetText: {},
             structs: [],
+            agentTools: [],
+            agentGuide: "",
         },
         permissions: [],
     };
@@ -1780,6 +1786,8 @@ function buildConfigManifest(
             network: [],
             widgetText: {},
             structs: [],
+            agentTools: [],
+            agentGuide: "",
         },
         permissions: [],
     };

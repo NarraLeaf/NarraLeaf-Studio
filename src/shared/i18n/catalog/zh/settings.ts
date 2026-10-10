@@ -475,6 +475,11 @@ export const settings = {
         importRootsEmpty: "暂无其他文件夹",
         addFolder: "添加文件夹…",
         removeFolder: "移除",
+        pluginTools: "插件工具",
+        pluginToolsHint: "已启用插件向 Agent 提供的工具，在此关闭的插件不会向 Agent 列出其工具，调用也会被拒绝",
+        pluginToolsEmpty: "没有已启用的插件提供 Agent 工具",
+        pluginToolsCount: "{tools} 个工具，其中 {writes} 个可修改工程",
+        pluginToolsAllow: "允许 {plugin} 的 Agent 工具",
     },
     data: {
         projectTrust: {

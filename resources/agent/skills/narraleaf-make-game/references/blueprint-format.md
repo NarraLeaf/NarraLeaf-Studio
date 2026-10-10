@@ -113,8 +113,10 @@ the old scene.
 
 Nodes from plugins loaded in the project are in `blueprint_nodes` (the skeleton depends on the
 bundled Gallery plugin for its Extra screen). A node from a plugin the project does not load is
-`compile.unknown_node_type`. Filling the gallery with CGs and music is done in Studio's Gallery panel;
-there is no tool for it - put it on the hand-over list.
+`compile.unknown_node_type`. A plugin may also offer tools of its own (`<plugin>__<tool>` in your tool
+list) and a guide chapter: the Gallery's are `narraleaf_gallery__*` and
+`agent_guide {chapter:"plugin:narraleaf.gallery"}`, which fill the Extra page and explain the one
+unlock that needs a node (a CG's Unlock Gallery).
 
 ## Findings
 

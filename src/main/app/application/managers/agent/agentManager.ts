@@ -18,13 +18,20 @@ import {
     type AgentSessionPolicy,
     type AgentWorkspaceState,
 } from "@shared/agent/protocol";
-import type { AgentGuideChapter, AgentToolDescriptor } from "@shared/agent/tools";
+import { AGENT_TOOLS, AGENT_TOOLS_BY_NAME, type AgentGuideChapter, type AgentToolDescriptor } from "@shared/agent/tools";
+import {
+    isAgentPluginToolDescriptor,
+    looksLikeAgentPluginToolName,
+    readAgentPluginToolDescriptor,
+    type AgentPluginToolDescriptor,
+} from "@shared/agent/pluginTools";
 import {
     agentEndpointUrl,
     buildAgentClientConfig,
     isUsableAgentPort,
     AGENT_PORT_MAX,
     AGENT_PORT_MIN,
+    type AgentPluginToolsSetting,
     type AgentSettingsPatch,
     type AgentSettingsSnapshot,
 } from "@shared/agent/settings";
@@ -49,10 +56,11 @@ import {
     noWorkspace,
     type AgentMainToolHost,
     type AgentOpenProjectOutcome,
+    type AgentPluginGuideEntry,
     type AgentWorkspaceHandle,
 } from "./agentMainTools";
 import { writeAgentProject, type AgentProjectCreateInput } from "./agentProjectCreate";
-import { guideFileCandidates, stripFrontMatter } from "./agentGuide";
+import { guideFileCandidates, pluginGuideFile, stripFrontMatter, AGENT_PLUGIN_GUIDE_MAX_BYTES } from "./agentGuide";
 import { agentCallTimeoutMs } from "./agentCallTimeout";
 import { activityProjectPath, copySkillTree, isNonEmptyDirectory, mainActivity } from "./agentWorkspaceAccess";
 
@@ -82,6 +90,11 @@ export class AgentManager implements AgentMainToolHost {
     /** Serializes start/stop so two quick toggles cannot leave two servers or none. */
     private lifecycle: Promise<void> = Promise.resolve();
     private initialized = false;
+    /** The plugin tools each workspace last reported, already checked. */
+    private readonly reportedPluginTools = new Map<AppWindow<WindowAppType.Workspace>, AgentPluginToolDescriptor[]>();
+    private readonly pluginToolWindowsWatched = new WeakSet<AppWindow>();
+    /** What `tools/list` last answered, as a comparable string, so a report that changes nothing notifies nobody. */
+    private advertisedPluginTools = "";
 
     constructor(private readonly app: App) {
         this.store = new AgentSettingsStore(app.getUserDataDir());
@@ -122,7 +135,33 @@ export class AgentManager implements AgentMainToolHost {
             url: agentEndpointUrl(livePort ?? settings.port),
             error: settings.enabled && livePort === null ? this.lastError : null,
             stdio: agentStdioCommand(this.app.electronApp),
+            pluginTools: await this.pluginToolSettings(settings.blockedPluginTools),
         };
+    }
+
+    /** Installed, enabled plugins that declare agent tools, for the Settings list. */
+    private async pluginToolSettings(blocked: readonly string[]): Promise<AgentPluginToolsSetting[]> {
+        try {
+            const plugins = await this.app.pluginManager.listPlugins();
+            return plugins
+                .filter(plugin => plugin.enabled && (plugin.manifest.contributes.agentTools ?? []).length > 0)
+                .map(plugin => {
+                    const tools = plugin.manifest.contributes.agentTools ?? [];
+                    return {
+                        pluginId: plugin.pluginId,
+                        name: plugin.manifest.name,
+                        ...(plugin.manifest.localized ? { localized: plugin.manifest.localized } : {}),
+                        tools: tools.length,
+                        writeTools: tools.filter(tool => tool.write).length,
+                        allowed: !blocked.includes(plugin.pluginId),
+                        builtIn: plugin.builtIn,
+                    };
+                })
+                .sort((a, b) => Number(b.builtIn) - Number(a.builtIn) || a.name.localeCompare(b.name));
+        } catch (error) {
+            this.app.logger.warn(`[Agent] Could not list plugins with agent tools: ${describe(error)}`);
+            return [];
+        }
     }
 
     public async updateSettings(patch: AgentSettingsPatch): Promise<AgentSettingsSnapshot> {
@@ -148,7 +187,16 @@ export class AgentManager implements AgentMainToolHost {
                     normalizeProjectPath(path.resolve(root.path)) !== target,
                 );
             }
+            const pluginTools = patch.pluginTools;
+            if (pluginTools && typeof pluginTools.pluginId === "string" && pluginTools.pluginId && typeof pluginTools.allowed === "boolean") {
+                const others = draft.blockedPluginTools.filter(id => id !== pluginTools.pluginId);
+                draft.blockedPluginTools = pluginTools.allowed ? others : [...others, pluginTools.pluginId];
+            }
         });
+        if (after.blockedPluginTools.join() !== before.blockedPluginTools.join()) {
+            this.app.logger.info(`[Agent] Plugin tools switched off for: ${after.blockedPluginTools.join(", ") || "none"}`);
+            this.pluginToolsMaybeChanged();
+        }
         if (after.allowWrites !== before.allowWrites) {
             this.app.logger.info(`[Agent] Write access ${after.allowWrites ? "allowed" : "withdrawn"}`);
         }
@@ -199,7 +247,97 @@ export class AgentManager implements AgentMainToolHost {
         return {
             writesEnabled: settings.allowWrites,
             allowedImportRoots: settings.allowedImportRoots.map(root => path.resolve(root.path)),
+            blockedPluginIds: [...settings.blockedPluginTools],
         };
+    }
+
+    // ── Plugin tools ─────────────────────────────────────────────────────────────────────────────
+    //
+    // A workspace reports the agent tools its plugins registered, the whole set on every change;
+    // `tools/list` is the built-in table plus the union of what the open workspaces reported, less
+    // the plugins the author switched off. Reports are read as untrusted - a workspace runs plugin
+    // code - so each descriptor is checked, and a window's tools are forgotten when it closes.
+
+    /** A workspace's report. Called by the IPC handler; `tools` is whatever the window sent. */
+    public reportPluginTools(window: AppWindow<WindowAppType.Workspace>, tools: unknown): void {
+        const checked = Array.isArray(tools)
+            ? tools.slice(0, 500).map(readAgentPluginToolDescriptor).filter((tool): tool is AgentPluginToolDescriptor => tool !== null)
+            : [];
+        if (checked.length > 0) {
+            this.reportedPluginTools.set(window, checked);
+        } else {
+            this.reportedPluginTools.delete(window);
+        }
+        if (!this.pluginToolWindowsWatched.has(window)) {
+            this.pluginToolWindowsWatched.add(window);
+            // "closed", not onClose: a close request a workspace's guard cancels must not take the
+            // window's tools away while it stays open.
+            window.onEvent("closed", () => {
+                this.reportedPluginTools.delete(window);
+                this.pluginToolsMaybeChanged();
+            });
+        }
+        this.pluginToolsMaybeChanged();
+    }
+
+    /** The plugin tools `tools/list` offers: open workspaces' reports, first report wins a name, blocked plugins left out. */
+    private pluginTools(): AgentPluginToolDescriptor[] {
+        const blocked = new Set(this.store.current.blockedPluginTools);
+        const byName = new Map<string, AgentPluginToolDescriptor>();
+        for (const window of this.workspaceWindows()) {
+            for (const tool of this.reportedPluginTools.get(window) ?? []) {
+                if (!blocked.has(tool.pluginId) && !byName.has(tool.name)) {
+                    byName.set(tool.name, tool);
+                }
+            }
+        }
+        return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    public listTools(): readonly AgentToolDescriptor[] {
+        return [...AGENT_TOOLS, ...this.pluginTools()];
+    }
+
+    public findTool(name: string): AgentToolDescriptor | null {
+        return AGENT_TOOLS_BY_NAME.get(name) ?? this.pluginTools().find(tool => tool.name === name) ?? null;
+    }
+
+    /** Why a plugin-shaped name is no tool right now, in words the agent can act on. */
+    public unknownTool(name: string): AgentCallResult | null {
+        if (!looksLikeAgentPluginToolName(name)) {
+            return null;
+        }
+        const offered = [...this.reportedPluginTools.values()].flat().find(tool => tool.name === name);
+        if (offered && this.store.current.blockedPluginTools.includes(offered.pluginId)) {
+            return agentRefusal(
+                "unavailable",
+                `The author switched off the agent tools of the plugin ${offered.pluginId}.`,
+                "Ask the author to allow them in Studio's Settings > Agent access, or do the work in Studio's own tools.",
+            );
+        }
+        return agentRefusal(
+            "unknown_tool",
+            `No project open in Studio has a plugin offering "${name}" - the plugin is not loaded in any open project.`,
+            "Plugin tools come from the plugins an open project loads. Open the project (project_open), check agent_status, then call tools/list again.",
+        );
+    }
+
+    public pluginToolsOf(handle: AgentWorkspaceHandle): string[] {
+        const window = (handle as AgentWorkspaceHandle & { window?: AppWindow<WindowAppType.Workspace> }).window;
+        const blocked = new Set(this.store.current.blockedPluginTools);
+        return (window ? this.reportedPluginTools.get(window) ?? [] : [])
+            .filter(tool => !blocked.has(tool.pluginId))
+            .map(tool => tool.name)
+            .sort();
+    }
+
+    private pluginToolsMaybeChanged(): void {
+        const signature = JSON.stringify(this.pluginTools().map(tool => [tool.name, tool.write, tool.title, tool.description, tool.inputSchema]));
+        if (signature === this.advertisedPluginTools) {
+            return;
+        }
+        this.advertisedPluginTools = signature;
+        this.server?.notifyToolsChanged();
     }
 
     public endpointUrl(): string | null {
@@ -377,6 +515,11 @@ export class AgentManager implements AgentMainToolHost {
         return {
             callTool: (tool, args, context) => this.callTool(tool, args, context),
             readGuide: chapter => this.readGuide(chapter),
+            listTools: () => this.listTools(),
+            findTool: name => this.findTool(name),
+            unknownTool: name => this.unknownTool(name),
+            listPluginGuides: () => this.listPluginGuides(),
+            readPluginGuide: pluginId => this.readPluginGuide(pluginId),
             version: () => {
                 try {
                     return this.app.getAppInfo().version;
@@ -399,7 +542,7 @@ export class AgentManager implements AgentMainToolHost {
         const started = Date.now();
         const outcome = await this.dispatchTool(tool, args, context);
         if (outcome.answeredInMain) {
-            this.reportActivity(tool.name, args, outcome.result, context.clientName, Date.now() - started);
+            this.reportActivity(tool, args, outcome.result, context.clientName, Date.now() - started);
         }
         return outcome.result;
     }
@@ -424,10 +567,31 @@ export class AgentManager implements AgentMainToolHost {
             }
             return inMain(await handler(this, args, context));
         }
+        if (isAgentPluginToolDescriptor(tool) && this.store.current.blockedPluginTools.includes(tool.pluginId)) {
+            return inMain(this.unknownTool(tool.name) ?? agentRefusal("unavailable", `The plugin ${tool.pluginId}'s agent tools are switched off.`));
+        }
         const project = typeof args.project === "string" && args.project ? path.resolve(args.project) : null;
         const choice = this.route(project);
         if (!choice.ok) {
             return inMain(noWorkspace(choice));
+        }
+        if (isAgentPluginToolDescriptor(tool)) {
+            // Routed like any workspace tool, by `project`; the project it lands in must be one whose
+            // plugins offer the tool, since a plugin tool is not in every window.
+            const window = (choice.window as AgentWorkspaceHandle & { window?: AppWindow<WindowAppType.Workspace> }).window;
+            const here = window ? this.reportedPluginTools.get(window) ?? [] : [];
+            if (!here.some(candidate => candidate.name === tool.name)) {
+                const elsewhere = this.workspaceWindows()
+                    .filter(candidate => (this.reportedPluginTools.get(candidate) ?? []).some(entry => entry.name === tool.name))
+                    .map(candidate => path.resolve(candidate.getProps().projectPath));
+                return inMain(agentRefusal(
+                    "unknown_tool",
+                    `The plugin ${tool.pluginId} is not loaded in ${choice.window.projectPath}, so ${tool.name} is not available there.`,
+                    elsewhere.length > 0
+                        ? `Projects that offer it: ${elsewhere.join(", ")}. Pass one as \`project\`.`
+                        : "Call tools/list again for the tools the open projects offer.",
+                ));
+            }
         }
         return { result: await this.forward(choice.window, tool.name, args, context), answeredInMain: false };
     }
@@ -437,9 +601,15 @@ export class AgentManager implements AgentMainToolHost {
      * when it concerns none (the session status, a guide chapter, a project that is not open).
      * Fire-and-forget: a log line is never worth delaying or failing the call for.
      */
-    private reportActivity(tool: string, args: Record<string, unknown>, result: AgentCallResult, clientName: string | null, durationMs: number): void {
+    private reportActivity(descriptor: AgentToolDescriptor, args: Record<string, unknown>, result: AgentCallResult, clientName: string | null, durationMs: number): void {
+        const tool = descriptor.name;
         try {
-            const activity = mainActivity(tool, args, result, clientName, durationMs);
+            const activity = {
+                ...mainActivity(tool, args, result, clientName, durationMs),
+                ...(isAgentPluginToolDescriptor(descriptor)
+                    ? { pluginId: descriptor.pluginId, title: descriptor.title, write: descriptor.write }
+                    : {}),
+            };
             const projectPath = activityProjectPath(tool, args, result);
             const windows = this.workspaceWindows();
             const concerned = projectPath ? windows.filter(window => identity(window.getProps().projectPath) === identity(projectPath)) : [];
@@ -590,6 +760,37 @@ export class AgentManager implements AgentMainToolHost {
             }
         }
         return null;
+    }
+
+    /** Enabled plugins whose manifest names a guide chapter (`contributes.agentGuide`). */
+    public async listPluginGuides(): Promise<AgentPluginGuideEntry[]> {
+        try {
+            const plugins = await this.app.pluginManager.listPlugins();
+            return plugins
+                .filter(plugin => plugin.enabled && typeof plugin.manifest.contributes.agentGuide === "string" && plugin.manifest.contributes.agentGuide)
+                .map(plugin => ({ pluginId: plugin.pluginId, name: plugin.manifest.name }))
+                .sort((a, b) => a.pluginId.localeCompare(b.pluginId));
+        } catch {
+            return [];
+        }
+    }
+
+    public async readPluginGuide(pluginId: string): Promise<string | null> {
+        try {
+            const plugin = (await this.app.pluginManager.listPlugins()).find(entry => entry.pluginId === pluginId && entry.enabled);
+            const relative = plugin?.manifest.contributes.agentGuide;
+            const file = plugin && relative ? pluginGuideFile(plugin.installPath, relative) : null;
+            if (!file) {
+                return null;
+            }
+            const stat = await fs.stat(file);
+            if (!stat.isFile() || stat.size > AGENT_PLUGIN_GUIDE_MAX_BYTES) {
+                return null;
+            }
+            return stripFrontMatter(await fs.readFile(file, "utf8"));
+        } catch {
+            return null;
+        }
     }
 
     // ── Projects ─────────────────────────────────────────────────────────────────────────────────

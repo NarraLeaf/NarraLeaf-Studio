@@ -10,7 +10,7 @@ import {
 } from "./agentStdioBridge";
 
 const TOKEN = "t".repeat(43);
-const URL_A = "http://127.0.0.1:47219/mcp";
+const URL_A = "http://127.0.0.1:54080/mcp";
 
 type Posted = { url: string; method: string; headers: Record<string, string>; body: unknown };
 
@@ -160,6 +160,52 @@ describe("runAgentStdioBridge", () => {
         expect(byId(out, 2).result.echo).toBe("tools/list");
         // The notification reached Studio all the same.
         expect(studio.state.posted.some(post => (post.body as any)?.method === "notifications/initialized")).toBe(true);
+    });
+
+    it("opens the notification stream once the client is initialized and relays what Studio pushes", async () => {
+        const studio = fakeStudio();
+        const streamed: Record<string, string>[] = [];
+        let push: ((text: string) => void) | null = null;
+        const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+            if ((init?.method ?? "GET") === "GET") {
+                streamed.push(Object.fromEntries(Object.entries((init?.headers ?? {}) as Record<string, string>).map(([k, v]) => [k.toLowerCase(), v])));
+                const stream = new ReadableStream<Uint8Array>({
+                    start(controller) {
+                        push = text => controller.enqueue(new TextEncoder().encode(text));
+                        init?.signal?.addEventListener("abort", () => controller.error(new Error("aborted")));
+                    },
+                });
+                return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+            }
+            return studio.fetchImpl(input, init);
+        }) as unknown as typeof fetch;
+        const lines: any[] = [];
+        let relayed: () => void = () => undefined;
+        const arrived = new Promise<void>(resolve => {
+            relayed = resolve;
+        });
+        async function* input() {
+            yield line({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} });
+            yield line({ jsonrpc: "2.0", method: "notifications/initialized" });
+            while (!push) {
+                await new Promise(resolve => setTimeout(resolve, 5));
+            }
+            push!(": hello\n\nevent: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/tools/list_changed\"}\n\n");
+            await arrived;
+        }
+        await run(input(), {
+            fetch: fetchImpl,
+            writeLine: text => {
+                const message = JSON.parse(text);
+                lines.push(message);
+                if (message.method === "notifications/tools/list_changed") {
+                    relayed();
+                }
+            },
+        });
+        expect(streamed).toHaveLength(1);
+        expect(streamed[0]).toMatchObject({ accept: "text/event-stream", "mcp-session-id": "session-1", authorization: `Bearer ${TOKEN}` });
+        expect(lines).toContainEqual({ jsonrpc: "2.0", method: "notifications/tools/list_changed" });
     });
 
     it("carries the session id initialize returned on every later message, and ends it on the way out", async () => {

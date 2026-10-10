@@ -69,8 +69,19 @@ export const pluginPermission = {
             network: "Data the game requests",
             networkNote: "This plugin requests data from these addresses while the game runs.",
             studio: "Studio permissions",
+            agentTools: "AI agents",
         },
         sidecarPlatforms: "Runs on {platforms}",
+        /** `{tools}` and `{writes}` are the two phrases below, already counted. */
+        agentToolsSummary: "{tools} ({writes})",
+        agentTools: {
+            one: "Offers {count} tool to AI agents connected to Studio",
+            other: "Offers {count} tools to AI agents connected to Studio",
+        },
+        agentToolsWrites: {
+            one: "{count} can change the project",
+            other: "{count} can change the project",
+        },
         /**
          * The row's own line, because the group heading covers both and the difference is the
          * whole decision: one starts a separate program, the other runs the plugin's code with

@@ -10,6 +10,10 @@
  * Every call, refused or carried out, is also an entry in the {@link AgentActivityLog} the Agent log
  * panel shows, beside the calls main reports having answered itself.
  *
+ * Plugin tools (`app.services.agent.registerTool`) are carried out here too, from the window's
+ * {@link PluginAgentToolRegistry}, through the same gate as Studio's own; the set this window has is
+ * reported to main on every change, which is how `tools/list` follows plugins loading and unloading.
+ *
  * Calls run one at a time. Two agents (or one agent's parallel tool calls) writing the same page
  * would otherwise interleave their edits inside each other's undo steps, and an answer computed
  * while another call is half-written could describe a page that never existed.
@@ -27,6 +31,7 @@ import {
 } from "@shared/agent/protocol";
 import type { AgentMainActivity } from "@shared/agent/workspaceAccess";
 import { AGENT_TOOLS_BY_NAME } from "@shared/agent/tools";
+import { looksLikeAgentPluginToolName, type AgentPluginToolDescriptor } from "@shared/agent/pluginTools";
 import { getProjectWriteFreeze } from "@/lib/app/writeFreeze";
 import { getInterface } from "@/lib/app/bridge";
 import { Service } from "../Service";
@@ -34,12 +39,13 @@ import { Services, type WorkspaceContext } from "../services";
 import type { ConsoleService, ConsoleLogLevel } from "../core/ConsoleService";
 import type { LiveSessionService } from "../live/LiveSessionService";
 import { AgentFollowService, type AgentWriteTarget } from "./AgentFollowService";
-import { AgentActivityLog } from "./AgentActivityLog";
+import { AgentActivityLog, type AgentActivityToolMeta } from "./AgentActivityLog";
 import { AgentOffscreenRenderer } from "./agentOffscreenRenderer";
 import { AgentRefusal, type AgentToolContext, type AgentToolHandler } from "./agentCall";
 import { gateAgentCall } from "./agentGate";
 import type { createAgentInternalHandlers, createAgentToolHandlers } from "./agentHandlers";
 import { AGENT_CONSOLE_CHANNEL, AGENT_CONSOLE_SOURCE } from "./agentConsole";
+import { pluginAgentToolRegistry, type PluginAgentToolRegistry } from "./pluginToolRegistry";
 
 export { AGENT_CONSOLE_CHANNEL, AGENT_CONSOLE_SOURCE };
 
@@ -67,6 +73,7 @@ export class AgentBridgeService extends Service<AgentBridgeService> {
     private follow: AgentFollowService | null = null;
     private readonly activity = new AgentActivityLog();
     private disposeMainActivity: (() => void) | null = null;
+    private disposePluginToolReports: (() => void) | null = null;
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const consoleService = ctx.services.get<ConsoleService>(Services.Console);
@@ -82,6 +89,8 @@ export class AgentBridgeService extends Service<AgentBridgeService> {
         });
         this.disposeMainActivity?.();
         this.disposeMainActivity = subscribeToMainActivity(activity => this.activity.recordMain(activity));
+        this.disposePluginToolReports?.();
+        this.disposePluginToolReports = reportPluginToolsToMain(this.pluginTools(ctx));
     }
 
     public override dispose(_ctx: WorkspaceContext): void {
@@ -89,6 +98,8 @@ export class AgentBridgeService extends Service<AgentBridgeService> {
         this.disposeChannel = null;
         this.disposeMainActivity?.();
         this.disposeMainActivity = null;
+        this.disposePluginToolReports?.();
+        this.disposePluginToolReports = null;
         this.activity.clear();
         this.console = null;
         this.follow = null;
@@ -102,6 +113,11 @@ export class AgentBridgeService extends Service<AgentBridgeService> {
     /** The calls this workspace saw, for the Agent log panel. */
     public getActivityLog(): AgentActivityLog {
         return this.activity;
+    }
+
+    /** The plugin tools this window's plugins registered. */
+    public pluginTools(ctx: WorkspaceContext = this.getContext()): PluginAgentToolRegistry {
+        return pluginAgentToolRegistry(ctx);
     }
 
     /** The handler table, for the coverage test and for nothing else. */
@@ -141,6 +157,7 @@ export class AgentBridgeService extends Service<AgentBridgeService> {
         const descriptor = AGENT_TOOLS_BY_NAME.get(request.tool);
         const tables = await this.loadHandlers();
         const internal = tables.internal[request.tool];
+        const plugin = !internal && !descriptor ? this.pluginTools(ctx).get(request.tool) : undefined;
         let handler: AgentToolHandler | undefined;
         let write: boolean;
         if (internal) {
@@ -149,14 +166,33 @@ export class AgentBridgeService extends Service<AgentBridgeService> {
         } else if (descriptor && descriptor.side === "workspace") {
             handler = tables.tools[request.tool];
             write = descriptor.write;
+        } else if (plugin) {
+            handler = (args, tool) => plugin.run(args, { clientName: tool.request.clientName });
+            write = plugin.descriptor.write;
         } else {
             write = false;
         }
+        const meta = plugin ? pluginMeta(plugin.descriptor) : undefined;
         if (!handler) {
             this.log("warning", request, `unknown tool ${request.tool}`);
-            const unknown = agentRefusal("unknown_tool", `This Studio window has no tool called "${request.tool}".`);
+            const unknown = looksLikeAgentPluginToolName(request.tool)
+                ? agentRefusal(
+                    "unknown_tool",
+                    `No plugin loaded in this project offers "${request.tool}".`,
+                    "The plugin is not loaded in this project (not installed, switched off, or not a dependency of it). Call tools/list again for the tools this project has.",
+                )
+                : agentRefusal("unknown_tool", `This Studio window has no tool called "${request.tool}".`);
             this.recordAtOnce(request, unknown);
             return unknown;
+        }
+        if (plugin && request.policy.blockedPluginIds?.includes(plugin.descriptor.pluginId)) {
+            const blocked = agentRefusal(
+                "unavailable",
+                `The author switched off the agent tools of the plugin ${plugin.descriptor.pluginId}.`,
+                "Ask the author to allow them in Studio's Settings > Agent access, or do the work in Studio's own tools.",
+            );
+            this.recordAtOnce(request, blocked, meta);
+            return blocked;
         }
 
         const refused = gateAgentCall({
@@ -168,12 +204,12 @@ export class AgentBridgeService extends Service<AgentBridgeService> {
         });
         if (refused) {
             this.log("warning", request, `${request.tool} refused: ${refused.ok ? "" : refused.error.code}`);
-            this.recordAtOnce(request, refused);
+            this.recordAtOnce(request, refused, meta);
             return refused;
         }
 
         const started = performance.now();
-        const logId = this.activity.begin(request.tool, request.clientName);
+        const logId = this.activity.begin(request.tool, request.clientName, meta);
         // Calls run one at a time, so every write announced between begin and end is this call's.
         let firstWrite: AgentWriteTarget | null = null;
         const stopWatchingWrites = follow.onWrote(target => {
@@ -220,8 +256,8 @@ export class AgentBridgeService extends Service<AgentBridgeService> {
     }
 
     /** A call refused before it started: one finished entry, no running row. */
-    private recordAtOnce(request: AgentCallRequest, result: AgentCallResult): void {
-        this.activity.record(request.tool, request.clientName, "workspace", { ...finishOf(result), durationMs: 0 });
+    private recordAtOnce(request: AgentCallRequest, result: AgentCallResult, meta?: AgentActivityToolMeta): void {
+        this.activity.record(request.tool, request.clientName, "workspace", { ...finishOf(result), durationMs: 0 }, meta);
     }
 
     private liveSessionActive(ctx: WorkspaceContext): boolean {
@@ -236,6 +272,57 @@ export class AgentBridgeService extends Service<AgentBridgeService> {
         const client = request.clientName ? `${request.clientName} ` : "";
         this.console?.log(AGENT_CONSOLE_CHANNEL, level, `${client}#${request.callId.slice(0, 8)} ${message}`, { source: AGENT_CONSOLE_SOURCE });
     }
+}
+
+function pluginMeta(descriptor: AgentPluginToolDescriptor): AgentActivityToolMeta {
+    return { write: descriptor.write, pluginId: descriptor.pluginId, title: descriptor.title };
+}
+
+/**
+ * Tell main which plugin tools this window has, now and after every change, so its `tools/list`
+ * can follow. Coalesced to one report per task: a plugin registering ten tools in its setup is one
+ * change to the list, not ten. A window without the preload bridge (a unit test) reports nothing.
+ */
+function reportPluginToolsToMain(registry: PluginAgentToolRegistry): (() => void) | null {
+    let report: ((tools: readonly AgentPluginToolDescriptor[]) => void) | undefined;
+    try {
+        report = getInterface().agent?.reportPluginTools;
+    } catch {
+        return null;
+    }
+    if (typeof report !== "function") {
+        return null;
+    }
+    const send = report;
+    let scheduled = false;
+    let disposed = false;
+    const flush = () => {
+        scheduled = false;
+        if (!disposed) {
+            try {
+                send(registry.list());
+            } catch (error) {
+                console.warn("[AgentBridge] Could not report plugin tools to main", error);
+            }
+        }
+    };
+    const schedule = () => {
+        if (!scheduled) {
+            scheduled = true;
+            setTimeout(flush, 0);
+        }
+    };
+    const unsubscribe = registry.subscribe(schedule);
+    schedule();
+    return () => {
+        disposed = true;
+        unsubscribe();
+        try {
+            send([]);
+        } catch {
+            // The window is going away; main drops its tools when it closes anyway.
+        }
+    };
 }
 
 function finishOf(result: AgentCallResult): { ok: boolean; code?: AgentErrorCode; message?: string; hint?: string } {

@@ -27,12 +27,12 @@ describe("validateAgentArgs", () => {
     });
 
     it("names a missing required argument", () => {
-        expect(errorsOf(tool("agent_guide"), {})).toEqual(["chapter: required"]);
+        expect(errorsOf(tool("project_open"), {})).toEqual(["path: required"]);
     });
 
     it("refuses a value outside an enum and lists the allowed ones", () => {
-        const [error] = errorsOf(tool("agent_guide"), { chapter: "nope" });
-        expect(error).toMatch(/^chapter: must be one of "workflow", "story-format"/);
+        const [error] = errorsOf(tool("lint"), { severity: "nope" });
+        expect(error).toMatch(/^severity: must be one of "error", "warning", "info"/);
     });
 
     it("refuses an argument the schema does not declare, naming the ones it does", () => {
@@ -69,7 +69,7 @@ describe("validateAgentArgs", () => {
     });
 
     it("treats an undefined property as absent", () => {
-        expect(errorsOf(tool("agent_guide"), { chapter: undefined })).toEqual(["chapter: required"]);
+        expect(errorsOf(tool("project_open"), { path: undefined })).toEqual(["path: required"]);
         expect(errorsOf(tool("project_open"), { path: "/p", extra: undefined })).toEqual([]);
     });
 

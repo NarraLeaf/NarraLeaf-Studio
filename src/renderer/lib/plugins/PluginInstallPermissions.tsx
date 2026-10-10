@@ -36,6 +36,12 @@ export interface GroupedInstallPermissions {
     network: PermissionOf<"network">[];
     /** Author-declared Studio controls (`filesystem` / `api`), kept in declaration order. */
     studio: (PermissionOf<"filesystem"> | PermissionOf<"api">)[];
+    /**
+     * Tools the plugin offers the AI agents an author connects to Studio. Last, as the lightest of
+     * the groups: every call still passes the author's own agent switches. Said by count rather than
+     * by name, because the names are the plugin's vocabulary and the number is the decision.
+     */
+    agentTools: PermissionOf<"agentTools">[];
 }
 
 export function groupInstallPermissions(
@@ -48,6 +54,7 @@ export function groupInstallPermissions(
         externalLinks: [],
         network: [],
         studio: [],
+        agentTools: [],
     };
     for (const permission of permissions ?? []) {
         switch (permission.kind) {
@@ -65,6 +72,9 @@ export function groupInstallPermissions(
                 break;
             case "network":
                 grouped.network.push(permission);
+                break;
+            case "agentTools":
+                grouped.agentTools.push(permission);
                 break;
             default:
                 grouped.studio.push(permission);
@@ -157,12 +167,24 @@ export interface PluginInstallPermissionSectionsProps {
  * nothing at all - a heading with no rows under it reads as a capability the
  * plugin has, which is exactly backwards.
  */
+/** "Offers 3 tools to AI agents connected to Studio (1 can change the project)". */
+export function agentToolsPermissionLabel(permission: PermissionOf<"agentTools">, translator: Pick<Translator, "t" | "tn">): string {
+    const tools = translator.tn("pluginPermission.permissions.agentTools", permission.tools.length);
+    if (permission.writeTools.length === 0) {
+        return tools;
+    }
+    return translator.t("pluginPermission.permissions.agentToolsSummary", {
+        tools,
+        writes: translator.tn("pluginPermission.permissions.agentToolsWrites", permission.writeTools.length),
+    });
+}
+
 export function PluginInstallPermissionSections({
     permissions,
     rounded = true,
     className,
 }: PluginInstallPermissionSectionsProps) {
-    const { t, formatList } = useTranslation();
+    const { t, tn, formatList } = useTranslation();
     const groups = useMemo(() => groupInstallPermissions(permissions), [permissions]);
 
     if (
@@ -172,6 +194,7 @@ export function PluginInstallPermissionSections({
         && !groups.externalLinks.length
         && !groups.network.length
         && !groups.studio.length
+        && !groups.agentTools.length
     ) {
         return null;
     }
@@ -288,6 +311,16 @@ export function PluginInstallPermissionSections({
                     {groups.studio.map((permission, index) => (
                         <PermissionRow key={index}>
                             {studioPermissionLabel(permission, t)}
+                        </PermissionRow>
+                    ))}
+                </PermissionGroup>
+            ) : null}
+
+            {groups.agentTools.length > 0 ? (
+                <PermissionGroup label={t("pluginPermission.permissions.section.agentTools")} rounded={rounded}>
+                    {groups.agentTools.map((permission, index) => (
+                        <PermissionRow key={index}>
+                            {agentToolsPermissionLabel(permission, { t, tn })}
                         </PermissionRow>
                     ))}
                 </PermissionGroup>

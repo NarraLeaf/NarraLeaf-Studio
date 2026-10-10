@@ -26,13 +26,14 @@ const TOKEN = "t".repeat(48);
 const SNAPSHOT: AgentSettingsSnapshot = {
     enabled: true,
     allowWrites: false,
-    port: 47219,
+    port: 54080,
     token: TOKEN,
     allowedImportRoots: ["/Users/author/Pictures"],
     running: true,
-    url: "http://127.0.0.1:47219/mcp",
+    url: "http://127.0.0.1:54080/mcp",
     error: null,
     stdio: { command: "/Applications/NarraLeaf Studio.app/Contents/MacOS/NarraLeaf Studio", args: ["--mcp-stdio"] },
+    pluginTools: [],
 };
 
 function makeWindow(windowType: WindowAppType = WindowAppType.Workspace) {

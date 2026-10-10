@@ -142,8 +142,9 @@ are the same in every language.
 - **Log** (backlog): a vertical list of speaker + line; readable, the speaker set apart from the line
   by weight or a palette colour (a list row cannot take each speaker's own colour).
 - **Splash**: the studio or game wordmark and the disclaimer text; replace the words, keep it brief.
-- **Extra**: CG, recollection, music, voice tabs over the Gallery plugin. It shows nothing until the
-  author fills the gallery in Studio; restyle it, and list it on the hand-over.
+- **Extra**: CG, recollection, music, voice tabs over the Gallery plugin. It shows what the gallery
+  catalog holds: fill it with the gallery tools (`agent_guide {chapter:"plugin:narraleaf.gallery"}`),
+  then restyle it.
 - **Confirm**: the yes/no dialog every risky action uses; make it match the rest.
 
 ## Templates instead

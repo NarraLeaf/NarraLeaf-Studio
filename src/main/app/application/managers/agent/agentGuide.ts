@@ -1,3 +1,4 @@
+import path from "path";
 import type { AgentGuideChapter } from "@shared/agent/tools";
 
 /**
@@ -25,4 +26,22 @@ export function guideFileCandidates(chapter: AgentGuideChapter): string[][] {
 export function stripFrontMatter(text: string): string {
     const match = /^﻿?---\r?\n[\s\S]*?\r?\n---[ \t]*(\r?\n|$)/.exec(text);
     return match ? text.slice(match[0].length).replace(/^\s*\n/, "") : text;
+}
+
+/** A plugin's guide chapter is read whole into an answer; past this it is not served. */
+export const AGENT_PLUGIN_GUIDE_MAX_BYTES = 256 * 1024;
+
+/**
+ * Where a plugin's guide chapter is on disk, or null when the declared path would leave the plugin's
+ * package. The manifest validator already refused such a path at install; this is the second look a
+ * path from a file on disk gets before main reads it.
+ */
+export function pluginGuideFile(installPath: string, relative: string): string | null {
+    const root = path.resolve(installPath);
+    const file = path.resolve(root, ...relative.split(/[\\/]+/).filter(Boolean));
+    const inside = path.relative(root, file);
+    if (!inside || inside.startsWith("..") || path.isAbsolute(inside) || !file.toLowerCase().endsWith(".md")) {
+        return null;
+    }
+    return file;
 }

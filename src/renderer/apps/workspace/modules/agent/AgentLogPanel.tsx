@@ -311,7 +311,8 @@ function AgentLogRow({
             ? (entry.code === "internal" ? "text-danger/75" : "text-warning/75")
             : "text-success/75";
     const client = entry.clientName ?? t("workspace.agent.status.unknownClient");
-    const title = agentToolTitle(translator, entry.tool);
+    // A plugin's tool is named by the plugin, in the plugin's words; Studio has no translation of it.
+    const title = entry.title ?? agentToolTitle(translator, entry.tool);
 
     const cells = (
         <>
@@ -321,6 +322,11 @@ function AgentLogRow({
             <time className="w-16 shrink-0 tabular-nums text-2xs text-fg-subtle">{formatTime(entry.startedAt)}</time>
             <span className="w-28 shrink-0 truncate text-2xs text-fg-subtle">{client}</span>
             <span className={cn("shrink-0 text-xs", entry.write ? "text-fg" : "text-fg-muted")}>{title}</span>
+            {entry.pluginId ? (
+                <span className="max-w-[24%] shrink-0 truncate font-mono text-2xs text-fg-subtle" data-tip={t("workspace.agent.log.pluginTool", { plugin: entry.pluginId })}>
+                    {entry.pluginId}
+                </span>
+            ) : null}
             <span className="min-w-0 flex-1 truncate text-2xs text-fg-subtle">{entry.target ?? ""}</span>
             <span className={cn("max-w-[30%] shrink-0 truncate text-2xs", resultClass)}>{result}</span>
             <span className="w-14 shrink-0 text-right tabular-nums text-2xs text-fg-subtle">{formatDuration(translator, entry.durationMs)}</span>

@@ -33,6 +33,7 @@ import type {
     PluginTextEditorPreviewDef,
 } from "@/lib/workspace/services/ui/textEditorContributions";
 import type { TestDefinition } from "@/lib/testing/types";
+import type { PluginAgentToolDef } from "@shared/agent/pluginTools";
 import {
     AssetExtensions,
     AssetType,
@@ -59,6 +60,7 @@ export type {
     PluginManifestLocalized,
     PluginManifestLocalizedText,
     PluginContributes,
+    PluginAgentToolContribution,
     PluginWidgetTextContribution,
     PluginInstallRecord,
     PluginListItem,
@@ -258,6 +260,16 @@ export type {
 export type { SearchJumpTarget } from "@/lib/workspace/services/search/searchIndexModel";
 
 export const ui = pluginUi;
+
+export type {
+    PluginAgentJsonSchema,
+    PluginAgentToolAnswer,
+    PluginAgentToolContext,
+    PluginAgentToolDef,
+    PluginAgentToolErrorCode,
+    PluginAgentToolRefusal,
+    PluginAgentToolResult,
+} from "@shared/agent/pluginTools";
 
 export type PluginCleanup = () => void | Promise<void>;
 
@@ -609,6 +621,38 @@ export type PluginLocalizationService = {
     registerWords(source: PluginWordsSource): PluginCleanup;
 };
 
+/**
+ * Tools this plugin offers the AI agents an author connects to Studio's MCP endpoint (Claude Code,
+ * Codex, Cursor and the like).
+ *
+ * Each tool is declared by name and `write` in the manifest's `contributes.agentTools` - registering
+ * an undeclared one throws - and is advertised to agents as `<plugin id>__<tool>`, with every `.`
+ * and `-` turned into `_` (`acme.notes.add_note` is `acme_notes__add_note`). A Markdown chapter at
+ * `contributes.agentGuide` is served to agents as `agent_guide {chapter: "plugin:<plugin id>"}`.
+ *
+ * What the host does around every call, so the plugin does not have to:
+ *
+ *  - **Gates it** exactly as it gates Studio's own tools: a `write: true` tool is refused unless the
+ *    author allowed agent writes, and while they paused the agent, the project is frozen or a live
+ *    session runs. The author can also switch a plugin's tools off in Settings > Agent access.
+ *  - **Checks the arguments** against `inputSchema` before the handler runs, and removes `project`
+ *    (the host's routing argument).
+ *  - **Keeps a reading tool reading:** while a `write: false` tool runs, `storage.writeJson` throws.
+ *  - **Makes a writing tool's edit one undo step:** every `storage.writeJson` it does is captured,
+ *    and Ctrl+Z puts every namespace back as it was, then calls the reloader you registered with
+ *    `workspace.registerReloader` - so register one, or undo will change the file and not your
+ *    memory of it.
+ *  - **Caps the answer:** text past 60 000 characters is cut, `data` past 60 000 characters of JSON
+ *    is left out, and at most one image is passed on.
+ *
+ * A handler receives the arguments and the client's name, nothing else: whatever it does, it does
+ * with this plugin's own `app`.
+ */
+export type PluginAgentService = {
+    registerTool(def: PluginAgentToolDef): PluginCleanup;
+    registerTools(defs: PluginAgentToolDef[]): PluginCleanup;
+};
+
 export type PluginServices = {
     storage: PluginStorageService;
     assets: PluginAssetsService;
@@ -623,6 +667,8 @@ export type PluginServices = {
     localization: PluginLocalizationService;
     /** Contribute checks to Run > Test; see {@link PluginTestService}. */
     tests: PluginTestService;
+    /** Offer tools to AI agents connected to Studio; see {@link PluginAgentService}. */
+    agent: PluginAgentService;
     ui: {
         panels: {
             register<TPayload = unknown>(panel: PanelDefinition<TPayload>): PluginCleanup;

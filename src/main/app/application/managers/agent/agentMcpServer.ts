@@ -15,17 +15,21 @@ import {
     type AgentToolDescriptor,
 } from "@shared/agent/tools";
 import { validateAgentArgs } from "@shared/agent/validateArgs";
+import { AGENT_PLUGIN_GUIDE_URI_PREFIX } from "@shared/agent/pluginTools";
 
 /**
  * Studio's MCP endpoint: the door an author's own AI agent (Claude Code, opencode, Codex, Cursor…)
  * comes in through to work on the project open in front of them.
  *
  * MCP's Streamable HTTP transport, the JSON-response form of it: every request is one POST carrying
- * a JSON-RPC message or a batch of them, answered in the response body. There is nothing the server
- * needs to push unasked, so there is no event stream - a GET is answered 405, which the transport
- * defines as "this server offers no stream". Hand-written over Node's `http` rather than taken from
- * an SDK because the protocol surface is small and fixed, and every byte of it is reachable by any
- * program on the machine.
+ * a JSON-RPC message or a batch of them, answered in the response body. The one thing the server
+ * says unasked is that its tool list changed - plugin tools come and go with the plugins loaded in
+ * the open projects - so a GET that accepts `text/event-stream` opens a stream that carries
+ * `notifications/tools/list_changed` and nothing else (plus keep-alive comments). A GET that does not
+ * ask for a stream is answered 405, as before. A client that never opens the stream still sees the
+ * new list on its next `tools/list`. Hand-written over Node's `http` rather than taken from an SDK
+ * because the protocol surface is small and fixed, and every byte of it is reachable by any program
+ * on the machine.
  *
  * ## Who may knock
  *
@@ -53,6 +57,15 @@ export interface AgentMcpHost {
     callTool(tool: AgentToolDescriptor, args: Record<string, unknown>, context: AgentCallContext): Promise<AgentCallResult>;
     /** One guide chapter as Markdown, or null when the file is missing. */
     readGuide(chapter: AgentGuideChapter): Promise<string | null>;
+    /** Every tool there is right now: the built-in table plus the plugin tools of the open projects. Defaults to the table. */
+    listTools?(): readonly AgentToolDescriptor[];
+    /** One tool by its advertised name, or null. Defaults to the table. */
+    findTool?(name: string): AgentToolDescriptor | null;
+    /** The refusal for a name that is no tool right now, when there is something better to say than "no such tool". */
+    unknownTool?(name: string): AgentCallResult | null;
+    /** Enabled plugins that ship a guide chapter. */
+    listPluginGuides?(): Promise<{ pluginId: string; name: string }[]>;
+    readPluginGuide?(pluginId: string): Promise<string | null>;
     /** Studio's version, for `serverInfo`. */
     version(): string;
     log(level: "info" | "warn", message: string): void;
@@ -79,6 +92,12 @@ const BIND_ADDRESS = "127.0.0.1";
 
 /** Remembered sessions; the oldest is forgotten past this, which only costs its client name in the log. */
 const MAX_SESSIONS = 64;
+
+/** Open notification streams; the oldest is closed past this (its client opens another when it wants one). */
+const MAX_STREAMS = 16;
+
+/** A comment line on every open stream this often, so idle-connection reapers in between leave it alone. */
+const STREAM_KEEP_ALIVE_MS = 25_000;
 
 export const AGENT_MCP_INSTRUCTIONS = [
     "This server is NarraLeaf Studio, a visual-novel editor, running on the author's machine with their project open.",
@@ -117,6 +136,7 @@ export class AgentMcpServer {
     private server: http.Server | null = null;
     private boundPort: number | null = null;
     private readonly sessions = new Map<string, { clientName: string | null }>();
+    private readonly streams = new Set<http.ServerResponse>();
 
     constructor(private readonly options: AgentMcpServerOptions) {}
 
@@ -164,6 +184,10 @@ export class AgentMcpServer {
         this.server = null;
         this.boundPort = null;
         this.sessions.clear();
+        for (const stream of [...this.streams]) {
+            stream.end();
+        }
+        this.streams.clear();
         if (!server) {
             return;
         }
@@ -202,10 +226,17 @@ export class AgentMcpServer {
                 res.end();
                 return;
             }
+            case "GET":
+                if ((headerValue(req, "accept") ?? "").includes("text/event-stream")) {
+                    this.openStream(req, res);
+                    return;
+                }
+                req.resume();
+                sendJson(res, 405, { error: "Use POST, or GET with Accept: text/event-stream for notifications." }, { Allow: "GET, POST, DELETE" });
+                return;
             default:
                 req.resume();
-                // GET included: there is no server-to-client stream to open.
-                sendJson(res, 405, { error: "Use POST." }, { Allow: "POST, DELETE" });
+                sendJson(res, 405, { error: "Use POST." }, { Allow: "GET, POST, DELETE" });
                 return;
         }
 
@@ -256,6 +287,73 @@ export class AgentMcpServer {
             return;
         }
         sendJson(res, 200, batch ? responses : responses[0], headers);
+    }
+
+    /**
+     * Tell every client with an open stream that `tools/list` would answer differently now - a plugin
+     * that offers tools was loaded or unloaded, a project opened or closed, the author switched a
+     * plugin's tools off. The client lists the tools again; nothing is sent about what changed.
+     */
+    public notifyToolsChanged(): void {
+        const payload = `event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", method: "notifications/tools/list_changed" })}\n\n`;
+        for (const stream of [...this.streams]) {
+            try {
+                stream.write(payload);
+            } catch {
+                this.streams.delete(stream);
+            }
+        }
+    }
+
+    /** How many notification streams are open; for tests and the log. */
+    public get openStreams(): number {
+        return this.streams.size;
+    }
+
+    /**
+     * A server-to-client stream, held open until the client goes away. It carries list-changed
+     * notifications only - every answer still travels in the body of the POST that asked.
+     */
+    private openStream(req: http.IncomingMessage, res: http.ServerResponse): void {
+        req.resume();
+        while (this.streams.size >= MAX_STREAMS) {
+            const oldest = this.streams.values().next().value as http.ServerResponse;
+            this.streams.delete(oldest);
+            oldest.end();
+        }
+        const session = headerValue(req, "mcp-session-id");
+        res.writeHead(200, {
+            "Content-Type": "text/event-stream; charset=utf-8",
+            "Cache-Control": "no-store",
+            Connection: "keep-alive",
+            ...(session ? { "Mcp-Session-Id": session } : {}),
+        });
+        res.write(": NarraLeaf Studio notifications\n\n");
+        req.socket.setKeepAlive(true);
+        const keepAlive = setInterval(() => {
+            try {
+                res.write(": keep-alive\n\n");
+            } catch {
+                // Closed under us; the close handler below cleans up.
+            }
+        }, STREAM_KEEP_ALIVE_MS);
+        keepAlive.unref?.();
+        const done = () => {
+            clearInterval(keepAlive);
+            this.streams.delete(res);
+        };
+        // The response's close, not the request's: a request emits `close` as soon as its (empty)
+        // body has been read, which would forget the stream the moment it opened.
+        res.on("close", done);
+        this.streams.add(res);
+    }
+
+    private tools(): readonly AgentToolDescriptor[] {
+        return this.options.host.listTools?.() ?? AGENT_TOOLS;
+    }
+
+    private findTool(name: string): AgentToolDescriptor | null {
+        return this.options.host.findTool ? this.options.host.findTool(name) : AGENT_TOOLS_BY_NAME.get(name) ?? null;
     }
 
     /** The checks that come before anything in the request is read. Null when it may proceed. */
@@ -335,7 +433,7 @@ export class AgentMcpServer {
             result: {
                 protocolVersion,
                 capabilities: {
-                    tools: { listChanged: false },
+                    tools: { listChanged: true },
                     resources: { listChanged: false, subscribe: false },
                     prompts: { listChanged: false },
                 },
@@ -350,22 +448,43 @@ export class AgentMcpServer {
             case "ping":
                 return {};
             case "tools/list":
-                return { tools: AGENT_TOOLS.map(describeTool) };
+                return { tools: this.tools().map(describeTool) };
             case "tools/call":
                 return this.callTool(params, sessionHeader);
-            case "resources/list":
+            case "resources/list": {
+                const plugins = (await this.options.host.listPluginGuides?.().catch(() => [])) ?? [];
                 return {
-                    resources: AGENT_GUIDE_CHAPTERS.map(chapter => ({
-                        uri: `${GUIDE_URI_PREFIX}${chapter}`,
-                        name: chapter,
-                        title: GUIDE_TITLES[chapter],
-                        mimeType: "text/markdown",
-                    })),
+                    resources: [
+                        ...AGENT_GUIDE_CHAPTERS.map(chapter => ({
+                            uri: `${GUIDE_URI_PREFIX}${chapter}`,
+                            name: chapter,
+                            title: GUIDE_TITLES[chapter],
+                            mimeType: "text/markdown",
+                        })),
+                        ...plugins.map(guide => ({
+                            uri: `${AGENT_PLUGIN_GUIDE_URI_PREFIX}${guide.pluginId}`,
+                            name: `plugin:${guide.pluginId}`,
+                            title: `${guide.name}: plugin guide`,
+                            mimeType: "text/markdown",
+                        })),
+                    ],
                 };
+            }
             case "resources/templates/list":
                 return { resourceTemplates: [] };
             case "resources/read": {
                 const uri = typeof params.uri === "string" ? params.uri : "";
+                if (uri.startsWith(AGENT_PLUGIN_GUIDE_URI_PREFIX)) {
+                    const pluginId = uri.slice(AGENT_PLUGIN_GUIDE_URI_PREFIX.length);
+                    const known = (await this.options.host.listPluginGuides?.().catch(() => [])) ?? [];
+                    const text = known.some(guide => guide.pluginId === pluginId)
+                        ? await this.options.host.readPluginGuide?.(pluginId)
+                        : null;
+                    if (!text) {
+                        throw new RpcError(-32002, `Resource not found: ${uri}`);
+                    }
+                    return { contents: [{ uri, mimeType: "text/markdown", text }] };
+                }
                 const chapter = uri.startsWith(GUIDE_URI_PREFIX) ? uri.slice(GUIDE_URI_PREFIX.length) : "";
                 if (!(AGENT_GUIDE_CHAPTERS as readonly string[]).includes(chapter)) {
                     throw new RpcError(-32002, `Resource not found: ${uri}`);
@@ -418,10 +537,10 @@ export class AgentMcpServer {
         const name = typeof params.name === "string" ? params.name : "";
         const startedAt = Date.now();
         const clientName = sessionHeader ? this.sessions.get(sessionHeader)?.clientName ?? null : null;
-        const descriptor = AGENT_TOOLS_BY_NAME.get(name);
+        const descriptor = this.findTool(name);
         let result: AgentCallResult;
         if (!descriptor) {
-            result = {
+            result = this.options.host.unknownTool?.(name) ?? {
                 ok: false,
                 error: { code: "unknown_tool", message: `There is no tool called "${name}".`, hint: "Call tools/list for the tools this server offers." },
             };

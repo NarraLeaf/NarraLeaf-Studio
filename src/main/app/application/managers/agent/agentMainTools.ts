@@ -8,7 +8,8 @@ import {
     type AgentSessionPolicy,
     type AgentWorkspaceState,
 } from "@shared/agent/protocol";
-import type { AgentGuideChapter } from "@shared/agent/tools";
+import { AGENT_GUIDE_CHAPTERS, type AgentGuideChapter } from "@shared/agent/tools";
+import { AGENT_PLUGIN_GUIDE_CHAPTER_PREFIX } from "@shared/agent/pluginTools";
 import type { AgentCallContext } from "./agentMcpServer";
 import type { AgentRoutingChoice } from "./agentRouting";
 import type { AgentProjectCreateInput } from "./agentProjectCreate";
@@ -39,6 +40,12 @@ export interface AgentMainToolHost {
     policy(): AgentSessionPolicy;
     endpointUrl(): string | null;
     readGuide(chapter: AgentGuideChapter): Promise<string | null>;
+    /** Enabled plugins that ship an agent guide chapter (`contributes.agentGuide`). */
+    listPluginGuides(): Promise<AgentPluginGuideEntry[]>;
+    /** One plugin's chapter, or null when the plugin ships none or it cannot be read. */
+    readPluginGuide(pluginId: string): Promise<string | null>;
+    /** The advertised names of the plugin tools a workspace reported, sorted. */
+    pluginToolsOf(handle: AgentWorkspaceHandle): string[];
     route(project: string | null): AgentRoutingChoice<AgentWorkspaceHandle>;
     /** Send a call to a workspace; timeouts and closed windows come back as refusals. */
     forward(handle: AgentWorkspaceHandle, tool: string, args: Record<string, unknown>, context: AgentCallContext): Promise<AgentCallResult>;
@@ -52,6 +59,9 @@ export interface AgentMainToolHost {
     /** Run a registered test headlessly on a project that is not open. */
     runHeadlessTest(projectPath: string, testId: string): Promise<AgentCallResult>;
 }
+
+/** A plugin's guide chapter, as the chapter list names it. */
+export type AgentPluginGuideEntry = { pluginId: string; name: string };
 
 export type AgentMainToolHandler = (
     host: AgentMainToolHost,
@@ -83,6 +93,7 @@ async function agentStatus(host: AgentMainToolHost): Promise<AgentCallResult> {
             responding: state !== null,
             paused: state?.paused ?? null,
             follow: state?.follow ?? null,
+            pluginTools: host.pluginToolsOf(handle),
         };
     }));
     const lines = [
@@ -93,7 +104,10 @@ async function agentStatus(host: AgentMainToolHost): Promise<AgentCallResult> {
             const flags = !project.responding
                 ? "not answering yet"
                 : [project.paused ? "PAUSED by the author - writes are refused until they resume" : "active", project.follow ? "follow mode on" : "follow mode off"].join(", ");
-            return `- ${project.name ?? path.basename(project.path)} (${project.path}): ${flags}`;
+            const tools = project.pluginTools.length > 0
+                ? `\n  Plugin tools here: ${project.pluginTools.join(", ")}. If your tool list lacks them, list tools again (your client may cache the list).`
+                : "";
+            return `- ${project.name ?? path.basename(project.path)} (${project.path}): ${flags}${tools}`;
         }),
         projects.length > 1 ? "More than one project is open: pass `project` (its path) to every workspace tool." : "",
         policy.writesEnabled
@@ -113,8 +127,26 @@ async function agentStatus(host: AgentMainToolHost): Promise<AgentCallResult> {
 }
 
 async function agentGuide(host: AgentMainToolHost, args: Record<string, unknown>): Promise<AgentCallResult> {
-    const chapter = args.chapter as AgentGuideChapter;
-    const text = await host.readGuide(chapter);
+    const chapter = typeof args.chapter === "string" ? args.chapter.trim() : "";
+    if (!chapter) {
+        return agentText(await chapterList(host), { chapters: [...AGENT_GUIDE_CHAPTERS], plugins: await host.listPluginGuides() });
+    }
+    if (chapter.startsWith(AGENT_PLUGIN_GUIDE_CHAPTER_PREFIX)) {
+        const pluginId = chapter.slice(AGENT_PLUGIN_GUIDE_CHAPTER_PREFIX.length).trim();
+        const guides = await host.listPluginGuides();
+        if (!guides.some(guide => guide.pluginId === pluginId)) {
+            return agentRefusal("not_found", `No enabled plugin called "${pluginId}" ships a guide chapter.`, await chapterList(host));
+        }
+        const text = await host.readPluginGuide(pluginId);
+        if (text === null) {
+            return agentRefusal("unavailable", `The guide chapter of the plugin ${pluginId} could not be read.`, "Work from that plugin's tool descriptions instead.");
+        }
+        return agentText(text, { chapter });
+    }
+    if (!(AGENT_GUIDE_CHAPTERS as readonly string[]).includes(chapter)) {
+        return agentRefusal("not_found", `There is no guide chapter called "${chapter}".`, await chapterList(host));
+    }
+    const text = await host.readGuide(chapter as AgentGuideChapter);
     if (text === null) {
         return agentRefusal(
             "unavailable",
@@ -123,6 +155,18 @@ async function agentGuide(host: AgentMainToolHost, args: Record<string, unknown>
         );
     }
     return agentText(text, { chapter });
+}
+
+/** Every chapter there is: Studio's own, then the ones the enabled plugins ship. */
+async function chapterList(host: AgentMainToolHost): Promise<string> {
+    const plugins = await host.listPluginGuides();
+    return [
+        `Chapters: ${AGENT_GUIDE_CHAPTERS.join(", ")}.`,
+        plugins.length > 0
+            ? `Plugin chapters: ${plugins.map(guide => `${AGENT_PLUGIN_GUIDE_CHAPTER_PREFIX}${guide.pluginId} (${guide.name})`).join(", ")}.`
+            : "No enabled plugin ships a chapter.",
+        "Pass one as `chapter`; start with `workflow`.",
+    ].join("\n");
 }
 
 async function projectCreate(host: AgentMainToolHost, args: Record<string, unknown>): Promise<AgentCallResult> {

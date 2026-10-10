@@ -5,6 +5,7 @@ import { freezeProjectWrites, thawProjectWrites } from "@/lib/app/writeFreeze";
 import { Services } from "../services";
 import { AgentBridgeService } from "./AgentBridgeService";
 import { AgentFollowService } from "./AgentFollowService";
+import type { AgentPluginToolDescriptor } from "@shared/agent/pluginTools";
 
 /**
  * The bridge's own decisions, with the tools stubbed out underneath: which calls are refused before
@@ -183,5 +184,75 @@ describe("AgentBridgeService", () => {
         expect(entries[0].clientName).toBe("test-client");
         expect(entries[0].durationMs).not.toBeNull();
         expect(entries[1].message).toContain("Write access");
+    });
+
+    describe("plugin tools", () => {
+        const descriptor = (write: boolean): AgentPluginToolDescriptor => ({
+            name: write ? "acme_notes__add" : "acme_notes__list",
+            title: write ? "Add notes" : "List notes",
+            description: "Plugin tool.",
+            side: "workspace",
+            write,
+            inputSchema: { type: "object", properties: { project: { type: "string" } } },
+            pluginId: "acme.notes",
+            pluginName: "Notes",
+            pluginToolName: write ? "acme.notes.add" : "acme.notes.list",
+        });
+
+        function withPluginTools(harness: ReturnType<typeof createHarness>) {
+            const ran: string[] = [];
+            for (const write of [false, true]) {
+                harness.bridge.pluginTools().register({
+                    descriptor: descriptor(write),
+                    run: async (_args, call) => {
+                        ran.push(`${write ? "add" : "list"}:${call.clientName}`);
+                        return { ok: true, content: [{ type: "text", text: "done" }] };
+                    },
+                });
+            }
+            return ran;
+        }
+
+        it("runs a registered plugin tool and logs it under the plugin's own title and id", async () => {
+            const harness = createHarness();
+            await harness.init();
+            const ran = withPluginTools(harness);
+            expect(codeOf(await harness.bridge.handle(call("acme_notes__add", {})))).toBe("ok");
+            expect(ran).toEqual(["add:test-client"]);
+            const [entry] = harness.bridge.getActivityLog().getEntries();
+            expect(entry).toMatchObject({ tool: "acme_notes__add", title: "Add notes", pluginId: "acme.notes", write: true, status: "ok" });
+        });
+
+        it("gates a writing plugin tool exactly as Studio's own: writes off, paused, frozen, live session", async () => {
+            const harness = createHarness();
+            await harness.init();
+            const ran = withPluginTools(harness);
+            expect(codeOf(await harness.bridge.handle(call("acme_notes__add", {}, WRITES_OFF)))).toBe("writes_disabled");
+            harness.follow.setPaused(true);
+            expect(codeOf(await harness.bridge.handle(call("acme_notes__add", {})))).toBe("paused");
+            harness.follow.setPaused(false);
+            freezeProjectWrites({ projectPath: "/project", reason: { kind: "manual" } });
+            expect(codeOf(await harness.bridge.handle(call("acme_notes__add", {})))).toBe("frozen");
+            // A reading one still runs: reads are never gated.
+            expect(codeOf(await harness.bridge.handle(call("acme_notes__list", {})))).toBe("ok");
+            thawProjectWrites();
+            const live = createHarness({ livePhase: "active" });
+            await live.init();
+            withPluginTools(live);
+            expect(codeOf(await live.bridge.handle(call("acme_notes__add", {})))).toBe("live_session");
+            expect(ran).toEqual(["list:test-client"]);
+        });
+
+        it("refuses a plugin the author switched off, and says the plugin is not loaded for a tool nobody registered", async () => {
+            const harness = createHarness();
+            await harness.init();
+            const ran = withPluginTools(harness);
+            const blocked = await harness.bridge.handle(call("acme_notes__list", {}, { ...WRITES_ON, blockedPluginIds: ["acme.notes"] }));
+            expect(codeOf(blocked)).toBe("unavailable");
+            const missing = await harness.bridge.handle(call("other_plugin__list", {}));
+            expect(codeOf(missing)).toBe("unknown_tool");
+            expect(missing.ok ? "" : missing.error.hint).toContain("not loaded in this project");
+            expect(ran).toEqual([]);
+        });
     });
 });

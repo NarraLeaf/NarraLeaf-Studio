@@ -71,4 +71,10 @@ export type AgentMainActivity = {
     hint?: string;
     durationMs: number;
     summary: string | null;
+    /** The plugin whose tool it was, for a call to a plugin tool. */
+    pluginId?: string;
+    /** That tool's own title, which the log shows in place of a Studio translation. */
+    title?: string;
+    /** Whether that tool writes; Studio's own tools are looked up in the tool table instead. */
+    write?: boolean;
 };

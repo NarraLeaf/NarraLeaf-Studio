@@ -1,9 +1,10 @@
+import path from "path";
 import { describe, expect, it, vi } from "vitest";
 import { AGENT_INTERNAL_TOOL_BUILD, AGENT_INTERNAL_TOOL_TEST, agentRefusal, agentText, type AgentCallResult } from "@shared/agent/protocol";
 import { AGENT_TOOLS, agentToolsForSide } from "@shared/agent/tools";
 import { chooseAgentWorkspace } from "./agentRouting";
 import { AGENT_MAIN_TOOL_HANDLERS, type AgentMainToolHost, type AgentWorkspaceHandle } from "./agentMainTools";
-import { guideFileCandidates, stripFrontMatter } from "./agentGuide";
+import { guideFileCandidates, pluginGuideFile, stripFrontMatter } from "./agentGuide";
 import { agentCallTimeoutMs } from "./agentCallTimeout";
 
 describe("main-side tool handlers", () => {
@@ -25,6 +26,9 @@ function fakeHost(overrides: Partial<AgentMainToolHost> = {}, open: AgentWorkspa
         policy: () => ({ writesEnabled: false, allowedImportRoots: [] }),
         endpointUrl: () => "http://127.0.0.1:1/mcp",
         readGuide: async () => null,
+        listPluginGuides: async () => [],
+        readPluginGuide: async () => null,
+        pluginToolsOf: () => [],
         route: (project: string | null) => chooseAgentWorkspace(
             project,
             open.map(handle => ({ window: handle, projectPath: handle.projectPath, lastFocusedAt: 0 })),
@@ -77,6 +81,44 @@ describe("agent_guide", () => {
         expect(guideFileCandidates("ui-design")).toEqual([["references", "ui-design.md"], ["references", "ui-design-guide.md"]]);
         expect(stripFrontMatter("---\nname: x\ndescription: y\n---\n\n# Body\n")).toBe("# Body\n");
         expect(stripFrontMatter("# No front matter")).toBe("# No front matter");
+    });
+
+    it("lists every chapter, the plugins' included, when none is named, and refuses an unknown one with the list", async () => {
+        const host = fakeHost({ listPluginGuides: async () => [{ pluginId: "narraleaf.gallery", name: "Gallery" }] });
+        const listed = await AGENT_MAIN_TOOL_HANDLERS.agent_guide(host, {}, ctx);
+        expect(listed.ok).toBe(true);
+        const text = listed.ok ? (listed.content[0] as { text: string }).text : "";
+        expect(text).toContain("workflow");
+        expect(text).toContain("plugin:narraleaf.gallery (Gallery)");
+        const unknown = await AGENT_MAIN_TOOL_HANDLERS.agent_guide(host, { chapter: "nope" }, ctx);
+        expect(unknown).toMatchObject({ ok: false, error: { code: "not_found" } });
+        expect(unknown.ok ? "" : unknown.error.hint).toContain("plugin:narraleaf.gallery");
+    });
+
+    it("serves a plugin's chapter as plugin:<id>, and only for a plugin that ships one", async () => {
+        const host = fakeHost({
+            listPluginGuides: async () => [{ pluginId: "narraleaf.gallery", name: "Gallery" }],
+            readPluginGuide: async pluginId => (pluginId === "narraleaf.gallery" ? "# Gallery" : null),
+        });
+        expect(await AGENT_MAIN_TOOL_HANDLERS.agent_guide(host, { chapter: "plugin:narraleaf.gallery" }, ctx))
+            .toEqual(agentText("# Gallery", { chapter: "plugin:narraleaf.gallery" }));
+        expect(await AGENT_MAIN_TOOL_HANDLERS.agent_guide(host, { chapter: "plugin:acme.other" }, ctx))
+            .toMatchObject({ ok: false, error: { code: "not_found" } });
+    });
+
+    it("keeps a plugin's guide path inside its package", () => {
+        expect(pluginGuideFile("/plugins/gallery", "agent/guide.md")).toBe(path.resolve("/plugins/gallery/agent/guide.md"));
+        expect(pluginGuideFile("/plugins/gallery", "../other/guide.md")).toBeNull();
+        expect(pluginGuideFile("/plugins/gallery", "agent/guide.txt")).toBeNull();
+    });
+});
+
+describe("agent_status with plugin tools", () => {
+    it("names the plugin tools each project offers", async () => {
+        const host = fakeHost({ pluginToolsOf: () => ["narraleaf_gallery__list"] }, [{ projectPath: "/games/a", name: "A" }]);
+        const result = await AGENT_MAIN_TOOL_HANDLERS.agent_status(host, {}, ctx);
+        expect(result.ok ? result.structured : null).toMatchObject({ projects: [{ pluginTools: ["narraleaf_gallery__list"] }] });
+        expect(result.ok ? (result.content[0] as { text: string }).text : "").toContain("narraleaf_gallery__list");
     });
 });
 

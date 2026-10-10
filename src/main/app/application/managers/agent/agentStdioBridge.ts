@@ -12,6 +12,15 @@ import { AGENT_MCP_STDIO_FLAG } from "@shared/agent/settings";
  * client drops the connection - so everything the bridge has to say goes through {@link AgentStdioBridgeIo.log},
  * which the process wires to standard error.
  *
+ * ## Notifications
+ *
+ * Once the client has sent `notifications/initialized`, the bridge opens the endpoint's notification
+ * stream (a GET asking for `text/event-stream`) and copies every JSON-RPC message on it to standard
+ * output - today that is `notifications/tools/list_changed`, sent when the plugin tools of the open
+ * projects change. A Studio without the stream answers 405 and the bridge simply goes without: the
+ * client sees a new tool list the next time it asks. A dropped stream is opened again with the next
+ * message the client sends.
+ *
  * Everything that touches the process (stdin, stdout, `fetch`, the settings file, starting Studio)
  * comes in through {@link AgentStdioBridgeIo}, so the whole of it runs under a unit test; the
  * Electron side is `agentStdioMain.ts`.
@@ -164,6 +173,10 @@ class AgentStdioBridge {
     private launchWaitSpent = false;
     private replaying: Promise<void> | null = null;
     private readonly inFlight = new Set<Promise<void>>();
+    /** The session a notification stream is open (or being opened) for. */
+    private streamSession: string | null = null;
+    private streamAbort: AbortController | null = null;
+    private closing = false;
 
     constructor(private readonly io: AgentStdioBridgeIo) {}
 
@@ -180,6 +193,9 @@ class AgentStdioBridge {
         while (this.inFlight.size > 0) {
             await Promise.all([...this.inFlight]);
         }
+        this.closing = true;
+        this.streamAbort?.abort();
+        this.streamAbort = null;
         const endpoint = this.endpoint;
         const session = this.session;
         if (!endpoint || !session) {
@@ -210,6 +226,92 @@ class AgentStdioBridge {
             this.initializeParams = (message as { params?: unknown }).params;
         }
         await this.forward(line, message, ids, false);
+        // The client is ready for notifications once it says it is initialized; a stream that was
+        // open and dropped is opened again with whatever the client sends next.
+        if (isInitializedNotification(message) || (this.streamSession === null && this.session && !isInitialize(message))) {
+            await this.openStream();
+        }
+    }
+
+    /**
+     * Open the endpoint's notification stream for the current session and relay it in the
+     * background. Resolves once the endpoint has answered the GET, so the order of requests is the
+     * order a reader of the log expects; the relaying itself is never waited for.
+     */
+    private async openStream(): Promise<void> {
+        const endpoint = this.endpoint;
+        const session = this.session;
+        if (!endpoint || !session || this.closing || this.streamSession === session) {
+            return;
+        }
+        this.streamSession = session;
+        this.streamAbort?.abort();
+        const controller = new AbortController();
+        this.streamAbort = controller;
+        let response: Response;
+        try {
+            response = await this.io.fetch(endpoint.url, {
+                method: "GET",
+                headers: { Accept: "text/event-stream", Authorization: `Bearer ${endpoint.token}`, "Mcp-Session-Id": session },
+                signal: controller.signal,
+            });
+        } catch {
+            return;
+        }
+        if (!response.ok || !response.body || !(response.headers.get("content-type") ?? "").includes("text/event-stream")) {
+            // An older Studio: no stream. The client still sees changes on its next tools/list.
+            await response.body?.cancel().catch(() => undefined);
+            return;
+        }
+        void this.relay(response.body, controller);
+    }
+
+    private async relay(body: ReadableStream<Uint8Array>, controller: AbortController): Promise<void> {
+        const reader = body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buffer = "";
+        try {
+            for (;;) {
+                const { done, value } = await reader.read();
+                if (done) {
+                    break;
+                }
+                buffer = (buffer + decoder.decode(value, { stream: true })).replace(/\r\n/g, "\n");
+                let boundary = buffer.indexOf("\n\n");
+                while (boundary !== -1) {
+                    this.relayEvent(buffer.slice(0, boundary));
+                    buffer = buffer.slice(boundary + 2);
+                    boundary = buffer.indexOf("\n\n");
+                }
+            }
+        } catch {
+            // Aborted on the way out, or Studio went away: the next message reopens it.
+        } finally {
+            if (this.streamAbort === controller) {
+                this.streamAbort = null;
+                this.streamSession = null;
+            }
+        }
+    }
+
+    /** One server-sent event: its `data:` lines joined, written out if they are a JSON-RPC message. */
+    private relayEvent(event: string): void {
+        const data = event
+            .split("\n")
+            .filter(line => line.startsWith("data:"))
+            .map(line => line.slice(5).replace(/^ /, ""))
+            .join("\n");
+        if (!data || this.closing) {
+            return;
+        }
+        try {
+            const message = JSON.parse(data);
+            if (isJsonRpcAnswer(message)) {
+                this.write(message);
+            }
+        } catch {
+            this.io.log("[Bridge] Ignored a notification that is not JSON.");
+        }
     }
 
     private async forward(body: string, message: unknown, ids: JsonRpcId[], retried: boolean): Promise<void> {
@@ -451,6 +553,11 @@ function requestIds(message: unknown): JsonRpcId[] {
         }
     }
     return ids;
+}
+
+function isInitializedNotification(message: unknown): boolean {
+    return !!message && typeof message === "object" && !Array.isArray(message)
+        && (message as { method?: unknown }).method === "notifications/initialized";
 }
 
 function isInitialize(message: unknown): boolean {

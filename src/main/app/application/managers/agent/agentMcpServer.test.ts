@@ -114,7 +114,7 @@ describe("AgentMcpServer", () => {
         });
     });
 
-    it("answers GET with 405 and DELETE with 200", async () => {
+    it("answers a GET that asks for no stream with 405, and DELETE with 200", async () => {
         const get = await request(port, { method: "GET" });
         expect(get.status).toBe(405);
         expect(get.headers.allow).toContain("POST");
@@ -133,7 +133,7 @@ describe("AgentMcpServer", () => {
         expect(reply.headers["mcp-session-id"]).toMatch(/^[0-9a-f-]{36}$/);
         const result = reply.json().result;
         expect(result.protocolVersion).toBe("2025-03-26");
-        expect(result.capabilities).toMatchObject({ tools: {}, resources: {}, prompts: {} });
+        expect(result.capabilities).toMatchObject({ tools: { listChanged: true }, resources: {}, prompts: {} });
         expect(result.serverInfo).toMatchObject({ name: "narraleaf-studio", version: "9.9.9" });
         expect(result.instructions).toContain("agent_status");
         expect(result.instructions).toContain("workflow");
@@ -204,10 +204,10 @@ describe("AgentMcpServer", () => {
     });
 
     it("refuses arguments that do not fit the schema without calling the host", async () => {
-        const reply = await rpc(port, "tools/call", { name: "agent_guide", arguments: { chapter: "nope" } });
+        const reply = await rpc(port, "tools/call", { name: "agent_guide", arguments: { chapter: 3 } });
         const result = reply.json().result;
         expect(result.isError).toBe(true);
-        expect(result.content[0].text).toMatch(/^invalid_args: chapter: must be one of/);
+        expect(result.content[0].text).toMatch(/^invalid_args: chapter: expected a string/);
         expect(result.content[0].text).toContain("\nHint: ");
         expect(host.callTool).not.toHaveBeenCalled();
     });
@@ -233,6 +233,79 @@ describe("AgentMcpServer", () => {
         expect(missing.contents[0].text).toContain("not installed");
         const bad = (await rpc(port, "resources/read", { uri: "file:///etc/passwd" })).json();
         expect(bad.error.code).toBe(-32002);
+    });
+
+    describe("plugin tools", () => {
+        const pluginTool = {
+            ...AGENT_TOOLS.find(tool => tool.name === "project_info")!,
+            name: "acme_notes__list",
+            title: "List notes",
+            description: "Lists notes.",
+            inputSchema: { type: "object" as const, properties: { query: { type: "string" as const }, project: { type: "string" as const } }, additionalProperties: false },
+            pluginId: "acme.notes",
+            pluginName: "Notes",
+            pluginToolName: "acme.notes.list",
+        };
+
+        it("lists what the host lists and routes a call by the host's lookup, schema checked first", async () => {
+            host.listTools = () => [...AGENT_TOOLS, pluginTool];
+            host.findTool = name => (name === pluginTool.name ? pluginTool : AGENT_TOOLS.find(tool => tool.name === name) ?? null);
+            const tools = (await rpc(port, "tools/list")).json().result.tools;
+            expect(tools.map((tool: { name: string }) => tool.name)).toContain("acme_notes__list");
+            const bad = (await rpc(port, "tools/call", { name: "acme_notes__list", arguments: { query: 1 } })).json().result;
+            expect(bad.isError).toBe(true);
+            expect(host.callTool).not.toHaveBeenCalled();
+            await rpc(port, "tools/call", { name: "acme_notes__list", arguments: { query: "x" } });
+            expect(host.callTool).toHaveBeenCalledWith(expect.objectContaining({ name: "acme_notes__list", pluginId: "acme.notes" }), { query: "x" }, { clientName: null });
+        });
+
+        it("answers a plugin tool that is not loaded with the host's own refusal", async () => {
+            host.unknownTool = name => agentRefusal("unknown_tool", `The plugin is not loaded in this project: ${name}`);
+            const result = (await rpc(port, "tools/call", { name: "gone__tool" })).json().result;
+            expect(result.content[0].text).toContain("not loaded in this project");
+        });
+
+        it("pushes tools/list_changed to every open notification stream", async () => {
+            const received = new Promise<string>((resolve, reject) => {
+                const req = http.request({
+                    host: "127.0.0.1",
+                    port,
+                    method: "GET",
+                    path: AGENT_MCP_PATH,
+                    headers: { Host: `127.0.0.1:${port}`, Authorization: `Bearer ${TOKEN}`, Accept: "text/event-stream" },
+                }, res => {
+                    expect(res.statusCode).toBe(200);
+                    expect(res.headers["content-type"]).toContain("text/event-stream");
+                    let text = "";
+                    res.on("data", chunk => {
+                        text += chunk.toString("utf8");
+                        if (text.includes("list_changed")) {
+                            resolve(text);
+                            req.destroy();
+                        } else if (text.includes("notifications")) {
+                            // The opening comment arrived: the stream is registered, so notify now.
+                            server.notifyToolsChanged();
+                        }
+                    });
+                });
+                req.on("error", error => (error.message.includes("socket hang up") ? undefined : reject(error)));
+                req.end();
+            });
+            const text = await received;
+            const data = text.split("\n").find(line => line.startsWith("data: "))!;
+            expect(JSON.parse(data.slice("data: ".length))).toEqual({ jsonrpc: "2.0", method: "notifications/tools/list_changed" });
+        });
+
+        it("serves a plugin's guide chapter as a resource", async () => {
+            host.listPluginGuides = async () => [{ pluginId: "acme.notes", name: "Notes" }];
+            host.readPluginGuide = async pluginId => (pluginId === "acme.notes" ? "# Notes guide" : null);
+            const list = (await rpc(port, "resources/list")).json().result.resources;
+            expect(list.map((resource: { uri: string }) => resource.uri)).toContain("narraleaf://guide/plugin/acme.notes");
+            const read = (await rpc(port, "resources/read", { uri: "narraleaf://guide/plugin/acme.notes" })).json().result;
+            expect(read.contents[0].text).toBe("# Notes guide");
+            const unknown = (await rpc(port, "resources/read", { uri: "narraleaf://guide/plugin/other.plugin" })).json();
+            expect(unknown.error.code).toBe(-32002);
+        });
     });
 
     it("offers the make_game prompt with the workflow and the brief", async () => {

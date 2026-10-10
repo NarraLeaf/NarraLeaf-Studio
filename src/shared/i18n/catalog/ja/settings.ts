@@ -494,6 +494,11 @@ export const settings = {
         importRootsEmpty: "ほかのフォルダーはありません",
         addFolder: "フォルダーを追加…",
         removeFolder: "削除",
+        pluginTools: "プラグインのツール",
+        pluginToolsHint: "有効なプラグインがエージェントに提供するツールです。ここでオフにしたプラグインのツールはエージェントに表示されず、呼び出しも拒否されます",
+        pluginToolsEmpty: "エージェント向けのツールを提供する有効なプラグインはありません",
+        pluginToolsCount: "ツール {tools} 個（うちプロジェクトを変更できるもの {writes} 個）",
+        pluginToolsAllow: "{plugin} のエージェント用ツールを許可",
     },
     data: {
         projectTrust: {

@@ -5,6 +5,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { Button, IconButton, Input, Switch } from "@/lib/components/elements";
 import { cn } from "@/lib/utils/cn";
 import { copyTextToClipboard } from "@shared/utils/copyText";
+import { pluginDisplayName } from "@shared/utils/pluginDisplayText";
 import {
     AGENT_PORT_MAX,
     AGENT_PORT_MIN,
@@ -41,7 +42,7 @@ const CONFIG_KINDS: {
  * shared control width on the right), so this section reads like the ones around it.
  */
 export function AgentAccessPanel() {
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
     const [settings, setSettings] = useState<AgentSettingsSnapshot | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
@@ -254,6 +255,43 @@ export function AgentAccessPanel() {
                                 </IconButton>
                             </div>
                         ))}
+                    </div>
+                )}
+            </div>
+            {/*
+              * Plugins that offer agent tools, each with its own switch. On unless the author turns
+              * one off: the install prompt already said the plugin offers them, and nothing they do
+              * writes unless "Allow agents to make changes" is on as well.
+              */}
+            <div className="rounded-md px-2 py-2">
+                <div className="flex min-w-0 flex-col gap-1">
+                    <span className="text-sm font-medium text-fg">{t("settings.agent.pluginTools")}</span>
+                    <span className="text-xs text-fg-subtle">{t("settings.agent.pluginToolsHint")}</span>
+                </div>
+                {settings.pluginTools.length === 0 ? (
+                    <p className="mt-2 text-xs text-fg-subtle">{t("settings.agent.pluginToolsEmpty")}</p>
+                ) : (
+                    <div className="mt-2 flex flex-col">
+                        {settings.pluginTools.map(plugin => {
+                            const name = pluginDisplayName(plugin, locale);
+                            return (
+                                <div key={plugin.pluginId} className="flex h-11 items-center gap-3 rounded-md px-2 hover:bg-fill">
+                                    <div className="flex min-w-0 flex-1 flex-col">
+                                        <span className="truncate text-sm text-fg" data-tip={plugin.pluginId}>{name}</span>
+                                        <span className="truncate text-xs text-fg-subtle">
+                                            {t("settings.agent.pluginToolsCount", { tools: plugin.tools, writes: plugin.writeTools })}
+                                        </span>
+                                    </div>
+                                    <Switch
+                                        checked={plugin.allowed}
+                                        disabled={busy}
+                                        onCheckedChange={checked => void update({ pluginTools: { pluginId: plugin.pluginId, allowed: checked } })}
+                                        size="md"
+                                        aria-label={t("settings.agent.pluginToolsAllow", { plugin: name })}
+                                    />
+                                </div>
+                            );
+                        })}
                     </div>
                 )}
             </div>

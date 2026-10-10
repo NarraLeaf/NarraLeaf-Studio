@@ -6,6 +6,7 @@ import type { FsTextEncoding } from "@shared/types/textEncoding";
 import type { AgentCallRequest, AgentCallResult } from "@shared/agent/protocol";
 import type { AgentSettingsPatch, AgentSettingsSnapshot } from "@shared/agent/settings";
 import type { AgentCopyConfigKind, AgentMainActivity, AgentQuickState, AgentQuickTogglePatch } from "@shared/agent/workspaceAccess";
+import type { AgentPluginToolDescriptor } from "@shared/agent/pluginTools";
 import type { LibraryExchangeKind } from "@shared/story/libraryExchange";
 import type { AssetUrlDirectory, BlueprintPersistenceProjectRef, RendererErrorReport, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
@@ -346,6 +347,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         revealExportedSkill: () => ipcClient.invoke(IPCEventType.agentRevealExportedSkill, {}),
         onActivity: (handler: (activity: AgentMainActivity) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceAgentActivity, handler),
+        reportPluginTools: (tools: readonly AgentPluginToolDescriptor[]) =>
+            ipcClient.send(IPCEventType.agentReportPluginTools, { tools: [...tools] }),
     },
     projectTrust: {
         query: (projectPath: string) =>

@@ -538,6 +538,11 @@ export const settings = {
         importRootsEmpty: "No other folders.",
         addFolder: "Add folder…",
         removeFolder: "Remove",
+        pluginTools: "Plugin tools",
+        pluginToolsHint: "Tools the enabled plugins offer agents. A plugin switched off here has its tools hidden from agents and their calls refused.",
+        pluginToolsEmpty: "No enabled plugin offers agent tools.",
+        pluginToolsCount: "{tools} tools, {writes} of which can change the project",
+        pluginToolsAllow: "Allow the agent tools of {plugin}",
     },
     data: {
         projectTrust: {

@@ -390,6 +390,7 @@ export const workspace = {
             blueprintEdit: "ブループリントの編集",
             replaceText: "テキストの置換",
             agentEdit: "エージェントの編集",
+            agentPluginEdit: "エージェント: {tool}",
         },
     },
     // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.
@@ -447,6 +448,7 @@ export const workspace = {
             },
         },
         log: {
+            pluginTool: "プラグイン {plugin} のツール",
             filter: {
                 all: "すべて",
                 writes: "変更のみ",

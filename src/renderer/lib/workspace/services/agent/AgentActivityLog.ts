@@ -40,6 +40,20 @@ export type AgentActivityEntry = {
     target: string | null;
     /** Where the call's first write landed, for a row that opens it. */
     reveal: AgentWriteTarget | null;
+    /** The plugin whose tool this was; absent for Studio's own tools. */
+    pluginId?: string;
+    /** A plugin tool's own title, shown where a Studio tool shows its translated one. */
+    title?: string;
+};
+
+/**
+ * What the log cannot read off the tool table: whether a plugin tool writes, whose it is and what
+ * it is called. Studio's own tools need none of it.
+ */
+export type AgentActivityToolMeta = {
+    write?: boolean;
+    pluginId?: string;
+    title?: string;
 };
 
 export type AgentActivityFilter = "all" | "writes" | "failures";
@@ -93,7 +107,7 @@ export class AgentActivityLog {
     };
 
     /** A call the bridge is starting. Returns the id {@link end} takes. Internal calls get -1 and no row. */
-    public begin(tool: string, clientName: string | null): number {
+    public begin(tool: string, clientName: string | null, meta?: AgentActivityToolMeta): number {
         if (isInternalAgentTool(tool)) {
             return -1;
         }
@@ -103,12 +117,12 @@ export class AgentActivityLog {
             startedAt: this.now(),
             tool,
             clientName,
-            write: AGENT_TOOLS_BY_NAME.get(tool)?.write ?? false,
             side: "workspace",
             status: "running",
             durationMs: null,
             target: null,
             reveal: null,
+            ...toolFacts(tool, meta),
         });
         return id;
     }
@@ -132,7 +146,7 @@ export class AgentActivityLog {
     }
 
     /** A whole call at once: one the bridge refused before it started, or one main reports. */
-    public record(tool: string, clientName: string | null, side: "workspace" | "main", finish: Finish): void {
+    public record(tool: string, clientName: string | null, side: "workspace" | "main", finish: Finish, meta?: AgentActivityToolMeta): void {
         if (isInternalAgentTool(tool)) {
             return;
         }
@@ -141,7 +155,7 @@ export class AgentActivityLog {
             startedAt: this.now() - finish.durationMs,
             tool,
             clientName,
-            write: AGENT_TOOLS_BY_NAME.get(tool)?.write ?? false,
+            ...toolFacts(tool, meta),
             side,
             status: "running",
             durationMs: null,
@@ -159,7 +173,7 @@ export class AgentActivityLog {
             hint: activity.hint,
             durationMs: activity.durationMs,
             target: activity.summary,
-        });
+        }, activity.pluginId ? { pluginId: activity.pluginId, title: activity.title, write: activity.write } : undefined);
     }
 
     public clear(): void {
@@ -183,6 +197,14 @@ export class AgentActivityLog {
     }
 }
 
+function toolFacts(tool: string, meta: AgentActivityToolMeta | undefined): Pick<AgentActivityEntry, "write" | "pluginId" | "title"> {
+    return {
+        write: meta?.write ?? AGENT_TOOLS_BY_NAME.get(tool)?.write ?? false,
+        ...(meta?.pluginId ? { pluginId: meta.pluginId } : {}),
+        ...(meta?.title ? { title: meta.title } : {}),
+    };
+}
+
 function applyFinish(entry: AgentActivityEntry, finish: Finish): AgentActivityEntry {
     return {
         ...entry,
@@ -202,6 +224,7 @@ export function agentActivityToJsonl(entries: readonly AgentActivityEntry[]): st
     return entries.map(entry => JSON.stringify({
         time: new Date(entry.startedAt).toISOString(),
         tool: entry.tool,
+        ...(entry.pluginId ? { plugin: entry.pluginId } : {}),
         client: entry.clientName,
         side: entry.side,
         write: entry.write,

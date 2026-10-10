@@ -126,6 +126,11 @@ export type AgentSessionPolicy = {
     writesEnabled: boolean;
     /** Directories `assets_import` may read from (absolute, normalised). The project directory is always allowed. */
     allowedImportRoots: string[];
+    /**
+     * Plugins whose agent tools the author switched off in Settings > Agent access. Main already
+     * refuses their calls; the workspace refuses them again, so the list holds on both hops.
+     */
+    blockedPluginIds?: string[];
 };
 
 /** The workspace's own state, reported to main for `agent_status` and the status bar. */
@@ -151,4 +156,4 @@ export const AGENT_MCP_SERVER_NAME = "narraleaf-studio";
 export const AGENT_MCP_PATH = "/mcp";
 
 /** Default port; the setting may pick another. */
-export const AGENT_MCP_DEFAULT_PORT = 47219;
+export const AGENT_MCP_DEFAULT_PORT = 54080;

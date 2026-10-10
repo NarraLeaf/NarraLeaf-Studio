@@ -132,3 +132,25 @@ export class AgentRevealExportedSkillHandler extends IPCHandler<IPCEventType.age
         }
     }
 }
+
+/**
+ * A workspace reporting the agent tools its plugins registered. Workspace windows only: a game
+ * window runs project code and has no plugin studio entries to report. The manager reads every
+ * descriptor defensively and forgets the window's tools when it closes.
+ */
+export class AgentReportPluginToolsHandler extends IPCHandler<IPCEventType.agentReportPluginTools> {
+    readonly name = IPCEventType.agentReportPluginTools;
+    readonly type = IPCMessageType.message;
+
+    public handle(
+        window: AppWindow,
+        data: IPCEvents[IPCEventType.agentReportPluginTools]["data"],
+    ): RequestStatus<never> {
+        if (window.getWindowType() !== WindowAppType.Workspace) {
+            window.app.logger.warn(`[Agent] Ignored a plugin tool report from a ${window.getWindowType()} window`);
+            return this.success(void 0 as never);
+        }
+        window.getApp().getAgentManager().reportPluginTools(window as AppWindow<WindowAppType.Workspace>, data?.tools);
+        return this.success(void 0 as never);
+    }
+}

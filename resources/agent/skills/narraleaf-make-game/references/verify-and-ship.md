@@ -125,9 +125,9 @@ Tell the author, in this order:
    added.
 2. **Placeholders** - every placeholder asset, what it stands for, and its name, so they can replace
    it (in Studio, replacing an asset's file keeps every reference).
-3. **For them to do in Studio** - leftover skeleton content you could not delete, the gallery (Extra)
-   contents, files that need converting, the app icon, signing, anything you could not do with the
-   tools. Say which languages the game offers (`project_info`) and which are untranslated.
+3. **For them to do in Studio** - leftover skeleton content you could not delete, files that need
+   converting, the app icon, signing, anything you could not do with the tools. Say which languages
+   the game offers (`project_info`) and which are untranslated.
 4. **How to run it** - the file to open, from the build result's `artifacts` (the `.app`, installer or
    app folder); an unsigned macOS build has to be allowed once in System Settings > Privacy &
    Security. Or press Play in Studio.
