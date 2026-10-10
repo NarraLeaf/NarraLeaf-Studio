@@ -8,6 +8,7 @@ import {
     type LocalizationKeysDocument,
 } from "@shared/types/localization";
 import { createEmptyVoiceDocument, DEFAULT_VOICE_CONFIGURATION, type VoiceConfiguration } from "@shared/types/voice";
+import { hashSourceText } from "@shared/utils/localizationText";
 import { HistoryService } from "../history/HistoryService";
 import { projectHistoryScope } from "../history/historyScopes";
 import { Services } from "../services";
@@ -269,6 +270,36 @@ describe("localization tools", () => {
         expect(result.written).toBe(0);
         expect((result.changedSinceRead as { id: string; source: string }[])[0]).toMatchObject({ id: "t-a", source: "It was snowing." });
         expect(harness.steps()).toBe(0);
+    });
+
+    it("skips a unit whose translation the author typed since it was listed, and leaves the author's words", async () => {
+        const harness = createHarness();
+        const listed = (structured(await harness.run(localizationList, { language: "ja", origin: "story" })).units as ListedUnit[]);
+        const rev = (id: string) => listed.find(unit => unit.id === id)!.rev;
+        harness.localization.applyUnitEdits("ja", {
+            set: { "t-a": { target: "雨が降っていた。", sourceHash: hashSourceText("It was raining."), status: "reviewed" } },
+            remove: [],
+        });
+        const result = structured(await harness.run(localizationSet, {
+            language: "ja",
+            entries: [{ unitId: "t-a", target: "雨", rev: rev("t-a") }, { unitId: "t-b", target: "やあ", rev: rev("t-b") }],
+        }));
+        expect(result.written).toBe(1);
+        expect(result.changedSinceRead).toBeUndefined();
+        expect((result.translationChangedSinceRead as { id: string; target: string; status: string }[])).toEqual([
+            expect.objectContaining({ id: "t-a", target: "雨が降っていた。", status: "reviewed" }),
+        ]);
+        const units = harness.localization.getDocumentIfLoaded("ja")!.units;
+        expect(units["t-a"]).toMatchObject({ target: "雨が降っていた。", status: "reviewed" });
+        expect(units["t-b"]).toMatchObject({ target: "やあ" });
+
+        // Listed again, the unit carries the author's words and a rev that lets an overwrite through.
+        const again = (structured(await harness.run(localizationList, { language: "ja", origin: "story" })).units as ListedUnit[]);
+        const fresh = again.find(unit => unit.id === "t-a")!;
+        expect(fresh.target).toBe("雨が降っていた。");
+        expect(fresh.rev).not.toBe(rev("t-a"));
+        const overwrite = structured(await harness.run(localizationSet, { language: "ja", entries: [{ unitId: "t-a", target: "雨", rev: fresh.rev }] }));
+        expect(overwrite.written).toBe(1);
     });
 });
 
