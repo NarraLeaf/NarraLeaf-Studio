@@ -22,7 +22,7 @@ NarraLeaf-Skills/
 ## 1. Switch on agent access in Studio
 
 1. Open NarraLeaf Studio.
-2. **Settings -> Agent access**: switch on agent access.
+2. **Settings -> Agent access** (Chinese Studio: 设置 → 智能体接入; also the menu bar's *Agent* / *智能体* menu): switch on agent access.
 3. Switch on **Allow agents to make changes** when you want the agent to edit (it can read without).
 4. Under **Folders agents may import from**, add the folder that holds your art and audio.
 5. **Copy configuration** gives you the address (`http://127.0.0.1:<PORT>/mcp`, port 47219 unless you

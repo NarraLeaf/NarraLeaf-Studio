@@ -65,6 +65,10 @@ paused, and the directories you may import files from.
   that folder under *Settings -> Agent access* (or to copy the files into the project folder).
 - **No project open** - fine for a new game (step 2). For an existing one, ask for its folder.
 
+Name Studio's controls in the author's language. In Chinese Studio the settings section is
+*设置 → 智能体接入* (switches 允许智能体连接 / 允许智能体修改工程), and the same switches are in the
+menu bar's *智能体* menu; in Japanese, *設定 → エージェント連携*.
+
 Checkpoint: you know whether you can write, which project is open, and where assets may come from.
 
 ## Step 1 - Brief
