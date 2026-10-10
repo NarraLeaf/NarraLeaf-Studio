@@ -95,7 +95,7 @@ describe("the Agent menu's rows", () => {
         expect(byId.get(AGENT_MENU_ACTIONS.allowWrites)?.checked).toBe(false);
         expect(byId.get(AGENT_MENU_ACTIONS.pause)?.label).toBe("暂停 Agent");
         expect(buildAgentMenuItems(input({ paused: true })).filter(isActionMenuAction).find(item => item.id === AGENT_MENU_ACTIONS.pause)?.label)
-            .toBe("继续 Agent");
+            .toBe("恢复 Agent");
     });
 
     it("holds the access switches until main has answered", () => {
