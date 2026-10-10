@@ -352,13 +352,21 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         return this.workspaceIsUp;
     }
 
-    /** Invoke `fn` with the load outcome - immediately if already reported. */
-    public onLoadResult(fn: (ok: boolean) => void): void {
+    /**
+     * Invoke `fn` with the load outcome - immediately if already reported. Cancelling the token
+     * drops a callback still waiting, for a caller that stopped caring (it timed out, say).
+     */
+    public onLoadResult(fn: (ok: boolean) => void): AppEventToken {
         if (this.loadResult !== null) {
             fn(this.loadResult);
-            return;
+            return { cancel: () => undefined };
         }
         this.loadResultCallbacks.push(fn);
+        return {
+            cancel: () => {
+                this.loadResultCallbacks = this.loadResultCallbacks.filter(callback => callback !== fn);
+            },
+        };
     }
 
     /**

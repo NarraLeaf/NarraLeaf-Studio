@@ -34,7 +34,7 @@
 
 import type { StoryBlockId, StoryDocument, StoryScene } from "@shared/types/story";
 import type { StoryFileDiagnostic } from "./dsl/ast";
-import { sameRowContent } from "./dsl/equal";
+import { sameRowContent, sameValue } from "./dsl/equal";
 import type { KeyedLintFinding } from "./check";
 
 export type ApplySummary = {
@@ -93,7 +93,8 @@ export function summariseApply(
     if (settings) {
         const changedSettings: Record<SceneSettingName, boolean> = {
             background: (existing.defaultBackgroundAssetId ?? null) !== (next.defaultBackgroundAssetId ?? null),
-            music: JSON.stringify(existing.bgm ?? null) !== JSON.stringify(next.bgm ?? null),
+            // By value, as `withMusic` decides it: key order is the scene panel's or the reader's.
+            music: !sameValue(existing.bgm ?? null, next.bgm ?? null),
         };
         for (const setting of ["background", "music"] as const) {
             if (changedSettings[setting]) {

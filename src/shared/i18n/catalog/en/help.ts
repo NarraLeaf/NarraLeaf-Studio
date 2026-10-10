@@ -108,9 +108,10 @@ export const help = {
             title: "Keyboard and Mouse",
             body:
                 "Shortcuts and Mouse Actions lists every shortcut and mouse action in Studio, grouped by editor, "
-                + "including those that apply only while a particular editor is open. Opened from an editor, it "
-                + "starts at that editor's group.\n"
+                + "including those that apply only while a particular editor is open. What works in the focused "
+                + "editor or panel is listed first.\n"
                 + "\n"
+                + "- The search box filters the list by name, key or group.\n"
                 + "- Every shortcut can be changed in Settings, under Shortcuts. Mouse actions, and the few keys "
                 + "that Settings does not list, are fixed.\n"
                 + "- A changed shortcut is updated in the sheet, the menus and the command palette.",

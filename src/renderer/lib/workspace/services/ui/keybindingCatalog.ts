@@ -345,6 +345,7 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     entry("assets.copy", "mod+c", "assets.shortcuts.copy", CATEGORY.assets, Copy),
     entry("assets.cut", "mod+x", "assets.shortcuts.cut", CATEGORY.assets, Scissors),
     entry("assets.paste", "mod+v", "assets.shortcuts.paste", CATEGORY.assets, ClipboardPaste),
+    entry("assets.delete", "delete", "assets.shortcuts.delete", CATEGORY.assets, Trash2),
     entry("assets.rename", "f2", "assets.shortcuts.rename", CATEGORY.assets, PenLine),
 
     // --- Audio preview -------------------------------------------------------

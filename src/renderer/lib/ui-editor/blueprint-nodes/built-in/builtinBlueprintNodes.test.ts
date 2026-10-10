@@ -8293,9 +8293,11 @@ describe("character data nodes", () => {
         expect(resolveSpeakerColor("#fff")).toEqual({ r: 255, g: 255, b: 255, a: 1 });
     });
 
-    it("yields opaque white for a speaker with no colour, a narrator, and a broken value", () => {
+    it("yields opaque white for a narrator, no value, and a broken value", () => {
         const white = { r: 255, g: 255, b: 255, a: 1 };
-        // The three ways "no colour" reaches the pin: unset on the profile, nobody speaking, garbage.
+        // The ways "no colour" still reaches the pin: a narration line (or a palette with no primary),
+        // nothing staged at all, garbage. A speaker whose profile has no colour never arrives here
+        // empty: the dialog bridge paints them in the palette's primary (`blueprintSpeakerColor`).
         expect(resolveSpeakerColor(null)).toEqual(white);
         expect(resolveSpeakerColor(undefined)).toEqual(white);
         expect(resolveSpeakerColor("not-a-colour")).toEqual(white);

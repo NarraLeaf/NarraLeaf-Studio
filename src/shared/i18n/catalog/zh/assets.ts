@@ -570,6 +570,7 @@ export const assets = {
         copy: "复制选中的资产",
         cut: "剪切选中的资产",
         paste: "粘贴资产",
+        delete: "删除选中的资产或分组",
         rename: "重命名选中的资产或分组",
     },
     previewEditor: {

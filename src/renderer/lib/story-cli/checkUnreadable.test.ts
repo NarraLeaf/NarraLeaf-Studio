@@ -107,3 +107,19 @@ describe("story check over a document below the schema floor", () => {
         expect(result.out).toContain("The corridor");
     });
 });
+
+describe("story stories over a document below the schema floor", () => {
+    it("lists the stories it read before the one it could not, then says why, in that order", async () => {
+        // One log for both streams, the way a terminal shows them.
+        const log: string[] = [];
+        const code = await runCli(["stories", "--project", projectDir], {
+            out: text => log.push(`out ${text}`),
+            err: text => log.push(`err ${text}`),
+        });
+
+        expect(code).toBe(2);
+        expect(log).toHaveLength(2);
+        expect(log[0]).toMatch(/^out +First Day +1 scene$/);
+        expect(log[1]).toMatch(/^err .*v\d+/);
+    });
+});

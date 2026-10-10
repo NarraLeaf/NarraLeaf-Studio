@@ -399,11 +399,22 @@ export class App extends BaseApp {
         return this.teamManager;
     }
 
-    /** Everything Studio knows about newer versions of itself. See {@link UpdateManager}. */
+    /** Agent access: the author's switches, the MCP endpoint and the hop to a workspace. See {@link AgentManager}. */
     public getAgentManager(): AgentManager {
         return this.agentManager;
     }
 
+    /** The base app's ports, and the agent MCP endpoint's while it is listening. */
+    public override ownLoopbackPorts(): number[] {
+        const ports = super.ownLoopbackPorts();
+        const agentPort = this.agentManager?.livePort() ?? null;
+        if (agentPort !== null) {
+            ports.push(agentPort);
+        }
+        return ports;
+    }
+
+    /** Everything Studio knows about newer versions of itself. See {@link UpdateManager}. */
     public getUpdateManager(): UpdateManager {
         return this.updateManager;
     }
@@ -2736,6 +2747,7 @@ function agentAccessPromptHeight(props: WindowProps[WindowAppType.AgentAccessPro
         }
         case "fullAccess":
             return 300;
+        case "enable":
         case "allowWrites":
             return 240;
         case "exportOverwrite":
