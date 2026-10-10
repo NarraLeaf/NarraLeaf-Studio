@@ -1177,7 +1177,8 @@ export const lint = {
             messageUnnamed: "A variable with no declaration is always within {bound} here, so this condition cannot hold",
             help:
                 "No value the variable can have at this row makes the condition true. Only comparisons of a "
-                + "number variable with a written number are checked, such as affection >= 50. The range in the "
+                + "number variable with a written number are checked, such as affection >= 50. Persistent variables "
+                + "carry their value over from the previous run and are not checked. The range in the "
                 + "finding counts the variable's default and every change the story can make before this row.\n"
                 + "\n"
                 + "In the game the condition is always false: an /if branch never runs, an /until never ends "

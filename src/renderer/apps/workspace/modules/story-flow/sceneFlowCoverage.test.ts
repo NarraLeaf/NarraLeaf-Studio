@@ -281,6 +281,29 @@ describe("computeSceneFlowCoverage", () => {
         expect(coverageOf(doc).reachedEndingIds.has("e1")).toBe(true);
     });
 
+    it("takes an arm a persistent counter guards, since a run starts it where the last one left it", () => {
+        // A clear count gating a second-run ending: 0 is only what the first run on a machine sees.
+        const plays: StoryExpr = { kind: "var", target: { scope: "persistent", variableId: "plays" }, name: "plays" };
+        const doc = document([
+            scene("a", "Start", [
+                {
+                    id: "plays",
+                    kind: "declaration",
+                    parentId: null,
+                    childrenIds: [],
+                    payload: { scope: "persistent", name: "plays", valueType: "number", storageKey: "plays", defaultValue: 0 },
+                } as StoryBlock,
+                jump("j1", "end"),
+            ]),
+            scene("end", "End", [
+                ...ifGroup("if1", "arm1", { kind: "binary", op: ">=", left: plays, right: { kind: "literal", value: 1 } }, ["e1"]),
+                ending("e1", "Second-run End"),
+            ]),
+        ]);
+
+        expect(coverageOf(doc).reachedEndingIds.has("e1")).toBe(true);
+    });
+
     it("terminates on a loop that keeps moving the counter", () => {
         // `b` jumps back to itself through `a`, adding each lap. The counter has no bound, so the
         // budget widens it to unknown and the guard downstream stops pruning.
