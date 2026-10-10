@@ -18,6 +18,11 @@ import {
 
 vi.mock("@/lib/app/writeFreeze", () => ({ getProjectWriteFreeze: () => null }));
 
+// A PSD import reads and bakes through main; what is recorded is whether it got as far as baking.
+const bridge = vi.hoisted(() => ({ readPsd: vi.fn(), bakePsd: vi.fn() }));
+vi.mock("@/lib/app/bridge", () => ({ getInterface: () => bridge }));
+vi.mock("./agentFolderRequest", () => ({ ensureAgentMayReadPaths: async () => undefined }));
+
 // The compositor draws on an OffscreenCanvas, which node has not got. What it is handed - which
 // bitmaps, in which order, at which size - is what the preview decides, so that is what is recorded.
 const drawCalls: { sizes: string[]; maxSize: number | undefined }[] = [];
@@ -259,6 +264,33 @@ describe("cold switch", () => {
 });
 
 describe("character_layers_import", () => {
+    it("refuses a PSD import before baking or importing anything", async () => {
+        const h = harness({ preset: { id: "mei-id", name: "Mei", poses: ["normal"] } });
+        const layer = (path: string[]) => ({ path, name: path[path.length - 1], blendMode: "normal", opacity: 1, hidden: false, clipping: false });
+        bridge.readPsd.mockResolvedValue({
+            success: true,
+            data: {
+                document: {
+                    fileName: "mei.psd",
+                    width: 1000,
+                    height: 1800,
+                    layers: [
+                        layer(["body"]),
+                        { ...layer(["expression"]), children: [layer(["expression", "normal"]), layer(["expression", "smile"])] },
+                    ],
+                },
+            },
+        });
+        bridge.bakePsd.mockReset();
+        // Mei is a preset character: making her layered is a cold switch the agent has not confirmed.
+        const refused = await h.refusal(characterLayersImport, { character: "Mei", psd: "D:/art/mei.psd" });
+        expect(refused.code).toBe("unavailable");
+        expect(refused.hint).toMatch(/confirmSwitch: true/);
+        expect(bridge.bakePsd).not.toHaveBeenCalled();
+        expect(h.cast.getCharacter("mei-id")!.profile.appearance.getKind()).toBe("preset");
+        expect(h.undoDepth()).toBe(0);
+    });
+
     it("builds the stack from files named <character>_<layer>_<tag> and writes it as one step", async () => {
         const { cast, run, undoDepth } = harness({ images: { lin_body: png(1000, 1800) } });
         const out = await run(characterLayersImport, {

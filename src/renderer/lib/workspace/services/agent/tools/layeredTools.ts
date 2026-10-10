@@ -59,6 +59,7 @@ import {
     readOptionalStringArray,
     readString,
     refuse,
+    AgentRefusal,
     type AgentToolContext,
     type AgentToolHandler,
 } from "../agentCall";
@@ -171,6 +172,12 @@ type LayeredWrite = {
     psdFingerprint?: (appearance: LayeredAppearance) => PsdFingerprint;
     /** Extra structured fields for the answer. */
     extra?: Record<string, unknown>;
+    /**
+     * Check everything that can refuse and write nothing, with the spec's image references standing
+     * for images that do not exist yet and every layer taken to be `canvas` - a PSD's stack before its
+     * layers are baked and imported, so a refusal comes before anything reaches the project.
+     */
+    preflight?: { canvas: PixelSize };
 };
 
 async function writeLayered(tool: Pick<AgentToolContext, "ctx" | "request" | "follow">, input: LayeredWrite): Promise<AgentCallResult> {
@@ -187,20 +194,29 @@ async function writeLayered(tool: Pick<AgentToolContext, "ctx" | "request" | "fo
     }
     const previous = character?.profile.appearance.toJSON() ?? null;
 
-    const result = buildLayeredAppearance(previous, input.spec, ref => resolveAsset(ctx, ref, AssetType.Image).id, null);
+    const resolveImage = input.preflight
+        ? (ref: string) => ref
+        : (ref: string) => resolveAsset(ctx, ref, AssetType.Image).id;
+    const result = buildLayeredAppearance(previous, input.spec, resolveImage, null);
     if ("errors" in result) {
         throw refuse("not_found", `Some images do not resolve:\n${result.errors.map(line => `  ${line}`).join("\n")}`, "Call assets_list for the names, or import the files with assets_import first.");
     }
     const { appearance, removedTagIds, placements } = result.built;
 
     // Measure every image once: the canvas check and the transparency warning read the same bytes.
+    // A preflight has no images yet: every layer is the canvas it will be baked at.
     const facts = new Map<string, ImageFacts | null>();
-    for (const { assetId } of placements) {
-        if (!facts.has(assetId)) {
-            facts.set(assetId, await readImageFacts(ctx, assetId));
+    if (!input.preflight) {
+        for (const { assetId } of placements) {
+            if (!facts.has(assetId)) {
+                facts.set(assetId, await readImageFacts(ctx, assetId));
+            }
         }
     }
-    const canvas = canvasFromSizes(placements, new Map([...facts].map(([id, fact]) => [id, fact?.size ?? null])));
+    const preflightCanvas = input.preflight?.canvas;
+    const canvas = preflightCanvas
+        ? { canvas: preflightCanvas, unmeasured: [] as string[] }
+        : canvasFromSizes(placements, new Map([...facts].map(([id, fact]) => [id, fact?.size ?? null])));
     if ("error" in canvas) {
         throw refuse("check_failed", canvas.error, "Export every layer at the full canvas size (transparent where it draws nothing), re-import, and call again.");
     }
@@ -223,6 +239,10 @@ async function writeLayered(tool: Pick<AgentToolContext, "ctx" | "request" | "fo
         throw refuse("check_failed", `Studio's character check found ${errors.length} error(s):\n${errors.map(item => `  ${diagnosticText(item)}`).join("\n")}`);
     }
     warnings.push(...diagnostics.filter(item => item.severity === "warning").map(diagnosticText));
+    if (input.preflight) {
+        // Every refusal above has had its say; what follows only words the answer.
+        return answerJson({ preflight: true });
+    }
 
     // Scoped layers - a layer that draws nothing for some tags - are the model's idiom ("only the
     // casual outfit has a jacket"), and also exactly what a missing file looks like. Said, not refused.
@@ -492,6 +512,17 @@ async function importFromPsd(tool: AgentToolContext, characterRef: string, psdPa
         );
     }
 
+    // Everything that can refuse is checked before a layer is baked or imported, against stand-ins
+    // for the images: a refusal after the import would leave the layer images in the project.
+    const standIns = specFromPsdPlan(plan, path => `psd:${joinPath(path)}`);
+    await writeLayered(tool, {
+        characterRef,
+        spec: standIns.spec,
+        ...options,
+        psdFingerprint: () => ({ fileName: document.fileName, width: document.width, height: document.height, slots: [], importedAt: 0 }),
+        preflight: { canvas: { width: document.width, height: document.height } },
+    });
+
     const targets = nameBakeTargets(toBakeTargets(plan), plan, name);
     const baked = await getInterface().bakePsd({ filePath: psdPath, layers: targets });
     if (!baked.success) {
@@ -532,7 +563,20 @@ async function importFromPsd(tool: AgentToolContext, characterRef: string, psdPa
         }
         return { fileName: document.fileName, width: document.width, height: document.height, slots, importedAt: Date.now() };
     };
-    return writeLayered(tool, { characterRef, spec, ...options, notes, psdFingerprint: fingerprint });
+    try {
+        return await writeLayered(tool, { characterRef, spec, ...options, notes, psdFingerprint: fingerprint });
+    } catch (error) {
+        // Checked before the import, so only what changed since can land here - a layer that failed
+        // to import, the author pausing. Said plainly: the layer images are in the project now.
+        if (error instanceof AgentRefusal && assetIds.size > 0) {
+            throw refuse(
+                error.code,
+                `${error.message}\nThe character was not written, but ${assetIds.size} layer image(s) from "${document.fileName}" were already imported and stay in the project.`,
+                `Call character_layers_import again with \`prefix: "${name}"\` (not \`psd\`) to build the stack from them, or delete them with asset_delete.`,
+            );
+        }
+        throw error;
+    }
 }
 
 // ── character_preview ────────────────────────────────────────────────────────────────────────────

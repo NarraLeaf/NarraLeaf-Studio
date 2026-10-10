@@ -16,6 +16,7 @@ import { UIEditorHistoryService } from "../ui-editor/UIEditorHistoryService";
 import { AgentFollowService, type AgentWriteTarget } from "./AgentFollowService";
 import { AgentRefusal, type AgentToolContext, type AgentToolHandler } from "./agentCall";
 import { storyApply, storyShow } from "./tools/storyTextTools";
+import { sceneCreate } from "./tools/storyTools";
 import { uiApply, uiShow } from "./tools/uiTextTools";
 import { blueprintApply, blueprintShow, commitBlueprints, ownerQueryOf } from "./tools/blueprintTools";
 import { ownerRefToIndexKey } from "../ui-editor/blueprint/ownerKeys";
@@ -239,6 +240,45 @@ describe("story_apply", () => {
         expect(byName.code).toBe("not_found");
         expect(byName.hint).toContain("scene_create");
     });
+});
+
+describe("scene_create", () => {
+    it("makes a scene in place as one undo step, and undo removes it rather than moving it", async () => {
+        const { story, history, storyId, sceneId, steps, run } = createHarness();
+        const ending = story.createScene(storyId, { name: "Ending" });
+        const order = () => story.getStoryDocument(storyId).chapters[0].sceneIds;
+        expect(order()).toEqual([sceneId, ending.id]);
+        const projectSteps = steps(projectHistoryScope());
+
+        const result = await run(sceneCreate, { name: "Middle", after: "Opening" });
+        const middle = (result.ok ? result.structured?.scene : null) as { id: string };
+        expect(order()).toEqual([sceneId, middle.id, ending.id]);
+        expect(steps(projectHistoryScope())).toBe(projectSteps + 1);
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(order()).toEqual([sceneId, ending.id]);
+        expect(story.getStoryDocument(storyId).scenes[middle.id]).toBeUndefined();
+        expect(history.redo(projectHistoryScope())).toBe(true);
+        expect(order()).toEqual([sceneId, middle.id, ending.id]);
+        expect(story.getStoryDocument(storyId).scenes[middle.id]?.name).toBe("Middle");
+    }, 60_000);
+
+    it("takes back a chapter it made with the scene, and makes none when it refuses", async () => {
+        const { story, history, storyId, steps, run } = createHarness();
+        const chapters = () => story.getStoryDocument(storyId).chapters.map(chapter => chapter.name);
+        const before = chapters();
+        const refused = await refusal(run(sceneCreate, { name: "Lost", chapter: "Act 2", after: "Opening" }));
+        expect(refused.code).toBe("invalid_args");
+        expect(chapters()).toEqual(before);
+
+        const projectSteps = steps(projectHistoryScope());
+        await run(sceneCreate, { name: "Arrival", chapter: "Act 2" });
+        expect(chapters()).toEqual([...before, "Act 2"]);
+        expect(steps(projectHistoryScope())).toBe(projectSteps + 1);
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(chapters()).toEqual(before);
+        expect(Object.values(story.getStoryDocument(storyId).scenes).some(scene => scene.name === "Arrival")).toBe(false);
+    }, 60_000);
 });
 
 describe("ui_apply", () => {
