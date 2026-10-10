@@ -12,13 +12,19 @@
  *
  *     #background <image>          the image by name ('quoted' when it has spaces), or by id
  *     #background none             the scene opens on no background of its own
- *     #music <audio> [track=<audio track>] [volume=0.8] [loop=false] [fade=1200]
+ *     #music <audio> [track=<audio track>] [vol=0.8] [fade=1.2s] [loop=false]
  *     #music none
  *
- * `fade` is milliseconds, printed whole; a fade the file leaves as printed is the stored one, even when
- * the store holds float noise. A key left out of `#music` is left out of the record, which is what lets
- * the track's own defaults answer - the same rule the scene panel follows. A bare `none` clears;
- * `'none'` in quotes is an asset that happens to be called that.
+ * `#music` says its settings the way a `/bgm` row says the same four, in the row's order: `vol=`, and
+ * `fade=` in seconds with the unit (`projectStoryCommandLine` prints rows; the formatting below is the
+ * one it uses). A header and a row read side by side therefore say one thing one way. Files printed
+ * before that wrote `volume=` and a bare fade in milliseconds; both still read - the bare fade with a
+ * warning, because the same number in a row would be seconds. A fade the file leaves as printed is the
+ * stored one, even when the store holds float noise the print rounded away.
+ *
+ * A key left out of `#music` is left out of the record, which is what lets the track's own defaults
+ * answer - the same rule the scene panel follows. A bare `none` clears; `'none'` in quotes is an asset
+ * that happens to be called that.
  *
  * Both count only in the header: before the first row, at the start of the line. Further down, or
  * indented, a `#background` / `#music` line is the comment every unknown `#` line has always been,
@@ -37,7 +43,8 @@
 
 import type { StoryScene, StorySceneBgm } from "@shared/types/story";
 import type { StoryCommandContext, StoryCommandNamedRef } from "@/apps/workspace/modules/story/scene-editor/storyCommandValues";
-import { errorAt, type StoryFileDiagnostic } from "./ast";
+import { formatStorySecondsLabel, storySecondsToMs } from "@shared/utils/storyTime";
+import { errorAt, warningAt, type StoryFileDiagnostic } from "./ast";
 import { sameValue } from "./equal";
 
 export const DIRECTIVE_BACKGROUND = "#background";
@@ -182,20 +189,22 @@ function printMusic(bgm: StorySceneBgm | undefined, lookups: SceneSettingsLookup
     if (!bgm?.assetId) {
         return SETTING_NONE;
     }
+    // The `/bgm` row's words, values and order - see the note at the top.
     const parts = [quoteIfNeeded(nameFor(bgm.assetId, lookups.audio))];
     if (bgm.audioTrackId) {
         parts.push(`track=${quoteIfNeeded(nameFor(bgm.audioTrackId, lookups.audioTracks))}`);
     }
     if (bgm.volume !== undefined) {
-        parts.push(`volume=${bgm.volume}`);
-    }
-    if (bgm.loop !== undefined) {
-        parts.push(`loop=${bgm.loop}`);
+        parts.push(`vol=${String(bgm.volume)}`);
     }
     if (bgm.fadeMs !== undefined && Number.isFinite(bgm.fadeMs)) {
-        // Whole milliseconds: the scene panel stores seconds times a thousand, so a stored fade can
-        // carry float noise (2009.9999999999998) that no one typed and the reader below folds back.
-        parts.push(`fade=${Math.round(bgm.fadeMs)}`);
+        // Seconds to the millisecond, as a row prints them: the scene panel stores seconds times a
+        // thousand, so a stored fade can carry float noise (2009.9999999999998) that no one typed and
+        // the reader below folds back into the stored value.
+        parts.push(`fade=${formatStorySecondsLabel(bgm.fadeMs)}`);
+    }
+    if (bgm.loop !== undefined) {
+        parts.push(`loop=${String(bgm.loop)}`);
     }
     return parts.join(" ");
 }
@@ -284,7 +293,7 @@ function readMusic(
     if (!tokens || tokens.length === 0) {
         diagnostics.push(errorAt(
             "file.bad_setting",
-            `${DIRECTIVE_MUSIC} takes an audio name (quoted when it has spaces) and optional track=, volume=, loop=, fade=, or "${SETTING_NONE}".`,
+            `${DIRECTIVE_MUSIC} takes an audio name (quoted when it has spaces) and optional track=, vol=, fade=, loop=, or "${SETTING_NONE}".`,
             directive.line,
         ));
         return undefined;
@@ -311,15 +320,23 @@ function readMusic(
                 bgm.audioTrackId = trackId;
                 break;
             }
+            // `vol=` is the row's word; `volume=` is what the first build of this directive printed,
+            // and a `/bgm` row accepts it too.
+            case "vol":
             case "volume": {
                 const volume = Number(value);
                 if (value === "" || !Number.isFinite(volume) || volume < 0 || volume > 1) {
-                    return refuse(`${DIRECTIVE_MUSIC} volume= takes a number from 0 to 1, not "${value}".`);
+                    return refuse(`${DIRECTIVE_MUSIC} ${key}= takes a number from 0 to 1, not "${value}".`);
                 }
                 bgm.volume = volume;
                 break;
             }
             case "loop": {
+                // A bare `loop` is `loop=true`, as on a row.
+                if (equals < 0) {
+                    bgm.loop = true;
+                    break;
+                }
                 if (value !== "true" && value !== "false") {
                     return refuse(`${DIRECTIVE_MUSIC} loop= takes true or false, not "${value}".`);
                 }
@@ -327,18 +344,44 @@ function readMusic(
                 break;
             }
             case "fade": {
-                const fadeMs = Number(value);
-                if (value === "" || !Number.isFinite(fadeMs) || fadeMs < 0) {
-                    return refuse(`${DIRECTIVE_MUSIC} fade= takes milliseconds, a number from 0 up, not "${value}".`);
+                const fade = readFade(value);
+                if (!fade) {
+                    return refuse(`${DIRECTIVE_MUSIC} fade= takes seconds with the unit, the way a row writes them (fade=1.2s), not "${value}".`);
                 }
-                bgm.fadeMs = keptFade(fadeMs, current?.fadeMs);
+                bgm.fadeMs = keptFade(fade.ms, current?.fadeMs);
+                if (fade.bare) {
+                    const label = formatStorySecondsLabel(fade.ms);
+                    diagnostics.push(warningAt(
+                        "file.setting_milliseconds",
+                        `${DIRECTIVE_MUSIC} fade=${value} has no unit, so it is read as milliseconds: ${label}. That is the `
+                            + `older spelling; rows and "story show" write seconds with the unit - fade=${label}.`,
+                        directive.line,
+                    ));
+                }
                 break;
             }
             default:
-                return refuse(`"${token}" is not a ${DIRECTIVE_MUSIC} setting. It takes track=, volume=, loop= and fade=.`);
+                return refuse(`"${token}" is not a ${DIRECTIVE_MUSIC} setting. It takes track=, vol=, fade= and loop=.`);
         }
     }
     return bgm;
+}
+
+/** The unit a row writes a fade in, and the one `fade=` is printed with. */
+const SECONDS_UNIT = "s";
+
+/**
+ * A `fade=` value in milliseconds: `1.2s` is seconds, as a row writes it; a bare number is
+ * milliseconds, as files printed before that wrote it (`bare`). Null when it is neither, or negative.
+ */
+function readFade(value: string): { ms: number; bare: boolean } | null {
+    const bare = !value.endsWith(SECONDS_UNIT);
+    const digits = bare ? value : value.slice(0, -SECONDS_UNIT.length);
+    const amount = Number(digits);
+    if (digits.trim() === "" || !Number.isFinite(amount) || amount < 0) {
+        return null;
+    }
+    return { ms: bare ? amount : storySecondsToMs(amount), bare };
 }
 
 /**

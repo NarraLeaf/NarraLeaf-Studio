@@ -145,13 +145,17 @@ the header:
 ```
 #background corridor          the image the scene opens on, or none
 #background 'night street'    a name with spaces, quoted the way targets prints it
-#music bgm-quiet track=Music volume=0.7 loop=true fade=1200
+#music bgm-quiet track=Music vol=0.7 fade=1.2s loop=true
 #music none
 ```
 
-`#music` takes the clip, then any of `track=` (an audio track's name), `volume=` (0 to
-1), `loop=` (true or false) and `fade=` (milliseconds); a key left out is left out of
-the record and the track's own default answers. A name may also be the asset's id, which
+`#music` takes the clip, then the settings a `/bgm` row takes, spelled the way the row
+spells them: `track=` (an audio track's name), `vol=` (0 to 1), `fade=` (seconds, with
+the unit: `1.2s`) and `loop=` (`true` or `false`; a bare `loop` is `true`). A key left
+out is left out of the record and the track's own default answers. Files printed before
+the header used the row's words say `volume=` and a bare fade in milliseconds
+(`fade=1200`); both still read, the bare fade with a warning, because the same number on
+a row means seconds. A name may also be the asset's id, which
 is what `show` prints for one whose name is ambiguous or no longer resolves.
 
 Both count **only in the header**: before the first row, each at the start of its line.

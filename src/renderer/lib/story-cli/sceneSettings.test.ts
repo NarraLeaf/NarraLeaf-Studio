@@ -4,6 +4,8 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { StoryDocument, StoryScene } from "@shared/types/story";
 import { commandI18nStore } from "@/lib/i18n/commandLocale";
+import { createBlockForCommand } from "@/apps/workspace/modules/story/scene-editor/storyActionCommands";
+import { projectStoryCommandLine } from "@/apps/workspace/modules/story/scene-editor/storyCommandLine";
 import { formatApplySummary, summariseApply } from "./apply";
 import { runCli } from "./cli";
 import { compileStoryFile } from "./dsl/compile";
@@ -65,7 +67,7 @@ describe("#background and #music", () => {
         const printed = printSceneSettings(scene, lookups);
         expect(printed).toEqual([
             "#background 'night street'",
-            "#music bgm-quiet track=Music volume=0.7 loop=false fade=1200",
+            "#music bgm-quiet track=Music vol=0.7 fade=1.2s loop=false",
         ]);
         const back = settingsOf(printed.join("\n"), bare);
         expect(back.diagnostics).toEqual([]);
@@ -96,16 +98,16 @@ describe("#background and #music", () => {
         for (const fadeMs of [2009.9999999999998, 16100.000000000002]) {
             const scene: StoryScene = { ...bare, bgm: { assetId: "aud-quiet", fadeMs } };
             const printed = printSceneSettings(scene, lookups);
-            expect(printed[1]).toBe(`#music bgm-quiet fade=${Math.round(fadeMs)}`);
+            expect(printed[1]).toBe(`#music bgm-quiet fade=${Math.round(fadeMs) / 1000}s`);
             const back = settingsOf(printed.join("\n"), scene);
             expect(back.diagnostics).toEqual([]);
             expect(back.scene).toBe(scene);
         }
         // A fraction typed into the file is a fade like any other, kept to the millisecond.
-        const typed = settingsOf("#music bgm-quiet fade=1200.6");
+        const typed = settingsOf("#music bgm-quiet fade=1.2006s");
         expect(typed.diagnostics).toEqual([]);
         expect(typed.scene.bgm).toEqual({ assetId: "aud-quiet", fadeMs: 1201 });
-        expect(settingsOf("#music bgm-quiet fade=-1").diagnostics[0].message).toMatch(/fade= takes milliseconds/);
+        expect(settingsOf("#music bgm-quiet fade=-1").diagnostics[0].message).toMatch(/fade= takes seconds/);
     });
 
     it("reads an unedited #music back as the stored record whatever order the scene panel spread its keys in", () => {
@@ -126,7 +128,7 @@ describe("#background and #music", () => {
             stated: { background: true, music: true },
         });
         expect(summary.settingsChanged).toEqual([]);
-        expect(settingsOf("#music bgm-quiet volume=0.7 loop=true fade=1500", panelOrder).scene.bgm)
+        expect(settingsOf("#music bgm-quiet vol=0.7 fade=1.5s loop=true", panelOrder).scene.bgm)
             .toEqual({ assetId: "aud-quiet", volume: 0.7, loop: true, fadeMs: 1500 });
     });
 
@@ -153,6 +155,26 @@ describe("#background and #music", () => {
         expect(indented.diagnostics).toMatchObject([{ code: "file.setting_outside_header", severity: "warning", line: 2 }]);
         // Every other `#` line is still a silent comment, wherever it is.
         expect(parseStoryFile("#nlstory 1\nThe rain.\n# a note\n#musical cue\n").diagnostics).toEqual([]);
+    });
+
+    it("reads the row's spelling, and the spelling the first build of these directives printed", () => {
+        const scene: StoryScene = {
+            ...bare,
+            bgm: { assetId: "aud-quiet", audioTrackId: "track-music", volume: 0.7, fadeMs: 1200, loop: true },
+        };
+        // As a row writes it, bare `loop` included.
+        const row = settingsOf("#music bgm-quiet track=Music vol=0.7 fade=1.2s loop");
+        expect(row.diagnostics).toEqual([]);
+        expect(row.scene).toEqual(scene);
+        // As the first build printed it: `volume=` and a bare fade in milliseconds. Still the same
+        // record - so it applies as no change - with a warning that a bare number is milliseconds.
+        const older = settingsOf("#music bgm-quiet track=Music volume=0.7 loop=true fade=1200", scene);
+        expect(older.scene).toBe(scene);
+        expect(older.diagnostics).toMatchObject([
+            { code: "file.setting_milliseconds", severity: "warning", line: 2, message: expect.stringMatching(/read as milliseconds: 1\.2s.*fade=1\.2s/) },
+        ]);
+        expect(settingsOf("#music bgm-quiet fade=2").scene.bgm).toEqual({ assetId: "aud-quiet", fadeMs: 2 });
+        expect(settingsOf("#music bgm-quiet fade=1.2ms").diagnostics[0]).toMatchObject({ severity: "error", message: expect.stringMatching(/fade=1\.2s/) });
     });
 
     it("keeps an id nothing answers to any more when the file leaves it as printed", () => {
@@ -217,6 +239,23 @@ describe("the skeleton's scenes, printed and read back", () => {
         }
         expect(printSceneSettings(sceneNamed(document, "The clubroom"), buildContext(data, document, null))[0]).toBe("#background classroom");
     });
+
+    it("spell #music's settings exactly as a /bgm row spells the same ones", () => {
+        const scene = sceneNamed(document, "The clubroom");
+        const context = buildContext(data, document, scene);
+        const quiet = context.audio.find(entry => entry.name === "bgm-quiet");
+        expect(quiet).toBeDefined();
+        const settings = { assetId: quiet?.id ?? "", audioTrackId: "bgm", volume: 0.7, fadeMs: 1200, loop: false };
+        const block = createBlockForCommand("bgm", () => "row-bgm");
+        if (block.kind !== "action" || block.payload.action !== "audio") {
+            throw new Error("/bgm builds an audio row");
+        }
+        const row = { ...block, payload: { ...block.payload, ...settings } };
+        const projected = projectStoryCommandLine(row, buildLookups(data, document, scene, context).rowLookups);
+        const header = printSceneSettings({ ...scene, bgm: settings }, context)[1];
+        expect(projected?.source).toBe("/bgm bgm-quiet track=Music vol=0.7 fade=1.2s loop=false");
+        expect(header.slice("#music ".length)).toBe(projected?.source.slice("/bgm ".length));
+    });
 });
 
 describe("story show / apply on the command line", () => {
@@ -267,7 +306,7 @@ describe("story show / apply on the command line", () => {
         storeMusic({ assetId: "49b1db61-3d5e-4453-aa78-531a78e38de5", fadeMs: 2009.9999999999998 });
         const file = path.join(projectDir, "clubroom.story");
         expect((await cli("show", "--project", projectDir, "--scene", "The clubroom", "--out", file)).code).toBe(0);
-        expect(fs.readFileSync(file, "utf8")).toContain("\n#music bgm-quiet fade=2010\n");
+        expect(fs.readFileSync(file, "utf8")).toContain("\n#music bgm-quiet fade=2.01s\n");
 
         const applied = await cli("apply", file, "--project", projectDir, "--write");
         expect(applied.code, applied.out + applied.err).toBe(0);

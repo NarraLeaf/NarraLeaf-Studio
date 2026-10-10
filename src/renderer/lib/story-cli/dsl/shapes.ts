@@ -264,8 +264,8 @@ The header is five directives; the footer is the verbatim payloads the » lines 
   #story  Chapter one
   #scene  Classroom, after school  ⟦3d90de56-429e-497c-8cde-96c92b7ae11f⟧
   #background classroom       the image the scene opens on, before its first row, or "none"
-  #music theme_day volume=0.8 the music it opens with ("none", or a clip with optional
-                              track=, volume=, loop=, fade= in milliseconds)
+  #music theme_day vol=0.8    the music it opens with ("none", or a clip with optional
+                              track=, vol=, fade=1.2s, loop= - spelled as a /bgm row spells them)
   ...
 
 #background and #music are the scene's own settings, not rows, and count only here in the header,
