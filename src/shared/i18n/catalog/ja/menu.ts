@@ -70,9 +70,9 @@ export const menu = {
         minimize: "最小化",
         zoom: "ズーム",
         front: "すべてを手前に移動",
-        leftSidebar: "左バーを表示",
-        bottomPanel: "下部バーを表示",
-        rightSidebar: "右バーを表示",
+        leftSidebar: "左バーの表示を切り替え",
+        bottomPanel: "下部バーの表示を切り替え",
+        rightSidebar: "右バーの表示を切り替え",
     },
     help: {
         title: "ヘルプ",

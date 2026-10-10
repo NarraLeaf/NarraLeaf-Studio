@@ -47,6 +47,7 @@ import type { HistoryLabel, HistoryScopeId } from "../history/historyModel";
 import { projectHistoryScope, storySceneHistoryScope } from "../history/historyScopes";
 import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
 import { translate } from "@/lib/i18n";
+import { storyCommandSpelling } from "@/apps/workspace/modules/story/scene-editor/commands/commandSpelling";
 import {
     findStoryDocumentTooNewError,
     findStoryDocumentTooOldError,
@@ -483,7 +484,9 @@ export class StoryService extends Service<StoryService> implements IStoryService
             );
         }
         try {
-            const document = normalizeStoryDocument(result.data, new Date().toISOString());
+            // A note the migration ladder leaves in place of a row it could not carry over is written in
+            // the author's command language, like the rows around it.
+            const document = normalizeStoryDocument(result.data, new Date().toISOString(), { commandSpelling: storyCommandSpelling() });
             if (document.id !== storyId) {
                 throw new Error(`Story document id mismatch: expected ${storyId}, received ${document.id}`);
             }

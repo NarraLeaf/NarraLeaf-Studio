@@ -572,7 +572,7 @@ export const workspace = {
             voice_link: "ボイスをリンク",
             voice_auto_link: "名前でボイスをリンク",
             voice_settings_set: "ボイス設定を変更",
-            lint: "プロジェクトをチェック",
+            lint: "プロジェクトを検査",
             test: "プロジェクトのテストを実行",
             playtest_start: "ゲームをプレイ",
             playtest_advance: "プレイを進める",
@@ -805,9 +805,6 @@ export const workspace = {
             closeSplit: "分割を閉じる",
             reopenClosed: "閉じたタブを開き直す",
         },
-        toggleLeftSidebar: "左のサイドバーを切り替え",
-        toggleRightSidebar: "右のサイドバーを切り替え",
-        toggleBottomPanel: "下のパネルを切り替え",
         mainMenu: {
             label: "メインメニュー",
             modes: {

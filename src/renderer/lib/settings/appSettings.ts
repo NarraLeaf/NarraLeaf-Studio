@@ -1263,15 +1263,15 @@ export const AppSettings: AppSettingDefinition[] = [
     },
     {
         // Read by the main process (downloadProxy) on every Studio download. Off is
-        // direct, as today. On, those downloads follow this computer's proxy. There is
-        // no address to type: the operating system already has one.
+        // direct, as today. On, those downloads follow the proxy set in the operating
+        // system. There is no address to type: the operating system already has one.
         key: USE_SYSTEM_PROXY_KEY,
         category: "network",
         scope: SettingScope.Global,
         type: SettingValueType.Boolean,
-        label: "Use this computer's proxy",
+        label: "Use system proxy settings",
         labelKey: "settings.items.useSystemProxy.label",
-        description: "Studio downloads follow the proxy this computer already uses.",
+        description: "Studio downloads connect through the proxy set in the operating system.",
         descriptionKey: "settings.items.useSystemProxy.description",
         defaultValue: false,
     },

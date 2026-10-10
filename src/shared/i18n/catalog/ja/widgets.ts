@@ -68,7 +68,7 @@ export const widgets = {
     sampleText: {
         label: "サンプルテキスト",
         hint: "エディタでのみ表示。ゲームでは物語の現在の行を表示する",
-        bindingNoEffect: "このバインドは{slot}スロットでは効かない",
+        bindingNoEffect: "このバインドは{slot}スロットでは無効",
         removeBinding: "解除",
         hintBlueprintValue: "エディタでのみ表示。ゲームではブループリント値の結果を表示する",
         hintComponentParam: "コンポーネントの編集中のみ表示。置いたものでは、それぞれがパラメータに設定した値を表示する",

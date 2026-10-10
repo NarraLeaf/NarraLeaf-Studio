@@ -1372,7 +1372,7 @@ export const lint = {
     },
     settings: {
         runOnBuild: "构建前检查",
-        runOnBuildHint: "将项目检查纳入正式构建",
+        runOnBuildHint: "将项目检查纳入生产构建",
         failBuildOn: "中止构建的级别",
         failBuildOnError: "错误",
         failBuildOnWarning: "警告及错误",

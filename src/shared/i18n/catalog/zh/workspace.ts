@@ -784,9 +784,6 @@ export const workspace = {
             closeSplit: "关闭拆分",
             reopenClosed: "重新打开关闭的标签",
         },
-        toggleLeftSidebar: "切换左侧边栏",
-        toggleRightSidebar: "切换右侧边栏",
-        toggleBottomPanel: "切换底部面板",
         mainMenu: {
             label: "主菜单",
             modes: {

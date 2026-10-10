@@ -78,9 +78,9 @@ export const menu = {
         minimize: "Minimize",
         zoom: "Zoom",
         front: "Bring All to Front",
-        leftSidebar: "Show Left Bar",
-        bottomPanel: "Show Bottom Bar",
-        rightSidebar: "Show Right Bar",
+        leftSidebar: "Toggle Left Bar",
+        bottomPanel: "Toggle Bottom Bar",
+        rightSidebar: "Toggle Right Bar",
     },
     // The View menu was removed from the menu bar; the strings stay for future use.
     help: {
