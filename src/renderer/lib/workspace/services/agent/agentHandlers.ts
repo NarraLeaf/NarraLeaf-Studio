@@ -17,11 +17,14 @@ import type { AgentToolHandler } from "./agentCall";
 import { projectInfo, projectSettingsSet } from "./tools/projectTools";
 import { assetDelete, assetsImport, assetsList, assetsPlaceholder } from "./tools/assetTools";
 import { audioTracksList, characterDelete, characterUpsert, charactersList, variableDelete, variableUpsert, variablesList } from "./tools/castTools";
+import { characterLayeredSet, characterLayersImport, characterPreview } from "./tools/layeredTools";
 import { sceneCreate, sceneDelete, sceneRename, sceneSetEntry, storyList, storyRename } from "./tools/storyTools";
 import { storyApply, storyCommand, storyCommands, storyShow, storyTargets } from "./tools/storyTextTools";
 import { brandGet, brandSet, uiPatch, uiScreenshot, uiSelection, uiTemplateApply, uiTemplates } from "./tools/uiTools";
 import { uiApply, uiShow, uiSurfaces, uiUsage, uiWidget, uiWidgets } from "./tools/uiTextTools";
 import { blueprintApply, blueprintList, blueprintNode, blueprintNodes, blueprintShow } from "./tools/blueprintTools";
+import { localizationList, localizationSet, localizationStatus } from "./tools/localizationTools";
+import { voiceAutoLink, voiceLink, voiceList, voiceSettingsSet, voiceStatus } from "./tools/voiceTools";
 import {
     consoleRead,
     internalBuild,
@@ -44,6 +47,9 @@ export function createAgentToolHandlers(): Record<string, AgentToolHandler> {
         characters_list: charactersList,
         character_upsert: characterUpsert,
         character_delete: characterDelete,
+        character_layered_set: characterLayeredSet,
+        character_layers_import: characterLayersImport,
+        character_preview: characterPreview,
         variables_list: variablesList,
         variable_upsert: variableUpsert,
         variable_delete: variableDelete,
@@ -77,6 +83,14 @@ export function createAgentToolHandlers(): Record<string, AgentToolHandler> {
         blueprint_list: blueprintList,
         blueprint_show: blueprintShow,
         blueprint_apply: blueprintApply,
+        localization_status: localizationStatus,
+        localization_list: localizationList,
+        localization_set: localizationSet,
+        voice_status: voiceStatus,
+        voice_list: voiceList,
+        voice_link: voiceLink,
+        voice_auto_link: voiceAutoLink,
+        voice_settings_set: voiceSettingsSet,
         lint,
         console_read: consoleRead,
         playtest_start: playtestStart,

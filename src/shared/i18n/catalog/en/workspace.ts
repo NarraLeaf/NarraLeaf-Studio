@@ -455,6 +455,7 @@ export const workspace = {
             log: "Agent log",
             enable: "Enable agent access",
             allowWrites: "Allow agents to modify the project",
+            fullAccess: "Allow agents full access",
             copyConfig: "Copy connection configuration",
             copyStdio: "stdio (Claude Desktop)",
             exportSkill: "Export Agent Skill…",
@@ -467,8 +468,11 @@ export const workspace = {
                 exportFailed: "The Agent Skill could not be exported: {error}",
             },
         },
-        // Native dialogs main raises for the Agent menu (`AgentManager`).
+        // The questions main puts in the agent access window (`AgentManager`, `apps/agent-access`).
         confirm: {
+            /** Title bar of the window, not the question. */
+            window: "Agent Access",
+            loadError: "The request could not be read.",
             allowWrites: {
                 message: "Allow agents to modify projects?",
                 detail: "Connected agents can then change pages, scenes, blueprints and assets. Each change is one step of undo.",
@@ -479,6 +483,24 @@ export const workspace = {
                 existsMessage: "This folder already contains {folder}",
                 existsDetail: "Files with the same name are replaced. Other files in the folder are kept.",
                 replace: "Replace",
+            },
+            // Asked when an agent needs files outside the project and the allowed folders.
+            folderAccess: {
+                title: "Allow the agent to read a folder?",
+                messageOne: "{client} wants to read this folder",
+                messageMany: "{client} wants to read these folders",
+                detail: "The agent reads files in it to import them into this project. Nothing outside the project is changed.",
+                reason: "Purpose stated by the agent: {reason}",
+                settings: "Allowed folders are listed in Settings > Agent access, which also offers Full access.",
+                allowOne: "Allow this folder",
+                allowMany: "Allow these folders",
+                deny: "Deny",
+                unknownClient: "An external agent",
+            },
+            fullAccess: {
+                message: "Give agents full access?",
+                detail: "Connected agents can then change projects and read files in any folder without asking. Studio's own settings folder stays closed. Turn it off in the Agent menu or in Settings > Agent access.",
+                allow: "Allow full access",
             },
         },
         // The Agent log panel (`AgentLogPanel`).
@@ -527,6 +549,7 @@ export const workspace = {
         tool: {
             agent_status: "Studio status",
             agent_guide: "Read the guide",
+            request_folder_access: "Ask for folder access",
             project_create: "Create a project",
             project_open: "Open a project",
             project_info: "Project overview",
@@ -537,6 +560,9 @@ export const workspace = {
             asset_delete: "Delete an asset",
             characters_list: "List characters",
             character_upsert: "Create or update a character",
+            character_layered_set: "Lay out a layered character",
+            character_layers_import: "Build a layered character from files",
+            character_preview: "Preview a character look",
             variables_list: "List variables",
             variable_upsert: "Create or update a variable",
             variable_delete: "Delete a variable",
@@ -571,6 +597,14 @@ export const workspace = {
             blueprint_list: "List blueprints",
             blueprint_show: "Read a blueprint as text",
             blueprint_apply: "Write blueprints",
+            localization_status: "Translation progress",
+            localization_list: "List text to translate",
+            localization_set: "Write translations",
+            voice_status: "Voice-over progress",
+            voice_list: "List voiced lines",
+            voice_link: "Link voice takes",
+            voice_auto_link: "Link takes by name",
+            voice_settings_set: "Change voice settings",
             lint: "Check the project",
             test: "Run a project test",
             playtest_start: "Play the game",

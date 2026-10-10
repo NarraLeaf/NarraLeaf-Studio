@@ -41,6 +41,7 @@ function fakeHost(overrides: Partial<AgentMainToolHost> = {}, open: AgentWorkspa
         openProject: async (projectPath: string) => ({ ok: true as const, handle: { projectPath, name: "Game" }, alreadyOpen: false }),
         createProject: vi.fn(async () => agentText("created")),
         runHeadlessTest: vi.fn(async () => agentText("headless")),
+        requestFolderAccess: vi.fn(async () => ({ granted: [], denied: [], pending: [], refused: [] })),
         ...overrides,
     };
     return host as typeof host & { forward: ReturnType<typeof vi.fn> };
@@ -65,6 +66,56 @@ describe("agent_status", () => {
         const host = fakeHost({ workspaceState: async () => null }, [{ projectPath: "/games/a", name: null }]);
         const result = await AGENT_MAIN_TOOL_HANDLERS.agent_status(host, {}, ctx);
         expect(result.ok && result.structured).toMatchObject({ projects: [{ responding: false, paused: null }] });
+    });
+});
+
+describe("agent_status and full access", () => {
+    it("says full access is on and what stays closed", async () => {
+        const host = fakeHost({ policy: () => ({ writesEnabled: true, allowedImportRoots: [], fullAccess: true }) });
+        const result = await AGENT_MAIN_TOOL_HANDLERS.agent_status(host, {}, ctx);
+        expect(result.ok && result.structured).toMatchObject({ writesEnabled: true, fullAccess: true });
+        expect(result.ok && (result.content[0] as { text: string }).text).toContain("Full access: on");
+    });
+
+    it("tells the agent that other folders are asked for", async () => {
+        const result = await AGENT_MAIN_TOOL_HANDLERS.agent_status(fakeHost(), {}, ctx);
+        expect(result.ok && result.structured).toMatchObject({ fullAccess: false });
+        expect(result.ok && (result.content[0] as { text: string }).text).toContain("request_folder_access");
+    });
+});
+
+describe("request_folder_access", () => {
+    const open = [{ projectPath: "/games/a", name: "A" }];
+
+    it("asks through the routed workspace with the agent's reason, on one line and capped", async () => {
+        const requestFolderAccess = vi.fn(async () => ({ granted: ["/kit"], denied: [], pending: [], refused: [] }));
+        const host = fakeHost({ requestFolderAccess }, open);
+        const result = await AGENT_MAIN_TOOL_HANDLERS.request_folder_access(host, { paths: ["/kit/a.png"], reason: `Import\nthe ${"x".repeat(400)}` }, ctx);
+        expect(requestFolderAccess).toHaveBeenCalledTimes(1);
+        const [handle, paths, context, reason] = requestFolderAccess.mock.calls[0] as unknown as [AgentWorkspaceHandle, string[], unknown, string];
+        expect(handle.projectPath).toBe("/games/a");
+        expect(paths).toEqual(["/kit/a.png"]);
+        expect(context).toBe(ctx);
+        expect(reason.startsWith("Import the x")).toBe(true);
+        expect(reason).not.toContain("\n");
+        expect(reason.length).toBeLessThanOrEqual(300);
+        expect(result).toMatchObject({ ok: true, structured: { granted: ["/kit"], project: "/games/a" } });
+        expect(result.ok && (result.content[0] as { text: string }).text).toContain("You may read: /kit.");
+    });
+
+    it("answers pending with a hint to call again", async () => {
+        const host = fakeHost({ requestFolderAccess: vi.fn(async () => ({ granted: [], denied: [], pending: ["/kit"], refused: [] })) }, open);
+        const result = await AGENT_MAIN_TOOL_HANDLERS.request_folder_access(host, { paths: ["/kit"] }, ctx);
+        expect(result.ok && (result.content[0] as { text: string }).text).toContain("Studio is asking the author to allow /kit; call again once they answer.");
+    });
+
+    it("refuses relative paths and calls with no open project, asking nothing", async () => {
+        const requestFolderAccess = vi.fn();
+        expect(await AGENT_MAIN_TOOL_HANDLERS.request_folder_access(fakeHost({ requestFolderAccess }, open), { paths: ["kit/a.png"] }, ctx))
+            .toMatchObject({ ok: false, error: { code: "invalid_args" } });
+        expect(await AGENT_MAIN_TOOL_HANDLERS.request_folder_access(fakeHost({ requestFolderAccess }), { paths: ["/kit/a.png"] }, ctx))
+            .toMatchObject({ ok: false, error: { code: "no_workspace" } });
+        expect(requestFolderAccess).not.toHaveBeenCalled();
     });
 });
 

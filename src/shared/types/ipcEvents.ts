@@ -1,7 +1,7 @@
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import type { ProjectTrustRecord } from "./projectTrust";
-import type { AgentCallRequest, AgentCallResult } from "../agent/protocol";
+import type { AgentCallRequest, AgentCallResult, AgentFolderAccessAnswer, AgentFolderAccessRequest } from "../agent/protocol";
 import type { AgentSettingsPatch, AgentSettingsSnapshot } from "../agent/settings";
 import type { AgentCopyConfigKind, AgentMainActivity, AgentQuickState, AgentQuickTogglePatch } from "../agent/workspaceAccess";
 import type { AgentPluginToolDescriptor } from "../agent/pluginTools";
@@ -259,6 +259,7 @@ export enum IPCEventType {
     workspaceClose = "workspace.close",
     workspaceReturnToLauncher = "workspace.returnToLauncher",
     psdOpen = "psd.open",
+    psdRead = "psd.read",
     psdBake = "psd.bake",
     mediaProbe = "media.probe",
     fontProbeCoverage = "font.probeCoverage",
@@ -298,6 +299,7 @@ export enum IPCEventType {
     agentRevealExportedSkill = "agent.quick.revealExportedSkill",
     workspaceAgentActivity = "workspace.agentActivity",
     agentReportPluginTools = "agent.reportPluginTools",
+    agentRequestFolderAccess = "agent.requestFolderAccess",
     workspaceResolveAssetUrl = "workspace.resolveAssetUrl",
     workspaceResolveAllAssetUrls = "workspace.resolveAllAssetUrls",
     workspaceResolveImageAssetUrl = "workspace.resolveImageAssetUrl",
@@ -2249,6 +2251,21 @@ export type IPCWorkspaceEvents = {
             document: PsdDocument | null;
         };
     };
+    /**
+     * Read the layer tree of a PSD the window may already read - the path is checked against the
+     * window's file-system grants, never trusted. The non-dialog half of `psdOpen`, for an agent
+     * that names a file inside the project or a directory the author allowed.
+     */
+    [IPCEventType.psdRead]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            filePath: string;
+        };
+        response: {
+            document: PsdDocument;
+        };
+    };
     [IPCEventType.psdBake]: {
         type: IPCMessageType.request;
         consumer: IPCType.Host;
@@ -2780,6 +2797,19 @@ export type IPCWorkspaceEvents = {
         consumer: IPCType.Host,
         data: { tools: AgentPluginToolDescriptor[] };
         response: never;
+    };
+    /**
+     * An agent call this workspace is carrying out needs files outside the project and the allowed
+     * folders. Main asks the author in a native dialog parented to this window (or grants at once
+     * under full access) and answers which folders the window may now read. Refused unless
+     * `callId` names a call main sent to this window and is still waiting on; the client name shown
+     * in the dialog is main's record of that call. See `@shared/agent/protocol`.
+     */
+    [IPCEventType.agentRequestFolderAccess]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: AgentFolderAccessRequest;
+        response: AgentFolderAccessAnswer;
     };
     [IPCEventType.workspaceResolveAssetUrl]: {
         type: IPCMessageType.request,

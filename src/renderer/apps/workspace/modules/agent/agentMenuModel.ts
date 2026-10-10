@@ -25,6 +25,7 @@ export const AGENT_MENU_ACTIONS = {
     log: "narraleaf-studio:agent-log",
     enable: "narraleaf-studio:agent-enable",
     allowWrites: "narraleaf-studio:agent-allow-writes",
+    fullAccess: "narraleaf-studio:agent-full-access",
     copyConfig: "narraleaf-studio:agent-copy-config",
     exportSkill: "narraleaf-studio:agent-export-skill",
     settings: "narraleaf-studio:agent-settings",
@@ -88,6 +89,7 @@ export type AgentMenuModelInput = {
         openLog(): void;
         toggleEnabled(): void;
         toggleAllowWrites(): void;
+        toggleFullAccess(): void;
         copyConfig(kind: AgentCopyConfigKind): void;
         exportSkill(): void;
         openSettings(): void;
@@ -133,13 +135,23 @@ export function buildAgentMenuItems(input: AgentMenuModelInput): ActionMenuItem[
             disabled: quick === null,
             onClick: run.toggleEnabled,
         }),
+        // Full access lets writes through on its own, so while it is on the write row shows them
+        // allowed and cannot be switched: turning it off would change nothing.
         action({
             id: AGENT_MENU_ACTIONS.allowWrites,
             labelKey: "workspace.agent.appMenu.allowWrites",
             label: t("workspace.agent.appMenu.allowWrites"),
-            checked: quick?.allowWrites ?? false,
-            disabled: quick === null,
+            checked: (quick?.allowWrites ?? false) || (quick?.fullAccess ?? false),
+            disabled: quick === null || quick.fullAccess,
             onClick: run.toggleAllowWrites,
+        }),
+        action({
+            id: AGENT_MENU_ACTIONS.fullAccess,
+            labelKey: "workspace.agent.appMenu.fullAccess",
+            label: t("workspace.agent.appMenu.fullAccess"),
+            checked: quick?.fullAccess ?? false,
+            disabled: quick === null,
+            onClick: run.toggleFullAccess,
         }),
         {
             id: AGENT_MENU_ACTIONS.copyConfig,

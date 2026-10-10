@@ -22,7 +22,7 @@ describe("AgentSettingsStore", () => {
 
     it("starts off, on the default port, with a fresh token written owner-only", async () => {
         const settings = await new AgentSettingsStore(dir).load();
-        expect(settings).toMatchObject({ enabled: false, allowWrites: false, port: AGENT_MCP_DEFAULT_PORT, url: null, allowedImportRoots: [] });
+        expect(settings).toMatchObject({ enabled: false, allowWrites: false, fullAccess: false, port: AGENT_MCP_DEFAULT_PORT, url: null, allowedImportRoots: [] });
         expect(settings.token.length).toBeGreaterThanOrEqual(40);
         const onDisk = JSON.parse(fs.readFileSync(file(), "utf8"));
         expect(onDisk.token).toBe(settings.token);
@@ -66,6 +66,21 @@ describe("AgentSettingsStore", () => {
         expect(settings.port).toBe(AGENT_MCP_DEFAULT_PORT);
         expect(settings.token).not.toBe("short");
         expect(settings.allowedImportRoots).toEqual([{ path: "/ok" }]);
+    });
+
+    it("keeps full access only when it is literally true, and writes it owner-only", async () => {
+        fs.writeFileSync(file(), JSON.stringify({ token: mintAgentToken(), fullAccess: "true" }));
+        expect((await new AgentSettingsStore(dir).load()).fullAccess).toBe(false);
+        const store = new AgentSettingsStore(dir);
+        await store.load();
+        await store.update(draft => {
+            draft.fullAccess = true;
+        });
+        const reread = await new AgentSettingsStore(dir).load();
+        expect(reread).toMatchObject({ fullAccess: true, allowWrites: false });
+        if (process.platform !== "win32") {
+            expect(mode()).toBe(0o600);
+        }
     });
 
     it("survives unparseable JSON", async () => {

@@ -3,7 +3,7 @@ import { Namespace } from "@shared/types/ipc";
 import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
-import type { AgentCallRequest, AgentCallResult } from "@shared/agent/protocol";
+import type { AgentCallRequest, AgentCallResult, AgentFolderAccessRequest } from "@shared/agent/protocol";
 import type { AgentSettingsPatch, AgentSettingsSnapshot } from "@shared/agent/settings";
 import type { AgentCopyConfigKind, AgentMainActivity, AgentQuickState, AgentQuickTogglePatch } from "@shared/agent/workspaceAccess";
 import type { AgentPluginToolDescriptor } from "@shared/agent/pluginTools";
@@ -253,6 +253,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     // Workspace
     selectFolder: () => ipcClient.invoke(IPCEventType.workspaceSelectFolder, {}),
     openPsd: () => ipcClient.invoke(IPCEventType.psdOpen, {}),
+    readPsd: (filePath: string) => ipcClient.invoke(IPCEventType.psdRead, { filePath }),
     bakePsd: (request) => ipcClient.invoke(IPCEventType.psdBake, { request }),
     probeMedia: (path: string) => ipcClient.invoke(IPCEventType.mediaProbe, { path }),
     probeFontCoverage: (path: string) => ipcClient.invoke(IPCEventType.fontProbeCoverage, { path }),
@@ -349,6 +350,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onMessage(IPCEventType.workspaceAgentActivity, handler),
         reportPluginTools: (tools: readonly AgentPluginToolDescriptor[]) =>
             ipcClient.send(IPCEventType.agentReportPluginTools, { tools: [...tools] }),
+        requestFolderAccess: (request: AgentFolderAccessRequest) =>
+            ipcClient.invoke(IPCEventType.agentRequestFolderAccess, { callId: request.callId, paths: [...request.paths] }),
     },
     projectTrust: {
         query: (projectPath: string) =>

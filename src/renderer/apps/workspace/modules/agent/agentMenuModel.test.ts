@@ -27,13 +27,14 @@ function input(overrides: Partial<AgentMenuModelInput> = {}): AgentMenuModelInpu
         state: "working",
         paused: false,
         follow: true,
-        quick: { enabled: true, allowWrites: false, running: true },
+        quick: { enabled: true, allowWrites: false, fullAccess: false, running: true },
         run: {
             togglePause: vi.fn(),
             toggleFollow: vi.fn(),
             openLog: vi.fn(),
             toggleEnabled: vi.fn(),
             toggleAllowWrites: vi.fn(),
+            toggleFullAccess: vi.fn(),
             copyConfig: vi.fn(),
             exportSkill: vi.fn(),
             openSettings: vi.fn(),
@@ -56,7 +57,7 @@ describe("the Agent menu's status line", () => {
     });
 
     it("puts access being off before everything, then pause, then work", () => {
-        const on = { enabled: true, allowWrites: true, running: true };
+        const on = { enabled: true, allowWrites: true, fullAccess: false, running: true };
         expect(agentMenuStateKind({ ...on, enabled: false }, { paused: true, busy: true })).toBe("off");
         expect(agentMenuStateKind(on, { paused: true, busy: true })).toBe("paused");
         expect(agentMenuStateKind(on, { paused: false, busy: true })).toBe("working");
@@ -77,6 +78,7 @@ describe("the Agent menu's rows", () => {
             "---",
             AGENT_MENU_ACTIONS.enable,
             AGENT_MENU_ACTIONS.allowWrites,
+            AGENT_MENU_ACTIONS.fullAccess,
             AGENT_MENU_ACTIONS.copyConfig,
             AGENT_MENU_ACTIONS.exportSkill,
             "---",
@@ -100,7 +102,19 @@ describe("the Agent menu's rows", () => {
         const items = buildAgentMenuItems(input({ quick: null })).filter(isActionMenuAction);
         expect(items.find(item => item.id === AGENT_MENU_ACTIONS.enable)?.disabled).toBe(true);
         expect(items.find(item => item.id === AGENT_MENU_ACTIONS.allowWrites)?.disabled).toBe(true);
+        expect(items.find(item => item.id === AGENT_MENU_ACTIONS.fullAccess)?.disabled).toBe(true);
         expect(items.find(item => item.id === AGENT_MENU_ACTIONS.pause)?.disabled).toBeFalsy();
+    });
+
+    it("shows writes allowed and fixed while full access is on, and flips full access from its own row", () => {
+        const model = input({ quick: { enabled: true, allowWrites: false, fullAccess: true, running: true } });
+        const items = buildAgentMenuItems(model).filter(isActionMenuAction);
+        const writes = items.find(item => item.id === AGENT_MENU_ACTIONS.allowWrites);
+        const full = items.find(item => item.id === AGENT_MENU_ACTIONS.fullAccess);
+        expect(writes).toMatchObject({ checked: true, disabled: true });
+        expect(full).toMatchObject({ checked: true, label: "允许 Agent 完全访问" });
+        full?.onClick(undefined as never);
+        expect(model.run.toggleFullAccess).toHaveBeenCalled();
     });
 
     it("offers the four configurations and copies the one picked", () => {

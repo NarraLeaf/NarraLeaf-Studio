@@ -21,7 +21,7 @@ export const AGENT_SETTINGS_FILE_NAME = "agent-mcp.json";
 
 export const AGENT_SETTINGS_SCHEMA_VERSION = 1;
 
-/** One directory `assets_import` may read from. */
+/** One directory agents may read files from (`assets_import`, a PSD for a layered character). */
 export type AgentImportRoot = {
     /** Absolute. */
     path: string;
@@ -36,6 +36,14 @@ export type AgentSettingsFile = {
     enabled: boolean;
     /** Let write tools through. Off by default. */
     allowWrites: boolean;
+    /**
+     * Full access: write tools are let through whatever {@link allowWrites} says, and an agent may
+     * read any folder without being asked - except Studio's own folders (its settings and the app
+     * itself), the home folder as a whole and a file-system root, which stay closed. Off by default,
+     * and switched on only after the author confirms it in Studio's own window. Kept apart from `allowWrites` so that
+     * switching it off again leaves the author's own write setting as it was.
+     */
+    fullAccess: boolean;
     /** The port asked for. The one actually served on may differ - see {@link url}. */
     port: number;
     /** The bearer token every request must carry. */
@@ -70,6 +78,8 @@ export type AgentPluginToolsSetting = {
 export type AgentSettingsSnapshot = {
     enabled: boolean;
     allowWrites: boolean;
+    /** See {@link AgentSettingsFile.fullAccess}. */
+    fullAccess: boolean;
     port: number;
     token: string;
     allowedImportRoots: string[];
@@ -106,6 +116,8 @@ export const AGENT_MCP_STDIO_FLAG = "--mcp-stdio";
 export type AgentSettingsPatch = {
     enabled?: boolean;
     allowWrites?: boolean;
+    /** Turning it on is confirmed in the agent access window first; see `AgentManager`. */
+    fullAccess?: boolean;
     port?: number;
     /** Remove this directory from the allowed list. Adding one goes through the folder picker. */
     removeImportRoot?: string;
@@ -164,6 +176,7 @@ export function defaultAgentSettings(token: string): AgentSettingsFile {
         schemaVersion: AGENT_SETTINGS_SCHEMA_VERSION,
         enabled: false,
         allowWrites: false,
+        fullAccess: false,
         port: AGENT_MCP_DEFAULT_PORT,
         token,
         url: null,
@@ -200,6 +213,7 @@ export function normalizeAgentSettings(value: unknown, mintToken: () => string):
         schemaVersion: AGENT_SETTINGS_SCHEMA_VERSION,
         enabled: record.enabled === true,
         allowWrites: record.allowWrites === true,
+        fullAccess: record.fullAccess === true,
         port: isUsableAgentPort(record.port) ? record.port : AGENT_MCP_DEFAULT_PORT,
         token,
         url: typeof record.url === "string" ? record.url : null,

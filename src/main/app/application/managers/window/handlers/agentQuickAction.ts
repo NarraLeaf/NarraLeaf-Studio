@@ -3,6 +3,7 @@ import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import { WindowAppType } from "@shared/types/window";
 import { AGENT_COPY_CONFIG_KINDS, toAgentQuickState, type AgentQuickState, type AgentQuickTogglePatch } from "@shared/agent/workspaceAccess";
+import type { AgentFolderAccessAnswer } from "@shared/agent/protocol";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -14,7 +15,7 @@ import { IPCHandler } from "./IPCHandler";
  * workspace too, and so nothing they return can carry a secret: state is projected through
  * `toAgentQuickState` (three booleans), a client configuration is written to the system clipboard
  * here in main and only `{ copied: true }` goes back, and the skill export answers the folder it
- * wrote. Turning write access on is confirmed in a native dialog by `AgentManager.quickToggle`,
+ * wrote. Turning write access on is confirmed in Studio's agent access window by `AgentManager.quickToggle`,
  * because a workspace runs plugin code.
  *
  * Game windows (Dev Mode, Preview) run project code and are refused, as is everything else that is
@@ -58,14 +59,18 @@ export class AgentQuickToggleHandler extends IPCHandler<IPCEventType.agentQuickT
         if (refused) {
             return this.failed(refused);
         }
-        // Only the two switches the menu holds, and only as booleans: the port and the import
-        // folders stay with the Settings window.
+        // Only the three switches the menu holds, and only as booleans: the port and the import
+        // folders stay with the Settings window. Turning writes or full access on is confirmed in
+        // the agent access window by the manager.
         const clean: AgentQuickTogglePatch = {};
         if (typeof patch?.enabled === "boolean") {
             clean.enabled = patch.enabled;
         }
         if (typeof patch?.allowWrites === "boolean") {
             clean.allowWrites = patch.allowWrites;
+        }
+        if (typeof patch?.fullAccess === "boolean") {
+            clean.fullAccess = patch.fullAccess;
         }
         try {
             return this.success(toAgentQuickState(await window.getApp().getAgentManager().quickToggle(window, clean)));
@@ -152,5 +157,34 @@ export class AgentReportPluginToolsHandler extends IPCHandler<IPCEventType.agent
         }
         window.getApp().getAgentManager().reportPluginTools(window as AppWindow<WindowAppType.Workspace>, data?.tools);
         return this.success(void 0 as never);
+    }
+}
+
+/**
+ * A workspace asking, mid-call, to read folders outside the project for an agent. Workspace windows
+ * only. The manager refuses a `callId` that is not a call it sent this window and is still waiting
+ * on, so a plugin cannot raise the dialog on its own, and the name the dialog shows is the
+ * manager's record of the call rather than anything the window sent.
+ */
+export class AgentRequestFolderAccessHandler extends IPCHandler<IPCEventType.agentRequestFolderAccess> {
+    readonly name = IPCEventType.agentRequestFolderAccess;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        request: IPCEvents[IPCEventType.agentRequestFolderAccess]["data"],
+    ): Promise<RequestStatus<AgentFolderAccessAnswer>> {
+        if (window.getWindowType() !== WindowAppType.Workspace) {
+            window.app.logger.warn(`[Agent] Refused a folder access request from a ${window.getWindowType()} window`);
+            return this.failed(new Error(`A ${window.getWindowType()} window cannot ask for folder access.`));
+        }
+        try {
+            return this.success(await window.getApp().getAgentManager().requestFolderAccessForCall(window, {
+                callId: typeof request?.callId === "string" ? request.callId : "",
+                paths: Array.isArray(request?.paths) ? request.paths : [],
+            }));
+        } catch (error) {
+            return this.failed(error);
+        }
     }
 }

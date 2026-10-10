@@ -18,7 +18,7 @@ traps that do not produce a refusal at all.
 | `stale_revision` | The page or scene changed since you read it | Read it again (`story_show` / `ui_show`), redo your edit on the new text, write with the new revision. Never re-send the old text |
 | `check_failed` | The source had errors; **nothing was written** | Read every finding, fix them all, write again (a `dryRun` is free) |
 | `not_found` | A scene, page, element, asset or character name/id does not exist | `story_list`, `ui_surfaces`, `assets_list`, `characters_list`, `story_targets` |
-| `path_not_allowed` | `assets_import` path outside the allowed folders | Ask the author to add the folder in *Settings -> Agent access*, or to copy the files into the project folder |
+| `path_not_allowed` | A path outside the project and the allowed folders that the author has not allowed (yet) | The hint says which: *asking* - Studio's dialog is still open, call again once the author answers; *declined* - do not ask again, ask the author in chat or have them copy the files into the project; *never opened* (home folder, a drive root, Studio's own folders) - name the specific folder. Use `request_folder_access` up front for big imports |
 | `untrusted` | The project is not trusted, so its code cannot run (playtest, build) | Ask the author to trust the project in Studio |
 | `unavailable` | Valid call, impossible now (e.g. advancing a playtest that is not running) | Read the message; fix the precondition |
 | `internal` | Something broke in Studio | Retry once; if it repeats, `console_read {level:"error"}` and tell the author what you were doing |
@@ -88,6 +88,18 @@ traps that do not produce a refusal at all.
   figure give `{zoom:z, position:{xalign:0.5, yalign:0.5, yoffset: round(h*z/2 - H/2)}}` (h sprite
   height, H stage height). A reused skeleton character carries the demo's zoom 0.624.
 - **A sprite is a rectangle.** The image has no transparency; ask the author for a cut-out.
+- **`character_layered_set` refused: "Every layer image must be the same size".** Each layer is drawn
+  centred at its own pixels, so parts must be exported at the full canvas size, transparent around
+  them. Ask the author for full-canvas exports (or use the PSD: `character_layers_import {psd}` bakes
+  every layer to the canvas).
+- **A layered character's mouth (or jacket) vanishes for one look.** That layer has `null` for that
+  tag - the answer's `scoped` lists every such gap. Give it an image, or move the layer to the axis
+  that really drives it. `character_preview` shows the look.
+- **"`/char Mei smile`" changes the wrong thing, or a tag is refused as duplicate.** A tag name may
+  appear on one axis only; rename one (`no-hat`, `no-glasses`).
+- **Refused with "cold switch".** The character is of another kind (preset poses, a Live2D/Spine
+  model); switching discards its looks. Show the author the listed rows; pass `confirmSwitch: true`
+  only with their agreement.
 - **`asset_delete` refused.** Something still uses the asset; the refusal lists each place (a row, a
   scene's `#background`/`#music`, a character pose, a page). Rewrite those, then delete. Lint's
   `assets/unused` warnings are the list of leftovers safe to delete.

@@ -21,7 +21,9 @@ step that needs it, not all at once.
 | Interface design | restyling the interface | `references/ui-design.md` | `agent_guide {chapter:"ui-design"}` |
 | Blueprint format | wiring any behaviour | `references/blueprint-format.md` | `agent_guide {chapter:"blueprint-format"}` |
 | Script adaptation | turning a script into scenes, or writing prose | `references/script-adaptation.md` | `agent_guide {chapter:"script-adaptation"}` |
+| Layered sprites | a character whose art comes in parts (a PSD, `mei_eyes_smile.png`) | `references/layered-sprites.md` | `agent_guide {chapter:"layered-sprites"}` |
 | Verify and ship | lint, tests, playtest, build | `references/verify-and-ship.md` | `agent_guide {chapter:"verify-and-ship"}` |
+| Translation and voice | translating the game, wiring voice recordings | `references/localization-and-voice.md` | `agent_guide {chapter:"localization-and-voice"}` |
 | Troubleshooting | after any refusal you do not understand | `references/troubleshooting.md` | `agent_guide {chapter:"troubleshooting"}` |
 | Brief template | step 1 | `assets/brief-template.md` | (copy it into the chat) |
 
@@ -61,8 +63,12 @@ paused, and the directories you may import files from.
   their agent, and reconnect (the README next to this skill folder has every agent's recipe).
 - **Writes off** - tell the author: *Settings -> Agent access -> allow agents to make changes*.
 - **Paused** - the author paused you from the status bar. Wait for them to resume.
-- **Import directories** - if the author's art lives outside the listed directories, ask them to add
-  that folder under *Settings -> Agent access* (or to copy the files into the project folder).
+- **Import directories** - files outside the project and the listed directories are not refused at
+  once: Studio asks the author to allow their folder in a dialog. For a big import, call
+  `request_folder_access` with the files (or their folders) up front, with a one-line `reason`, so the
+  author answers once. `pending` means the dialog is still open - carry on with other work and try
+  again later; never repeat a request the author `denied`. If `agent_status` says **Full access** is
+  on, every folder but Studio's own is readable without asking.
 - **No project open** - fine for a new game (step 2). For an existing one, ask for its folder.
 
 The same switches are in Studio's menu bar, under *Agent* (Chinese Studio: *智能体*).
@@ -130,8 +136,8 @@ Checkpoint: the project is open in Studio and you have its overview.
 ## Step 3 - Assets
 
 1. `assets_import` the author's files with `names` chosen from your name map and a `folder` per kind
-   (`Backgrounds`, `Sprites`, `CG`, `Music`, `SFX`, `Video`). Paths must be absolute and inside an
-   allowed directory.
+   (`Backgrounds`, `Sprites`, `CG`, `Music`, `SFX`, `Video`). Paths must be absolute. A path outside
+   the project and the allowed directories makes Studio ask the author for its folder first (step 0).
 2. Formats: images PNG/JPEG/WebP/GIF/AVIF/SVG; audio MP3/OGG/Opus/WAV/M4A/AAC/FLAC; video WebM or
    MP4 (H.264); fonts TTF/OTF/WOFF/WOFF2. AVI, WMV, FLV, MPEG, TS, TIFF and AIFF are refused; HEVC
    MP4, ProRes MOV and Theora OGV import but play sound over a black picture. Tell the author which
@@ -162,6 +168,12 @@ Checkpoint: every asset in the name map exists in the project under its agreed n
   given poses gets a standing entrance by itself - feet on the bottom edge, at its own pixel size
   (art taller than the stage is scaled to fit). `characters_list` shows each one's `drawnAtCenter`
   box; the lower third of a full-height sprite behind the dialogue band is normal VN framing.
+- **Art in parts** (a PSD, or files like `mei_body.png`, `mei_eyes_smile.png`, `mei_outfit_casual.png`)
+  makes a **layered** character instead: read `layered-sprites`, import the parts named
+  `<character>_<layer>_<tag>`, then `character_layers_import` (with the stacking `order` and which
+  layers change together under one axis) or `character_layered_set`. Check combinations with
+  `character_preview`. Its looks are axis tags: `/char Mei smile` changes the expression and keeps the
+  outfit. Live2D / Spine characters are set up by the author in Studio; you only write their rows.
 - A speaker with no sprite still deserves a character (name colour, backlog, voice later). Truly
   one-off speakers may stay plain `Name: text` lines.
 - `variable_upsert` for every flag, counter and route switch the story needs: `saved` for anything
@@ -171,7 +183,8 @@ Checkpoint: every asset in the name map exists in the project under its agreed n
   (a retype warns with every row whose value no longer fits - rewrite those); `variable_delete` the
   rest (it refuses, listing users, while anything still reads it).
 
-Checkpoint: `story_targets` lists every speaker, asset and variable the script will name.
+Checkpoint: `story_targets` lists every speaker, asset and variable the script will name, and under
+*character looks* every pose or tag a `/show` or `/char` row will use.
 
 ## Step 5 - Story
 
@@ -288,14 +301,37 @@ Read `verify-and-ship`. In short:
 Checkpoint: lint has no errors, both tests pass, every route was played to its ending, the console
 is clean.
 
+## Step 8b - Translation and voice (when the author wants them)
+
+Read `localization-and-voice` first. Translate only into languages the author asked for, and only
+once the story is final - every later edit to a line makes its translation stale.
+
+1. **Translating:** add the language (`project_settings_set {languages}`), then
+   `localization_status {language}` to plan. Names first (`localization_list {origin:"names"}`) and
+   agree a glossary with the author; then the interface and keys; then the story scene by scene with
+   `localization_list {scene, status:"todo"}` -> `localization_set {entries}` (each unit's `rev`
+   passed back), a few hundred lines per call. Keep `{0}` values, `‹1›…‹/1›` / `‹2/›` run tags and line
+   breaks; fix every unit returned with `warnings`. Your translations are `machine` until the author
+   reviews them.
+2. **Voice:** `voice_settings_set {languages}` (and `namingPattern` before recording), `voice_list`
+   for each line's expected file name, `assets_import` the recordings into one folder,
+   `voice_auto_link {assetFolder, dryRun:true}` then for real, `voice_list {unlinkedOnly:true}` and
+   `voice_link` what is left by hand. Approve takes only when the author says so.
+3. `lint` again: `localization/*` and `voice/*` findings name what is left.
+
+Checkpoint: `localization_status` shows no `todo` for each language asked for; `voice_status` lists
+the lines still missing a recording.
+
 ## Step 9 - Ship
 
 `build {target:"current"}` (or the platform the author asked for). Then report to the author:
 
 - what was made: scenes, routes and endings, characters, pages restyled, behaviour added;
 - **every placeholder asset still in the game** and what it stands for;
-- anything left for them to do in Studio (leftover demo content, files to convert,
-  untranslated languages, the app icon and signing);
+- translation and voice coverage per language (`localization_status`, `voice_status`): lines still
+  `machine` for them to review, recordings still missing;
+- anything left for them to do in Studio (leftover demo content, files to convert, the app icon and
+  signing);
 - the file to open (the build result's `artifacts`), and that they can keep editing in Studio and
   ask you for more.
 

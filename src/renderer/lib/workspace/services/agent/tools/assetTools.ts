@@ -8,9 +8,9 @@
  * second time under another name.
  *
  * ⚠ The renderer may only read what the main process has granted this window. The project directory
- * always is; an allowed import root is readable only if main granted it when the author allowed it
- * (see `AgentMcpServer`). A path this check admits but the window may not read fails at import with
- * `sourceUnreadable`, and the answer says so.
+ * always is; an allowed import root, or a folder the author allowed when asked, is readable once
+ * main granted it to this window (`AgentManager.grantFolders`). A path this check admits but the
+ * window may not read fails at import with `sourceUnreadable`, and the answer says so.
  *
  * An image that cannot be transparent and is taller than it is wide gets a warning: that shape is a
  * standing sprite, and an opaque sprite shows on the stage as a rectangle. Every opaque image is not
@@ -40,7 +40,7 @@ import {
 } from "../agentCall";
 import { describeBlockedDelete } from "../../assets/assetDeleteGuard";
 import { AGENT_ASSET_TYPES, assetsService, listAssets, stripExtension } from "../agentLookups";
-import { findAllowedImportRoot } from "../agentPaths";
+import { ensureAgentMayReadPaths } from "../agentFolderRequest";
 import { opaqueImageWarning } from "../imageAlpha";
 import { readImageFacts } from "./castTools";
 
@@ -185,17 +185,10 @@ export const assetsImport: AgentToolHandler = async (args, { ctx, request, follo
         throw refuse("invalid_args", `\`type\` must be one of ${IMPORTABLE_TYPES.join(", ")}.`);
     }
     const folder = readOptionalString(args, "folder");
-    const projectPath = ctx.project.getConfig().projectPath;
 
     // Every path is checked before any is read, so a call naming one forbidden file imports nothing.
-    const notAllowed = paths.filter(path => !findAllowedImportRoot(path, projectPath, request.policy.allowedImportRoots));
-    if (notAllowed.length > 0) {
-        throw refuse(
-            "path_not_allowed",
-            `${notAllowed.length} path(s) are outside the project and the directories the author allowed: ${notAllowed.slice(0, 5).join(", ")}.`,
-            "Paths must be absolute. Ask the author to add the folder under Agent access in Studio's settings (agent_status lists the allowed ones), or copy the files into the project directory.",
-        );
-    }
+    // A folder outside the allowed ones is put to the author first (see `agentFolderRequest`).
+    await ensureAgentMayReadPaths(paths, { ctx, request });
 
     const service = assetsService(ctx);
     const imported: ReturnType<typeof describeAsset>[] = [];

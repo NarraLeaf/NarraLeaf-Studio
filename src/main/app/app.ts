@@ -2573,6 +2573,93 @@ export class App extends BaseApp {
     }
 
     /**
+     * Put one agent access question to the author in a window of its own, and report the answer.
+     *
+     * The project-trust prompt's shape and its reason: the asker is often a workspace, which runs
+     * plugin code, and an answer that decides how far an outside program may reach must come from a
+     * surface that code cannot touch. Modal over `asker` where it is on screen, standing on its own
+     * otherwise, and a dependent child either way - so a workspace closing takes its question with
+     * it, and the answer reads as "no".
+     *
+     * `activate` false is for a question nobody at the screen started - an agent asking for a
+     * folder while the author is in their terminal. The window is shown without taking the
+     * foreground from another application, which is what the native sheet it replaced did; it still
+     * takes the focus within Studio when Studio is already in front.
+     *
+     * Only asks. The caller keeps the request it raised and acts on the answer; `null` (closed
+     * without one) is left for it to read, and every caller so far reads it as "no".
+     */
+    public async askAgentAccess(
+        asker: AppWindow,
+        props: WindowProps[WindowAppType.AgentAccessPrompt],
+        options: { activate: boolean },
+    ): Promise<WindowCloseResults[WindowAppType.AgentAccessPrompt]> {
+        const parent = !asker.isClosed() && asker.win.isVisible() ? asker : null;
+        const activate = options.activate || (parent !== null && parent.win.isFocused());
+        const promptWindow = await this.launchAgentAccessPrompt(parent, props, activate);
+        const answer = new Promise<WindowCloseResults[WindowAppType.AgentAccessPrompt]>(resolve => {
+            promptWindow.setCloseResultResolver(result => resolve(result ?? null));
+        });
+        if (asker.isClosed()) {
+            // Gone while the page loaded: there is nobody left for the answer to reach.
+            promptWindow.forceClose();
+        } else {
+            asker.addChild(promptWindow);
+        }
+        return answer;
+    }
+
+    /**
+     * Raise the agent access window: a small modal child of whoever asked, one question, two
+     * answers. Its height follows what it holds, since it is not resizable and a folder list or a
+     * stated reason below a scroll would be read by nobody.
+     */
+    private async launchAgentAccessPrompt(
+        parent: AppWindow | null,
+        props: WindowProps[WindowAppType.AgentAccessPrompt],
+        activate: boolean,
+    ): Promise<AppWindow<WindowAppType.AgentAccessPrompt>> {
+        const config: WindowConfig<WindowAppType.AgentAccessPrompt> = {
+            windowType: WindowAppType.AgentAccessPrompt,
+            isolated: true,
+            autoFocus: activate,
+            preload: this.getPreloadScript(),
+            windowControlPolicy: WindowControlPolicy.None,
+            options: {
+                ...(parent ? { modal: true, parent: parent.win } : {}),
+                resizable: false,
+                minimizable: false,
+                maximizable: false,
+                closable: true,
+                fullscreenable: false,
+                width: 480,
+                height: agentAccessPromptHeight(props),
+                center: true,
+                frame: false,
+                titleBarStyle: "hidden",
+                show: false,
+            },
+        };
+        const window = new AppWindow<WindowAppType.AgentAccessPrompt>(this, config, props);
+        window.setTitle("Agent Access - NarraLeaf Studio");
+        this.applyWindowIcon(window);
+        window.onReady(() => {
+            if (window.isClosed()) {
+                return;
+            }
+            if (activate) {
+                void window.show();
+            } else {
+                window.win.showInactive();
+            }
+        });
+
+        await window.loadFile(this.getAppEntry(WindowAppType.AgentAccessPrompt));
+
+        return window;
+    }
+
+    /**
      * Raise the window that asks whether a server is trusted.
      *
      * Modal on whoever asked, exactly as the plugin permission prompt is: the question is
@@ -2618,5 +2705,29 @@ export class App extends BaseApp {
         await window.loadFile(this.getAppEntry(WindowAppType.ServerTrustPrompt));
 
         return window;
+    }
+}
+
+/**
+ * How tall the agent access window is for what it holds: room for each folder, wrapped where it is
+ * long, and for the agent's stated reason. A translation longer than these allow for scrolls the
+ * body rather than pushing the answers off the window.
+ */
+function agentAccessPromptHeight(props: WindowProps[WindowAppType.AgentAccessPrompt]): number {
+    // Lines a path or a sentence takes in the window's 480px body, at about 66 characters a line.
+    const lines = (text: string, most: number) => Math.min(most, Math.max(1, Math.ceil(text.length / 66)));
+    switch (props.kind) {
+        case "folderAccess": {
+            const folderLines = props.folders.slice(0, 5).reduce((sum, folder) => sum + lines(folder, 3), 0);
+            // A stated reason runs to 300 characters, about five lines.
+            const reason = props.reason ? 12 + lines(props.reason, 5) * 20 : 0;
+            return Math.min(640, 314 + Math.max(1, folderLines) * 16 + reason);
+        }
+        case "fullAccess":
+            return 300;
+        case "allowWrites":
+            return 240;
+        case "exportOverwrite":
+            return 284 + lines(props.path, 4) * 16;
     }
 }

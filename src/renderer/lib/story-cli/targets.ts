@@ -21,6 +21,78 @@ type Section = { title: string; hint: string; values: readonly string[]; verbati
 export type SceneSettingsEntry = { scene: string; background: string | null; music: string | null };
 
 /**
+ * What a character's looks are called - the word after the name on a `/show` or `/char` row. A
+ * preset character's poses; a layered character's tags, grouped by the axis each belongs to (a row
+ * names the tag alone and changes that axis only); a puppet's looks are named by its model.
+ */
+export type CharacterLooksEntry = {
+    character: string;
+    kind: string;
+    poses?: readonly string[];
+    axes?: readonly { name: string; tags: readonly string[]; default: string | null }[];
+};
+
+/** Build the entries from characters as the story command line holds them. */
+export function characterLooksOf(characters: readonly {
+    profile: {
+        getName(): string;
+        appearance: {
+            getKind(): string;
+            getPoses(): readonly { name: string }[];
+            getAxes(): readonly { name: string; tags: readonly { id: string; name: string }[]; defaultTagId: string | null }[];
+        };
+    };
+}[]): CharacterLooksEntry[] {
+    return characters.map(character => {
+        const appearance = character.profile.appearance;
+        const kind = appearance.getKind();
+        if (kind === "preset") {
+            return { character: character.profile.getName(), kind, poses: appearance.getPoses().map(pose => pose.name) };
+        }
+        if (kind === "layered") {
+            return {
+                character: character.profile.getName(),
+                kind,
+                axes: appearance.getAxes().map(axis => ({
+                    name: axis.name,
+                    tags: axis.tags.map(tag => tag.name),
+                    default: axis.tags.find(tag => tag.id === axis.defaultTagId)?.name ?? axis.tags[0]?.name ?? null,
+                })),
+            };
+        }
+        return { character: character.profile.getName(), kind };
+    });
+}
+
+/**
+ * The looks section: one line per preset character, one per axis of a layered one. Verbatim lines,
+ * because "Mei expression: normal* smile" has to keep its axis beside its tags to mean anything.
+ */
+function looksSection(entries: readonly CharacterLooksEntry[]): Section {
+    const values: string[] = [];
+    for (const entry of entries) {
+        const who = quoteIfSpaced(entry.character);
+        if (entry.poses) {
+            if (entry.poses.length > 0) {
+                values.push(`${who}: ${entry.poses.map(quoteIfSpaced).join("  ")}`);
+            }
+        } else if (entry.axes) {
+            for (const axis of entry.axes) {
+                values.push(`${who} (${axis.name}): ${axis.tags.map(tag => `${quoteIfSpaced(tag)}${tag === axis.default ? "*" : ""}`).join("  ")}`);
+            }
+        } else {
+            values.push(`${who}: named by its ${entry.kind} model (/char, /motion, /skin)`);
+        }
+    }
+    return {
+        title: "character looks",
+        hint: "the word after the name on /show and /char; a layered character's tag changes its own axis only, * = default",
+        values,
+        verbatim: true,
+    };
+}
+
+/**
  * The lists an author picks from, in the order a scene tends to need them.
  *
  * Deliberately not everything the context holds: `stageObjects` and `labels` are scene-scoped and
@@ -64,11 +136,17 @@ function sceneSettingsSection(entries: readonly SceneSettingsEntry[]): Section {
     return { title: "scene settings", hint: "what a scene opens on before its first row; story show prints them in the header", values, verbatim: true };
 }
 
-export function formatTargets(context: StoryCommandContext, search: string, sceneSettings: readonly SceneSettingsEntry[] = []): string {
+export function formatTargets(
+    context: StoryCommandContext,
+    search: string,
+    sceneSettings: readonly SceneSettingsEntry[] = [],
+    looks: readonly CharacterLooksEntry[] = [],
+): string {
     const folded = search.trim().toLowerCase();
     const lines: string[] = [];
     let hidden = 0;
-    for (const section of [...sectionsOf(context), sceneSettingsSection(sceneSettings)]) {
+    const [characters, ...rest] = sectionsOf(context);
+    for (const section of [characters, looksSection(looks), ...rest, sceneSettingsSection(sceneSettings)]) {
         const matching = folded ? section.values.filter(value => value.toLowerCase().includes(folded)) : section.values;
         if (matching.length === 0) {
             hidden += section.values.length;

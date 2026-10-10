@@ -126,9 +126,12 @@ Tell the author, in this order:
 2. **Placeholders** - every placeholder asset, what it stands for, and its name, so they can replace
    it (in Studio, replacing an asset's file keeps every reference).
 3. **For them to do in Studio** - leftover skeleton content you could not delete, files that need
-   converting, the app icon, signing, anything you could not do with the tools. Say which languages
-   the game offers (`project_info`) and which are untranslated.
-4. **How to run it** - the file to open, from the build result's `artifacts` (the `.app`, installer or
+   converting, the app icon, signing, anything you could not do with the tools.
+4. **Translation and voice** - per language, how much is translated and how much is still
+   `machine` awaiting their review (`localization_status`); per voice language, how many lines have
+   a take, how many are approved, and which recordings are missing (`voice_status`, `voice_list
+   {unlinkedOnly:true}`).
+5. **How to run it** - the file to open, from the build result's `artifacts` (the `.app`, installer or
    app folder); an unsigned macOS build has to be allowed once in System Settings > Privacy &
    Security. Or press Play in Studio.
-5. **Known limits** - anything you simplified from their script, and why.
+6. **Known limits** - anything you simplified from their script, and why.

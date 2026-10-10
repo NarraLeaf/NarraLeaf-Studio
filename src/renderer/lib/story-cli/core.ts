@@ -45,7 +45,7 @@ import { describeSceneSettings } from "./dsl/sceneSettings";
 import { LINE_SHAPES_HELP } from "./dsl/shapes";
 import { buildLookups } from "./lookups";
 import { buildContext, findScene, orderedScenes, type ProjectData, type StorySummary } from "./model";
-import { formatTargets } from "./targets";
+import { characterLooksOf, formatTargets } from "./targets";
 
 /** How many commands a bare `commands` prints before it says only how many more there are. */
 export const DEFAULT_COMMAND_LIMIT = 60;
@@ -161,7 +161,7 @@ export function storyTargetsCommand(
     const io = commandWriter();
     const context = buildContext(data, document, null);
     const sceneSettings = orderedScenes(document).map(scene => ({ scene: scene.name, ...describeSceneSettings(scene, context) }));
-    io.out(options.json === true ? JSON.stringify(context, null, 2) : formatTargets(context, options.search ?? "", sceneSettings));
+    io.out(options.json === true ? JSON.stringify(context, null, 2) : formatTargets(context, options.search ?? "", sceneSettings, characterLooksOf(data.characters)));
     return io.finish(0);
 }
 

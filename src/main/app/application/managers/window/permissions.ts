@@ -145,6 +145,9 @@ export const windowPermissionDeclarations: { [T in WindowAppType]: WindowPermiss
     // The same shape: one question about one project and one server, answered by closing the
     // window. The host records the answer; the window calls nothing to make it count.
     [WindowAppType.ServerSessionPrompt]: { fs: noFileSystemAccess, api: noElevatedAccess, capabilities: noDefaultCapabilities },
+    // Agent access, one question at a time, answered by closing the window: the host keeps the
+    // request it raised and writes the answer itself.
+    [WindowAppType.AgentAccessPrompt]: { fs: noFileSystemAccess, api: noElevatedAccess, capabilities: noDefaultCapabilities },
     // A sample of the interface, drawn from preferences and nothing else. It reads global state
     // and the list of servers this installation is signed in to, both of which are open to any
     // window; it opens no project and touches no file.
