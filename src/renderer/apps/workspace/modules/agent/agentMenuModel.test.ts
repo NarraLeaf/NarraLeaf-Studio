@@ -48,10 +48,10 @@ function shape(items: ActionMenuItem[]): string[] {
 
 describe("the Agent menu's status line", () => {
     it("says who is connected and what it is doing", () => {
-        expect(agentMenuStatusLine(zh, "Claude Code", "working")).toBe("智能体：Claude Code · 工作中");
-        expect(agentMenuStatusLine(zh, "opencode", "idle")).toBe("智能体：opencode · 空闲");
-        expect(agentMenuStatusLine(zh, "Claude Code", "paused")).toBe("智能体：Claude Code · 已暂停");
-        expect(agentMenuStatusLine(zh, null, "off")).toBe("智能体：未连接 · 未开启");
+        expect(agentMenuStatusLine(zh, "Claude Code", "working")).toBe("Agent：Claude Code · 工作中");
+        expect(agentMenuStatusLine(zh, "opencode", "idle")).toBe("Agent：opencode · 空闲");
+        expect(agentMenuStatusLine(zh, "Claude Code", "paused")).toBe("Agent：Claude Code · 已暂停");
+        expect(agentMenuStatusLine(zh, null, "off")).toBe("Agent：未连接 · 未开启");
         expect(agentMenuStatusLine(en, null, "idle")).toBe("Agent: Not connected · Idle");
     });
 
@@ -87,13 +87,13 @@ describe("the Agent menu's rows", () => {
     it("draws the status line as a disabled row and the switches as checkboxes", () => {
         const items = buildAgentMenuItems(input({ follow: false }));
         const byId = new Map(items.filter(isActionMenuAction).map(item => [item.id, item]));
-        expect(byId.get(AGENT_MENU_ACTIONS.status)).toMatchObject({ label: "智能体：Claude Code · 工作中", disabled: true });
+        expect(byId.get(AGENT_MENU_ACTIONS.status)).toMatchObject({ label: "Agent：Claude Code · 工作中", disabled: true });
         expect(byId.get(AGENT_MENU_ACTIONS.follow)?.checked).toBe(false);
         expect(byId.get(AGENT_MENU_ACTIONS.enable)?.checked).toBe(true);
         expect(byId.get(AGENT_MENU_ACTIONS.allowWrites)?.checked).toBe(false);
-        expect(byId.get(AGENT_MENU_ACTIONS.pause)?.label).toBe("暂停智能体");
+        expect(byId.get(AGENT_MENU_ACTIONS.pause)?.label).toBe("暂停 Agent");
         expect(buildAgentMenuItems(input({ paused: true })).filter(isActionMenuAction).find(item => item.id === AGENT_MENU_ACTIONS.pause)?.label)
-            .toBe("恢复智能体");
+            .toBe("继续 Agent");
     });
 
     it("holds the access switches until main has answered", () => {

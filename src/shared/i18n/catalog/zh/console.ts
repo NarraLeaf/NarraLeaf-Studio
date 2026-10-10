@@ -27,8 +27,8 @@ export const console = {
         buildDescription: "构建、打包与预览流程输出",
         storyDescription: "故事场景预览诊断与警告",
         storageDescription: "项目文件写入：保存失败、重试与恢复",
-        agent: "智能体",
-        agentDescription: "已连接 Studio 的智能体发起的调用",
+        agent: "Agent",
+        agentDescription: "已连接 Studio 的 AI Agent 发起的调用",
     },
     sources: {
         blueprintLog: "蓝图日志",

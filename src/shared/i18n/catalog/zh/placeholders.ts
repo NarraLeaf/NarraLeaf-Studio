@@ -20,7 +20,7 @@ export const placeholders = {
         assets: "资产",
         console: "控制台",
         problems: "问题",
-        agentLog: "智能体日志",
+        agentLog: "Agent 日志",
         storyMotion: "故事动效",
         dashboard: "仪表盘",
         audioPreview: "音频预览",

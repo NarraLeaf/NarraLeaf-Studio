@@ -70,8 +70,8 @@ export const settings = {
             description: "Studio 下载插件、模板与构建工具的来源",
         },
         agent: {
-            label: "智能体接入",
-            description: "允许智能体通过 MCP 连接 Studio，并编辑当前打开的工程",
+            label: "Agent 接入",
+            description: "允许 AI Agent 通过 MCP 连接 Studio，并编辑当前打开的工程",
         },
         data: {
             label: "数据",
@@ -443,10 +443,10 @@ export const settings = {
     // The agent access panel (`AgentAccessPanel`).
     agent: {
         loading: "正在读取…",
-        enable: "允许智能体连接",
-        enableHint: "在本机提供 MCP 端点，供 Claude Code、opencode 等智能体使用",
-        allowWrites: "允许智能体修改工程",
-        allowWritesHint: "关闭时智能体只能读取工程，所有修改操作都会被拒绝",
+        enable: "允许 Agent 连接",
+        enableHint: "在本机提供 MCP 端点，供 Claude Code、opencode 等 AI Agent 使用",
+        allowWrites: "允许 Agent 修改工程",
+        allowWritesHint: "关闭时 Agent 只能读取工程，所有修改操作都会被拒绝",
         port: "端口",
         portHint: "修改后立即生效，端口被占用时自动改用空闲端口",
         portInvalid: "请输入 {min} 到 {max} 之间的端口",
@@ -463,7 +463,7 @@ export const settings = {
         regenerateAction: "重新生成",
         regenerateConfirm: "确认重新生成",
         copyConfig: "复制配置",
-        copyConfigHint: "可直接粘贴到智能体的配置中，已填入端点地址与令牌",
+        copyConfigHint: "可直接粘贴到 Agent 的配置中，已填入端点地址与令牌",
         copyClaudeCode: "Claude Code",
         copyJson: "JSON",
         copyOpencode: "opencode",
