@@ -3,9 +3,10 @@
  *
  * The bridge tells this service when a call starts and ends and what each write touched; the status
  * bar draws the call in flight from it, and the workspace host (`AgentWorkspaceHost`) opens the
- * editor tab a write landed in and briefly marks what changed - inside Studio only. Nothing here or
- * downstream of it focuses a window: an author typing in another application while the agent works
- * must not have the keyboard taken from them.
+ * editor tab a write landed in and outlines what changed until the next write lands elsewhere or a
+ * few seconds pass - inside Studio only. Nothing here or downstream of it focuses a window: an
+ * author typing in another application while the agent works must not have the keyboard taken from
+ * them.
  *
  * - **Pause** is for this session only and refuses every write (`paused`) until it is lifted. It is
  *   deliberately not remembered: a paused agent the author forgot about across a restart would look

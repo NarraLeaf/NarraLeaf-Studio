@@ -5,7 +5,8 @@ import type { AgentBridgeService } from "@/lib/workspace/services/agent/AgentBri
 import type { AgentFollowService, AgentWriteTarget } from "@/lib/workspace/services/agent/AgentFollowService";
 import type { AgentOffscreenRenderer, OffscreenRenderJob } from "@/lib/workspace/services/agent/agentOffscreenRenderer";
 import { useWorkspace } from "../../context";
-import { measureAgentWrite, revealAgentWrite, type AgentHighlightRect } from "./revealAgentWrite";
+import { measureAgentWrite, revealAgentWrite } from "./revealAgentWrite";
+import { AgentOutlineTimeline, type AgentOutline } from "./agentOutlineTimeline";
 
 /**
  * The parts of an agent's session that have to live in the workspace's React tree.
@@ -13,8 +14,9 @@ import { measureAgentWrite, revealAgentWrite, type AgentHighlightRect } from "./
  * - The offscreen host `ui_screenshot` renders pages into, so they get the brand palette, the
  *   plugins' renderers and the asset resolution the editor's own canvas gets.
  * - Follow mode, a Studio-wide setting that is on by default: when an agent writes, the editor tab it
- *   wrote to is opened or brought forward, and what changed is outlined for a moment - every write,
- *   so the author sees what the agent does without reading its transcript. The two things it leaves
+ *   wrote to is opened or brought forward, and what changed is outlined until the next write lands
+ *   elsewhere or a few seconds pass (`agentOutlineTimeline`) - every write, so the author sees what
+ *   the agent does without reading its transcript. The two things it leaves
  *   alone both protect typing: nothing here focuses a window, so an author typing in another
  *   application keeps the keyboard, and a text field the author is typing in inside Studio keeps
  *   its tab - the agent's tab then opens behind it.
@@ -75,63 +77,72 @@ function OffscreenBox({ job }: { job: OffscreenRenderJob }) {
     );
 }
 
-/** How long a change stays outlined. */
-const HIGHLIGHT_MS = 1500;
-/** How long after opening a tab its content is looked for: one commit and a layout, with room to spare. */
-const HIGHLIGHT_DELAY_MS = 350;
-
-type Highlight = { id: number; rects: AgentHighlightRect[] };
+/** Keys that only modify another: holding one is not the author typing, nor is Alt+Tab away. */
+const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "AltGraph", "CapsLock", "OS"]);
 
 function AgentFollowHost({ context, follow }: { context: WorkspaceContext; follow: AgentFollowService }) {
-    const [highlights, setHighlights] = useState<Highlight[]>([]);
+    const [outlines, setOutlines] = useState<readonly AgentOutline[]>([]);
 
     useEffect(() => {
-        let nextId = 1;
-        const timers = new Set<number>();
-        const later = (ms: number, run: () => void) => {
-            const timer = window.setTimeout(() => {
-                timers.delete(timer);
-                run();
-            }, ms);
-            timers.add(timer);
+        const timeline = new AgentOutlineTimeline(setOutlines);
+        // Measured every frame while anything is outlined: the tab may still be opening, and the
+        // author may scroll or switch tabs while an outline is up.
+        let frame = 0;
+        const tick = () => {
+            frame = 0;
+            timeline.measure(measureAgentWrite);
+            if (timeline.get().length > 0) {
+                frame = window.requestAnimationFrame(tick);
+            }
         };
-        const highlight = (target: AgentWriteTarget) => {
-            later(HIGHLIGHT_DELAY_MS, () => {
-                const rects = measureAgentWrite(target);
-                if (rects.length === 0) {
-                    return;
-                }
-                const id = nextId++;
-                setHighlights(current => [...current, { id, rects }]);
-                later(HIGHLIGHT_MS, () => setHighlights(current => current.filter(item => item.id !== id)));
-            });
+        const outline = (target: AgentWriteTarget) => {
+            timeline.add(target);
+            if (frame === 0 && timeline.get().length > 0) {
+                frame = window.requestAnimationFrame(tick);
+            }
         };
         const unsubscribe = follow.onWrote(target => {
             if (!follow.getState().follow || !revealAgentWrite(context, target)) {
                 return;
             }
-            highlight(target);
+            outline(target);
         });
         // Asked for by the Agent log, which has already opened the tab; drawn whether or not follow is on.
-        const unsubscribeRequests = follow.onHighlightRequested(highlight);
+        const unsubscribeRequests = follow.onHighlightRequested(outline);
+        // The author's own click or keystroke anywhere in Studio takes the outline away at once.
+        // Pointer down, not click: the click on an Agent log row that asks for an outline lands
+        // before the outline does.
+        const dismiss = (event: Event) => {
+            if (event instanceof KeyboardEvent && MODIFIER_KEYS.has(event.key)) {
+                return;
+            }
+            timeline.clear();
+        };
+        window.addEventListener("pointerdown", dismiss, true);
+        window.addEventListener("keydown", dismiss, true);
         return () => {
             unsubscribe();
             unsubscribeRequests();
-            timers.forEach(timer => window.clearTimeout(timer));
-            timers.clear();
-            setHighlights([]);
+            window.removeEventListener("pointerdown", dismiss, true);
+            window.removeEventListener("keydown", dismiss, true);
+            if (frame !== 0) {
+                window.cancelAnimationFrame(frame);
+            }
+            timeline.dispose();
+            setOutlines([]);
         };
     }, [context, follow]);
 
-    if (highlights.length === 0) {
+    if (!outlines.some(outline => outline.rects.length > 0)) {
         return null;
     }
     return createPortal(
         <div aria-hidden className="pointer-events-none fixed inset-0 z-50">
-            {highlights.flatMap(highlight => highlight.rects.map((rect, index) => (
+            {outlines.flatMap(outline => outline.rects.map((rect, index) => (
+                // The fade lasts AGENT_OUTLINE_FADE_MS, which is when the timeline drops it.
                 <div
-                    key={`${highlight.id}-${index}`}
-                    className="absolute rounded-md ring-2 ring-primary"
+                    key={`${outline.id}-${index}`}
+                    className={`absolute rounded-md ring-2 ring-primary transition-opacity duration-200 ${outline.phase === "leaving" ? "opacity-0" : "opacity-100"}`}
                     style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
                 />
             )))}

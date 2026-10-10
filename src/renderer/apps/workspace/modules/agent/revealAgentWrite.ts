@@ -15,6 +15,7 @@ import { createLocalizationEditorTab } from "../localization/openLocalizationEdi
 import { getLocalizationEditorTabId, nextTableRevealToken } from "../localization/localizationEditorTabId";
 import { createVoiceEditorTab } from "../voice/openVoiceEditorTab";
 import { getVoiceEditorTabId } from "../voice/voiceEditorTabId";
+import { agentWriteOutlineIds, type AgentHighlightRect } from "./agentOutlineTimeline";
 
 /**
  * Taking the author to what an agent changed: the editor tab a write landed in, and where on screen
@@ -26,9 +27,6 @@ import { getVoiceEditorTabId } from "../voice/voiceEditorTabId";
  *
  * Comments in English per project convention.
  */
-
-/** A rectangle in viewport coordinates. */
-export type AgentHighlightRect = { left: number; top: number; width: number; height: number };
 
 /** Whether the author is typing somewhere in Studio right now. */
 function authorIsTyping(): boolean {
@@ -124,28 +122,49 @@ export function revealAgentWrite(context: WorkspaceContext, target: AgentWriteTa
     }
 }
 
+/**
+ * The part of a node the author can see: its box cut to every scrolling or clipping box around it
+ * and to the window. Null when none of it shows. An outline stays up for seconds, through the
+ * author's scrolling, so a row scrolled out of its editor must not be outlined over the panel beside.
+ */
+function visiblePart(node: HTMLElement): AgentHighlightRect | null {
+    const box = node.getBoundingClientRect();
+    let left = Math.max(box.left, 0);
+    let top = Math.max(box.top, 0);
+    let right = Math.min(box.right, window.innerWidth);
+    let bottom = Math.min(box.bottom, window.innerHeight);
+    for (let parent = node.parentElement; parent && right > left && bottom > top; parent = parent.parentElement) {
+        const style = window.getComputedStyle(parent);
+        if (style.overflowX === "visible" && style.overflowY === "visible") {
+            continue;
+        }
+        const clip = parent.getBoundingClientRect();
+        left = Math.max(left, clip.left);
+        top = Math.max(top, clip.top);
+        right = Math.min(right, clip.right);
+        bottom = Math.min(bottom, clip.bottom);
+    }
+    return right > left && bottom > top ? { left, top, width: right - left, height: bottom - top } : null;
+}
+
 /** Where on screen the things a write changed are drawn: the biggest visible drawing of each. */
 export function measureAgentWrite(target: AgentWriteTarget): AgentHighlightRect[] {
-    const ids = target.kind === "surface" || target.kind === "component"
-        ? target.elementIds ?? []
-        : target.kind === "scene" ? target.blockIds ?? [] : [];
+    const ids = agentWriteOutlineIds(target);
     const attribute = target.kind === "scene" ? "data-story-row-block-id" : "data-ui-element-id";
     const rects: AgentHighlightRect[] = [];
     for (const id of ids.slice(0, 24)) {
-        let best: DOMRect | null = null;
+        let best: AgentHighlightRect | null = null;
         for (const node of Array.from(document.querySelectorAll<HTMLElement>(`[${attribute}="${CSS.escape(id)}"]`))) {
             if (node.closest("[data-agent-offscreen]")) {
                 continue;
             }
-            const rect = node.getBoundingClientRect();
-            const onScreen = rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.right > 0
-                && rect.top < window.innerHeight && rect.left < window.innerWidth;
-            if (onScreen && (!best || rect.width * rect.height > best.width * best.height)) {
+            const rect = visiblePart(node);
+            if (rect && (!best || rect.width * rect.height > best.width * best.height)) {
                 best = rect;
             }
         }
         if (best) {
-            rects.push({ left: best.left, top: best.top, width: best.width, height: best.height });
+            rects.push(best);
         }
     }
     return rects;
