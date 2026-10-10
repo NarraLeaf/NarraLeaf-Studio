@@ -389,7 +389,23 @@ export const workspace = {
             surfaceEdit: "インターフェースの編集",
             blueprintEdit: "ブループリントの編集",
             replaceText: "テキストの置換",
+            agentEdit: "エージェントの編集",
         },
+    },
+    // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.
+    agent: {
+        status: {
+            editing: "エージェントが編集中：{name}",
+            working: "エージェントが作業中",
+            connected: "エージェント：{client}",
+            paused: "エージェントは一時停止中",
+        },
+        menu: {
+            pause: "エージェントを一時停止",
+            resume: "エージェントを再開",
+            follow: "エージェントの編集を追う",
+        },
+        tooltip: "エージェントのオプション",
     },
     shell: {
     /**
@@ -801,6 +817,7 @@ export const workspace = {
                 textEncoding: "文字コード",
                 textLineEnding: "改行コード",
                 textSelection: "カーソル位置",
+                agent: "エージェント",
             },
         },
         // 保存の報告。ファイルを書けなかったときに出す居座るトーストと、「ストレージ」チャンネルに

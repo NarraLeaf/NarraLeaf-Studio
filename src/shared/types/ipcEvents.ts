@@ -1,6 +1,8 @@
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import type { ProjectTrustRecord } from "./projectTrust";
+import type { AgentCallRequest, AgentCallResult } from "../agent/protocol";
+import type { AgentSettingsPatch, AgentSettingsSnapshot } from "../agent/settings";
 import type { ProjectSessionHolder, ProjectSessionLockOutcome } from "./projectSession";
 import { IPCMessageType, IPCType } from "./ipc";
 import { FsRequestResult, PlatformInfo } from "./os";
@@ -9,6 +11,7 @@ import type { FsTextEncoding } from "./textEncoding";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults, WorkspaceViewRequest } from "./window";
 import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
 import type { MissingRecentProject, RecentProjectIcon } from "./state/appStateTypes";
+import type { DevModeAgentAction, DevModeAgentResult } from "./devMode";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
@@ -280,6 +283,11 @@ export enum IPCEventType {
     workspaceConfirmClose = "workspace.confirmClose",
     workspaceCloseProgress = "workspace.closeProgress",
     workspaceFlushPendingSaves = "workspace.flushPendingSaves",
+    workspaceAgentCall = "workspace.agentCall",
+    agentSettingsGet = "agent.settings.get",
+    agentSettingsUpdate = "agent.settings.update",
+    agentSettingsRegenerateToken = "agent.settings.regenerateToken",
+    agentSettingsAddImportRoot = "agent.settings.addImportRoot",
     workspaceResolveAssetUrl = "workspace.resolveAssetUrl",
     workspaceResolveAllAssetUrls = "workspace.resolveAllAssetUrls",
     workspaceResolveImageAssetUrl = "workspace.resolveImageAssetUrl",
@@ -323,6 +331,8 @@ export enum IPCEventType {
     devModeScreenshotSave = "devMode.screenshot.save",
     devModeScreenshotOpenFolder = "devMode.screenshot.openFolder",
     devModeWindowCloseRequested = "devMode.window.closeRequested",
+    devModeAgentControl = "devMode.agent.control",
+    devModeAgentDrive = "devMode.agent.drive",
 
     previewLaunch = "preview.launch",
     previewStop = "preview.stop",
@@ -2646,6 +2656,48 @@ export type IPCWorkspaceEvents = {
         data: {};
         response: RequestStatus<{ flushed: boolean }>;
     };
+    /**
+     * Carry out one agent tool call, or one of main's internal calls (`__state`, `__test`,
+     * `__build`), in this workspace. See `@shared/agent/protocol`.
+     *
+     * The answer is always a `success: true` envelope around an `AgentCallResult`, refusals
+     * included: a refusal is something the agent reads and acts on, and `success: false` is kept
+     * for a workspace that could not run the call at all.
+     */
+    [IPCEventType.workspaceAgentCall]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Client,
+        data: AgentCallRequest;
+        response: RequestStatus<AgentCallResult>;
+    };
+    /** Agent access as the Settings window shows it. Settings window only. */
+    [IPCEventType.agentSettingsGet]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: AgentSettingsSnapshot;
+    };
+    /** Change agent access; the endpoint starts, stops or moves at once. Settings window only. */
+    [IPCEventType.agentSettingsUpdate]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: AgentSettingsPatch;
+        response: AgentSettingsSnapshot;
+    };
+    /** Replace the bearer token; every client configured with the old one stops being let in. */
+    [IPCEventType.agentSettingsRegenerateToken]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: AgentSettingsSnapshot;
+    };
+    /** Ask for a folder with the native picker and allow agents to import from it. */
+    [IPCEventType.agentSettingsAddImportRoot]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: AgentSettingsSnapshot;
+    };
     [IPCEventType.workspaceResolveAssetUrl]: {
         type: IPCMessageType.request,
         consumer: IPCType.Client,
@@ -2931,6 +2983,27 @@ export type IPCDevModeEvents = {
         consumer: IPCType.Client,
         data: {};
         response: RequestStatus<{ allow: boolean }>;
+    };
+    /**
+     * An agent's play-test, from the workspace: capture the running game, or advance it. Main finds
+     * the project's Dev Mode window and asks it ({@link IPCEventType.devModeAgentDrive}); a capture
+     * the game cannot answer falls back to the window's pixels.
+     */
+    [IPCEventType.devModeAgentControl]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; action: DevModeAgentAction };
+        response: DevModeAgentResult;
+    };
+    /**
+     * Main → the Dev Mode window: carry out one play-test action through the game's test controls.
+     * A capture answers `png: ""` when the engine has no stage to photograph.
+     */
+    [IPCEventType.devModeAgentDrive]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Client,
+        data: { action: DevModeAgentAction };
+        response: RequestStatus<DevModeAgentResult>;
     };
     [IPCEventType.devModeControlReload]: {
         type: IPCMessageType.message,

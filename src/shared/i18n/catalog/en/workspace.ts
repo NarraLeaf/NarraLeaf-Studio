@@ -421,7 +421,23 @@ export const workspace = {
             surfaceEdit: "interface edit",
             blueprintEdit: "blueprint edit",
             replaceText: "text replacement",
+            agentEdit: "agent edit",
         },
+    },
+    // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.
+    agent: {
+        status: {
+            editing: "Agent editing: {name}",
+            working: "Agent working",
+            connected: "Agent: {client}",
+            paused: "Agent paused",
+        },
+        menu: {
+            pause: "Pause agent",
+            resume: "Resume agent",
+            follow: "Follow agent edits",
+        },
+        tooltip: "Agent options",
     },
     shell: {
     /**
@@ -890,6 +906,7 @@ export const workspace = {
                 textEncoding: "Text encoding",
                 textLineEnding: "Line ending",
                 textSelection: "Cursor position",
+                agent: "Agent",
             },
         },
         // Save reporting: the sticky toast raised when a file cannot be written, and the lines the

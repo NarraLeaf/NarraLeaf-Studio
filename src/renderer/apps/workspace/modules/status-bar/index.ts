@@ -14,6 +14,7 @@ import {
 } from "./entries";
 import { TeamStatusEntry } from "../team";
 import { ProblemsStatusEntry } from "../lint/ProblemsStatusEntry";
+import { AgentStatusEntry } from "../agent/AgentStatusEntry";
 import {
     TextEncodingEntry,
     TextFileNameEntry,
@@ -83,6 +84,14 @@ export const builtInStatusBarEntries: StatusBarEntryModule[] = [
         labelKey: "workspace.shell.statusBar.entries.studioTasks",
         alignment: StatusBarAlignment.Left,
         component: StudioTaskEntry,
+    },
+    {
+        // Inboard of the run status and the tasks: an agent working in the project is something
+        // happening right now, and its pause switch belongs where the author looks for what is running.
+        id: "narraleaf-studio:status-bar/agent",
+        labelKey: "workspace.shell.statusBar.entries.agent",
+        alignment: StatusBarAlignment.Left,
+        component: AgentStatusEntry,
     },
     {
         // Id kept from when this cell only watched the story service: it is persisted in the user's

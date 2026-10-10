@@ -77,6 +77,7 @@ import {
     DevModeWindowFocusGetHandler,
     DevModeProcessMemoryHandler,
     DevModeScreenshotSaveHandler,
+    DevModeAgentControlHandler,
     DevModeScreenshotOpenFolderHandler,
     DevModeWindowScaleOptionsHandler,
     DevModeWindowSetStageSizeHandler,
@@ -195,6 +196,12 @@ import {
     PrivilegedPermissionRevokePluginHandler,
     PrivilegedPermissionRequestHandler,
 } from "./handlers/privilegedAction";
+import {
+    AgentSettingsAddImportRootHandler,
+    AgentSettingsGetHandler,
+    AgentSettingsRegenerateTokenHandler,
+    AgentSettingsUpdateHandler,
+} from "./handlers/agentSettingsAction";
 
 /**
  * All default IPC handlers. Handlers are stateless - they receive the target
@@ -301,6 +308,10 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new ProjectTrustRevokeHandler(),
         new ProjectTrustListHandler(),
         new ProjectTrustPromptHandler(),
+        new AgentSettingsGetHandler(),
+        new AgentSettingsUpdateHandler(),
+        new AgentSettingsRegenerateTokenHandler(),
+        new AgentSettingsAddImportRootHandler(),
         new WorkspaceLiveIntentTakenHandler(),
         new AppClaimExperimentalNoticeHandler(),
         new WorkspaceOpenProjectFolderHandler(),
@@ -318,6 +329,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new DevModeWindowFocusGetHandler(),
         new DevModeProcessMemoryHandler(),
         new DevModeScreenshotSaveHandler(),
+        new DevModeAgentControlHandler(),
         new DevModeScreenshotOpenFolderHandler(),
         new DevModeWindowScaleOptionsHandler(),
         new DevModeWindowSetStageSizeHandler(),

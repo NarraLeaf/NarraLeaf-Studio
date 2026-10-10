@@ -49,7 +49,7 @@ import {
 } from "@shared/types/ui-editor/document";
 import type { BpDiagnostic } from "../../blueprint-cli/dsl/ast";
 import { describeWidget, listWidgetModules, nearestWidgetTypes } from "../catalog";
-import { collectTree, deriveElementId, elementPathSegments, findComponent, findSurface, type TextKeys } from "../project";
+import { collectTree, deriveElementId, elementPathSegments, findComponent, findSurface, type TextKeys } from "../model";
 import type { UiAssignment, UiElementNode, UiFile, UiStatement } from "./ast";
 import { PARAM_KEY_SUFFIX } from "./parse";
 

@@ -435,6 +435,12 @@ export type GameAppTestControls = {
     startStory(request: { storyId: string; sceneId: string }): Promise<void>;
     advance(): Promise<void>;
     choose(index: number): Promise<void>;
+    /**
+     * The engine's picture of its stage - the scene and the Game UI on it - as a PNG data URL, or
+     * null before a game has been entered (a page such as the title is all there is). An agent's
+     * play-test looks through this; it is a capture of what is drawn, not an act on the game.
+     */
+    capture(): Promise<string | null>;
 };
 
 export type GameAppProps = {
@@ -5006,6 +5012,13 @@ export function GameApp(props: GameAppProps): ReactNode {
             startStory: request => startStoryInGame({ storyId: request.storyId, sceneId: request.sceneId }),
             advance: async () => { await nextInGame(); },
             choose: async (index: number) => { await selectChoiceInGame(index); },
+            capture: async () => {
+                const liveGame = nlrLiveGameRef.current;
+                if (!liveGame || !gameEnteredRef.current || typeof liveGame.capturePng !== "function") {
+                    return null;
+                }
+                return liveGame.capturePng();
+            },
         });
         return () => onTestControlsChanged(null);
     }, [activeSurface, core, nextInGame, nlrSession, onTestControlsChanged, selectChoiceInGame, startStoryInGame]);

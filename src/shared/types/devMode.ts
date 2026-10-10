@@ -83,6 +83,33 @@ export type DevModeStatus =
     | "error"
     | "stopping";
 
+/**
+ * What an agent's play-test asks of a running Dev Mode game (`playtest_advance`, `playtest_screenshot`).
+ *
+ * Carried workspace → main → the Dev Mode window, which acts through the same test controls a
+ * driven standalone run uses (`GameAppTestControls`): an advance is the click a player makes, a
+ * choice goes through the choice runtime, and a capture is the engine's own picture of its stage.
+ */
+export type DevModeAgentAction =
+    | { kind: "capture" }
+    /** `choice` is 0-based; when given, it is picked first and counts as one step. */
+    | { kind: "advance"; steps: number; choice?: number };
+
+export type DevModeAgentResult =
+    | {
+          kind: "capture";
+          /** A PNG data URL. */
+          png: string;
+          /**
+           * `engine` is the engine's stage capture: the scene and the Game UI on it. `window` is the
+           * window's own pixels, taken by main when the engine had nothing to capture (a page such as
+           * the title is showing) - and like every window capture, it may be a stale frame when the
+           * window is hidden or occluded.
+           */
+          source: "engine" | "window";
+      }
+    | { kind: "advance"; advanced: number; error?: string };
+
 export type DevModeConsoleLogLevel = "verbose" | "info" | "success" | "warning" | "error";
 
 export type DevModeConsoleLogPayload = {

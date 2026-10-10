@@ -1,0 +1,135 @@
+/**
+ * What the author sees of an agent working in this workspace, and the two switches they hold over it.
+ *
+ * The bridge tells this service when a call starts and ends and what each write touched; the status
+ * bar draws the call in flight from it, and the workspace host (`AgentWorkspaceHost`) opens the
+ * editor tab a write landed in and briefly marks what changed - inside Studio only. Nothing here or
+ * downstream of it focuses a window: an author typing in another application while the agent works
+ * must not have the keyboard taken from them.
+ *
+ * - **Pause** is for this session only and refuses every write (`paused`) until it is lifted. It is
+ *   deliberately not remembered: a paused agent the author forgot about across a restart would look
+ *   like a broken connection.
+ * - **Follow** is remembered per project, in the editor state `.nlstudio` keeps, and is on by
+ *   default - the point of an agent working in the open project is that the author watches it.
+ *
+ * Comments in English per project convention.
+ */
+
+import { EventEmitter } from "../ui/EventEmitter";
+import { Service } from "../Service";
+import { Services, type WorkspaceContext } from "../services";
+import type { PanelStateService } from "../core/PanelStateService";
+
+/** Where an agent's write landed, for follow mode. */
+export type AgentWriteTarget =
+    | { kind: "surface"; surfaceId: string; name: string; elementIds?: readonly string[] }
+    | { kind: "component"; componentId: string; name: string; elementIds?: readonly string[] }
+    | { kind: "scene"; storyId: string; sceneId: string; name: string; blockIds?: readonly string[] }
+    | { kind: "blueprint"; blueprintId: string; name: string };
+
+/** The call in flight, as the status bar names it. */
+export type AgentActivity = {
+    callId: string;
+    tool: string;
+    /** The page, scene or other thing the call is about, once the handler knows it. */
+    target: string | null;
+};
+
+export type AgentFollowState = {
+    paused: boolean;
+    follow: boolean;
+    activity: AgentActivity | null;
+    /** The last client that called, by the name it gave in `initialize`. Null before any call. */
+    clientName: string | null;
+    /** When the last call ended, epoch milliseconds; null before any call. */
+    lastCallAt: number | null;
+};
+
+type AgentFollowEvents = {
+    changed: AgentFollowState;
+    wrote: AgentWriteTarget;
+};
+
+const PANEL_STATE_ID = "narraleaf-studio:agent";
+
+export class AgentFollowService extends Service<AgentFollowService> {
+    private readonly events = new EventEmitter<AgentFollowEvents>();
+    private state: AgentFollowState = { paused: false, follow: true, activity: null, clientName: null, lastCallAt: null };
+    private panelState: PanelStateService | null = null;
+
+    protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
+        const panelState = ctx.services.get<PanelStateService>(Services.PanelState);
+        await depend([panelState]);
+        this.panelState = panelState;
+        const stored = panelState.getPanelState<{ follow?: boolean }>(PANEL_STATE_ID);
+        this.state = {
+            paused: false,
+            follow: stored?.follow ?? true,
+            activity: null,
+            clientName: null,
+            lastCallAt: null,
+        };
+    }
+
+    public override dispose(_ctx: WorkspaceContext): void {
+        this.panelState = null;
+        this.events.clear();
+    }
+
+    public getState(): AgentFollowState {
+        return this.state;
+    }
+
+    public onChanged(handler: (state: AgentFollowState) => void): () => void {
+        return this.events.on("changed", handler);
+    }
+
+    public onWrote(handler: (target: AgentWriteTarget) => void): () => void {
+        return this.events.on("wrote", handler);
+    }
+
+    public setPaused(paused: boolean): void {
+        if (this.state.paused !== paused) {
+            this.update({ paused });
+        }
+    }
+
+    public setFollow(follow: boolean): void {
+        if (this.state.follow === follow) {
+            return;
+        }
+        this.update({ follow });
+        this.panelState?.setPanelState(PANEL_STATE_ID, { follow });
+    }
+
+    public beginCall(callId: string, tool: string, clientName: string | null): void {
+        this.update({ activity: { callId, tool, target: null }, clientName: clientName ?? this.state.clientName });
+    }
+
+    /** Name what the call in flight is about, once the handler has resolved it. */
+    public describeCall(callId: string, target: string): void {
+        if (this.state.activity?.callId === callId) {
+            this.update({ activity: { ...this.state.activity, target } });
+        }
+    }
+
+    public endCall(callId: string): void {
+        if (this.state.activity?.callId === callId) {
+            this.update({ activity: null, lastCallAt: Date.now() });
+        }
+    }
+
+    /**
+     * A write landed. Always announced - the host decides whether to follow it - so that turning
+     * follow on mid-session needs no catching up.
+     */
+    public noteWrite(target: AgentWriteTarget): void {
+        this.events.emit("wrote", target);
+    }
+
+    private update(patch: Partial<AgentFollowState>): void {
+        this.state = { ...this.state, ...patch };
+        this.events.emit("changed", this.state);
+    }
+}

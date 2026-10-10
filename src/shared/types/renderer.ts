@@ -1,4 +1,6 @@
 import type { ProjectTrustRecord } from "./projectTrust";
+import type { AgentCallRequest, AgentCallResult } from "../agent/protocol";
+import type { AgentSettingsPatch, AgentSettingsSnapshot } from "../agent/settings";
 import type { ProjectSessionHolder, ProjectSessionLockOutcome } from "./projectSession";
 import type { ExternalScriptEditor, ScriptOpenTargetId } from "./scriptEditors";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
@@ -28,6 +30,7 @@ import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
 import type { MissingRecentProject, RecentProjectIcon } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
+import type { DevModeAgentAction, DevModeAgentResult } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameProcessMemoryReading } from "./gameProcessMemory";
 import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
@@ -378,6 +381,12 @@ export interface RendererPreloadedInterface {
          */
         onFlushPendingSaves(handler: () => Promise<RequestStatus<{ flushed: boolean }>>): AppEventToken;
         /**
+         * Answer the agent calls main routes to this window (`@shared/agent/protocol`). The handler
+         * must always resolve - a refusal is `success: true` around `{ ok: false }` - because a
+         * handler that throws never replies, and main then waits out its whole timeout.
+         */
+        onAgentCall(handler: (request: AgentCallRequest) => Promise<RequestStatus<AgentCallResult>>): AppEventToken;
+        /**
          * Follow the close the main process is running on this window's behalf, so the workspace
          * can show what it is waiting on. `null` means the close was called off and the window is
          * staying. Registered on mount for the same reason as the two handlers above.
@@ -426,6 +435,17 @@ export interface RendererPreloadedInterface {
      * refusals themselves are in main, beside the operations they refuse, because the code being
      * judged runs in a renderer and a renderer's belief is not a boundary.
      */
+    /**
+     * Agent access (the MCP endpoint). Every call is refused outside the Settings window: these
+     * decide whether an outside program may change a project, and they hand out its token.
+     */
+    agent: {
+        getSettings(): Promise<RequestStatus<AgentSettingsSnapshot>>;
+        updateSettings(patch: AgentSettingsPatch): Promise<RequestStatus<AgentSettingsSnapshot>>;
+        regenerateToken(): Promise<RequestStatus<AgentSettingsSnapshot>>;
+        /** Opens the native folder picker; a cancelled picker answers the unchanged settings. */
+        addImportRoot(): Promise<RequestStatus<AgentSettingsSnapshot>>;
+    };
     projectTrust: {
         query(projectPath: string): Promise<RequestStatus<{
             trusted: boolean;
@@ -686,6 +706,13 @@ export interface RendererPreloadedInterface {
             projectRef: DevModeSaveProjectRef,
         ): Promise<RequestStatus<BlueprintOpenScreenshotsResult>>;
         onCloseRequested(handler: () => Promise<RequestStatus<{ allow: boolean }>>): AppEventToken;
+        /**
+         * Workspace: ask the project's running Dev Mode game to capture itself or advance, for an
+         * agent's play-test. Refused when no Dev Mode window is open for the project.
+         */
+        agentControl(projectPath: string, action: DevModeAgentAction): Promise<RequestStatus<DevModeAgentResult>>;
+        /** Dev Mode window: answer the play-test actions main forwards to it. */
+        onAgentDrive(handler: (payload: { action: DevModeAgentAction }) => Promise<RequestStatus<DevModeAgentResult>>): AppEventToken;
         onPayloadUpdate(handler: (payload: { bundle: DevModeBundle }) => void): AppEventToken;
         onControlReload(handler: (payload: { revision: number }) => void): AppEventToken;
         /**

@@ -50,6 +50,23 @@ export class DevModeLaunchHandler extends IPCHandler<IPCEventType.devModeLaunch>
     }
 }
 
+/**
+ * An agent's play-test action, from the project's workspace: capture or advance its running game.
+ * The window's project, not the payload's, for the reason {@link DevModeLaunchHandler} gives.
+ */
+export class DevModeAgentControlHandler extends IPCHandler<IPCEventType.devModeAgentControl> {
+    readonly name = IPCEventType.devModeAgentControl;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath, action }: IPCEvents[IPCEventType.devModeAgentControl]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.devModeAgentControl]["response"]>> {
+        return this.tryUse(async () => window.getApp().getDevModeManager()
+            .agentControl(requireWindowProject(window, projectPath), action));
+    }
+}
+
 export class DevModeStopHandler extends IPCHandler<IPCEventType.devModeStop> {
     readonly name = IPCEventType.devModeStop;
     readonly type = IPCMessageType.request;

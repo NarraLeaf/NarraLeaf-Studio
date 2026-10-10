@@ -378,7 +378,23 @@ export const workspace = {
             surfaceEdit: "界面编辑",
             blueprintEdit: "蓝图编辑",
             replaceText: "文本替换",
+            agentEdit: "Agent 编辑",
         },
+    },
+    // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.
+    agent: {
+        status: {
+            editing: "Agent 正在编辑：{name}",
+            working: "Agent 正在工作",
+            connected: "Agent：{client}",
+            paused: "Agent 已暂停",
+        },
+        menu: {
+            pause: "暂停 Agent",
+            resume: "继续 Agent",
+            follow: "跟随 Agent 的编辑",
+        },
+        tooltip: "Agent 选项",
     },
     shell: {
     /**
@@ -771,6 +787,7 @@ export const workspace = {
                 textEncoding: "文本编码",
                 textLineEnding: "行尾符号",
                 textSelection: "光标位置",
+                agent: "Agent",
             },
         },
         // 保存反馈：文件写不进去时弹出的常驻提示，以及「存储」控制台频道的日志行。

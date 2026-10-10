@@ -29,11 +29,10 @@
  * Comments in English per project convention.
  */
 
-import type { StoryBlockId, StoryScene } from "@shared/types/story";
+import type { StoryBlockId, StoryDocument, StoryScene } from "@shared/types/story";
 import type { StoryFileDiagnostic } from "./dsl/ast";
 import { sameRowContent } from "./dsl/equal";
 import type { KeyedLintFinding } from "./check";
-import type { StoryDocumentFile } from "./project";
 
 export type ApplySummary = {
     /** Rows the file carries that the scene did not. */
@@ -127,15 +126,14 @@ export function formatCarriedFindings(carried: number): string {
             + "`story check --project <dir>` lists them.";
 }
 
-/** Put the compiled scene into the document. The caller writes the file. */
-export function applyScene(file: StoryDocumentFile, scene: StoryScene): StoryDocumentFile {
-    return {
-        ...file,
-        document: {
-            ...file.document,
-            scenes: { ...file.document.scenes, [scene.id]: scene },
-        },
-    };
+/** The document with the compiled scene in place of its stored copy. Nothing else moves. */
+export function applySceneToDocument(document: StoryDocument, scene: StoryScene): StoryDocument {
+    return { ...document, scenes: { ...document.scenes, [scene.id]: scene } };
+}
+
+/** Put the compiled scene into the document a file holds. The caller writes the file. */
+export function applyScene<T extends { document: StoryDocument }>(file: T, scene: StoryScene): T {
+    return { ...file, document: applySceneToDocument(file.document, scene) };
 }
 
 export function formatApplySummary(summary: ApplySummary, written: boolean): string {

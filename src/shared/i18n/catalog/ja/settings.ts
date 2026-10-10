@@ -76,6 +76,10 @@ export const settings = {
             label: "ネットワーク",
             description: "プラグイン、テンプレート、ビルド用ツールの取得元",
         },
+        agent: {
+            label: "エージェント連携",
+            description: "AI エージェントが MCP で Studio に接続し、開いているプロジェクトを編集できるようにします",
+        },
         data: {
             label: "データ",
             description: "キャッシュしたファイル、設定のリセット、端末間の移行",
@@ -343,6 +347,9 @@ export const settings = {
         keybindings: {
             label: "キーボードショートカット",
         },
+        agentAccess: {
+            label: "MCP エンドポイント",
+        },
         projectTrust: {
             label: "信頼済みプロジェクト",
             description: "Studio が作成していないプロジェクトと、実行を許可するかどうか。",
@@ -451,6 +458,40 @@ export const settings = {
             refused: "サーバーがこのトークンを拒否した。期限切れか、失効している可能性がある",
             unknown: "サーバーを追加できなかった",
         },
+    },
+    // The agent access panel (`AgentAccessPanel`).
+    agent: {
+        loading: "読み込み中…",
+        enable: "エージェントの接続を許可",
+        enableHint: "Claude Code や opencode などの AI エージェント向けに、このコンピューターで MCP エンドポイントを提供します",
+        allowWrites: "エージェントによる変更を許可",
+        allowWritesHint: "オフの間、エージェントはプロジェクトを読み取れますが、変更はすべて拒否されます",
+        port: "ポート",
+        portHint: "変更はすぐに反映されます。使用中の場合は空いているポートを使います",
+        portInvalid: "{min} から {max} までのポートを入力してください",
+        endpoint: "アドレス",
+        running: "待ち受け中",
+        stopped: "停止中",
+        failed: "起動できませんでした: {message}",
+        token: "アクセストークン",
+        tokenHint: "すべてのリクエストに必要です。コピーした設定に含まれています",
+        show: "表示",
+        hide: "隠す",
+        regenerate: "トークンを変更",
+        regenerateHint: "現在のトークンで設定したクライアントは接続できなくなります",
+        regenerateAction: "再生成",
+        regenerateConfirm: "再生成を確定",
+        copyConfig: "設定をコピー",
+        copyConfigHint: "エンドポイントとトークンを入れた状態で、エージェントの設定にそのまま貼り付けられます",
+        copyClaudeCode: "Claude Code",
+        copyJson: "JSON",
+        copyOpencode: "opencode",
+        copied: "コピーしました",
+        importRoots: "素材を読み込めるフォルダー",
+        importRootsHint: "プロジェクト内のファイルはいつでも読み込めます",
+        importRootsEmpty: "ほかのフォルダーはありません",
+        addFolder: "フォルダーを追加…",
+        removeFolder: "削除",
     },
     data: {
         projectTrust: {

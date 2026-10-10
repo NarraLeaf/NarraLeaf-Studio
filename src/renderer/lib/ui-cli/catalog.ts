@@ -30,14 +30,13 @@ import {
     UI_INTERACTION_SOUND_PROP,
     uiElementTypeTakesInteractionSounds,
 } from "@shared/types/ui-editor/interactionSounds";
-import { BuiltinWidgetModules } from "@/lib/ui-editor/widget-modules/builtin";
 import { DEFAULT_INSERT_PALETTE_CONFIG, type InsertPaletteConfigEntry } from "@/lib/ui-editor/widget-modules/insertPalette";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import { listBindableValueTargets } from "@/lib/ui-editor/blueprint-runtime/BlueprintValueRuntimeStore";
 import { blueprintNodeRegistry, registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes";
 import { queryNodes } from "../blueprint-cli/catalog";
 import { propAssignmentKey } from "./dsl/parse";
-import { cliPluginOwnerOf, listCliPluginWidgetModules } from "./plugins";
+import { activeWidgetModuleSource } from "./widgetSource";
 import { nearest } from "./text";
 
 export type WidgetPropDoc = {
@@ -249,12 +248,19 @@ function paletteEntry(type: string): InsertPaletteConfigEntry | undefined {
     const config: readonly InsertPaletteConfigEntry[] = DEFAULT_INSERT_PALETTE_CONFIG;
     // A plugin's widget is not in the config; the editor lists every one in the palette's overflow
     // menu (`listPluginInsertPaletteEntries`), on any surface.
-    return config.find(entry => entry.type === type) ?? (cliPluginOwnerOf(type) ? { type, placement: "overflow" } : undefined);
+    return config.find(entry => entry.type === type) ?? (pluginOwnerOf(type) ? { type, placement: "overflow" } : undefined);
 }
 
-/** Studio's widgets, and those of any plugin this run was handed with `--plugin`. */
+/**
+ * Studio's widgets, and those of every plugin this run knows: the ones `--plugin` loaded on the
+ * command line, the ones the open workspace loaded in Studio (see `widgetSource.ts`).
+ */
 export function listWidgetModules(): UIWidgetModule[] {
-    return [...BuiltinWidgetModules, ...listCliPluginWidgetModules()];
+    return [...activeWidgetModuleSource().list()];
+}
+
+function pluginOwnerOf(type: string): string | undefined {
+    return activeWidgetModuleSource().pluginOwnerOf(type);
 }
 
 export function findWidgetModule(type: string): UIWidgetModule | undefined {
@@ -302,7 +308,7 @@ export function summariseWidget(module: UIWidgetModule): WidgetSummary {
         surfaceKinds: [...(entry?.surfaceKinds ?? [])],
         stageSlots: [...(entry?.stageSlots ?? [])],
         extends: module.extends ?? getWidgetTypeParent(module.type),
-        ...(cliPluginOwnerOf(module.type) ? { plugin: cliPluginOwnerOf(module.type) } : {}),
+        ...(pluginOwnerOf(module.type) ? { plugin: pluginOwnerOf(module.type) } : {}),
         acceptsUserChildren: uiElementTypeAcceptsUserChildren(module.type),
         operable: logic?.operable === true,
         supportsPrivateBlueprint: logic?.supportsPrivateBlueprint === true,

@@ -33,27 +33,29 @@ import * as path from "node:path";
 import { commandI18nStore } from "@/lib/i18n/commandLocale";
 import { SCRATCH_DIR_NAME } from "../blueprint-cli/project";
 import { didYouMean } from "../ui-cli/text";
+import { emitCommandResult } from "../agent-core/commandResult";
+import { COMMAND_CATEGORIES } from "./catalog";
+import type { StoredStories } from "./check";
 import {
-    COMMAND_CATEGORIES,
-    describeCommand,
-    formatCategories,
-    formatCommandDetail,
-    formatCommandList,
-    nearestCommands,
-    queryCommands,
-} from "./catalog";
-import { applyScene, findingsIntroduced, formatApplySummary, formatCarriedFindings, summariseApply } from "./apply";
-import { checkProject, checkStoryFile, formatDiagnostics, hasErrors, lintStoredProject } from "./check";
-import { printStoryScene } from "./dsl/print";
-import { LINE_SHAPES_HELP } from "./dsl/shapes";
-import { buildLookups } from "./lookups";
+    formatOpaqueRowNotice,
+    storyApplyCommand,
+    storyCategoriesCommand,
+    storyCheckProjectCommand,
+    storyCheckSourceCommand,
+    storyCommandCommand,
+    storyCommandsCommand,
+    storyLinesCommand,
+    storyScenesCommand,
+    storyShowCommand,
+    storyStoriesCommand,
+    storyTargetsCommand,
+} from "./core";
 import {
-    buildContext,
     findScene,
     findStory,
     listStories,
-    orderedScenes,
     ProjectIoError,
+    readAllStories,
     readProjectData,
     readStoryDocument,
     resolveProjectDir,
@@ -62,16 +64,11 @@ import {
     writeStoryDocument,
     type StorySummary,
 } from "./project";
-import { describeStoryBlock } from "@/lib/story/storyRowProjection";
-import { formatTargets } from "./targets";
 
 export type CliIo = {
     out: (text: string) => void;
     err: (text: string) => void;
 };
-
-/** How many commands a bare `commands` prints before it says only how many more there are. */
-const DEFAULT_COMMAND_LIMIT = 60;
 
 const USAGE = `story - query the command catalogue, read a project's scenes, write them as text.
 
@@ -179,16 +176,14 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
 // ---------------------------------------------------------------------------
 
 function commandCommands(args: Args, io: CliIo): number {
-    const commands = queryCommands({
-        search: args.positional.join(" ") || undefined,
-        category: enumFlag(args, "category", COMMAND_CATEGORIES),
-    });
-    if (args.flags.json === true) {
-        io.out(JSON.stringify(commands, null, 2));
-        return 0;
-    }
-    io.out(formatCommandList(commands, numberFlag(args, "limit") ?? DEFAULT_COMMAND_LIMIT));
-    return 0;
+    const search = args.positional.join(" ") || undefined;
+    const category = enumFlag(args, "category", COMMAND_CATEGORIES);
+    const json = args.flags.json === true;
+    return emitCommandResult(
+        // `--limit` is only read when it is used: `--json` prints every match.
+        storyCommandsCommand({ search, category, json, limit: json ? undefined : numberFlag(args, "limit") }),
+        io,
+    );
 }
 
 function commandCommand(args: Args, io: CliIo): number {
@@ -196,25 +191,15 @@ function commandCommand(args: Args, io: CliIo): number {
     if (!query) {
         throw new UsageError("Which command? `story command <token>`.");
     }
-    const detail = describeCommand(query);
-    if (!detail) {
-        io.err(`No story command "${query}".`);
-        const near = nearestCommands(query);
-        io.err(near.length > 0 ? `Close by: ${near.map(token => `/${token}`).join(", ")}` : "Run `story commands` for the catalogue.");
-        return 2;
-    }
-    io.out(args.flags.json === true ? JSON.stringify(detail, null, 2) : formatCommandDetail(detail));
-    return 0;
+    return emitCommandResult(storyCommandCommand(query, { json: args.flags.json === true }), io);
 }
 
 function commandCategories(args: Args, io: CliIo): number {
-    io.out(args.flags.json === true ? JSON.stringify(COMMAND_CATEGORIES, null, 2) : formatCategories());
-    return 0;
+    return emitCommandResult(storyCategoriesCommand({ json: args.flags.json === true }), io);
 }
 
 function commandLines(args: Args, io: CliIo): number {
-    io.out(args.flags.json === true ? JSON.stringify({ help: LINE_SHAPES_HELP }, null, 2) : LINE_SHAPES_HELP);
-    return 0;
+    return emitCommandResult(storyLinesCommand({ json: args.flags.json === true }), io);
 }
 
 // ---------------------------------------------------------------------------
@@ -223,27 +208,13 @@ function commandLines(args: Args, io: CliIo): number {
 
 function commandStories(args: Args, io: CliIo): number {
     const projectDir = requireProject(args);
-    const stories = listStories(projectDir);
-    if (args.flags.json === true) {
-        io.out(JSON.stringify(stories, null, 2));
-        return 0;
-    }
-    if (stories.length === 0) {
-        io.out("This project holds no stories.");
-        return 0;
-    }
-    const search = args.positional.join(" ").toLowerCase();
-    const width = Math.max(...stories.map(story => story.name.length)) + 2;
-    for (const story of stories) {
-        if (search && !story.name.toLowerCase().includes(search)) {
-            continue;
-        }
-        const document = readStoryDocument(projectDir, story.id).document;
-        const scenes = orderedScenes(document).length;
-        const dlc = story.dlcId ? "  (ships with a DLC)" : "";
-        io.out(`  ${story.name.padEnd(width)}${scenes} scene${scenes === 1 ? "" : "s"}${dlc}`);
-    }
-    return 0;
+    return emitCommandResult(
+        storyStoriesCommand(listStories(projectDir), storyId => readStoryDocument(projectDir, storyId).document, {
+            search: args.positional.join(" "),
+            json: args.flags.json === true,
+        }),
+        io,
+    );
 }
 
 /** The story a command works on, with the ambiguity reported rather than resolved by position. */
@@ -269,22 +240,10 @@ function commandScenes(args: Args, io: CliIo): number {
     const projectDir = requireProject(args);
     const story = requireStory(args, projectDir);
     const document = readStoryDocument(projectDir, story.id).document;
-    const scenes = orderedScenes(document);
-    if (args.flags.json === true) {
-        io.out(JSON.stringify(scenes.map(scene => ({ id: scene.id, name: scene.name, rows: Object.keys(scene.blocks ?? {}).length })), null, 2));
-        return 0;
-    }
-    const search = args.positional.join(" ").toLowerCase();
-    const width = Math.max(...scenes.map(scene => scene.name.length), 4) + 2;
-    for (const scene of scenes) {
-        if (search && !scene.name.toLowerCase().includes(search)) {
-            continue;
-        }
-        const rows = Object.keys(scene.blocks ?? {}).length;
-        const entry = document.entrySceneId === scene.id ? "  entry scene" : "";
-        io.out(`  ${scene.name.padEnd(width)}${String(rows).padStart(5)} row${rows === 1 ? " " : "s"}${entry}`);
-    }
-    return 0;
+    return emitCommandResult(
+        storyScenesCommand(document, { search: args.positional.join(" "), json: args.flags.json === true }),
+        io,
+    );
 }
 
 function commandTargets(args: Args, io: CliIo): number {
@@ -292,13 +251,10 @@ function commandTargets(args: Args, io: CliIo): number {
     const data = readProjectData(projectDir);
     const story = requireStory(args, projectDir);
     const document = readStoryDocument(projectDir, story.id).document;
-    const context = buildContext(data, document, null);
-    if (args.flags.json === true) {
-        io.out(JSON.stringify(context, null, 2));
-        return 0;
-    }
-    io.out(formatTargets(context, args.positional.join(" ")));
-    return 0;
+    return emitCommandResult(
+        storyTargetsCommand(data, document, { search: args.positional.join(" "), json: args.flags.json === true }),
+        io,
+    );
 }
 
 function commandShow(args: Args, io: CliIo): number {
@@ -306,69 +262,58 @@ function commandShow(args: Args, io: CliIo): number {
     const data = readProjectData(projectDir);
     const story = requireStory(args, projectDir);
     const document = readStoryDocument(projectDir, story.id).document;
-    const query = stringFlag(args, "scene");
-    const scene = query ? findScene(document, query) : orderedScenes(document)[0] ?? null;
-    if (!scene) {
-        throw new UsageError(
-            query ? `No scene matches "${query}". Run "story scenes" for the list.` : "This story has no scenes.",
-        );
+    const shown = storyShowCommand(data, { name: story.name, document }, { scene: stringFlag(args, "scene") });
+    if (!shown.scene || shown.text === undefined || !shown.stats || !shown.opaqueRows) {
+        // No scene is bad usage, as it always was: the message names what to run instead.
+        throw new UsageError(shown.err.join("\n"));
     }
-    const context = buildContext(data, document, scene);
-    const lookups = buildLookups(data, document, scene, context);
-    const printed = printStoryScene({
-        scene,
-        storyName: story.name,
-        context,
-        rowLookups: lookups.rowLookups,
-        prose: lookups.prose,
-        conditions: lookups.conditions,
-    });
-
     const out = args.flags.out;
     if (out === undefined) {
-        io.out(printed.text);
-        return 0;
+        return emitCommandResult(shown, io);
     }
     // `--out` with nothing after it means "put it where dumps go", named after the scene.
-    const named = typeof out === "string" ? out : scratchFileNameFor(scene.name);
+    const named = typeof out === "string" ? out : scratchFileNameFor(shown.scene.name);
     const file = resolveStoryFile(named, { forWriting: true });
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, printed.text, "utf8");
-    io.out(`${file}  ${printed.stats.rows} rows`);
-    if (printed.stats.opaque > 0) {
-        io.out(
-            `${printed.stats.opaque} of them have no spelling in this format and are kept verbatim. Editing a » line `
-                + "changes nothing; change those rows in Studio.",
-        );
-        for (const row of printed.opaqueRows.slice(0, 10)) {
-            io.out(`  ${row.anchor}  ${row.label}`);
-        }
-        if (printed.opaqueRows.length > 10) {
-            io.out(`  ... and ${printed.opaqueRows.length - 10} more`);
-        }
+    fs.writeFileSync(file, shown.text, "utf8");
+    io.out(`${file}  ${shown.stats.rows} rows`);
+    for (const line of formatOpaqueRowNotice({ stats: shown.stats, opaqueRows: shown.opaqueRows })) {
+        io.out(line);
     }
     return 0;
+}
+
+/** The whole project as stored, every story that opens and every one that does not. */
+function readStoredStories(projectDir: string): StoredStories {
+    const data = readProjectData(projectDir);
+    const read = readAllStories(projectDir);
+    return {
+        data,
+        stories: read.stories.map(entry => ({ ...entry.summary, document: entry.document })),
+        unreadable: read.unreadable,
+    };
 }
 
 async function commandCheck(args: Args, io: CliIo): Promise<number> {
     const projectDir = requireProject(args);
     const given = args.positional.join(" ");
     if (!given) {
-        const result = await checkProject(projectDir);
-        io.out(formatDiagnostics(result.diagnostics, { notRun: result.notRun }));
-        return hasErrors(result.diagnostics) ? 1 : 0;
+        return emitCommandResult(await storyCheckProjectCommand(readStoredStories(projectDir)), io);
     }
     const story = requireStory(args, projectDir);
     const file = resolveStoryFile(given, { forWriting: false });
     const document = readStoryDocument(projectDir, story.id).document;
     const query = stringFlag(args, "scene");
-    const result = await checkStoryFile(readSource(file), {
-        projectDir,
-        storyId: story.id,
-        scene: query ? findScene(document, query) : null,
-    });
-    io.out(formatDiagnostics(result.diagnostics, { fileName: file, notRun: result.notRun }));
-    return hasErrors(result.diagnostics) ? 1 : 0;
+    const source = readSource(file);
+    const data = readProjectData(projectDir);
+    return emitCommandResult(
+        await storyCheckSourceCommand(
+            source,
+            { data, story: { ...story, document }, scene: query ? findScene(document, query) : null },
+            { fileName: file },
+        ),
+        io,
+    );
 }
 
 async function commandApply(args: Args, io: CliIo): Promise<number> {
@@ -380,58 +325,37 @@ async function commandApply(args: Args, io: CliIo): Promise<number> {
     const story = requireStory(args, projectDir);
     const file = resolveStoryFile(given, { forWriting: false });
     const documentFile = readStoryDocument(projectDir, story.id);
-    const result = await checkStoryFile(readSource(file), { projectDir, storyId: story.id, scene: null });
-
-    // The document layer is judged against the project as it stands, so a finding that was already
-    // there is not this write's problem. Skipped when the edited project has no findings at all:
-    // nothing can have been introduced, and the baseline run reads every story in the project.
-    const baseline = result.projectFindings.length > 0 ? await lintStoredProject(projectDir) : [];
-    const findings = findingsIntroduced(baseline, result.projectFindings);
-    const reported = [...result.fileDiagnostics, ...findings.introduced];
-    io.out(formatDiagnostics(reported, { fileName: file, notRun: result.notRun }));
-    if (findings.carried > 0) {
-        io.out("");
-        io.out(formatCarriedFindings(findings.carried));
-    }
-    if (!result.scene || hasErrors(reported)) {
-        io.err("Nothing written.");
-        return 1;
-    }
-
-    const existing = documentFile.document.scenes?.[result.scene.id];
-    if (!existing) {
-        throw new ProjectIoError(`This story no longer holds scene ${result.scene.id}.`);
-    }
+    const source = readSource(file);
     const data = readProjectData(projectDir);
-    const lookups = buildLookups(data, documentFile.document, existing, buildContext(data, documentFile.document, existing));
-    const summary = summariseApply(existing, result.scene, blockId =>
-        describeStoryBlock(existing.blocks[blockId], { ...lookups.rowLookups, scene: existing }));
-
-    // A document read at an older schema was migrated on the way in, and writing it back is what
-    // makes that migration permanent. Said out loud rather than done quietly: it changes rows this
-    // file never mentioned, which is not what "apply one scene" sounds like.
-    const storedVersion = readStoredSchemaVersion(documentFile.filePath);
-    if (storedVersion !== null && storedVersion !== documentFile.document.schemaVersion) {
-        io.out(
-            `This story is stored at schema ${storedVersion} and will be written at `
-                + `${documentFile.document.schemaVersion}. The migration runs over the whole document, not just `
-                + "this scene.",
-        );
-    }
-    // The rename is reported and not applied, so the scene keeps the name the document gave it.
-    const next = applyScene(documentFile, { ...result.scene, name: existing.name });
-    if (args.flags.write === true) {
-        writeStoryDocument(next);
-    }
-    io.out("");
-    io.out(formatApplySummary(summary, args.flags.write === true));
-    if (args.flags.write === true) {
-        io.out(
-            "Close the project in Studio before doing this: nothing reloads the file on its own, and a running "
+    const write = args.flags.write === true;
+    const result = await storyApplyCommand(
+        source,
+        {
+            data,
+            story: { ...story, document: documentFile.document },
+            stored: () => readStoredStories(projectDir),
+            storedSchemaVersion: readStoredSchemaVersion(documentFile.filePath),
+        },
+        {
+            fileName: file,
+            write,
+            writtenNote:
+                "Close the project in Studio before doing this: nothing reloads the file on its own, and a running "
                 + "Studio writes its own copy over yours on the next save.",
-        );
-    }
-    return 0;
+            commit: document => {
+                try {
+                    writeStoryDocument({ ...documentFile, document });
+                    return null;
+                } catch (error) {
+                    if (error instanceof ProjectIoError) {
+                        return error.message;
+                    }
+                    throw error;
+                }
+            },
+        },
+    );
+    return emitCommandResult(result, io);
 }
 
 // ---------------------------------------------------------------------------

@@ -77,6 +77,10 @@ export const settings = {
             label: "Network",
             description: "Where Studio downloads plugins, templates and build tooling from.",
         },
+        agent: {
+            label: "Agent access",
+            description: "Let AI agents connect to Studio over MCP and work on the open project.",
+        },
         data: {
             label: "Data",
             description: "Cached files, resetting preferences, and moving them between machines.",
@@ -349,6 +353,9 @@ export const settings = {
         keybindings: {
             label: "Keyboard shortcuts",
         },
+        agentAccess: {
+            label: "MCP endpoint",
+        },
         projectTrust: {
             label: "Trusted projects",
             description: "Projects that Studio did not create, and whether they may run.",
@@ -495,6 +502,40 @@ export const settings = {
             refused: "The server refused this token. It may have expired or been revoked.",
             unknown: "The server could not be added.",
         },
+    },
+    // The agent access panel (`AgentAccessPanel`).
+    agent: {
+        loading: "Reading…",
+        enable: "Allow agents to connect",
+        enableHint: "Serves an MCP endpoint on this computer for AI agents such as Claude Code and opencode.",
+        allowWrites: "Allow agents to make changes",
+        allowWritesHint: "When off, agents can read the project but every change they try is refused.",
+        port: "Port",
+        portHint: "Takes effect at once. If the port is in use, Studio picks a free one.",
+        portInvalid: "Enter a port from {min} to {max}.",
+        endpoint: "Address",
+        running: "Listening.",
+        stopped: "Not running.",
+        failed: "Could not start: {message}",
+        token: "Access token",
+        tokenHint: "Every request must carry it. It is part of the copied configuration.",
+        show: "Show",
+        hide: "Hide",
+        regenerate: "Replace the token",
+        regenerateHint: "Clients set up with the current token stop being let in.",
+        regenerateAction: "Regenerate",
+        regenerateConfirm: "Regenerate token",
+        copyConfig: "Copy configuration",
+        copyConfigHint: "Ready to paste into the agent's settings, with the endpoint and token filled in.",
+        copyClaudeCode: "Claude Code",
+        copyJson: "JSON",
+        copyOpencode: "opencode",
+        copied: "Copied",
+        importRoots: "Folders agents may import from",
+        importRootsHint: "Agents can always import files from inside the project.",
+        importRootsEmpty: "No other folders.",
+        addFolder: "Add folder…",
+        removeFolder: "Remove",
     },
     data: {
         projectTrust: {

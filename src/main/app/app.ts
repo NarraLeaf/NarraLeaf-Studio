@@ -41,6 +41,7 @@ import { getMainTranslator } from "./application/i18n";
 import { ConfirmQuitManager } from "./application/managers/confirmQuit";
 import { TrayManager } from "./application/managers/trayManager";
 import { UpdateManager } from "./application/managers/updateManager";
+import { AgentManager } from "./application/managers/agent/agentManager";
 import { SpellcheckManager } from "./application/managers/spellcheck/spellcheckManager";
 import { ProjectSessionLockManager } from "./application/managers/projectSessionLockManager";
 import { SPELLCHECK_LANGUAGE_KEY } from "@shared/types/spellcheck";
@@ -251,6 +252,10 @@ export class App extends BaseApp {
         // a name, and a session has nothing to do with a repository.
         this.teamManager = new TeamManager(this, () => this.vcsManager.listServers());
 
+        // Agent access (the MCP endpoint). Built here so the Settings handlers can always reach it;
+        // it reads its file and starts listening only once Electron is ready, below.
+        this.agentManager = new AgentManager(this);
+
         this.updateManager = new UpdateManager(this);
         this.confirmQuitManager = new ConfirmQuitManager(this);
         // One project, one Studio - across profiles and machines, which is the half neither the
@@ -296,6 +301,15 @@ export class App extends BaseApp {
             // opened from the same ready handler in `index.ts`. Ordering only matters in that
             // direction: a window built before the listener exists would never see a ⌘Q at all.
             this.confirmQuitManager.initialize();
+
+            // Never in a command-line run: a job leaves nothing listening on the machine. The
+            // endpoint starts only if the author switched it on, and a failure to bind is reported
+            // in Settings rather than raised here.
+            if (!this.isCommandLineRun()) {
+                void this.agentManager.initialize().catch(error => {
+                    this.logger.warn(`[Agent] Agent access could not start: ${String(error)}`);
+                });
+            }
         });
     }
 
@@ -310,6 +324,7 @@ export class App extends BaseApp {
     private readonly teamManager: TeamManager;
     private readonly updateManager: UpdateManager;
     private readonly confirmQuitManager: ConfirmQuitManager;
+    private readonly agentManager: AgentManager;
     private readonly spellcheckManager: SpellcheckManager;
     private readonly projectSessionLockManager: ProjectSessionLockManager;
 
@@ -385,6 +400,10 @@ export class App extends BaseApp {
     }
 
     /** Everything Studio knows about newer versions of itself. See {@link UpdateManager}. */
+    public getAgentManager(): AgentManager {
+        return this.agentManager;
+    }
+
     public getUpdateManager(): UpdateManager {
         return this.updateManager;
     }

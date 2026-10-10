@@ -32,7 +32,7 @@ import {
     readUIComponentSurfaceComponentId,
 } from "@shared/types/ui-editor/componentInstanceKey";
 import type { UIComponentDefinition, UIDocument, UIElement } from "@shared/types/ui-editor/document";
-import { collectTree, elementPath } from "./project";
+import { collectTree, elementPath } from "./model";
 
 /** The code each reason a definition was not removed is reported under. */
 export const REMOVE_REFUSED_CODE = "ui.remove_refused";
