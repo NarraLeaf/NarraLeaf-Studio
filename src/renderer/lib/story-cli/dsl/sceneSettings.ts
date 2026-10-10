@@ -20,6 +20,10 @@
  * the track's own defaults answer - the same rule the scene panel follows. A bare `none` clears;
  * `'none'` in quotes is an asset that happens to be called that.
  *
+ * Both count only in the header: before the first row, at the start of the line. Further down, or
+ * indented, a `#background` / `#music` line is the comment every unknown `#` line has always been,
+ * and the parser warns that it changes nothing.
+ *
  * ## A directive the file leaves out changes nothing
  *
  * Unlike rows, which a file lists in full. `story show` always writes both, so a file printed and

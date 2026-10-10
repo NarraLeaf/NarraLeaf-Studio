@@ -130,6 +130,31 @@ describe("#background and #music", () => {
             .toEqual({ assetId: "aud-quiet", volume: 0.7, loop: true, fadeMs: 1500 });
     });
 
+    it("counts a setting only in the header, and reads one further down or indented as a comment with a warning", () => {
+        const header = parseStoryFile("#nlstory 1\n#music bgm-quiet\n\nThe rain had stopped.\n");
+        expect(header.diagnostics).toEqual([]);
+        expect(header.ast.settings.music).toEqual({ value: "bgm-quiet", line: 2 });
+
+        // The note an author always could write, and one that happens to name a real clip.
+        for (const note of ["#music swells here", "#music bgm-quiet", "#background classroom"]) {
+            const parsed = parseStoryFile(`#nlstory 1\n\nThe rain had stopped.\n${note}\nAlice: Hello.\n`);
+            expect(parsed.ast.settings).toEqual({});
+            expect(parsed.ast.lines).toHaveLength(2);
+            expect(parsed.diagnostics).toMatchObject([
+                { code: "file.setting_outside_header", severity: "warning", line: 4, message: expect.stringMatching(/only counts in the header/) },
+            ]);
+        }
+        const nested = parseStoryFile("#nlstory 1\n/menu Which?\n  - Left.\n    #music bgm-quiet\n");
+        expect(nested.ast.settings).toEqual({});
+        expect(nested.diagnostics).toMatchObject([{ code: "file.setting_outside_header", line: 4 }]);
+        // Before any row but indented is not the header's shape either.
+        const indented = parseStoryFile("#nlstory 1\n  #background classroom\n");
+        expect(indented.ast.settings).toEqual({});
+        expect(indented.diagnostics).toMatchObject([{ code: "file.setting_outside_header", severity: "warning", line: 2 }]);
+        // Every other `#` line is still a silent comment, wherever it is.
+        expect(parseStoryFile("#nlstory 1\nThe rain.\n# a note\n#musical cue\n").diagnostics).toEqual([]);
+    });
+
     it("keeps an id nothing answers to any more when the file leaves it as printed", () => {
         const scene: StoryScene = { ...bare, defaultBackgroundAssetId: "deleted-asset" };
         const printed = printSceneSettings(scene, lookups);
@@ -249,6 +274,23 @@ describe("story show / apply on the command line", () => {
         expect(applied.out).toContain("No row changed.");
         expect(applied.out).not.toContain("Scene setting:");
         expect(stored().bgm).toEqual({ assetId: "49b1db61-3d5e-4453-aa78-531a78e38de5", fadeMs: 2009.9999999999998 });
+    });
+
+    it("checks and applies a body note that reads like a setting as the comment it is, with a warning", async () => {
+        const file = path.join(projectDir, "clubroom.story");
+        await cli("show", "--project", projectDir, "--scene", "The clubroom", "--out", file);
+        const lines = fs.readFileSync(file, "utf8").split("\n");
+        const firstRow = lines.findIndex((line, index) => index > 0 && lines[index - 1] === "" && line !== "");
+        lines.splice(firstRow + 1, 0, "#music bgm-quiet", "#music swells here");
+        fs.writeFileSync(file, lines.join("\n"), "utf8");
+
+        const checked = await cli("check", file, "--project", projectDir);
+        expect(checked.code, checked.out + checked.err).toBe(0);
+        expect(checked.out).toContain("#music only counts in the header");
+        const applied = await cli("apply", file, "--project", projectDir, "--write");
+        expect(applied.code, applied.out + applied.err).toBe(0);
+        expect(applied.out).not.toContain("Scene setting:");
+        expect(stored().bgm).toBeUndefined();
     });
 
     it("re-applies an unedited file without reporting a music change when the stored keys are in panel order", async () => {

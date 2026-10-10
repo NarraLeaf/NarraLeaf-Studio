@@ -43,7 +43,8 @@ Aoi: It is. I just don't know how to start.
   scene opens on, put up before its first row runs. `story_show` always prints both (`none` when
   unset). Values: `#background <image>` / `none`; `#music <audio> [track=<track>] [volume=0.7]
   [loop=true] [fade=1200]` (fade in ms) / `none`. Names with spaces in single quotes, as
-  `story_targets` prints them.
+  `story_targets` prints them. They count **only in the header** - before the first row, at the start
+  of the line; one further down is a comment that changes nothing (the check warns).
 - A header **without** them keeps whatever the scene had - the `story_apply` answer then says what the
   scene still opens with. **A reused skeleton demo scene opens on its demo picture** (`#background
   classroom` and the like): write `#background none` (or your own picture) and `#music none` in your

@@ -154,6 +154,11 @@ the header:
 the record and the track's own default answers. A name may also be the asset's id, which
 is what `show` prints for one whose name is ambiguous or no longer resolves.
 
+Both count **only in the header**: before the first row, each at the start of its line.
+Further down (or indented) a `#music ...` line is a comment like any other unknown `#`
+line, so a note reading `#music swells here` stays a note; `check` warns that it changes
+nothing.
+
 `show` always writes both lines. **A file that leaves one out leaves that setting as it
 is** - unlike rows, which a file lists in full - and `apply` says so, naming what the
 scene still opens on. So a scene reused for something new (the skeleton's demo scenes)
