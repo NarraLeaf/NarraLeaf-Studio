@@ -45,6 +45,7 @@ import {
     type AgentToolHandler,
 } from "../agentCall";
 import { assetsService, resolveAsset } from "../agentLookups";
+import { assertAgentMayStillWrite } from "../agentCommitGate";
 import { blueprintReferencesTo, formatReferrers, storyReferencesTo, storyUsesNotFitting, uiReferencesTo } from "../agentReferences";
 import { opaqueImageWarning, readImageAlpha, type ImageAlphaFacts } from "../imageAlpha";
 import { drawnBoxAtCenter, stageSizeOf, standingEntrance, type PixelSize } from "../spriteStage";
@@ -458,6 +459,8 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
         : await defaultSpriteSize(ctx, draft);
     const entranceNote = applyEntrance(profile, entrance, defaultSprite, stage, Boolean(poses && poses.length > 0), warnings);
 
+    // Reading the stories and measuring the poses took a while; the author may have paused meanwhile.
+    assertAgentMayStillWrite({ ctx, request, follow });
     const changed = commitRecord(cast, draft.toJSON() as StoredCharacter, created);
     const current = cast.getCharacter(profile.getId()) ?? draft;
     return answerJson(
@@ -510,6 +513,7 @@ export const characterDelete: AgentToolHandler = async (args, { ctx, request, fo
             "Rewrite or delete those rows first (story_apply, or scene_delete for a whole scene), then delete the character.",
         );
     }
+    assertAgentMayStillWrite({ ctx, request, follow }, "Nothing was deleted.");
     if (!(await cast.deleteCharacter(id))) {
         throw refuse("unavailable", `"${name}" could not be deleted.`);
     }
@@ -711,6 +715,7 @@ export const variableDelete: AgentToolHandler = async (args, { ctx, request, fol
             "Rewrite those rows (story_apply) or blueprints (blueprint_apply) first, then delete the variable. To keep it under a new name, use variable_upsert with its id.",
         );
     }
+    assertAgentMayStillWrite({ ctx, request, follow }, "Nothing was deleted.");
     const blueprints = ctx.services.get<LocalBlueprintService>(Services.LocalBlueprint);
     const deleted = entry.scope === "persistent"
         ? blueprints.deletePersistentVariable(VARIABLE_PANEL_HISTORY_SCOPE_ID, entry.id)

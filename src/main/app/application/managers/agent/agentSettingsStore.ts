@@ -1,8 +1,11 @@
 import crypto from "crypto";
 import path from "path";
 import { unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
+import { AGENT_MCP_LEGACY_DEFAULT_PORT } from "@shared/agent/protocol";
 import {
     AGENT_SETTINGS_FILE_NAME,
+    AGENT_SETTINGS_SCHEMA_VERSION,
+    namesLegacyDefaultPort,
     normalizeAgentSettings,
     type AgentSettingsFile,
 } from "@shared/agent/settings";
@@ -22,11 +25,23 @@ import {
 export class AgentSettingsStore {
     private settings: AgentSettingsFile | null = null;
     private writing: Promise<void> = Promise.resolve();
+    private legacyPort: number | null = null;
 
     constructor(private readonly userDataDir: string) {}
 
     public get filePath(): string {
         return path.join(this.userDataDir, AGENT_SETTINGS_FILE_NAME);
+    }
+
+    /**
+     * The port an enabled profile was served on before {@link load} moved it off the old default,
+     * once: configurations copied then name it. Null after the first read, and for a profile that
+     * was not moved or had agent access off (nothing was connected to it).
+     */
+    public takeLegacyPort(): number | null {
+        const port = this.legacyPort;
+        this.legacyPort = null;
+        return port;
     }
 
     /** Read the file, minting a token (and writing it) when there is none yet. */
@@ -48,7 +63,13 @@ export class AgentSettingsStore {
         // Whatever the previous run recorded as the live address is not live any more.
         settings.url = null;
         this.settings = settings;
-        if (minted || raw === null || (raw as { url?: unknown })?.url) {
+        if (namesLegacyDefaultPort(raw) && (raw as { enabled?: unknown }).enabled === true) {
+            this.legacyPort = AGENT_MCP_LEGACY_DEFAULT_PORT;
+        }
+        // An older schema is written back at once, so a migration it needed is recorded and made once.
+        const rawSchema = (raw as { schemaVersion?: unknown } | null)?.schemaVersion;
+        const outdated = typeof rawSchema !== "number" || rawSchema < AGENT_SETTINGS_SCHEMA_VERSION;
+        if (minted || raw === null || outdated || (raw as { url?: unknown })?.url) {
             await this.persist();
         }
         return settings;

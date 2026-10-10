@@ -1,16 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { Loader2, Trash2 } from "lucide-react";
+import { Check, Copy, Loader2, Trash2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
-import { Button, IconButton, Input, Switch } from "@/lib/components/elements";
+import { Button, IconButton, Switch } from "@/lib/components/elements";
 import { cn } from "@/lib/utils/cn";
 import { copyTextToClipboard } from "@shared/utils/copyText";
 import { pluginDisplayName } from "@shared/utils/pluginDisplayText";
 import {
-    AGENT_PORT_MAX,
-    AGENT_PORT_MIN,
     buildAgentClientConfig,
-    isUsableAgentPort,
     type AgentClientConfigKind,
     type AgentSettingsPatch,
     type AgentSettingsSnapshot,
@@ -39,6 +36,10 @@ const CONFIG_KINDS: {
  * panel reads and writes over its own Settings-only channel and shows what main answers, never what
  * it hoped to write. The endpoint starts and stops the moment the switch moves.
  *
+ * There is no port to fill in: main picks it and keeps it from one launch to the next. The address
+ * row shows where the endpoint is, and says so when it had to move to another port - which is when
+ * configurations copied before stop working - until a configuration or the address is copied again.
+ *
  * Rows follow the generic settings row (label and description on the left, the control at the
  * shared control width on the right), so this section reads like the ones around it.
  */
@@ -47,10 +48,9 @@ export function AgentAccessPanel() {
     const [settings, setSettings] = useState<AgentSettingsSnapshot | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
-    const [portDraft, setPortDraft] = useState("");
     const [tokenVisible, setTokenVisible] = useState(false);
     const [confirmRegenerate, setConfirmRegenerate] = useState(false);
-    const [copied, setCopied] = useState<AgentClientConfigKind | null>(null);
+    const [copied, setCopied] = useState<AgentClientConfigKind | "address" | null>(null);
     const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     // Each step of regenerating replaces the focused button, so focus is handed on explicitly: the
     // confirm step's Cancel takes it, and once the step closes the Regenerate button gets it back
@@ -61,7 +61,6 @@ export function AgentAccessPanel() {
     const adopt = useCallback((result: Awaited<ReturnType<ReturnType<typeof getInterface>["agent"]["getSettings"]>>) => {
         if (result.success) {
             setSettings(result.data);
-            setPortDraft(String(result.data.port));
             setError(null);
         } else {
             setError(result.error ?? "");
@@ -106,30 +105,23 @@ export function AgentAccessPanel() {
         }
     }, [confirmRegenerate, busy]);
 
-    const portValue = Number(portDraft);
-    const portValid = portDraft.trim() !== "" && isUsableAgentPort(portValue);
-
-    const commitPort = useCallback(() => {
-        if (!settings || !portValid || portValue === settings.port) {
-            if (settings && !portValid) {
-                setPortDraft(String(settings.port));
-            }
-            return;
-        }
-        void update({ port: portValue });
-    }, [settings, portValid, portValue, update]);
-
-    const copy = useCallback(async (kind: AgentClientConfigKind) => {
+    const copy = useCallback(async (kind: AgentClientConfigKind | "address") => {
         if (!settings) {
             return;
         }
-        await copyTextToClipboard(buildAgentClientConfig(kind, settings.url, settings.token, settings.stdio));
+        await copyTextToClipboard(kind === "address"
+            ? settings.url
+            : buildAgentClientConfig(kind, settings.url, settings.token, settings.stdio));
         setCopied(kind);
         if (copiedTimer.current) {
             clearTimeout(copiedTimer.current);
         }
         copiedTimer.current = setTimeout(() => setCopied(null), 1500);
-    }, [settings]);
+        // What was copied names the current port: the notice that it moved has been acted on.
+        if (settings.movedToPort !== null) {
+            void update({ acknowledgeMovedPort: true });
+        }
+    }, [settings, update]);
 
     if (!settings) {
         return error
@@ -138,10 +130,15 @@ export function AgentAccessPanel() {
     }
 
     const status = settings.running
-        ? t("settings.agent.running")
+        ? settings.movedToPort !== null
+            ? t("settings.agent.portMoved", { port: settings.movedToPort })
+            : t("settings.agent.running")
         : settings.error
             ? t("settings.agent.failed", { message: settings.error })
             : t("settings.agent.stopped");
+    const statusTone = settings.running
+        ? settings.movedToPort !== null ? "warning" : "muted"
+        : settings.error ? "danger" : "muted";
 
     return (
         <div className="flex flex-col gap-1">
@@ -174,31 +171,21 @@ export function AgentAccessPanel() {
                     aria-label={t("settings.agent.fullAccess")}
                 />
             </Row>
-            <Row
-                label={t("settings.agent.port")}
-                description={portValid ? t("settings.agent.portHint") : t("settings.agent.portInvalid", { min: AGENT_PORT_MIN, max: AGENT_PORT_MAX })}
-                descriptionTone={portValid ? "muted" : "danger"}
-            >
-                <Input
-                    size="sm"
-                    inputMode="numeric"
-                    value={portDraft}
-                    variant={portValid ? "default" : "error"}
-                    disabled={busy}
-                    onChange={event => setPortDraft(event.target.value.replace(/[^0-9]/g, ""))}
-                    onBlur={commitPort}
-                    onKeyDown={event => {
-                        if (event.key === "Enter") {
-                            commitPort();
-                        }
-                    }}
-                    aria-label={t("settings.agent.port")}
-                />
-            </Row>
-            <Row label={t("settings.agent.endpoint")} description={status} descriptionTone={settings.error && !settings.running ? "danger" : "muted"}>
-                <p className="w-full truncate text-right font-mono text-xs text-fg-muted" data-tip={settings.url}>
-                    {settings.url}
-                </p>
+            <Row label={t("settings.agent.endpoint")} description={status} descriptionTone={statusTone}>
+                <div className="flex w-full items-center justify-end gap-1">
+                    <p className="min-w-0 truncate font-mono text-xs text-fg-muted" data-tip={settings.url}>
+                        {settings.url}
+                    </p>
+                    <IconButton
+                        size="sm"
+                        variant="ghost"
+                        aria-label={t("settings.agent.copyAddress")}
+                        data-tip={copied === "address" ? t("settings.agent.copied") : t("settings.agent.copyAddress")}
+                        onClick={() => void copy("address")}
+                    >
+                        {copied === "address" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                    </IconButton>
+                </div>
             </Row>
             <Row label={t("settings.agent.token")} description={t("settings.agent.tokenHint")}>
                 <div className="flex w-full items-center gap-2">
@@ -332,6 +319,8 @@ export function AgentAccessPanel() {
     );
 }
 
+const TONE_CLASS = { muted: "text-fg-subtle", warning: "text-warning", danger: "text-danger" } as const;
+
 function Row({
     label,
     description,
@@ -341,7 +330,7 @@ function Row({
 }: {
     label: string;
     description: string;
-    descriptionTone?: "muted" | "danger";
+    descriptionTone?: "muted" | "warning" | "danger";
     /** Let the control column grow past the shared width, for a group of buttons. */
     wide?: boolean;
     children: ReactNode;
@@ -351,7 +340,7 @@ function Row({
             <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="flex min-w-0 grow basis-64 flex-col gap-1">
                     <span className="text-sm font-medium text-fg">{label}</span>
-                    <span className={cn("text-xs", descriptionTone === "danger" ? "text-danger" : "text-fg-subtle")}>{description}</span>
+                    <span className={cn("text-xs", TONE_CLASS[descriptionTone])}>{description}</span>
                 </div>
                 <div className={cn("ml-auto flex max-w-full flex-col items-end gap-1", !wide && SETTING_CONTROL_WIDTH)}>
                     {children}

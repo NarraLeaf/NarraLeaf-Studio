@@ -8,6 +8,7 @@ import {
     type LocalizationKeysDocument,
 } from "@shared/types/localization";
 import { createEmptyVoiceDocument, DEFAULT_VOICE_CONFIGURATION, type VoiceConfiguration } from "@shared/types/voice";
+import { hashSourceText } from "@shared/utils/localizationText";
 import { HistoryService } from "../history/HistoryService";
 import { projectHistoryScope } from "../history/historyScopes";
 import { Services } from "../services";
@@ -152,7 +153,7 @@ function createHarness(options: { audio?: AudioAsset[] } = {}) {
     const run = (handler: AgentToolHandler, args: Record<string, unknown>) => handler(args, tool);
     const steps = () => history.describe().find(stack => stack.scopeId === projectHistoryScope())?.undo ?? 0;
     return {
-        story, localization, voice, history, storyId: entry.id, sceneId, writes, run, steps,
+        story, localization, voice, history, follow, storyId: entry.id, sceneId, writes, run, steps,
         localizationConfig: () => localizationConfig,
         voiceConfig: () => voiceConfig,
     };
@@ -268,6 +269,65 @@ describe("localization tools", () => {
         const result = structured(await harness.run(localizationSet, { language: "ja", entries: [{ unitId: "t-a", target: "雨", rev }] }));
         expect(result.written).toBe(0);
         expect((result.changedSinceRead as { id: string; source: string }[])[0]).toMatchObject({ id: "t-a", source: "It was snowing." });
+        expect(harness.steps()).toBe(0);
+    });
+
+    it("skips a unit whose translation the author typed since it was listed, and leaves the author's words", async () => {
+        const harness = createHarness();
+        const listed = (structured(await harness.run(localizationList, { language: "ja", origin: "story" })).units as ListedUnit[]);
+        const rev = (id: string) => listed.find(unit => unit.id === id)!.rev;
+        harness.localization.applyUnitEdits("ja", {
+            set: { "t-a": { target: "雨が降っていた。", sourceHash: hashSourceText("It was raining."), status: "reviewed" } },
+            remove: [],
+        });
+        const result = structured(await harness.run(localizationSet, {
+            language: "ja",
+            entries: [{ unitId: "t-a", target: "雨", rev: rev("t-a") }, { unitId: "t-b", target: "やあ", rev: rev("t-b") }],
+        }));
+        expect(result.written).toBe(1);
+        expect(result.changedSinceRead).toBeUndefined();
+        expect((result.translationChangedSinceRead as { id: string; target: string; status: string }[])).toEqual([
+            expect.objectContaining({ id: "t-a", target: "雨が降っていた。", status: "reviewed" }),
+        ]);
+        const units = harness.localization.getDocumentIfLoaded("ja")!.units;
+        expect(units["t-a"]).toMatchObject({ target: "雨が降っていた。", status: "reviewed" });
+        expect(units["t-b"]).toMatchObject({ target: "やあ" });
+
+        // Listed again, the unit carries the author's words and a rev that lets an overwrite through.
+        const again = (structured(await harness.run(localizationList, { language: "ja", origin: "story" })).units as ListedUnit[]);
+        const fresh = again.find(unit => unit.id === "t-a")!;
+        expect(fresh.target).toBe("雨が降っていた。");
+        expect(fresh.rev).not.toBe(rev("t-a"));
+        const overwrite = structured(await harness.run(localizationSet, { language: "ja", entries: [{ unitId: "t-a", target: "雨", rev: fresh.rev }] }));
+        expect(overwrite.written).toBe(1);
+    });
+});
+
+describe("a write the author stopped while it was being prepared", () => {
+    it("is refused with nothing written when the author pauses agents mid-call", async () => {
+        const harness = createHarness();
+        const listed = (structured(await harness.run(localizationList, { language: "ja", origin: "story" })).units as ListedUnit[]);
+        // The bridge let the call in; the handler then awaits the units, and the author pauses.
+        const pending = harness.run(localizationSet, {
+            language: "ja",
+            entries: listed.map(unit => ({ unitId: unit.id, target: `JA ${unit.id}`, rev: unit.rev })),
+        });
+        harness.follow.setPaused(true);
+        const refused = await refusal(pending);
+        expect(refused.code).toBe("paused");
+        expect(refused.message).toContain("Nothing was written.");
+        expect(harness.localization.getDocumentIfLoaded("ja")!.units).toEqual({});
+        expect(harness.steps()).toBe(0);
+        expect(harness.writes).toEqual([]);
+    });
+
+    it("is refused for voice takes too, after the clips were measured", async () => {
+        const harness = createHarness({ audio: [{ id: "au-1", name: "Opening_001_Narration", type: "audio", groupId: "g-voice" }] });
+        const pending = harness.run(voiceAutoLink, { language: "ja", assetFolder: "Voice JA" });
+        harness.follow.setPaused(true);
+        const refused = await refusal(pending);
+        expect(refused.code).toBe("paused");
+        expect(harness.voice.getDocumentIfLoaded("ja")!.units).toEqual({});
         expect(harness.steps()).toBe(0);
     });
 });

@@ -26,12 +26,12 @@ function snapshot(overrides: Partial<AgentSettingsSnapshot> = {}): AgentSettings
         enabled: true,
         allowWrites: false,
         fullAccess: false,
-        port: 41500,
         token: "secret-token",
         allowedImportRoots: [],
         running: true,
         url: "http://127.0.0.1:41500/mcp",
         error: null,
+        movedToPort: null,
         stdio: { command: "C:\\Studio\\NarraLeaf Studio.exe", args: ["--mcp-stdio"] },
         pluginTools: [],
         ...overrides,
@@ -41,6 +41,14 @@ function snapshot(overrides: Partial<AgentSettingsSnapshot> = {}): AgentSettings
 const bridge = vi.hoisted(() => ({
     settings: null as AgentSettingsSnapshot | null,
     regenerate: null as null | ((value: unknown) => void),
+    patches: [] as unknown[],
+    clipboard: [] as string[],
+}));
+
+vi.mock("@shared/utils/copyText", () => ({
+    copyTextToClipboard: async (text: string) => {
+        bridge.clipboard.push(text);
+    },
 }));
 
 vi.mock("@/lib/app/bridge", () => ({
@@ -48,7 +56,10 @@ vi.mock("@/lib/app/bridge", () => ({
         agent: {
             getSettings: () => Promise.resolve({ success: true, data: bridge.settings }),
             onQuickStateChanged: () => ({ cancel: () => undefined }),
-            updateSettings: () => Promise.resolve({ success: true, data: bridge.settings }),
+            updateSettings: (patch: unknown) => {
+                bridge.patches.push(patch);
+                return Promise.resolve({ success: true, data: bridge.settings });
+            },
             regenerateToken: () => new Promise(resolve => {
                 bridge.regenerate = resolve;
             }),
@@ -61,6 +72,8 @@ afterEach(() => {
     cleanup();
     bridge.settings = null;
     bridge.regenerate = null;
+    bridge.patches = [];
+    bridge.clipboard = [];
 });
 
 async function renderPanel(overrides: Partial<AgentSettingsSnapshot> = {}) {
@@ -76,13 +89,34 @@ describe("the agent access panel", () => {
         for (const key of [
             "settings.agent.allowWrites",
             "settings.agent.fullAccess",
-            "settings.agent.port",
             "settings.agent.endpoint",
             "settings.agent.regenerate",
             "settings.agent.copyConfig",
         ]) {
             expect(view.getByText(key)).toBeTruthy();
         }
+    });
+
+    it("asks for no port: the address is shown, read-only, with a way to copy it", async () => {
+        const view = await renderPanel();
+        expect(view.queryByText("settings.agent.port")).toBeNull();
+        expect(view.container.querySelector("input")).toBeNull();
+        expect(view.getByText("http://127.0.0.1:41500/mcp")).toBeTruthy();
+        expect(view.getByText("settings.agent.running")).toBeTruthy();
+        fireEvent.click(view.getByRole("button", { name: "settings.agent.copyAddress" }));
+        await waitFor(() => expect(bridge.clipboard).toEqual(["http://127.0.0.1:41500/mcp"]));
+        // Nothing moved, so there is nothing to answer.
+        expect(bridge.patches).toEqual([]);
+    });
+
+    it("says the endpoint moved, and answers it once a configuration is copied", async () => {
+        const view = await renderPanel({ url: "http://127.0.0.1:47220/mcp", movedToPort: 47220 });
+        const notice = view.getByText("settings.agent.portMoved(47220)");
+        expect(notice.className).toContain("text-warning");
+        expect(view.queryByText("settings.agent.running")).toBeNull();
+        fireEvent.click(view.getByRole("button", { name: "settings.agent.copyClaudeCode" }));
+        await waitFor(() => expect(bridge.patches).toEqual([{ acknowledgeMovedPort: true }]));
+        expect(bridge.clipboard[0]).toContain("http://127.0.0.1:47220/mcp");
     });
 
     it("offers the configurations by client, in the Agent menu's order", async () => {

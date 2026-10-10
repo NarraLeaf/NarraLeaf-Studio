@@ -603,15 +603,23 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "blueprint_show",
         "Read a blueprint as text",
-        "Prints one blueprint (or all of one owner) in the `.bp` text format. Blueprint names are in the project's language (the skeleton's title Start button's is `开始` in a Chinese project), so find one by its owner: ui_show prints `# blueprint: <name>` after the element that owns it, and an owner key `widgetMain:<surfaceId>:<elementId>` shows all of that element's blueprints.",
+        "Prints one blueprint (or all of one owner) in the `.bp` text format, with each blueprint's `revision`. Blueprint names are in the project's language (the skeleton's title Start button's is `开始` in a Chinese project), so find one by its owner: ui_show prints `# blueprint: <name>` after the element that owns it, and an owner key `widgetMain:<surfaceId>:<elementId>` shows all of that element's blueprints.",
         { blueprint: { type: "string", description: "Blueprint name or id, or an owner key `widgetMain:<surfaceId>:<elementId>`." } },
         ["blueprint"],
     ),
     ws(
         "blueprint_apply",
         "Write blueprints",
-        "Applies a `.bp` document: each `blueprint` block replaces every graph of its owner. One step of undo.",
-        { source: { type: "string" }, dryRun: DRY_RUN },
+        "Applies a `.bp` document: each `blueprint` block replaces every graph of its owner. One step of undo in that blueprint's editor (each blueprint's, when the source holds several).",
+        {
+            source: { type: "string" },
+            baseRevision: {
+                type: "integer",
+                description:
+                    "The `revision` blueprint_show returned for the blueprint. The write is refused with `stale_revision` if the author changed it since then. One revision covers one blueprint: apply one block per call to use it.",
+            },
+            dryRun: DRY_RUN,
+        },
         ["source"],
         true,
     ),
@@ -647,7 +655,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "localization_set",
         "Write translations",
-        "Writes translations of one target language: `entries` is `[{unitId, target, status?, note?, rev?}]`, up to 1000 per call - a scene or a few hundred lines at a time, so the author can watch the table fill. The whole call is one step of undo. `status` defaults to `machine` (an agent's translation, for the author to review); pass `translated` when the author asked for final text, `reviewed` only when they said they reviewed it. `target: \"\"` clears a translation. Pass each unit's `rev` from localization_list: a unit whose source changed since is skipped and returned with its new source. Unknown unit ids refuse the whole call; the source language is refused. Lost `{n}` values, run tags, `{name}` placeholders or line breaks are written but warned about - fix and resend those.",
+        "Writes translations of one target language: `entries` is `[{unitId, target, status?, note?, rev?}]`, up to 1000 per call - a scene or a few hundred lines at a time, so the author can watch the table fill. The whole call is one step of undo. `status` defaults to `machine` (an agent's translation, for the author to review); pass `translated` when the author asked for final text, `reviewed` only when they said they reviewed it. `target: \"\"` clears a translation. Pass each unit's `rev` from localization_list: a unit whose source changed since is skipped and returned with its new source, and one whose translation the author changed since is skipped and returned with the author's words. Unknown unit ids refuse the whole call; the source language is refused. Lost `{n}` values, run tags, `{name}` placeholders or line breaks are written but warned about - fix and resend those.",
         {
             language: { type: "string", description: "Target language code." },
             entries: {

@@ -44,6 +44,7 @@ import {
     type AgentToolHandler,
 } from "../agentCall";
 import { AGENT_HISTORY_LABEL } from "../agentLookups";
+import { assertAgentMayStillWrite } from "../agentCommitGate";
 import type { UIPatchTarget } from "../uiPatch";
 import { readSource } from "./storyTextTools";
 import { assertUiRevision, uiContentRevision } from "./uiTools";
@@ -270,6 +271,7 @@ export const uiApply: AgentToolHandler = async (args, { ctx, request, follow }) 
     ];
     let changes = preview;
     if (!dryRun) {
+        assertAgentMayStillWrite({ ctx, request, follow });
         const single = singleScopeOf(compiled, targets, preview);
         let applied = null as UiApplyChanges | null;
         const mutate = (document: UIDocument) => {

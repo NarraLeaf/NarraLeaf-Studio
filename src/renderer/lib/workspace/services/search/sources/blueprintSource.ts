@@ -291,7 +291,7 @@ export function extractBlueprintEntries(
  * provenance at all once a project has more than one screen - the owner is the part that
  * actually locates it.
  */
-function resolveBlueprintOwnerLabel(ctx: WorkspaceContext, ownerKey: string): string | undefined {
+export function resolveBlueprintOwnerLabel(ctx: WorkspaceContext, ownerKey: string): string | undefined {
     const owner = decodeBlueprintOwnerKey(ownerKey);
     if (!owner) {
         return undefined;

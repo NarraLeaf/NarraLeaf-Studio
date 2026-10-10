@@ -141,7 +141,9 @@ type ProjectMember =
     | "setComponentListItemStructShape"
     // An agent's edits name the page or definition they act on, so they mean the same thing from here.
     | "applyAgentMutation"
-    | "applyCompiledUi";
+    | "applyCompiledUi"
+    // A dry run's private copy is of the project's document, the definitions included.
+    | "runDetachedDraft";
 
 export class ComponentDocumentServiceAdapter implements UIDocumentServiceSurface {
     public readonly surfaceId: string;
@@ -172,6 +174,7 @@ export class ComponentDocumentServiceAdapter implements UIDocumentServiceSurface
     public readonly generateId = this.project("generateId");
     public readonly applyAgentMutation = this.project("applyAgentMutation");
     public readonly applyCompiledUi = this.project("applyCompiledUi");
+    public readonly runDetachedDraft = this.project("runDetachedDraft");
     public readonly getComponentContentRevision = this.project("getComponentContentRevision");
     public readonly getComponentUsageCount = this.project("getComponentUsageCount");
     public readonly getInputActions = this.project("getInputActions");
@@ -634,6 +637,11 @@ export class ComponentDocumentServiceAdapter implements UIDocumentServiceSurface
      */
     public runSurfaceHistoryTransaction(_surfaceId: string, action: () => void, options?: { label?: HistoryLabel }): void {
         this.base.runSurfaceHistoryTransaction(this.surfaceId, action, options);
+    }
+
+    /** {@link runSurfaceHistoryTransaction}, put back whole - the definition's blueprints with it - when `action` throws. */
+    public runAtomicSurfaceTransaction(_surfaceId: string, action: () => void, options?: { label?: HistoryLabel }): void {
+        this.base.runAtomicSurfaceTransaction(this.surfaceId, action, options);
     }
 
     /**

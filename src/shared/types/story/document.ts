@@ -847,7 +847,8 @@ export type StoryActionPayload =
           value: StoryLiteralValue;
           /**
            * A computed right-hand side (`/set gold gold + 1`). **When present it wins**, and `value`
-           * is only the last literal the row held - never read by the compiler.
+           * is never read by the compiler. A row written with an expression stores `null` there;
+           * older rows may hold the `true` a new assignment block starts with.
            *
            * Why not fold the literal case in here too: `/set gold 100` is the overwhelmingly common
            * row, `value` is what the inspector's literal editor binds to, and every document written

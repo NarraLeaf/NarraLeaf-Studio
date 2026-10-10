@@ -57,7 +57,13 @@ function file(name: string, data: Buffer, mode = 0o644): ArchiveItem {
     return { kind: "file", name, mode, content: { kind: "memory", data } };
 }
 
-/** Every entry read back, inflated where it was deflated, its CRC checked by zlib rather than by us. */
+/**
+ * Every entry read back, inflated where it was deflated, its CRC checked by zlib rather than by us.
+ *
+ * Tests compare the bytes with `Buffer.equals`, not `toEqual`/`toMatchObject`: vitest's structural
+ * equality walks a Buffer one index at a time, which for a few hundred kilobytes takes seconds and
+ * pushed this file past the test timeout on a loaded machine.
+ */
 function readBack(archive: Buffer): Map<string, { data: Buffer; method: number; compressedSize: number; unixMode: number }> {
     const entries = new Map<string, { data: Buffer; method: number; compressedSize: number; unixMode: number }>();
     for (const entry of parseZipIndex(archive).entries) {
@@ -74,9 +80,11 @@ describe("writeParallelZip", () => {
         const noise = crypto.randomBytes(10_000);
         const entries = readBack(await zip([file("readme.txt", text), file("noise.bin", noise), file("empty", Buffer.alloc(0))]));
 
-        expect(entries.get("readme.txt")).toMatchObject({ method: ZIP_METHOD_DEFLATE, data: text });
+        expect(entries.get("readme.txt")!.method).toBe(ZIP_METHOD_DEFLATE);
+        expect(entries.get("readme.txt")!.data.equals(text)).toBe(true);
         expect(entries.get("readme.txt")!.compressedSize).toBeLessThan(text.length);
-        expect(entries.get("noise.bin")).toMatchObject({ method: ZIP_METHOD_STORE, data: noise, compressedSize: noise.length });
+        expect(entries.get("noise.bin")).toMatchObject({ method: ZIP_METHOD_STORE, compressedSize: noise.length });
+        expect(entries.get("noise.bin")!.data.equals(noise)).toBe(true);
         expect(entries.get("empty")).toMatchObject({ method: ZIP_METHOD_STORE, compressedSize: 0 });
         expect(entries.get("empty")!.data.length).toBe(0);
     });
@@ -85,7 +93,8 @@ describe("writeParallelZip", () => {
         const text = prose(CHUNK * 7 + 1234);
         const entries = readBack(await zip([file("story.json", text)]));
 
-        expect(entries.get("story.json")).toMatchObject({ method: ZIP_METHOD_DEFLATE, data: text });
+        expect(entries.get("story.json")!.method).toBe(ZIP_METHOD_DEFLATE);
+        expect(entries.get("story.json")!.data.equals(text)).toBe(true);
         // Primed with the window before it, each piece compresses about as well as one encoder over
         // the whole file would: within a fraction of a percent.
         const whole = zlib.deflateRawSync(text, { level: 9, memLevel: 9 }).length;

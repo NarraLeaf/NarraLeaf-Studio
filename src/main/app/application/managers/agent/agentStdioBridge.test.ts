@@ -10,7 +10,7 @@ import {
 } from "./agentStdioBridge";
 
 const TOKEN = "t".repeat(43);
-const URL_A = "http://127.0.0.1:54080/mcp";
+const URL_A = "http://127.0.0.1:47219/mcp";
 
 type Posted = { url: string; method: string; headers: Record<string, string>; body: unknown };
 

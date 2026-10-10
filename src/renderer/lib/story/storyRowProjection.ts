@@ -1113,7 +1113,9 @@ export function storyRowSpeaker(block: StoryBlock, lookups: StoryRowLookups): St
  * already reads there.
  */
 export function storyRowSentence(block: StoryBlock, lookups: StoryRowLookups, options: StoryRowOptions = {}): string {
-    const sceneName = (id: string | undefined) => (id ? lookups.scenes?.[id]?.name || id : "—");
+    // The token names its scene the way the editor's own token does (`storyQuickParams`): a target
+    // that no longer resolves reads as the unknown-scene word, never as the id it stores.
+    const sceneName = (id: string | undefined) => (id ? getStorySceneName(lookups.scenes, id) : "—");
     return storyRowFragments(block, lookups, defaultRowLabel, options)
         .map(fragment => (fragment.kind === "text" ? fragment.text : quickParamText(fragment.param, sceneName)))
         .filter(text => text.length > 0)

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useWorkspace } from "../../context";
 import { Services } from "@/lib/workspace/services/services";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
@@ -6,6 +6,7 @@ import { PreviewService } from "@/lib/workspace/services/core/PreviewService";
 import { BuildService } from "@/lib/workspace/services/core/BuildService";
 import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "../actions/runtimeActionStatus";
 import { getTestRunService } from "../testing";
+import { reloadPhaseHoldMs } from "./reloadPhaseDwell";
 import type { TranslationKey } from "@shared/i18n";
 import type { DevModeStatus } from "@shared/types/devMode";
 import type { PreviewStatus } from "@shared/types/gameRuntime";
@@ -57,6 +58,35 @@ function isBuildActive(status: GameBuildStatus): boolean {
 }
 
 /**
+ * The Dev Mode status as the run cell shows it: the session's own, except that a hot reload that
+ * finished quickly keeps reading "Reloading" for {@link reloadPhaseHoldMs}, so it is seen at all.
+ *
+ * A layout effect, so the held phase is in place before the frame that would otherwise paint
+ * "Running" for an instant between the two.
+ */
+function useHeldReloadPhase(status: DevModeStatus): DevModeStatus {
+    const [held, setHeld] = useState(false);
+    const reloadStartedAt = useRef<number | null>(null);
+    useLayoutEffect(() => {
+        if (status === "reloading") {
+            reloadStartedAt.current = performance.now();
+            setHeld(false);
+            return;
+        }
+        const holdMs = reloadPhaseHoldMs(status, reloadStartedAt.current, performance.now());
+        reloadStartedAt.current = null;
+        if (holdMs <= 0) {
+            setHeld(false);
+            return;
+        }
+        setHeld(true);
+        const timer = setTimeout(() => setHeld(false), holdMs);
+        return () => clearTimeout(timer);
+    }, [status]);
+    return held && status === "running" ? "reloading" : status;
+}
+
+/**
  * Which run mode the status bar reports, resolved from the Test, Dev Mode, Preview and Build
  * services.
  *
@@ -84,6 +114,7 @@ export function useActiveRunMode(): ActiveRunMode | null {
         setDevStatus(devMode.getStatus());
         return devMode.onStatusChanged(setDevStatus);
     }, [context]);
+    const shownDevStatus = useHeldReloadPhase(devStatus);
 
     useEffect(() => {
         if (!context) {
@@ -125,12 +156,12 @@ export function useActiveRunMode(): ActiveRunMode | null {
             busy: true,
         };
     }
-    if (isDevModeRuntimeActive(devStatus)) {
+    if (isDevModeRuntimeActive(shownDevStatus)) {
         return {
             kind: "devMode",
             labelKey: "workspace.shell.statusBar.devMode",
-            phaseKey: DEV_MODE_PHASE[devStatus] ?? PHASE("running"),
-            busy: devStatus !== "running",
+            phaseKey: DEV_MODE_PHASE[shownDevStatus] ?? PHASE("running"),
+            busy: shownDevStatus !== "running",
         };
     }
     if (isPreviewRuntimeActive(previewStatus)) {

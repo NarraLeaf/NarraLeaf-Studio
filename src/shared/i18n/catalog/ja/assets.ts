@@ -433,7 +433,7 @@ export const assets = {
             filter: "メンバー共通のタグ",
             residencyBlocked: "バリアントによって変わるセットは、言語によって変わるセットの下に置けない。",
             fallback: "既定の値",
-            fallbackMissing: "この値にファイルがないため、セット全体が解決できない。",
+            fallbackMissing: "この値にファイルがないため、セット全体が解決できない",
             variants: "値",
             variantInherited: "既定",
             variantMissing: "ファイルなし",
@@ -655,6 +655,12 @@ export const assets = {
         zoomIn: "拡大",
         zoomOut: "縮小",
         resetView: "表示をリセット",
+        // キーボード設定の表と「?」の一覧に、音声・動画プレビューの拡大縮小キーと並んで出るので、何を拡大するかを書く。
+        keybindings: {
+            zoomIn: "画像を拡大",
+            zoomOut: "画像を縮小",
+            resetView: "画像の表示をリセット",
+        },
     },
     shortcuts: {
         copy: "選んだアセットをコピー",

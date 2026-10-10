@@ -382,14 +382,15 @@ export const uiTemplates: AgentToolHandler = async () => {
 };
 
 export const uiTemplateApply: AgentToolHandler = async (args, { ctx, request, follow }) => {
+    // Named by the page it adds once it has, never by the template's id: the interface shows no ids.
     const templateId = readString(args, "template");
-    follow.describeCall(request.callId, templateId);
     const result = await applyUITemplate(templateId, uiDocumentService(ctx));
     if (!result.ok) {
         throw refuse("unavailable", `The template could not be applied: ${result.error}.`);
     }
     const first = result.surfaces[0];
     if (first) {
+        follow.describeCall(request.callId, first.name);
         follow.noteWrite({ kind: "surface", surfaceId: first.id, name: first.name });
     }
     return answerJson({

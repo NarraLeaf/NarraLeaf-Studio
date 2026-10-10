@@ -13,9 +13,9 @@ import { IPCHandler } from "./IPCHandler";
  *
  * Those refuse every window but Settings because reading hands out the bearer token. These answer a
  * workspace too, and so nothing they return can carry a secret: state is projected through
- * `toAgentQuickState` (three booleans), a client configuration is written to the system clipboard
- * here in main and only `{ copied: true }` goes back, and the skill export answers the folder it
- * wrote. Turning agent access or write access on is confirmed in Studio's agent access window by
+ * `toAgentQuickState` (four booleans and the port the endpoint moved to, if it did), a client
+ * configuration is written to the system clipboard here in main and only `{ copied: true }` goes
+ * back, and the skill export answers the folder it wrote. Turning agent access or write access on is confirmed in Studio's agent access window by
  * `AgentManager.quickToggle`, because a workspace runs plugin code.
  *
  * Game windows (Dev Mode, Preview) run project code and are refused, as is everything else that is
@@ -59,8 +59,8 @@ export class AgentQuickToggleHandler extends IPCHandler<IPCEventType.agentQuickT
         if (refused) {
             return this.failed(refused);
         }
-        // Only the three switches the menu holds, and only as booleans: the port and the import
-        // folders stay with the Settings window. Turning agent access, writes or full access on is
+        // Only the three switches the menu holds, and only as booleans: the import folders stay
+        // with the Settings window. Turning agent access, writes or full access on is
         // confirmed in the agent access window by the manager.
         const clean: AgentQuickTogglePatch = {};
         if (typeof patch?.enabled === "boolean") {
@@ -96,7 +96,10 @@ export class AgentCopyConfigHandler extends IPCHandler<IPCEventType.agentCopyCon
             return this.failed(new Error(`Unknown configuration kind: ${String(kind)}`));
         }
         try {
-            clipboard.writeText(await window.getApp().getAgentManager().clientConfig(kind));
+            const manager = window.getApp().getAgentManager();
+            clipboard.writeText(await manager.clientConfig(kind));
+            // What was copied names the current port, so a notice that the port moved is answered.
+            await manager.acknowledgeMovedPort();
             return this.success({ copied: true as const });
         } catch (error) {
             return this.failed(error);

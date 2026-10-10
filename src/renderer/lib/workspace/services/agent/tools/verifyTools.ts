@@ -302,7 +302,8 @@ export const internalTest: AgentToolHandler = async (args, { ctx, request, follo
     const id = readString(args, "id");
     const parameters = readOptionalRecord(args, "parameters") as Record<string, string> | undefined;
     const tests = ctx.services.get<TestRunService>(Services.TestRun);
-    if (!tests.listTests().some(test => test.definition.id === id)) {
+    const definition = tests.listTests().find(test => test.definition.id === id)?.definition;
+    if (!definition) {
         throw refuse("not_found", `No test "${id}".`, `Tests: ${tests.listTests().map(test => test.definition.id).join(", ")}.`);
     }
     await tests.prepareAvailability();
@@ -310,7 +311,8 @@ export const internalTest: AgentToolHandler = async (args, { ctx, request, follo
     if (!availability.available) {
         throw refuse("unavailable", `Test "${id}" cannot run now: ${testText(availability.reason)}`);
     }
-    follow.describeCall(request.callId, id);
+    // The test's title, as Studio's test list shows it: the id is internal.
+    follow.describeCall(request.callId, testText(definition.title));
     let runId: string;
     try {
         runId = await tests.start(id, parameters);

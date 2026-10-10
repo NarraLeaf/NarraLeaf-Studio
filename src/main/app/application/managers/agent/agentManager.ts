@@ -12,6 +12,8 @@ import type { AppEventToken } from "@shared/types/app";
 import {
     AGENT_INTERNAL_TOOL_STATE,
     AGENT_INTERNAL_TOOL_TEST,
+    AGENT_MCP_DEFAULT_PORT,
+    AGENT_MCP_FALLBACK_PORTS,
     agentRefusal,
     agentText,
     type AgentCallRequest,
@@ -33,9 +35,6 @@ import {
 import {
     agentEndpointUrl,
     buildAgentClientConfig,
-    isUsableAgentPort,
-    AGENT_PORT_MAX,
-    AGENT_PORT_MIN,
     type AgentPluginToolsSetting,
     type AgentSettingsPatch,
     type AgentSettingsSnapshot,
@@ -91,6 +90,11 @@ export class AgentManager implements AgentMainToolHost {
     private readonly store: AgentSettingsStore;
     private server: AgentMcpServer | null = null;
     private lastError: string | null = null;
+    /**
+     * The port the endpoint moved to on its last start, until the author copies a configuration
+     * (one copied before names the old port). Cleared by a start that lands where the profile was.
+     */
+    private movedToPort: number | null = null;
     private readonly focusedAt = new WeakMap<AppWindow, number>();
     /** Import roots already granted to each workspace, so a grant is not stacked on every call. */
     private readonly grantedRoots = new WeakMap<AppWindow, Set<string>>();
@@ -154,12 +158,12 @@ export class AgentManager implements AgentMainToolHost {
             enabled: settings.enabled,
             allowWrites: settings.allowWrites,
             fullAccess: settings.fullAccess,
-            port: settings.port,
             token: settings.token,
             allowedImportRoots: settings.allowedImportRoots.map(root => root.path),
             running: livePort !== null,
             url: agentEndpointUrl(livePort ?? settings.port),
             error: settings.enabled && livePort === null ? this.lastError : null,
+            movedToPort: livePort !== null ? this.movedToPort : null,
             stdio: agentStdioCommand(this.app.electronApp),
             pluginTools: await this.pluginToolSettings(settings.blockedPluginTools),
         };
@@ -196,15 +200,14 @@ export class AgentManager implements AgentMainToolHost {
      * rest of the patch still applies when they decline.
      */
     public async updateSettings(patch: AgentSettingsPatch, confirmWith?: AppWindow): Promise<AgentSettingsSnapshot> {
-        if (patch.port !== undefined && !isUsableAgentPort(patch.port)) {
-            throw new Error(`The port must be a whole number from ${AGENT_PORT_MIN} to ${AGENT_PORT_MAX}.`);
+        if (patch.acknowledgeMovedPort === true) {
+            this.movedToPort = null;
         }
         const before = await this.store.load();
         if (patch.fullAccess === true && !before.fullAccess && confirmWith && !(await this.confirmFullAccess(confirmWith))) {
             patch = { ...patch, fullAccess: undefined };
         }
         const wasEnabled = before.enabled;
-        const previousPort = before.port;
         const after = await this.store.update(draft => {
             if (typeof patch.enabled === "boolean") {
                 draft.enabled = patch.enabled;
@@ -214,9 +217,6 @@ export class AgentManager implements AgentMainToolHost {
             }
             if (typeof patch.fullAccess === "boolean") {
                 draft.fullAccess = patch.fullAccess;
-            }
-            if (patch.port !== undefined) {
-                draft.port = patch.port;
             }
             if (typeof patch.removeImportRoot === "string") {
                 const target = normalizeProjectPath(path.resolve(patch.removeImportRoot));
@@ -240,7 +240,7 @@ export class AgentManager implements AgentMainToolHost {
         if (after.fullAccess !== before.fullAccess) {
             this.app.logger.info(`[Agent] Full access ${after.fullAccess ? "allowed" : "withdrawn"}`);
         }
-        if (after.enabled && (!wasEnabled || after.port !== previousPort || !this.server)) {
+        if (after.enabled && (!wasEnabled || !this.server)) {
             await this.serialize(async () => {
                 await this.stopServer();
                 await this.startServer();
@@ -509,6 +509,18 @@ export class AgentManager implements AgentMainToolHost {
     }
 
     /**
+     * A configuration with the current address was copied, by the Agent menu (main wrote it to the
+     * clipboard) or by the Settings panel: the notice that the port moved has been acted on.
+     */
+    public async acknowledgeMovedPort(): Promise<void> {
+        if (this.movedToPort === null) {
+            return;
+        }
+        this.movedToPort = null;
+        this.broadcastQuickState(await this.snapshot());
+    }
+
+    /**
      * Copy the bundled skill (`resources/agent/skills`: the skill folder, README, AGENTS.md and the
      * client configurations) into `<picked>/NarraLeaf-Skills`. Writing into a folder that already
      * holds something is confirmed first; files of the same name are replaced and nothing else in
@@ -579,12 +591,24 @@ export class AgentManager implements AgentMainToolHost {
         return next;
     }
 
+    /**
+     * Serve on the profile's port; when it cannot be bound (in use, or reserved by the system), on
+     * the first of a fixed run of fallbacks that can, and failing those on any free port. Whichever
+     * binds is written back as the profile's port, so the next launch tries it first and an HTTP
+     * client configured with it keeps reaching the endpoint. When that is not the port the profile
+     * had, configurations copied before name the wrong one, and Settings and the Agent menu say so
+     * until a configuration is copied again.
+     */
     private async startServer(): Promise<void> {
         if (this.server) {
             return;
         }
+        const asked = this.store.current.port;
+        // A profile just moved off the old default had clients configured with that one.
+        const known = this.store.takeLegacyPort() ?? asked;
         const server = new AgentMcpServer({
-            port: this.store.current.port,
+            port: asked,
+            fallbackPorts: [AGENT_MCP_DEFAULT_PORT, ...AGENT_MCP_FALLBACK_PORTS],
             token: () => this.store.current.token,
             host: this.serverHost(),
         });
@@ -592,11 +616,15 @@ export class AgentManager implements AgentMainToolHost {
             const port = await server.start();
             this.server = server;
             this.lastError = null;
+            this.movedToPort = port === known ? null : port;
             const url = agentEndpointUrl(port);
             await this.store.update(draft => {
+                draft.port = port;
                 draft.url = url;
             });
-            this.app.logger.info(`[Agent] MCP endpoint listening on ${url}`);
+            this.app.logger.info(port === known
+                ? `[Agent] MCP endpoint listening on ${url}`
+                : `[Agent] MCP endpoint listening on ${url}, moved from port ${known}`);
         } catch (error) {
             this.lastError = describe(error);
             this.app.logger.warn(`[Agent] MCP endpoint could not start: ${this.lastError}`);

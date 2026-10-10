@@ -29,7 +29,7 @@ function input(overrides: Partial<AgentMenuModelInput> = {}): AgentMenuModelInpu
         state: "working",
         paused: false,
         follow: true,
-        quick: { enabled: true, allowWrites: false, fullAccess: false, running: true },
+        quick: { enabled: true, allowWrites: false, fullAccess: false, running: true, movedToPort: null },
         run: {
             togglePause: vi.fn(),
             toggleFollow: vi.fn(),
@@ -59,7 +59,7 @@ describe("the Agent menu's status line", () => {
     });
 
     it("puts access being off before everything, then pause, then work", () => {
-        const on = { enabled: true, allowWrites: true, fullAccess: false, running: true };
+        const on = { enabled: true, allowWrites: true, fullAccess: false, running: true, movedToPort: null };
         expect(agentMenuStateKind({ ...on, enabled: false }, { paused: true, busy: true })).toBe("off");
         expect(agentMenuStateKind(on, { paused: true, busy: true })).toBe("paused");
         expect(agentMenuStateKind(on, { paused: false, busy: true })).toBe("working");
@@ -88,6 +88,16 @@ describe("the Agent menu's rows", () => {
         ]);
     });
 
+    it("says under the status line that the endpoint moved, until main clears it", () => {
+        const moved = buildAgentMenuItems(input({ t: en, quick: { enabled: true, allowWrites: false, fullAccess: false, running: true, movedToPort: 47220 } }));
+        expect(shape(moved).slice(0, 3)).toEqual([AGENT_MENU_ACTIONS.status, AGENT_MENU_ACTIONS.portMoved, "---"]);
+        expect(moved.filter(isActionMenuAction).find(item => item.id === AGENT_MENU_ACTIONS.portMoved)).toMatchObject({
+            label: "The endpoint moved to port 47220. Copy the connection configuration again for clients set up before.",
+            disabled: true,
+        });
+        expect(shape(buildAgentMenuItems(input()))).not.toContain(AGENT_MENU_ACTIONS.portMoved);
+    });
+
     it("draws the status line as a disabled row and the switches as checkboxes", () => {
         const items = buildAgentMenuItems(input({ follow: false }));
         const byId = new Map(items.filter(isActionMenuAction).map(item => [item.id, item]));
@@ -109,7 +119,7 @@ describe("the Agent menu's rows", () => {
     });
 
     it("shows writes allowed and fixed while full access is on, and flips full access from its own row", () => {
-        const model = input({ quick: { enabled: true, allowWrites: false, fullAccess: true, running: true } });
+        const model = input({ quick: { enabled: true, allowWrites: false, fullAccess: true, running: true, movedToPort: null } });
         const items = buildAgentMenuItems(model).filter(isActionMenuAction);
         const writes = items.find(item => item.id === AGENT_MENU_ACTIONS.allowWrites);
         const full = items.find(item => item.id === AGENT_MENU_ACTIONS.fullAccess);
@@ -140,7 +150,7 @@ describe("the Agent menu's rows", () => {
     });
 
     it("holds only the way to turn access on and its settings while access is off", () => {
-        const model = input({ state: "off", quick: { enabled: false, allowWrites: true, fullAccess: false, running: false } });
+        const model = input({ state: "off", quick: { enabled: false, allowWrites: true, fullAccess: false, running: false, movedToPort: null } });
         const items = buildAgentMenuItems(model);
         expect(shape(items)).toEqual([
             AGENT_MENU_ACTIONS.status,

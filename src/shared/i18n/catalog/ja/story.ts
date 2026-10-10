@@ -201,7 +201,7 @@ export const story = {
         },
         reason: {
             blueprintAction: "この行はブループリントが実行する。ブループリントにスクリプトの書き方は無い",
-            inputAction: "この行はプレイヤーの入力またはコントローラーの振動を扱う。スクリプトの書き方はまだ無い",
+            inputAction: "この行はプレイヤーの入力またはコントローラーの振動を扱う。スクリプトの書き方は無い",
             blueprintCondition: "この条件はブループリントが決める",
             blueprintInterpolation: "文の中の値をブループリントが計算する",
             inlineEvent: "文が、表示していく途中で発生するイベントを持っている",
@@ -898,7 +898,7 @@ export const story = {
         abbreviationCharacter: "引用符、=、/、@、# は使えない",
         abbreviationBuiltIn: "すでに「{command}」の綴りになっている",
         abbreviationTaken: "すでに「{command}」の略語になっている",
-        abbreviationShadowed: "この綴りは「{command}」のものになったため、この略語は効かない",
+        abbreviationShadowed: "この綴りは「{command}」のものになったため、この略語は無効",
         type: {
             image: "画像アセット",
             audio: "音声アセット",
@@ -963,14 +963,10 @@ export const story = {
         dragRows: {
             other: "{count} 行をドラッグ",
         },
-        // 行のボタン 1 つにつき 2 つの文字列。違いは要となる。`insert`／`delete` が読み上げ名で、
-        // `insertTitle`／`deleteTitle` がツールチップ。後者はキー割り当てを足す。同じ文にするのは、
-        // 読み上げにもポインタにも同じ 1 文がふさわしいから。括弧の形をカタログに置いてあるのは、
-        // 日本語と中国語が全角の括弧を使うため。
+        // 行のボタンの読み上げ名とツールチップを兼ねる。読み上げにもポインタにも同じ 1 文がふさわしいため。
+        // キーは文に含めず、ツールチップが文の後ろに表示する（`data-tip-shortcut`）。
         insert: "この行の後ろに空行を挿入",
         delete: "この行を削除",
-        insertTitle: "この行の後ろに空行を挿入（{keys}）",
-        deleteTitle: "この行を削除（{keys}）",
         playFromRow: "この行から再生",
         playBranch: "この枝を再生",
         insertPlaceholder: "地の文を書く。{trigger} でアクション、# でキャラクター…",
@@ -1294,7 +1290,7 @@ export const story = {
         jump: { label: "ジャンプ", detail: "別のシーンへ移る。「戻り」がなければいまのシーンは解放される" },
         wait: { label: "待機", detail: "指定した秒数、またはクリックまで待つ" },
         nvl: { label: "NVL", detail: "積み上げ式のダイアログパネルを切り替える" },
-        show: { label: "表示", detail: "キャラクター、舞台のオブジェクト、アセットライブラリの画像を出す" },
+        show: { label: "表示", detail: "キャラクター、舞台のオブジェクト、アセットライブラリの画像を表示する" },
         hide: { label: "非表示", detail: "キャラクターや舞台のオブジェクトを隠す" },
         face: { label: "見た目", detail: "キャラクターのどの見た目を表示するかを切り替える" },
         motion: { label: "モーション", detail: "ランタイムが描くキャラクターに再生させるモーションを決める" },

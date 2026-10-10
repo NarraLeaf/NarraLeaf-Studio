@@ -9,6 +9,8 @@ import { projectHistoryScope, uiSurfaceHistoryScope } from "../history/historySc
 import { Services } from "../services";
 import { UIDocumentService } from "../ui-editor/UIDocumentService";
 import { UIEditorHistoryService } from "../ui-editor/UIEditorHistoryService";
+import { LocalBlueprintService } from "../ui-editor/LocalBlueprintService";
+import { UIBlueprintLifecycleCoordinator } from "../ui-editor/UIBlueprintLifecycleCoordinator";
 import { applyUiPatch, readUiPatchOps, routeUiPropsPatch } from "./uiPatch";
 import { assertUiRevision } from "./tools/uiTools";
 
@@ -97,6 +99,75 @@ function createHarness() {
     const steps = (scopeId: string) => history.describe().find(stack => stack.scopeId === scopeId)?.undo ?? 0;
     const snapshot = () => JSON.parse(JSON.stringify(uidoc.getDocument().elements)) as Record<string, UIElement>;
     return { uidoc, history, context, steps, snapshot };
+}
+
+/**
+ * The same document with the real blueprint reconcile installed - the hook every interface edit runs,
+ * which deletes the graph of a widget that is gone and gives a widget without one an empty graph. The
+ * title page's Start button carries a click layer, which is what a careless rollback loses.
+ */
+function createBlueprintHarness() {
+    let nextId = 0;
+    const uidoc = new UIDocumentService();
+    const history = new HistoryService();
+    const uiHistory = new UIEditorHistoryService();
+    const local = new LocalBlueprintService();
+    const lifecycle = new UIBlueprintLifecycleCoordinator();
+    const graphDocument = {
+        blueprintDocument: { schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION, blueprints: {}, ownerRecords: {}, meta: {} } as BlueprintDocument,
+    };
+    let registry = { schemaVersion: 1, entries: {} };
+    let saveSchema = { schemaVersion: 1, fields: {} };
+    const context = {
+        project: { resolve: (name: string) => name } as any,
+        services: {
+            get(serviceId: Services) {
+                switch (serviceId) {
+                    case Services.Uuid:
+                        return { generate: () => `gen-${++nextId}` };
+                    case Services.Project:
+                        return { getProjectConfig: () => ({ metadata: { resolution: { width: 1280, height: 720 } } }) };
+                    case Services.UIDocument:
+                        return uidoc;
+                    case Services.UIEditorHistory:
+                        return uiHistory;
+                    case Services.History:
+                        return history;
+                    case Services.UIGraph:
+                        return { getDocument: () => graphDocument, applyGraphMutation: (mutator: (document: typeof graphDocument) => void) => mutator(graphDocument) };
+                    case Services.LocalBlueprint:
+                        return local;
+                    case Services.UIBlueprintLifecycle:
+                        return lifecycle;
+                    case Services.VariableRegistry:
+                        return { getRegistry: () => registry, replaceRegistry: (next: typeof registry) => { registry = next; } };
+                    case Services.SaveSchema:
+                        return { getSchema: () => saveSchema, replaceSchema: (next: typeof saveSchema) => { saveSchema = next; } };
+                    default:
+                        throw new Error(`Unexpected service ${serviceId}`);
+                }
+            },
+        } as any,
+        commandLineRun: false,
+    };
+    for (const service of [uidoc, history, uiHistory, local, lifecycle]) {
+        service.setContext(context as any);
+    }
+    (uiHistory as any).init(context);
+    const document = projectDocument();
+    document.elements.root.childrenIds.push("start");
+    document.elements.start = element("start", "nl.button", "root", [], { x: 40, y: 600 });
+    (uidoc as any).document = document;
+    (uidoc as any).scheduleAutoSave = () => undefined;
+    uidoc.setAfterMutateHook(() => lifecycle.syncFromUidoc());
+    lifecycle.syncFromUidoc();
+    const startBlueprintId = local.getWidgetMainBlueprintId("page", "start")!;
+    local.ensureEventGraph(startBlueprintId, "click", "Start the game");
+    history.clearAll();
+    const startBlueprint = () => graphDocument.blueprintDocument.blueprints[local.getWidgetMainBlueprintId("page", "start") ?? ""];
+    const steps = (scopeId: string) => history.describe().find(stack => stack.scopeId === scopeId)?.undo ?? 0;
+    const snapshot = () => JSON.parse(JSON.stringify(uidoc.getDocument().elements)) as Record<string, UIElement>;
+    return { uidoc, history, local, graphDocument, startBlueprintId, startBlueprint, steps, snapshot };
 }
 
 beforeAll(async () => {
@@ -256,6 +327,52 @@ describe("applyUiPatch", () => {
     });
 });
 
+describe("applyUiPatch with the blueprint reconcile installed", () => {
+    it("leaves a widget's graph alone on a dry run that deletes the widget", () => {
+        const { uidoc, graphDocument, startBlueprintId, startBlueprint, steps, snapshot } = createBlueprintHarness();
+        const before = JSON.stringify(graphDocument.blueprintDocument);
+        const elements = snapshot();
+        const revision = uidoc.getRevision();
+        const outcome = applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "delete", element: "start" },
+        ]), LABEL, { dryRun: true });
+        expect(outcome.deleted).toEqual(["start"]);
+        expect(startBlueprint()?.id).toBe(startBlueprintId);
+        expect(startBlueprint()?.graphs.eventIds).toEqual(["click"]);
+        expect(JSON.stringify(graphDocument.blueprintDocument)).toBe(before);
+        expect(snapshot()).toEqual(elements);
+        expect(uidoc.getRevision()).toBe(revision);
+        expect(uidoc.isDirty()).toBe(false);
+        expect(steps(uiSurfaceHistoryScope("page"))).toBe(0);
+    });
+
+    it("puts a deleted widget's graph back when a later operation fails", () => {
+        const { uidoc, graphDocument, startBlueprint, steps, snapshot } = createBlueprintHarness();
+        const before = JSON.stringify(graphDocument.blueprintDocument);
+        const elements = snapshot();
+        expect(() => applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "delete", element: "start" },
+            { op: "set", element: "title", props: { text: "Changed" } },
+            { op: "rename", element: "nothing-by-this-name", name: "x" },
+        ]), LABEL)).toThrow(expect.objectContaining({ code: "not_found", message: expect.stringContaining("ops[2]") }));
+        expect(snapshot()).toEqual(elements);
+        expect(startBlueprint()?.graphs.eventIds).toEqual(["click"]);
+        expect(JSON.stringify(graphDocument.blueprintDocument)).toBe(before);
+        expect(steps(uiSurfaceHistoryScope("page"))).toBe(0);
+    });
+
+    it("takes a real delete back with its graph, in one undo", () => {
+        const { uidoc, history, startBlueprint, steps } = createBlueprintHarness();
+        applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([{ op: "delete", element: "start" }]), LABEL);
+        expect(uidoc.getDocument().elements.start).toBeUndefined();
+        expect(startBlueprint()).toBeUndefined();
+        expect(steps(uiSurfaceHistoryScope("page"))).toBe(1);
+        expect(history.undo(uiSurfaceHistoryScope("page"))).toBe(true);
+        expect(uidoc.getDocument().elements.start).toBeDefined();
+        expect(startBlueprint()?.graphs.eventIds).toEqual(["click"]);
+    });
+});
+
 describe("assertUiRevision", () => {
     it("refuses a write against a page the author changed since the agent read it", () => {
         const { uidoc, context } = createHarness();
@@ -296,5 +413,46 @@ describe("UIDocumentService.applyAgentMutation", () => {
         expect(uidoc.getDocument().elements.otherText.props?.text).toBe("Other");
         expect(history.redo(projectHistoryScope())).toBe(true);
         expect(uidoc.getDocument().elements.otherText.props?.text).toBe("B");
+    });
+
+    it("takes a cross-page edit back with the graph of a widget it deleted, not an empty one", () => {
+        const { uidoc, history, startBlueprint } = createBlueprintHarness();
+        uidoc.applyAgentMutation(null, LABEL, document => {
+            document.elements.root.childrenIds = document.elements.root.childrenIds.filter(id => id !== "start");
+            delete document.elements.start;
+            document.elements.otherText.props = { ...document.elements.otherText.props, text: "B" };
+        });
+        expect(startBlueprint()).toBeUndefined();
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(uidoc.getDocument().elements.start).toBeDefined();
+        expect(uidoc.getDocument().elements.otherText.props?.text).toBe("Other");
+        expect(startBlueprint()?.graphs.eventIds).toEqual(["click"]);
+
+        expect(history.redo(projectHistoryScope())).toBe(true);
+        expect(uidoc.getDocument().elements.start).toBeUndefined();
+        expect(startBlueprint()).toBeUndefined();
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(startBlueprint()?.graphs.eventIds).toEqual(["click"]);
+    });
+
+    it("gives a widget a cross-page edit added back the graph the author wrote on it, on redo", () => {
+        const { uidoc, history, local, graphDocument } = createBlueprintHarness();
+        uidoc.applyAgentMutation(null, LABEL, document => {
+            document.elements.extra = element("extra", "nl.button", "root", []);
+            document.elements.root.childrenIds = [...document.elements.root.childrenIds, "extra"];
+            document.elements.otherText.props = { ...document.elements.otherText.props, text: "B" };
+        });
+        const extraBlueprintId = local.getWidgetMainBlueprintId("page", "extra")!;
+        expect(extraBlueprintId).toBeTruthy();
+        local.ensureEventGraph(extraBlueprintId, "hover", "Written by hand");
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(uidoc.getDocument().elements.extra).toBeUndefined();
+        expect(graphDocument.blueprintDocument.blueprints[extraBlueprintId]).toBeUndefined();
+
+        expect(history.redo(projectHistoryScope())).toBe(true);
+        expect(uidoc.getDocument().elements.extra).toBeDefined();
+        expect(graphDocument.blueprintDocument.blueprints[extraBlueprintId]?.graphs.eventIds).toEqual(["hover"]);
     });
 });

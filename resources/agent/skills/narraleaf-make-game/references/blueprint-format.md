@@ -65,10 +65,17 @@ event "Ask, then quit the game"
 1. Find the owner: `ui_surfaces {query:"<element name>"}` gives `owner=… surface=… element=…`.
 2. See what is there: `blueprint_list {query}`; if the owner already has a blueprint,
    `blueprint_show {blueprint}` and edit that text. **A block replaces every graph of its owner** -
-   layers you leave out are dropped.
+   layers you leave out are dropped. Note the `revision` the show returns (the text's first line).
 3. Look up each node: `blueprint_nodes {query:"go page"}`, then `blueprint_node {type:"blueprint.page.go"}`.
-4. `blueprint_apply {source, dryRun:true}`, read the findings, then apply for real.
+4. `blueprint_apply {source, baseRevision, dryRun:true}`, read the findings, then apply for real with the
+   same `baseRevision`. A `stale_revision` refusal means the author edited that blueprint meanwhile:
+   show it again and redo the edit on what it prints. One revision covers one blueprint, so a call
+   that replaces an existing blueprint and passes `baseRevision` carries one block; a brand-new
+   blueprint needs none.
 5. Exercise it in a playtest (`verify-and-ship`).
+
+Each blueprint a call writes is one step of undo in that blueprint's own editor - where the author's
+Ctrl+Z goes when follow mode opens it.
 
 Elements a blueprint refers to need stable ids: give them an explicit `id` when you add them with
 `ui_patch`.

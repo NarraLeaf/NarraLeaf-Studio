@@ -887,9 +887,6 @@ export const workspace = {
             closeSplit: "Close split",
             reopenClosed: "Reopen closed tab",
         },
-        toggleLeftSidebar: "Toggle left sidebar",
-        toggleRightSidebar: "Toggle right sidebar",
-        toggleBottomPanel: "Toggle bottom panel",
         // The title bar's menus (File, Help, whatever a panel registers) and where they are drawn.
         // The mode names are shared with the settings row that stores the same preference.
         mainMenu: {

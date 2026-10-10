@@ -36,10 +36,11 @@ describe("collectTextIds", () => {
 });
 
 describe("isSceneIndependentUnitId", () => {
-    it("recognises the three namespaces no scene owns", () => {
+    it("recognises the namespaces no scene owns", () => {
         expect(isSceneIndependentUnitId("ui:panel.title")).toBe(true);
         expect(isSceneIndependentUnitId("char:alice")).toBe(true);
         expect(isSceneIndependentUnitId("key:menu.start")).toBe(true);
+        expect(isSceneIndependentUnitId("plugin:narraleaf.menu-bar/file.save")).toBe(true);
         expect(isSceneIndependentUnitId("t1")).toBe(false);
     });
 });
@@ -49,7 +50,14 @@ describe("restrictLocalizationToTextIds", () => {
         sourceLocale: "en",
         locales: [{ code: "en", displayName: "English" }, { code: "zh-CN", displayName: "中文" }],
         tables: {
-            "zh-CN": { kept: "留下", dropped: "拿走", "ui:a.text": "界面", "char:c": "角色", "key:k": "键" },
+            "zh-CN": {
+                kept: "留下",
+                dropped: "拿走",
+                "ui:a.text": "界面",
+                "char:c": "角色",
+                "key:k": "键",
+                "plugin:narraleaf.gallery/entry.cg1": "画廊条目",
+            },
         },
         keys: { k: "source" },
     };
@@ -61,6 +69,8 @@ describe("restrictLocalizationToTextIds", () => {
             "ui:a.text": "界面",
             "char:c": "角色",
             "key:k": "键",
+            // A plugin's words (a menu row's label, a gallery entry's name) belong to no scene.
+            "plugin:narraleaf.gallery/entry.cg1": "画廊条目",
         });
         expect(result.removedUnitCount).toBe(1);
     });
