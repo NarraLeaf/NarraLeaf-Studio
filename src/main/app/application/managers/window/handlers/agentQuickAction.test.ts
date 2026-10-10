@@ -14,8 +14,8 @@ import {
 /**
  * The workspace's Agent menu reaches agent access through these handlers, and a workspace runs
  * plugin code. So the one property worth pinning is what they do NOT hand back: whatever the manager
- * underneath knows - token, address, port - the answers are the three booleans, `{ copied: true }`,
- * or the folder an export wrote.
+ * underneath knows - token, address - the answers are the four booleans and the number of a port the
+ * endpoint moved to, `{ copied: true }`, or the folder an export wrote.
  */
 
 const clipboardWrites: string[] = [];
@@ -28,12 +28,12 @@ const SNAPSHOT: AgentSettingsSnapshot = {
     enabled: true,
     allowWrites: false,
     fullAccess: false,
-    port: 54080,
     token: TOKEN,
     allowedImportRoots: ["/Users/author/Pictures"],
     running: true,
-    url: "http://127.0.0.1:54080/mcp",
+    url: "http://127.0.0.1:47219/mcp",
     error: null,
+    movedToPort: null,
     stdio: { command: "/Applications/NarraLeaf Studio.app/Contents/MacOS/NarraLeaf Studio", args: ["--mcp-stdio"] },
     pluginTools: [],
 };
@@ -43,6 +43,7 @@ function makeWindow(windowType: WindowAppType = WindowAppType.Workspace) {
         snapshot: vi.fn(async () => SNAPSHOT),
         quickToggle: vi.fn(async () => ({ ...SNAPSHOT, allowWrites: true })),
         clientConfig: vi.fn(async () => `claude mcp add --header "Authorization: Bearer ${TOKEN}"`),
+        acknowledgeMovedPort: vi.fn(async () => undefined),
         exportSkill: vi.fn(async () => ({ canceled: false as const, path: "/Users/author/Desktop/NarraLeaf-Skills" })),
         revealExportedSkill: vi.fn(() => true),
         requestFolderAccessForCall: vi.fn(async () => ({ granted: ["/Users/author/kit"], denied: [], pending: [], refused: [] })),
@@ -82,15 +83,24 @@ describe("the Agent menu's narrow handlers", () => {
     it("answer the state as four booleans and nothing else", async () => {
         const { window } = makeWindow();
         const result = await new AgentQuickStateHandler().handle(window);
-        expect(result).toEqual({ success: true, data: { enabled: true, allowWrites: false, fullAccess: false, running: true } });
+        expect(result).toEqual({ success: true, data: { enabled: true, allowWrites: false, fullAccess: false, running: true, movedToPort: null } });
         expectNoSecret(result);
+    });
+
+    it("tell the menu which port the endpoint moved to, as a number and with nothing that opens it", async () => {
+        const { window, manager } = makeWindow();
+        manager.snapshot.mockResolvedValueOnce({ ...SNAPSHOT, url: "http://127.0.0.1:47220/mcp", movedToPort: 47220 });
+        const result = await new AgentQuickStateHandler().handle(window);
+        expect(result).toEqual({ success: true, data: { enabled: true, allowWrites: false, fullAccess: false, running: true, movedToPort: 47220 } });
+        expectNoSecret(result);
+        expect(JSON.stringify(result)).not.toContain("127.0.0.1");
     });
 
     it("pass only the three switches to the manager and project its answer", async () => {
         const { window, manager } = makeWindow();
         const result = await new AgentQuickToggleHandler().handle(window, { allowWrites: true, fullAccess: "yes", port: 1, removeImportRoot: "/" } as never);
         expect(manager.quickToggle).toHaveBeenCalledWith(window, { allowWrites: true });
-        expect(result).toEqual({ success: true, data: { enabled: true, allowWrites: true, fullAccess: false, running: true } });
+        expect(result).toEqual({ success: true, data: { enabled: true, allowWrites: true, fullAccess: false, running: true, movedToPort: null } });
         expectNoSecret(result);
         await new AgentQuickToggleHandler().handle(window, { fullAccess: true });
         expect(manager.quickToggle).toHaveBeenLastCalledWith(window, { fullAccess: true });
@@ -98,12 +108,14 @@ describe("the Agent menu's narrow handlers", () => {
     });
 
     it("write a configuration to the clipboard and answer only that it did", async () => {
-        const { window } = makeWindow();
+        const { window, manager } = makeWindow();
         const result = await new AgentCopyConfigHandler().handle(window, { kind: "claudeCode" });
         expect(result).toEqual({ success: true, data: { copied: true } });
         expectNoSecret(result);
         expect(clipboardWrites).toHaveLength(1);
         expect(clipboardWrites[0]).toContain(TOKEN);
+        // What was copied names the current port, which answers a notice that it moved.
+        expect(manager.acknowledgeMovedPort).toHaveBeenCalledTimes(1);
     });
 
     it("refuse a configuration kind that is not on the list", async () => {
@@ -111,6 +123,7 @@ describe("the Agent menu's narrow handlers", () => {
         const result = await new AgentCopyConfigHandler().handle(window, { kind: "everything" as never });
         expect(result.success).toBe(false);
         expect(manager.clientConfig).not.toHaveBeenCalled();
+        expect(manager.acknowledgeMovedPort).not.toHaveBeenCalled();
         expect(clipboardWrites).toHaveLength(0);
     });
 

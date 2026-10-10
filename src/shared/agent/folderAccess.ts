@@ -20,6 +20,8 @@ export function describeAgentFolderRefusal(reason: AgentFolderRefusalReason): st
             return "Studio's own folders (its settings and the application) are never opened to agents";
         case "tooMany":
             return "one dialog asks about at most 5 folders; ask again for this one";
+        case "untrusted":
+            return "this project is not trusted in Studio, and an untrusted project is given no folders outside it";
         case "relative":
             return "not an absolute path";
     }
@@ -32,6 +34,9 @@ export function agentFolderAccessHint(answer: AgentFolderAccessAnswer): string |
     }
     if (answer.denied.length > 0) {
         return `The author declined ${answer.denied.join(", ")}. Do not ask again for it; ask the author in your conversation, or have them copy the files into the project directory.`;
+    }
+    if (answer.refused.some(entry => entry.reason === "untrusted")) {
+        return "Ask the author to trust the project (Studio's status bar, or Settings > Data > Trusted projects), or to copy the files into the project directory.";
     }
     if (answer.refused.some(entry => entry.reason === "tooMany")) {
         return "Ask for at most 5 folders at a time: call request_folder_access for the rest, or import in smaller batches.";

@@ -4,21 +4,23 @@ import type { StoryNoteBlock } from "@shared/types/story";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement, type UILayout } from "@shared/types/ui-editor/document";
-import { buildUIComponentEditorSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
 import { commandI18nStore } from "@/lib/i18n";
 import { ensureWidgetModulesRegistered } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { HistoryService } from "../history/HistoryService";
-import { projectHistoryScope, storySceneHistoryScope, uiSurfaceHistoryScope } from "../history/historyScopes";
+import { blueprintHistoryScope, projectHistoryScope, storySceneHistoryScope, uiSurfaceHistoryScope } from "../history/historyScopes";
 import { Services } from "../services";
 import { StoryService } from "../story/StoryService";
+import { LocalBlueprintService } from "../ui-editor/LocalBlueprintService";
 import { UIDocumentService } from "../ui-editor/UIDocumentService";
 import { UIEditorHistoryService } from "../ui-editor/UIEditorHistoryService";
 import { AgentFollowService, type AgentWriteTarget } from "./AgentFollowService";
 import { AgentRefusal, type AgentToolContext, type AgentToolHandler } from "./agentCall";
 import { storyApply, storyShow } from "./tools/storyTextTools";
+import { sceneCreate } from "./tools/storyTools";
 import { uiApply, uiShow } from "./tools/uiTextTools";
-import { commitBlueprints, ownerQueryOf, sharedHistorySurface } from "./tools/blueprintTools";
+import { blueprintApply, blueprintShow, commitBlueprints, ownerQueryOf } from "./tools/blueprintTools";
 import { ownerRefToIndexKey } from "../ui-editor/blueprint/ownerKeys";
+import { createMainBlueprint } from "../ui-editor/blueprint/blueprintFactories";
 import { diagnosticsForRefusal, forAgent, withCanonicalCommandVocabulary } from "./tools/textFormat";
 import { formatCarriedFindings } from "@/lib/story-cli/apply";
 import { formatDiagnostics } from "@/lib/story-cli/check";
@@ -73,6 +75,7 @@ function createHarness() {
     const story = new StoryService();
     const uidoc = new UIDocumentService();
     const uiHistory = new UIEditorHistoryService();
+    const local = new LocalBlueprintService();
     const graphDocument = { blueprintDocument: emptyBlueprints() };
     let nextId = 0;
     const uuid = () => `00000000-0000-4000-8000-${(++nextId).toString(16).padStart(12, "0")}`;
@@ -101,12 +104,12 @@ function createHarness() {
                     case Services.UIEditorHistory: return uiHistory;
                     case Services.UIGraph:
                         return { getDocument: () => graphDocument, applyGraphMutation: (mutator: (document: typeof graphDocument) => void) => mutator(graphDocument) };
-                    case Services.LocalBlueprint:
-                        return { applyBlueprintMutation: () => undefined, getBlueprintDocument: () => graphDocument.blueprintDocument };
+                    case Services.LocalBlueprint: return local;
                     case Services.UIBlueprintLifecycle: return { syncFromUidoc: () => undefined };
                     case Services.Assets: return { getAssets: () => ({}) };
                     case Services.Character: return { listCharacter: () => [] };
                     case Services.VariableRegistry: return { getRegistry: () => ({ schemaVersion: 1, entries: {} }) };
+                    case Services.SaveSchema: return { getSchema: () => ({ schemaVersion: 1, fields: {} }) };
                     case Services.AudioTracks: return { listTracks: () => [] };
                     case Services.AppTags: return { listTags: () => [] };
                     case Services.AssetSets: return { listSets: () => [] };
@@ -122,6 +125,7 @@ function createHarness() {
     story.setContext(context);
     uidoc.setContext(context);
     uiHistory.setContext(context);
+    local.setContext(context);
     (uiHistory as never as { init(ctx: unknown): void }).init(context);
     (uidoc as never as { document: UIDocument }).document = interfaceDocument();
     (uidoc as never as { scheduleAutoSave: () => void }).scheduleAutoSave = () => undefined;
@@ -138,14 +142,14 @@ function createHarness() {
     follow.onWrote(target => writes.push(target));
     const tool: AgentToolContext = {
         ctx: context,
-        request: { callId: "call-1", tool: "test", args: {}, clientName: null, policy: { writesEnabled: true, allowedImportRoots: [] } },
+        request: { callId: "call-1", tool: "test", args: {}, clientName: null, policy: { writesEnabled: true, allowedImportRoots: [] }, deadline: Date.now() + 60_000 },
         follow,
         offscreen: null as never,
         log: () => undefined,
     };
     const steps = (scopeId: string) => history.describe().find(stack => stack.scopeId === scopeId)?.undo ?? 0;
     const run = (handler: AgentToolHandler, args: Record<string, unknown>) => handler(args, tool);
-    return { story, uidoc, history, context, graphDocument, storyId: entry.id, sceneId, writes, steps, run };
+    return { story, uidoc, history, local, context, graphDocument, storyId: entry.id, sceneId, writes, steps, run };
 }
 
 function textOf(result: AgentCallResult): string {
@@ -227,6 +231,29 @@ describe("story_apply", () => {
         expect(Object.keys(story.getStoryDocument(storyId).scenes[sceneId].blocks)).toEqual(["a"]);
     }, 60_000);
 
+    it("without a baseRevision, refuses rather than overwrite an edit the author made while it was checking", async () => {
+        const { story, storyId, sceneId, steps, run } = createHarness();
+        const shown = await showScene(run, "Opening");
+        // The author types into the scene right after the call has read it, while the check runs.
+        const read = story.getSceneContentRevision.bind(story);
+        let typed = false;
+        story.getSceneContentRevision = (storyRef: string, sceneRef: string) => {
+            const revision = read(storyRef, sceneRef);
+            if (!typed) {
+                typed = true;
+                queueMicrotask(() => story.updateBlock(storyId, sceneId, "a", note("a", "typed by the author").payload));
+            }
+            return revision;
+        };
+        const refused = await refusal(run(storyApply, { source: withNarration(shown.text, "Overwritten?") }));
+        expect(refused.code).toBe("stale_revision");
+        expect(refused.message).toContain("Nothing was written");
+        const scene = story.getStoryDocument(storyId).scenes[sceneId];
+        expect(Object.keys(scene.blocks)).toEqual(["a"]);
+        expect((scene.blocks.a as StoryNoteBlock).payload.text.value).toBe("typed by the author");
+        expect(steps(storySceneHistoryScope(storyId, sceneId))).toBe(0);
+    }, 60_000);
+
     it("refuses a header naming a scene that does not exist, pointing at scene_create", async () => {
         const { run } = createHarness();
         const byId = await refusal(run(storyApply, { source: "#format 1\n#story Tale\n#scene Gone ⟦11111111-2222-4333-8444-555555555555⟧\nHello." }));
@@ -236,6 +263,45 @@ describe("story_apply", () => {
         expect(byName.code).toBe("not_found");
         expect(byName.hint).toContain("scene_create");
     });
+});
+
+describe("scene_create", () => {
+    it("makes a scene in place as one undo step, and undo removes it rather than moving it", async () => {
+        const { story, history, storyId, sceneId, steps, run } = createHarness();
+        const ending = story.createScene(storyId, { name: "Ending" });
+        const order = () => story.getStoryDocument(storyId).chapters[0].sceneIds;
+        expect(order()).toEqual([sceneId, ending.id]);
+        const projectSteps = steps(projectHistoryScope());
+
+        const result = await run(sceneCreate, { name: "Middle", after: "Opening" });
+        const middle = (result.ok ? result.structured?.scene : null) as { id: string };
+        expect(order()).toEqual([sceneId, middle.id, ending.id]);
+        expect(steps(projectHistoryScope())).toBe(projectSteps + 1);
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(order()).toEqual([sceneId, ending.id]);
+        expect(story.getStoryDocument(storyId).scenes[middle.id]).toBeUndefined();
+        expect(history.redo(projectHistoryScope())).toBe(true);
+        expect(order()).toEqual([sceneId, middle.id, ending.id]);
+        expect(story.getStoryDocument(storyId).scenes[middle.id]?.name).toBe("Middle");
+    }, 60_000);
+
+    it("takes back a chapter it made with the scene, and makes none when it refuses", async () => {
+        const { story, history, storyId, steps, run } = createHarness();
+        const chapters = () => story.getStoryDocument(storyId).chapters.map(chapter => chapter.name);
+        const before = chapters();
+        const refused = await refusal(run(sceneCreate, { name: "Lost", chapter: "Act 2", after: "Opening" }));
+        expect(refused.code).toBe("invalid_args");
+        expect(chapters()).toEqual(before);
+
+        const projectSteps = steps(projectHistoryScope());
+        await run(sceneCreate, { name: "Arrival", chapter: "Act 2" });
+        expect(chapters()).toEqual([...before, "Act 2"]);
+        expect(steps(projectHistoryScope())).toBe(projectSteps + 1);
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(chapters()).toEqual(before);
+        expect(Object.values(story.getStoryDocument(storyId).scenes).some(scene => scene.name === "Arrival")).toBe(false);
+    }, 60_000);
 });
 
 describe("ui_apply", () => {
@@ -288,23 +354,74 @@ describe("ui_apply", () => {
 });
 
 describe("blueprint writes", () => {
-    it("record a global blueprint as one project step that undoes exactly what it wrote", () => {
+    const GREETER = (text: string) => `blueprint Greeter owner=globalMain id=bp-global
+event Boot
+    boot: blueprint.event.head.appBoot
+    text: blueprint.data.stringLiteral value="${text}"
+    log: blueprint.log
+
+    boot -> log
+    text -> log.value
+`;
+
+    it("records each blueprint on its own stack, which undoes exactly what it wrote", () => {
         const { context, graphDocument, history, steps } = createHarness();
-        const existing = { id: "kept", name: "Kept", owner: { kind: "surfaceMain", surfaceId: "page" }, graphs: {} };
-        graphDocument.blueprintDocument.blueprints.kept = existing as never;
-        const before = steps(projectHistoryScope());
+        const owner = { kind: "surfaceMain" as const, surfaceId: "page" };
+        graphDocument.blueprintDocument.blueprints.kept = createMainBlueprint({ id: "kept", name: "Kept", owner });
+        graphDocument.blueprintDocument.ownerRecords[ownerRefToIndexKey(owner)] = { blueprintId: "kept" };
+        const projectSteps = steps(projectHistoryScope());
         commitBlueprints(context, [{ id: "bp-global", name: "Global", owner: { kind: "globalMain" }, graphs: {} } as never]);
         expect(graphDocument.blueprintDocument.blueprints["bp-global"]?.name).toBe("Global");
         expect(graphDocument.blueprintDocument.ownerRecords.globalMain).toEqual({ blueprintId: "bp-global" });
-        expect(steps(projectHistoryScope())).toBe(before + 1);
+        expect(steps(blueprintHistoryScope("bp-global"))).toBe(1);
+        expect(steps(projectHistoryScope())).toBe(projectSteps);
 
-        history.undo(projectHistoryScope());
+        history.undo(blueprintHistoryScope("bp-global"));
         expect(graphDocument.blueprintDocument.blueprints["bp-global"]).toBeUndefined();
         expect(graphDocument.blueprintDocument.ownerRecords.globalMain).toBeUndefined();
         expect(graphDocument.blueprintDocument.blueprints.kept).toBeDefined();
-        history.redo(projectHistoryScope());
+        history.redo(blueprintHistoryScope("bp-global"));
         expect(graphDocument.blueprintDocument.ownerRecords.globalMain).toEqual({ blueprintId: "bp-global" });
     });
+
+    it("lands on the stack the blueprint editor's Ctrl+Z reads, after the author's own edit, so one undo takes back only the agent's write", async () => {
+        const { graphDocument, local, run } = createHarness();
+        await run(blueprintApply, { source: GREETER("first") });
+        local.clearBlueprintHistory("bp-global");
+        // The author adds a layer in the blueprint editor: a step on the blueprint's own stack.
+        local.ensureEventGraph("bp-global", "byHand", "Added by hand");
+        expect(graphDocument.blueprintDocument.blueprints["bp-global"].graphs.eventIds).toContain("byHand");
+        // The agent replaces the blueprint (a block replaces every graph of its owner).
+        await run(blueprintApply, { source: GREETER("second") });
+        expect(graphDocument.blueprintDocument.blueprints["bp-global"].graphs.eventIds).not.toContain("byHand");
+
+        expect(local.undoBlueprint("bp-global")).toBe(true);
+        expect(graphDocument.blueprintDocument.blueprints["bp-global"].graphs.eventIds).toContain("byHand");
+        expect(local.undoBlueprint("bp-global")).toBe(true);
+        expect(graphDocument.blueprintDocument.blueprints["bp-global"].graphs.eventIds).not.toContain("byHand");
+    }, 60_000);
+
+    it("shows a revision and refuses a write over a blueprint that changed since it was read", async () => {
+        const { graphDocument, local, run, steps } = createHarness();
+        await run(blueprintApply, { source: GREETER("first") });
+        const shown = await run(blueprintShow, { blueprint: "bp-global" });
+        const revision = (shown.ok ? shown.structured?.revision : null) as number;
+        expect(typeof revision).toBe("number");
+        expect(textOf(shown).split("\n")[0]).toBe(`# revision ${revision} - pass it to blueprint_apply as baseRevision`);
+
+        // The shown text applies back as it is, carrying its revision.
+        const applied = await run(blueprintApply, { source: textOf(shown), baseRevision: revision });
+        expect(textOf(applied)).toContain("One step of undo in its blueprint editor.");
+
+        const current = ((await run(blueprintShow, { blueprint: "bp-global" })) as { structured?: { revision: number } }).structured!.revision;
+        local.ensureEventGraph("bp-global", "byHand", "Added by hand");
+        const stepsBefore = steps(blueprintHistoryScope("bp-global"));
+        const refused = await refusal(run(blueprintApply, { source: GREETER("too late"), baseRevision: current }));
+        expect(refused.code).toBe("stale_revision");
+        expect(refused.message).toContain("Nothing was written");
+        expect(graphDocument.blueprintDocument.blueprints["bp-global"].graphs.eventIds).toContain("byHand");
+        expect(steps(blueprintHistoryScope("bp-global"))).toBe(stepsBefore);
+    }, 60_000);
 });
 
 describe("withCanonicalCommandVocabulary", () => {
@@ -336,21 +453,6 @@ describe("text-format helpers", () => {
             "warn   line:2  a warning",
             "       code.warn",
         ]);
-    });
-
-    it("puts blueprints of one page on that page's stack, and anything wider on none", () => {
-        const owned = (owner: unknown) => ({ id: "b", name: "b", owner, graphs: {} }) as never;
-        expect(sharedHistorySurface([
-            owned({ kind: "surfaceMain", surfaceId: "page" }),
-            owned({ kind: "widgetMain", surfaceId: "page", elementId: "x" }),
-        ])).toBe("page");
-        expect(sharedHistorySurface([owned({ kind: "componentWidgetMain", componentId: "c", elementId: "x" })]))
-            .toBe(buildUIComponentEditorSurfaceId("c"));
-        expect(sharedHistorySurface([owned({ kind: "globalMain" })])).toBeNull();
-        expect(sharedHistorySurface([
-            owned({ kind: "surfaceMain", surfaceId: "page" }),
-            owned({ kind: "surfaceMain", surfaceId: "other" }),
-        ])).toBeNull();
     });
 });
 

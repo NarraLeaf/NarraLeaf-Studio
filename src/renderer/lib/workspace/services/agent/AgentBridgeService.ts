@@ -16,14 +16,18 @@
  *
  * Calls run one at a time. Two agents (or one agent's parallel tool calls) writing the same page
  * would otherwise interleave their edits inside each other's undo steps, and an answer computed
- * while another call is half-written could describe a page that never existed.
+ * while another call is half-written could describe a page that never existed. A call whose
+ * deadline passes while it waits its turn is refused when its turn comes, never run: main has told
+ * the agent it timed out by then, and a retry of it may be right behind it in the queue.
  *
  * Comments in English per project convention.
  */
 
 import {
     AGENT_INTERNAL_TOOL_STATE,
+    agentCallExpired,
     agentRefusal,
+    isAgentInternalToolName,
     type AgentCallRequest,
     type AgentCallResult,
     type AgentErrorCode,
@@ -33,7 +37,7 @@ import type { AgentMainActivity } from "@shared/agent/workspaceAccess";
 import { AGENT_TOOLS_BY_NAME } from "@shared/agent/tools";
 import { looksLikeAgentPluginToolName, type AgentPluginToolDescriptor } from "@shared/agent/pluginTools";
 import { getProjectWriteFreeze } from "@/lib/app/writeFreeze";
-import { getInterface } from "@/lib/app/bridge";
+import { getAgentBridgeInterface, getInterface } from "@/lib/app/bridge";
 import { Service } from "../Service";
 import { Services, type WorkspaceContext } from "../services";
 import type { ConsoleService, ConsoleLogLevel } from "../core/ConsoleService";
@@ -156,8 +160,16 @@ export class AgentBridgeService extends Service<AgentBridgeService> {
         const follow = this.follow ?? ctx.services.get<AgentFollowService>(Services.AgentFollow);
         const descriptor = AGENT_TOOLS_BY_NAME.get(request.tool);
         const tables = await this.loadHandlers();
-        const internal = tables.internal[request.tool];
-        const plugin = !internal && !descriptor ? this.pluginTools(ctx).get(request.tool) : undefined;
+        // Two namespaces that cannot meet: an internal call's name starts with `__` and nothing a
+        // plugin registers or main advertises may (`isAgentInternalToolName`). So an internal
+        // handler is looked up only for such a name - as the table's own key, never an inherited
+        // one - and the plugin registry only for any other, and a plugin tool can never be carried
+        // out by the internal handler of the same name.
+        const internalName = isAgentInternalToolName(request.tool);
+        const internal = internalName && Object.prototype.hasOwnProperty.call(tables.internal, request.tool)
+            ? tables.internal[request.tool]
+            : undefined;
+        const plugin = !internalName && !descriptor ? this.pluginTools(ctx).get(request.tool) : undefined;
         let handler: AgentToolHandler | undefined;
         let write: boolean;
         if (internal) {
@@ -173,6 +185,18 @@ export class AgentBridgeService extends Service<AgentBridgeService> {
             write = false;
         }
         const meta = plugin ? pluginMeta(plugin.descriptor) : undefined;
+        // Checked here, after the last wait before the handler: from this line to the handler
+        // nothing yields, so a call that passes is a call main is still waiting for.
+        if (agentCallExpired(request, Date.now())) {
+            const expired = agentRefusal(
+                "unavailable",
+                `${request.tool} timed out before it started; nothing was done.`,
+                "Studio was still busy with an earlier call (a build, an import) when the time for this one ran out. Read the state back (agent_status, a show tool), then call it again if it is still needed.",
+            );
+            this.log("warning", request, `${request.tool} not started: its deadline passed while it waited behind an earlier call`);
+            this.recordAtOnce(request, expired, meta);
+            return expired;
+        }
         if (!handler) {
             this.log("warning", request, `unknown tool ${request.tool}`);
             const unknown = looksLikeAgentPluginToolName(request.tool)
@@ -286,7 +310,7 @@ function pluginMeta(descriptor: AgentPluginToolDescriptor): AgentActivityToolMet
 function reportPluginToolsToMain(registry: PluginAgentToolRegistry): (() => void) | null {
     let report: ((tools: readonly AgentPluginToolDescriptor[]) => void) | undefined;
     try {
-        report = getInterface().agent?.reportPluginTools;
+        report = getAgentBridgeInterface().reportPluginTools;
     } catch {
         return null;
     }

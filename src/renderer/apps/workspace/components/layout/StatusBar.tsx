@@ -60,7 +60,8 @@ export function StatusBar() {
     // An agent at work washes the strip in the success colour, under the other two: a play-test the
     // agent starts is still a run, and experimental mode is always on top. Green because each of the
     // other semantic colours already means something on this strip or elsewhere (primary is the run,
-    // warning is experimental, danger is an error, binding is a blueprint binding).
+    // warning is experimental, danger is an error, binding is a blueprint binding). A paused agent is
+    // not at work, so it takes no wash; its own cell says it is paused.
     const agent = useAgentActive() && !experimental && !running;
 
     // Built-ins first, then runtime registrations — so plugin entries pack closest to the centre.

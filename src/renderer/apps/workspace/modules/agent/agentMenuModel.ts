@@ -6,7 +6,9 @@ import { Separator, type ActionDefinition, type ActionMenuItem } from "../../reg
  * The Agent menu's rows, as data: a read-only line saying which agent is connected and what it is
  * doing, the author's two session switches (pause, follow), the log, and the three things that
  * belong to agent access as a whole (the endpoint, write access, connection configuration and the
- * skill), then the way to the full settings.
+ * skill), then the way to the full settings. While access is off, only the status line, the switch
+ * that turns it on and the way to settings. When the endpoint had to move to another port, a second
+ * read-only line under the status says so until a configuration is copied again.
  *
  * Separate from the component so the status line and the shape can be tested without a workspace.
  * The rows carry ids and `group` but never `shortcut`: a shortcut on a registered action becomes a
@@ -20,6 +22,7 @@ export const AGENT_MENU_GROUP_ID = "narraleaf-studio:agent";
 
 export const AGENT_MENU_ACTIONS = {
     status: "narraleaf-studio:agent-status",
+    portMoved: "narraleaf-studio:agent-port-moved",
     pause: "narraleaf-studio:agent-pause",
     follow: "narraleaf-studio:agent-follow",
     log: "narraleaf-studio:agent-log",
@@ -62,17 +65,20 @@ export function agentMenuStatusLine(t: Translator["t"], clientName: string | nul
     });
 }
 
-/** The configurations the copy submenu offers, in its order, with the row label each takes. */
-export const AGENT_MENU_COPY_KINDS: readonly { kind: AgentCopyConfigKind; label: string | null; labelKey?: TranslationKey }[] = [
+/**
+ * The configurations the copy submenu offers, in its order, with the row label each takes: product
+ * names, the same in every language. The stdio bridge is named for the client it is for. The order
+ * and the names are the ones the Settings panel's copy buttons use.
+ */
+export const AGENT_MENU_COPY_KINDS: readonly { kind: AgentCopyConfigKind; label: string }[] = [
     { kind: "claudeCode", label: "Claude Code" },
+    { kind: "stdio", label: "Claude Desktop" },
     { kind: "opencode", label: "opencode" },
     { kind: "json", label: "JSON" },
-    { kind: "stdio", label: null, labelKey: "workspace.agent.appMenu.copyStdio" },
 ];
 
-export function agentCopyKindLabel(t: Translator["t"], kind: AgentCopyConfigKind): string {
-    const entry = AGENT_MENU_COPY_KINDS.find(item => item.kind === kind);
-    return entry?.labelKey ? t(entry.labelKey) : entry?.label ?? kind;
+export function agentCopyKindLabel(kind: AgentCopyConfigKind): string {
+    return AGENT_MENU_COPY_KINDS.find(item => item.kind === kind)?.label ?? kind;
 }
 
 export type AgentMenuModelInput = {
@@ -99,13 +105,46 @@ export type AgentMenuModelInput = {
 export function buildAgentMenuItems(input: AgentMenuModelInput): ActionMenuItem[] {
     const { t, quick, run } = input;
     const action = (definition: Omit<ActionDefinition, "group">): ActionDefinition => ({ ...definition, group: AGENT_MENU_GROUP_ID });
-    return [
-        action({
-            id: AGENT_MENU_ACTIONS.status,
-            label: agentMenuStatusLine(t, input.clientName, input.state),
+    const status = action({
+        id: AGENT_MENU_ACTIONS.status,
+        label: agentMenuStatusLine(t, input.clientName, input.state),
+        disabled: true,
+        onClick: () => undefined,
+    });
+    // HTTP clients configured before the endpoint moved name the old port; copying a configuration
+    // from this menu or Settings answers it, and main clears it.
+    const movedToPort = quick?.movedToPort ?? null;
+    const portMoved = movedToPort !== null
+        ? [action({
+            id: AGENT_MENU_ACTIONS.portMoved,
+            label: t("settings.agent.portMoved", { port: movedToPort }),
             disabled: true,
             onClick: () => undefined,
-        }),
+        })]
+        : [];
+    const enable = action({
+        id: AGENT_MENU_ACTIONS.enable,
+        labelKey: "workspace.agent.appMenu.enable",
+        label: t("workspace.agent.appMenu.enable"),
+        checked: quick?.enabled ?? false,
+        disabled: quick === null,
+        onClick: run.toggleEnabled,
+    });
+    const settings = action({
+        id: AGENT_MENU_ACTIONS.settings,
+        labelKey: "workspace.agent.appMenu.settings",
+        label: t("workspace.agent.appMenu.settings"),
+        onClick: run.openSettings,
+    });
+    // While access is off there is no agent to pause or follow and nothing to connect to, so the
+    // menu holds only the way to turn it on and the way to its settings. Before main has answered,
+    // nothing is known to be off, and the full menu shows with its switches held.
+    if (quick !== null && !quick.enabled) {
+        return [status, Separator, enable, Separator, settings];
+    }
+    return [
+        status,
+        ...portMoved,
         Separator,
         action({
             id: AGENT_MENU_ACTIONS.pause,
@@ -127,14 +166,7 @@ export function buildAgentMenuItems(input: AgentMenuModelInput): ActionMenuItem[
             onClick: run.openLog,
         }),
         Separator,
-        action({
-            id: AGENT_MENU_ACTIONS.enable,
-            labelKey: "workspace.agent.appMenu.enable",
-            label: t("workspace.agent.appMenu.enable"),
-            checked: quick?.enabled ?? false,
-            disabled: quick === null,
-            onClick: run.toggleEnabled,
-        }),
+        enable,
         // Full access lets writes through on its own, so while it is on the write row shows them
         // allowed and cannot be switched: turning it off would change nothing.
         action({
@@ -159,8 +191,7 @@ export function buildAgentMenuItems(input: AgentMenuModelInput): ActionMenuItem[
             label: t("workspace.agent.appMenu.copyConfig"),
             items: AGENT_MENU_COPY_KINDS.map(entry => action({
                 id: `${AGENT_MENU_ACTIONS.copyConfig}-${entry.kind}`,
-                ...(entry.labelKey ? { labelKey: entry.labelKey } : {}),
-                label: agentCopyKindLabel(t, entry.kind),
+                label: entry.label,
                 onClick: () => run.copyConfig(entry.kind),
             })),
         },
@@ -171,11 +202,6 @@ export function buildAgentMenuItems(input: AgentMenuModelInput): ActionMenuItem[
             onClick: run.exportSkill,
         }),
         Separator,
-        action({
-            id: AGENT_MENU_ACTIONS.settings,
-            labelKey: "workspace.agent.appMenu.settings",
-            label: t("workspace.agent.appMenu.settings"),
-            onClick: run.openSettings,
-        }),
+        settings,
     ];
 }

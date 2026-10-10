@@ -32,39 +32,30 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
         }
     }, [currentTags, isSaving]);
 
-    // Back into the input after an add, so the next tag can be typed straight away. Asked for by the
-    // add itself rather than keyed off the emptied input: an empty input is also how the field
-    // mounts, and focusing it then pulled the caret into the inspector whenever an author merely
-    // selected an asset. Waits for the input to be enabled again (it is disabled while the add is
-    // saved), and one request is spent by one focus, so the input being re-enabled later for any
-    // other reason does not take the caret.
-    const [refocusRequest, setRefocusRequest] = useState(0);
-    const refocusPendingRef = useRef(false);
-    const requestRefocus = useCallback(() => {
-        refocusPendingRef.current = true;
-        setRefocusRequest(request => request + 1);
-    }, []);
-    const isDisabled = field.disabled || isSaving;
+    // Refocus input after adding a tag: the field is disabled while the tag saves, which drops focus.
+    // Only after an add. The field also starts out empty, and focusing it on mount pulled the caret
+    // out of whatever the author had just clicked - selecting an asset put it in here, and the asset
+    // panel's and the preview's keys stopped answering.
+    const refocusAfterAddRef = useRef(false);
     useEffect(() => {
-        if (!refocusPendingRef.current || isDisabled) {
-            return;
+        if (newTag === "" && refocusAfterAddRef.current) {
+            refocusAfterAddRef.current = false;
+            const timer = setTimeout(() => {
+                inputRef.current?.focus();
+            }, 10);
+            return () => clearTimeout(timer);
         }
-        const timer = setTimeout(() => {
-            refocusPendingRef.current = false;
-            inputRef.current?.focus();
-        }, 10);
-        return () => clearTimeout(timer);
-    }, [refocusRequest, isDisabled]);
+    }, [newTag]);
 
     const handleAddTag = useCallback(async () => {
         const trimmed = newTag.trim();
         if (!trimmed) return;
+        refocusAfterAddRef.current = true;
 
         // Check for duplicates (case-insensitive)
         const existingLower = localTags.map((t) => t.toLowerCase());
         if (existingLower.includes(trimmed.toLowerCase())) {
             setNewTag("");
-            requestRefocus();
             return;
         }
 
@@ -79,9 +70,8 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
         } finally {
             setIsSaving(false);
             onSaving(false);
-            requestRefocus();
         }
-    }, [field.id, field.addTag, field.getValue, localTags, newTag, onSaving, requestRefocus]);
+    }, [field.id, field.addTag, field.getValue, localTags, newTag, onSaving]);
 
     const handleRemoveTag = useCallback(
         async (tag: string) => {
@@ -100,6 +90,7 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
         [field.id, field.removeTag, field.getValue, onSaving]
     );
 
+    const isDisabled = field.disabled || isSaving;
     // The chips are the stored tags as the field says to print them; a tag it does not print gets no
     // chip but stays in the list, so it survives an add and is never what a remove takes out.
     const chips = localTags.flatMap(tag => {

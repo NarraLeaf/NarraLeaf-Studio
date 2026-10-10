@@ -1,4 +1,4 @@
-import { AGENT_MCP_DEFAULT_PORT, AGENT_MCP_PATH } from "./protocol";
+import { AGENT_MCP_DEFAULT_PORT, AGENT_MCP_LEGACY_DEFAULT_PORT, AGENT_MCP_PATH } from "./protocol";
 
 /**
  * The author's switches for agent access, and the connection details an MCP client needs.
@@ -13,13 +13,21 @@ import { AGENT_MCP_DEFAULT_PORT, AGENT_MCP_PATH } from "./protocol";
  * The same file is what a stdio bridge reads to find the endpoint, which is why the address it is
  * actually served on is written there too.
  *
+ * There is no port setting. Which port the endpoint is on is not something an author should need to
+ * know to fill in, so Studio picks it: the profile's port, then a fixed run of fallbacks, then any
+ * free one, and whichever binds becomes the profile's port - see `AgentManager.startServer`.
+ *
  * Comments in English per project convention.
  */
 
 /** The name the file has under the profile's user data directory. */
 export const AGENT_SETTINGS_FILE_NAME = "agent-mcp.json";
 
-export const AGENT_SETTINGS_SCHEMA_VERSION = 1;
+/**
+ * 2: the default port moved from {@link AGENT_MCP_LEGACY_DEFAULT_PORT} to {@link AGENT_MCP_DEFAULT_PORT}.
+ * A file from before that names the old default is moved to the new one when it is read.
+ */
+export const AGENT_SETTINGS_SCHEMA_VERSION = 2;
 
 /** One directory agents may read files from (`assets_import`, a PSD for a layered character). */
 export type AgentImportRoot = {
@@ -44,7 +52,10 @@ export type AgentSettingsFile = {
      * switching it off again leaves the author's own write setting as it was.
      */
     fullAccess: boolean;
-    /** The port asked for. The one actually served on may differ - see {@link url}. */
+    /**
+     * The port the endpoint is tried on first. Rewritten to the port it actually bound whenever it
+     * starts, so the next launch lands on the same one and configurations copied with it keep working.
+     */
     port: number;
     /** The bearer token every request must carry. */
     token: string;
@@ -54,8 +65,15 @@ export type AgentSettingsFile = {
     /**
      * Plugins whose agent tools the author switched off. A deny list rather than an allow list:
      * a plugin's tools are on unless the author says otherwise, because the install prompt already
-     * told them the plugin offers tools (`contributes.agentTools`), and every call still passes the
-     * switches above - nothing a plugin offers writes unless `allowWrites` is on.
+     * told them the plugin offers tools (`contributes.agentTools`, with how many change the project).
+     *
+     * What the switches above hold a plugin tool to is what the plugin declared about it. A tool
+     * declared `write: true` is refused unless `allowWrites` (or `fullAccess`) is on, and while the
+     * agent is paused, the project frozen or a live session running. A tool declared `write: false`
+     * is not gated by any of them: while it runs, the host refuses only the plugin's own storage
+     * writes (`services.storage.writeJson`). Anything else the plugin's `app` can do, its handler
+     * can do too, so how far a reading tool reaches is how far the plugin itself is trusted - which
+     * is the question the install prompt asked, not this switch.
      */
     blockedPluginTools: string[];
 };
@@ -80,15 +98,20 @@ export type AgentSettingsSnapshot = {
     allowWrites: boolean;
     /** See {@link AgentSettingsFile.fullAccess}. */
     fullAccess: boolean;
-    port: number;
     token: string;
     allowedImportRoots: string[];
     /** Whether the endpoint is listening. */
     running: boolean;
-    /** The endpoint a client connects to: the live one while running, else the one the port setting gives. */
+    /** The endpoint a client connects to: the live one while running, else the one the profile's port gives. */
     url: string;
     /** Why the endpoint is not running although it is enabled, when it failed to start. */
     error: string | null;
+    /**
+     * The port the endpoint moved to when it last started, while configurations copied before still
+     * name the port it had; null once a configuration has been copied since, or when it did not move.
+     * A stdio bridge reads the live address itself and is not affected.
+     */
+    movedToPort: number | null;
     /** The command a stdio-only client runs to reach the endpoint through {@link AGENT_MCP_STDIO_FLAG}. */
     stdio: AgentStdioCommand;
     /** Installed, enabled plugins that offer agent tools, with whether the author allows them. */
@@ -118,14 +141,15 @@ export type AgentSettingsPatch = {
     allowWrites?: boolean;
     /** Turning it on is confirmed in the agent access window first; see `AgentManager`. */
     fullAccess?: boolean;
-    port?: number;
+    /** The author copied a configuration with the current address, so {@link AgentSettingsSnapshot.movedToPort} is answered. */
+    acknowledgeMovedPort?: true;
     /** Remove this directory from the allowed list. Adding one goes through the folder picker. */
     removeImportRoot?: string;
     /** Allow or switch off one plugin's agent tools. */
     pluginTools?: { pluginId: string; allowed: boolean };
 };
 
-/** Lowest port the setting accepts; below it are ports that need privileges on most systems. */
+/** Lowest port the file may name; below it are ports that need privileges on most systems. */
 export const AGENT_PORT_MIN = 1024;
 export const AGENT_PORT_MAX = 65535;
 
@@ -186,6 +210,19 @@ export function defaultAgentSettings(token: string): AgentSettingsFile {
 }
 
 /**
+ * Whether the file was written before schema 2 and names the old default port. Such a profile is
+ * moved to the new default once: the port was editable then, so a profile that picked 54080 by hand
+ * cannot be told apart from one that never touched it, and the old default sits in the range where
+ * Windows reserves ports. Schema 2 records that the move was made, so a profile that lands on 54080
+ * later (a port the system handed out) keeps it.
+ */
+export function namesLegacyDefaultPort(value: unknown): boolean {
+    const record = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+    const schemaVersion = typeof record.schemaVersion === "number" ? record.schemaVersion : 1;
+    return schemaVersion < 2 && record.port === AGENT_MCP_LEGACY_DEFAULT_PORT;
+}
+
+/**
  * Read the file defensively: it is on disk where anyone with the account can edit it, and a
  * malformed field falls back to its default rather than taking agent access down with it. A token
  * that is missing or too short to be a secret comes back empty, which tells main to mint one.
@@ -214,7 +251,7 @@ export function normalizeAgentSettings(value: unknown, mintToken: () => string):
         enabled: record.enabled === true,
         allowWrites: record.allowWrites === true,
         fullAccess: record.fullAccess === true,
-        port: isUsableAgentPort(record.port) ? record.port : AGENT_MCP_DEFAULT_PORT,
+        port: isUsableAgentPort(record.port) && !namesLegacyDefaultPort(record) ? record.port : AGENT_MCP_DEFAULT_PORT,
         token,
         url: typeof record.url === "string" ? record.url : null,
         allowedImportRoots: roots,

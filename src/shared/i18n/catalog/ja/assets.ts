@@ -655,11 +655,18 @@ export const assets = {
         zoomIn: "拡大",
         zoomOut: "縮小",
         resetView: "表示をリセット",
+        // キーボード設定の表と「?」の一覧に、音声・動画プレビューの拡大縮小キーと並んで出るので、何を拡大するかを書く。
+        keybindings: {
+            zoomIn: "画像を拡大",
+            zoomOut: "画像を縮小",
+            resetView: "画像の表示をリセット",
+        },
     },
     shortcuts: {
         copy: "選んだアセットをコピー",
         cut: "選んだアセットを切り取り",
         paste: "アセットを貼り付け",
+        delete: "選んだアセットまたはグループを削除",
         rename: "選んだアセットまたはグループの名前を変更",
     },
     previewEditor: {

@@ -63,8 +63,11 @@ signs off your `machine` lines in the translation table's Review mode.
 ]}
 ```
 
-- **Always pass `rev`.** A unit whose source the author changed since you listed it is skipped and
-  returned under `changedSinceRead` with its new source - translate that and send it again.
+- **Always pass `rev`.** It covers the source and the translation as you listed them. A unit whose
+  source the author changed since is skipped and returned under `changedSinceRead` with its new
+  source - translate that and send it again. A unit whose translation the author typed or reviewed
+  since is skipped and returned under `translationChangedSinceRead` with what it holds now - leave it,
+  or send yours again with that entry's `rev` only if it should replace the author's words.
 - **Unknown ids refuse the whole call** and nothing is written; list again (an edited row may have a
   new id).
 - `target: ""` clears a translation. `note` leaves a translator's note in the table.

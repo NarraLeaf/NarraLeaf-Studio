@@ -13,14 +13,17 @@
  * Ctrl+Z - a project-stack command entry holding each unit as it was and as it became.
  *
  * Stale protection is per unit rather than per document: the translation library has no revision,
- * but each listed unit carries `rev`, the hash of the source text it was listed with. A unit whose
- * source moved since is skipped and reported, not written against text the agent never saw.
+ * but each listed unit carries `rev`, a hash of the source text and of the translation stored for it
+ * (its words and status) as listed. A unit whose source moved since is skipped and reported, not
+ * written against text the agent never saw; so is one whose translation the author typed or reviewed
+ * since, rather than overwritten by an agent that never saw it.
  *
  * Comments in English per project convention.
  */
 
 import type { LocalizationDocument, LocalizationUnit, LocalizationUnitStatus } from "@shared/types/localization";
 import { hashSourceText } from "@shared/utils/localizationText";
+import { fnv1aHex } from "@shared/utils/contentHash";
 import { Services, type WorkspaceContext } from "../../services";
 import type { HistoryService } from "../../history/HistoryService";
 import { projectHistoryScope } from "../../history/historyScopes";
@@ -35,6 +38,7 @@ import {
     type AgentToolHandler,
 } from "../agentCall";
 import { AGENT_HISTORY_LABEL } from "../agentLookups";
+import { assertAgentMayStillWrite } from "../agentCommitGate";
 import {
     AGENT_UNIT_ORIGINS,
     collectAgentTranslationUnits,
@@ -55,9 +59,19 @@ export function agentTranslationState(unit: LocalizationUnit | undefined, source
     return state === "untranslated" ? "missing" : state;
 }
 
-/** The short revision a listed unit carries: the hash of the source text it was listed with. */
+/** The hash of a unit's source text, the first half of its `rev`. */
 export function sourceRevision(sourceText: string): string {
     return hashSourceText(sourceText).replace(/^[a-z0-9]+:/, "");
+}
+
+/**
+ * The revision a listed unit carries: `<source>.<translation>` - the hash of the source text and the
+ * hash of the stored translation's words and status, as listed. Two halves rather than one hash so a
+ * mismatch can say which moved: the source (translate the new one) or the translation (the author
+ * edited it; read it before overwriting).
+ */
+export function unitRevision(sourceText: string, stored: LocalizationUnit | undefined): string {
+    return `${sourceRevision(sourceText)}.${fnv1aHex(JSON.stringify([stored?.target ?? "", stored?.status ?? ""]))}`;
 }
 
 const LIST_STATUSES = ["missing", "stale", "machine", "translated", "reviewed", "todo", "unreviewed"] as const;
@@ -231,7 +245,7 @@ function listRow(unit: AgentTranslationUnit, stored: LocalizationUnit | undefine
         status: state,
         ...(stored?.note ? { note: stored.note } : {}),
         ...(unit.context ? { context: unit.context } : {}),
-        rev: sourceRevision(unit.sourceText),
+        rev: unitRevision(unit.sourceText, stored),
     };
 }
 
@@ -399,16 +413,27 @@ export const localizationSet: AgentToolHandler = async (args, { ctx, request, fo
     const before = new Map<string, LocalizationUnit | null>();
     const after = new Map<string, LocalizationUnit | null>();
     const changedSinceRead: { id: string; where: string; source: string; rev: string }[] = [];
+    const translationChangedSinceRead: { id: string; where: string; target: string; status: AgentTranslationState; rev: string }[] = [];
     const warnings: { id: string; where: string; problems: string[] }[] = [];
     let unchanged = 0;
     for (const entry of entries) {
         const unit = byId.get(entry.unitId)!;
-        const currentRev = sourceRevision(unit.sourceText);
+        const existing = current.units[entry.unitId];
+        const currentRev = unitRevision(unit.sourceText, existing);
         if (entry.rev !== undefined && entry.rev !== currentRev) {
-            changedSinceRead.push({ id: unit.unitId, where: unit.where, source: unit.shownSource, rev: currentRev });
+            if (entry.rev.split(".")[0] !== sourceRevision(unit.sourceText)) {
+                changedSinceRead.push({ id: unit.unitId, where: unit.where, source: unit.shownSource, rev: currentRev });
+            } else {
+                translationChangedSinceRead.push({
+                    id: unit.unitId,
+                    where: unit.where,
+                    target: existing?.target ?? "",
+                    status: agentTranslationState(existing, unit.sourceText),
+                    rev: currentRev,
+                });
+            }
             continue;
         }
-        const existing = current.units[entry.unitId];
         const next = unitAfterWrite(existing, unit.sourceText, entry);
         const problems = translationWarnings(unit, entry.target);
         if (problems.length > 0) {
@@ -425,6 +450,7 @@ export const localizationSet: AgentToolHandler = async (args, { ctx, request, fo
     const written = after.size;
     const firstWritten = written > 0 ? byId.get([...after.keys()][0]) : undefined;
     if (!dryRun && written > 0) {
+        assertAgentMayStillWrite({ ctx, request, follow });
         const service = localizationService(ctx);
         service.applyUnitEdits(code, editFor(after));
         ctx.services.get<HistoryService>(Services.History).pushCommand(projectHistoryScope(), {
@@ -446,6 +472,9 @@ export const localizationSet: AgentToolHandler = async (args, { ctx, request, fo
         dryRun ? `Dry run: ${written} unit(s) would be written in ${name}` : `Wrote ${written} unit(s) in ${name}`,
         unchanged > 0 ? `${unchanged} already held that` : "",
         changedSinceRead.length > 0 ? `${changedSinceRead.length} skipped because their source changed since you listed them - translate the new source below and send them again with its rev` : "",
+        translationChangedSinceRead.length > 0
+            ? `${translationChangedSinceRead.length} skipped because the author changed their translation since you listed them - the current one is below; send yours again with its rev only if it should replace the author's`
+            : "",
         warnings.length > 0 ? `${warnings.length} written with warnings - check them` : "",
     ].filter(Boolean);
     const lead = `${parts.join("; ")}.${!dryRun && written > 0 ? " One step of undo in Studio." : ""}`;
@@ -455,6 +484,7 @@ export const localizationSet: AgentToolHandler = async (args, { ctx, request, fo
         unchanged,
         dryRun,
         ...(changedSinceRead.length > 0 ? { changedSinceRead } : {}),
+        ...(translationChangedSinceRead.length > 0 ? { translationChangedSinceRead } : {}),
         warnings,
     };
     return { ok: true, content: [{ type: "text", text: compactListText(lead, structured, "warnings") }], structured };

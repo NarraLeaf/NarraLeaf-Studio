@@ -120,8 +120,8 @@ function harness(init: Partial<Pick<Fakes, "sceneBlocks" | "characters">> & { va
     }
     const tool = {
         ctx: { services: { get: (name: string) => services[name] } },
-        request: { callId: "call" },
-        follow: { describeCall: vi.fn() },
+        request: { callId: "call", policy: { writesEnabled: true, allowedImportRoots: [] } },
+        follow: { describeCall: vi.fn(), getState: () => ({ paused: false }) },
         log: vi.fn(),
     } as unknown as AgentToolContext;
     const run = async (handler: AgentToolHandler, args: Record<string, unknown>) => {

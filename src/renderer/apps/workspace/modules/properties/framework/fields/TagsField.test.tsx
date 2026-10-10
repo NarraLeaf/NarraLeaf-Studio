@@ -1,14 +1,16 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TagsField } from "./TagsField";
 import type { TagsFieldDefinition } from "../types";
+import { TagsField } from "./TagsField";
 
 /**
- * Where the caret is after the tags field mounts, and after a tag is added.
+ * Where the caret is around the tags field.
  *
- * The field used to focus its input whenever the input was empty - which is also how it mounts - so
- * selecting an asset put the caret in "Add tag…" and moved keyboard focus into the inspector.
+ * The field takes focus back after an add, because it is disabled while the tag saves and that drops
+ * focus. It used to take focus on mount as well, since it also starts out empty: selecting an asset
+ * opened its properties and put the caret in this field, and every key of the asset panel and the
+ * preview that stays quiet while typing stopped answering.
  */
 
 vi.mock("@/lib/i18n", async importOriginal => ({
@@ -21,62 +23,52 @@ vi.mock("@/lib/i18n", async importOriginal => ({
     }),
 }));
 
-vi.mock("./comparisonFieldMarks", () => ({
-    useComparisonFieldMark: () => null,
-}));
-
 afterEach(cleanup);
 
-type Data = { tags: string[] };
+/** Longer than the field's own refocus delay. */
+const settle = () => act(() => new Promise<void>(resolve => setTimeout(resolve, 40)));
 
-function definition(): TagsFieldDefinition<Data> {
+function tagsField(data: { tags: string[] }): TagsFieldDefinition<{ tags: string[] }> {
     return {
         id: "tags",
         type: "tags",
         label: "Tags",
-        addPlaceholder: "Add tag",
-        getValue: data => data.tags,
-        addTag: (data, tag) => {
-            data.tags = [...data.tags, tag];
+        getValue: value => value.tags,
+        addTag: async (value, tag) => {
+            value.tags.push(tag);
         },
-        removeTag: (data, tag) => {
-            data.tags = data.tags.filter(entry => entry !== tag);
+        removeTag: async (value, tag) => {
+            value.tags = value.tags.filter(existing => existing !== tag);
         },
     };
 }
 
-const input = () => screen.getByPlaceholderText("Add tag");
-
-describe("the tags field's focus", () => {
-    it("leaves the focus where it was when it mounts", async () => {
-        vi.useFakeTimers();
-        try {
-            render(<TagsField field={definition()} data={{ tags: [] }} onSaving={() => undefined} />);
-            await act(async () => {
-                vi.advanceTimersByTime(50);
-            });
-            expect(document.activeElement).not.toBe(input());
-        } finally {
-            vi.useRealTimers();
-        }
+describe("TagsField focus", () => {
+    it("leaves focus where it is when it mounts", async () => {
+        const data = { tags: [] as string[] };
+        render(
+            <>
+                <button type="button">asset row</button>
+                <TagsField field={tagsField(data)} data={data} onSaving={() => undefined} />
+            </>,
+        );
+        const row = screen.getByRole("button", { name: "asset row" });
+        row.focus();
+        await settle();
+        expect(document.activeElement).toBe(row);
     });
 
-    it("goes back into the input after a tag is added", async () => {
-        vi.useFakeTimers();
-        try {
-            const data = { tags: [] as string[] };
-            render(<TagsField field={definition()} data={data} onSaving={() => undefined} />);
-            fireEvent.change(input(), { target: { value: "night" } });
-            await act(async () => {
-                fireEvent.keyDown(input(), { key: "Enter" });
-            });
-            await act(async () => {
-                vi.advanceTimersByTime(50);
-            });
-            expect(data.tags).toEqual(["night"]);
-            expect(document.activeElement).toBe(input());
-        } finally {
-            vi.useRealTimers();
-        }
+    it("takes focus back after a tag is added", async () => {
+        const data = { tags: [] as string[] };
+        render(<TagsField field={tagsField(data)} data={data} onSaving={() => undefined} />);
+        const input = screen.getByPlaceholderText("properties.tags.addPlaceholder");
+        input.focus();
+        fireEvent.change(input, { target: { value: "night" } });
+        fireEvent.keyDown(input, { key: "Enter" });
+        // Saving disables the field, which drops focus; the add is what brings it back.
+        input.blur();
+        await settle();
+        expect(data.tags).toEqual(["night"]);
+        expect(document.activeElement).toBe(input);
     });
 });

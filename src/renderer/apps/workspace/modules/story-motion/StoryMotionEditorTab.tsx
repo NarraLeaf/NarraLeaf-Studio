@@ -35,6 +35,7 @@ import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { ResizableHandle } from "../../components/ui/ResizableHandle";
 import { formatZoom } from "../assets/editors/video/frameViewport";
 import {
+    STORY_MOTION_ASSET_SELECTION_TYPE,
     STORY_MOTION_KEYFRAME_SELECTION_TYPE,
     type StoryMotionEditorPayload,
 } from "./storyMotionTypes";
@@ -244,7 +245,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                 setLoadError(t("motion.editor.assetDeleted"));
                 const selection = uiService?.getStore().getSelection();
                 if (
-                    selection?.type === STORY_MOTION_KEYFRAME_SELECTION_TYPE
+                    (selection?.type === STORY_MOTION_KEYFRAME_SELECTION_TYPE || selection?.type === STORY_MOTION_ASSET_SELECTION_TYPE)
                     && selection.data.animationId === payload.animationId
                 ) {
                     uiService?.getStore().setSelection({ type: null, data: null });
@@ -640,9 +641,11 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
             }
             return;
         }
+        // Nothing selected on the timeline: the inspector shows the motion itself, the way an empty
+        // canvas shows its page.
         const current = store.getSelection();
         if (current.type === STORY_MOTION_KEYFRAME_SELECTION_TYPE && current.data.animationId === payload.animationId) {
-            store.setSelection({ type: null, data: null });
+            store.setSelection({ type: STORY_MOTION_ASSET_SELECTION_TYPE, data: { animationId: payload.animationId } });
         }
     }, [payload?.animationId, primaryId, primaryTrackId, tabId, uiService]);
 

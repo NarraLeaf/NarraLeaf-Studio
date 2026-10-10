@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import { AlertCircle, RefreshCw, ZoomIn, ZoomOut } from "lucide-react";
 import { EditorComponentProps } from "../../types";
 import { Asset } from "@/lib/workspace/services/assets/types";
@@ -10,6 +10,8 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { ActionDefinition, useRegistry } from "../../../registry";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { useTranslation } from "@/lib/i18n";
+import { useKeybindings, whenFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
+import { useShortcutLabels } from "../../../hooks/useShortcutLabels";
 import { useAssetReadNotice, type AssetReadFailure } from "./useAssetReadNotice";
 import {
     ImagePixelPreview,
@@ -80,6 +82,7 @@ function PreviewToolbar({
     controls: ImagePixelPreviewControls;
 }) {
     const { t } = useTranslation();
+    const shortcuts = useShortcutLabels();
     const size = controls.imageSize ?? imageData.metadata;
 
     return (
@@ -101,6 +104,7 @@ function PreviewToolbar({
                     onClick={controls.zoomOut}
                     className="p-1 rounded-md hover:bg-fill text-fg-muted hover:text-fg transition-colors cursor-default"
                     data-tip={t("assets.image.zoomOut")} aria-label={t("assets.image.zoomOut")}
+                    data-tip-shortcut={shortcuts.forBinding("assets.image.zoom-out")}
                 >
                     <ZoomOut className="w-4 h-4" />
                 </button>
@@ -111,6 +115,7 @@ function PreviewToolbar({
                     onClick={controls.zoomIn}
                     className="p-1 rounded-md hover:bg-fill text-fg-muted hover:text-fg transition-colors cursor-default"
                     data-tip={t("assets.image.zoomIn")} aria-label={t("assets.image.zoomIn")}
+                    data-tip-shortcut={shortcuts.forBinding("assets.image.zoom-in")}
                 >
                     <ZoomIn className="w-4 h-4" />
                 </button>
@@ -118,6 +123,7 @@ function PreviewToolbar({
                     onClick={controls.resetView}
                     className="p-1 rounded-md hover:bg-fill text-fg-muted hover:text-fg transition-colors cursor-default ml-2"
                     data-tip={t("assets.image.resetView")} aria-label={t("assets.image.resetView")}
+                    data-tip-shortcut={shortcuts.forBinding("assets.image.reset-view")}
                 >
                     <RefreshCw className="w-4 h-4" />
                 </button>
@@ -177,6 +183,39 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
     const handleZoomOut = useCallback(() => withFocusedPreview(controls => controls.zoomOut()), [withFocusedPreview]);
     const handleResetView = useCallback(() => withFocusedPreview(controls => controls.resetView()), [withFocusedPreview]);
 
+    // The keys, per tab: each preview registers the catalog's `assets.image.*` against its own view,
+    // live while that tab has focus, so they can be rebound in Settings. The shared Preview group
+    // below prints the same chords through `shortcutId` and registers none - an action's own
+    // `shortcut` makes a binding no catalog entry governs, which is how these three were once
+    // missing from the Settings table and listed under Other on the cheat sheet.
+    const viewKeys = useMemo((): KeybindingDefinition[] => [
+        {
+            id: "zoom-in",
+            key: "mod+=",
+            description: t("assets.image.keybindings.zoomIn"),
+            handler: () => controlsRef.current?.zoomIn(),
+        },
+        {
+            id: "zoom-out",
+            key: "mod+-",
+            description: t("assets.image.keybindings.zoomOut"),
+            handler: () => controlsRef.current?.zoomOut(),
+        },
+        {
+            id: "reset-view",
+            key: "mod+0",
+            description: t("assets.image.keybindings.resetView"),
+            handler: () => controlsRef.current?.resetView(),
+        },
+    ], [t]);
+
+    useKeybindings({
+        keybindings: viewKeys,
+        when: whenFocused(FocusArea.Editor, tabId),
+        idPrefix: `image-preview-${tabId}`,
+        catalogPrefix: "assets.image.",
+    });
+
     useEffect(() => {
         const groupId = IMAGE_PREVIEW_GROUP_ID;
 
@@ -188,7 +227,7 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
             id: `${groupId}-zoom-in`,
             icon: <ZoomIn className="w-4 h-4" />,
             label: t("assets.image.zoomIn"),
-            shortcut: "mod+=",
+            shortcutId: "assets.image.zoom-in",
             onClick: handleZoomIn,
             order: 1,
             when: focusWhen,
@@ -198,7 +237,7 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
             id: `${groupId}-zoom-out`,
             icon: <ZoomOut className="w-4 h-4" />,
             label: t("assets.image.zoomOut"),
-            shortcut: "mod+-",
+            shortcutId: "assets.image.zoom-out",
             onClick: handleZoomOut,
             order: 2,
             when: focusWhen,
@@ -208,7 +247,7 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
             id: `${groupId}-reset-view`,
             icon: <RefreshCw className="w-4 h-4" />,
             label: t("assets.image.resetView"),
-            shortcut: "mod+0",
+            shortcutId: "assets.image.reset-view",
             onClick: handleResetView,
             order: 3,
             when: focusWhen,

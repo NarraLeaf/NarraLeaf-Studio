@@ -37,6 +37,7 @@ function fakeHost(overrides: Partial<AgentMainToolHost> = {}, open: AgentWorkspa
         forward: vi.fn(async (): Promise<AgentCallResult> => agentText("forwarded")),
         isProjectDirectory: async () => true,
         isTrusted: () => true,
+        folderRefusal: () => null,
         defaultProjectsDir: () => "/home/me/NarraLeaf",
         openProject: async (projectPath: string) => ({ ok: true as const, handle: { projectPath, name: "Game" }, alreadyOpen: false }),
         createProject: vi.fn(async () => agentText("created")),
@@ -66,6 +67,22 @@ describe("agent_status", () => {
         const host = fakeHost({ workspaceState: async () => null }, [{ projectPath: "/games/a", name: null }]);
         const result = await AGENT_MAIN_TOOL_HANDLERS.agent_status(host, {}, ctx);
         expect(result.ok && result.structured).toMatchObject({ projects: [{ responding: false, paused: null }] });
+    });
+});
+
+describe("agent_status and project trust", () => {
+    it("reports each open project's trust, and says what an untrusted one refuses", async () => {
+        const host = fakeHost({ isTrusted: projectPath => projectPath === "/games/a" }, [
+            { projectPath: "/games/a", name: "A" },
+            { projectPath: "/games/b", name: "B" },
+        ]);
+        const result = await AGENT_MAIN_TOOL_HANDLERS.agent_status(host, {}, ctx);
+        expect(result.ok && result.structured).toMatchObject({
+            projects: [{ path: "/games/a", trusted: true }, { path: "/games/b", trusted: false }],
+        });
+        const text = result.ok ? (result.content[0] as { text: string }).text : "";
+        expect(text.match(/NOT TRUSTED/g)).toHaveLength(1);
+        expect(text).toContain("changes, folder access outside it and imports are refused");
     });
 });
 
@@ -115,6 +132,16 @@ describe("request_folder_access", () => {
             .toMatchObject({ ok: false, error: { code: "invalid_args" } });
         expect(await AGENT_MAIN_TOOL_HANDLERS.request_folder_access(fakeHost({ requestFolderAccess }), { paths: ["/kit/a.png"] }, ctx))
             .toMatchObject({ ok: false, error: { code: "no_workspace" } });
+        expect(requestFolderAccess).not.toHaveBeenCalled();
+    });
+});
+
+describe("request_folder_access for an untrusted project", () => {
+    it("refuses without asking the author", async () => {
+        const requestFolderAccess = vi.fn();
+        const host = fakeHost({ isTrusted: () => false, requestFolderAccess }, [{ projectPath: "/games/a", name: "A" }]);
+        const result = await AGENT_MAIN_TOOL_HANDLERS.request_folder_access(host, { paths: ["/kit/a.png"] }, ctx);
+        expect(result).toMatchObject({ ok: false, error: { code: "untrusted" } });
         expect(requestFolderAccess).not.toHaveBeenCalled();
     });
 });
@@ -205,7 +232,8 @@ describe("project_open", () => {
 
     it("opens a project", async () => {
         const result = await AGENT_MAIN_TOOL_HANDLERS.project_open(fakeHost(), { path: "/games/a" }, ctx);
-        expect(result).toMatchObject({ ok: true, structured: { project: "/games/a", alreadyOpen: false } });
+        // The handler resolves the path, which on Windows gives it a drive letter.
+        expect(result).toMatchObject({ ok: true, structured: { project: path.resolve("/games/a"), alreadyOpen: false } });
     });
 });
 
@@ -220,7 +248,7 @@ describe("test", () => {
     it("runs headlessly for a named project that is not open, if it is trusted", async () => {
         const host = fakeHost({}, [{ projectPath: "/games/a", name: "A" }]);
         await AGENT_MAIN_TOOL_HANDLERS.test(host, { id: "t", project: "/games/b" }, ctx);
-        expect(host.runHeadlessTest).toHaveBeenCalledWith("/games/b", "t");
+        expect(host.runHeadlessTest).toHaveBeenCalledWith(path.resolve("/games/b"), "t");
         const distrusted = fakeHost({ isTrusted: () => false });
         expect(await AGENT_MAIN_TOOL_HANDLERS.test(distrusted, { id: "t", project: "/games/b" }, ctx))
             .toMatchObject({ ok: false, error: { code: "untrusted" } });
@@ -248,7 +276,7 @@ describe("build", () => {
     it("forwards to the open workspace with the target and an absolute output", async () => {
         const host = fakeHost({}, [{ projectPath: "/games/a", name: "A" }]);
         await AGENT_MAIN_TOOL_HANDLERS.build(host, { target: "web", output: "/out" }, ctx);
-        expect(host.forward).toHaveBeenCalledWith(expect.anything(), AGENT_INTERNAL_TOOL_BUILD, { target: "web", output: "/out" }, ctx);
+        expect(host.forward).toHaveBeenCalledWith(expect.anything(), AGENT_INTERNAL_TOOL_BUILD, { target: "web", output: path.resolve("/out") }, ctx);
         expect(await AGENT_MAIN_TOOL_HANDLERS.build(host, { output: "out" }, ctx)).toMatchObject({ ok: false, error: { code: "invalid_args" } });
     });
 
@@ -259,11 +287,69 @@ describe("build", () => {
     });
 });
 
+/**
+ * The folders a tool writes into are held to the rule folder reads are: never Studio's own folders,
+ * the home folder itself or a file-system root. `project_create` makes every folder down to the one
+ * it names, and a web build clears a folder inside its output.
+ */
+describe("folders tools write into", () => {
+    const open = [{ projectPath: "/games/a", name: "A" }];
+    const forbidden = new Map<string, "home" | "root" | "studio">([
+        [path.resolve("/home/me"), "home"],
+        [path.resolve("/"), "root"],
+        [path.resolve("/home/me/.config/NarraLeaf Studio"), "studio"],
+    ]);
+    const folderRefusal = (folder: string) => forbidden.get(folder) ?? null;
+
+    it("refuses a build output that is a folder agents are never handed, before the workspace hears of it", async () => {
+        for (const [output, reason] of [["/home/me", "home itself"], ["/", "root"], ["/home/me/.config/NarraLeaf Studio", "Studio's own"]] as const) {
+            const host = fakeHost({ folderRefusal }, open);
+            const result = await AGENT_MAIN_TOOL_HANDLERS.build(host, { output }, ctx);
+            expect(result.ok ? null : result.error.code).toBe("path_not_allowed");
+            expect(result.ok ? "" : result.error.message).toContain(reason === "home itself" ? "home folder itself" : reason === "root" ? "file-system root" : "Studio's own folders");
+            expect(host.forward).not.toHaveBeenCalled();
+        }
+    });
+
+    it("lets a build output of its own through", async () => {
+        const host = fakeHost({ folderRefusal }, open);
+        expect((await AGENT_MAIN_TOOL_HANDLERS.build(host, { output: "/home/me/builds/a" }, ctx)).ok).toBe(true);
+        expect(host.forward).toHaveBeenCalledTimes(1);
+    });
+
+    it("refuses a project directory that is a folder agents are never handed, writing nothing", async () => {
+        const createProject = vi.fn(async () => agentText("created"));
+        for (const dir of ["/home/me", "/", "/home/me/.config/NarraLeaf Studio"]) {
+            const result = await AGENT_MAIN_TOOL_HANDLERS.project_create(fakeHost({ folderRefusal, createProject }), { name: "Game", dir }, ctx);
+            expect(result.ok ? null : result.error.code).toBe("path_not_allowed");
+        }
+        expect(createProject).not.toHaveBeenCalled();
+    });
+
+    it("lets a project directory of its own through, and does not hold Studio's default to the rule", async () => {
+        const createProject = vi.fn(async () => agentText("created"));
+        const host = fakeHost({ folderRefusal: () => "home", createProject });
+        expect((await AGENT_MAIN_TOOL_HANDLERS.project_create(host, { name: "Game" }, ctx)).ok).toBe(true);
+        const ownFolder = fakeHost({ folderRefusal, createProject });
+        expect((await AGENT_MAIN_TOOL_HANDLERS.project_create(ownFolder, { name: "Game", dir: "/home/me/Games" }, ctx)).ok).toBe(true);
+        expect(createProject).toHaveBeenCalledTimes(2);
+    });
+});
+
 describe("call timeouts", () => {
     it("gives ordinary calls 30 seconds, long ones three minutes, and builds longer", () => {
         expect(agentCallTimeoutMs("story_apply")).toBe(30_000);
         expect(agentCallTimeoutMs("playtest_start")).toBe(180_000);
         expect(agentCallTimeoutMs(AGENT_INTERNAL_TOOL_TEST)).toBe(180_000);
         expect(agentCallTimeoutMs(AGENT_INTERNAL_TOOL_BUILD)).toBeGreaterThan(180_000);
+    });
+
+    it("gives tests and builds their long timeouts under the names main forwards them as", async () => {
+        const host = fakeHost({}, [{ projectPath: "/games/a", name: "A" }]);
+        await AGENT_MAIN_TOOL_HANDLERS.test(host, { id: "t" }, ctx);
+        await AGENT_MAIN_TOOL_HANDLERS.build(host, {}, ctx);
+        const [testName, buildName] = host.forward.mock.calls.map(call => call[1] as string);
+        expect(agentCallTimeoutMs(testName)).toBe(180_000);
+        expect(agentCallTimeoutMs(buildName)).toBe(20 * 60 * 1000);
     });
 });

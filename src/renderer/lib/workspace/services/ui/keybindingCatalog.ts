@@ -335,11 +335,17 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     entry("story-motion.zoom-in", "=", "workspace.shell.keybindings.catalog.storyMotion.zoomIn", CATEGORY.storyMotion, ZoomIn),
     entry("story-motion.zoom-out", "-", "workspace.shell.keybindings.catalog.storyMotion.zoomOut", CATEGORY.storyMotion, ZoomOut),
     entry("story-motion.zoom-fit", "0", "workspace.shell.keybindings.catalog.storyMotion.zoomFit", CATEGORY.storyMotion, Maximize2),
+    // The motion library in the bottom tray: the asset panel's rename key, the interface editor's
+    // duplicate key, and Delete.
+    entry("story-motion.library.rename", "f2", "workspace.shell.keybindings.catalog.storyMotion.libraryRename", CATEGORY.storyMotion, PenLine),
+    entry("story-motion.library.duplicate", "mod+d", "workspace.shell.keybindings.catalog.storyMotion.libraryDuplicate", CATEGORY.storyMotion, Copy),
+    entry("story-motion.library.delete", "delete", "workspace.shell.keybindings.catalog.storyMotion.libraryDelete", CATEGORY.storyMotion, Trash2),
 
     // --- Assets panel --------------------------------------------------------
     entry("assets.copy", "mod+c", "assets.shortcuts.copy", CATEGORY.assets, Copy),
     entry("assets.cut", "mod+x", "assets.shortcuts.cut", CATEGORY.assets, Scissors),
     entry("assets.paste", "mod+v", "assets.shortcuts.paste", CATEGORY.assets, ClipboardPaste),
+    entry("assets.delete", "delete", "assets.shortcuts.delete", CATEGORY.assets, Trash2),
     entry("assets.rename", "f2", "assets.shortcuts.rename", CATEGORY.assets, PenLine),
 
     // --- Audio preview -------------------------------------------------------
@@ -393,6 +399,13 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     entry("assets.video.zoom-in", "=", "assets.video.keybindings.zoomIn", CATEGORY.assets, ZoomIn),
     entry("assets.video.zoom-out", "-", "assets.video.keybindings.zoomOut", CATEGORY.assets, ZoomOut),
     entry("assets.video.zoom-fit", "0", "assets.video.keybindings.zoomFit", CATEGORY.assets, Maximize2),
+
+    // --- Image preview -------------------------------------------------------
+    // The chords the preview has always answered, which are the ones image viewers share. Reset fits
+    // the picture to the tab, so it wears the fit glyph.
+    entry("assets.image.zoom-in", "mod+=", "assets.image.keybindings.zoomIn", CATEGORY.assets, ZoomIn),
+    entry("assets.image.zoom-out", "mod+-", "assets.image.keybindings.zoomOut", CATEGORY.assets, ZoomOut),
+    entry("assets.image.reset-view", "mod+0", "assets.image.keybindings.resetView", CATEGORY.assets, Maximize2),
 
     // --- Translation and voice tables ---------------------------------------
     // Two tables, one command, one chord. They are separate entries rather than one shared id
