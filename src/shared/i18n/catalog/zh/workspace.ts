@@ -1574,6 +1574,9 @@ export const workspace = {
                     zoomIn: "放大时间轴",
                     zoomOut: "缩小时间轴",
                     zoomFit: "时间轴显示全部",
+                    libraryRename: "重命名动效",
+                    libraryDuplicate: "为选中的动效创建副本",
+                    libraryDelete: "删除选中的动效",
                 },
             },
             // 鼠标操作，在速查表与帮助主题里以标签旁的按键样式显示。整句书写，不拼接动词与对象。
@@ -1611,6 +1614,7 @@ export const workspace = {
                 clickKeyframe: "单击关键帧",
                 dragAcrossTracks: "在轨道上拖动",
                 clickAsset: "单击资产",
+                clickMotion: "单击动效",
                 doubleClick: "双击",
                 dragToEditorArea: "拖到编辑区",
                 dragOntoGroup: "拖到分组上",
@@ -1667,6 +1671,9 @@ export const workspace = {
                     panPreview: "平移预览",
                     zoom: "缩放预览或时间轴",
                     scrollTimeline: "横向滚动时间轴",
+                    openMotion: "打开动效",
+                    selectMotionRange: "选择连续多个动效",
+                    selectAllMotions: "选择全部动效",
                 },
                 assets: {
                     selectAssetRange: "选择连续多个资产",
