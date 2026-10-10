@@ -34,7 +34,7 @@ import {
     scheduleNavigationEntry,
     surfaceNavigationAttributes,
 } from "@/lib/ui-editor/runtime/navigation/focusNavigation";
-import { readUISurfaceNavigation, resolveRuntimeInputVocabulary } from "@shared/types/ui-editor/navigation";
+import { readUISurfaceNavigation } from "@shared/types/ui-editor/navigation";
 import { readPointerInputGesture, type UIPointerInputGesture } from "@/lib/ui-editor/runtime/input/pointerInputGesture";
 import { getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
 import {
@@ -182,8 +182,9 @@ export type GameSurfaceRendererProps = {
     holdsKeyboardFocus?: boolean;
     /**
      * How the pad and the arrows reach this stage surface while the story is on screen (see
-     * `focusNavigation`): `choice` - the choice menu, moved on as soon as it appears - or `controls`
-     * - the quick menu and the like, reached only once the player steps into them. A surface that
+     * `focusNavigation`): `choice` - the choice menu, moved on by the first direction pressed while
+     * it is up - or `controls` - the quick menu and the like, reached only once the player steps into
+     * them. A surface that
      * holds the keyboard focus is a navigation scope without saying so.
      */
     stageNavigationScope?: "choice" | "controls";
@@ -285,8 +286,7 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
      */
     const laneInteractive = interactive;
     const laneKeyboardInteractive = keyboardInteractive;
-    // The navigation actions too: a surface may answer one with a gesture an author bound to it.
-    const actionVocabulary = useMemo(() => resolveRuntimeInputVocabulary(document.actions), [document.actions]);
+    const actionVocabulary = document.actions;
     const surfaceActions = surface.actions;
     /**
      * Whether this surface is a lane at all.
@@ -590,15 +590,10 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         };
     }, [hasRootElement, holdsKeyboardFocus]);
 
-    // A stage menu holds no keyboard focus - the story hears its keys from the window - but a player
-    // on keys or a pad still gets its first option to start from when it appears.
-    useEffect(() => {
-        const shell = shellRef.current;
-        if (stageNavigationScope !== "choice" || !shell || !hasRootElement || passive || concealed === true) {
-            return undefined;
-        }
-        return scheduleNavigationEntry(shell, readCurrentInputDevice);
-    }, [concealed, hasRootElement, passive, stageNavigationScope]);
+    // A stage menu holds no keyboard focus - the story hears its keys from the window - and is not
+    // given one as it appears either. A reader taps Confirm to read on; one tap too many as the choice
+    // arrives would pick its first option without the player ever seeing it. The first direction
+    // pressed lands on the first option (`moveNavigationFocus`), and Confirm picks only after that.
 
     const navigationScope = holdsKeyboardFocus === true
         ? "owner"

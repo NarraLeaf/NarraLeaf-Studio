@@ -37,6 +37,7 @@ const STATIC_WIDGET_RUNTIME_ELEMENT_STATE = Object.freeze({
     variantOverrideId: null,
     signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS,
     displayableMotion: null,
+    holdsFocus: false,
 });
 
 export type WidgetRuntimeStateProviderProps = {
@@ -96,13 +97,13 @@ export function WidgetRuntimeInstanceProvider(props: {
 
 /**
  * Whether this subtree is where the keyboard or pad focus is: an element that holds it, or the row
- * of a list that does. (Its ancestors light up too, through `WidgetRuntimeStateStore.setFocusWithin`:
- * a pointer on a control is on everything around it as well.)
+ * of a list that does. (Its ancestors take it too, through `WidgetRuntimeStateStore.setFocusWithin`:
+ * the focus on a save slot's hit area is on the slot as well.)
  *
- * The focus is drawn with the look the author gave the pointer. A Start button with a hover state
- * is selected the same way whether a mouse rests on it or a D-pad moved to it, and its label inside
- * changes colour with it, exactly as the pointer over the button is over the label too. So the
- * whole subtree reads as hovered, the way it would under a pointer (`useWidgetRuntimeElementState`).
+ * The focus is drawn with the `focused` state the author gave the appearance, the way a pointer is
+ * drawn with `hovered`: a list row holding it lights its label, and a button's label lights with
+ * the button. So the whole subtree reads as focused (`useWidgetRuntimeElementState`); a control with
+ * no focused look anywhere falls back to the platform's ring (`focusNavigation`).
  */
 const NavigationFocusContext = createContext(false);
 
@@ -173,6 +174,12 @@ export type WidgetRuntimeElementState = {
     variantOverrideId: string | null;
     signals: SystemInteractionSignals;
     displayableMotion: UIDisplayableMotionOverride | null;
+    /**
+     * Whether the focus is on this element itself, rather than inside it or around it - what its
+     * subtree is told (`NavigationFocusProvider`). `signals.focused` is the wider answer its look is
+     * drawn by, and handing that down would light a focused control's siblings too.
+     */
+    holdsFocus: boolean;
 };
 
 function buildElementSignature(
@@ -232,9 +239,9 @@ export function useWidgetRuntimeElementState(
             return STATIC_WIDGET_RUNTIME_ELEMENT_STATE;
         }
         const own = store.getSignalsForElement(runtimeElementKey, interactionDisabled);
-        // The focus looks like the pointer: see `NavigationFocusContext`.
+        // On it, inside it, or around it: see `NavigationFocusContext`.
         const focusLit = own.focused || insideFocus || store.isFocusWithin(runtimeElementKey);
-        const signals = focusLit && !own.hovered ? { ...own, hovered: true } : own;
+        const signals = focusLit && !own.focused ? { ...own, focused: true } : own;
         return {
             variantOverrideId:
                 store.getVariantOverride(runtimeElementKey)
@@ -244,6 +251,7 @@ export function useWidgetRuntimeElementState(
             displayableMotion:
                 store.getDisplayableMotion(runtimeElementKey)
                 ?? (templateKey ? store.getDisplayableMotion(templateKey) : null),
+            holdsFocus: own.focused,
         };
     }, [insideFocus, instance?.selected, interactionDisabled, runtimeElementKey, signature, store, templateKey]);
 }

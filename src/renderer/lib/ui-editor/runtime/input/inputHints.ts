@@ -2,20 +2,21 @@
  * What the buttons do right now, for the input hint bar (`nl.inputHints`).
  *
  * Read from the same places a press goes through, so the bar cannot say something the buttons do
- * not do: the vocabulary (with the navigation actions and whatever the project rebound them to), the
- * surfaces that hold the keys and the actions they answer, and where navigation can move the focus.
+ * not do: the vocabulary (the intents in the navigation slots among it), the surfaces that hold the
+ * keys and the actions they answer, and where navigation can move the focus.
  * The rules mirror the dispatch (`keyboardOwner`, `navigationDefaults`):
  *
  *  - Moving and Confirm, while there is something to move between.
  *  - Every action the page or the stage on screen answers, by the name the project gave it.
  *  - On the stage with nothing to move between: Advance, which a Confirm nothing answers does, and
- *    Stage controls when there are controls to step into.
+ *    the quick menu when there are buttons on the stage to step into.
  *  - Back, while there is somewhere to go back to - a page that is not the one the game starts on,
  *    or the stage's controls the player stepped into.
  *
  * A button is listed once. A hint whose buttons were all claimed by an earlier one is left out:
- * the project's own Dismiss on B already says what B does, so Studio's Back on B does not say it
- * again in other words.
+ * the page's own Dismiss on B already says what B does, so the Back slot on B does not say it again
+ * in other words. An intent in a slot is drawn with the slot's word rather than its own name, and
+ * only where the slot does something.
  *
  * The answer is published through a small store the running game feeds (`provideInputHints`) and
  * the widget reads (`useInputHints`). It is re-read a few times a second while a bar is on screen:
@@ -30,11 +31,7 @@ import { useSyncExternalStore } from "react";
 import type { UIInputActionDef, UIInputBinding } from "@shared/types/ui-editor/inputAction";
 import type { UIInputActionSource } from "@shared/types/ui-editor/inputActionEvent";
 import type { UIInputHintControllerFamily, UIInputHintWord } from "@shared/types/ui-editor/inputHints";
-import {
-    isUINavigationActionId,
-    uiNavigationActionId,
-    type UINavigationIntent,
-} from "@shared/types/ui-editor/navigation";
+import { resolveUINavigationSlots, type UINavigationSlot } from "@shared/types/ui-editor/navigation";
 
 export type InputHint = {
     id: string;
@@ -82,8 +79,12 @@ export function resolveInputHints(context: InputHintContext): InputHint[] {
     const { device, vocabulary, navigation } = context;
     const onDevice = (bindings: readonly UIInputBinding[] | undefined) =>
         (bindings ?? []).filter(binding => binding.kind === (device === "gamepad" ? "gamepad" : "key"));
-    const navigationBindings = (intent: UINavigationIntent) =>
-        onDevice(vocabulary[uiNavigationActionId(intent)]?.bindings);
+    const slots = resolveUINavigationSlots(vocabulary);
+    const navigationBindings = (slot: UINavigationSlot) => {
+        const actionId = slots[slot];
+        return onDevice(actionId ? vocabulary[actionId]?.bindings : undefined);
+    };
+    const slotActionIds = new Set(Object.values(slots));
 
     const used = new Set<string>();
     const hints: InputHint[] = [];
@@ -111,7 +112,7 @@ export function resolveInputHints(context: InputHintContext): InputHint[] {
     }
     for (const actionId of context.answered) {
         const action = vocabulary[actionId];
-        if (!action || isUINavigationActionId(actionId)) {
+        if (!action || slotActionIds.has(actionId)) {
             continue;
         }
         add({ id: actionId, label: { kind: "action", name: action.name }, bindings: onDevice(action.bindings) });

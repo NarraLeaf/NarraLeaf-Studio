@@ -1,7 +1,13 @@
 import { hasScriptLayer } from "@shared/blueprint/blueprintLayers";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { StoryDocument, StorySceneId } from "@shared/types/story";
-import { listSceneBlocksInDocumentOrder, listScenesInDocumentOrder, listStoryEndings, storyVariableRefKey } from "@shared/types/story";
+import {
+    listSceneBlocksInDocumentOrder,
+    listScenesInDocumentOrder,
+    listStoryEndings,
+    storyRowAssignedVariable,
+    storyVariableRefKey,
+} from "@shared/types/story";
 import { buildSceneFlowGraph } from "@/apps/workspace/modules/story-flow/sceneFlowModel";
 import { computeSceneFlowCoverage } from "@/apps/workspace/modules/story-flow/sceneFlowCoverage";
 import { collectBlueprintVariableWrites } from "@/apps/workspace/modules/story-flow/sceneFlowVariables";
@@ -305,8 +311,9 @@ function storyWrittenKeys(document: StoryDocument): Set<string> {
             continue;
         }
         for (const block of listSceneBlocksInDocumentOrder(scene)) {
-            if (block.kind === "action" && block.payload.action === "setVariable") {
-                keys.add(storyVariableRefKey(block.payload.target));
+            const target = storyRowAssignedVariable(block);
+            if (target) {
+                keys.add(storyVariableRefKey(target));
             }
         }
     }

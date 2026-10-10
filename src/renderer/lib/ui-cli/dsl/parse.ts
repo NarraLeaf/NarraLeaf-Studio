@@ -14,6 +14,7 @@
  */
 
 import { BpValueError, indexOfTopLevel, parseValue, splitTokens, valueToJs } from "../../blueprint-cli/dsl/values";
+import { isUINavigationSlot, UI_NAVIGATION_SLOTS } from "@shared/types/ui-editor/navigation";
 import type {
     UiAssignTarget,
     UiAssignment,
@@ -342,6 +343,7 @@ function parseAction(line: SourceLine, tokens: string[], body: SourceLine[]): Ui
     }
     const name = tokens[2] ? readString(tokens[2], line) : id;
     const bindings: ({ kind: "pointer"; gesture: string } | { kind: "key"; key: string } | { kind: "gamepad"; button: string })[] = [];
+    let navigationSlot: string | undefined;
     for (const item of blockItems(body)) {
         const itemTokens = tokensOf(item.line);
         if (itemTokens[0] === "pointer") {
@@ -356,9 +358,20 @@ function parseAction(line: SourceLine, tokens: string[], body: SourceLine[]): Ui
             bindings.push({ kind: "gamepad", button: readString(itemTokens[1] ?? "", item.line) });
             continue;
         }
-        throw new UiParseError("an action holds `pointer <gesture>`, `key <Key>` and `gamepad <Button>` lines.", item.line.number);
+        if (itemTokens[0] === "navigation") {
+            const slot = readString(itemTokens[1] ?? "", item.line);
+            if (!isUINavigationSlot(slot)) {
+                throw new UiParseError(`\`navigation\` names one of the slots: ${UI_NAVIGATION_SLOTS.join(", ")}.`, item.line.number);
+            }
+            navigationSlot = slot;
+            continue;
+        }
+        throw new UiParseError(
+            "an action holds `pointer <gesture>`, `key <Key>`, `gamepad <Button>` and `navigation <slot>` lines.",
+            item.line.number,
+        );
     }
-    return { kind: "action", line: line.number, id, name, bindings };
+    return { kind: "action", line: line.number, id, name, bindings, ...(navigationSlot ? { navigationSlot } : {}) };
 }
 
 // ---------------------------------------------------------------------------

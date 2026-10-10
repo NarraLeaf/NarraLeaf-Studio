@@ -133,12 +133,20 @@ describe("input rows", () => {
         expect([...writes.values()]).toEqual([false]);
     });
 
-    it("reports a result variable the scene does not declare", async () => {
+    it("reports a result variable the scene does not declare, and still waits", async () => {
+        const host = hostStub();
         const compiled = await compileWith(doc([
             inputBlock("wait", { action: "input", operation: "wait", resultTarget: { scope: "scene", variableId: "gone" } }),
-        ]), hostStub());
+        ]), host);
         expect(compiled.diagnostics.some(diagnostic => diagnostic.blockId === "wait" && diagnostic.level === "error")).toBe(true);
-        expect(rowActions(compiled, "wait")).toHaveLength(0);
+        // Only the write is skipped: the player still has to make the gesture.
+        const actions = rowActions(compiled, "wait");
+        expect(actions).toHaveLength(1);
+        const writes = new Map<string, unknown>();
+        actions[0].executeAction(fakeGameState(writes), {});
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(host.waitForInput).toHaveBeenCalledTimes(1);
+        expect(writes.size).toBe(0);
     });
 });
 

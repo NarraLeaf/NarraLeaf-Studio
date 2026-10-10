@@ -273,7 +273,7 @@ export const widgets = {
         showForKeysAndGamepad: "Keyboard and gamepad",
         showForGamepad: "Gamepad only",
         showForAlways: "Every device",
-        showForTip: "The hints list what the buttons do right now. A mouse player has the controls in front of them, so by default the bar is empty while the mouse is in use.",
+        showForTip: "The inputs the bar shows hints for. While any other input is in use, it shows none.",
         glyphStyle: "Button glyphs",
         glyphAuto: "Match the connected controller",
         glyphXbox: "Xbox",
@@ -293,7 +293,7 @@ export const widgets = {
         wordConfirm: "Confirm",
         wordBack: "Back",
         wordAdvance: "Advance",
-        wordStageControls: "Stage controls",
+        wordStageControls: "Quick menu",
     },
     video: {
         title: "Video",

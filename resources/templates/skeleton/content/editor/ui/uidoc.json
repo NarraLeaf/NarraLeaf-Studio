@@ -50145,7 +50145,8 @@
           "kind": "gamepad",
           "button": "B"
         }
-      ]
+      ],
+      "navigationSlot": "cancel"
     },
     "closeLog": {
       "id": "closeLog",
@@ -50174,6 +50175,134 @@
           "gesture": "longPress"
         }
       ]
+    },
+    "navUp": {
+      "id": "navUp",
+      "name": "Move up",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Arrow Up"
+        },
+        {
+          "kind": "gamepad",
+          "button": "D-pad Up"
+        },
+        {
+          "kind": "gamepad",
+          "button": "Left Stick Up"
+        }
+      ],
+      "navigationSlot": "up"
+    },
+    "navDown": {
+      "id": "navDown",
+      "name": "Move down",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Arrow Down"
+        },
+        {
+          "kind": "gamepad",
+          "button": "D-pad Down"
+        },
+        {
+          "kind": "gamepad",
+          "button": "Left Stick Down"
+        }
+      ],
+      "navigationSlot": "down"
+    },
+    "navLeft": {
+      "id": "navLeft",
+      "name": "Move left",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Arrow Left"
+        },
+        {
+          "kind": "gamepad",
+          "button": "D-pad Left"
+        },
+        {
+          "kind": "gamepad",
+          "button": "Left Stick Left"
+        }
+      ],
+      "navigationSlot": "left"
+    },
+    "navRight": {
+      "id": "navRight",
+      "name": "Move right",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Arrow Right"
+        },
+        {
+          "kind": "gamepad",
+          "button": "D-pad Right"
+        },
+        {
+          "kind": "gamepad",
+          "button": "Left Stick Right"
+        }
+      ],
+      "navigationSlot": "right"
+    },
+    "navNext": {
+      "id": "navNext",
+      "name": "Next control",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Tab"
+        }
+      ],
+      "navigationSlot": "next"
+    },
+    "navPrevious": {
+      "id": "navPrevious",
+      "name": "Previous control",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Shift+Tab"
+        }
+      ],
+      "navigationSlot": "previous"
+    },
+    "navConfirm": {
+      "id": "navConfirm",
+      "name": "Confirm",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Enter"
+        },
+        {
+          "kind": "key",
+          "key": "Space"
+        },
+        {
+          "kind": "gamepad",
+          "button": "A"
+        }
+      ],
+      "navigationSlot": "confirm"
+    },
+    "navMenu": {
+      "id": "navMenu",
+      "name": "Quick menu",
+      "bindings": [
+        {
+          "kind": "gamepad",
+          "button": "Y"
+        }
+      ],
+      "navigationSlot": "menu"
     }
   },
   "meta": {

@@ -44,22 +44,33 @@ export function resolveListItemContentAlignmentStyle(
 }
 
 /**
- * The row Home or End moves the keyboard to from `index`, or null for any other key.
+ * The row a key moves the keyboard to from `index`, or null for a key that moves nothing.
  *
- * The arrows are not here. They are navigation's (`focusNavigation`), which moves between rows by
- * where they are drawn - down a column, across a row, through a grid's lines - the way it moves
- * between any other controls, and out of the list once there is no row left that way, to the Back
- * button beside it. Only the jump to either end is the list's own: no layout says where "first" is.
+ * Home and End go to the ends: no layout says where "first" is, so those are always the list's own.
+ *
+ * The arrows are the list's only in a game without navigation (`arrows`). There both arrow pairs step
+ * through the rows in order, whichever way the list runs, and stop at both ends rather than wrapping
+ * round, so holding a key to reach the last option of a menu lands on it and stays there. In a game
+ * with navigation they are not here: navigation (`focusNavigation`) moves between rows by where they
+ * are drawn - down a column, across a row, through a grid's lines - the way it moves between any
+ * other controls, and out of the list once there is no row left that way, to the Back button beside it.
  */
-export function listRowKeyboardMove(key: string, index: number, count: number): number | null {
+export function listRowKeyboardMove(key: string, index: number, count: number, arrows = false): number | null {
     if (count <= 0) {
         return null;
     }
+    const last = count - 1;
     switch (key) {
+        case "ArrowDown":
+        case "ArrowRight":
+            return arrows ? Math.min(last, index + 1) : null;
+        case "ArrowUp":
+        case "ArrowLeft":
+            return arrows ? Math.max(0, index - 1) : null;
         case "Home":
             return 0;
         case "End":
-            return count - 1;
+            return last;
         default:
             return null;
     }

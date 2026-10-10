@@ -50145,7 +50145,8 @@
           "kind": "gamepad",
           "button": "B"
         }
-      ]
+      ],
+      "navigationSlot": "cancel"
     },
     "closeLog": {
       "id": "closeLog",
@@ -50174,6 +50175,134 @@
           "gesture": "longPress"
         }
       ]
+    },
+    "navUp": {
+      "id": "navUp",
+      "name": "上へ",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Arrow Up"
+        },
+        {
+          "kind": "gamepad",
+          "button": "D-pad Up"
+        },
+        {
+          "kind": "gamepad",
+          "button": "Left Stick Up"
+        }
+      ],
+      "navigationSlot": "up"
+    },
+    "navDown": {
+      "id": "navDown",
+      "name": "下へ",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Arrow Down"
+        },
+        {
+          "kind": "gamepad",
+          "button": "D-pad Down"
+        },
+        {
+          "kind": "gamepad",
+          "button": "Left Stick Down"
+        }
+      ],
+      "navigationSlot": "down"
+    },
+    "navLeft": {
+      "id": "navLeft",
+      "name": "左へ",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Arrow Left"
+        },
+        {
+          "kind": "gamepad",
+          "button": "D-pad Left"
+        },
+        {
+          "kind": "gamepad",
+          "button": "Left Stick Left"
+        }
+      ],
+      "navigationSlot": "left"
+    },
+    "navRight": {
+      "id": "navRight",
+      "name": "右へ",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Arrow Right"
+        },
+        {
+          "kind": "gamepad",
+          "button": "D-pad Right"
+        },
+        {
+          "kind": "gamepad",
+          "button": "Left Stick Right"
+        }
+      ],
+      "navigationSlot": "right"
+    },
+    "navNext": {
+      "id": "navNext",
+      "name": "次のコントロール",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Tab"
+        }
+      ],
+      "navigationSlot": "next"
+    },
+    "navPrevious": {
+      "id": "navPrevious",
+      "name": "前のコントロール",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Shift+Tab"
+        }
+      ],
+      "navigationSlot": "previous"
+    },
+    "navConfirm": {
+      "id": "navConfirm",
+      "name": "確認",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Enter"
+        },
+        {
+          "kind": "key",
+          "key": "Space"
+        },
+        {
+          "kind": "gamepad",
+          "button": "A"
+        }
+      ],
+      "navigationSlot": "confirm"
+    },
+    "navMenu": {
+      "id": "navMenu",
+      "name": "クイックメニュー",
+      "bindings": [
+        {
+          "kind": "gamepad",
+          "button": "Y"
+        }
+      ],
+      "navigationSlot": "menu"
     }
   },
   "meta": {

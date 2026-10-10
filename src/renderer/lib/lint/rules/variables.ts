@@ -8,6 +8,7 @@ import {
     savedVariableDefs,
     sceneVariableDefs,
     storyPersistentDefs,
+    storyRowAssignedVariable,
     storyVariableRefKey,
     type StoryBlock,
     type StoryBlockId,
@@ -294,6 +295,13 @@ function collectVariableUses(scene: StoryScene, blocks: readonly StoryBlock[]): 
                     push(block.payload.target, block.id);
                     if (block.payload.expression) {
                         pushExpression(block.payload.expression.ast, block.id);
+                    }
+                } else {
+                    // A wait's `into=` variable is written like a `/set` target, so deleting it is
+                    // the same `undeclared` error and naming it is the same `unused` reprieve.
+                    const target = storyRowAssignedVariable(block);
+                    if (target) {
+                        push(target, block.id);
                     }
                 }
                 break;

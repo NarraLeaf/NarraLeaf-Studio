@@ -6,9 +6,11 @@
  * it hears nothing. There is no text-entry gate: a pad cannot type into a field, so the keyboard's
  * `isTextEntryTarget` exemption would only swallow presses that have nowhere else to go.
  *
- * The pad moves the same focus the keyboard does (`focusNavigation`). Its D-pad and left stick raise
- * the navigation actions by default, and when the owner answers nothing a press raised, navigation
- * moves the focus (`navigationDefaults`); held, they repeat, as a held arrow key does. A on a focused
+ * The pad moves the same focus the keyboard does (`focusNavigation`), through the same intents: a
+ * button bound to an intent that fills a navigation slot raises it, and when the owner answers
+ * nothing a press raised, navigation moves the focus (`navigationDefaults`); held, the moves repeat,
+ * as a held arrow key does. Nothing about this is the pad's own - the template binds the D-pad and
+ * the left stick to its navigation intents beside the arrow keys. Confirm on a focused
  * control presses that control and raises nothing else - the pad's half of the claim a focused button
  * makes on Enter - so the Start button a player moved to starts the game rather than also advancing
  * the line behind the menu.
@@ -34,7 +36,7 @@
  */
 
 import { UI_SURFACE_INPUT_ACTION_EVENT } from "@shared/types/ui-editor/inputActionEvent";
-import { uiNavigationIntentRepeats } from "@shared/types/ui-editor/navigation";
+import { raisedUINavigationSlots, uiNavigationSlotRepeats } from "@shared/types/ui-editor/navigation";
 import type { BehaviorGraphEventControl } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import {
     dispatchGlobalBlueprintEvent,
@@ -56,7 +58,7 @@ import type { AmbientSurfaceTarget } from "./ambientSurfaceEvents";
 import { isDialogueSlotSurface } from "./engineNvlKeys";
 import { answerGlobalInputActions } from "./globalInputActions";
 import type { GameKeyboardDispatch, KeyboardOwner } from "./keyboardOwner";
-import { claimNavigationConfirm, raisedNavigationIntents, runNavigationDefaults } from "./navigationDefaults";
+import { claimNavigationConfirm, runNavigationDefaults } from "./navigationDefaults";
 
 export type GameGamepadDispatch = GameKeyboardDispatch;
 
@@ -157,12 +159,20 @@ export async function dispatchGameGamepad(
     if (raisesActions) {
         const gameRoot = input.readGameRoot?.() ?? null;
         const actionIds = raisedActions.map(action => action.actionId);
-        if (claimNavigationConfirm(gameRoot, actionIds)) {
+        if (claimNavigationConfirm(gameRoot, input.vocabulary, actionIds)) {
             // The focused control took the press; see the module comment.
             raisesActions = false;
             raisedActions = [];
         } else {
-            runNavigationDefaults({ gameRoot, owner, isEntrySurface: input.isEntrySurface, vocabulary: input.vocabulary, signal, actionIds });
+            runNavigationDefaults({
+                gameRoot,
+                owner,
+                back: input.back,
+                vocabulary: input.vocabulary,
+                blueprintDocument: input.blueprintDocument,
+                signal,
+                actionIds,
+            });
         }
     }
     const { blueprintDocument, persistentVariables, core, globalHost } = input;
@@ -251,8 +261,9 @@ function createNavigationRepeat(input: GameGamepadDispatch, isHeld: (button: str
         runNavigationDefaults({
             gameRoot: input.readGameRoot?.() ?? null,
             owner: input.readKeyboardOwner(),
-            isEntrySurface: input.isEntrySurface,
+            back: input.back,
             vocabulary: input.vocabulary,
+            blueprintDocument: input.blueprintDocument,
             signal,
             actionIds: resolveGlobalInputActionPayloads({ vocabulary: input.vocabulary, signal }).map(action => action.actionId),
             repeat: true,
@@ -272,7 +283,7 @@ function createNavigationRepeat(input: GameGamepadDispatch, isHeld: (button: str
                 vocabulary: input.vocabulary,
                 signal: { kind: "gamepad", button: edge.button },
             }).map(action => action.actionId);
-            if (![...raisedNavigationIntents(actionIds)].some(uiNavigationIntentRepeats)) {
+            if (![...raisedUINavigationSlots(input.vocabulary, actionIds)].some(uiNavigationSlotRepeats)) {
                 return;
             }
             held = edge.button;

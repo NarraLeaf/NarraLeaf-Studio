@@ -7,7 +7,12 @@ import { announceStoryInputActions, waitForStoryInput, type StoryInputWaitReques
  */
 
 let held = new Set<string>();
-const deps = { isActionHeld: (actionId: string | undefined) => (actionId ? held.has(actionId) : held.size > 0) };
+/** Whether a page or a modal layer is over the stage; the tests that cover it flip this. */
+let stageCovered = false;
+const deps = {
+    isActionHeld: (actionId: string | undefined) => (actionId ? held.has(actionId) : held.size > 0),
+    isStageCovered: () => stageCovered,
+};
 
 function press(...actionIds: string[]): void {
     announceStoryInputActions(actionIds.map(actionId => ({ actionId })));
@@ -26,6 +31,7 @@ async function start(request: StoryInputWaitRequest, signal?: AbortSignal): Prom
 beforeEach(() => {
     vi.useFakeTimers();
     held = new Set();
+    stageCovered = false;
 });
 
 afterEach(() => {
@@ -143,6 +149,84 @@ describe("hold", () => {
         const hold = await start({ operation: "hold", actionId: "confirm", holdMs: 200, timeoutMs: 400 });
         held.add("confirm");
         await vi.advanceTimersByTimeAsync(800);
+        held.delete("confirm");
+        await vi.advanceTimersByTimeAsync(20);
+        expect(hold.result()).toBe(true);
+    });
+});
+
+describe("while a page or a modal layer covers the stage", () => {
+    it("does not count a press made on it", async () => {
+        const wait = await start({ operation: "wait", actionId: "confirm" });
+        stageCovered = true;
+        press("confirm");
+        await vi.advanceTimersByTimeAsync(0);
+        expect(wait.result()).toBeUndefined();
+        stageCovered = false;
+        press("confirm");
+        await vi.advanceTimersByTimeAsync(0);
+        expect(wait.result()).toBe(true);
+    });
+
+    it("does not count a mash press made on it", async () => {
+        const mash = await start({ operation: "mash", actionId: "confirm", count: 2 });
+        press("confirm");
+        stageCovered = true;
+        press("confirm");
+        await vi.advanceTimersByTimeAsync(0);
+        expect(mash.result()).toBeUndefined();
+        stageCovered = false;
+        press("confirm");
+        await vi.advanceTimersByTimeAsync(0);
+        expect(mash.result()).toBe(true);
+    });
+
+    it("stops the deadline, and runs it on from where it was once the stage is back", async () => {
+        const wait = await start({ operation: "wait", actionId: "confirm", timeoutMs: 1000 });
+        await vi.advanceTimersByTimeAsync(400);
+        stageCovered = true;
+        // Far longer than the whole limit: the player is on the settings screen, not in the scene.
+        await vi.advanceTimersByTimeAsync(5000);
+        expect(wait.result()).toBeUndefined();
+        stageCovered = false;
+        await vi.advanceTimersByTimeAsync(500);
+        expect(wait.result()).toBeUndefined();
+        await vi.advanceTimersByTimeAsync(150);
+        expect(wait.result()).toBe(false);
+    });
+
+    it("holds a hold where it was, neither counting nor breaking it", async () => {
+        const hold = await start({ operation: "hold", actionId: "confirm", holdMs: 500 });
+        held.add("confirm");
+        await vi.advanceTimersByTimeAsync(300);
+        stageCovered = true;
+        // Let go and press again on the menu: none of it is read.
+        held.delete("confirm");
+        await vi.advanceTimersByTimeAsync(1000);
+        held.add("confirm");
+        await vi.advanceTimersByTimeAsync(1000);
+        stageCovered = false;
+        await vi.advanceTimersByTimeAsync(100);
+        // About 300 ms counted before the cover and 100 after: not there yet.
+        held.delete("confirm");
+        await vi.advanceTimersByTimeAsync(20);
+        expect(hold.result()).toBeUndefined();
+        held.add("confirm");
+        await vi.advanceTimersByTimeAsync(600);
+        held.delete("confirm");
+        await vi.advanceTimersByTimeAsync(20);
+        expect(hold.result()).toBe(true);
+    });
+
+    it("carries a hold on across the cover when the action is still down", async () => {
+        const hold = await start({ operation: "hold", actionId: "confirm", holdMs: 500 });
+        held.add("confirm");
+        await vi.advanceTimersByTimeAsync(300);
+        stageCovered = true;
+        await vi.advanceTimersByTimeAsync(2000);
+        stageCovered = false;
+        // The 300 ms before the cover still count: 250 more completes it.
+        await vi.advanceTimersByTimeAsync(250);
         held.delete("confirm");
         await vi.advanceTimersByTimeAsync(20);
         expect(hold.result()).toBe(true);

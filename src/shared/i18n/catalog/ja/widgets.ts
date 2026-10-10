@@ -270,7 +270,7 @@ export const widgets = {
         showForKeysAndGamepad: "キーボードとゲームパッド",
         showForGamepad: "ゲームパッドのみ",
         showForAlways: "すべての入力",
-        showForTip: "ボタンの現在の働きを一覧する。マウス使用中は操作対象が見えているため、既定では表示しない",
+        showForTip: "ヒントを表示する入力。ほかの入力の使用中は何も表示しない",
         glyphStyle: "ボタンの表記",
         glyphAuto: "接続中のコントローラーに合わせる",
         glyphXbox: "Xbox",
@@ -290,7 +290,7 @@ export const widgets = {
         wordConfirm: "決定",
         wordBack: "戻る",
         wordAdvance: "送り",
-        wordStageControls: "ステージのコントロール",
+        wordStageControls: "クイックメニュー",
     },
     video: {
         title: "動画",

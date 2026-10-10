@@ -875,6 +875,40 @@ describe("projectStoryCommandLine — after a rename", () => {
  * second is the one worth the words: the line already prints an unresolvable reference as something
  * readable, so a link offered on one of those would look correct and open the wrong thing.
  */
+describe("projectStoryCommandLine — the player's-hands rows", () => {
+    const context: StoryCommandContext = { ...CONTEXT, inputActions: [{ id: "act_confirm", name: "Confirm" }] };
+    const lookups: StoryCommandLineLookups = { ...LOOKUPS, commandContext: context };
+    const row = (payload: StoryBlock["payload"]): StoryBlock =>
+        ({ id: "r1", parentId: null, childrenIds: [], kind: "action", payload } as StoryBlock);
+
+    it("names the action a wait is for", () => {
+        const block = build("/hold Confirm 2", context);
+        expect(projectStoryCommandLine(block, lookups)!.source).toBe("/hold Confirm 2s");
+    });
+
+    it("says an action is gone rather than reading as a wait for any action", () => {
+        const gone = row({ action: "input", operation: "hold", actionId: "act_deleted", holdMs: 2000 });
+        const source = projectStoryCommandLine(gone, lookups)!.source;
+        // Blank, this would be `/hold 2s` - the any-action row, which is what retyping it would build.
+        expect(source).toBe("/hold 'unknown input action' 2s");
+        const line = parseCommandLine(source);
+        expect(resolveCommandLine(line, context).issues.map(issue => issue.code)).toEqual(["unknownInputAction"]);
+        // A row that names no action still reads as the any-action row it is.
+        expect(projectStoryCommandLine(row({ action: "input", operation: "hold", holdMs: 2000 }), lookups)!.source)
+            .toBe("/hold 2s");
+    });
+
+    it("clamps a motor edited on the line to 0-1, as the inspector does", () => {
+        const block = build("/rumble custom left=0.5 right=0.3", context);
+        const line = projectStoryCommandLine(block, lookups)!;
+        const left = line.edits.find(entry => entry.value === "0.5")!;
+        const right = line.edits.find(entry => entry.value === "0.3")!;
+        expect(left.apply("2")).toMatchObject({ strongMagnitude: 1 });
+        expect(right.apply("-0.5")).toMatchObject({ weakMagnitude: 0 });
+        expect(left.apply("0.25")).toMatchObject({ strongMagnitude: 0.25 });
+    });
+});
+
 describe("projectStoryCommandLine — what a word points at", () => {
     /** A scene that DECLARES one of everything, so every kind of reference has something to resolve to. */
     const LINK_SCENE = {

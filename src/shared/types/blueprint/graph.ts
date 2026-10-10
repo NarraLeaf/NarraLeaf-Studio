@@ -9,7 +9,7 @@ import {
     resolveGlobalLifecycleEventHeadTypes,
     resolveSurfaceLifecycleEventHeadTypes,
 } from "@shared/types/ui-editor/blueprintLifecycle";
-import { formatBlueprintGamepadButton } from "./gamepad";
+import { formatBlueprintGamepadButton, isPhysicalBlueprintGamepadButton } from "./gamepad";
 
 /** Persisted on BlueprintGraphIr.meta to disambiguate slot semantics (events vs functions vs macros). */
 export type BlueprintGraphKind = "event" | "function" | "macro";
@@ -292,6 +292,12 @@ const BLUEPRINT_KEYBOARD_KEY_ALIASES: Record<string, string> = {
     right: "arrowright",
     up: "arrowup",
     down: "arrowdown",
+    // The labels the arrows are written with (`BLUEPRINT_KEYBOARD_KEY_LABELS`). Without these a
+    // binding written as its label read back as a key no keyboard has, and stopped matching the arrow.
+    "arrow left": "arrowleft",
+    "arrow right": "arrowright",
+    "arrow up": "arrowup",
+    "arrow down": "arrowdown",
 };
 
 const BLUEPRINT_KEYBOARD_KEY_LABELS: Record<string, string> = {
@@ -537,6 +543,10 @@ function matchesDispatchPayload(
     if (isFilteredGamepadEventHeadType(node.type)) {
         return matchesGamepadButtonDispatch(node, eventPayload);
     }
+    if (node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_GAMEPAD_BUTTON_DOWN
+        || node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_GAMEPAD_BUTTON_UP) {
+        return isPhysicalBlueprintGamepadButton(eventPayload?.button);
+    }
     if (node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED) {
         return matchesPreferenceChangeDispatch(node, eventPayload);
     }
@@ -643,6 +653,26 @@ export function collectGlobalEventHeadNodeIdsForDispatch(
         .filter(([, node]) => allowed.has(node.type) && matchesDispatchPayload(node, eventPayload))
         .map(([id]) => id)
         .sort();
+}
+
+/**
+ * Whether any of these nodes is a head that names this press by its key or button - `On Key Down`
+ * set to Escape, `Gamepad Button Down` set to B - rather than hearing every press, as `Any Key Down`
+ * does.
+ *
+ * What a graph that names a key says is "this key means something here", and a press it names is
+ * one the focus system leaves to it (`navigationDefaults`). A head that hears every key says nothing
+ * about this one.
+ */
+export function namesInputPress(
+    nodes: Record<string, { type: string; params?: Record<string, unknown> }> | undefined,
+    eventName: string,
+    eventPayload: Record<string, unknown>,
+): boolean {
+    const allowed = new Set([...resolveSurfaceEventHeadTypes(eventName), ...resolveGlobalEventHeadTypes(eventName)]);
+    return Object.values(nodes ?? {}).some(node => allowed.has(node.type)
+        && (isFilteredKeyboardEventHeadType(node.type) || isFilteredGamepadEventHeadType(node.type))
+        && matchesDispatchPayload(node, eventPayload));
 }
 
 /** True if this node type is the Story Action Blueprint "On Call" entry head. */

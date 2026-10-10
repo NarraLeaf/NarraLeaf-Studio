@@ -320,6 +320,23 @@ describe("collectSceneEffects", () => {
             { variableKey: AFFECTION_KEY, delta: { op: "set", value: 5 }, certain: true },
         ]);
     });
+
+    it("counts a wait's result variable as a write it cannot put a number on", () => {
+        // `/waitinput … into=` writes whether the player made it - the player's answer, not the row's.
+        const wait = {
+            id: "w1",
+            kind: "action",
+            parentId: null,
+            childrenIds: [],
+            payload: { action: "input", operation: "wait", timeoutMs: 1000, resultTarget: { scope: "saved", variableId: AFFECTION } },
+        } as StoryBlock;
+        const story = document([scene("a", "Opening", [affectionDecl, setLiteralBlock("w0", 5), wait])], "a");
+
+        expect(collectSceneEffects(story).get("a")).toEqual([
+            { variableKey: AFFECTION_KEY, delta: { op: "set", value: 5 }, certain: true },
+            { variableKey: AFFECTION_KEY, delta: { op: "unknown" }, certain: true },
+        ]);
+    });
 });
 
 describe("collectBranchEffects", () => {

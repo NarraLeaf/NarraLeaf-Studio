@@ -232,15 +232,16 @@ import { provideInputHints, resolveInputHints } from "@/lib/ui-editor/runtime/in
 import { readCurrentInputDevice } from "@/lib/ui-editor/runtime/input/inputDeviceState";
 import { readGamepadSnapshot } from "@/lib/ui-editor/runtime/input/gamepadState";
 import { detectUIInputHintControllerFamily } from "@shared/types/ui-editor/inputHints";
-import { isEntrySurface } from "@shared/types/ui-editor/entrySurface";
+import { hasUINavigationSlots } from "@shared/types/ui-editor/navigation";
+import { GameNavigationContext } from "@/lib/ui-editor/runtime/navigation/gameNavigationContext";
 import {
     describeNavigationState,
+    NAV_ENABLED_ATTRIBUTE,
     NAV_MODALITY_ATTRIBUTE,
     noteFocusInGame,
     notePointerOverGame,
     notePointerPressOnGame,
 } from "@/lib/ui-editor/runtime/navigation/focusNavigation";
-import { resolveRuntimeInputVocabulary } from "@shared/types/ui-editor/navigation";
 import { GAME_ROOT_ATTRIBUTE } from "@/lib/ui-editor/runtime/input/keyboardFocusHandover";
 import {
     listenForGameKeys,
@@ -249,7 +250,7 @@ import {
     type KeyboardOwner,
 } from "./keyboardOwner";
 import { listenForGamepads } from "./gamepadInput";
-import { ownerCanGoBack } from "./navigationDefaults";
+import { ownerCanGoBack, type NavigationBack } from "./navigationDefaults";
 import {
     createDialogueAdvanceRecord,
     projectDrawsNvlPage,
@@ -1885,6 +1886,44 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [goBackPage, layerStack]);
 
     /**
+     * Back as the focus system's Back slot means it: a step back from what holds the keys, and nothing
+     * when there is no step to take (`navigationDefaults`).
+     *
+     * Narrower than `goBack` in two places. A modal layer on top holds the keys, and one that refuses
+     * dismissal is the end of it - Back does not fall through and close the page under the dialog the
+     * player was looking at. And a page is only left for one under it that is a different page: the
+     * page the stack started on is where Back ends, however the game came back to it - a Title button
+     * on a menu that opened the Title again rather than closing the menu leaves a stack of Title,
+     * Config, Title, and backing out of that Title into Config is not a step back anywhere a player
+     * recognises. The splash a game starts on replaces itself with the Title, so the Title is where
+     * the stack starts.
+     */
+    const navigationBack = useMemo<NavigationBack>(() => {
+        const topModalLayer = () => {
+            const layers = layerStack.getState();
+            const top = layers[layers.length - 1];
+            return top?.modal ? top : null;
+        };
+        return {
+            canGoBack: () => {
+                const layer = topModalLayer();
+                if (layer) {
+                    return layer.dismissible;
+                }
+                const stack = navigation.getState().navStack;
+                return stack.length > 1 && stack[stack.length - 1]!.surfaceId !== stack[0]!.surfaceId;
+            },
+            goBack: () => {
+                if (topModalLayer()) {
+                    layerStack.dismissTop();
+                    return;
+                }
+                void goBackPage().catch(() => undefined);
+            },
+        };
+    }, [goBackPage, layerStack, navigation]);
+
+    /**
      * `Show Layer`. The owner is whichever surface asked, which is what makes the layer die with it.
      *
      * Stamped the way `Go Page` stamps a page (`openSurface`): a layer shown while a game holds the
@@ -3115,8 +3154,16 @@ export function GameApp(props: GameAppProps): ReactNode {
      * taken on the game that is live when the row runs, so releasing it wakes auto-forward the same
      * way. It belongs to the playthrough and is not saved: entering a game, loading a save and losing
      * the session all hand the player the story back (see the `reset` calls).
+     *
+     * A waiting row asks whether the stage is covered, so a press on a page or a modal layer drawn over
+     * it does not answer the story and the row's time stands still under it. The instant reading
+     * (`isStageCoveredNow`) is the one the global blueprint's `Is Game Overlay` gives, read through a
+     * ref because the host outlives the render that built it.
      */
+    const isStageCoveredNowRef = useRef(isStageCoveredNow);
+    isStageCoveredNowRef.current = isStageCoveredNow;
     const [storyInputHost] = useState<GameStoryInputHost>(() => createGameStoryInputHost({
+        isStageCovered: () => isStageCoveredNowRef.current(),
         isSkipping: () => {
             const controller = skipControllerRef.current;
             return controller ? controller.isRunning() || controller.isSkipping() : false;
@@ -6007,12 +6054,10 @@ export function GameApp(props: GameAppProps): ReactNode {
     // The element the game draws into, for the key and pad listeners below to find the controls
     // navigation moves between. Read per press: the root is set after this effect first runs.
     const gameRootRef = useRef<HTMLDivElement | null>(null);
-    // The project's actions, and the navigation actions at their defaults wherever the project has
-    // not rebound them (`resolveRuntimeInputVocabulary`).
-    const runtimeVocabulary = useMemo(
-        () => resolveRuntimeInputVocabulary(bundle.ui.uidoc.actions),
-        [bundle.ui.uidoc.actions],
-    );
+    // The project's actions, the navigation slots among them: what a running game routes by.
+    const runtimeVocabulary = useMemo(() => bundle.ui.uidoc.actions ?? {}, [bundle.ui.uidoc.actions]);
+    // Whether the project has keyboard and pad navigation at all: some intent fills a slot.
+    const navigationEnabled = useMemo(() => hasUINavigationSlots(runtimeVocabulary), [runtimeVocabulary]);
 
     useEffect(() => {
         const scope = resolveKeyboardDispatchScope({
@@ -6032,7 +6077,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             persistentVariables: bundle.ui.persistentVariables,
             vocabulary: runtimeVocabulary,
             readGameRoot: () => gameRootRef.current,
-            isEntrySurface: (surfaceId: string) => isEntrySurface(bundle.ui.uidoc, surfaceId),
+            back: navigationBack,
             core,
             globalHost: globalHostAdapterBundle,
             // An entry when one owns the keyboard; otherwise the stage, when the story is what the
@@ -6089,7 +6134,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     lane: !owner ? null : "stage" in owner ? "stage" : "page",
                     answered,
                     navigation: describeNavigationState(gameRoot),
-                    canGoBack: ownerCanGoBack(owner, dispatch.isEntrySurface),
+                    canGoBack: ownerCanGoBack(owner, dispatch.back),
                     storyAdvances: Boolean(owner && "stage" in owner && owner.storyAdvance),
                 }),
             };
@@ -6109,6 +6154,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         host,
         isNvlModeInGame,
         isStoryOnScreen,
+        navigationBack,
         nextInGame,
         runtimeVocabulary,
         stageKeyboardSurfaces,
@@ -6161,12 +6207,18 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [gameRoot]);
     // The pointer resting on a control is where the next arrow starts, and pointing hides the ring
     // the keys drew (`focusNavigation`).
+    // Only with navigation on: a game without it leaves the ring to the browser's `:focus-visible`,
+    // as it always did, and has no modality for the pointer to set.
     const notePointerMoveForNavigation = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-        notePointerOverGame(event.currentTarget, event);
-    }, []);
+        if (navigationEnabled) {
+            notePointerOverGame(event.currentTarget, event);
+        }
+    }, [navigationEnabled]);
     const notePointerDownForNavigation = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-        notePointerPressOnGame(event.currentTarget);
-    }, []);
+        if (navigationEnabled) {
+            notePointerPressOnGame(event.currentTarget);
+        }
+    }, [navigationEnabled]);
     // A focused control is drawn with its own hover look when it has one, the ring otherwise.
     const noteFocusForNavigation = useCallback((event: ReactFocusEvent<HTMLDivElement>) => {
         noteFocusInGame(event.target);
@@ -6892,12 +6944,15 @@ export function GameApp(props: GameAppProps): ReactNode {
     const content = (
         <GlobalInputActionContext.Provider value={globalInputActionAnswerer}>
         <MotionConfig reducedMotion="never">
+        <GameNavigationContext.Provider value={navigationEnabled}>
             <div
                 ref={setGameRoot}
                 className="nl-motion-keep relative h-full w-full overflow-hidden"
                 // Where this game's keyboard focus may be moved about: a focus outside it is the
                 // window's, and stays where it is (see `keyboardFocusHandover`).
                 {...{ [GAME_ROOT_ATTRIBUTE]: "" }}
+                // Whether the keys and the pad move a focus here at all (`focusNavigation`).
+                {...(navigationEnabled ? { [NAV_ENABLED_ATTRIBUTE]: "" } : {})}
                 // The keyboard focus is the keyboard's: a click on a control answers the click and
                 // leaves the next key to the game, see `pointerKeyboardFocus`.
                 onMouseDownCapture={keepPointerPressOffKeyboardFocus}
@@ -7016,6 +7071,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     </AnimatePresence>
                 </SurfaceStackBox>
             </div>
+        </GameNavigationContext.Provider>
         </MotionConfig>
         </GlobalInputActionContext.Provider>
     );

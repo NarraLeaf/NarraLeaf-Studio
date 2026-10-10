@@ -81,6 +81,9 @@ export function printUiDocument(document: UIDocument, options: PrintOptions = {}
                           : `${INDENT}key ${printValue(binding.key)}`,
                 );
             }
+            if (action.navigationSlot) {
+                lines.push(`${INDENT}navigation ${action.navigationSlot}`);
+            }
             blocks.push(lines.join("\n"));
         }
     }

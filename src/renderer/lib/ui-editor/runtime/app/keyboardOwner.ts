@@ -87,7 +87,7 @@ import { isDialogueSlotSurface, type DialogueAdvanceObserver, type EngineNvlKeys
 import { answerGlobalInputActions, type GlobalBlueprintDispatch } from "./globalInputActions";
 import { isTextEntryTarget } from "./isTextEntryTarget";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
-import { runNavigationDefaults } from "./navigationDefaults";
+import { claimNavigationConfirm, runNavigationDefaults, type NavigationBack } from "./navigationDefaults";
 import type { HostAdapterBundle } from "./types";
 
 /** One drawn entry that might own the keyboard. */
@@ -198,7 +198,7 @@ export function resolveKeyboardOwnerLane<TEntry>(input: {
 export type GameKeyboardDispatch = GlobalBlueprintDispatch & {
     /**
      * The vocabulary a running game routes by: the project's actions, as `UIDocument.actions` holds
-     * them, and the navigation actions (`resolveRuntimeInputVocabulary`).
+     * them - the navigation slots among them, on the intents that fill one.
      */
     vocabulary: UIDocument["actions"];
     /** The keyboard owner at this instant. Read once per press, when the key arrives. */
@@ -208,8 +208,8 @@ export type GameKeyboardDispatch = GlobalBlueprintDispatch & {
      * Absent where nothing is drawn - a test of the routing alone - and navigation then does nothing.
      */
     readGameRoot?: () => Element | null;
-    /** Whether a surface is the one the game starts on, where navigation's Back goes nowhere. */
-    isEntrySurface?: (surfaceId: string) => boolean;
+    /** Where navigation's Back goes from a page or a layer (`NavigationBack`). Absent, nowhere. */
+    back?: NavigationBack;
     onError: (error: unknown) => void;
 };
 
@@ -328,8 +328,9 @@ export async function dispatchGameKey(
             if (runNavigationDefaults({
                 gameRoot: navigationRoot,
                 owner: input.readKeyboardOwner(),
-                isEntrySurface: input.isEntrySurface,
+                back: input.back,
                 vocabulary: input.vocabulary,
+                blueprintDocument: input.blueprintDocument,
                 signal,
                 actionIds,
                 repeat: true,
@@ -360,13 +361,21 @@ export async function dispatchGameKey(
             signal: { kind: "key", event: payload as BlueprintKeyboardEventLike },
         })
         : [];
+    // A key bound to the intent in the Confirm slot presses the focused control, as Enter on it
+    // would, and raises nothing else - the claim `keyInputClaimedByControl` already makes for Enter
+    // and Space themselves, made for whatever key the project put there.
+    if (raisesActions && claimNavigationConfirm(navigationRoot, input.vocabulary, raisedActions.map(action => action.actionId))) {
+        event.preventDefault();
+        return;
+    }
     // Navigation goes now, while the browser's default for the key - Tab's own move, an arrow's
     // scroll - can still be stopped, and before any graph can change who holds the keys.
     if (raisesActions && runNavigationDefaults({
         gameRoot: navigationRoot,
         owner,
-        isEntrySurface: input.isEntrySurface,
+        back: input.back,
         vocabulary: input.vocabulary,
+        blueprintDocument: input.blueprintDocument,
         signal: { kind: "key", event: payload as BlueprintKeyboardEventLike },
         actionIds: raisedActions.map(action => action.actionId),
     })) {

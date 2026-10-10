@@ -29,12 +29,6 @@ import type {
     BlueprintInspectorParamSelectOption,
     BlueprintNodeDef,
 } from "../types";
-import {
-    isUINavigationActionId,
-    UI_NAVIGATION_INTENTS,
-    uiNavigationActionId,
-    type UINavigationIntent,
-} from "@shared/types/ui-editor/navigation";
 
 /**
  * The id the action pickers fill their options from.
@@ -73,21 +67,10 @@ export function listBlueprintInputActionOptions(input: {
     pickedId?: string;
     unnamedLabel: string;
     missingLabel: (id: string) => string;
-    /**
-     * What a navigation action is called. Given, the navigation actions follow the project's own -
-     * in their fixed order, after them, since they are Studio's and not the author's to sort among.
-     */
-    navigationLabel?: (intent: UINavigationIntent) => string;
 }): BlueprintInspectorParamSelectOption[] {
     const options = Object.values(input.document.actions ?? {})
-        .filter(action => !isUINavigationActionId(action.id))
         .map(action => ({ value: action.id, label: action.name.trim() || input.unnamedLabel }))
         .sort((a, b) => a.label.localeCompare(b.label));
-    if (input.navigationLabel) {
-        for (const intent of UI_NAVIGATION_INTENTS) {
-            options.push({ value: uiNavigationActionId(intent), label: input.navigationLabel(intent) });
-        }
-    }
     const pickedId = input.pickedId?.trim();
     if (pickedId && !options.some(option => option.value === pickedId)) {
         options.push({ value: pickedId, label: input.missingLabel(pickedId) });

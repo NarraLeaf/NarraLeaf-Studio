@@ -4,6 +4,7 @@ import {
     collectStoryExpressionVariables,
     listSceneBlocksInDocumentOrder,
     listScenesInDocumentOrder,
+    storyRowAssignedVariable,
     storyVariableRefKey,
     type StoryBlock,
     type StoryBlockId,
@@ -35,8 +36,9 @@ import type { LintContext } from "../context";
  *
  * # What counts as writing one
  *
- * A `setVariable` row anywhere in the library, **including a disabled one**, plus every variable the
- * project's blueprints may assign. The disabled row is the same bargain `variables/unused` strikes:
+ * A `setVariable` row anywhere in the library, or a wait row that writes its outcome into one with
+ * `into=` (`storyRowAssignedVariable` answers both), **including a disabled row**, plus every variable
+ * the project's blueprints may assign. The disabled row is the same bargain `variables/unused` strikes:
  * a row switched off for the afternoon is still a place the author writes the variable, and a
  * complaint about it is a complaint about work in progress.
  *
@@ -120,15 +122,16 @@ export function guardVariableRefs(condition: StoryConditionRef): StoryVariableRe
     return [];
 }
 
-/** Every variable key some `setVariable` row in this document assigns, disabled rows included. */
+/** Every variable key some row in this document assigns, disabled rows included. */
 function documentWrittenKeys(document: StoryDocument, into: Set<string>): void {
     for (const scene of listScenesInDocumentOrder(document)) {
         if (!scene) {
             continue;
         }
         for (const block of listSceneBlocksInDocumentOrder(scene)) {
-            if (block.kind === "action" && block.payload.action === "setVariable") {
-                into.add(storyVariableRefKey(block.payload.target));
+            const target = storyRowAssignedVariable(block);
+            if (target) {
+                into.add(storyVariableRefKey(target));
             }
         }
     }

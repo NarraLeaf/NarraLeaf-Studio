@@ -388,15 +388,15 @@ export const lint = {
         },
         storyInputLockedDialogue: {
             title: "锁定段落中的对白",
-            description: "/input lock 之后、/input unlock 之前出现的对白、选项或 /wait click",
+            description: "/input lock 之后、/input unlock 之前出现的对白或 /wait click",
             message: "此处玩家输入已锁定，该行无法推进；请在其前方添加 /input unlock",
             help:
-                "/input lock 会使点击、推进键、自动播放与快进全部失效，直到执行 /input unlock 行\n"
+                "/input lock 会使点击推进、推进键、自动播放与快进全部失效，直到执行 /input unlock 行；选项仍可正常选择\n"
                 + "\n"
-                + "锁定段落中的对白、选项或 /wait click 需要玩家推进，而玩家无法推进，剧情会停在该处\n"
+                + "锁定段落中的对白或 /wait click 需要玩家推进，而玩家无法推进，剧情会停在该处\n"
                 + "\n"
                 + "- 在该行之前添加 /input unlock 行\n"
-                + "- 检查按从上到下的顺序读取场景并包含所有分支，因此每个分支都解锁的段落也可能被报告",
+                + "- 检查不会逐个分支分析：某个分支内的锁定或解锁也会作用于其后书写的行。在分支内锁定或解锁的段落可能被误报，也可能被漏报",
         },
         storyEndingNameDuplicate: {
             title: "同名的两个结局",

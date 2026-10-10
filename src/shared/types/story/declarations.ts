@@ -6,8 +6,10 @@ import type {
     StoryScene,
     StorySceneVariableDefinition,
     StorySavedVariableDefinition,
+    StoryVariableRef,
     StoryVariableValueType,
 } from "./document";
+import { isStoryInputWaitPayload } from "./input";
 import { listSceneBlocksInDocumentOrder, listScenesInDocumentOrder } from "./order";
 
 /**
@@ -160,4 +162,30 @@ export function findDeclarationBlock(document: StoryDocument, variableId: string
         }
     }
     return null;
+}
+
+/**
+ * The variable a row assigns when it runs, or `undefined` for a row that assigns none.
+ *
+ * Two kinds of row write a story variable: a `setVariable` (`/set` and every sugar that lowers to it)
+ * and a row waiting for the player (`/waitinput`, `/hold`, `/mash`) whose `into=` names a variable,
+ * which it sets to whether the player made it in time. The scans that ask "does anything write this"
+ * - the flag checks, the scene map's ranges, the route coverage walk - all read this one answer, so a
+ * writer added later reaches every one of them rather than the one its author remembered. A scan that
+ * only counted `setVariable` reported a flag set by a wait as never written.
+ *
+ * Whether a disabled row counts is the caller's decision, as it is for every scan in this file.
+ */
+export function storyRowAssignedVariable(block: StoryBlock): StoryVariableRef | undefined {
+    if (block.kind !== "action") {
+        return undefined;
+    }
+    const payload = block.payload;
+    if (payload.action === "setVariable") {
+        return payload.target;
+    }
+    if (payload.action === "input" && isStoryInputWaitPayload(payload)) {
+        return payload.resultTarget;
+    }
+    return undefined;
 }
