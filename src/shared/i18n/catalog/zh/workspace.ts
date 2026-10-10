@@ -1467,6 +1467,8 @@ export const workspace = {
             openSettings: "自定义快捷键",
             cheatSheetTitle: "快捷键与鼠标操作",
             cheatSheetCustomize: "自定义…",
+            // 固定在各分组上方的一节：当前位置可用的操作。
+            cheatSheetFocused: "当前位置：{name}",
             // 设置表与速查表的分类标题（来自静态目录）。
             categories: {
                 general: "通用",

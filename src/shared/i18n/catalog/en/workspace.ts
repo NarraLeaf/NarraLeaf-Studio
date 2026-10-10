@@ -1772,6 +1772,8 @@ export const workspace = {
             openSettings: "Customize Keyboard Shortcuts",
             cheatSheetTitle: "Shortcuts and Mouse Actions",
             cheatSheetCustomize: "Customize…",
+            // Heading of the section pinned above the groups: what works where focus is.
+            cheatSheetFocused: "Focused: {name}",
             // Category headers in the settings table and cheat sheet (from the static catalog).
             categories: {
                 general: "General",

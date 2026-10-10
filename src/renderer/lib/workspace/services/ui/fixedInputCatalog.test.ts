@@ -326,6 +326,19 @@ describe("fixedInputCatalog", () => {
         }
     });
 
+    it("names a binding of its own group wherever it says which binding it is live with", () => {
+        for (const entry of FIXED_INPUT_CATALOG) {
+            if (!entry.liveWith) {
+                continue;
+            }
+            const binding = getKeybindingCatalogEntry(entry.liveWith);
+            expect(binding, `${entry.id} is live with ${entry.liveWith}, which is not in the catalog`).toBeDefined();
+            expect(binding!.categoryKey, `${entry.id} is live with a binding of another group`).toBe(
+                resolveFixedInputDisplay(entry)!.categoryKey,
+            );
+        }
+    });
+
     it("names every gesture phrase it uses", () => {
         for (const entry of FIXED_INPUT_CATALOG) {
             expect(entry.inputs.length, `${entry.id} has no inputs`).toBeGreaterThan(0);

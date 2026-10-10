@@ -1517,6 +1517,8 @@ export const workspace = {
             openSettings: "キーボードショートカットを変更",
             cheatSheetTitle: "ショートカットとマウス操作",
             cheatSheetCustomize: "変更…",
+            // 各グループの上に固定する節：フォーカスのある場所で使える操作。
+            cheatSheetFocused: "フォーカス中：{name}",
             // 設定の表と一覧の見出し（静的なカタログから来る）。
             categories: {
                 general: "一般",
