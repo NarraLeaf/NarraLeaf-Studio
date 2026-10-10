@@ -511,7 +511,9 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                     </span>
                 ) : null}
             </div>
-            <div className="relative min-w-0 py-1">
+            {/* `nl-story-row-content` is the container a narrow row's action cluster is laid out
+                against (styles.css). */}
+            <div className="nl-story-row-content relative min-w-0 py-1">
                 <RowNesting
                     depth={row.depth}
                     nextDepth={row.nextRowDepth ?? 0}
@@ -675,8 +677,11 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                     )}
                     <div
                         aria-hidden={!showRowActions}
+                        // Who the cluster is showing for. In a narrow group it floats over the words
+                        // (`.nl-story-row-actions`), and there it shows for the pointer only.
+                        data-shown-for={hovered || actionsFocused ? "pointer" : active ? "active" : undefined}
                         className={[
-                            "flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1 transition-opacity",
+                            "nl-story-row-actions flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1 transition-opacity",
                             containerInfo ? "ml-auto" : "",
                             showRowActions ? "opacity-100" : "pointer-events-none opacity-0",
                             controlsOverArtwork ? "nl-on-media" : "",
