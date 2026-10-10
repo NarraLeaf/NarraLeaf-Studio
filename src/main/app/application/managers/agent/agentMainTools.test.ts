@@ -205,7 +205,8 @@ describe("project_open", () => {
 
     it("opens a project", async () => {
         const result = await AGENT_MAIN_TOOL_HANDLERS.project_open(fakeHost(), { path: "/games/a" }, ctx);
-        expect(result).toMatchObject({ ok: true, structured: { project: "/games/a", alreadyOpen: false } });
+        // The handler resolves the path, which on Windows gives it a drive letter.
+        expect(result).toMatchObject({ ok: true, structured: { project: path.resolve("/games/a"), alreadyOpen: false } });
     });
 });
 
@@ -220,7 +221,7 @@ describe("test", () => {
     it("runs headlessly for a named project that is not open, if it is trusted", async () => {
         const host = fakeHost({}, [{ projectPath: "/games/a", name: "A" }]);
         await AGENT_MAIN_TOOL_HANDLERS.test(host, { id: "t", project: "/games/b" }, ctx);
-        expect(host.runHeadlessTest).toHaveBeenCalledWith("/games/b", "t");
+        expect(host.runHeadlessTest).toHaveBeenCalledWith(path.resolve("/games/b"), "t");
         const distrusted = fakeHost({ isTrusted: () => false });
         expect(await AGENT_MAIN_TOOL_HANDLERS.test(distrusted, { id: "t", project: "/games/b" }, ctx))
             .toMatchObject({ ok: false, error: { code: "untrusted" } });
@@ -248,7 +249,7 @@ describe("build", () => {
     it("forwards to the open workspace with the target and an absolute output", async () => {
         const host = fakeHost({}, [{ projectPath: "/games/a", name: "A" }]);
         await AGENT_MAIN_TOOL_HANDLERS.build(host, { target: "web", output: "/out" }, ctx);
-        expect(host.forward).toHaveBeenCalledWith(expect.anything(), AGENT_INTERNAL_TOOL_BUILD, { target: "web", output: "/out" }, ctx);
+        expect(host.forward).toHaveBeenCalledWith(expect.anything(), AGENT_INTERNAL_TOOL_BUILD, { target: "web", output: path.resolve("/out") }, ctx);
         expect(await AGENT_MAIN_TOOL_HANDLERS.build(host, { output: "out" }, ctx)).toMatchObject({ ok: false, error: { code: "invalid_args" } });
     });
 
