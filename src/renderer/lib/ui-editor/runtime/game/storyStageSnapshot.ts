@@ -245,6 +245,20 @@ export type StageSnapshotMusic = StageSnapshotSoundState & {
     setBy?: string;
 };
 
+/**
+ * A character's speaker name at the target row, as the last `/rename` on the walked path left it.
+ *
+ * Named by the row rather than copied out of it, as the music channel is by its `/bgm` row: the
+ * launch replays that row's own words, so the name and the words its translation is looked up by
+ * come from one place.
+ */
+export type StageSnapshotRename = {
+    /** The character the row renames; absent when the row names none, as the compiler reads it. */
+    characterId?: string;
+    /** The `/rename` row whose words the character speaks under at the target row. */
+    setBy: string;
+};
+
 export type StoryStageSnapshot = {
     background: { assetId?: string; color?: string } | null;
     /** Displayables in creation order. */
@@ -296,6 +310,18 @@ export type StoryStageSnapshot = {
      * one any row here can address.
      */
     sounds: StageSnapshotSound[];
+    /**
+     * Every character a `/rename` on the walked path renamed, each with the row that last did.
+     *
+     * A launch replaces the rows before the target, so without this every speaker it opens on is
+     * back under the name the cast gives them - "Alice" over a line written for "？？？" - in the
+     * launch, in a save made in it (which is put back at its row through this same walk), and in a
+     * hot reload that carries on from a row.
+     *
+     * Only this scene's rows, for the reason the camera is: which scenes ran before this one is a
+     * question of how the player got here, which a walk of one scene cannot answer.
+     */
+    renames: StageSnapshotRename[];
     /** Props accumulated against the built-in scene background image. */
     backgroundProps: Record<string, unknown>;
     backgroundEffects: StageSnapshotEffects;
@@ -505,6 +531,8 @@ class SnapshotWalker {
     private readonly soundStates = new Map<string, StageSnapshotSoundState>();
     /** The music channel as the walk has it so far; see {@link StoryStageSnapshot.music}. */
     private music: StageSnapshotMusic | null;
+    /** Character id (empty for a row naming none) → its last `/rename` so far; see {@link StoryStageSnapshot.renames}. */
+    private readonly renames = new Map<string, StageSnapshotRename>();
     /**
      * How many disabled rows the walk is inside. Only ever above zero on the way to a target row
      * that sits under one: such a row is compiled out with everything beneath it, so nothing passed
@@ -579,6 +607,7 @@ class SnapshotWalker {
                 sourceBlockId,
                 ...(this.soundStates.get(objectName) ?? { playing: false, paused: false }),
             })),
+            renames: [...this.renames.values()],
             backgroundProps: this.backgroundProps,
             backgroundEffects: this.backgroundEffects,
             builtinLayerProps: this.builtinLayerProps,
@@ -1093,6 +1122,13 @@ class SnapshotWalker {
             // shown would conjure a blank one. Falling through to the enter/expression arm below would
             // be worse still: that arm rebuilds `source` from a payload `setName` never carries, so an
             // earlier `/face` would silently revert to the default look in a row-precise launch.
+            // What it does leave is the name, which a launch replays - see `StoryStageSnapshot.renames`.
+            // A rename declares nothing, so the declaration pass never brings one here; the guard says
+            // so rather than relying on it.
+            if (!this.declaring) {
+                const characterId = payload.characterId?.trim() ?? "";
+                this.renames.set(characterId, { ...(characterId ? { characterId } : {}), setBy: block.id });
+            }
             return;
         }
         if (payload.operation === "setMotion" || payload.operation === "setSkin" || payload.operation === "setParams") {
