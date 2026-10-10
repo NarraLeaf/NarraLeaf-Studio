@@ -390,15 +390,25 @@ export class AgentManager implements AgentMainToolHost {
     /**
      * Flip agent access or write access on behalf of a workspace's menu.
      *
-     * Turning write access ON is confirmed in the agent access window over the asking one. A
-     * workspace runs plugin code, and a plugin must not be able to grant every connected agent
-     * write access by calling this; a window of Studio's own is something it cannot draw or answer.
-     * Switching off needs no confirmation - withdrawing access is always safe.
+     * Turning agent access ON, and turning write access ON, are each confirmed in the agent access
+     * window over the asking one. A workspace runs plugin code, and a plugin must not be able to
+     * open the endpoint - or grant every connected agent write access - by calling this; a window of
+     * Studio's own is something it cannot draw or answer. Agent access is confirmed as well as
+     * writes because reading is not harmless either: a plugin that switched the endpoint on could
+     * copy the client configuration to the clipboard and read the token back, and with it read
+     * every project open in Studio through the endpoint. Switching off needs no confirmation -
+     * withdrawing access is always safe.
+     *
+     * The Settings window's switches go through `updateSettings` directly, unconfirmed: that window
+     * is Studio's own and runs no plugin code, so its switch is already the author's answer.
      */
     public async quickToggle(window: AppWindow, patch: AgentQuickTogglePatch): Promise<AgentSettingsSnapshot> {
         const current = await this.store.load();
         const next: AgentSettingsPatch = {};
         if (typeof patch.enabled === "boolean") {
+            if (patch.enabled && !current.enabled && !(await this.confirmEnable(window))) {
+                return this.snapshot();
+            }
             next.enabled = patch.enabled;
         }
         if (typeof patch.allowWrites === "boolean") {
@@ -415,6 +425,11 @@ export class AgentManager implements AgentMainToolHost {
             return this.snapshot();
         }
         return this.updateSettings(next, window);
+    }
+
+    private async confirmEnable(window: AppWindow): Promise<boolean> {
+        window.refuseUnattendedPrompt("Agent access asked whether to turn agent access on");
+        return this.askInStudioWindow(window, { kind: "enable" }, true);
     }
 
     private async confirmAllowWrites(window: AppWindow): Promise<boolean> {

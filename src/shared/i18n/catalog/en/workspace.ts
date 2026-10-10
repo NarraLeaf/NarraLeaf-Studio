@@ -472,6 +472,12 @@ export const workspace = {
             /** Title bar of the window, not the question. */
             window: "Agent Access",
             loadError: "The request could not be read.",
+            // Asked when the Agent menu turns agent access on; the Settings switch is not asked.
+            enable: {
+                message: "Turn on agent access?",
+                detail: "Agents connected to Studio can then read every project open in Studio. Changing projects needs a separate permission.",
+                allow: "Turn on",
+            },
             allowWrites: {
                 message: "Allow agents to change projects?",
                 detail: "Connected agents can then create, change and delete content in open projects. Most changes can be undone.",

@@ -15,8 +15,8 @@ import { IPCHandler } from "./IPCHandler";
  * workspace too, and so nothing they return can carry a secret: state is projected through
  * `toAgentQuickState` (three booleans), a client configuration is written to the system clipboard
  * here in main and only `{ copied: true }` goes back, and the skill export answers the folder it
- * wrote. Turning write access on is confirmed in Studio's agent access window by `AgentManager.quickToggle`,
- * because a workspace runs plugin code.
+ * wrote. Turning agent access or write access on is confirmed in Studio's agent access window by
+ * `AgentManager.quickToggle`, because a workspace runs plugin code.
  *
  * Game windows (Dev Mode, Preview) run project code and are refused, as is everything else that is
  * not a workspace or the Settings window.
@@ -60,8 +60,8 @@ export class AgentQuickToggleHandler extends IPCHandler<IPCEventType.agentQuickT
             return this.failed(refused);
         }
         // Only the three switches the menu holds, and only as booleans: the port and the import
-        // folders stay with the Settings window. Turning writes or full access on is confirmed in
-        // the agent access window by the manager.
+        // folders stay with the Settings window. Turning agent access, writes or full access on is
+        // confirmed in the agent access window by the manager.
         const clean: AgentQuickTogglePatch = {};
         if (typeof patch?.enabled === "boolean") {
             clean.enabled = patch.enabled;

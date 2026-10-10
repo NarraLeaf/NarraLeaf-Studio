@@ -455,7 +455,10 @@ export interface RendererPreloadedInterface {
          * address. See `@shared/agent/workspaceAccess`.
          */
         getQuickState(): Promise<RequestStatus<AgentQuickState>>;
-        /** Turning write access on asks the author in a native dialog; a declined dialog answers the unchanged state. */
+        /**
+         * Turning agent access or write access on asks the author in Studio's agent access window; a
+         * declined question answers the unchanged state. Switching off is never asked.
+         */
         quickToggle(patch: AgentQuickTogglePatch): Promise<RequestStatus<AgentQuickState>>;
         onQuickStateChanged(handler: (state: AgentQuickState) => void): AppEventToken;
         /** Main writes the configuration to the system clipboard; only the fact that it did comes back. */

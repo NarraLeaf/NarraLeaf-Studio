@@ -428,6 +428,11 @@ export const workspace = {
         confirm: {
             window: "Agent 接入",
             loadError: "无法读取该请求",
+            enable: {
+                message: "启用 Agent 接入？",
+                detail: "已连接 Studio 的 Agent 将可以读取 Studio 中打开的所有项目，修改项目需另行允许",
+                allow: "启用",
+            },
             allowWrites: {
                 message: "允许 Agent 修改项目？",
                 detail: "已连接的 Agent 将可以新建、修改和删除已打开项目中的内容，大部分修改可以撤销",

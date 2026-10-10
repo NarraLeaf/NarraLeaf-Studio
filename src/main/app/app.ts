@@ -2737,6 +2737,7 @@ function agentAccessPromptHeight(props: WindowProps[WindowAppType.AgentAccessPro
         }
         case "fullAccess":
             return 300;
+        case "enable":
         case "allowWrites":
             return 240;
         case "exportOverwrite":
