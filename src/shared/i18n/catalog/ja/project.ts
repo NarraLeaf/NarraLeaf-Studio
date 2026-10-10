@@ -21,7 +21,7 @@ export const project = {
         },
         project: {
             title: "プロジェクト",
-            description: "配布キー、プロジェクトチェックの規則、ビルドを止めるもの",
+            description: "配布キー、プロジェクトの検査ルール、ビルドを止めるもの",
         },
         runtimes: {
             title: "ランタイム",
@@ -55,7 +55,7 @@ export const project = {
         brandControls: "コントロール",
         typography: "フォント",
         distribution: "配布キー",
-        linting: "プロジェクトチェック",
+        linting: "プロジェクトの検査",
         security: "セキュリティ",
         signing: "署名",
         imageCompression: "画像の圧縮",

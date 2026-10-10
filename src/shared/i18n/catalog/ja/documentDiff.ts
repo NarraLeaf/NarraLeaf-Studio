@@ -593,7 +593,7 @@ export const documentDiff = {
         signing: "署名",
         build: "ビルドの設定",
         patch: "パッチ書き出しの設定",
-        linting: "プロジェクトチェック",
+        linting: "プロジェクトの検査",
         dependencies: "依存関係",
         dependencyPlugins: "プラグインの一覧",
     },
