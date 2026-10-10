@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { STORY_DOCUMENT_SCHEMA_VERSION, type StoryBlock, type StoryDocument } from "@shared/types/story";
-import { migrateStoryDocumentToLatest } from "./migrateStoryDocument";
+import { migrateStoryDocumentToLatest, type StoryCommandSpelling } from "./migrateStoryDocument";
 
 /**
  * v26→v27: `play` becomes the only row that brings a clip on, and every play carries its file.
@@ -33,8 +33,8 @@ function v26(blocks: StoryBlock[], rootBlockIds: string[] = blocks.filter(block 
     } as unknown as StoryDocument;
 }
 
-function migrated(blocks: StoryBlock[], rootBlockIds?: string[]) {
-    const document = migrateStoryDocumentToLatest(v26(blocks, rootBlockIds));
+function migrated(blocks: StoryBlock[], rootBlockIds?: string[], commandSpelling?: StoryCommandSpelling) {
+    const document = migrateStoryDocumentToLatest(v26(blocks, rootBlockIds), { commandSpelling });
     const scene = document.scenes[SCENE_ID];
     return { document, scene, block: (id: string) => scene.blocks[id] as unknown as { kind: string; payload: Record<string, any> } | undefined };
 }
@@ -103,10 +103,33 @@ describe("v26 to v27: plays carry their clips", () => {
         };
         expect(note("never")).toBe("/video name='poster clip' muted");
         expect(note("never-show")).toBe("/show 'poster clip'");
-        expect(note("early")).toBe("/seek intro 1.5");
-        expect(note("ghost")).toBe("/hide ghost out=fade d=0.4");
+        // A time keeps its unit, as a row prints it.
+        expect(note("early")).toBe("/seek intro 1.5s");
+        expect(note("ghost")).toBe("/hide ghost out=fade d=0.4s");
         expect(note("ghost-play")).toBe("/play phantom");
         expect(block("intro")?.kind).toBe("action");
+    });
+
+    it("writes the notes in the command language it is handed", () => {
+        // A stand-in for the story editor's tables: every word marked so the test sees which one
+        // was asked for, and with which command.
+        const spelling: StoryCommandSpelling = {
+            command: (commandId, token) => `${commandId}~${token}`,
+            param: (commandId, param) => `${commandId}.${param}`,
+            enumValue: (commandId, param, value) => `${commandId}.${param}:${value}`,
+            unit: unit => `<${unit}>`,
+        };
+        const { block } = migrated([
+            row("never", { action: "video", operation: "create", objectName: "poster", muted: true }),
+            row("early", { action: "video", operation: "seek", objectName: "intro", timeMs: 1000 }),
+            row("ghost", { action: "video", operation: "hide", objectName: "ghost", durationMs: 500 }),
+            row("still", { action: "video", operation: "pause", objectName: "ghost" }),
+        ], undefined, spelling);
+        const note = (id: string) => block(id)?.payload.text.value;
+        expect(note("never")).toBe("/play~video play.name=poster play.muted");
+        expect(note("early")).toBe("/seek~seek intro 1<s>");
+        expect(note("ghost")).toBe("/hide~hide ghost hide.out=hide.out:fade hide.d=0.5<s>");
+        expect(note("still")).toBe("/pause~pause ghost");
     });
 
     it("gives every play the clip it played before the step", () => {
