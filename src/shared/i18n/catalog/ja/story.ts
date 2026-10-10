@@ -963,14 +963,10 @@ export const story = {
         dragRows: {
             other: "{count} 行をドラッグ",
         },
-        // 行のボタン 1 つにつき 2 つの文字列。違いは要となる。`insert`／`delete` が読み上げ名で、
-        // `insertTitle`／`deleteTitle` がツールチップ。後者はキー割り当てを足す。同じ文にするのは、
-        // 読み上げにもポインタにも同じ 1 文がふさわしいから。括弧の形をカタログに置いてあるのは、
-        // 日本語と中国語が全角の括弧を使うため。
+        // 行のボタンの読み上げ名とツールチップを兼ねる。読み上げにもポインタにも同じ 1 文がふさわしいため。
+        // キーは文に含めず、ツールチップが文の後ろに表示する（`data-tip-shortcut`）。
         insert: "この行の後ろに空行を挿入",
         delete: "この行を削除",
-        insertTitle: "この行の後ろに空行を挿入（{keys}）",
-        deleteTitle: "この行を削除（{keys}）",
         playFromRow: "この行から再生",
         playBranch: "この枝を再生",
         insertPlaceholder: "地の文を書く。{trigger} でアクション、# でキャラクター…",

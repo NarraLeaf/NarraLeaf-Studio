@@ -978,6 +978,11 @@ export function RunControl() {
     // A test owns the face while it runs: showing "Dev Mode" over a Stop square would name the wrong
     // thing to stop.
     const runTitle = testActive ? t("test.action.stop") : running ? t(meta.stopKey) : t(meta.runKey);
+    // The key that does what the face does right now: Stop is one key whatever holds the run slot.
+    // Left off while the face is refusing, when the tooltip is the reason instead of the action.
+    const runShortcut = launchBlocked || previewBlocked
+        ? undefined
+        : shortcuts.forBinding(testActive || running ? RUN_STOP_CATALOG_ID : meta.catalogId);
     // The variant rides on the face whenever it is not the whole game. "Dev Mode is the preview you
     // can trust at any moment" only holds while it cannot quietly have become something else, and a
     // setting one click deep in a menu is quiet.
@@ -1007,6 +1012,7 @@ export function RunControl() {
                     onClick={runOrStop}
                     disabled={previewBlocked || launchBlocked}
                     data-tip={launchBlocked ? distrustedTitle : previewBlocked ? frozenTitle : runTitle}
+                    data-tip-shortcut={runShortcut}
                     aria-label={runTitle}
                     aria-pressed={running || undefined}
                     className={cn(

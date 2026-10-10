@@ -4,6 +4,7 @@ import { useAssetDropTarget } from "@/apps/workspace/dnd/useAssetDropTarget";
 import { useWorkspace } from "@/apps/workspace/context";
 import type { PanelDefinition } from "@/apps/workspace/registry/types";
 import { setWorkspaceSelectionToPrimaryAsset } from "@/apps/workspace/modules/assets/dnd/openDraggedAssetsInEditor";
+import { useShortcutLabels } from "@/apps/workspace/hooks/useShortcutLabels";
 
 /**
  * Drag-to-reorder wiring supplied by the sortable rail. When present, the icon becomes a
@@ -44,6 +45,9 @@ export function SidebarPanelDropIcon({
     sortable,
 }: SidebarPanelDropIconProps) {
     const { context } = useWorkspace();
+    // A panel can carry a key of its own (`panel:<id>` in the keybinding catalog - the search panel's
+    // Ctrl+Shift+F); its rail button says which, and follows a rebinding.
+    const shortcut = useShortcutLabels().forBinding(`panel:${panel.id}`);
 
     const { dropTargetProps, overlayClassName } = useAssetDropTarget({
         onDrop: ({ wire, resolved }) => {
@@ -82,6 +86,7 @@ export function SidebarPanelDropIcon({
             onClick={onPanelClick}
             onContextMenu={onContextMenu}
             data-tip={panel.title}
+            data-tip-shortcut={shortcut}
             aria-label={panel.title}
         >
             {panel.icon}
