@@ -557,6 +557,7 @@ export const story = {
         farthest: "Farthest",
     },
     layerPanel: {
+        sceneBackground: "Scene background",
         title: "Layers",
         resetNote: "Reset when the story leaves this scene",
         frontToBack: "Front to back",

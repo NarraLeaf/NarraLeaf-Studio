@@ -473,6 +473,7 @@ export const story = {
         farthest: "最遠",
     },
     layerPanel: {
+        sceneBackground: "シーンの背景",
         title: "レイヤー",
         resetNote: "このシーンを離れると元に戻る",
         frontToBack: "手前から奥へ",

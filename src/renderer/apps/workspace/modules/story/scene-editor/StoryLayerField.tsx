@@ -5,7 +5,8 @@ import type {
     StoryLayerRef,
     StorySceneId,
 } from "@shared/types/story";
-import { DEFAULT_LAYER_OPTIONS, resolveStoryLayerRef } from "@shared/types/story";
+import { DEFAULT_LAYER_OPTIONS, resolveStoryLayerRef, sceneLayerDepths } from "@shared/types/story";
+import { storyLayerDepthLabel, storyLayerLabel } from "@/lib/story/storyLayerLabel";
 import { useTranslation } from "@/lib/i18n";
 import { listSceneDisplayableTargets } from "../../story-motion/storyMotionPreviewTarget";
 import { STAGE_OPTION_SELECTOR, useAutoMenuPlacement } from "./DisplayableTargetField";
@@ -60,6 +61,9 @@ export function StoryLayerField(props: {
 
     const scene = props.document.scenes[props.sceneId];
     const resolved = resolveStoryLayerRef(scene, props.value);
+    // Each layer's depth beside its name, so picking a layer is also seeing how it moves with the camera.
+    const depths = useMemo(() => sceneLayerDepths(scene), [scene]);
+    const depthHint = (depth: Parameters<typeof storyLayerDepthLabel>[0]) => `${t("story.layerPanel.depth")} ${storyLayerDepthLabel(depth)}`;
     const selectedCustomId = resolved.kind === "custom" ? resolved.sourceBlockId : undefined;
     const selectedDefault = resolved.kind === "default" ? resolved.layer : undefined;
     const unresolved = resolved.kind === "custom" && !resolved.resolved;
@@ -108,7 +112,7 @@ export function StoryLayerField(props: {
                 onClick={() => setOpen(current => !current)}
             >
                 <TriggerIcon className={["h-3.5 w-3.5 shrink-0", unresolved ? "text-warning" : "text-fg-muted"].join(" ")} />
-                <span className="truncate text-fg">{resolved.name || t("story.layerField.defaultName")}</span>
+                <span className="truncate text-fg">{storyLayerLabel(resolved)}</span>
                 {unresolved ? (
                     <span
                         className="shrink-0 rounded-md bg-warning/10 px-1 text-2xs text-warning"
@@ -133,8 +137,10 @@ export function StoryLayerField(props: {
                         {DEFAULT_LAYER_OPTIONS.map(option => (
                             <LayerRow
                                 key={`default-${option.layer}`}
-                                label={option.label}
-                                hint={option.hint}
+                                label={option.layer === "background" ? t("story.layerField.backgroundName") : t("story.layerField.defaultName")}
+                                hint={option.layer === "background"
+                                    ? `${t("story.layerField.backgroundHint")} · ${depthHint(depths.background)}`
+                                    : t("story.layerField.displayableHint")}
                                 active={selectedDefault === option.layer}
                                 onChoose={() => chooseDefault(option.layer)}
                             />
@@ -147,7 +153,7 @@ export function StoryLayerField(props: {
                                 <LayerRow
                                     key={option.sourceBlockId}
                                     label={option.name}
-                                    hint={t("story.layerField.hint")}
+                                    hint={depthHint(depths.custom.get(option.name.trim() || "object"))}
                                     active={selectedCustomId === option.sourceBlockId}
                                     onChoose={() => chooseCustom(option)}
                                 />

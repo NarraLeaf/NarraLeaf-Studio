@@ -440,6 +440,7 @@ export const story = {
         farthest: "最远",
     },
     layerPanel: {
+        sceneBackground: "场景背景",
         title: "图层",
         resetNote: "离开本场景时复位",
         frontToBack: "从前到后",

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { BookOpen, Check, ChevronDown, ChevronRight, Code, FileText, Filter, Image as ImageIcon, MonitorPlay, Plus, Rows3, Trash2 } from "lucide-react";
+import { BookOpen, Check, ChevronDown, ChevronRight, Code, FileText, Filter, Image as ImageIcon, Layers, MonitorPlay, Plus, Rows3, Trash2 } from "lucide-react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
@@ -14,7 +14,7 @@ import { Services } from "@/lib/workspace/services/services";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
-import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene, StorySceneUpdate } from "@shared/types/story";
+import type { StoryBlock, StoryBlockId, StoryDocument, StoryLayerDepth, StoryScene, StorySceneUpdate } from "@shared/types/story";
 import { listScenesInDocumentOrder } from "@shared/types/story";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
@@ -68,6 +68,9 @@ import type { TranslationKey } from "@shared/i18n";
 import { filterOutSelectedDescendants, getCharacterName, getContainerHeaderInfo, getTextSegment } from "./storySceneBlockUtils";
 import { StoryFindBar } from "./StoryFindBar";
 import { StoryRowFilterMenu } from "./StoryRowFilterMenu";
+import { StoryLayerPanel } from "./layers/StoryLayerPanel";
+import { layerDepthEdit, type StoryLayerPanelEntry } from "./layers/storyLayerPanelModel";
+import { createBlockForCommand } from "./storyActionCommands";
 import { appendDeveloperIdSection } from "@/lib/developer";
 import { EMPTY_STORY_ROW_FILTER, storyRowFilterSize } from "./storyRowFilter";
 import { StoryCommandLineProvider } from "./StoryCommandLineView";
@@ -1792,6 +1795,51 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             return rect ? { left: rect.left, right: rect.right, bottom: rect.bottom } : null;
         });
     }, []);
+    /**
+     * The scene's layer panel, opened under its header button on the same terms as the filter: it
+     * stays put while the author works in it and a second press on the button closes it.
+     */
+    const layersButtonRef = useRef<HTMLButtonElement | null>(null);
+    const [layerPanelAnchor, setLayerPanelAnchor] = useState<{ left: number; right: number; bottom: number } | null>(null);
+    const toggleLayerPanel = useCallback(() => {
+        setLayerPanelAnchor(current => {
+            if (current) {
+                return null;
+            }
+            const rect = layersButtonRef.current?.getBoundingClientRect();
+            return rect ? { left: rect.left, right: rect.right, bottom: rect.bottom } : null;
+        });
+    }, []);
+    const layerCharacterName = useCallback(
+        (characterId: string) => editor.characters.find(character => character.profile.getId() === characterId)?.profile.getName(),
+        [editor.characters],
+    );
+    const setLayerDepth = useCallback((entry: StoryLayerPanelEntry, depth: StoryLayerDepth) => {
+        const scene = editor.scene;
+        if (!scene || freeze.frozen) {
+            return;
+        }
+        const edit = layerDepthEdit(scene, entry, depth);
+        if (!edit) {
+            return;
+        }
+        if (edit.kind === "update") {
+            editor.updateBlockPayloadFor(edit.blockId, edit.payload);
+            return;
+        }
+        // The background layer had no depth row yet. The new one goes at the top of the scene, where
+        // a reader meets it first, and is selected so the row that just appeared is the one in view.
+        const block = createBlockForCommand("layerDepth", () => editor.uuidService?.generate() ?? crypto.randomUUID());
+        if (block.kind !== "action" || block.payload.action !== "layer") {
+            return;
+        }
+        editor.insertBlock(
+            { ...block, payload: { ...block.payload, depth: edit.depth } },
+            null,
+            false,
+            { target: { parentId: null, beforeBlockId: scene.rootBlockIds[0] ?? null } },
+        );
+    }, [editor, freeze.frozen]);
     const [menuTargetId, setMenuTargetId] = useState<StoryBlockId | null>(null);
     const openRowContextMenu = useCallback((event: ReactMouseEvent, blockId: StoryBlockId) => {
         if (!editor.selectedBlockIds.has(blockId)) {
@@ -2361,6 +2409,22 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     {/* The manual used to be a modal, which meant closing what you were reading before
                         you could use it. It is the right-hand panel now, so the documentation and the
                         line you are writing are on screen together. */}
+                    {/* The scene's layers: which is in front of which, how far from the camera each
+                        sits, and what stands on each. A layer is otherwise only a row, and the order
+                        and depth of the scene's layers were something the author had to keep in mind. */}
+                    <button
+                        ref={layersButtonRef}
+                        type="button"
+                        onClick={toggleLayerPanel}
+                        data-tip={t("story.layerPanel.open")}
+                        aria-label={t("story.layerPanel.open")}
+                        aria-haspopup="dialog"
+                        aria-expanded={layerPanelAnchor !== null}
+                        className={["rounded-md p-1.5 transition-colors", layerPanelAnchor ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
+                        data-story-layer-panel-button=""
+                    >
+                        <Layers className="h-4 w-4" />
+                    </button>
                     <button
                         type="button"
                         onClick={openCommandManual}
@@ -2696,6 +2760,18 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     characters={editor.characters}
                     onChange={editor.setRowFilter}
                     onClose={() => setFilterMenuAnchor(null)}
+                />
+            ) : null}
+            {layerPanelAnchor && editor.scene ? (
+                <StoryLayerPanel
+                    anchor={layerPanelAnchor}
+                    anchorEl={layersButtonRef.current}
+                    scene={editor.scene}
+                    characterName={layerCharacterName}
+                    readOnly={freeze.frozen}
+                    onSetDepth={setLayerDepth}
+                    onRevealRow={blockId => editor.selectRow(blockId, undefined, "jump")}
+                    onClose={() => setLayerPanelAnchor(null)}
                 />
             ) : null}
             </div>
