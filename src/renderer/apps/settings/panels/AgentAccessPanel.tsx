@@ -289,8 +289,10 @@ export function AgentAccessPanel() {
             </div>
             {/*
               * Plugins that offer agent tools, each with its own switch. On unless the author turns
-              * one off: the install prompt already said the plugin offers them, and nothing they do
-              * writes unless "Allow agents to change projects" is on as well.
+              * one off: the install prompt already said the plugin offers them. A tool the plugin
+              * declares as changing the project is refused unless "Allow agents to change projects" is
+              * on as well; one it declares as reading is held only to not writing the plugin's own
+              * storage - see `blockedPluginTools` in `@shared/agent/settings`.
               */}
             <div className="rounded-md px-2 py-2">
                 <div className="flex min-w-0 flex-col gap-1">

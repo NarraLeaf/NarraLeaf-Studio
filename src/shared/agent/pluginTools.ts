@@ -372,9 +372,11 @@ export type PluginAgentToolDef = {
     /** The arguments, checked before the handler runs. Studio adds `project` itself. */
     inputSchema: PluginAgentJsonSchema & { type: "object" };
     /**
-     * Changes the project. Refused unless the author allowed agent writes, and while paused, frozen
-     * or in a live session. While a tool marked `false` runs, `services.storage.writeJson` refuses.
-     * While one marked `true` runs, every `writeJson` is captured into one step of undo.
+     * Changes the project. Marked `true`: refused unless the author allowed agent writes, and while
+     * paused, frozen or in a live session; while it runs, every `writeJson` is captured into one step
+     * of undo. Marked `false`: none of that gating applies, and the only thing refused while it runs
+     * is `services.storage.writeJson` - the host cannot see the plugin's other routes to the project,
+     * so a tool that changes it by any of them must be marked `true`.
      */
     write: boolean;
     handler(args: Record<string, unknown>, context: PluginAgentToolContext): PluginAgentToolResult | Promise<PluginAgentToolResult>;
