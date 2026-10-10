@@ -5,19 +5,21 @@
  * canvas, the outline and the properties panel call - rather than writing the document directly, so
  * what an agent does is exactly what the author could have done by hand: the same defaults, the same
  * flow-layout normalisation, the same blueprint reconciliation. The whole call is wrapped in one
- * `runSurfaceHistoryTransaction`, so however many operations it carries, Ctrl+Z takes it back in one
+ * `runAtomicSurfaceTransaction`, so however many operations it carries, Ctrl+Z takes it back in one
  * press.
  *
- * All or nothing: when an operation fails part way, the document is put back as it was before the
- * call and nothing is recorded, and the refusal names the operation. Operations are applied in order
- * and may refer to elements an earlier operation in the same call created, by the id or name they
- * gave it.
+ * All or nothing: when an operation fails part way, the page is put back as it was before the call
+ * through the snapshot the editor's own undo restores - its widgets' blueprints with it, since a
+ * `delete` earlier in the call has already had the reconcile delete that widget's graph - nothing is
+ * recorded, and the refusal names the operation. Operations are applied in order and may refer to
+ * elements an earlier operation in the same call created, by the id or name they gave it.
  *
  * "Applied N operations" has to be true. An operation that would change nothing - a prop the widget
  * does not know, a value it already holds, a layout key a placed component does not take - is
  * refused rather than counted, because an agent that is told an edit landed moves on, and the author
  * finds the button that was meant to be hidden still on the title page. A dry run goes through the
- * same checks and puts the document back, so it answers exactly what the real call would.
+ * same checks against a private copy of the document (`runDetachedDraft`), so it answers exactly what
+ * the real call would and touches nothing - not the page, not a blueprint, not the undo stack.
  *
  * Comments in English per project convention.
  */
@@ -26,7 +28,6 @@ import { isLinkedUIComponentElement, type UIDocument, type UIElement, type UILay
 import { buildUIComponentEditorSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
 import type { HistoryLabel } from "../history/historyModel";
 import type { UIDocumentService } from "../ui-editor/UIDocumentService";
-import { cloneUIHistoryDocument } from "../ui-editor/UIEditorHistoryService";
 import { refuse } from "./agentCall";
 import { widgetKnownPropKeys } from "@/lib/ui-cli/catalog";
 import { nearest } from "@/lib/ui-cli/text";
@@ -67,8 +68,8 @@ export type UIPatchOutcome = {
 export type UIPatchService = Pick<
     UIDocumentService,
     | "getDocument"
-    | "runSurfaceHistoryTransaction"
-    | "restoreDocumentFromHistory"
+    | "runAtomicSurfaceTransaction"
+    | "runDetachedDraft"
     | "createElement"
     | "createComponentInstance"
     | "updateElementProps"
@@ -127,52 +128,37 @@ export function applyUiPatch(
     const historySurfaceId = target.kind === "surface" ? target.surfaceId : buildUIComponentEditorSurfaceId(target.componentId);
     const outcome: UIPatchOutcome = { created: [], deleted: [], touched: [] };
     const touched = new Set<string>();
-    let failure: unknown = null;
-
-    service.runSurfaceHistoryTransaction(historySurfaceId, () => {
-        const before = cloneUIHistoryDocument(service.getDocument());
-        try {
-            ops.forEach((op, index) => {
-                try {
-                    const watched = CHANGE_CHECKED_OPS.has(op.op) ? watchElement(service, target, op, index) : null;
-                    applyOne(service, target, op, index, outcome, touched);
-                    if (watched && watched.before === watched.read()) {
-                        throw refuse(
-                            "check_failed",
-                            `ops[${index}] (${op.op}) changes nothing on ${watched.label}: it already holds those values, or something else decides them (a stack or list parent places its children itself).`,
-                            "Leave the operation out, or call ui_show to see what the element holds.",
-                        );
-                    }
-                } catch (error) {
-                    if (error instanceof Error && error.name === "AgentRefusal") {
-                        throw error;
-                    }
-                    throw refuse("invalid_args", `ops[${index}] (${op.op}): ${error instanceof Error ? error.message : String(error)}`);
+    const applyAll = () => {
+        ops.forEach((op, index) => {
+            try {
+                const watched = CHANGE_CHECKED_OPS.has(op.op) ? watchElement(service, target, op, index) : null;
+                applyOne(service, target, op, index, outcome, touched);
+                if (watched && watched.before === watched.read()) {
+                    throw refuse(
+                        "check_failed",
+                        `ops[${index}] (${op.op}) changes nothing on ${watched.label}: it already holds those values, or something else decides them (a stack or list parent places its children itself).`,
+                        "Leave the operation out, or call ui_show to see what the element holds.",
+                    );
                 }
-            });
-            if (options.dryRun) {
-                // Every check passed against the real document; put it back so the transaction's
-                // "after" equals its "before" and no step is recorded, exactly as a refusal does.
-                const pool = poolOf(service.getDocument(), target);
-                outcome.touched = [...touched].filter(id => Boolean(pool[id]));
-                service.restoreDocumentFromHistory(before);
+            } catch (error) {
+                if (error instanceof Error && error.name === "AgentRefusal") {
+                    throw error;
+                }
+                throw refuse("invalid_args", `ops[${index}] (${op.op}): ${error instanceof Error ? error.message : String(error)}`);
             }
-        } catch (error) {
-            // Put the document back before the transaction takes its "after": the two snapshots are
-            // then equal and no step is recorded, so a refused call leaves nothing to undo.
-            service.restoreDocumentFromHistory(before);
-            failure = error;
-        }
-    }, { label });
+        });
+        const pool = poolOf(service.getDocument(), target);
+        outcome.touched = [...touched].filter(id => Boolean(pool[id]));
+    };
 
-    if (failure) {
-        throw failure;
-    }
     if (options.dryRun) {
+        // Against a copy the service throws away: every check runs as it would for real, and nothing
+        // else - least of all the reconcile that deletes a deleted widget's graph - ever sees it.
+        service.runDetachedDraft(applyAll);
         return outcome;
     }
-    const pool = poolOf(service.getDocument(), target);
-    outcome.touched = [...touched].filter(id => Boolean(pool[id]));
+    // A failure part way puts the page back, its blueprints included, and records nothing.
+    service.runAtomicSurfaceTransaction(historySurfaceId, applyAll, { label });
     return outcome;
 }
 

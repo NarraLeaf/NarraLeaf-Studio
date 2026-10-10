@@ -2,8 +2,8 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { AGENT_MCP_DEFAULT_PORT } from "@shared/agent/protocol";
-import { AGENT_SETTINGS_FILE_NAME, buildAgentClientConfig } from "@shared/agent/settings";
+import { AGENT_MCP_DEFAULT_PORT, AGENT_MCP_FALLBACK_PORTS, AGENT_MCP_LEGACY_DEFAULT_PORT } from "@shared/agent/protocol";
+import { AGENT_SETTINGS_FILE_NAME, AGENT_SETTINGS_SCHEMA_VERSION, buildAgentClientConfig } from "@shared/agent/settings";
 import { AgentSettingsStore, mintAgentToken } from "./agentSettingsStore";
 
 describe("AgentSettingsStore", () => {
@@ -83,6 +83,38 @@ describe("AgentSettingsStore", () => {
         }
     });
 
+    it("moves a profile written before schema 2 off the old default port, once, and remembers it was enabled there", async () => {
+        const token = mintAgentToken();
+        fs.writeFileSync(file(), JSON.stringify({ schemaVersion: 1, token, enabled: true, port: AGENT_MCP_LEGACY_DEFAULT_PORT }));
+        const store = new AgentSettingsStore(dir);
+        const settings = await store.load();
+        expect(settings).toMatchObject({ port: AGENT_MCP_DEFAULT_PORT, token, enabled: true, schemaVersion: AGENT_SETTINGS_SCHEMA_VERSION });
+        // Written back at once, so the move is recorded and not made again.
+        expect(JSON.parse(fs.readFileSync(file(), "utf8"))).toMatchObject({ schemaVersion: 2, port: AGENT_MCP_DEFAULT_PORT });
+        // Clients were configured with the old port; the manager is told once.
+        expect(store.takeLegacyPort()).toBe(AGENT_MCP_LEGACY_DEFAULT_PORT);
+        expect(store.takeLegacyPort()).toBeNull();
+        expect(new AgentSettingsStore(dir).takeLegacyPort()).toBeNull();
+    });
+
+    it("moves a disabled profile off the old default without anything to tell", async () => {
+        fs.writeFileSync(file(), JSON.stringify({ token: mintAgentToken(), enabled: false, port: AGENT_MCP_LEGACY_DEFAULT_PORT }));
+        const store = new AgentSettingsStore(dir);
+        expect((await store.load()).port).toBe(AGENT_MCP_DEFAULT_PORT);
+        expect(store.takeLegacyPort()).toBeNull();
+    });
+
+    it("keeps 54080 in a schema 2 file, where it is a port the endpoint landed on, and keeps any other old port", async () => {
+        fs.writeFileSync(file(), JSON.stringify({ schemaVersion: 2, token: mintAgentToken(), enabled: true, port: AGENT_MCP_LEGACY_DEFAULT_PORT }));
+        const kept = new AgentSettingsStore(dir);
+        expect((await kept.load()).port).toBe(AGENT_MCP_LEGACY_DEFAULT_PORT);
+        expect(kept.takeLegacyPort()).toBeNull();
+        fs.writeFileSync(file(), JSON.stringify({ schemaVersion: 1, token: mintAgentToken(), enabled: true, port: 50123 }));
+        const chosen = new AgentSettingsStore(dir);
+        expect((await chosen.load()).port).toBe(50123);
+        expect(chosen.takeLegacyPort()).toBeNull();
+    });
+
     it("survives unparseable JSON", async () => {
         fs.writeFileSync(file(), "{not json");
         const settings = await new AgentSettingsStore(dir).load();
@@ -101,8 +133,18 @@ describe("AgentSettingsStore", () => {
     });
 });
 
+describe("the endpoint's ports", () => {
+    it("start below Windows' dynamic range, where reserved blocks answer EACCES, and stay there", () => {
+        expect(AGENT_MCP_DEFAULT_PORT).toBe(47219);
+        expect(AGENT_MCP_FALLBACK_PORTS).toEqual([47220, 47221, 47222, 47223, 47224, 47225, 47226, 47227, 47228]);
+        for (const port of [AGENT_MCP_DEFAULT_PORT, ...AGENT_MCP_FALLBACK_PORTS]) {
+            expect(port).toBeLessThan(49152);
+        }
+    });
+});
+
 describe("buildAgentClientConfig", () => {
-    const url = "http://127.0.0.1:54080/mcp";
+    const url = "http://127.0.0.1:47219/mcp";
     const token = "abc";
 
     it("gives Claude Code a command line", () => {

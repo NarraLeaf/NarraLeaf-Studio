@@ -391,7 +391,7 @@ describe("the network allowlist", () => {
  * and that a refusal leaves before a byte does.
  */
 describe("the destination guard", () => {
-    const refuseStudio = vi.fn(async (url: string) => (url.includes(":54080") ? "Studio's own service" : null));
+    const refuseStudio = vi.fn(async (url: string) => (url.includes(":47219") ? "Studio's own service" : null));
 
     afterEach(() => {
         refuseStudio.mockClear();
@@ -402,7 +402,7 @@ describe("the destination guard", () => {
         vi.stubGlobal("fetch", fetchSpy);
 
         const result = await executeBlueprintNetworkFetch(
-            request({ url: "http://127.0.0.1:54080/mcp", method: "POST", body: "{}" }),
+            request({ url: "http://127.0.0.1:47219/mcp", method: "POST", body: "{}" }),
             { allowHttp: true, redirects: "check", refuseDestination: refuseStudio },
         );
 
@@ -412,7 +412,7 @@ describe("the destination guard", () => {
 
     it("refuses a redirect into a refused address before the hop is issued", async () => {
         const fetchSpy = respondByUrl({
-            "https://api.example.com/v1/notice": { status: 307, location: "http://localhost:54080/mcp" },
+            "https://api.example.com/v1/notice": { status: 307, location: "http://localhost:47219/mcp" },
         });
         vi.stubGlobal("fetch", fetchSpy);
 
@@ -425,7 +425,7 @@ describe("the destination guard", () => {
         expect(fetchSpy).toHaveBeenCalledTimes(1);
         expect(refuseStudio.mock.calls.map(([url]) => url)).toEqual([
             "https://api.example.com/v1/notice",
-            "http://localhost:54080/mcp",
+            "http://localhost:47219/mcp",
         ]);
     });
 
@@ -464,7 +464,7 @@ describe("the destination guard", () => {
         vi.stubGlobal("fetch", fetchSpy);
 
         await executeBlueprintNetworkFetch(
-            request({ headers: { Host: "127.0.0.1:54080", authorization: "Bearer x" } }),
+            request({ headers: { Host: "127.0.0.1:47219", authorization: "Bearer x" } }),
             { allowHttp: true, redirects: "check" },
         );
 

@@ -91,7 +91,10 @@ character_layered_set {
 ```
 
 Both tools are one undo step, refuse with nothing written on any error, and answer with the
-character as `characters_list` describes it. Restating a character keeps every axis, tag and layer
+character as `characters_list` describes it. From a PSD, every check runs before a layer is baked, so
+a refusal leaves nothing in the project; the imported layer images are a step of their own (asset
+imports have no undo). Should a layer fail to import after that, the refusal says the images are in
+and how to use them. Restating a character keeps every axis, tag and layer
 whose name you kept, so story rows that chose them keep working; a tag you drop is reported with the
 rows that chose it (they fall back to the default - rewrite them).
 

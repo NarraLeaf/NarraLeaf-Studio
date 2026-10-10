@@ -79,10 +79,15 @@ export type AgentCallContext = {
 export type AgentMcpServerOptions = {
     /** The port asked for. 0 asks the system for any free one. */
     port: number;
+    /**
+     * Tried in order when the port asked for cannot be bound - in use (`EADDRINUSE`) or reserved by
+     * the system (`EACCES`, as Windows answers for a port inside a range Hyper-V or WSL excluded).
+     */
+    fallbackPorts?: readonly number[];
     /** Read on every request, so a regenerated token takes effect at once. */
     token: () => string;
     host: AgentMcpHost;
-    /** When the port asked for is taken, take any free one instead of failing. Defaults to true. */
+    /** When none of those ports can be bound, take any free one instead of failing. Defaults to true. */
     fallBackToFreePort?: boolean;
 };
 
@@ -101,7 +106,7 @@ const STREAM_KEEP_ALIVE_MS = 25_000;
 
 export const AGENT_MCP_INSTRUCTIONS = [
     "This server is NarraLeaf Studio, a visual-novel editor, running on the author's machine with their project open.",
-    "Your edits land live in the editor the author is watching; each write is one undo step for them.",
+    "Your edits land live in the editor the author is watching; each write is one undo step for them, except project settings, the palette, renaming a scene or choosing the entry scene, and importing or generating assets, which have no undo in Studio's own editors either.",
     "Start by calling agent_status, then read the `workflow` chapter with agent_guide (also served as the resource narraleaf://guide/workflow) before you change anything.",
     "Read before you write: the show tools return a revision that every write must carry back.",
 ].join(" ");
@@ -165,20 +170,37 @@ export class AgentMcpServer {
         // Slow or idle connections are not held open forever: a request is a few kilobytes.
         server.requestTimeout = 5 * 60 * 1000;
         server.headersTimeout = 30 * 1000;
-        try {
-            this.boundPort = await listen(server, this.options.port);
-        } catch (error) {
-            if ((error as NodeJS.ErrnoException)?.code !== "EADDRINUSE" || this.options.fallBackToFreePort === false) {
-                throw error;
-            }
-            this.options.host.log("warn", `[Agent] Port ${this.options.port} is taken; serving on a free port instead`);
-            this.boundPort = await listen(server, 0);
-        }
+        this.boundPort = await this.bind(server);
         // An error after listening (a socket fault) must not become an unhandled 'error' event,
         // which would take the main process down with it.
         server.on("error", error => this.options.host.log("warn", `[Agent] Server error: ${describe(error)}`));
         this.server = server;
         return this.boundPort;
+    }
+
+    /**
+     * The port asked for, then each fallback, then - unless told not to - any free port. Only a port
+     * that is unavailable moves on to the next; any other failure is the answer.
+     */
+    private async bind(server: http.Server): Promise<number> {
+        const candidates = [...new Set([this.options.port, ...(this.options.fallbackPorts ?? [])])];
+        let unavailable: unknown = null;
+        for (const candidate of candidates) {
+            try {
+                return await listen(server, candidate);
+            } catch (error) {
+                if (!isPortUnavailable(error)) {
+                    throw error;
+                }
+                unavailable = error;
+                this.options.host.log("warn", `[Agent] Port ${candidate} cannot be used (${(error as NodeJS.ErrnoException).code})`);
+            }
+        }
+        if (this.options.fallBackToFreePort === false) {
+            throw unavailable;
+        }
+        this.options.host.log("warn", "[Agent] Serving on a free port the system picked instead");
+        return listen(server, 0);
     }
 
     public async stop(): Promise<void> {
@@ -695,6 +717,12 @@ function readBody(req: http.IncomingMessage, limit: number): Promise<Buffer | "t
             }
         });
     });
+}
+
+/** In use by another program, or reserved by the system: worth trying another port for. */
+function isPortUnavailable(error: unknown): boolean {
+    const code = (error as NodeJS.ErrnoException | null)?.code;
+    return code === "EADDRINUSE" || code === "EACCES";
 }
 
 function listen(server: http.Server, port: number): Promise<number> {

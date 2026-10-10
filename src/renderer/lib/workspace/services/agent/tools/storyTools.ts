@@ -12,6 +12,7 @@
 import type { StoryDocument, StoryScene } from "@shared/types/story";
 import { answerJson, readOptionalString, readString, refuse, type AgentToolHandler, type AgentToolContext } from "../agentCall";
 import { AGENT_HISTORY_LABEL, resolveScene, resolveStory, storyService } from "../agentLookups";
+import { assertAgentMayStillWrite } from "../agentCommitGate";
 import { blueprintReferencesTo, formatReferrers, storyReferencesTo, uiReferencesTo } from "../agentReferences";
 import { Services } from "../../services";
 import type { HistoryService } from "../../history/HistoryService";
@@ -100,7 +101,8 @@ function placementAfter(document: StoryDocument, afterSceneId: string): { chapte
     return null;
 }
 
-export const sceneCreate: AgentToolHandler = async (args, { ctx, request, follow }) => {
+export const sceneCreate: AgentToolHandler = async (args, tool) => {
+    const { ctx, request, follow } = tool;
     const name = readString(args, "name");
     const storyRef = readOptionalString(args, "story");
     const chapterName = readOptionalString(args, "chapter");
@@ -111,36 +113,41 @@ export const sceneCreate: AgentToolHandler = async (args, { ctx, request, follow
     // A story `story` names that does not exist yet is made, so that "write a scene in story X" is
     // one call on an empty project.
     let target: Awaited<ReturnType<typeof resolveStory>>;
+    let madeStory = false;
     try {
         target = await resolveStory(ctx, storyRef);
     } catch (error) {
         if (!(error instanceof Error && error.name === "AgentRefusal" && (error as { code?: string }).code === "not_found")) {
             throw error;
         }
+        assertAgentMayStillWrite(tool);
         const entry = story.createStory(storyRef ?? "Main");
         target = { entry, document: await story.loadStory(entry.id) };
+        madeStory = true;
     }
     const { entry, document } = target;
 
-    let chapterId: string | undefined;
-    if (chapterName) {
-        chapterId = document.chapters.find(chapter => chapter.name === chapterName || chapter.id === chapterName)?.id
-            ?? story.createChapter(entry.id, chapterName).id;
-    }
+    // Where the scene goes is settled before anything is written, so a refusal leaves no chapter
+    // behind, and the scene is made in place: a create followed by a move was two edits, and undoing
+    // the second moved the new scene instead of removing it.
+    const existingChapter = chapterName
+        ? document.chapters.find(chapter => chapter.name === chapterName || chapter.id === chapterName)
+        : undefined;
     let placement: { chapterId: string; beforeSceneId: string | null } | null = null;
     if (afterRef) {
         const after = resolveScene(document, afterRef);
         placement = placementAfter(story.getStoryDocument(entry.id), after.id);
-        if (placement && chapterId && placement.chapterId !== chapterId) {
+        if (placement && chapterName && placement.chapterId !== existingChapter?.id) {
             throw refuse("invalid_args", `Scene "${after.name}" is not in chapter "${chapterName}".`, "Give either `chapter` or `after`, or an `after` scene inside that chapter.");
         }
-        chapterId ??= placement?.chapterId;
     }
 
-    const scene = story.createScene(entry.id, { chapterId, name });
-    if (placement) {
-        story.moveScene(entry.id, scene.id, { chapterId: placement.chapterId, beforeSceneId: placement.beforeSceneId });
-    }
+    assertAgentMayStillWrite(tool);
+    const scene = story.runAgentOutlineStep(entry.id, AGENT_HISTORY_LABEL, () => {
+        const chapterId = existingChapter?.id
+            ?? (chapterName ? story.createChapter(entry.id, chapterName).id : placement?.chapterId);
+        return story.createScene(entry.id, { chapterId, name, beforeSceneId: placement?.beforeSceneId ?? null });
+    });
     const created = story.getStoryDocument(entry.id).scenes[scene.id] ?? scene;
     follow.noteWrite({ kind: "scene", storyId: entry.id, sceneId: created.id, name: created.name });
     return answerJson(
@@ -150,7 +157,8 @@ export const sceneCreate: AgentToolHandler = async (args, { ctx, request, follow
             entry: story.getStoryDocument(entry.id).entrySceneId === created.id,
             revision: story.getSceneContentRevision(entry.id, created.id),
         },
-        `Created scene "${created.name}" in story "${entry.name}". Write its rows with story_apply.`,
+        `Created scene "${created.name}" in story "${entry.name}"; one step of undo in Studio takes it back`
+            + `${madeStory ? ` (the story itself, made for it, stays)` : ""}. Write its rows with story_apply.`,
     );
 };
 
@@ -226,6 +234,7 @@ export const sceneDelete: AgentToolHandler = async (args, { ctx, request, follow
             "Point those somewhere else (story_apply for rows, blueprint_apply for blueprints) or delete the scenes holding them, then delete this one.",
         );
     }
+    assertAgentMayStillWrite({ ctx, request, follow }, "Nothing was deleted.");
     if (!storyService(ctx).deleteScene(entry.id, scene.id)) {
         throw refuse("unavailable", `Scene "${scene.name}" could not be deleted (a live session may own the story).`);
     }
