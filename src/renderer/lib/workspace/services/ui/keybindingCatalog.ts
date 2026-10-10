@@ -395,6 +395,13 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     entry("assets.video.zoom-out", "-", "assets.video.keybindings.zoomOut", CATEGORY.assets, ZoomOut),
     entry("assets.video.zoom-fit", "0", "assets.video.keybindings.zoomFit", CATEGORY.assets, Maximize2),
 
+    // --- Image preview -------------------------------------------------------
+    // The chords the preview has always answered, which are the ones image viewers share. Reset fits
+    // the picture to the tab, so it wears the fit glyph.
+    entry("assets.image.zoom-in", "mod+=", "assets.image.keybindings.zoomIn", CATEGORY.assets, ZoomIn),
+    entry("assets.image.zoom-out", "mod+-", "assets.image.keybindings.zoomOut", CATEGORY.assets, ZoomOut),
+    entry("assets.image.reset-view", "mod+0", "assets.image.keybindings.resetView", CATEGORY.assets, Maximize2),
+
     // --- Translation and voice tables ---------------------------------------
     // Two tables, one command, one chord. They are separate entries rather than one shared id
     // because the chord is scoped to whichever table holds editor focus, and an author rebinding

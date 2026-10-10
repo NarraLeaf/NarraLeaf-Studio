@@ -565,6 +565,12 @@ export const assets = {
         zoomIn: "放大",
         zoomOut: "缩小",
         resetView: "重置视图",
+        // 显示在快捷键设置表和「?」速查表中，与音频、视频预览的缩放键并列，所以写明缩放的对象。
+        keybindings: {
+            zoomIn: "放大图片",
+            zoomOut: "缩小图片",
+            resetView: "重置图片视图",
+        },
     },
     shortcuts: {
         copy: "复制选中的资产",
