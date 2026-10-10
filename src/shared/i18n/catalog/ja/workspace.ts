@@ -424,7 +424,6 @@ export const workspace = {
             allowWrites: "エージェントによるプロジェクトの変更を許可",
             fullAccess: "エージェントにフルアクセスを許可",
             copyConfig: "接続設定をコピー",
-            copyStdio: "stdio（Claude Desktop）",
             exportSkill: "Agent Skill を書き出す…",
             settings: "エージェント連携の設定…",
             notice: {

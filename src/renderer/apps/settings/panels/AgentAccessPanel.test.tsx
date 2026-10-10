@@ -85,6 +85,19 @@ describe("the agent access panel", () => {
         }
     });
 
+    it("offers the configurations by client, in the Agent menu's order", async () => {
+        const view = await renderPanel();
+        const labels = view.getAllByRole("button")
+            .map(button => button.textContent ?? "")
+            .filter(text => text.startsWith("settings.agent.copy"));
+        expect(labels).toEqual([
+            "settings.agent.copyClaudeCode",
+            "settings.agent.copyStdio",
+            "settings.agent.copyOpencode",
+            "settings.agent.copyJson",
+        ]);
+    });
+
     it("names a plugin with agent tools by its display name, never by its id", async () => {
         const view = await renderPanel({
             pluginTools: [{ pluginId: "acme.notes", name: "Notes", tools: 3, writeTools: 1, allowed: true, builtIn: false }],

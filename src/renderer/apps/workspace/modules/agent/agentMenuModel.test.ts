@@ -4,6 +4,7 @@ import { isActionMenuAction, isActionMenuSeparator } from "../../components/ui/a
 import type { ActionDefinition, ActionMenuItem, ActionSubmenu } from "../../registry/types";
 import {
     AGENT_MENU_ACTIONS,
+    AGENT_MENU_COPY_KINDS,
     AGENT_MENU_GROUP_ID,
     agentMenuStateKind,
     agentMenuStatusLine,
@@ -13,8 +14,9 @@ import {
 
 /**
  * The Agent menu as the author approved it: a read-only status line, the session switches, the log,
- * then agent access as a whole, then settings. What is pinned here is the shape and the words of the
- * status line; the native menu and the hamburger both draw from these rows.
+ * then agent access as a whole, then settings; while access is off, only the status line, the switch
+ * that turns it on and settings. What is pinned here is the shape and the words of the status line;
+ * the native menu and the hamburger both draw from these rows.
  */
 
 const zh = createTranslator("zh").t;
@@ -117,12 +119,41 @@ describe("the Agent menu's rows", () => {
         expect(model.run.toggleFullAccess).toHaveBeenCalled();
     });
 
-    it("offers the four configurations and copies the one picked", () => {
+    it("offers the four configurations by client, in the Settings panel's order, and copies the one picked", () => {
         const model = input();
         const copy = buildAgentMenuItems(model).find(item => !isActionMenuSeparator(item) && item.id === AGENT_MENU_ACTIONS.copyConfig) as ActionSubmenu;
-        expect(copy.items.map(item => (item as ActionDefinition).label)).toEqual(["Claude Code", "opencode", "JSON", "stdio（Claude Desktop）"]);
-        (copy.items[3] as ActionDefinition).onClick(undefined as never);
+        expect(copy.items.map(item => (item as ActionDefinition).label)).toEqual(["Claude Code", "Claude Desktop", "opencode", "JSON"]);
+        (copy.items[1] as ActionDefinition).onClick(undefined as never);
         expect(model.run.copyConfig).toHaveBeenCalledWith("stdio");
+    });
+
+    it("names each configuration as the Settings panel's copy buttons do, in every language", () => {
+        const keys = {
+            claudeCode: "settings.agent.copyClaudeCode",
+            stdio: "settings.agent.copyStdio",
+            opencode: "settings.agent.copyOpencode",
+            json: "settings.agent.copyJson",
+        } as const;
+        for (const t of [en, zh, createTranslator("ja").t]) {
+            expect(AGENT_MENU_COPY_KINDS.map(entry => t(keys[entry.kind]))).toEqual(AGENT_MENU_COPY_KINDS.map(entry => entry.label));
+        }
+    });
+
+    it("holds only the way to turn access on and its settings while access is off", () => {
+        const model = input({ state: "off", quick: { enabled: false, allowWrites: true, fullAccess: false, running: false } });
+        const items = buildAgentMenuItems(model);
+        expect(shape(items)).toEqual([
+            AGENT_MENU_ACTIONS.status,
+            "---",
+            AGENT_MENU_ACTIONS.enable,
+            "---",
+            AGENT_MENU_ACTIONS.settings,
+        ]);
+        const enable = items.filter(isActionMenuAction).find(item => item.id === AGENT_MENU_ACTIONS.enable);
+        expect(enable).toMatchObject({ checked: false, label: "启用 Agent 接入" });
+        expect(enable?.disabled).toBeFalsy();
+        enable?.onClick(undefined as never);
+        expect(model.run.toggleEnabled).toHaveBeenCalled();
     });
 
     it("never gives a row a shortcut, and claims every row for the group", () => {

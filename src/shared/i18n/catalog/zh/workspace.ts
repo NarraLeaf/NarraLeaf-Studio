@@ -415,7 +415,6 @@ export const workspace = {
             allowWrites: "允许 Agent 修改项目",
             fullAccess: "允许 Agent 完全访问",
             copyConfig: "复制连接配置",
-            copyStdio: "stdio（Claude Desktop）",
             exportSkill: "导出 Agent Skill…",
             settings: "Agent 接入设置…",
             notice: {

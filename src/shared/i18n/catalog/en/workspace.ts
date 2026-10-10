@@ -457,7 +457,6 @@ export const workspace = {
             allowWrites: "Allow agents to change projects",
             fullAccess: "Allow agents full access",
             copyConfig: "Copy connection configuration",
-            copyStdio: "stdio (Claude Desktop)",
             exportSkill: "Export Agent Skill…",
             settings: "Agent access settings…",
             notice: {

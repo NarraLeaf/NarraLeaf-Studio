@@ -487,7 +487,7 @@ export const settings = {
         copyClaudeCode: "Claude Code",
         copyJson: "JSON",
         copyOpencode: "opencode",
-        copyStdio: "stdio",
+        copyStdio: "Claude Desktop",
         copyStdioHint: "Claude Desktop など、ローカルのプログラムしか起動できないクライアント向け。クライアントは Studio をブリッジとして起動し、設定にトークンは含まれない",
         copied: "コピーした",
         importRoots: "エージェントが読み込めるフォルダー",

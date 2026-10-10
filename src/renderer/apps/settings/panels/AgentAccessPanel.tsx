@@ -17,16 +17,17 @@ import {
 } from "@shared/agent/settings";
 import { SETTING_CONTROL_WIDTH } from "../components/settingControlWidth";
 
+/** The copy buttons, in the order and with the names the Agent menu's copy submenu uses (`AGENT_MENU_COPY_KINDS`). */
 const CONFIG_KINDS: {
     kind: AgentClientConfigKind;
     labelKey: "settings.agent.copyClaudeCode" | "settings.agent.copyJson" | "settings.agent.copyOpencode" | "settings.agent.copyStdio";
     tipKey?: "settings.agent.copyStdioHint";
 }[] = [
     { kind: "claudeCode", labelKey: "settings.agent.copyClaudeCode" },
-    { kind: "json", labelKey: "settings.agent.copyJson" },
-    { kind: "opencode", labelKey: "settings.agent.copyOpencode" },
     // For clients that only launch local programs: Studio's own executable as a stdio bridge.
     { kind: "stdio", labelKey: "settings.agent.copyStdio", tipKey: "settings.agent.copyStdioHint" },
+    { kind: "opencode", labelKey: "settings.agent.copyOpencode" },
+    { kind: "json", labelKey: "settings.agent.copyJson" },
 ];
 
 /**
