@@ -153,7 +153,7 @@ function createHarness(options: { audio?: AudioAsset[] } = {}) {
     const run = (handler: AgentToolHandler, args: Record<string, unknown>) => handler(args, tool);
     const steps = () => history.describe().find(stack => stack.scopeId === projectHistoryScope())?.undo ?? 0;
     return {
-        story, localization, voice, history, storyId: entry.id, sceneId, writes, run, steps,
+        story, localization, voice, history, follow, storyId: entry.id, sceneId, writes, run, steps,
         localizationConfig: () => localizationConfig,
         voiceConfig: () => voiceConfig,
     };
@@ -300,6 +300,35 @@ describe("localization tools", () => {
         expect(fresh.rev).not.toBe(rev("t-a"));
         const overwrite = structured(await harness.run(localizationSet, { language: "ja", entries: [{ unitId: "t-a", target: "雨", rev: fresh.rev }] }));
         expect(overwrite.written).toBe(1);
+    });
+});
+
+describe("a write the author stopped while it was being prepared", () => {
+    it("is refused with nothing written when the author pauses agents mid-call", async () => {
+        const harness = createHarness();
+        const listed = (structured(await harness.run(localizationList, { language: "ja", origin: "story" })).units as ListedUnit[]);
+        // The bridge let the call in; the handler then awaits the units, and the author pauses.
+        const pending = harness.run(localizationSet, {
+            language: "ja",
+            entries: listed.map(unit => ({ unitId: unit.id, target: `JA ${unit.id}`, rev: unit.rev })),
+        });
+        harness.follow.setPaused(true);
+        const refused = await refusal(pending);
+        expect(refused.code).toBe("paused");
+        expect(refused.message).toContain("Nothing was written.");
+        expect(harness.localization.getDocumentIfLoaded("ja")!.units).toEqual({});
+        expect(harness.steps()).toBe(0);
+        expect(harness.writes).toEqual([]);
+    });
+
+    it("is refused for voice takes too, after the clips were measured", async () => {
+        const harness = createHarness({ audio: [{ id: "au-1", name: "Opening_001_Narration", type: "audio", groupId: "g-voice" }] });
+        const pending = harness.run(voiceAutoLink, { language: "ja", assetFolder: "Voice JA" });
+        harness.follow.setPaused(true);
+        const refused = await refusal(pending);
+        expect(refused.code).toBe("paused");
+        expect(harness.voice.getDocumentIfLoaded("ja")!.units).toEqual({});
+        expect(harness.steps()).toBe(0);
     });
 });
 

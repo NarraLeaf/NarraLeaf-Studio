@@ -49,6 +49,7 @@ import {
     refuse,
     type AgentToolHandler,
 } from "../agentCall";
+import { assertAgentMayStillWrite } from "../agentCommitGate";
 import { readSource } from "./storyTextTools";
 import { blueprintInputOf, capText, checkFailed, cloneJson, liveBlueprintDocument, revisionComment } from "./textFormat";
 
@@ -244,6 +245,8 @@ export const blueprintApply: AgentToolHandler = async (args, { ctx, request, fol
     const replaced = blueprints.filter(blueprint => live.blueprints[blueprint.id]).map(blueprint => blueprint.name);
 
     if (!dryRun) {
+        // Building the check's input read every story; the author may have paused meanwhile.
+        assertAgentMayStillWrite({ ctx, request, follow });
         commitBlueprints(ctx, blueprints);
         follow.noteWrite({ kind: "blueprint", blueprintId: blueprints[0].id, name: blueprints[0].name });
     }

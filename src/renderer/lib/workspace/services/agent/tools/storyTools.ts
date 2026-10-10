@@ -12,6 +12,7 @@
 import type { StoryDocument, StoryScene } from "@shared/types/story";
 import { answerJson, readOptionalString, readString, refuse, type AgentToolHandler, type AgentToolContext } from "../agentCall";
 import { AGENT_HISTORY_LABEL, resolveScene, resolveStory, storyService } from "../agentLookups";
+import { assertAgentMayStillWrite } from "../agentCommitGate";
 import { blueprintReferencesTo, formatReferrers, storyReferencesTo, uiReferencesTo } from "../agentReferences";
 import { Services } from "../../services";
 import type { HistoryService } from "../../history/HistoryService";
@@ -100,7 +101,8 @@ function placementAfter(document: StoryDocument, afterSceneId: string): { chapte
     return null;
 }
 
-export const sceneCreate: AgentToolHandler = async (args, { ctx, request, follow }) => {
+export const sceneCreate: AgentToolHandler = async (args, tool) => {
+    const { ctx, request, follow } = tool;
     const name = readString(args, "name");
     const storyRef = readOptionalString(args, "story");
     const chapterName = readOptionalString(args, "chapter");
@@ -117,10 +119,12 @@ export const sceneCreate: AgentToolHandler = async (args, { ctx, request, follow
         if (!(error instanceof Error && error.name === "AgentRefusal" && (error as { code?: string }).code === "not_found")) {
             throw error;
         }
+        assertAgentMayStillWrite(tool);
         const entry = story.createStory(storyRef ?? "Main");
         target = { entry, document: await story.loadStory(entry.id) };
     }
     const { entry, document } = target;
+    assertAgentMayStillWrite(tool);
 
     let chapterId: string | undefined;
     if (chapterName) {
@@ -226,6 +230,7 @@ export const sceneDelete: AgentToolHandler = async (args, { ctx, request, follow
             "Point those somewhere else (story_apply for rows, blueprint_apply for blueprints) or delete the scenes holding them, then delete this one.",
         );
     }
+    assertAgentMayStillWrite({ ctx, request, follow }, "Nothing was deleted.");
     if (!storyService(ctx).deleteScene(entry.id, scene.id)) {
         throw refuse("unavailable", `Scene "${scene.name}" could not be deleted (a live session may own the story).`);
     }

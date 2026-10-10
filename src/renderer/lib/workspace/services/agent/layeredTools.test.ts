@@ -102,7 +102,7 @@ function harness(init: { images?: Record<string, Uint8Array>; blocks?: Record<st
     const tool = {
         ctx: { services: { get: (name: string) => services[name] } },
         request: { callId: "call", policy: { writesEnabled: true, allowedImportRoots: [] } },
-        follow: { describeCall: vi.fn() },
+        follow: { describeCall: vi.fn(), getState: () => ({ paused: false }) },
         log: vi.fn(),
     } as unknown as AgentToolContext;
     const call = (handler: AgentToolHandler, args: Record<string, unknown>) => handler(args, tool);

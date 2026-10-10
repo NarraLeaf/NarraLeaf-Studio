@@ -38,6 +38,7 @@ import {
     type AgentToolHandler,
 } from "../agentCall";
 import { AGENT_HISTORY_LABEL } from "../agentLookups";
+import { assertAgentMayStillWrite } from "../agentCommitGate";
 import {
     AGENT_UNIT_ORIGINS,
     collectAgentTranslationUnits,
@@ -449,6 +450,7 @@ export const localizationSet: AgentToolHandler = async (args, { ctx, request, fo
     const written = after.size;
     const firstWritten = written > 0 ? byId.get([...after.keys()][0]) : undefined;
     if (!dryRun && written > 0) {
+        assertAgentMayStillWrite({ ctx, request, follow });
         const service = localizationService(ctx);
         service.applyUnitEdits(code, editFor(after));
         ctx.services.get<HistoryService>(Services.History).pushCommand(projectHistoryScope(), {

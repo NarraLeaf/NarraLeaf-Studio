@@ -35,6 +35,7 @@ import {
     type AgentToolHandler,
 } from "../agentCall";
 import { resolveScene, resolveStory, storyService } from "../agentLookups";
+import { assertAgentMayStillWrite } from "../agentCommitGate";
 import { writeSceneForAgent } from "./storyTools";
 import {
     capText,
@@ -226,6 +227,8 @@ export const storyApply: AgentToolHandler = async (args, { ctx, request, follow 
         commit: dryRun
             ? undefined
             : next => {
+                // The check awaited the project lint; the author may have paused meanwhile.
+                assertAgentMayStillWrite({ ctx, request, follow });
                 const written = next.scenes[scene.id];
                 revision = writeSceneForAgent({ ctx, follow }, {
                     storyId: story.id,

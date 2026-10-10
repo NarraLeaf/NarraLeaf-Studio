@@ -65,6 +65,7 @@ import {
 import { assetsService, listAssets, resolveAsset } from "../agentLookups";
 import { formatReferrers } from "../agentReferences";
 import { ensureAgentMayReadPaths } from "../agentFolderRequest";
+import { assertAgentMayStillWrite } from "../agentCommitGate";
 import { opaqueImageWarning } from "../imageAlpha";
 import { storyRowsChoosingLook } from "../characterLooks";
 import {
@@ -172,7 +173,8 @@ type LayeredWrite = {
     extra?: Record<string, unknown>;
 };
 
-async function writeLayered(ctx: WorkspaceContext, input: LayeredWrite): Promise<AgentCallResult> {
+async function writeLayered(tool: Pick<AgentToolContext, "ctx" | "request" | "follow">, input: LayeredWrite): Promise<AgentCallResult> {
+    const { ctx } = tool;
     const problems = checkLayeredSpec(input.spec);
     if (problems.length > 0) {
         throw refuse("invalid_args", `The stack does not hold together:\n${problems.map(line => `  ${line}`).join("\n")}`);
@@ -267,6 +269,8 @@ async function writeLayered(ctx: WorkspaceContext, input: LayeredWrite): Promise
             `Checked layered character "${name}": ${appearance.axes.length} axis/axes, ${appearance.layers.length} layer(s), ${combinations} look(s). Nothing written.`,
         );
     }
+    // Measuring every image and reading the stories took a while; the author may have paused meanwhile.
+    assertAgentMayStillWrite(tool);
     const changed = commitRecord(cast, record, created);
     const live = cast.getCharacter(record.profile.id) ?? draft;
     return answerJson(
@@ -294,7 +298,7 @@ export const characterLayeredSet: AgentToolHandler = async (args, { ctx, request
         throw refuse("invalid_args", read.errors.join("\n"));
     }
     follow.describeCall(request.callId, characterRef);
-    return writeLayered(ctx, { characterRef, spec: read.spec, ...readWriteOptions(args) });
+    return writeLayered({ ctx, request, follow }, { characterRef, spec: read.spec, ...readWriteOptions(args) });
 };
 
 // ── character_layers_import ──────────────────────────────────────────────────────────────────────
@@ -373,7 +377,7 @@ export const characterLayersImport: AgentToolHandler = async (args, tool) => {
     if ((assets || folder) && derived.ignored.length > 0) {
         notes.push(`Ignored ${derived.ignored.length} image(s) not named "${prefix}_…": ${derived.ignored.slice(0, 10).join(", ")}.`);
     }
-    return writeLayered(ctx, {
+    return writeLayered(tool, {
         characterRef,
         spec: derived.spec,
         ...readWriteOptions(args),
@@ -493,6 +497,8 @@ async function importFromPsd(tool: AgentToolContext, characterRef: string, psdPa
     if (!baked.success) {
         throw refuse("unavailable", `Could not bake the PSD's layers: ${baked.error ?? "unknown error"}.`);
     }
+    // Baking took a while, and importing is the first write to the project.
+    assertAgentMayStillWrite(tool, "Nothing was imported or written.");
     const imported = await assetsService(ctx).importFromPaths(AssetType.Image, baked.data.layers.map(layer => layer.filePath));
     if (!imported.success) {
         throw refuse("internal", `The layers were baked but could not be imported: ${imported.error ?? "unknown error"}.`);
@@ -526,7 +532,7 @@ async function importFromPsd(tool: AgentToolContext, characterRef: string, psdPa
         }
         return { fileName: document.fileName, width: document.width, height: document.height, slots, importedAt: Date.now() };
     };
-    return writeLayered(ctx, { characterRef, spec, ...options, notes, psdFingerprint: fingerprint });
+    return writeLayered(tool, { characterRef, spec, ...options, notes, psdFingerprint: fingerprint });
 }
 
 // ── character_preview ────────────────────────────────────────────────────────────────────────────
