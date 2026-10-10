@@ -16,13 +16,16 @@
  *
  * Calls run one at a time. Two agents (or one agent's parallel tool calls) writing the same page
  * would otherwise interleave their edits inside each other's undo steps, and an answer computed
- * while another call is half-written could describe a page that never existed.
+ * while another call is half-written could describe a page that never existed. A call whose
+ * deadline passes while it waits its turn is refused when its turn comes, never run: main has told
+ * the agent it timed out by then, and a retry of it may be right behind it in the queue.
  *
  * Comments in English per project convention.
  */
 
 import {
     AGENT_INTERNAL_TOOL_STATE,
+    agentCallExpired,
     agentRefusal,
     type AgentCallRequest,
     type AgentCallResult,
@@ -173,6 +176,18 @@ export class AgentBridgeService extends Service<AgentBridgeService> {
             write = false;
         }
         const meta = plugin ? pluginMeta(plugin.descriptor) : undefined;
+        // Checked here, after the last wait before the handler: from this line to the handler
+        // nothing yields, so a call that passes is a call main is still waiting for.
+        if (agentCallExpired(request, Date.now())) {
+            const expired = agentRefusal(
+                "unavailable",
+                `${request.tool} timed out before it started; nothing was done.`,
+                "Studio was still busy with an earlier call (a build, an import) when the time for this one ran out. Read the state back (agent_status, a show tool), then call it again if it is still needed.",
+            );
+            this.log("warning", request, `${request.tool} not started: its deadline passed while it waited behind an earlier call`);
+            this.recordAtOnce(request, expired, meta);
+            return expired;
+        }
         if (!handler) {
             this.log("warning", request, `unknown tool ${request.tool}`);
             const unknown = looksLikeAgentPluginToolName(request.tool)

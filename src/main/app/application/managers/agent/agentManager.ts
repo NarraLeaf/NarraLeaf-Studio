@@ -737,14 +737,19 @@ export class AgentManager implements AgentMainToolHost {
             return agentRefusal("no_workspace", "That project's window was closed.");
         }
         this.grantImportRoots(window);
+        // One deadline for both halves: main's wait below ends at it, and the workspace refuses to
+        // start the call once it has passed - a call still queued behind a long one by then is one
+        // the agent has been told timed out, and may already be retrying.
+        const deadline = Date.now() + timeoutMs;
         const request: AgentCallRequest = {
             callId: crypto.randomUUID(),
             tool,
             args,
             clientName: context.clientName,
             policy: this.policy(),
+            deadline,
         };
-        this.inFlight.set(request.callId, { window, tool, clientName: context.clientName, deadline: Date.now() + timeoutMs, timeoutMs });
+        this.inFlight.set(request.callId, { window, tool, clientName: context.clientName, deadline, timeoutMs });
         try {
             const status = await window.invokeIpcRequest(IPCEventType.workspaceAgentCall, request, { timeoutMs });
             if (!status.success) {
@@ -759,7 +764,7 @@ export class AgentManager implements AgentMainToolHost {
                 return agentRefusal(
                     "unavailable",
                     `The workspace did not answer ${tool} within ${Math.round(timeoutMs / 1000)} seconds.`,
-                    "It may still be working. Read the state back (agent_status, a show tool) before repeating a write.",
+                    "If it was still waiting behind an earlier call, it will not run at all; if it had started, it may still be working. Read the state back (agent_status, a show tool) before repeating a write.",
                 );
             }
             return agentRefusal("no_workspace", `The project's window went away before answering ${tool}.`);

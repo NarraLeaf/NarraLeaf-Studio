@@ -84,7 +84,20 @@ export type AgentCallRequest = {
     clientName: string | null;
     /** The author's switches as they are at the moment of the call. */
     policy: AgentSessionPolicy;
+    /**
+     * When main stops waiting for the answer, in milliseconds since the epoch (`Date.now()`; both
+     * processes read the same clock). The workspace runs calls one at a time, so a call can wait in
+     * its queue behind a long one; once this has passed main has already told the agent the call
+     * timed out, and the agent may be sending it again. A call not started by then is therefore
+     * never started - see {@link agentCallExpired}.
+     */
+    deadline: number;
 };
+
+/** Whether a call's deadline has passed: main has given up on it, so it must not start now. */
+export function agentCallExpired(request: Pick<AgentCallRequest, "deadline">, now: number): boolean {
+    return typeof request.deadline === "number" && now >= request.deadline;
+}
 
 /**
  * Calls main makes to a workspace that are not tools an agent can name. They travel on the same

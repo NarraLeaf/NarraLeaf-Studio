@@ -71,9 +71,9 @@ function createHarness(options: { livePhase?: string } = {}) {
 }
 
 let callCount = 0;
-function call(tool: string, args: Record<string, unknown>, policy: AgentSessionPolicy = WRITES_ON): AgentCallRequest {
+function call(tool: string, args: Record<string, unknown>, policy: AgentSessionPolicy = WRITES_ON, deadline = Date.now() + 30_000): AgentCallRequest {
     callCount += 1;
-    return { callId: `call-${callCount}-0000`, tool, args, clientName: "test-client", policy };
+    return { callId: `call-${callCount}-0000`, tool, args, clientName: "test-client", policy, deadline };
 }
 
 function codeOf(result: AgentCallResult): string {
@@ -184,6 +184,92 @@ describe("AgentBridgeService", () => {
         expect(entries[0].clientName).toBe("test-client");
         expect(entries[0].durationMs).not.toBeNull();
         expect(entries[1].message).toContain("Write access");
+    });
+
+    describe("deadlines", () => {
+        /** A plugin tool per name: `acme_slow__build` waits for `release`, `acme_scenes__add` counts its runs. */
+        function withSlowBuildAndCountedWrite(harness: ReturnType<typeof createHarness>) {
+            let release!: () => void;
+            const released = new Promise<void>(resolve => {
+                release = resolve;
+            });
+            const runs = { build: 0, add: 0 };
+            const descriptor = (name: string, write: boolean): AgentPluginToolDescriptor => ({
+                name,
+                title: name,
+                description: "Plugin tool.",
+                side: "workspace",
+                write,
+                inputSchema: { type: "object", properties: { project: { type: "string" } } },
+                pluginId: "acme.tools",
+                pluginName: "Tools",
+                pluginToolName: name,
+            });
+            harness.bridge.pluginTools().register({
+                descriptor: descriptor("acme_slow__build", true),
+                run: async () => {
+                    runs.build += 1;
+                    await released;
+                    return { ok: true, content: [{ type: "text", text: "built" }] };
+                },
+            });
+            harness.bridge.pluginTools().register({
+                descriptor: descriptor("acme_scenes__add", true),
+                run: async () => {
+                    runs.add += 1;
+                    return { ok: true, content: [{ type: "text", text: "added" }] };
+                },
+            });
+            return { runs, release };
+        }
+
+        it("refuses a call whose deadline has passed, says nothing was done, and runs nothing", async () => {
+            const harness = createHarness();
+            await harness.init();
+            const result = await harness.bridge.handle(call("project_settings_set", { name: "After" }, WRITES_ON, Date.now() - 1));
+            expect(result).toMatchObject({ ok: false, error: { code: "unavailable" } });
+            expect(result.ok ? "" : result.error.message).toBe("project_settings_set timed out before it started; nothing was done.");
+            expect(harness.projectName()).toBe("Before");
+            expect(harness.bridge.getActivityLog().getEntries().map(entry => [entry.tool, entry.status])).toEqual([["project_settings_set", "refused"]]);
+        });
+
+        it("never starts a write that timed out waiting behind a long call, so its retry is the only one that lands", async () => {
+            const harness = createHarness();
+            await harness.init();
+            const { runs, release } = withSlowBuildAndCountedWrite(harness);
+            const build = harness.bridge.handle(call("acme_slow__build", {}));
+            // Main gives up on this one while the build holds the queue...
+            const timedOut = harness.bridge.handle(call("acme_scenes__add", {}, WRITES_ON, Date.now() + 20));
+            await new Promise(resolve => setTimeout(resolve, 60));
+            // ...and the agent, told it timed out, sends it again with a fresh deadline.
+            const retry = harness.bridge.handle(call("acme_scenes__add", {}));
+            release();
+            expect(codeOf(await build)).toBe("ok");
+            const first = await timedOut;
+            expect(codeOf(first)).toBe("unavailable");
+            expect(first.ok ? "" : first.error.message).toContain("timed out before it started");
+            expect(codeOf(await retry)).toBe("ok");
+            expect(runs).toEqual({ build: 1, add: 1 });
+        });
+
+        it("still runs a queued call whose deadline is ahead when its turn comes", async () => {
+            const harness = createHarness();
+            await harness.init();
+            const { runs, release } = withSlowBuildAndCountedWrite(harness);
+            const build = harness.bridge.handle(call("acme_slow__build", {}));
+            const queued = harness.bridge.handle(call("acme_scenes__add", {}, WRITES_ON, Date.now() + 10_000));
+            release();
+            await build;
+            expect(codeOf(await queued)).toBe("ok");
+            expect(runs.add).toBe(1);
+        });
+
+        it("answers the state call even past a deadline: it reads, and never waits in the queue", async () => {
+            const harness = createHarness();
+            await harness.init();
+            const result = await harness.bridge.handle(call(AGENT_INTERNAL_TOOL_STATE, {}, WRITES_ON, Date.now() - 1));
+            expect(codeOf(result)).toBe("ok");
+        });
     });
 
     describe("plugin tools", () => {
