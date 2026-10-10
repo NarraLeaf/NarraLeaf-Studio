@@ -154,6 +154,16 @@ export const FIXED_INPUT_CATALOG: readonly FixedInputEntry[] = [
     // --- Story motion editor ---------------------------------------------------
     entry("story-motion.no-snap", CATEGORY.storyMotion, label("storyMotion.noFrameSnap"), gesture("drag", "alt")),
     entry("story-motion.add-keyframe", CATEGORY.storyMotion, label("storyMotion.addKeyframe"), gesture("doubleClickTrack")),
+    entry("story-motion.move-keyframes", CATEGORY.storyMotion, label("storyMotion.moveKeyframes"), gesture("dragKeyframe")),
+    entry(
+        "story-motion.toggle-select",
+        CATEGORY.storyMotion,
+        label("toggleSelection"),
+        gesture("clickKeyframe", "shift"),
+        gesture("clickKeyframe", "mod"),
+    ),
+    entry("story-motion.box-select", CATEGORY.storyMotion, label("storyMotion.boxSelect"), gesture("dragAcrossTracks")),
+    entry("story-motion.select-track", CATEGORY.storyMotion, label("storyMotion.selectTrack"), gesture("clickName")),
     entry("story-motion.pan-preview", CATEGORY.storyMotion, label("storyMotion.panPreview"), gesture("middleDrag")),
     entry("story-motion.zoom", CATEGORY.storyMotion, label("storyMotion.zoom"), gesture("scroll", "ctrl")),
     entry("story-motion.scroll-timeline", CATEGORY.storyMotion, label("storyMotion.scrollTimeline"), gesture("scroll", "shift")),

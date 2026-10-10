@@ -1,14 +1,13 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
-    KeyboardEvent as ReactKeyboardEvent,
     MouseEvent as ReactMouseEvent,
     PointerEvent as ReactPointerEvent,
     WheelEvent as ReactWheelEvent,
 } from "react";
-import { Diamond, Pause, Play, Plus, Spline, Trash2 } from "lucide-react";
+import { Pause, Play, Repeat, SkipBack, Spline, StepBack, StepForward } from "lucide-react";
 import type {
+    StoryAlignPositionValue,
     StoryAnimationAsset,
-    StoryAnimationKeyframe,
     StoryAnimationKeyframeValue,
     StoryAnimationTimeline,
     StoryAnimationTrack,
@@ -17,6 +16,7 @@ import type {
 } from "@shared/types/story";
 import { FocusArea, type EditorTabComponentProps } from "@/lib/workspace/services/ui/types";
 import { useHistoryScope, useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
+import { useShortcutLabels } from "@/apps/workspace/hooks/useShortcutLabels";
 import { storyMotionHistoryScope } from "@/lib/workspace/services/history/historyScopes";
 import type { EditorTabDefinition } from "../../registry/types";
 import { useWorkspace } from "../../context";
@@ -27,11 +27,13 @@ import type { PanelStateService } from "@/lib/workspace/services/core/PanelState
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { StoryAnimationReadError, StoryService } from "@/lib/workspace/services/story/StoryService";
 import { describeAssetReadFailure } from "@/lib/workspace/assets/assetReadFailure";
-import { Button } from "@/lib/components/elements/Button";
 import { Select, type SelectOption } from "@/lib/components/elements/Select";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
+import { TooltipGroup } from "@/lib/tooltip";
 import { translate, useTranslation } from "@/lib/i18n";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
+import { ResizableHandle } from "../../components/ui/ResizableHandle";
+import { formatZoom } from "../assets/editors/video/frameViewport";
 import {
     STORY_MOTION_KEYFRAME_SELECTION_TYPE,
     type StoryMotionEditorPayload,
@@ -40,56 +42,84 @@ import {
     STORY_MOTION_FPS,
     STORY_MOTION_PROPERTIES,
     clampStoryMotionTimeMs,
-    deleteStoryMotionKeyframe,
     deleteStoryMotionTrack,
     ensureStoryMotionTrack,
-    formatStoryMotionTime,
     getStoryMotionDurationMs,
-    getStoryMotionPropertyMeta,
     getStoryMotionTimeline,
+    isStoryMotionEasingName,
     sampleStoryMotionPreview,
     sampleStoryMotionTrackValue,
     snapStoryMotionTimeToFrame,
     stepStoryMotionTimeByFrames,
-    updateStoryMotionKeyframe,
+    storyMotionFrameDurationMs,
     upsertStoryMotionKeyframe,
 } from "./storyMotionTimeline";
+import {
+    adjacentStoryMotionKeyframeTime,
+    copyStoryMotionKeyframes,
+    deleteStoryMotionKeyframes,
+    findStoryMotionKeyframeAt,
+    insertStoryMotionKeyframes,
+    moveStoryMotionKeyframes,
+    pasteStoryMotionKeyframes,
+    positionForWrite,
+    setStoryMotionKeyframesEasing,
+    type StoryMotionClipboard,
+} from "./storyMotionEditing";
 import { useFreezeGuard } from "../../components/ui/freezeGuard";
 import { StoryMotionStagePreview, type StoryMotionPreviewDragMode } from "./StoryMotionStagePreview";
 import { resolveStoryMotionPreviewTarget } from "./storyMotionPreviewTarget";
+import {
+    StoryMotionTimeline,
+    clampPxPerMs,
+    formatSeconds,
+    orderStoryMotionTracks,
+    type StoryMotionTimelineActions,
+    type StoryMotionTimelineHandle,
+} from "./StoryMotionTimelineView";
 
 const ICON_BUTTON_CLASS = controlButtonClass();
-const MIN_TIMELINE_WIDTH = 760;
 const DEFAULT_STAGE_SIZE = { width: 1280, height: 720 };
 const PREVIEW_CANVAS_PADDING = 2048;
-const MIN_STAGE_ZOOM = 0.2;
+/** Room kept around the stage when it is fitted to the view. */
+const STAGE_FIT_MARGIN = 24;
+const MIN_STAGE_ZOOM = 0.05;
 const MAX_STAGE_ZOOM = 4;
+const STAGE_ZOOM_PRESETS = [0.25, 0.5, 1, 2] as const;
 const STORY_MOTION_EDITOR_STATE_PREFIX = "storyMotion.editorState";
-const TIMELINE_LEFT_COL_PX = 180;
-const DEFAULT_TIMELINE_PX_PER_MS = 0.18;
-const MIN_TIMELINE_PX_PER_MS = 0.002;
-const MAX_TIMELINE_PX_PER_MS = 5;
-const TIMELINE_TICK_STEPS = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000];
-const TIMELINE_TICK_MIN_PX = 70;
-const TIMELINE_TICK_BUFFER_PX = 200;
-const TIMELINE_SCROLL_HEADROOM_PX = 240;
-const TIMELINE_PLAYHEAD_SNAP_PX = 8;
+/** One height for every motion editor: how much room the timeline gets is a habit, not a motion's. */
+const STORY_MOTION_LAYOUT_STATE_ID = "storyMotion.layout";
+const DEFAULT_TIMELINE_HEIGHT = 240;
+const MIN_TIMELINE_HEIGHT = 120;
+const MIN_STAGE_HEIGHT = 140;
 const TIMELINE_UNDO_LIMIT = 100;
 const TIMELINE_UNDO_COALESCE_MS = 800;
+/** J and L double the speed on each further press, up to this. */
+const MAX_SHUTTLE_RATE = 4;
+
+/**
+ * Keyframes copied in any motion editor, so a move can be copied from one motion into another the
+ * way a timeline's clipboard works across sequences. Kept in memory only: it is the editor's own
+ * clipboard, not the system's.
+ */
+let storyMotionClipboard: StoryMotionClipboard | null = null;
 
 type StoryMotionPreviewViewportState = {
     scrollLeft: number;
     scrollTop: number;
     zoom: number;
+    fit?: boolean;
 };
 
 type StoryMotionEditorPanelState = {
     previewViewport?: StoryMotionPreviewViewportState;
     playheadMs?: number;
     selectedKeyframeId?: string | null;
-    selectedAddProperty?: StoryAnimationTrackProperty;
     timelinePxPerMs?: number;
+    loop?: boolean;
 };
+
+type Playback = { direction: 1 | -1; rate: number };
 
 export function createStoryMotionEditorTab(payload: StoryMotionEditorPayload): EditorTabDefinition<StoryMotionEditorPayload> {
     return {
@@ -105,6 +135,7 @@ export function createStoryMotionEditorTab(payload: StoryMotionEditorPayload): E
 
 export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabComponentProps<StoryMotionEditorPayload>) {
     const { t } = useTranslation();
+    const shortcuts = useShortcutLabels();
     const { context, isInitialized } = useWorkspace();
     // Everything that moves a keyframe or a stage handle writes the animation asset. The playhead,
     // zoom, playback and selection do not, and stay live so a frozen motion can still be watched.
@@ -125,46 +156,45 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
         () => context && isInitialized ? context.services.get<PanelStateService>(Services.PanelState) : null,
         [context, isInitialized],
     );
-    const editorStatePanelId = useMemo(() => getStoryMotionEditorStatePanelId(tabId), [tabId]);
+    const editorStatePanelId = useMemo(() => `${STORY_MOTION_EDITOR_STATE_PREFIX}:${tabId}`, [tabId]);
     const editorRootRef = useRef<HTMLDivElement | null>(null);
+    const bodyRef = useRef<HTMLDivElement | null>(null);
     const previewViewportRef = useRef<HTMLDivElement | null>(null);
+    const timelineRef = useRef<StoryMotionTimelineHandle | null>(null);
     const latestEditorStateRef = useRef<StoryMotionEditorPanelState>({});
     const restoredEditorStateRef = useRef<string | null>(null);
-    const initializedPreviewViewportRef = useRef<string | null>(null);
-    const previewPanRef = useRef<{
-        active: boolean;
-        pointerId: number | null;
-        startX: number;
-        startY: number;
-        startScrollLeft: number;
-        startScrollTop: number;
-    }>({
-        active: false,
-        pointerId: null,
-        startX: 0,
-        startY: 0,
-        startScrollLeft: 0,
-        startScrollTop: 0,
-    });
+    const previewPanRef = useRef<{ pointerId: number; startX: number; startY: number; startScrollLeft: number; startScrollTop: number } | null>(null);
     const [asset, setAsset] = useState<StoryAnimationAsset | null>(null);
     const [document, setDocument] = useState<StoryDocument | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [playheadMs, setPlayheadMs] = useState(0);
-    const [playing, setPlaying] = useState(false);
+    const [playback, setPlayback] = useState<Playback | null>(null);
+    const [loop, setLoop] = useState(false);
     const [timelinePxPerMs, setTimelinePxPerMs] = useState<number | null>(null);
-    const [timelineViewport, setTimelineViewport] = useState({ width: 0, scrollLeft: 0 });
-    const [keyframeDrag, setKeyframeDrag] = useState<{ keyframeId: string; timeMs: number } | null>(null);
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    const [primaryId, setPrimaryId] = useState<string | null>(null);
+    const [keyframeDrag, setKeyframeDrag] = useState<{ ids: ReadonlySet<string>; deltaMs: number } | null>(null);
     const [stageZoom, setStageZoom] = useState(1);
+    const [stageFit, setStageFit] = useState(true);
+    /** The saved view has been read back; until then the stage neither fits nor restores a scroll. */
+    const [viewRestored, setViewRestored] = useState(false);
     const [previewPanning, setPreviewPanning] = useState(false);
-    const autoKey = true;
-    const [selectedKeyframeId, setSelectedKeyframeId] = useState<string | null>(null);
-    const [selectedAddProperty, setSelectedAddProperty] = useState<StoryAnimationTrackProperty>("position");
     const [previewOverride, setPreviewOverride] = useState<Partial<ReturnType<typeof sampleStoryMotionPreview>> | null>(null);
-    const timelineScrollRef = useRef<HTMLDivElement | null>(null);
-    const timelineFitInitializedRef = useRef<string | null>(null);
+    const [timelineHeight, setTimelineHeightState] = useState(() => readTimelineHeight(panelStateService));
+    const timelineHeightRef = useRef(timelineHeight);
+    const setTimelineHeight = useCallback((height: number) => {
+        timelineHeightRef.current = height;
+        setTimelineHeightState(height);
+    }, []);
     const playheadRef = useRef(0);
     const durationRef = useRef(0);
+    const loopRef = useRef(loop);
+    loopRef.current = loop;
     const lastObservedTimelineRef = useRef<{ json: string; timeline: StoryAnimationTimeline } | null>(null);
+    const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+    const playing = playback !== null;
+
+    // ---- loading -------------------------------------------------------------
 
     useEffect(() => {
         if (!storyService || !payload?.animationId) {
@@ -269,41 +299,27 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
         };
     }, [payload?.actionContext?.storyId, storyService]);
 
-    const timeline = useMemo(() => getStoryMotionTimeline(asset), [asset]);
-    const durationMs = getStoryMotionDurationMs(timeline);
-    const pxPerMs = timelinePxPerMs ?? DEFAULT_TIMELINE_PX_PER_MS;
-    const timelineWidth = Math.max(
-        timelineViewport.width - TIMELINE_LEFT_COL_PX,
-        MIN_TIMELINE_WIDTH,
-        durationMs * pxPerMs + Math.max(TIMELINE_SCROLL_HEADROOM_PX, (timelineViewport.width - TIMELINE_LEFT_COL_PX) * 0.5),
-    );
-    const tracks = useMemo(() => orderTracks(timeline.tracks), [timeline.tracks]);
-    const selected = useMemo(() => findKeyframe(timeline, selectedKeyframeId), [selectedKeyframeId, timeline]);
-    const addPropertyOptions = useMemo<SelectOption[]>(() => {
-        const existing = new Set(tracks.map(track => track.property));
-        return STORY_MOTION_PROPERTIES
-            .filter(item => !existing.has(item.property))
-            .map(item => ({
-                value: item.property,
-                label: t(`motion.propertyLabel.${item.property}`),
-            }));
-    }, [tracks, t]);
-    const previewTimeline = useMemo(() => {
-        if (!keyframeDrag) {
-            return timeline;
+    // The tab is named after the motion it edits, so two open motions are two different tabs.
+    const assetName = asset?.name;
+    useEffect(() => {
+        if (uiService && assetName) {
+            uiService.editor.update(tabId, { title: assetName });
         }
-        return {
-            ...timeline,
-            tracks: timeline.tracks.map(track => track.keyframes.some(keyframe => keyframe.id === keyframeDrag.keyframeId)
-                ? {
-                    ...track,
-                    keyframes: track.keyframes.map(keyframe => keyframe.id === keyframeDrag.keyframeId
-                        ? { ...keyframe, timeMs: keyframeDrag.timeMs }
-                        : keyframe),
-                }
-                : track),
-        };
-    }, [keyframeDrag, timeline]);
+    }, [assetName, tabId, uiService]);
+
+    // ---- derived -------------------------------------------------------------
+
+    const timeline = useMemo(() => getStoryMotionTimeline(asset), [asset]);
+    const previewTimeline = useMemo(
+        () => keyframeDrag ? moveStoryMotionKeyframes(timeline, keyframeDrag.ids, keyframeDrag.deltaMs) : timeline,
+        [keyframeDrag, timeline],
+    );
+    const durationMs = getStoryMotionDurationMs(previewTimeline);
+    const tracks = useMemo(() => orderStoryMotionTracks(previewTimeline.tracks), [previewTimeline.tracks]);
+    const addableProperties = useMemo(() => {
+        const existing = new Set(timeline.tracks.map(track => track.property));
+        return STORY_MOTION_PROPERTIES.map(item => item.property).filter(property => !existing.has(property));
+    }, [timeline.tracks]);
     const preview = sampleStoryMotionPreview(previewTimeline, playheadMs);
     const visiblePreview = previewOverride
         ? { ...preview, ...previewOverride, position: previewOverride.position ?? preview.position }
@@ -335,21 +351,27 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                 };
             });
     }, [previewTimeline, stageSize]);
+    const primary = useMemo(() => {
+        if (!primaryId) {
+            return null;
+        }
+        for (const track of timeline.tracks) {
+            const keyframe = track.keyframes.find(item => item.id === primaryId);
+            if (keyframe) {
+                return { track, keyframe };
+            }
+        }
+        return null;
+    }, [primaryId, timeline.tracks]);
 
+    // Keyframes deleted elsewhere (the properties panel, an undo) leave the selection.
     useEffect(() => {
-        if (selectedKeyframeId && !selected) {
-            setSelectedKeyframeId(null);
-        }
-    }, [selected, selectedKeyframeId]);
+        const existing = new Set(timeline.tracks.flatMap(track => track.keyframes.map(keyframe => keyframe.id)));
+        setSelectedIds(current => current.every(id => existing.has(id)) ? current : current.filter(id => existing.has(id)));
+        setPrimaryId(current => current && !existing.has(current) ? null : current);
+    }, [timeline.tracks]);
 
-    useEffect(() => {
-        if (addPropertyOptions.length === 0) {
-            return;
-        }
-        if (!addPropertyOptions.some(option => option.value === selectedAddProperty)) {
-            setSelectedAddProperty(addPropertyOptions[0].value as StoryAnimationTrackProperty);
-        }
-    }, [addPropertyOptions, selectedAddProperty]);
+    // ---- editor state --------------------------------------------------------
 
     const readEditorPanelState = useCallback(() => (
         panelStateService
@@ -361,12 +383,15 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
         if (!panelStateService) {
             return;
         }
-        const current = readEditorPanelState();
         panelStateService.setPanelState<StoryMotionEditorPanelState>(editorStatePanelId, {
-            ...current,
+            ...readEditorPanelState(),
             ...patch,
         });
     }, [editorStatePanelId, panelStateService, readEditorPanelState]);
+
+    useEffect(() => {
+        setTimelineHeight(readTimelineHeight(panelStateService));
+    }, [panelStateService, setTimelineHeight]);
 
     useEffect(() => {
         playheadRef.current = playheadMs;
@@ -375,43 +400,6 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
     useEffect(() => {
         durationRef.current = durationMs;
     }, [durationMs]);
-
-    // Kept-alive tabs stay mounted while hidden; stop timeline playback when this tab isn't visible so
-    // its per-frame rAF loop doesn't keep re-rendering in the background.
-    useEffect(() => {
-        if (!active) {
-            setPlaying(false);
-        }
-    }, [active]);
-
-    useEffect(() => {
-        if (!playing || !active) {
-            return;
-        }
-        let frame = 0;
-        const startedAt = performance.now() - playheadRef.current;
-        const tick = (now: number) => {
-            const next = now - startedAt;
-            if (next >= durationRef.current) {
-                setPlayheadMs(durationRef.current);
-                setPlaying(false);
-                return;
-            }
-            setPlayheadMs(next);
-            frame = requestAnimationFrame(tick);
-        };
-        frame = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(frame);
-    }, [playing]);
-
-    useEffect(() => {
-        lastObservedTimelineRef.current = null;
-        timelineFitInitializedRef.current = null;
-    }, [payload?.animationId]);
-
-    useEffect(() => {
-        editorRootRef.current?.focus();
-    }, [payload?.animationId]);
 
     useEffect(() => {
         if (!asset || !payload?.animationId) {
@@ -423,173 +411,128 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
         }
         const saved = readEditorPanelState();
         setStageZoom(saved.previewViewport?.zoom ?? 1);
+        setStageFit(saved.previewViewport ? saved.previewViewport.fit !== false : true);
         setTimelinePxPerMs(saved.timelinePxPerMs ?? null);
         setPlayheadMs(clampStoryMotionTimeMs(saved.playheadMs ?? 0));
-        setSelectedKeyframeId(saved.selectedKeyframeId && findKeyframe(timeline, saved.selectedKeyframeId)
+        setLoop(saved.loop ?? false);
+        const savedPrimary = saved.selectedKeyframeId
+            && timeline.tracks.some(track => track.keyframes.some(keyframe => keyframe.id === saved.selectedKeyframeId))
             ? saved.selectedKeyframeId
-            : null);
-        if (saved.selectedAddProperty) {
-            setSelectedAddProperty(saved.selectedAddProperty);
-        }
+            : null;
+        setSelectedIds(savedPrimary ? [savedPrimary] : []);
+        setPrimaryId(savedPrimary);
         restoredEditorStateRef.current = restoreKey;
-        initializedPreviewViewportRef.current = null;
+        setViewRestored(true);
     }, [asset, editorStatePanelId, payload?.animationId, readEditorPanelState, timeline]);
 
     useEffect(() => {
-        if (!asset || !payload?.animationId) {
-            return;
-        }
-        const viewport = previewViewportRef.current;
-        if (!viewport) {
-            return;
-        }
-        const restoreKey = `${editorStatePanelId}:${payload.animationId}`;
-        if (restoredEditorStateRef.current !== restoreKey) {
-            return;
-        }
-        const viewportKey = `${restoreKey}:${stageSize.width}x${stageSize.height}`;
-        if (initializedPreviewViewportRef.current === viewportKey) {
-            return;
-        }
-        const saved = readEditorPanelState().previewViewport;
-        if (saved && Math.abs(saved.zoom - stageZoom) > 0.001) {
-            return;
-        }
-        const frame = window.requestAnimationFrame(() => {
-            if (saved) {
-                viewport.scrollLeft = saved.scrollLeft;
-                viewport.scrollTop = saved.scrollTop;
-            } else {
-                centerPreviewViewport(viewport, stageSize, stageZoom);
-            }
-            initializedPreviewViewportRef.current = viewportKey;
-        });
-        return () => window.cancelAnimationFrame(frame);
-    }, [asset, editorStatePanelId, payload?.animationId, readEditorPanelState, stageSize, stageZoom]);
+        lastObservedTimelineRef.current = null;
+    }, [payload?.animationId]);
 
     useEffect(() => {
-        if (!asset || !payload?.animationId) {
-            return;
-        }
-        const restoreKey = `${editorStatePanelId}:${payload.animationId}`;
-        if (restoredEditorStateRef.current !== restoreKey || timelineFitInitializedRef.current === restoreKey) {
-            return;
-        }
-        if (timelinePxPerMs !== null) {
-            timelineFitInitializedRef.current = restoreKey;
-            return;
-        }
-        const container = timelineScrollRef.current;
-        if (!container) {
-            return;
-        }
-        const frame = window.requestAnimationFrame(() => {
-            const visibleWidth = container.clientWidth - TIMELINE_LEFT_COL_PX;
-            const duration = durationRef.current;
-            const headroom = Math.max(duration * 0.15, 500);
-            if (visibleWidth > 0) {
-                setTimelinePxPerMs(clampTimelinePxPerMs(visibleWidth / (duration + headroom)));
-            }
-            timelineFitInitializedRef.current = restoreKey;
-        });
-        return () => window.cancelAnimationFrame(frame);
-    }, [asset, editorStatePanelId, payload?.animationId, timelinePxPerMs]);
-
-    const hasAsset = Boolean(asset);
-    useEffect(() => {
-        if (!hasAsset) {
-            return;
-        }
-        const container = timelineScrollRef.current;
-        if (!container) {
-            return;
-        }
-        const update = () => {
-            const width = container.clientWidth;
-            const scrollLeft = Math.round(container.scrollLeft / 25) * 25;
-            setTimelineViewport(current => current.width === width && current.scrollLeft === scrollLeft
-                ? current
-                : { width, scrollLeft });
-        };
-        update();
-        const observer = new ResizeObserver(update);
-        observer.observe(container);
-        container.addEventListener("scroll", update, { passive: true });
-        return () => {
-            observer.disconnect();
-            container.removeEventListener("scroll", update);
-        };
-    }, [hasAsset]);
+        editorRootRef.current?.focus();
+    }, [payload?.animationId]);
 
     useEffect(() => {
-        const viewport = previewViewportRef.current;
         latestEditorStateRef.current = {
-            previewViewport: viewport
-                ? {
-                    scrollLeft: viewport.scrollLeft,
-                    scrollTop: viewport.scrollTop,
-                    zoom: stageZoom,
-                }
-                : latestEditorStateRef.current.previewViewport,
+            ...latestEditorStateRef.current,
             playheadMs,
-            selectedKeyframeId,
-            selectedAddProperty,
+            selectedKeyframeId: primaryId,
             timelinePxPerMs: timelinePxPerMs ?? latestEditorStateRef.current.timelinePxPerMs,
+            loop,
         };
-    }, [playheadMs, selectedAddProperty, selectedKeyframeId, stageZoom, timelinePxPerMs]);
+    }, [loop, playheadMs, primaryId, timelinePxPerMs]);
+
+    // Nothing is saved before the saved state has been read back: the first render's playhead and
+    // selection are placeholders, and writing them would replace what the restore is about to read.
+    useEffect(() => {
+        if (playing || restoredEditorStateRef.current === null) {
+            return;
+        }
+        persistEditorPanelState({ playheadMs, selectedKeyframeId: primaryId, loop });
+    }, [loop, persistEditorPanelState, playheadMs, playing, primaryId]);
 
     useEffect(() => () => {
-        const viewport = previewViewportRef.current;
-        persistEditorPanelState({
-            ...latestEditorStateRef.current,
-            previewViewport: viewport
-                ? {
-                    scrollLeft: viewport.scrollLeft,
-                    scrollTop: viewport.scrollTop,
-                    zoom: stageZoom,
-                }
-                : latestEditorStateRef.current.previewViewport,
-        });
-    }, [persistEditorPanelState, stageZoom]);
-
-    useEffect(() => {
-        if (playing) {
-            return;
+        if (restoredEditorStateRef.current !== null) {
+            persistEditorPanelState({ ...latestEditorStateRef.current });
         }
-        persistEditorPanelState({
-            playheadMs,
-            selectedKeyframeId,
-            selectedAddProperty,
-        });
-    }, [persistEditorPanelState, playheadMs, playing, selectedAddProperty, selectedKeyframeId]);
+    }, [persistEditorPanelState]);
 
     const focusEditor = useCallback(() => {
         editorRootRef.current?.focus();
         uiService?.focus.setFocus(FocusArea.Editor, tabId);
     }, [tabId, uiService]);
 
-    const togglePlayback = useCallback(() => {
-        setPlaying(current => {
-            if (current) {
-                return false;
-            }
-            setPlayheadMs(currentTime => currentTime >= durationMs ? 0 : currentTime);
-            return true;
-        });
-    }, [durationMs]);
+    // ---- playback ------------------------------------------------------------
 
-    const handleEditorKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
-        if (event.key !== " ") {
+    // Kept-alive tabs stay mounted while hidden; stop playback when this tab isn't visible so its
+    // per-frame loop doesn't keep re-rendering in the background.
+    useEffect(() => {
+        if (!active) {
+            setPlayback(null);
+        }
+    }, [active]);
+
+    const stopPlayback = useCallback(() => {
+        setPlayback(null);
+        // Playback stops between frames; a keyframe written next should land on one.
+        setPlayheadMs(current => Math.min(durationRef.current, snapStoryMotionTimeToFrame(current, STORY_MOTION_FPS)));
+    }, []);
+
+    useEffect(() => {
+        if (!playback || !active) {
             return;
         }
-        const target = event.target as HTMLElement | null;
-        if (target?.closest("input, textarea, select, [contenteditable='true']")) {
-            return;
+        let frame = 0;
+        let last = performance.now();
+        let time = playheadRef.current;
+        const tick = (now: number) => {
+            const duration = durationRef.current;
+            // A frame's timestamp can be a little older than the moment playback started; that is
+            // no time at all, not time running backwards.
+            time += Math.max(0, now - last) * playback.rate * playback.direction;
+            last = Math.max(last, now);
+            const ended = playback.direction > 0 ? time >= duration : time <= 0;
+            if (ended) {
+                if (loopRef.current && duration > 0) {
+                    time = playback.direction > 0 ? time - duration : time + duration;
+                } else {
+                    setPlayheadMs(playback.direction > 0 ? duration : 0);
+                    setPlayback(null);
+                    return;
+                }
+            }
+            time = Math.min(duration, Math.max(0, time));
+            setPlayheadMs(time);
+            frame = requestAnimationFrame(tick);
+        };
+        frame = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(frame);
+    }, [active, playback]);
+
+    /** Start playing in a direction; pressed again while already going that way, double the speed. */
+    const shuttle = useCallback((direction: 1 | -1, accelerate: boolean) => {
+        setPlayback(current => {
+            if (current && current.direction === direction && accelerate) {
+                return { direction, rate: Math.min(MAX_SHUTTLE_RATE, current.rate * 2) };
+            }
+            return { direction, rate: 1 };
+        });
+        // From an end the motion cannot go on from, start over at the other one.
+        setPlayheadMs(current => direction > 0
+            ? current >= durationRef.current ? 0 : current
+            : current <= 0 ? durationRef.current : current);
+    }, []);
+
+    const togglePlayback = useCallback(() => {
+        if (playing) {
+            stopPlayback();
+        } else {
+            shuttle(1, false);
         }
-        event.preventDefault();
-        event.stopPropagation();
-        togglePlayback();
-    }, [togglePlayback]);
+    }, [playing, shuttle, stopPlayback]);
+
+    // ---- writing -------------------------------------------------------------
 
     const updateAsset = useCallback((updater: (asset: StoryAnimationAsset) => StoryAnimationAsset) => {
         if (!storyService || !asset) {
@@ -605,108 +548,6 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
             timeline: updater(getStoryMotionTimeline(current)),
         }));
     }, [updateAsset]);
-
-    const scrubToClientX = useCallback((clientX: number, rect: DOMRect, snap: boolean) => {
-        const raw = (clientX - rect.left) / pxPerMs;
-        const value = snap ? snapStoryMotionTimeToFrame(raw, STORY_MOTION_FPS) : clampStoryMotionTimeMs(raw);
-        // The playhead stays inside the timeline; dragging past the end must not
-        // extend the lane or spawn phantom horizontal scroll.
-        setPlayheadMs(Math.min(durationRef.current, Math.max(0, value)));
-    }, [pxPerMs]);
-
-    const startPlayheadDrag = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-        const rect = event.currentTarget.getBoundingClientRect();
-        scrubToClientX(event.clientX, rect, !event.altKey);
-        const onMove = (moveEvent: PointerEvent) => scrubToClientX(moveEvent.clientX, rect, !moveEvent.altKey);
-        const onUp = () => {
-            window.removeEventListener("pointermove", onMove);
-            window.removeEventListener("pointerup", onUp);
-        };
-        window.addEventListener("pointermove", onMove);
-        window.addEventListener("pointerup", onUp);
-    }, [scrubToClientX]);
-
-    const selectKeyframe = useCallback((track: StoryAnimationTrack, keyframe: StoryAnimationKeyframe) => {
-        setSelectedKeyframeId(keyframe.id);
-        if (!uiService || !payload?.animationId) {
-            return;
-        }
-        uiService.getStore().setSelection({
-            type: STORY_MOTION_KEYFRAME_SELECTION_TYPE,
-            data: {
-                editor: "story-motion",
-                tabId,
-                animationId: payload.animationId,
-                trackId: track.id,
-                keyframeId: keyframe.id,
-            },
-        });
-        uiService.panels.show("narraleaf-studio:properties");
-    }, [payload?.animationId, tabId, uiService]);
-
-    const startKeyframeDrag = useCallback((event: ReactPointerEvent<HTMLButtonElement>, track: StoryAnimationTrack, keyframe: StoryAnimationKeyframe) => {
-        event.stopPropagation();
-        selectKeyframe(track, keyframe);
-        const startX = event.clientX;
-        const startTime = keyframe.timeMs;
-        let lastTime = startTime;
-        const onMove = (moveEvent: PointerEvent) => {
-            const raw = clampStoryMotionTimeMs(startTime + (moveEvent.clientX - startX) / pxPerMs);
-            lastTime = moveEvent.altKey ? raw : snapStoryMotionTimeToFrame(raw, STORY_MOTION_FPS);
-            setKeyframeDrag({ keyframeId: keyframe.id, timeMs: lastTime });
-            setPlayheadMs(lastTime);
-        };
-        const onUp = () => {
-            window.removeEventListener("pointermove", onMove);
-            window.removeEventListener("pointerup", onUp);
-            if (lastTime !== startTime) {
-                updateTimeline(current => updateStoryMotionKeyframe(current, keyframe.id, currentKeyframe => ({
-                    ...currentKeyframe,
-                    timeMs: lastTime,
-                })));
-            }
-            setKeyframeDrag(null);
-        };
-        window.addEventListener("pointermove", onMove);
-        window.addEventListener("pointerup", onUp);
-    }, [pxPerMs, selectKeyframe, updateTimeline]);
-
-    const addKeyframeAtTime = useCallback((track: StoryAnimationTrack, timeMs: number) => {
-        const time = clampStoryMotionTimeMs(timeMs);
-        const value = sampleStoryMotionTrackValue(track, time);
-        if (value === undefined) {
-            return;
-        }
-        updateTimeline(current => upsertStoryMotionKeyframe(current, track.property, time, value));
-    }, [updateTimeline]);
-
-    const handleLaneDoubleClick = useCallback((event: ReactMouseEvent<HTMLDivElement>, track: StoryAnimationTrack) => {
-        if ((event.target as HTMLElement | null)?.closest("button")) {
-            return;
-        }
-        const raw = clampStoryMotionTimeMs((event.clientX - event.currentTarget.getBoundingClientRect().left) / pxPerMs);
-        const timeMs = Math.abs(raw - playheadMs) * pxPerMs <= TIMELINE_PLAYHEAD_SNAP_PX
-            ? playheadMs
-            : event.altKey ? raw : snapStoryMotionTimeToFrame(raw, STORY_MOTION_FPS);
-        addKeyframeAtTime(track, timeMs);
-        setPlayheadMs(timeMs);
-    }, [addKeyframeAtTime, playheadMs, pxPerMs]);
-
-    const deleteSelectedKeyframe = useCallback(() => {
-        if (!selected) {
-            return;
-        }
-        const keyframeId = selected.keyframe.id;
-        setSelectedKeyframeId(null);
-        const selection = uiService?.getStore().getSelection();
-        if (
-            selection?.type === STORY_MOTION_KEYFRAME_SELECTION_TYPE
-            && selection.data.keyframeId === keyframeId
-        ) {
-            uiService?.getStore().setSelection({ type: null, data: null });
-        }
-        updateTimeline(current => deleteStoryMotionKeyframe(current, keyframeId));
-    }, [selected, uiService, updateTimeline]);
 
     const restoreTimeline = useCallback((snapshot: StoryAnimationTimeline) => {
         if (!storyService || !asset) {
@@ -761,80 +602,247 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
         lastObservedTimelineRef.current = { json, timeline: JSON.parse(json) as StoryAnimationTimeline };
     }, [asset, timelineHistory]);
 
-    const undoTimelineEdit = useCallback(() => {
-        timelineHistory.undo();
-    }, [timelineHistory]);
+    // ---- selection -----------------------------------------------------------
 
-    const redoTimelineEdit = useCallback(() => {
-        timelineHistory.redo();
-    }, [timelineHistory]);
+    /** Set on a selection gesture: the properties panel follows the selection only once one is made. */
+    const selectionTouchedRef = useRef(false);
+    const revealInspectorRef = useRef(false);
+
+    const changeSelection = useCallback((ids: string[], nextPrimary: string | null, gesture: "click" | "marquee") => {
+        selectionTouchedRef.current = true;
+        revealInspectorRef.current = gesture === "click" && nextPrimary !== null;
+        setSelectedIds(ids);
+        setPrimaryId(nextPrimary);
+    }, []);
+
+    // The properties panel shows the selection's primary keyframe. Synced after the edit lands, so a
+    // keyframe that was just pasted or inserted is found in the timeline it is now part of.
+    const primaryTrackId = primary?.track.id ?? null;
+    useEffect(() => {
+        if (!uiService || !payload?.animationId || !selectionTouchedRef.current) {
+            return;
+        }
+        const store = uiService.getStore();
+        if (primaryId && primaryTrackId) {
+            store.setSelection({
+                type: STORY_MOTION_KEYFRAME_SELECTION_TYPE,
+                data: {
+                    editor: "story-motion",
+                    tabId,
+                    animationId: payload.animationId,
+                    trackId: primaryTrackId,
+                    keyframeId: primaryId,
+                },
+            });
+            if (revealInspectorRef.current) {
+                revealInspectorRef.current = false;
+                uiService.panels.show("narraleaf-studio:properties");
+            }
+            return;
+        }
+        const current = store.getSelection();
+        if (current.type === STORY_MOTION_KEYFRAME_SELECTION_TYPE && current.data.animationId === payload.animationId) {
+            store.setSelection({ type: null, data: null });
+        }
+    }, [payload?.animationId, primaryId, primaryTrackId, tabId, uiService]);
+
+    const selectKeyframes = useCallback((ids: string[]) => {
+        changeSelection(ids, ids[ids.length - 1] ?? null, "marquee");
+    }, [changeSelection]);
+
+    const deleteSelected = useCallback(() => {
+        if (selectedSet.size === 0) {
+            return;
+        }
+        const ids = selectedSet;
+        changeSelection([], null, "marquee");
+        updateTimeline(current => deleteStoryMotionKeyframes(current, ids));
+    }, [changeSelection, selectedSet, updateTimeline]);
+
+    const copySelected = useCallback(() => {
+        const clipboard = copyStoryMotionKeyframes(timeline, selectedSet);
+        if (clipboard) {
+            storyMotionClipboard = clipboard;
+        }
+    }, [selectedSet, timeline]);
+
+    const cutSelected = useCallback(() => {
+        const clipboard = copyStoryMotionKeyframes(timeline, selectedSet);
+        if (clipboard) {
+            storyMotionClipboard = clipboard;
+            deleteSelected();
+        }
+    }, [deleteSelected, selectedSet, timeline]);
+
+    const paste = useCallback((atMs?: number) => {
+        const clipboard = storyMotionClipboard;
+        if (!clipboard || !asset) {
+            return;
+        }
+        const result = pasteStoryMotionKeyframes(timeline, clipboard, atMs ?? playheadRef.current);
+        updateTimeline(() => result.timeline);
+        selectKeyframes(result.ids);
+    }, [asset, selectKeyframes, timeline, updateTimeline]);
+
+    const nudgeSelected = useCallback((frames: number) => {
+        if (selectedSet.size === 0) {
+            return;
+        }
+        const earliest = Math.min(...timeline.tracks.flatMap(track => track.keyframes.filter(keyframe => selectedSet.has(keyframe.id)).map(keyframe => keyframe.timeMs)));
+        // The earliest keyframe moves onto a frame; the others keep their distance from it.
+        const target = snapStoryMotionTimeToFrame(earliest + frames * storyMotionFrameDurationMs(STORY_MOTION_FPS), STORY_MOTION_FPS);
+        const delta = target - earliest;
+        if (delta !== 0) {
+            updateTimeline(current => moveStoryMotionKeyframes(current, selectedSet, delta));
+        }
+    }, [selectedSet, timeline.tracks, updateTimeline]);
+
+    const insertAtPlayhead = useCallback((trackIds: ReadonlySet<string>) => {
+        if (trackIds.size === 0) {
+            return;
+        }
+        const result = insertStoryMotionKeyframes(timeline, trackIds, playheadRef.current);
+        updateTimeline(() => result.timeline);
+        selectKeyframes(result.ids);
+    }, [selectKeyframes, timeline, updateTimeline]);
+
+    /** `I`: key the tracks the selection is on, or every track when nothing is selected. */
+    const insertKeyframes = useCallback(() => {
+        const selectedTracks = timeline.tracks.filter(track => track.keyframes.some(keyframe => selectedSet.has(keyframe.id)));
+        const trackIds = new Set((selectedTracks.length > 0 ? selectedTracks : timeline.tracks).map(track => track.id));
+        insertAtPlayhead(trackIds);
+    }, [insertAtPlayhead, selectedSet, timeline.tracks]);
+
+    const seek = useCallback((timeMs: number) => {
+        setPlayheadMs(Math.max(0, clampStoryMotionTimeMs(timeMs)));
+    }, []);
+
+    const jumpToKeyframe = useCallback((direction: -1 | 1, trackIds?: ReadonlySet<string>) => {
+        const next = adjacentStoryMotionKeyframeTime(timeline, playheadRef.current, direction, trackIds);
+        if (next !== null) {
+            stopPlayback();
+            setPlayheadMs(next);
+            timelineRef.current?.revealTime(next);
+        }
+    }, [stopPlayback, timeline]);
 
     const stepPlayhead = useCallback((frames: number) => {
         setPlayheadMs(current => Math.min(durationRef.current, stepStoryMotionTimeByFrames(current, frames, STORY_MOTION_FPS)));
     }, []);
 
+    const writeTrackValue = useCallback((track: StoryAnimationTrack, value: StoryAnimationKeyframeValue) => {
+        const time = playheadRef.current;
+        updateTimeline(current => {
+            const live = current.tracks.find(item => item.id === track.id) ?? track;
+            if (live.property === "position" && value && typeof value === "object") {
+                const sampled = sampleStoryMotionTrackValue(live, time);
+                const base = sampled && typeof sampled === "object" ? sampled : {};
+                return upsertStoryMotionKeyframe(current, live.property, time, positionForWrite(live, base, value));
+            }
+            return upsertStoryMotionKeyframe(current, live.property, time, value);
+        });
+    }, [updateTimeline]);
+
+    const timelineActions = useMemo<StoryMotionTimelineActions>(() => ({
+        copy: copySelected,
+        cut: freeze.run(cutSelected),
+        paste: freeze.run(paste),
+        canPaste: () => storyMotionClipboard !== null,
+        deleteSelected: freeze.run(deleteSelected),
+        setEasing: freeze.run((easing: string | undefined) => {
+            const ids = selectedSet;
+            updateTimeline(current => setStoryMotionKeyframesEasing(current, ids, easing));
+        }),
+        deleteTrack: freeze.run((trackId: string) => {
+            const track = timeline.tracks.find(item => item.id === trackId);
+            if (track) {
+                const removed = new Set(track.keyframes.map(keyframe => keyframe.id));
+                const remaining = selectedIds.filter(id => !removed.has(id));
+                changeSelection(remaining, remaining[remaining.length - 1] ?? null, "marquee");
+            }
+            updateTimeline(current => deleteStoryMotionTrack(current, trackId));
+        }),
+        insertAtPlayhead: freeze.run(insertAtPlayhead),
+        insertAt: freeze.run((trackId: string, timeMs: number) => {
+            setPlayheadMs(timeMs);
+            const result = insertStoryMotionKeyframes(timeline, new Set([trackId]), timeMs);
+            updateTimeline(() => result.timeline);
+            selectKeyframes(result.ids);
+        }),
+        addProperty: freeze.run((property: StoryAnimationTrackProperty) => {
+            updateTimeline(current => ensureStoryMotionTrack(current, property, playheadRef.current));
+        }),
+        writeValue: freeze.run(writeTrackValue),
+        stepToKeyframe: (trackId: string, direction: -1 | 1) => jumpToKeyframe(direction, new Set([trackId])),
+        toggleKeyframeAtPlayhead: freeze.run((trackId: string) => {
+            const track = timeline.tracks.find(item => item.id === trackId);
+            if (!track) {
+                return;
+            }
+            const existing = findStoryMotionKeyframeAt(track, playheadRef.current);
+            if (existing) {
+                // The last keyframe is the track itself; that goes through the track's menu.
+                if (track.keyframes.length > 1) {
+                    changeSelection(selectedIds.filter(id => id !== existing.id), null, "marquee");
+                    updateTimeline(current => deleteStoryMotionKeyframes(current, new Set([existing.id])));
+                }
+                return;
+            }
+            insertAtPlayhead(new Set([trackId]));
+        }),
+    }), [changeSelection, copySelected, cutSelected, deleteSelected, freeze, insertAtPlayhead, jumpToKeyframe, paste, selectKeyframes, selectedIds, selectedSet, timeline, updateTimeline, writeTrackValue]);
+
+    const handleDragKeyframes = useCallback((ids: ReadonlySet<string>, deltaMs: number, phase: "preview" | "commit" | "cancel") => {
+        if (phase === "preview") {
+            setKeyframeDrag({ ids, deltaMs });
+            return;
+        }
+        setKeyframeDrag(null);
+        if (phase === "commit" && deltaMs !== 0) {
+            freeze.run(() => updateTimeline(current => moveStoryMotionKeyframes(current, ids, deltaMs)))();
+        }
+    }, [freeze, updateTimeline]);
+
+    const handlePxPerMsChange = useCallback((next: number) => {
+        const value = clampPxPerMs(next);
+        setTimelinePxPerMs(value);
+        persistEditorPanelState({ timelinePxPerMs: value });
+    }, [persistEditorPanelState]);
+
+    // ---- keys ----------------------------------------------------------------
+
     const keybindings = useMemo<KeybindingDefinition[]>(() => [
-        {
-            id: "undo",
-            key: "mod+z",
-            description: "Undo story motion edit",
-            handler: freeze.run(undoTimelineEdit),
-        },
-        {
-            id: "redo",
-            key: "mod+shift+z",
-            description: "Redo story motion edit",
-            handler: freeze.run(redoTimelineEdit),
-        },
-        {
-            id: "delete",
-            key: "delete",
-            description: "Delete selected keyframe",
-            handler: freeze.run(deleteSelectedKeyframe),
-        },
-        {
-            id: "backspace",
-            key: "backspace",
-            description: "Delete selected keyframe",
-            handler: freeze.run(deleteSelectedKeyframe),
-        },
-        {
-            id: "prev-frame",
-            key: "arrowleft",
-            description: "Step playhead back one frame",
-            handler: () => stepPlayhead(-1),
-        },
-        {
-            id: "next-frame",
-            key: "arrowright",
-            description: "Step playhead forward one frame",
-            handler: () => stepPlayhead(1),
-        },
-        {
-            id: "prev-frames",
-            key: "shift+arrowleft",
-            description: "Step playhead back ten frames",
-            handler: () => stepPlayhead(-10),
-        },
-        {
-            id: "next-frames",
-            key: "shift+arrowright",
-            description: "Step playhead forward ten frames",
-            handler: () => stepPlayhead(10),
-        },
-        {
-            id: "playhead-start",
-            key: "home",
-            description: "Move playhead to start",
-            handler: () => setPlayheadMs(0),
-        },
-        {
-            id: "playhead-end",
-            key: "end",
-            description: "Move playhead to end",
-            handler: () => setPlayheadMs(durationRef.current),
-        },
-    ], [deleteSelectedKeyframe, freeze, redoTimelineEdit, stepPlayhead, undoTimelineEdit]);
+        { id: "undo", key: "mod+z", description: "Undo story motion edit", handler: freeze.run(() => { timelineHistory.undo(); }) },
+        { id: "redo", key: "mod+shift+z", description: "Redo story motion edit", handler: freeze.run(() => { timelineHistory.redo(); }) },
+        { id: "delete", key: "delete", description: "Delete selected keyframes", handler: freeze.run(deleteSelected) },
+        { id: "backspace", key: "backspace", description: "Delete selected keyframes", handler: freeze.run(deleteSelected) },
+        { id: "play-pause", key: "space", description: "Play or pause", handler: togglePlayback },
+        { id: "play-reverse", key: "j", description: "Play backwards", handler: () => shuttle(-1, true) },
+        { id: "stop", key: "k", description: "Stop", handler: () => { if (playing) stopPlayback(); } },
+        { id: "play-forward", key: "l", description: "Play forwards", handler: () => shuttle(1, true) },
+        { id: "loop", key: "r", description: "Toggle loop", handler: () => setLoop(value => !value) },
+        { id: "prev-frame", key: "arrowleft", description: "Step playhead back one frame", handler: () => stepPlayhead(-1) },
+        { id: "next-frame", key: "arrowright", description: "Step playhead forward one frame", handler: () => stepPlayhead(1) },
+        { id: "prev-frames", key: "shift+arrowleft", description: "Step playhead back ten frames", handler: () => stepPlayhead(-10) },
+        { id: "next-frames", key: "shift+arrowright", description: "Step playhead forward ten frames", handler: () => stepPlayhead(10) },
+        { id: "playhead-start", key: "home", description: "Move playhead to start", handler: () => setPlayheadMs(0) },
+        { id: "playhead-end", key: "end", description: "Move playhead to end", handler: () => setPlayheadMs(durationRef.current) },
+        { id: "prev-keyframe", key: "arrowup", description: "Go to previous keyframe", handler: () => jumpToKeyframe(-1) },
+        { id: "next-keyframe", key: "arrowdown", description: "Go to next keyframe", handler: () => jumpToKeyframe(1) },
+        { id: "insert-keyframe", key: "i", description: "Add keyframes at playhead", handler: freeze.run(insertKeyframes) },
+        { id: "select-all", key: "mod+a", description: "Select all keyframes", handler: () => selectKeyframes(timeline.tracks.flatMap(track => track.keyframes.map(keyframe => keyframe.id))) },
+        { id: "clear-selection", key: "escape", description: "Clear selection", handler: () => changeSelection([], null, "marquee") },
+        { id: "copy", key: "mod+c", description: "Copy keyframes", handler: copySelected },
+        { id: "cut", key: "mod+x", description: "Cut keyframes", handler: freeze.run(cutSelected) },
+        { id: "paste", key: "mod+v", description: "Paste keyframes at playhead", handler: freeze.run(() => paste()) },
+        { id: "nudge-left", key: "alt+arrowleft", description: "Move keyframes back one frame", handler: freeze.run(() => nudgeSelected(-1)) },
+        { id: "nudge-right", key: "alt+arrowright", description: "Move keyframes forward one frame", handler: freeze.run(() => nudgeSelected(1)) },
+        { id: "nudge-left-large", key: "alt+shift+arrowleft", description: "Move keyframes back ten frames", handler: freeze.run(() => nudgeSelected(-10)) },
+        { id: "nudge-right-large", key: "alt+shift+arrowright", description: "Move keyframes forward ten frames", handler: freeze.run(() => nudgeSelected(10)) },
+        { id: "zoom-in", key: "=", description: "Zoom timeline in", handler: () => timelineRef.current?.zoomBy(1.4) },
+        { id: "zoom-out", key: "-", description: "Zoom timeline out", handler: () => timelineRef.current?.zoomBy(1 / 1.4) },
+        { id: "zoom-fit", key: "0", description: "Fit the motion in the timeline", handler: () => timelineRef.current?.zoomToFit() },
+    ], [changeSelection, copySelected, cutSelected, deleteSelected, freeze, insertKeyframes, jumpToKeyframe, nudgeSelected, paste, playing, selectKeyframes, shuttle, stepPlayhead, stopPlayback, timeline.tracks, timelineHistory, togglePlayback]);
 
     useKeybindings({
         keybindings,
@@ -844,20 +852,145 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
         catalogPrefix: "story-motion.",
     });
 
-    const deleteTrack = useCallback((track: StoryAnimationTrack) => {
-        if (selectedKeyframeId && track.keyframes.some(keyframe => keyframe.id === selectedKeyframeId)) {
-            setSelectedKeyframeId(null);
+    // ---- stage ---------------------------------------------------------------
+
+    const fitStage = useCallback(() => {
+        const viewport = previewViewportRef.current;
+        if (!viewport || viewport.clientWidth <= 0 || viewport.clientHeight <= 0) {
+            return;
         }
-        const selection = uiService?.getStore().getSelection();
-        if (
-            selection?.type === STORY_MOTION_KEYFRAME_SELECTION_TYPE
-            && selection.data.animationId === payload?.animationId
-            && selection.data.trackId === track.id
-        ) {
-            uiService?.getStore().setSelection({ type: null, data: null });
+        const zoom = clampStageZoom(Math.min(
+            (viewport.clientWidth - STAGE_FIT_MARGIN * 2) / stageSize.width,
+            (viewport.clientHeight - STAGE_FIT_MARGIN * 2) / stageSize.height,
+        ));
+        setStageZoom(zoom);
+        window.requestAnimationFrame(() => centerPreviewViewport(viewport, stageSize, zoom));
+    }, [stageSize]);
+
+    // Fitted, the stage follows the size of its area; zoomed by hand, it keeps the zoom it was given.
+    const hasAsset = asset !== null;
+    useEffect(() => {
+        const viewport = previewViewportRef.current;
+        if (!hasAsset || !viewRestored || !viewport || !stageFit) {
+            return;
         }
-        updateTimeline(current => deleteStoryMotionTrack(current, track.id));
-    }, [payload?.animationId, selectedKeyframeId, uiService, updateTimeline]);
+        fitStage();
+        const observer = new ResizeObserver(() => fitStage());
+        observer.observe(viewport);
+        return () => observer.disconnect();
+    }, [fitStage, hasAsset, stageFit, viewRestored]);
+
+    // A zoom chosen by hand restores where it was left.
+    useEffect(() => {
+        const viewport = previewViewportRef.current;
+        if (!asset || !viewRestored || !viewport || stageFit) {
+            return;
+        }
+        const saved = readEditorPanelState().previewViewport;
+        const frame = window.requestAnimationFrame(() => {
+            if (saved && !saved.fit && Math.abs(saved.zoom - stageZoom) < 0.001) {
+                viewport.scrollLeft = saved.scrollLeft;
+                viewport.scrollTop = saved.scrollTop;
+            } else {
+                centerPreviewViewport(viewport, stageSize, stageZoom);
+            }
+        });
+        return () => window.cancelAnimationFrame(frame);
+        // Only when the mode or the motion changes: a zoom step re-centres itself in its own handler.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [asset?.id, stageFit, viewRestored]);
+
+    const persistPreviewViewport = useCallback((zoom: number, fit: boolean) => {
+        const viewport = previewViewportRef.current;
+        if (!viewport) {
+            return;
+        }
+        const previewViewport = { scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop, zoom, fit };
+        latestEditorStateRef.current = { ...latestEditorStateRef.current, previewViewport };
+        persistEditorPanelState({ previewViewport });
+    }, [persistEditorPanelState]);
+
+    const setStageZoomAround = useCallback((next: number, pointer?: { x: number; y: number }) => {
+        const viewport = previewViewportRef.current;
+        if (!viewport) {
+            return;
+        }
+        const zoom = clampStageZoom(next);
+        const anchor = pointer ?? { x: viewport.clientWidth / 2, y: viewport.clientHeight / 2 };
+        const contentX = (viewport.scrollLeft + anchor.x - PREVIEW_CANVAS_PADDING) / stageZoom;
+        const contentY = (viewport.scrollTop + anchor.y - PREVIEW_CANVAS_PADDING) / stageZoom;
+        setStageFit(false);
+        setStageZoom(zoom);
+        window.requestAnimationFrame(() => {
+            viewport.scrollLeft = contentX * zoom + PREVIEW_CANVAS_PADDING - anchor.x;
+            viewport.scrollTop = contentY * zoom + PREVIEW_CANVAS_PADDING - anchor.y;
+            persistPreviewViewport(zoom, false);
+        });
+    }, [persistPreviewViewport, stageZoom]);
+
+    const handlePreviewWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
+        if (!event.ctrlKey) {
+            return;
+        }
+        const viewport = previewViewportRef.current;
+        if (!viewport) {
+            return;
+        }
+        event.preventDefault();
+        const rect = viewport.getBoundingClientRect();
+        setStageZoomAround(stageZoom * Math.exp(-event.deltaY * 0.0015), { x: event.clientX - rect.left, y: event.clientY - rect.top });
+    }, [setStageZoomAround, stageZoom]);
+
+    const handlePreviewPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+        focusEditor();
+        if (event.button !== 1 || !previewViewportRef.current) {
+            return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        const viewport = previewViewportRef.current;
+        previewPanRef.current = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            startScrollLeft: viewport.scrollLeft,
+            startScrollTop: viewport.scrollTop,
+        };
+        setPreviewPanning(true);
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+    }, [focusEditor]);
+
+    const handlePreviewPointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+        const pan = previewPanRef.current;
+        const viewport = previewViewportRef.current;
+        if (!pan || pan.pointerId !== event.pointerId || !viewport) {
+            return;
+        }
+        event.preventDefault();
+        viewport.scrollLeft = pan.startScrollLeft - (event.clientX - pan.startX);
+        viewport.scrollTop = pan.startScrollTop - (event.clientY - pan.startY);
+    }, []);
+
+    const stopPreviewPan = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+        const pan = previewPanRef.current;
+        if (!pan || pan.pointerId !== event.pointerId) {
+            return;
+        }
+        if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+        previewPanRef.current = null;
+        setPreviewPanning(false);
+        // Panning is choosing a view by hand, so the stage stops following the area's size.
+        setStageFit(false);
+        persistPreviewViewport(stageZoom, false);
+    }, [persistPreviewViewport, stageZoom]);
+
+    const handlePreviewAuxClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+        if (event.button === 1) {
+            event.preventDefault();
+        }
+    }, []);
 
     const startPreviewDrag = useCallback((event: ReactPointerEvent<HTMLDivElement>, mode: StoryMotionPreviewDragMode) => {
         if (event.button !== 0) {
@@ -865,28 +998,28 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
         }
         event.preventDefault();
         event.stopPropagation();
+        stopPlayback();
         const startX = event.clientX;
         const startY = event.clientY;
         const startPreview = visiblePreview;
+        const time = playheadRef.current;
         let latestValue: StoryAnimationKeyframeValue | null = null;
         let latestProperty: StoryAnimationTrackProperty | null = null;
         const onMove = (moveEvent: PointerEvent) => {
-            // Position tracks the cursor in stage space (compensate the stage zoom);
-            // scale/zoom/rotation follow raw screen movement so sensitivity stays
-            // constant regardless of how far the stage is zoomed out.
+            // Position tracks the cursor in stage space (compensate the stage zoom); scale, zoom and
+            // rotation follow raw screen movement so sensitivity stays constant at any stage zoom.
             const screenDx = moveEvent.clientX - startX;
             const screenDy = moveEvent.clientY - startY;
             if (mode === "position") {
-                const position = {
-                    ...startPreview.position,
+                const position: StoryAlignPositionValue = {
                     xoffset: startPreview.position.xoffset + screenDx / stageZoom,
-                    // yoffset is measured up from the stage bottom (NLR origin), so dragging
-                    // the cursor down must decrease it for the frame to follow the pointer.
+                    // yoffset is measured up from the stage bottom (NLR origin), so dragging the
+                    // cursor down must decrease it for the frame to follow the pointer.
                     yoffset: startPreview.position.yoffset - screenDy / stageZoom,
                 };
                 latestProperty = "position";
                 latestValue = position;
-                setPreviewOverride({ position });
+                setPreviewOverride({ position: { ...startPreview.position, ...position } as typeof startPreview.position });
             } else if (mode === "zoom") {
                 const zoomValue = Math.max(0.1, startPreview.zoom + screenDx / 180);
                 latestProperty = "zoom";
@@ -910,178 +1043,58 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
             }
         };
         const onUp = () => {
-            if (autoKey && latestProperty && latestValue !== null) {
-                updateTimeline(current => upsertStoryMotionKeyframe(current, latestProperty!, playheadMs, latestValue!));
-            }
-            setPreviewOverride(null);
             window.removeEventListener("pointermove", onMove);
             window.removeEventListener("pointerup", onUp);
+            setPreviewOverride(null);
+            const property = latestProperty;
+            const value = latestValue;
+            if (!property || value === null) {
+                return;
+            }
+            updateTimeline(current => {
+                if (property === "position" && typeof value === "object") {
+                    const track = current.tracks.find(item => item.property === "position");
+                    return upsertStoryMotionKeyframe(current, property, time, positionForWrite(track, startPreview.position, value));
+                }
+                return upsertStoryMotionKeyframe(current, property, time, value);
+            });
         };
         window.addEventListener("pointermove", onMove);
         window.addEventListener("pointerup", onUp);
-    }, [autoKey, playheadMs, stageZoom, updateTimeline, visiblePreview]);
+    }, [stageZoom, stopPlayback, updateTimeline, visiblePreview]);
 
-    const handlePreviewPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-        focusEditor();
-        if (event.button !== 1 || !previewViewportRef.current) {
-            return;
+    const stageZoomOptions = useMemo<SelectOption[]>(() => {
+        const options: SelectOption[] = [
+            { value: "fit", label: t("motion.editor.zoomFit") },
+            ...STAGE_ZOOM_PRESETS.map(zoom => ({ value: String(zoom), label: formatZoom(zoom) })),
+        ];
+        if (!stageFit && !STAGE_ZOOM_PRESETS.some(zoom => Math.abs(zoom - stageZoom) < 1e-3)) {
+            options.push({ value: "custom", label: formatZoom(stageZoom) });
         }
-        event.preventDefault();
-        event.stopPropagation();
-        const viewport = previewViewportRef.current;
-        previewPanRef.current = {
-            active: true,
-            pointerId: event.pointerId,
-            startX: event.clientX,
-            startY: event.clientY,
-            startScrollLeft: viewport.scrollLeft,
-            startScrollTop: viewport.scrollTop,
-        };
-        setPreviewPanning(true);
-        event.currentTarget.setPointerCapture?.(event.pointerId);
-    }, [focusEditor]);
+        return options;
+    }, [stageFit, stageZoom, t]);
+    const stageZoomValue = stageFit
+        ? "fit"
+        : STAGE_ZOOM_PRESETS.find(zoom => Math.abs(zoom - stageZoom) < 1e-3)?.toString() ?? "custom";
 
-    const handlePreviewPointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-        const pan = previewPanRef.current;
-        const viewport = previewViewportRef.current;
-        if (!pan.active || pan.pointerId !== event.pointerId || !viewport) {
-            return;
-        }
-        event.preventDefault();
-        viewport.scrollLeft = pan.startScrollLeft - (event.clientX - pan.startX);
-        viewport.scrollTop = pan.startScrollTop - (event.clientY - pan.startY);
-    }, []);
+    // ---- layout --------------------------------------------------------------
 
-    const persistCurrentPreviewViewport = useCallback(() => {
-        const viewport = previewViewportRef.current;
-        if (!viewport) {
-            return;
-        }
-        const previewViewport = normalizeStoryMotionPreviewViewport({
-            scrollLeft: viewport.scrollLeft,
-            scrollTop: viewport.scrollTop,
-            zoom: stageZoom,
-        });
-        if (!previewViewport) {
-            return;
-        }
-        latestEditorStateRef.current = {
-            ...latestEditorStateRef.current,
-            previewViewport,
-        };
-        persistEditorPanelState({ previewViewport });
-    }, [persistEditorPanelState, stageZoom]);
+    const handleTimelineResize = useCallback((delta: number): number => {
+        const bodyHeight = bodyRef.current?.clientHeight ?? 0;
+        const ceiling = Math.max(MIN_TIMELINE_HEIGHT, bodyHeight - MIN_STAGE_HEIGHT);
+        const current = timelineHeightRef.current;
+        const next = Math.round(Math.min(ceiling, Math.max(MIN_TIMELINE_HEIGHT, current - delta)));
+        setTimelineHeight(next);
+        // `ResizableHandle` moves its anchor by the part of the pointer's travel the height did not
+        // follow, so the seam stays under the pointer once the height is clamped. The timeline sits
+        // below the seam: the pointer moving up (a negative delta) makes it taller.
+        const applied = current - next;
+        return applied - delta;
+    }, [setTimelineHeight]);
 
-    const stopPreviewPan = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-        const pan = previewPanRef.current;
-        if (!pan.active || pan.pointerId !== event.pointerId) {
-            return;
-        }
-        if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
-            event.currentTarget.releasePointerCapture(event.pointerId);
-        }
-        previewPanRef.current = {
-            active: false,
-            pointerId: null,
-            startX: 0,
-            startY: 0,
-            startScrollLeft: 0,
-            startScrollTop: 0,
-        };
-        setPreviewPanning(false);
-        persistCurrentPreviewViewport();
-    }, [persistCurrentPreviewViewport]);
-
-    const handlePreviewAuxClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
-        if (event.button === 1) {
-            event.preventDefault();
-        }
-    }, []);
-
-    const handlePreviewWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
-        if (!event.ctrlKey) {
-            return;
-        }
-        const viewport = previewViewportRef.current;
-        if (!viewport) {
-            return;
-        }
-        event.preventDefault();
-        const rect = viewport.getBoundingClientRect();
-        const pointerX = event.clientX - rect.left;
-        const pointerY = event.clientY - rect.top;
-        setStageZoom(current => {
-            const next = clampStageZoom(current * Math.exp(-event.deltaY * 0.0015));
-            if (next === current) {
-                return current;
-            }
-            const contentX = (viewport.scrollLeft + pointerX - PREVIEW_CANVAS_PADDING) / current;
-            const contentY = (viewport.scrollTop + pointerY - PREVIEW_CANVAS_PADDING) / current;
-            window.requestAnimationFrame(() => {
-                const scrollLeft = contentX * next + PREVIEW_CANVAS_PADDING - pointerX;
-                const scrollTop = contentY * next + PREVIEW_CANVAS_PADDING - pointerY;
-                viewport.scrollLeft = scrollLeft;
-                viewport.scrollTop = scrollTop;
-                const previewViewport = normalizeStoryMotionPreviewViewport({
-                    scrollLeft,
-                    scrollTop,
-                    zoom: next,
-                });
-                if (previewViewport) {
-                    latestEditorStateRef.current = {
-                        ...latestEditorStateRef.current,
-                        previewViewport,
-                    };
-                    persistEditorPanelState({ previewViewport });
-                }
-            });
-            return next;
-        });
-    }, [persistEditorPanelState]);
-
-    const handlePreviewScroll = useCallback(() => {
-        persistCurrentPreviewViewport();
-    }, [persistCurrentPreviewViewport]);
-
-    const handleTimelineWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
-        if (event.ctrlKey) {
-            const container = timelineScrollRef.current;
-            if (!container) {
-                return;
-            }
-            event.preventDefault();
-            const rect = container.getBoundingClientRect();
-            const pointerX = Math.max(TIMELINE_LEFT_COL_PX, event.clientX - rect.left);
-            const scrollLeft = container.scrollLeft;
-            setTimelinePxPerMs(current => {
-                const base = current ?? DEFAULT_TIMELINE_PX_PER_MS;
-                const next = clampTimelinePxPerMs(base * Math.exp(-event.deltaY * 0.0015));
-                if (next === base) {
-                    return current;
-                }
-                const timeAtPointer = Math.max(0, (scrollLeft + pointerX - TIMELINE_LEFT_COL_PX) / base);
-                window.requestAnimationFrame(() => {
-                    container.scrollLeft = timeAtPointer * next + TIMELINE_LEFT_COL_PX - pointerX;
-                });
-                persistEditorPanelState({ timelinePxPerMs: next });
-                return next;
-            });
-            return;
-        }
-        const container = event.currentTarget;
-        const horizontalIntent = event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY);
-        const noVerticalOverflow = container.scrollHeight <= container.clientHeight + 1;
-        if (!horizontalIntent && !noVerticalOverflow) {
-            return;
-        }
-        const rawDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-        const delta = normalizeWheelDelta(rawDelta, event.deltaMode, container.clientWidth);
-        if (delta === 0) {
-            return;
-        }
-        event.preventDefault();
-        container.scrollLeft += delta;
-    }, [persistEditorPanelState]);
+    const saveTimelineHeight = useCallback(() => {
+        panelStateService?.setPanelState(STORY_MOTION_LAYOUT_STATE_ID, { timelineHeight: timelineHeightRef.current });
+    }, [panelStateService]);
 
     if (!asset) {
         return (
@@ -1091,260 +1104,267 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
         );
     }
 
+    const separator = <span className="mx-1.5 h-4 w-px shrink-0 bg-edge" />;
+    const shownPlayhead = Math.min(playheadMs, durationMs);
+    const frameMs = storyMotionFrameDurationMs(STORY_MOTION_FPS);
+    const totalFrames = Math.round(durationMs / frameMs);
+    const currentFrame = Math.round(shownPlayhead / frameMs);
+
     return (
         <div
             ref={editorRootRef}
             className="flex h-full min-h-0 flex-col bg-surface text-fg outline-none"
             data-help-topic="storyMotion"
             tabIndex={-1}
-            onKeyDownCapture={handleEditorKeyDown}
-            onMouseDownCapture={focusEditor}
+            onMouseDownCapture={event => {
+                // Only for a press on the editor itself. A menu the timeline opens is portalled out
+                // of this element but still under it in React, so its presses arrive here too - and
+                // taking focus from a menu closes it before the click on its row can land.
+                const target = event.target as HTMLElement;
+                if (!event.currentTarget.contains(target)) {
+                    return;
+                }
+                uiService?.focus.setFocus(FocusArea.Editor, tabId);
+                // A control takes focus itself, and an open dropdown closes when focus leaves it;
+                // the root takes it for a press on the stage or the lanes, which hold none.
+                if (!target.closest("input, textarea, select, button, [role='listbox'], [role='option'], [contenteditable='true']")) {
+                    editorRootRef.current?.focus();
+                }
+            }}
         >
-            <div className="flex h-12 shrink-0 items-center gap-2 border-b border-edge px-3">
-                <div className="min-w-0 flex-[0_1_320px] truncate text-sm font-medium text-fg" data-tip={asset.name}>
-                    {asset.name}
-                </div>
-                <button className={ICON_BUTTON_CLASS} type="button" onClick={togglePlayback} data-tip={playing ? t("motion.editor.pause") : t("motion.editor.play")} aria-label={playing ? t("motion.editor.pause") : t("motion.editor.play")}>
+            {/* Transport and view. Everything else is a gesture, a shortcut or a track's own control. */}
+            <TooltipGroup className="flex shrink-0 flex-wrap items-center gap-1 border-b border-edge bg-surface-raised px-2 py-1.5">
+                <button
+                    type="button"
+                    onClick={togglePlayback}
+                    className={ICON_BUTTON_CLASS}
+                    data-tip={playing ? t("motion.editor.pause") : t("motion.editor.play")}
+                    data-tip-shortcut={shortcuts.forBinding("story-motion.play-pause")}
+                    aria-label={playing ? t("motion.editor.pause") : t("motion.editor.play")}
+                >
                     {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                 </button>
-                <input
-                    className="h-1.5 min-w-32 flex-1 accent-primary"
-                    type="range"
-                    min={0}
-                    max={durationMs}
-                    value={Math.min(playheadMs, durationMs)}
-                    onChange={event => setPlayheadMs(clampNumber(Number(event.target.value), 0, durationMs, 0))}
-                />
-                <span className="shrink-0 text-2xs tabular-nums text-fg-subtle">
-                    {formatStoryMotionTime(Math.min(playheadMs, durationMs))}
-                </span>
-            </div>
+                <button
+                    type="button"
+                    onClick={() => setPlayheadMs(0)}
+                    className={ICON_BUTTON_CLASS}
+                    data-tip={t("motion.editor.toStart")}
+                    data-tip-shortcut={shortcuts.forBinding("story-motion.playhead-start")}
+                    aria-label={t("motion.editor.toStart")}
+                >
+                    <SkipBack className="h-4 w-4" />
+                </button>
+                <button
+                    type="button"
+                    onClick={() => stepPlayhead(-1)}
+                    className={ICON_BUTTON_CLASS}
+                    data-tip={t("motion.editor.previousFrame")}
+                    data-tip-shortcut={shortcuts.forBinding("story-motion.prev-frame")}
+                    aria-label={t("motion.editor.previousFrame")}
+                >
+                    <StepBack className="h-4 w-4" />
+                </button>
+                <button
+                    type="button"
+                    onClick={() => stepPlayhead(1)}
+                    className={ICON_BUTTON_CLASS}
+                    data-tip={t("motion.editor.nextFrame")}
+                    data-tip-shortcut={shortcuts.forBinding("story-motion.next-frame")}
+                    aria-label={t("motion.editor.nextFrame")}
+                >
+                    <StepForward className="h-4 w-4" />
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setLoop(value => !value)}
+                    className={controlButtonClass(loop)}
+                    data-tip={t("motion.editor.loop")}
+                    data-tip-shortcut={shortcuts.forBinding("story-motion.loop")}
+                    aria-label={t("motion.editor.loop")}
+                    aria-pressed={loop}
+                >
+                    <Repeat className="h-4 w-4" />
+                </button>
 
-            <div className="grid min-h-0 flex-1 grid-cols-1">
-                <div className="flex min-h-0 flex-col">
+                {separator}
+
+                <span className="shrink-0 tabular-nums text-xs text-fg-muted">
+                    {formatClock(shownPlayhead)} / {formatClock(durationMs)}
+                </span>
+
+                {separator}
+
+                <Select
+                    size="md"
+                    className="w-28"
+                    options={stageZoomOptions}
+                    value={stageZoomValue}
+                    onChange={value => {
+                        if (value === "fit") {
+                            setStageFit(true);
+                            persistPreviewViewport(stageZoom, true);
+                        } else if (value !== "custom") {
+                            setStageZoomAround(Number(value));
+                        }
+                    }}
+                    ariaLabel={t("motion.editor.stageZoom")}
+                />
+            </TooltipGroup>
+
+            <div ref={bodyRef} className="flex min-h-0 flex-1 flex-col">
+                <div
+                    ref={previewViewportRef}
+                    className={`min-h-0 flex-1 overflow-auto bg-surface-sunken ${previewPanning ? "cursor-grabbing" : "cursor-default"}`}
+                    onPointerDown={handlePreviewPointerDown}
+                    onPointerMove={handlePreviewPointerMove}
+                    onPointerUp={stopPreviewPan}
+                    onPointerCancel={stopPreviewPan}
+                    onAuxClick={handlePreviewAuxClick}
+                    onWheel={handlePreviewWheel}
+                    onScroll={stageFit ? undefined : () => persistPreviewViewport(stageZoom, false)}
+                >
                     <div
-                        ref={previewViewportRef}
-                        className={`min-h-0 flex-1 overflow-auto bg-surface ${previewPanning ? "cursor-grabbing" : "cursor-default"}`}
-                        onPointerDown={handlePreviewPointerDown}
-                        onPointerMove={handlePreviewPointerMove}
-                        onPointerUp={stopPreviewPan}
-                        onPointerCancel={stopPreviewPan}
-                        onAuxClick={handlePreviewAuxClick}
-                        onWheel={handlePreviewWheel}
-                        onScroll={handlePreviewScroll}
+                        className="relative min-w-max"
+                        style={{
+                            width: stageSize.width * stageZoom + PREVIEW_CANVAS_PADDING * 2,
+                            height: stageSize.height * stageZoom + PREVIEW_CANVAS_PADDING * 2,
+                        }}
                     >
                         <div
-                            className="relative min-w-max"
+                            className="absolute"
                             style={{
-                                width: stageSize.width * stageZoom + PREVIEW_CANVAS_PADDING * 2,
-                                height: stageSize.height * stageZoom + PREVIEW_CANVAS_PADDING * 2,
+                                left: PREVIEW_CANVAS_PADDING,
+                                top: PREVIEW_CANVAS_PADDING,
+                                width: stageSize.width * stageZoom,
+                                height: stageSize.height * stageZoom,
                             }}
                         >
                             <div
-                                className="absolute"
+                                className="absolute left-0 top-0"
                                 style={{
-                                    left: PREVIEW_CANVAS_PADDING,
-                                    top: PREVIEW_CANVAS_PADDING,
-                                    width: stageSize.width * stageZoom,
-                                    height: stageSize.height * stageZoom,
+                                    width: stageSize.width,
+                                    height: stageSize.height,
+                                    transform: `scale(${stageZoom})`,
+                                    transformOrigin: "top left",
                                 }}
                             >
-                                <div
-                                    className="absolute left-0 top-0"
-                                    style={{
-                                        width: stageSize.width,
-                                        height: stageSize.height,
-                                        transform: `scale(${stageZoom})`,
-                                        transformOrigin: "top left",
-                                    }}
-                                >
-                                    <StoryMotionStagePreview
-                                        preview={visiblePreview}
-                                        target={previewTarget}
-                                        onPointerDrag={startPreviewDrag}
-                                        // The stage handles are drawn only when they can be grabbed. A
-                                        // resize handle IS the gesture affordance - leaving one visible
-                                        // that refuses to move is the half-inert drag that reads as a
-                                        // broken editor, so while frozen the frame is inspect-only.
-                                        interactive={!freeze.frozen}
-                                        stageSize={stageSize}
-                                        showLabel={false}
-                                        backgroundUrl={previewBackgroundUrl}
-                                        allowOverflow
-                                        canvasScale={stageZoom}
-                                    />
-                                    {positionPath.length > 1 ? (
-                                        <svg
-                                            className="pointer-events-none absolute left-0 top-0"
-                                            width={stageSize.width}
-                                            height={stageSize.height}
-                                            viewBox={`0 0 ${stageSize.width} ${stageSize.height}`}
-                                        >
-                                            <polyline
-                                                points={positionPath.map(point => `${point.x},${point.y}`).join(" ")}
-                                                fill="none"
-                                                stroke="rgba(31,158,255,0.55)"
-                                                strokeWidth={2}
-                                                strokeDasharray="6 6"
-                                            />
-                                            {positionPath.map(point => (
-                                                <circle key={point.id} cx={point.x} cy={point.y} r={4} fill="#1f9eff" stroke="rgba(255,255,255,0.7)" />
-                                            ))}
-                                        </svg>
-                                    ) : null}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="h-64 shrink-0 border-t border-edge bg-surface">
-                        <div className="flex h-12 items-center gap-3 border-b border-edge px-3">
-                            <div className="w-[168px] text-xs font-medium text-fg-muted">{t("motion.editor.animatedProperties")}</div>
-                            <Select
-                                className="w-44"
-                                size="md"
-                                options={addPropertyOptions}
-                                value={selectedAddProperty}
-                                onChange={value => setSelectedAddProperty(value as StoryAnimationTrackProperty)}
-                                placeholder={t("motion.editor.addProperty")}
-                                disabled={addPropertyOptions.length === 0}
-                                portalMenu
-                                menuZIndex={80}
-                            />
-                            {/* Adding a track writes the animation asset. On a frozen project this
-                                still added the property, drew the lane, and lost it on thaw - so it
-                                is refused here, while the dropdown beside it (local state only)
-                                stays live so the list can be read. A motion with every property
-                                already animated keeps its own reason for being off. */}
-                            <Button
-                                variant="secondary"
-                                size="md"
-                                type="button"
-                                onClick={() => updateTimeline(current => ensureStoryMotionTrack(current, selectedAddProperty, playheadMs))}
-                                {...freeze.writes(addPropertyOptions.length === 0)}
-                                className="shrink-0"
-                            >
-                                <Plus className="h-3.5 w-3.5" />
-                                {t("motion.editor.addProperty")}
-                            </Button>
-                        </div>
-                        <div ref={timelineScrollRef} className="h-[calc(100%-48px)] overflow-auto overscroll-contain" onWheel={handleTimelineWheel}>
-                            <div
-                                className="grid"
-                                style={{
-                                    width: TIMELINE_LEFT_COL_PX + timelineWidth,
-                                    minWidth: "100%",
-                                    gridTemplateColumns: `${TIMELINE_LEFT_COL_PX}px ${timelineWidth}px`,
-                                }}
-                            >
-                                {/* The ruler, its corner and the property gutter are `bg-surface-sunken`,
-                                    not `bg-surface`: they are sticky, so they have to hide the tracks
-                                    sliding under them, and a base surface is cleared to transparent
-                                    under a workspace wallpaper (see styles.css). */}
-                                <div className="sticky left-0 top-0 z-40 flex h-8 items-center border-r border-b border-edge bg-surface-sunken px-3 text-xs font-medium text-fg-muted">
-                                    {t("motion.property")}
-                                </div>
-                                <div className="sticky top-0 z-30 h-8 border-b border-edge bg-surface-sunken" onPointerDown={startPlayheadDrag}>
-                                    {buildTicks(pxPerMs, timelineWidth, timelineViewport, STORY_MOTION_FPS).map(tick => (
-                                        <div key={tick.timeMs} className="absolute top-0 h-full border-l border-edge" style={{ left: tick.timeMs * pxPerMs }}>
-                                            <span className="ml-1 text-2xs text-fg-subtle">{tick.label}</span>
-                                        </div>
-                                    ))}
-                                    <div className="absolute top-0 z-20 h-full w-px bg-orange-400" style={{ left: playheadMs * pxPerMs }}>
-                                        <div className="-ml-1.5 h-3 w-3 rounded-sm bg-orange-400 rotate-45" />
-                                    </div>
-                                </div>
-                                {tracks.map(track => (
-                                    <Fragment key={track.id}>
-                                        <div className="group sticky left-0 z-20 flex h-[34px] items-center gap-2 border-r border-b border-edge-subtle bg-surface-sunken px-3 text-xs text-fg-muted">
-                                            <span className="min-w-0 flex-1 truncate">{getStoryMotionPropertyMeta(track.property).label}</span>
-                                            <button
-                                                type="button"
-                                                className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-fg-subtle opacity-0 transition group-hover:opacity-100 hover:bg-primary/10 hover:text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
-                                                onClick={event => {
-                                                    event.stopPropagation();
-                                                    addKeyframeAtTime(track, playheadMs);
-                                                }}
-                                                onPointerDown={event => event.stopPropagation()}
-                                                {...freeze.writes(false, t("motion.editor.addKeyframeAtPlayhead"))}
-                                                aria-label={t("motion.editor.addKeyframeAria", { property: getStoryMotionPropertyMeta(track.property).label })}
-                                            >
-                                                <Diamond className="h-3.5 w-3.5" />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-fg-subtle opacity-0 transition group-hover:opacity-100 hover:bg-danger/10 hover:text-danger focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-danger/50"
-                                                onClick={event => {
-                                                    event.stopPropagation();
-                                                    deleteTrack(track);
-                                                }}
-                                                onPointerDown={event => event.stopPropagation()}
-                                                {...freeze.writes(false, t("motion.editor.deleteTrack"))}
-                                                aria-label={t("motion.editor.deleteTrackAria", { property: getStoryMotionPropertyMeta(track.property).label })}
-                                            >
-                                                <Trash2 className="h-3.5 w-3.5" />
-                                            </button>
-                                        </div>
-                                        <div
-                                            className="relative h-[34px] border-b border-edge-subtle"
-                                            onDoubleClick={freeze.gesture((event: ReactMouseEvent<HTMLDivElement>) => handleLaneDoubleClick(event, track))}
-                                        >
-                                            <div className="absolute top-0 z-20 h-full w-px bg-orange-400/90" style={{ left: playheadMs * pxPerMs }} />
-                                            {track.keyframes.map(keyframe => (
-                                                <button
-                                                    key={keyframe.id}
-                                                    type="button"
-                                                    className={[
-                                                        "absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rotate-45 border",
-                                                        selectedKeyframeId === keyframe.id
-                                                            ? "border-orange-300 bg-orange-400"
-                                                            : "border-primary/80 bg-[#1f9eff]",
-                                                    ].join(" ")}
-                                                    style={{
-                                                        left: (keyframeDrag?.keyframeId === keyframe.id ? keyframeDrag.timeMs : keyframe.timeMs) * pxPerMs,
-                                                    }}
-                                                    onClick={() => selectKeyframe(track, keyframe)}
-                                                    onPointerDown={freeze.gesture((event: ReactPointerEvent<HTMLButtonElement>) => startKeyframeDrag(event, track, keyframe))}
-                                                    data-tip={`${getStoryMotionPropertyMeta(track.property).label} ${formatStoryMotionTime(keyframe.timeMs, STORY_MOTION_FPS)}`} aria-label={`${getStoryMotionPropertyMeta(track.property).label} ${formatStoryMotionTime(keyframe.timeMs, STORY_MOTION_FPS)}`}
-                                                />
-                                            ))}
-                                            <div className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-edge-subtle" />
-                                        </div>
-                                    </Fragment>
-                                ))}
+                                <StoryMotionStagePreview
+                                    preview={visiblePreview}
+                                    target={previewTarget}
+                                    onPointerDrag={startPreviewDrag}
+                                    // The stage handles are drawn only when they can be grabbed. A
+                                    // resize handle IS the gesture affordance - leaving one visible
+                                    // that refuses to move is the half-inert drag that reads as a
+                                    // broken editor, so while frozen the frame is inspect-only.
+                                    interactive={!freeze.frozen}
+                                    stageSize={stageSize}
+                                    showLabel={false}
+                                    backgroundUrl={previewBackgroundUrl}
+                                    allowOverflow
+                                    canvasScale={stageZoom}
+                                />
+                                {positionPath.length > 1 ? (
+                                    <svg
+                                        className="pointer-events-none absolute left-0 top-0 overflow-visible"
+                                        width={stageSize.width}
+                                        height={stageSize.height}
+                                        viewBox={`0 0 ${stageSize.width} ${stageSize.height}`}
+                                    >
+                                        <polyline
+                                            points={positionPath.map(point => `${point.x},${point.y}`).join(" ")}
+                                            className="fill-none stroke-primary"
+                                            strokeOpacity={0.6}
+                                            strokeWidth={2 / stageZoom}
+                                            strokeDasharray={`${6 / stageZoom} ${6 / stageZoom}`}
+                                        />
+                                        {positionPath.map(point => (
+                                            <circle key={point.id} cx={point.x} cy={point.y} r={4 / stageZoom} className="fill-primary" />
+                                        ))}
+                                    </svg>
+                                ) : null}
                             </div>
                         </div>
                     </div>
                 </div>
 
+                <ResizableHandle
+                    direction="vertical"
+                    onResize={handleTimelineResize}
+                    onDragEnd={saveTimelineHeight}
+                    onReset={() => {
+                        setTimelineHeight(DEFAULT_TIMELINE_HEIGHT);
+                        panelStateService?.setPanelState(STORY_MOTION_LAYOUT_STATE_ID, { timelineHeight: DEFAULT_TIMELINE_HEIGHT });
+                    }}
+                    keyboardStep={24}
+                    label={t("motion.editor.resizeTimeline")}
+                />
+
+                <div className="shrink-0" style={{ height: timelineHeight }}>
+                    <StoryMotionTimeline
+                        ref={timelineRef}
+                        tracks={tracks}
+                        durationMs={durationMs}
+                        playheadMs={playheadMs}
+                        playing={playing}
+                        selectedIds={selectedSet}
+                        frozen={freeze.frozen}
+                        frozenReason={freeze.reason}
+                        pxPerMs={timelinePxPerMs}
+                        onPxPerMsChange={handlePxPerMsChange}
+                        onScrub={timeMs => {
+                            if (playing) {
+                                setPlayback(null);
+                            }
+                            seek(timeMs);
+                        }}
+                        onSelectionChange={changeSelection}
+                        onDragKeyframes={handleDragKeyframes}
+                        addableProperties={addableProperties}
+                        actions={timelineActions}
+                    />
+                </div>
+            </div>
+
+            {/* One status bar, values only. */}
+            <div className="flex shrink-0 items-center gap-3 border-t border-edge px-3 py-1 text-2xs tabular-nums text-fg-subtle">
+                {selectedIds.length > 1 ? (
+                    <span className="text-fg-muted">{t("motion.editor.keyframesSelected", { count: selectedIds.length })}</span>
+                ) : primary ? (
+                    <span className="text-fg-muted">
+                        {t(`motion.propertyLabel.${primary.track.property}`)}
+                        {" · "}
+                        {formatSeconds(primary.keyframe.timeMs)}
+                        {" · "}
+                        {easingLabel(primary.keyframe.easing, t)}
+                    </span>
+                ) : null}
+                <span className="flex-1" />
+                <span>{t("motion.editor.frame", { frame: currentFrame, total: totalFrames })}</span>
+                <span>{STORY_MOTION_FPS} fps</span>
+                <span className="max-w-[16rem] truncate">{asset.name}</span>
             </div>
         </div>
     );
 }
 
-function findKeyframe(timeline: StoryAnimationTimeline, keyframeId: string | null): { track: StoryAnimationTrack; keyframe: StoryAnimationKeyframe } | null {
-    if (!keyframeId) {
-        return null;
+function easingLabel(easing: string | undefined, t: ReturnType<typeof useTranslation>["t"]): string {
+    if (!easing) {
+        return t("motion.keyframe.easingDefault");
     }
-    for (const track of timeline.tracks) {
-        const keyframe = track.keyframes.find(item => item.id === keyframeId);
-        if (keyframe) {
-            return { track, keyframe };
-        }
-    }
-    return null;
+    return isStoryMotionEasingName(easing) ? t(`motion.easingOption.${easing}`) : t("motion.keyframe.easingCustom");
 }
 
-function orderTracks(tracks: StoryAnimationTrack[]): StoryAnimationTrack[] {
-    return [...tracks].sort((a, b) => {
-        const left = STORY_MOTION_PROPERTIES.findIndex(item => item.property === a.property);
-        const right = STORY_MOTION_PROPERTIES.findIndex(item => item.property === b.property);
-        return left - right || a.id.localeCompare(b.id);
-    });
+/** `m:ss.cc`, as the audio and video previews print a time. */
+function formatClock(ms: number): string {
+    const seconds = Math.max(0, Number.isFinite(ms) ? ms / 1000 : 0);
+    const minutes = Math.floor(seconds / 60);
+    const rest = seconds - minutes * 60;
+    return `${minutes}:${rest.toFixed(2).padStart(5, "0")}`;
 }
 
-function getStoryMotionEditorStatePanelId(tabId: string): string {
-    return `${STORY_MOTION_EDITOR_STATE_PREFIX}:${tabId}`;
+function readTimelineHeight(panelStateService: PanelStateService | null): number {
+    const saved = Number(panelStateService?.getPanelState<{ timelineHeight?: number }>(STORY_MOTION_LAYOUT_STATE_ID)?.timelineHeight);
+    return Number.isFinite(saved) && saved >= MIN_TIMELINE_HEIGHT ? Math.round(saved) : DEFAULT_TIMELINE_HEIGHT;
 }
 
 function normalizeStoryMotionEditorPanelState(raw: unknown): StoryMotionEditorPanelState {
@@ -1364,12 +1384,12 @@ function normalizeStoryMotionEditorPanelState(raw: unknown): StoryMotionEditorPa
     if (record.selectedKeyframeId === null || typeof record.selectedKeyframeId === "string") {
         state.selectedKeyframeId = record.selectedKeyframeId;
     }
-    if (isStoryMotionTrackPropertyValue(record.selectedAddProperty)) {
-        state.selectedAddProperty = record.selectedAddProperty;
-    }
     const timelinePxPerMs = Number(record.timelinePxPerMs);
     if (Number.isFinite(timelinePxPerMs) && timelinePxPerMs > 0) {
-        state.timelinePxPerMs = clampTimelinePxPerMs(timelinePxPerMs);
+        state.timelinePxPerMs = clampPxPerMs(timelinePxPerMs);
+    }
+    if (typeof record.loop === "boolean") {
+        state.loop = record.loop;
     }
     return state;
 }
@@ -1385,15 +1405,8 @@ function normalizeStoryMotionPreviewViewport(raw: unknown): StoryMotionPreviewVi
     if (!Number.isFinite(scrollLeft) || !Number.isFinite(scrollTop) || !Number.isFinite(zoom) || zoom <= 0) {
         return null;
     }
-    return {
-        scrollLeft,
-        scrollTop,
-        zoom: clampStageZoom(zoom),
-    };
-}
-
-function isStoryMotionTrackPropertyValue(value: unknown): value is StoryAnimationTrackProperty {
-    return typeof value === "string" && STORY_MOTION_PROPERTIES.some(item => item.property === value);
+    // A view saved before the stage could be fitted was the old default, not a choice: fit it.
+    return { scrollLeft, scrollTop, zoom: clampStageZoom(zoom), fit: record.fit !== false };
 }
 
 function centerPreviewViewport(
@@ -1403,63 +1416,6 @@ function centerPreviewViewport(
 ): void {
     viewport.scrollLeft = PREVIEW_CANVAS_PADDING + stageSize.width * zoom / 2 - viewport.clientWidth / 2;
     viewport.scrollTop = PREVIEW_CANVAS_PADDING + stageSize.height * zoom / 2 - viewport.clientHeight / 2;
-}
-
-function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
-    const next = Number(value);
-    if (!Number.isFinite(next)) {
-        return fallback;
-    }
-    return Math.max(min, Math.min(max, next));
-}
-
-function normalizeWheelDelta(delta: number, deltaMode: number, pageSize: number): number {
-    if (!Number.isFinite(delta)) {
-        return 0;
-    }
-    if (deltaMode === 1) {
-        return delta * 16;
-    }
-    if (deltaMode === 2) {
-        return delta * pageSize;
-    }
-    return delta;
-}
-
-function buildTicks(
-    pxPerMs: number,
-    laneWidth: number,
-    viewport: { width: number; scrollLeft: number },
-    fps: number,
-): { timeMs: number; label: string }[] {
-    const step = TIMELINE_TICK_STEPS.find(candidate => candidate * pxPerMs >= TIMELINE_TICK_MIN_PX)
-        ?? TIMELINE_TICK_STEPS[TIMELINE_TICK_STEPS.length - 1];
-    const maxTimeMs = laneWidth / pxPerMs;
-    // Buffer a full viewport on each side so fast horizontal scrolls never outrun
-    // the generated window (the scroll position is sampled in coarse steps).
-    const bufferPx = Math.max(TIMELINE_TICK_BUFFER_PX, viewport.width);
-    const startMs = viewport.width > 0
-        ? Math.max(0, (viewport.scrollLeft - TIMELINE_LEFT_COL_PX - bufferPx) / pxPerMs)
-        : 0;
-    const endMs = viewport.width > 0
-        ? Math.min(maxTimeMs, (viewport.scrollLeft + viewport.width - TIMELINE_LEFT_COL_PX + bufferPx) / pxPerMs)
-        : maxTimeMs;
-    const ticks: { timeMs: number; label: string }[] = [];
-    for (let timeMs = Math.floor(startMs / step) * step; timeMs <= endMs; timeMs += step) {
-        const frame = Math.round((timeMs / 1000) * fps);
-        ticks.push({
-            timeMs,
-            label: `${(timeMs / 1000).toFixed(timeMs % 1000 === 0 ? 0 : 2)}s f${frame}`,
-        });
-    }
-    return ticks;
-}
-
-function clampTimelinePxPerMs(value: number): number {
-    if (!Number.isFinite(value)) {
-        return DEFAULT_TIMELINE_PX_PER_MS;
-    }
-    return Math.min(MAX_TIMELINE_PX_PER_MS, Math.max(MIN_TIMELINE_PX_PER_MS, value));
 }
 
 export function resolveStoryMotionStageSize(projectService: ProjectService | null): { width: number; height: number } {

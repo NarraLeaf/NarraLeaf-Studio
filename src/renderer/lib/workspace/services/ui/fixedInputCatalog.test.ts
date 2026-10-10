@@ -23,6 +23,7 @@ const STORY_ROWS = `${WORKSPACE}/modules/story/scene-editor`;
 const UI_INTERACTION = `${R}/lib/ui-editor/interaction`;
 const BLUEPRINT_FLOW = `${WORKSPACE}/modules/blueprint-lite/flow`;
 const MOTION = `${WORKSPACE}/modules/story-motion/StoryMotionEditorTab.tsx`;
+const MOTION_TIMELINE = `${WORKSPACE}/modules/story-motion/StoryMotionTimelineView.tsx`;
 const EASING = `${WORKSPACE}/components/ui/EasingCurveEditor.tsx`;
 const ASSETS = `${WORKSPACE}/modules/assets`;
 
@@ -185,22 +186,38 @@ const ANCHORS: Record<string, Anchor[]> = {
     ],
 
     "story-motion.no-snap": [
-        { file: MOTION, present: ["scrubToClientX(moveEvent.clientX, rect, !moveEvent.altKey)", "lastTime = moveEvent.altKey ? raw"] },
+        {
+            file: MOTION_TIMELINE,
+            present: [
+                "scrub(moveEvent.clientX, moveEvent.altKey)",
+                "const snapped = moveEvent.altKey ? null : snapStoryMotionTime(",
+            ],
+        },
     ],
     "story-motion.add-keyframe": [
-        { file: MOTION, present: ["handleLaneDoubleClick(event, track)"] },
+        { file: MOTION_TIMELINE, present: ["onDoubleClick={event => handleLaneDoubleClick(event, trackAtClientY(event.clientY))}"] },
+    ],
+    "story-motion.move-keyframes": [
+        { file: MOTION_TIMELINE, present: ["onPointerDown={event => props.onKeyframePointerDown(event, track, keyframe)}"] },
+    ],
+    "story-motion.toggle-select": [
+        { file: MOTION_TIMELINE, present: ["const additive = event.shiftKey || event.ctrlKey || event.metaKey;\n        const wasSelected"] },
+    ],
+    "story-motion.box-select": [
+        { file: MOTION_TIMELINE, present: ["onPointerDown={startLanePointer}", "setMarquee(box);"] },
+    ],
+    "story-motion.select-track": [
+        { file: MOTION_TIMELINE, present: ["onClick={event => props.onSelect(track, event.shiftKey || event.ctrlKey || event.metaKey)}"] },
     ],
     "story-motion.pan-preview": [{ file: MOTION, present: ["if (event.button !== 1 || !previewViewportRef.current) {"] }],
     "story-motion.zoom": [
         {
             file: MOTION,
-            present: [
-                "const handlePreviewWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {\n        if (!event.ctrlKey) {",
-                "const handleTimelineWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {\n        if (event.ctrlKey) {",
-            ],
+            present: ["const handlePreviewWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {\n        if (!event.ctrlKey) {"],
         },
+        { file: MOTION_TIMELINE, present: ["if (event.ctrlKey) {\n            event.preventDefault();\n            zoomAround("] },
     ],
-    "story-motion.scroll-timeline": [{ file: MOTION, present: ["const horizontalIntent = event.shiftKey ||"] }],
+    "story-motion.scroll-timeline": [{ file: MOTION_TIMELINE, present: ["const horizontalIntent = event.shiftKey ||"] }],
     "story-motion.easing.snap": [{ file: EASING, present: ["moveHandle(handle, snap(x, moveEvent.shiftKey), snap(y, moveEvent.shiftKey));"] }],
     "story-motion.easing.nudge": [{ file: EASING, present: ["const delta = ARROW_DELTAS[event.key];"] }],
 
