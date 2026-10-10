@@ -399,9 +399,9 @@ export const workspace = {
         },
         tooltip: "Agent 选项",
         appMenu: {
-            // Only the menu bar's own word: a Latin word stands out in a row of Chinese menu names.
-            // The rows inside keep "Agent", as everywhere else in Studio.
-            title: "智能体",
+            // "Agent", the English word, as everywhere else in Chinese Studio - the menu bar's own
+            // title included, so the menu and the rows inside it name the same thing.
+            title: "Agent",
             status: "Agent：{client} · {state}",
             notConnected: "未连接",
             state: {
