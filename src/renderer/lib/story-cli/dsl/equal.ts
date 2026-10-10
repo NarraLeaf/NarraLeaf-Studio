@@ -28,6 +28,15 @@ export function sameRowContent(left: StoryBlock, right: StoryBlock): boolean {
 }
 
 /**
+ * Whether two plain values hold the same thing, by {@link canonical}: key order and a field set to
+ * `undefined` carry no meaning. For records that are not rows - a scene's music, which the scene
+ * panel builds by spreading (`{ ...bgm, ...next }`) and the header reader builds in a fixed order.
+ */
+export function sameValue(left: unknown, right: unknown): boolean {
+    return canonical(left) === canonical(right);
+}
+
+/**
  * JSON with sorted keys and absent values dropped.
  *
  * Both halves are load-bearing: a payload is built by spreading objects, so key order carries no

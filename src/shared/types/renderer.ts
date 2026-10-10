@@ -160,6 +160,37 @@ export interface RendererPrivilegedBootstrapInterface extends RendererPrivileged
     isHardened(): boolean;
 }
 
+/**
+ * The agent calls a workspace answers, and the two requests it makes while answering one.
+ *
+ * Not on the global bridge: plugin code shares the workspace's page, so these are acquired once by
+ * Studio's renderer bootstrap before anything else loads (`RendererAgentBridgeBootstrapInterface`),
+ * and the bridge refuses every later acquisition. See `preload/ipc/interface.ts`.
+ */
+export interface RendererAgentBridgeInterface {
+    /**
+     * Answer the agent calls main routes to this window (`@shared/agent/protocol`). The handler
+     * must always resolve - a refusal is `success: true` around `{ ok: false }` - because a
+     * handler that throws never replies, and main then waits out its whole timeout.
+     */
+    onAgentCall(handler: (request: AgentCallRequest) => Promise<RequestStatus<AgentCallResult>>): AppEventToken;
+    /** The agent tools this workspace's plugins registered, the whole set. Main lists them in `tools/list`. */
+    reportPluginTools(tools: readonly AgentPluginToolDescriptor[]): void;
+    /**
+     * During an agent call: ask main to let this window read the folders holding `paths`. Main
+     * puts it to the author in Studio's agent access window (or grants at once under full access);
+     * folders still unanswered after about a minute come back `pending`.
+     */
+    requestFolderAccess(request: AgentFolderAccessRequest): Promise<RequestStatus<AgentFolderAccessAnswer>>;
+}
+
+export interface RendererAgentBridgeBootstrapInterface {
+    /** The agent bridge, once. Throws on a second call, and after {@link harden}. */
+    acquire(): RendererAgentBridgeInterface;
+    harden(): void;
+    isHardened(): boolean;
+}
+
 export interface RendererPreloadedInterface {
     // Basic Information
     getPlatform(): Promise<RequestStatus<PlatformInfo>>;
@@ -385,12 +416,6 @@ export interface RendererPreloadedInterface {
          */
         onFlushPendingSaves(handler: () => Promise<RequestStatus<{ flushed: boolean }>>): AppEventToken;
         /**
-         * Answer the agent calls main routes to this window (`@shared/agent/protocol`). The handler
-         * must always resolve - a refusal is `success: true` around `{ ok: false }` - because a
-         * handler that throws never replies, and main then waits out its whole timeout.
-         */
-        onAgentCall(handler: (request: AgentCallRequest) => Promise<RequestStatus<AgentCallResult>>): AppEventToken;
-        /**
          * Follow the close the main process is running on this window's behalf, so the workspace
          * can show what it is waiting on. `null` means the close was called off and the window is
          * staying. Registered on mount for the same reason as the two handlers above.
@@ -455,7 +480,10 @@ export interface RendererPreloadedInterface {
          * address. See `@shared/agent/workspaceAccess`.
          */
         getQuickState(): Promise<RequestStatus<AgentQuickState>>;
-        /** Turning write access on asks the author in a native dialog; a declined dialog answers the unchanged state. */
+        /**
+         * Turning agent access or write access on asks the author in Studio's agent access window; a
+         * declined question answers the unchanged state. Switching off is never asked.
+         */
         quickToggle(patch: AgentQuickTogglePatch): Promise<RequestStatus<AgentQuickState>>;
         onQuickStateChanged(handler: (state: AgentQuickState) => void): AppEventToken;
         /** Main writes the configuration to the system clipboard; only the fact that it did comes back. */
@@ -466,15 +494,9 @@ export interface RendererPreloadedInterface {
         revealExportedSkill(): Promise<RequestStatus<{ revealed: boolean }>>;
         /** A call main answered itself, for the Agent log. */
         onActivity(handler: (activity: AgentMainActivity) => void): AppEventToken;
-        /** The agent tools this workspace's plugins registered, the whole set. Main lists them in `tools/list`. */
-        reportPluginTools(tools: readonly AgentPluginToolDescriptor[]): void;
-        /**
-         * During an agent call: ask main to let this window read the folders holding `paths`. Main
-         * puts it to the author in a native dialog (or grants at once under full access); folders
-         * still unanswered after about a minute come back `pending`.
-         */
-        requestFolderAccess(request: AgentFolderAccessRequest): Promise<RequestStatus<AgentFolderAccessAnswer>>;
     };
+    /** Acquired once by Studio's renderer bootstrap; see {@link RendererAgentBridgeInterface}. */
+    agentBridge: RendererAgentBridgeBootstrapInterface;
     projectTrust: {
         query(projectPath: string): Promise<RequestStatus<{
             trusted: boolean;

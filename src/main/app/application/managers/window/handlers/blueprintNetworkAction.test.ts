@@ -56,12 +56,18 @@ async function writeProject(name: string, network: unknown): Promise<string> {
     return dir;
 }
 
+/** The port the agent endpoint is listening on in these tests, as the app reports it. */
+const AGENT_PORT = 54123;
+
 /**
  * A window carrying the props the main process wrote when it opened a project, on an app whose
  * trust ledger vouches for every project unless a case says otherwise.
  */
 function windowWith(props: unknown, options: { trusted?: boolean } = {}): AppWindowLike {
-    const app = { projectTrustManager: { isTrusted: () => options.trusted ?? true } };
+    const app = {
+        projectTrustManager: { isTrusted: () => options.trusted ?? true },
+        ownLoopbackPorts: () => [AGENT_PORT],
+    };
     return { getProps: () => props, getApp: () => app } as unknown as AppWindowLike;
 }
 
@@ -74,6 +80,8 @@ function governedBy() {
     return executeBlueprintNetworkFetch.mock.calls[0]?.[1] as unknown as {
         allowHttp: boolean;
         allowlist: { policy: string; entries: readonly string[] };
+        redirects: string;
+        refuseDestination?: (url: string) => Promise<string | null>;
     } | undefined;
 }
 
@@ -213,5 +221,23 @@ describe("BlueprintNetworkFetchHandler", () => {
 
         expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
         expect(executeBlueprintNetworkFetch).not.toHaveBeenCalled();
+    });
+
+    /**
+     * The request leaves from main, without an origin, with whatever method, headers and body the
+     * renderer named - which is how a plugin holding the agent token would drive the MCP endpoint
+     * through this channel. The performer is handed a check that refuses the ports Studio is serving
+     * on, at every hop, and nothing else: the author's own local API keeps working.
+     */
+    it("keeps the request off the loopback services Studio is serving, and only those", async () => {
+        await handler.handle(windowWith({ projectPath: mine }), fetchOf(mine));
+
+        const options = governedBy();
+        expect(options?.redirects).toBe("check");
+        const refuse = options?.refuseDestination;
+        expect(refuse).toBeTypeOf("function");
+        expect(await refuse!(`http://127.0.0.1:${AGENT_PORT}/mcp`)).toContain("own local services");
+        expect(await refuse!(`http://[::1]:${AGENT_PORT}/mcp`)).toContain("own local services");
+        expect(await refuse!("http://127.0.0.1:3000/api")).toBeNull();
     });
 });

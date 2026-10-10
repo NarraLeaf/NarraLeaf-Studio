@@ -5,6 +5,7 @@ import {
     AGENT_PLUGIN_TOOL_TEXT_MAX,
     agentPluginToolMcpName,
     checkAgentPluginToolSchema,
+    checkReportedAgentPluginTool,
     looksLikeAgentPluginToolName,
     normalizePluginAgentToolResult,
     readAgentPluginToolDescriptor,
@@ -25,6 +26,13 @@ describe("plugin tool names", () => {
         expect(agentPluginToolMcpName("narraleaf.gallery", "narraleaf.gallery.a b")).toBeNull();
         expect(agentPluginToolMcpName("narraleaf.gallery", "narraleaf.gallery.")).toBeNull();
         expect(agentPluginToolMcpName("narraleaf.gallery", `narraleaf.gallery.${"x".repeat(60)}`)).toBeNull();
+    });
+
+    it("never take a name Studio's internal calls use: no empty plugin id, nothing starting with `__`", () => {
+        expect(agentPluginToolMcpName("", ".build")).toBeNull();
+        expect(agentPluginToolMcpName("", ".test")).toBeNull();
+        expect(agentPluginToolMcpName("_", "_.state")).toBeNull();
+        expect(agentPluginToolMcpName("-", "-.build")).toBeNull();
     });
 
     it("never collide with a built-in tool: no built-in name contains the separator", () => {
@@ -87,6 +95,51 @@ describe("reported descriptors", () => {
         expect(readAgentPluginToolDescriptor({ ...good, name: "story_apply" })).toBeNull();
         expect(readAgentPluginToolDescriptor({ ...good, title: "" })).toBeNull();
         expect(readAgentPluginToolDescriptor({ ...good, inputSchema: { type: "object", properties: {} } })).toBeNull();
+    });
+
+    it("are dropped for an empty plugin id or a name Studio's internal calls use", () => {
+        expect(readAgentPluginToolDescriptor({ ...good, pluginId: "", pluginToolName: ".build", name: "__build" })).toBeNull();
+        expect(readAgentPluginToolDescriptor({ ...good, pluginId: "", pluginToolName: ".test", name: "__test" })).toBeNull();
+        expect(readAgentPluginToolDescriptor({ ...good, name: "__state" })).toBeNull();
+    });
+});
+
+describe("reported descriptors against the installed plugins", () => {
+    const reported = readAgentPluginToolDescriptor({
+        name: "narraleaf_gallery__add",
+        title: "Add to the gallery",
+        description: "Adds entries.",
+        side: "workspace",
+        write: true,
+        inputSchema: withAgentProjectArgument({ type: "object", properties: {} }),
+        pluginId: "narraleaf.gallery",
+        pluginName: "Whatever the window said",
+        pluginToolName: "narraleaf.gallery.add",
+    })!;
+    const gallery = (overrides: { enabled?: boolean; write?: boolean; name?: string } = {}) => ({
+        pluginId: "narraleaf.gallery",
+        enabled: overrides.enabled ?? true,
+        manifest: {
+            name: "Gallery",
+            contributes: { agentTools: [{ name: overrides.name ?? "narraleaf.gallery.add", write: overrides.write ?? true }] },
+        },
+    });
+
+    it("keep a tool an enabled plugin declares with the same write flag, under the manifest's name for the plugin", () => {
+        expect(checkReportedAgentPluginTool(reported, [gallery()])).toMatchObject({ name: "narraleaf_gallery__add", pluginName: "Gallery", write: true });
+    });
+
+    it("drop a tool the plugin does not declare, declares the other way, or that belongs to no enabled plugin", () => {
+        expect(checkReportedAgentPluginTool(reported, [gallery({ name: "narraleaf.gallery.list" })])).toBeNull();
+        expect(checkReportedAgentPluginTool(reported, [gallery({ write: false })])).toBeNull();
+        expect(checkReportedAgentPluginTool(reported, [gallery({ enabled: false })])).toBeNull();
+        expect(checkReportedAgentPluginTool(reported, [])).toBeNull();
+        expect(checkReportedAgentPluginTool({ ...reported, pluginId: "acme.other" }, [gallery()])).toBeNull();
+    });
+
+    it("drop an empty plugin id or an internal name even if some manifest matched it", () => {
+        const internal = { ...reported, pluginId: "", name: "__build", pluginToolName: ".build" };
+        expect(checkReportedAgentPluginTool(internal, [{ pluginId: "", enabled: true, manifest: { name: "x", contributes: { agentTools: [{ name: ".build", write: true }] } } }])).toBeNull();
     });
 });
 

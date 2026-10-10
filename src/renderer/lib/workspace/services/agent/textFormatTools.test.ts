@@ -138,7 +138,7 @@ function createHarness() {
     follow.onWrote(target => writes.push(target));
     const tool: AgentToolContext = {
         ctx: context,
-        request: { callId: "call-1", tool: "test", args: {}, clientName: null, policy: { writesEnabled: true, allowedImportRoots: [] } },
+        request: { callId: "call-1", tool: "test", args: {}, clientName: null, policy: { writesEnabled: true, allowedImportRoots: [] }, deadline: Date.now() + 60_000 },
         follow,
         offscreen: null as never,
         log: () => undefined,
