@@ -52,7 +52,7 @@ import { resolveDefaultProjectDirectory } from "../../defaultProjectDirectory";
 import { AgentMcpServer, type AgentCallContext, type AgentMcpHost } from "./agentMcpServer";
 import { AgentSettingsStore, mintAgentToken } from "./agentSettingsStore";
 import { agentStdioCommand } from "./agentStdioMain";
-import { chooseAgentWorkspace, type AgentRoutingChoice } from "./agentRouting";
+import { chooseAgentWorkspace, writeNeedsNamedProject, type AgentRoutingChoice } from "./agentRouting";
 import {
     AGENT_MAIN_TOOL_HANDLERS,
     noWorkspace,
@@ -605,6 +605,10 @@ export class AgentManager implements AgentMainToolHost {
                 "Ask the author to turn on \"Allow agents to change projects\" in Studio's Settings > Agent access. Read tools keep working meanwhile.",
             ));
         }
+        const unnamed = await this.refuseUnnamedWrite(tool, args);
+        if (unnamed) {
+            return inMain(unnamed);
+        }
         if (tool.side === "main") {
             const handler = AGENT_MAIN_TOOL_HANDLERS[tool.name];
             if (!handler) {
@@ -639,6 +643,26 @@ export class AgentManager implements AgentMainToolHost {
             }
         }
         return { result: await this.forward(choice.window, tool.name, args, context), answeredInMain: false };
+    }
+
+    /**
+     * A write that does not say which project it is for while more than one is open: refused rather
+     * than sent to the window focused last (see {@link writeNeedsNamedProject}), naming the open
+     * projects the way `agent_status` does. Only tools routed by `project` - every workspace tool,
+     * and the main tools that take one; `project_create` writes too, but into a project of its own.
+     */
+    private async refuseUnnamedWrite(tool: AgentToolDescriptor, args: Record<string, unknown>): Promise<AgentCallResult | null> {
+        const requested = typeof args.project === "string" && args.project ? args.project : null;
+        const routed = tool.side === "workspace" || Object.prototype.hasOwnProperty.call(tool.inputSchema.properties ?? {}, "project");
+        if (!routed || !writeNeedsNamedProject(tool.write, requested, this.workspaceWindows().length)) {
+            return null;
+        }
+        const open = await this.openWorkspaces();
+        return agentRefusal(
+            "no_workspace",
+            `${tool.name} changes a project, and ${open.length} projects are open in Studio; a write must say which one it is for.`,
+            `Pass \`project\` with the path of one of them: ${open.map(handle => `${handle.name ?? path.basename(handle.projectPath)} (${handle.projectPath})`).join(", ")}.`,
+        );
     }
 
     /**
