@@ -8,6 +8,7 @@ import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { findProjectConfigFileName } from "@shared/utils/nlproj";
 import { PROJECT_TEMPLATES_DIR } from "@shared/constants/projectTemplate";
 import type { CommandLineRunEvent, CommandLineRunJob, CommandLineRunLogLine } from "@shared/types/commandLineRun";
+import type { AppEventToken } from "@shared/types/app";
 import {
     AGENT_INTERNAL_TOOL_STATE,
     AGENT_INTERNAL_TOOL_TEST,
@@ -774,7 +775,7 @@ export class AgentManager implements AgentMainToolHost {
             policy: this.policy(),
             deadline,
         };
-        this.inFlight.set(request.callId, { window, tool, clientName: context.clientName, deadline, timeoutMs });
+        this.inFlight.set(request.callId, { window, clientName: context.clientName, deadline, timeoutMs });
         try {
             const status = await window.invokeIpcRequest(IPCEventType.workspaceAgentCall, request, { timeoutMs });
             if (!status.success) {
@@ -1089,15 +1090,25 @@ export class AgentManager implements AgentMainToolHost {
     private async waitUntilAnswering(window: AppWindow<WindowAppType.Workspace>, timeoutMs: number): Promise<"ready" | "silent" | "failed"> {
         const deadline = Date.now() + timeoutMs;
         const loaded = await new Promise<boolean | null>(resolve => {
-            const timer = setTimeout(() => resolve(null), timeoutMs);
-            window.onLoadResult(ok => {
+            // Whichever comes first settles it, and takes the others' listeners with it: the close
+            // listener would otherwise stay on the window for as long as it lives.
+            const listeners: AppEventToken[] = [];
+            let settled = false;
+            const settle = (value: boolean | null) => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
                 clearTimeout(timer);
-                resolve(ok);
-            });
-            window.onClose(() => {
-                clearTimeout(timer);
-                resolve(false);
-            });
+                for (const listener of listeners) {
+                    listener.cancel();
+                }
+                resolve(value);
+            };
+            const timer = setTimeout(() => settle(null), timeoutMs);
+            listeners.push(window.onClose(() => settle(false)));
+            // May answer at once, before its token is in the list; the token is a no-op then.
+            listeners.push(window.onLoadResult(ok => settle(ok)));
         });
         if (loaded === false) {
             return "failed";
@@ -1257,7 +1268,6 @@ const FOLDER_REQUEST_MAX_PATHS = 500;
 
 type InFlightCall = {
     window: AppWindow;
-    tool: string;
     clientName: string | null;
     /** When main stops waiting for the answer. */
     deadline: number;

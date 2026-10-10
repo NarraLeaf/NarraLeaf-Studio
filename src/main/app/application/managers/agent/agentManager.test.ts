@@ -112,6 +112,73 @@ describe("AgentManager calls", () => {
     });
 });
 
+describe("AgentManager opening a project", () => {
+    /** A workspace that opens, reports its load when told, and answers the state call. */
+    function openingWorkspace(projectPath: string) {
+        const workspace = fakeWorkspace(projectPath);
+        workspace.invokeIpcRequest.mockImplementation(async () => ({
+            success: true,
+            data: { ok: true, content: [], structured: { paused: false, follow: true } },
+        }));
+        const loadCallbacks: ((ok: boolean) => void)[] = [];
+        const closeCallbacks: (() => void)[] = [];
+        const tokens = { load: { cancel: vi.fn() }, close: { cancel: vi.fn() } };
+        return {
+            workspace: Object.assign(workspace, {
+                onLoadResult: (fn: (ok: boolean) => void) => {
+                    loadCallbacks.push(fn);
+                    return tokens.load;
+                },
+                onClose: (fn: () => void) => {
+                    closeCallbacks.push(fn);
+                    return tokens.close;
+                },
+            }),
+            tokens,
+            listening: () => loadCallbacks.length > 0 && closeCallbacks.length > 0,
+            reportLoad: (ok: boolean) => loadCallbacks.forEach(fn => fn(ok)),
+            close: () => closeCallbacks.forEach(fn => fn()),
+        };
+    }
+
+    async function managerOpening(opening: ReturnType<typeof openingWorkspace>) {
+        const windows: FakeWorkspace[] = [];
+        const manager = await createManager(windows);
+        const launcher = { isClosed: () => false };
+        Object.assign((manager as unknown as { app: Record<string, unknown> }).app, {
+            findWorkspaceForProject: () => null,
+            findLauncherWindow: () => launcher,
+            openProject: async () => {
+                windows.push(opening.workspace);
+                return opening.workspace;
+            },
+        });
+        return manager;
+    }
+
+    it("takes its close listener off the window once the project has loaded", async () => {
+        const opening = openingWorkspace(path.resolve("/games/a"));
+        const manager = await managerOpening(opening);
+        const opened = manager.openProject(path.resolve("/games/a"));
+        await vi.waitFor(() => expect(opening.listening()).toBe(true));
+        opening.reportLoad(true);
+        expect(await opened).toMatchObject({ ok: true, alreadyOpen: false });
+        expect(opening.tokens.close.cancel).toHaveBeenCalled();
+        expect(opening.tokens.load.cancel).toHaveBeenCalled();
+    });
+
+    it("takes its load listener off the window when the window closes first", async () => {
+        const opening = openingWorkspace(path.resolve("/games/a"));
+        const manager = await managerOpening(opening);
+        const opened = manager.openProject(path.resolve("/games/a"));
+        await vi.waitFor(() => expect(opening.listening()).toBe(true));
+        opening.close();
+        expect(await opened).toMatchObject({ ok: false });
+        expect(opening.tokens.load.cancel).toHaveBeenCalled();
+        expect(opening.tokens.close.cancel).toHaveBeenCalled();
+    });
+});
+
 describe("AgentManager routing with more than one project open", () => {
     const pathA = path.resolve("/games/a");
     const pathB = path.resolve("/games/b");

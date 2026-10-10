@@ -266,4 +266,13 @@ describe("call timeouts", () => {
         expect(agentCallTimeoutMs(AGENT_INTERNAL_TOOL_TEST)).toBe(180_000);
         expect(agentCallTimeoutMs(AGENT_INTERNAL_TOOL_BUILD)).toBeGreaterThan(180_000);
     });
+
+    it("gives tests and builds their long timeouts under the names main forwards them as", async () => {
+        const host = fakeHost({}, [{ projectPath: "/games/a", name: "A" }]);
+        await AGENT_MAIN_TOOL_HANDLERS.test(host, { id: "t" }, ctx);
+        await AGENT_MAIN_TOOL_HANDLERS.build(host, {}, ctx);
+        const [testName, buildName] = host.forward.mock.calls.map(call => call[1] as string);
+        expect(agentCallTimeoutMs(testName)).toBe(180_000);
+        expect(agentCallTimeoutMs(buildName)).toBe(20 * 60 * 1000);
+    });
 });

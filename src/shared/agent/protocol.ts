@@ -158,7 +158,7 @@ export type AgentSessionPolicy = {
  * and the allowed folders. Main asks the author in Studio's agent access window (or, under full access, grants
  * at once) and answers which folders the window may now read.
  *
- * Only `callId` and the paths cross: the client's name, the tool and how long the call may still
+ * Only `callId` and the paths cross: the window, the client's name and how long the call may still
  * take are read from main's own record of the call it sent, so a plugin in the workspace cannot
  * put words in the author's dialog or ask outside a real agent call.
  */
