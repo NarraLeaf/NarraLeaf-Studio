@@ -53,6 +53,7 @@ import {
     type LoopPoints,
 } from "./audio/loopHistory";
 import { TooltipGroup } from "@/lib/tooltip";
+import { useShortcutLabels } from "@/apps/workspace/hooks/useShortcutLabels";
 import { Button, FieldLabel } from "@/lib/components/elements";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { cn } from "@/lib/utils/cn";
@@ -706,6 +707,11 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
         idPrefix: `audio-preview-${tabId}`,
         catalogPrefix: "assets.audio.",
     });
+    // The toolbar names the key each of its buttons shares with the keyboard, as rebound in Settings.
+    const shortcuts = useShortcutLabels();
+    const key = (id: string) => shortcuts.forBinding(`assets.audio.${id}`);
+    // A write button that is off for the freeze carries the reason instead of a key.
+    const writeKey = (id: string) => (freeze.frozen ? undefined : key(id));
 
     // ---- render ------------------------------------------------------------
 
@@ -753,6 +759,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     onClick={togglePlay}
                     className={ICON_BUTTON_CLASS}
                     data-tip={playing ? t("assets.audio.pause") : t("assets.audio.play")} aria-label={playing ? t("assets.audio.pause") : t("assets.audio.play")}
+                    data-tip-shortcut={key("play-pause")}
                 >
                     {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                 </button>
@@ -761,6 +768,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     onClick={() => seekTo(hasSelection && selection ? selection.start : 0)}
                     className={ICON_BUTTON_CLASS}
                     data-tip={t("assets.audio.editor.toStart")} aria-label={t("assets.audio.editor.toStart")}
+                    data-tip-shortcut={key("to-start")}
                 >
                     <SkipBack className="h-4 w-4" />
                 </button>
@@ -769,6 +777,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     onClick={() => setLoop(value => !value)}
                     className={controlButtonClass(loop)}
                     data-tip={t("assets.audio.editor.loop")} aria-label={t("assets.audio.editor.loop")}
+                    data-tip-shortcut={key("loop")}
                 >
                     <Repeat className="h-4 w-4" />
                 </button>
@@ -781,10 +790,10 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
 
                 {separator}
 
-                <button type="button" onClick={() => zoomBy(1 / 1.4)} className={ICON_BUTTON_CLASS} data-tip={t("assets.audio.editor.zoomOut")} aria-label={t("assets.audio.editor.zoomOut")}>
+                <button type="button" onClick={() => zoomBy(1 / 1.4)} className={ICON_BUTTON_CLASS} data-tip={t("assets.audio.editor.zoomOut")} data-tip-shortcut={key("zoom-out")} aria-label={t("assets.audio.editor.zoomOut")}>
                     <ZoomOut className="h-4 w-4" />
                 </button>
-                <button type="button" onClick={() => zoomBy(1.4)} className={ICON_BUTTON_CLASS} data-tip={t("assets.audio.editor.zoomIn")} aria-label={t("assets.audio.editor.zoomIn")}>
+                <button type="button" onClick={() => zoomBy(1.4)} className={ICON_BUTTON_CLASS} data-tip={t("assets.audio.editor.zoomIn")} data-tip-shortcut={key("zoom-in")} aria-label={t("assets.audio.editor.zoomIn")}>
                     <ZoomIn className="h-4 w-4" />
                 </button>
                 <button
@@ -792,6 +801,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     onClick={() => setView(fitAll(totalSamples))}
                     className={ICON_BUTTON_CLASS}
                     data-tip={t("assets.audio.editor.zoomFit")} aria-label={t("assets.audio.editor.zoomFit")}
+                    data-tip-shortcut={key("zoom-fit")}
                 >
                     <Maximize className="h-4 w-4" />
                 </button>
@@ -815,6 +825,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     onClick={() => markLoopPoint("in")}
                     className={`${controlButtonClass(loopPoints.inMs !== null)} disabled:cursor-not-allowed disabled:opacity-40`}
                     {...freeze.writes(false, t("assets.audio.editor.markIn"))}
+                    data-tip-shortcut={writeKey("mark-in")}
                 >
                     <BetweenVerticalStart className="h-4 w-4" />
                 </button>
@@ -823,6 +834,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     onClick={() => markLoopPoint("loop")}
                     className={controlButtonClass(loopPoints.loopStartMs !== null)}
                     data-tip={t("assets.audio.editor.markLoop")} aria-label={t("assets.audio.editor.markLoop")}
+                    data-tip-shortcut={key("mark-loop")}
                 >
                     <IterationCw className="h-4 w-4" />
                 </button>
@@ -831,6 +843,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     onClick={() => markLoopPoint("out")}
                     className={`${controlButtonClass(loopPoints.outMs !== null)} disabled:cursor-not-allowed disabled:opacity-40`}
                     {...freeze.writes(false, t("assets.audio.editor.markOut"))}
+                    data-tip-shortcut={writeKey("mark-out")}
                 >
                     <BetweenVerticalEnd className="h-4 w-4" />
                 </button>
@@ -840,6 +853,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     className={`${ICON_BUTTON_CLASS} disabled:cursor-not-allowed disabled:opacity-40`}
                     aria-label={t("assets.audio.editor.clearMarkers")}
                     {...freeze.writes(!hasMarkers, t("assets.audio.editor.clearMarkers"))}
+                    data-tip-shortcut={writeKey("clear-markers")}
                 >
                     <Eraser className="h-4 w-4" />
                 </button>
@@ -916,6 +930,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                             disabled={!seam}
                             onClick={auditionSeam}
                             data-tip={t("assets.audio.editor.auditionSeamTip", { seconds: SEAM_AUDITION_SECONDS })}
+                            data-tip-shortcut={key("audition-seam")}
                         >
                             <Ear className="h-4 w-4" />
                             {t("assets.audio.editor.auditionSeam")}

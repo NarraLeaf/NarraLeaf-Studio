@@ -957,8 +957,6 @@ export const story = {
         },
         insert: "在此行后插入空行",
         delete: "删除此行",
-        insertTitle: "在此行后插入空行（{keys}）",
-        deleteTitle: "删除此行（{keys}）",
         playFromRow: "从这一行开始播放",
         playBranch: "试玩该分支",
         insertPlaceholder: "输入旁白，{trigger} 插入动作，# 选择角色…",

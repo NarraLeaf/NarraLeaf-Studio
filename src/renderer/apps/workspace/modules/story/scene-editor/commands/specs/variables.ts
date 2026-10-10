@@ -47,6 +47,21 @@ function setVariableBase(generateId: () => string, variable: StoryCommandValue |
 }
 
 /**
+ * A `setVariable` payload whose right-hand side is `expression`.
+ *
+ * `value` is written as `null`, the way a NarraLang script writes the same row: the expression wins
+ * and nothing reads the literal beside it. Spreading the base payload used to carry over the `true`
+ * every new `setVariable` block starts with, so an `/inc gold` row saved `value: true` next to its
+ * `gold + (1)`. Rows already saved that way read exactly as before.
+ */
+function withExpression(
+    payload: Extract<StoryActionPayload, { action: "setVariable" }>,
+    expression: StoryExpression,
+): Extract<StoryActionPayload, { action: "setVariable" }> {
+    return { ...payload, value: null, expression };
+}
+
+/**
  * Write a computed right-hand side onto a `setVariable` payload. A tree that is nothing but a
  * literal folds back into `value` and clears `expression` - the inspector's literal editor still
  * binds to it and the compiler takes the direct set path.
@@ -58,7 +73,7 @@ function withAssignedExpression(
     if (expression.ast.kind === "literal") {
         return { ...payload, value: expression.ast.value, expression: undefined };
     }
-    return { ...payload, expression };
+    return withExpression(payload, expression);
 }
 
 /**
@@ -140,11 +155,11 @@ function buildIncDec(op: "+" | "-", args: { readonly variable?: StoryCommandValu
     const stepSource = args.by?.kind === "expression" ? args.by.source : "1";
     return {
         ...base,
-        payload: {
-            ...payload,
-            // The stored source must re-parse: a spaced name prints in its quoted entity form.
-            expression: { source: `${formatStoryExpressionName(name)} ${op} (${stepSource})`, ast: { kind: "binary", op, left: self, right: step } },
-        },
+        // The stored source must re-parse: a spaced name prints in its quoted entity form.
+        payload: withExpression(payload, {
+            source: `${formatStoryExpressionName(name)} ${op} (${stepSource})`,
+            ast: { kind: "binary", op, left: self, right: step },
+        }),
     };
 }
 
@@ -191,7 +206,7 @@ export const toggle = defineStoryCommand({
         }
         return {
             ...base,
-            payload: { ...payload, expression: { source: `!${formatStoryExpressionName(name)}`, ast: { kind: "unary", op: "!", operand: self } } },
+            payload: withExpression(payload, { source: `!${formatStoryExpressionName(name)}`, ast: { kind: "unary", op: "!", operand: self } }),
         };
     },
 });
