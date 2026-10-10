@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { AGENT_MCP_DEFAULT_PORT } from "@shared/agent/protocol";
+import { AGENT_MCP_DEFAULT_PORT, AGENT_MCP_FALLBACK_PORTS, AGENT_MCP_LEGACY_DEFAULT_PORT } from "@shared/agent/protocol";
 import {
     isLoopbackAddress,
     refuseOwnLoopbackService,
@@ -69,15 +69,15 @@ describe("isLoopbackAddress", () => {
 
 describe("refuseOwnLoopbackService", () => {
     it.each([
-        "http://127.0.0.1:54080/mcp",
-        "http://127.9.9.9:54080/mcp",
-        "http://0.0.0.0:54080/mcp",
-        "http://[::1]:54080/mcp",
-        "http://[::]:54080/mcp",
-        "http://[::ffff:127.0.0.1]:54080/mcp",
-        "http://127.1:54080/mcp",
-        "http://2130706433:54080/mcp",
-        "http://0x7f.0.0.1:54080/mcp",
+        "http://127.0.0.1:47219/mcp",
+        "http://127.9.9.9:47219/mcp",
+        "http://0.0.0.0:47219/mcp",
+        "http://[::1]:47219/mcp",
+        "http://[::]:47219/mcp",
+        "http://[::ffff:127.0.0.1]:47219/mcp",
+        "http://127.1:47219/mcp",
+        "http://2130706433:47219/mcp",
+        "http://0x7f.0.0.1:47219/mcp",
         "https://127.0.0.1:9223/console",
     ])("refuses %s", async address => {
         const lookup = resolver({});
@@ -88,17 +88,17 @@ describe("refuseOwnLoopbackService", () => {
 
     it("resolves a name on one of Studio's ports, and refuses one that lands on loopback", async () => {
         const lookup = resolver({ localhost: ["::1", "127.0.0.1"], "localtest.me": ["127.0.0.1"], "rebind.example": ["93.184.216.34", "127.0.0.1"] });
-        for (const address of ["http://localhost:54080/mcp", "http://LOCALHOST:54080/mcp", "http://localtest.me:54080/mcp", "http://rebind.example:54080/mcp"]) {
+        for (const address of ["http://localhost:47219/mcp", "http://LOCALHOST:47219/mcp", "http://localtest.me:47219/mcp", "http://rebind.example:47219/mcp"]) {
             expect(await refuseOwnLoopbackService(address, PORTS, lookup)).not.toBeNull();
         }
     });
 
     it("refuses a name on one of Studio's ports that does not resolve", async () => {
-        expect(await refuseOwnLoopbackService("http://nowhere.invalid:54080/mcp", PORTS, resolver({}))).not.toBeNull();
+        expect(await refuseOwnLoopbackService("http://nowhere.invalid:47219/mcp", PORTS, resolver({}))).not.toBeNull();
     });
 
     it("lets a public host on the same port number through", async () => {
-        expect(await refuseOwnLoopbackService("http://api.example.com:54080/x", PORTS, resolver({ "api.example.com": ["93.184.216.34"] }))).toBeNull();
+        expect(await refuseOwnLoopbackService("http://api.example.com:47219/x", PORTS, resolver({ "api.example.com": ["93.184.216.34"] }))).toBeNull();
     });
 
     it("leaves every other loopback port alone, without resolving anything", async () => {
@@ -115,21 +115,31 @@ describe("refuseOwnLoopbackService", () => {
     });
 
     it("protects nothing when Studio serves nothing", async () => {
-        expect(await refuseOwnLoopbackService("http://127.0.0.1:54080/mcp", [], resolver({}))).toBeNull();
+        expect(await refuseOwnLoopbackService("http://127.0.0.1:47219/mcp", [], resolver({}))).toBeNull();
     });
 
     it("lets something that is not a URL through for the caller's own checks to refuse", async () => {
         expect(await refuseOwnLoopbackService("not a url", PORTS, resolver({}))).toBeNull();
     });
 
-    it("names the agent endpoint's default port among the defaults a packaged game refuses", () => {
+    it("names the agent endpoint's default port and its fixed fallbacks among the defaults a packaged game refuses", () => {
         expect(STUDIO_DEFAULT_LOOPBACK_PORTS).toContain(AGENT_MCP_DEFAULT_PORT);
+        expect(STUDIO_DEFAULT_LOOPBACK_PORTS).toContain(47219);
+        for (const port of AGENT_MCP_FALLBACK_PORTS) {
+            expect(STUDIO_DEFAULT_LOOPBACK_PORTS).toContain(port);
+        }
+        expect(STUDIO_DEFAULT_LOOPBACK_PORTS).not.toContain(AGENT_MCP_LEGACY_DEFAULT_PORT);
+    });
+
+    it("refuses a packaged game's request to the port the endpoint moves to when the default is taken", async () => {
+        expect(await refuseOwnLoopbackService("http://127.0.0.1:47220/mcp", STUDIO_DEFAULT_LOOPBACK_PORTS, resolver({}))).not.toBeNull();
+        expect(await refuseOwnLoopbackService("http://127.0.0.1:47229/mcp", STUDIO_DEFAULT_LOOPBACK_PORTS, resolver({}))).toBeNull();
     });
 });
 
 describe("withoutHostHeader", () => {
     it("drops Host in any spelling and keeps the rest", () => {
-        expect(withoutHostHeader({ Host: "127.0.0.1:54080", " host ": "x", HOST: "y", authorization: "Bearer t", "x-a": "1" }))
+        expect(withoutHostHeader({ Host: "127.0.0.1:47219", " host ": "x", HOST: "y", authorization: "Bearer t", "x-a": "1" }))
             .toEqual({ authorization: "Bearer t", "x-a": "1" });
     });
 

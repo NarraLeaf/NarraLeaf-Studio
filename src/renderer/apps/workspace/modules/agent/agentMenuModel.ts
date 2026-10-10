@@ -7,7 +7,8 @@ import { Separator, type ActionDefinition, type ActionMenuItem } from "../../reg
  * doing, the author's two session switches (pause, follow), the log, and the three things that
  * belong to agent access as a whole (the endpoint, write access, connection configuration and the
  * skill), then the way to the full settings. While access is off, only the status line, the switch
- * that turns it on and the way to settings.
+ * that turns it on and the way to settings. When the endpoint had to move to another port, a second
+ * read-only line under the status says so until a configuration is copied again.
  *
  * Separate from the component so the status line and the shape can be tested without a workspace.
  * The rows carry ids and `group` but never `shortcut`: a shortcut on a registered action becomes a
@@ -21,6 +22,7 @@ export const AGENT_MENU_GROUP_ID = "narraleaf-studio:agent";
 
 export const AGENT_MENU_ACTIONS = {
     status: "narraleaf-studio:agent-status",
+    portMoved: "narraleaf-studio:agent-port-moved",
     pause: "narraleaf-studio:agent-pause",
     follow: "narraleaf-studio:agent-follow",
     log: "narraleaf-studio:agent-log",
@@ -109,6 +111,17 @@ export function buildAgentMenuItems(input: AgentMenuModelInput): ActionMenuItem[
         disabled: true,
         onClick: () => undefined,
     });
+    // HTTP clients configured before the endpoint moved name the old port; copying a configuration
+    // from this menu or Settings answers it, and main clears it.
+    const movedToPort = quick?.movedToPort ?? null;
+    const portMoved = movedToPort !== null
+        ? [action({
+            id: AGENT_MENU_ACTIONS.portMoved,
+            label: t("settings.agent.portMoved", { port: movedToPort }),
+            disabled: true,
+            onClick: () => undefined,
+        })]
+        : [];
     const enable = action({
         id: AGENT_MENU_ACTIONS.enable,
         labelKey: "workspace.agent.appMenu.enable",
@@ -131,6 +144,7 @@ export function buildAgentMenuItems(input: AgentMenuModelInput): ActionMenuItem[
     }
     return [
         status,
+        ...portMoved,
         Separator,
         action({
             id: AGENT_MENU_ACTIONS.pause,

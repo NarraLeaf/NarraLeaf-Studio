@@ -32,18 +32,19 @@
  * Comments in English per project convention.
  */
 
-import { AGENT_MCP_DEFAULT_PORT } from "@shared/agent/protocol";
+import { AGENT_MCP_DEFAULT_PORT, AGENT_MCP_FALLBACK_PORTS } from "@shared/agent/protocol";
 
 /** The dev debug server's port unless `NLS_DEBUG_PORT` moves it (`managers/debug/studioDebugServer.ts`). */
 export const STUDIO_DEBUG_DEFAULT_PORT = 9223;
 
 /**
- * The loopback ports Studio serves on unless the author moved them: the agent MCP endpoint and the
- * dev debug server. For a process that cannot ask a running Studio where it is listening - the
- * packaged game, which may run beside a Studio the player also has open. Studio's own main process
- * reads the live ports instead (`BaseApp.ownLoopbackPorts`).
+ * The loopback ports Studio serves on unless something moved them: the agent MCP endpoint - its
+ * default and the fixed ports it moves to when the default is taken - and the dev debug server.
+ * For a process that cannot ask a running Studio where it is listening - the packaged game, which
+ * may run beside a Studio the player also has open. Studio's own main process reads the live ports
+ * instead (`BaseApp.ownLoopbackPorts`).
  */
-export const STUDIO_DEFAULT_LOOPBACK_PORTS: readonly number[] = [AGENT_MCP_DEFAULT_PORT, STUDIO_DEBUG_DEFAULT_PORT];
+export const STUDIO_DEFAULT_LOOPBACK_PORTS: readonly number[] = [AGENT_MCP_DEFAULT_PORT, ...AGENT_MCP_FALLBACK_PORTS, STUDIO_DEBUG_DEFAULT_PORT];
 
 /** Every address a host name resolves to. Rejects when it resolves to none. */
 export type HostAddressLookup = (hostname: string) => Promise<readonly string[]>;
