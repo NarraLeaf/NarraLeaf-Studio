@@ -85,6 +85,14 @@ describe("the agent access panel", () => {
         }
     });
 
+    it("names a plugin with agent tools by its display name, never by its id", async () => {
+        const view = await renderPanel({
+            pluginTools: [{ pluginId: "acme.notes", name: "Notes", tools: 3, writeTools: 1, allowed: true, builtIn: false }],
+        });
+        expect(view.getByText("Notes").getAttribute("data-tip")).toBe("Notes");
+        expect(view.container.innerHTML).not.toContain("acme.notes");
+    });
+
     it("keeps keyboard focus in the panel through regenerating the token", async () => {
         const view = await renderPanel();
         const regenerate = () => view.getByRole("button", { name: "settings.agent.regenerateAction" });

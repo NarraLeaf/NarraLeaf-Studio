@@ -305,7 +305,7 @@ export function AgentAccessPanel() {
                             return (
                                 <div key={plugin.pluginId} className="flex h-11 items-center gap-3 rounded-md px-2 hover:bg-fill">
                                     <div className="flex min-w-0 flex-1 flex-col">
-                                        <span className="truncate text-sm text-fg" data-tip={plugin.pluginId}>{name}</span>
+                                        <span className="truncate text-sm text-fg" data-tip={name}>{name}</span>
                                         <span className="truncate text-xs text-fg-subtle">
                                             {t("settings.agent.pluginToolsCount", { tools: plugin.tools, writes: plugin.writeTools })}
                                         </span>

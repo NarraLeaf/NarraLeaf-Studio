@@ -524,7 +524,9 @@ export const workspace = {
             durationS: "{value} s",
             showChange: "Show the change",
             targetGone: "That item no longer exists",
-            hint: "Next step",
+            // A refused call's two lines, which are what the agent was told (in English), not steps for the author.
+            message: "Reply sent to the agent",
+            hint: "Hint sent to the agent",
             exported: "Agent log exported to {path}",
             exportFailed: "The Agent log could not be exported: {error}",
             exportEmpty: "The Agent log is empty",
