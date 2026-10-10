@@ -1,8 +1,9 @@
 /**
- * Who still names a scene or a character, for the delete tools to refuse with.
+ * Who still names a scene, a character or a variable, for the delete tools to refuse with.
  *
  * Found by value rather than by asking each row kind where it keeps its references: a jump, a menu
- * option, a call, a `Start Game` node, a speaker and a stage row all hold the id as a plain string
+ * option, a call, a `Start Game` node, a speaker, a stage row, a variable ref in an expression and a
+ * `Get`/`Set` node's variable param all hold the id as a plain string
  * somewhere in their payload, and the ids are UUIDs, so a string equal to one is a reference to it.
  * A row kind added later is covered without anyone remembering this file.
  *
@@ -10,6 +11,7 @@
  */
 
 import type { StoryBlock, StoryScene } from "@shared/types/story";
+import type { StoryVariableValueType } from "@shared/types/story/document";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { StoryLintStory } from "@/lib/agent-core";
@@ -135,4 +137,93 @@ export function formatReferrers(referrers: readonly string[], limit = 30): strin
         shown.push(`  ... and ${referrers.length - limit} more`);
     }
     return shown.join("\n");
+}
+
+/** Whether a literal is a value of `valueType`. A json variable holds anything. */
+function literalFits(value: unknown, valueType: StoryVariableValueType): boolean {
+    switch (valueType) {
+        case "boolean":
+            return typeof value === "boolean";
+        case "number":
+            return typeof value === "number";
+        case "string":
+            return typeof value === "string";
+        default:
+            return true;
+    }
+}
+
+const ORDERED_OPERATORS = new Set(["greaterThan", "greaterOrEqual", "lessThan", "lessOrEqual"]);
+
+/**
+ * What one story row does with variable `id` that a `valueType` variable can no longer take, or
+ * null when nothing it does is wrong for that type: a `/set` writing a literal of another type, a
+ * branch testing it as true/false, ordering it, or comparing it with a literal of another type.
+ *
+ * Only literals are judged. A computed right-hand side (`/set gold gold + 1`) or a typed expression
+ * condition is evaluated at play time, and guessing its type here would be the kind of warning an
+ * agent learns to read past.
+ */
+function misfitIn(block: StoryBlock, id: string, valueType: StoryVariableValueType): string | null {
+    if (valueType === "json") {
+        // Holds any value, so every literal and every test fits it.
+        return null;
+    }
+    const payload = block.payload as Record<string, unknown>;
+    if (payload.action === "setVariable" && (payload.target as { variableId?: string } | undefined)?.variableId === id) {
+        if (payload.expression === undefined && !literalFits(payload.value, valueType)) {
+            return `sets it to ${JSON.stringify(payload.value)}`;
+        }
+        return null;
+    }
+    let found: string | null = null;
+    const walk = (value: unknown): void => {
+        if (found || !value || typeof value !== "object") {
+            return;
+        }
+        if (Array.isArray(value)) {
+            value.forEach(walk);
+            return;
+        }
+        const node = value as Record<string, unknown>;
+        if (node.kind === "variable" && typeof node.operator === "string" && (node.target as { variableId?: string } | undefined)?.variableId === id) {
+            const operator = node.operator;
+            if ((operator === "isTrue" || operator === "isFalse") && valueType !== "boolean") {
+                found = `tests it as ${operator === "isTrue" ? "true" : "false"}`;
+            } else if (ORDERED_OPERATORS.has(operator) && valueType === "boolean") {
+                found = `orders it (${operator} ${JSON.stringify(node.value)})`;
+            } else if (node.value !== undefined && operator !== "isTrue" && operator !== "isFalse" && operator !== "exists"
+                && !literalFits(node.value, valueType)) {
+                found = `compares it with ${JSON.stringify(node.value)} (${operator})`;
+            }
+            return;
+        }
+        Object.values(node).forEach(walk);
+    };
+    walk(payload);
+    return found;
+}
+
+/**
+ * Every story row whose use of variable `id` no longer fits once it is a `valueType` - what a retype
+ * leaves behind, since nothing rewrites those rows. One readable line each, placed like
+ * {@link storyReferencesTo}.
+ */
+export function storyUsesNotFitting(
+    stories: readonly StoryLintStory[],
+    id: string,
+    valueType: StoryVariableValueType,
+): string[] {
+    const out: string[] = [];
+    for (const story of stories) {
+        for (const scene of scenesInOrder(story.document)) {
+            rowsInOrder(scene).forEach((block, index) => {
+                const misfit = misfitIn(block, id, valueType);
+                if (misfit) {
+                    out.push(`story "${story.name}", scene "${scene.name}", row ${index + 1}: ${misfit}`);
+                }
+            });
+        }
+    }
+    return out;
 }

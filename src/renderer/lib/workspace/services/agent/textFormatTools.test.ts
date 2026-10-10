@@ -17,8 +17,11 @@ import { AgentFollowService, type AgentWriteTarget } from "./AgentFollowService"
 import { AgentRefusal, type AgentToolContext, type AgentToolHandler } from "./agentCall";
 import { storyApply, storyShow } from "./tools/storyTextTools";
 import { uiApply, uiShow } from "./tools/uiTextTools";
-import { commitBlueprints, sharedHistorySurface } from "./tools/blueprintTools";
-import { diagnosticsForRefusal, withCanonicalCommandVocabulary } from "./tools/textFormat";
+import { commitBlueprints, ownerQueryOf, sharedHistorySurface } from "./tools/blueprintTools";
+import { ownerRefToIndexKey } from "../ui-editor/blueprint/ownerKeys";
+import { diagnosticsForRefusal, forAgent, withCanonicalCommandVocabulary } from "./tools/textFormat";
+import { formatCarriedFindings } from "@/lib/story-cli/apply";
+import { formatDiagnostics } from "@/lib/story-cli/check";
 
 vi.mock("@/lib/app/writeFreeze", () => ({ getProjectWriteFreeze: () => null }));
 
@@ -348,5 +351,27 @@ describe("text-format helpers", () => {
             owned({ kind: "surfaceMain", surfaceId: "page" }),
             owned({ kind: "surfaceMain", surfaceId: "other" }),
         ])).toBeNull();
+    });
+});
+
+describe("forAgent", () => {
+    it("points an agent at the lint tool, not at a command line it does not have", () => {
+        expect(forAgent(formatCarriedFindings(1))).toContain("The `lint` tool lists it.");
+        expect(forAgent(formatCarriedFindings(3))).toContain("The `lint` tool lists them.");
+        const report = forAgent(formatDiagnostics([], { notRun: ["assets", "blueprint"] }));
+        expect(report).toContain("Not checked by this write: assets, blueprint.");
+        expect(report).toContain("the `lint` tool runs them");
+        expect(report).not.toMatch(/--project|only a running Studio/);
+    });
+});
+
+describe("blueprint_show by owner key", () => {
+    it("matches the title page's widgets by the key as their ids read, separator and all", () => {
+        // acceptance run #2: `widgetMain:narraleaf-studio:main-surface:<elementId>`, the form the tool
+        // description recommended, answered not_found - the stored key escapes the surface id.
+        const stored = ownerRefToIndexKey({ kind: "widgetMain", surfaceId: "narraleaf-studio:main-surface", elementId: "start-button" });
+        expect(ownerQueryOf("widgetMain:narraleaf-studio:main-surface:start-button")).toBe(stored);
+        expect(ownerQueryOf(stored)).toBe(stored);
+        expect(ownerQueryOf("开始")).toBe("开始");
     });
 });

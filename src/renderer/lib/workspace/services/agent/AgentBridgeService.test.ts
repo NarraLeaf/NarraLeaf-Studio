@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { AgentCallRequest, AgentCallResult, AgentSessionPolicy } from "@shared/agent/protocol";
 import { AGENT_INTERNAL_TOOL_STATE } from "@shared/agent/protocol";
 import { freezeProjectWrites, thawProjectWrites } from "@/lib/app/writeFreeze";
@@ -84,6 +84,13 @@ afterEach(() => {
 });
 
 describe("AgentBridgeService", () => {
+    // The bridge loads its handler tables on the first call (see AgentHandlerTables). Under vitest
+    // that first load transforms the whole tool tree and can outlast a test's default timeout, so it
+    // is paid once here instead of inside whichever test happens to run first.
+    beforeAll(async () => {
+        await import("./agentHandlers");
+    }, 120_000);
+
     it("answers a read tool and logs it in the agent channel", async () => {
         const harness = createHarness();
         await harness.init();
@@ -160,5 +167,21 @@ describe("AgentBridgeService", () => {
         const result = await harness.bridge.handle(call("story_show", { scene: "x" }));
         expect(codeOf(result)).toBe("internal");
         expect(result.ok ? "" : result.error.message).toContain("story_show");
+    });
+
+    it("records every call in the activity log, refusals included, and never main's internal calls", async () => {
+        const harness = createHarness();
+        await harness.init();
+        await harness.bridge.handle(call("audio_tracks_list", {}));
+        await harness.bridge.handle(call("project_settings_set", { name: "After" }, WRITES_OFF));
+        await harness.bridge.handle(call(AGENT_INTERNAL_TOOL_STATE, {}));
+        const entries = harness.bridge.getActivityLog().getEntries();
+        expect(entries.map(entry => [entry.tool, entry.status, entry.code ?? null, entry.write])).toEqual([
+            ["audio_tracks_list", "ok", null, false],
+            ["project_settings_set", "refused", "writes_disabled", true],
+        ]);
+        expect(entries[0].clientName).toBe("test-client");
+        expect(entries[0].durationMs).not.toBeNull();
+        expect(entries[1].message).toContain("Write access");
     });
 });

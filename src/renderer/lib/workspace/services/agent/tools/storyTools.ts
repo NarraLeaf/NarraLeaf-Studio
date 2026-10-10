@@ -1,6 +1,6 @@
 /**
- * The story outline: `story_list`, `scene_create`, `scene_rename`, `scene_set_entry`,
- * `scene_delete`, and the revision-checked scene write the `.story` tools build on.
+ * The story outline: `story_list`, `story_rename`, `scene_create`, `scene_rename`,
+ * `scene_set_entry`, `scene_delete`, and the revision-checked scene write the `.story` tools build on.
  *
  * Writing a scene's rows (`story_apply`) is the text-format tool's; what it needs from here is
  * {@link writeSceneForAgent}: the revision check against the scene the agent read, and the write
@@ -13,6 +13,9 @@ import type { StoryDocument, StoryScene } from "@shared/types/story";
 import { answerJson, readOptionalString, readString, refuse, type AgentToolHandler, type AgentToolContext } from "../agentCall";
 import { AGENT_HISTORY_LABEL, resolveScene, resolveStory, storyService } from "../agentLookups";
 import { blueprintReferencesTo, formatReferrers, storyReferencesTo, uiReferencesTo } from "../agentReferences";
+import { Services } from "../../services";
+import type { HistoryService } from "../../history/HistoryService";
+import { projectHistoryScope } from "../../history/historyScopes";
 import { liveBlueprintDocument, loadAllStories, uiDocumentService } from "./textFormat";
 
 function rowCount(scene: StoryScene): number {
@@ -49,6 +52,41 @@ export const storyList: AgentToolHandler = async (_args, { ctx }) => {
         });
     }
     return answerJson({ stories });
+};
+
+/**
+ * Rename a story. Nothing refers to a story by name - jumps, launches and the build all hold its id -
+ * so this is the library entry's name and the document's, and nothing else. Studio's own rename
+ * takes no undo step; an agent's does, on the project's stack, like every other agent write.
+ */
+export const storyRename: AgentToolHandler = async (args, { ctx, request, follow }) => {
+    const name = readString(args, "name").trim();
+    if (!name) {
+        throw refuse("invalid_args", "`name` must not be empty.");
+    }
+    const { entry } = await resolveStory(ctx, readOptionalString(args, "story"));
+    follow.describeCall(request.callId, entry.name);
+    const before = entry.name;
+    if (before === name) {
+        return answerJson({ story: { id: entry.id, name } }, `Story "${name}" already has that name.`);
+    }
+    const service = storyService(ctx);
+    if (!service.renameStory(entry.id, name)) {
+        throw refuse("unavailable", `Story "${before}" could not be renamed.`);
+    }
+    ctx.services.get<HistoryService>(Services.History).pushCommand(projectHistoryScope(), {
+        label: AGENT_HISTORY_LABEL,
+        undo: () => {
+            service.renameStory(entry.id, before);
+        },
+        redo: () => {
+            service.renameStory(entry.id, name);
+        },
+    });
+    return answerJson(
+        { story: { id: entry.id, name }, previousName: before },
+        `Renamed story "${before}" to "${name}". One step of undo in Studio.`,
+    );
 };
 
 /** Where `after` sits, as the `beforeSceneId` a move or create takes: the scene following it in its chapter. */
@@ -127,7 +165,14 @@ export const sceneRename: AgentToolHandler = async (args, { ctx, request, follow
         throw refuse("internal", `Scene "${before}" could not be renamed.`);
     }
     follow.noteWrite({ kind: "scene", storyId: entry.id, sceneId: scene.id, name });
-    return answerJson({ scene: { id: scene.id, name } }, `Renamed scene "${before}" to "${name}". Jumps to it follow by id.`);
+    // The name is part of the scene's text (its `#scene` header), so a rename moves the revision a
+    // story_show taken before it returned; handing back the new one saves a stale_revision on the
+    // story_apply that usually follows.
+    const revision = storyService(ctx).getSceneContentRevision(entry.id, scene.id);
+    return answerJson(
+        { scene: { id: scene.id, name }, revision },
+        `Renamed scene "${before}" to "${name}" (now revision ${revision}: pass it as baseRevision, or call story_show again). Jumps to it follow by id.`,
+    );
 };
 
 export const sceneSetEntry: AgentToolHandler = async (args, { ctx, request, follow }) => {
@@ -142,7 +187,10 @@ export const sceneSetEntry: AgentToolHandler = async (args, { ctx, request, foll
     if (story.getDefaultStoryId() !== entry.id) {
         story.setDefaultStory(entry.id);
     }
-    return answerJson({ story: { id: entry.id, name: entry.name }, scene: { id: scene.id, name: scene.name } }, `The game now starts on scene "${scene.name}".`);
+    return answerJson(
+        { story: { id: entry.id, name: entry.name }, scene: { id: scene.id, name: scene.name }, revision: story.getSceneContentRevision(entry.id, scene.id) },
+        `The game now starts on scene "${scene.name}".`,
+    );
 };
 
 /**

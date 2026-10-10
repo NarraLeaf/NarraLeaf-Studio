@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import {
+    blueprintSpeakerColor,
     normalizeBlueprintCharacterInfo,
     toBlueprintCharacterColor,
     toBlueprintCharacterInfo,
@@ -83,5 +84,43 @@ describe("the character table entries a blueprint reads", () => {
     it("leaves a character with no accent with no colour", () => {
         expect(toBlueprintCharacterInfo({ id: "c1", name: "Alice" })?.color).toBeNull();
         expect(normalizeBlueprintCharacterInfo({ id: "c1", name: "Alice" })?.color).toBeNull();
+    });
+});
+
+/**
+ * What `Get Speaker Color` reads on a line. The skeleton's nametag tints itself from it, and its two
+ * characters have no colour: a white fallback there would repaint the template's own names white.
+ */
+describe("blueprintSpeakerColor", () => {
+    beforeEach(() => {
+        setActiveBrandPalette([
+            ...BUILTIN_BRAND_COLORS.map(color => (color.id === "primary" ? { ...color, value: "#F2A65A" } : color)),
+            { id: "cast.alice", value: "#123456" },
+        ]);
+    });
+
+    afterEach(() => {
+        setActiveBrandPalette(BUILTIN_BRAND_COLORS);
+    });
+
+    it("paints a character in their own colour", () => {
+        const alice = toBlueprintCharacterInfo({ id: "c1", name: "Alice", color: "nlbrand:cast.alice" });
+
+        expect(blueprintSpeakerColor(alice, false)).toEqual({ r: 0x12, g: 0x34, b: 0x56, a: 1 });
+    });
+
+    it("paints a character with no colour in the palette's primary, as the palette stands now", () => {
+        const plain = toBlueprintCharacterInfo({ id: "c2", name: "Bob" });
+
+        expect(blueprintSpeakerColor(plain, false)).toEqual({ r: 0xf2, g: 0xa6, b: 0x5a, a: 1 });
+        // A named speaker the character table does not know is painted the same way.
+        expect(blueprintSpeakerColor(null, false)).toEqual({ r: 0xf2, g: 0xa6, b: 0x5a, a: 1 });
+    });
+
+    it("answers null on a narration line, whoever spoke last", () => {
+        const alice = toBlueprintCharacterInfo({ id: "c1", name: "Alice", color: "#123456" });
+
+        expect(blueprintSpeakerColor(alice, true)).toBeNull();
+        expect(blueprintSpeakerColor(null, true)).toBeNull();
     });
 });

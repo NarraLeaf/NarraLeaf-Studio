@@ -3,6 +3,7 @@ import { AppInfo } from "./app";
 import type { ProjectTrustRecord } from "./projectTrust";
 import type { AgentCallRequest, AgentCallResult } from "../agent/protocol";
 import type { AgentSettingsPatch, AgentSettingsSnapshot } from "../agent/settings";
+import type { AgentCopyConfigKind, AgentMainActivity, AgentQuickState, AgentQuickTogglePatch } from "../agent/workspaceAccess";
 import type { ProjectSessionHolder, ProjectSessionLockOutcome } from "./projectSession";
 import { IPCMessageType, IPCType } from "./ipc";
 import { FsRequestResult, PlatformInfo } from "./os";
@@ -288,6 +289,13 @@ export enum IPCEventType {
     agentSettingsUpdate = "agent.settings.update",
     agentSettingsRegenerateToken = "agent.settings.regenerateToken",
     agentSettingsAddImportRoot = "agent.settings.addImportRoot",
+    agentQuickState = "agent.quick.state",
+    agentQuickToggle = "agent.quick.toggle",
+    agentQuickStateChanged = "agent.quick.stateChanged",
+    agentCopyConfig = "agent.quick.copyConfig",
+    agentExportSkill = "agent.quick.exportSkill",
+    agentRevealExportedSkill = "agent.quick.revealExportedSkill",
+    workspaceAgentActivity = "workspace.agentActivity",
     workspaceResolveAssetUrl = "workspace.resolveAssetUrl",
     workspaceResolveAllAssetUrls = "workspace.resolveAllAssetUrls",
     workspaceResolveImageAssetUrl = "workspace.resolveImageAssetUrl",
@@ -2697,6 +2705,67 @@ export type IPCWorkspaceEvents = {
         consumer: IPCType.Host,
         data: Record<string, never>;
         response: AgentSettingsSnapshot;
+    };
+    /**
+     * The workspace's Agent menu: whether agent access is on, writes are allowed and the endpoint is
+     * listening. Never the token or the address - see `@shared/agent/workspaceAccess`. Workspace and
+     * Settings windows only.
+     */
+    [IPCEventType.agentQuickState]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: AgentQuickState;
+    };
+    /**
+     * Flip agent access or write access from the Agent menu. Turning write access ON asks the author
+     * in a native dialog first, because a workspace runs plugin code; turning anything off does not.
+     * Answers the state as it is afterwards, unchanged when the author declined.
+     */
+    [IPCEventType.agentQuickToggle]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: AgentQuickTogglePatch;
+        response: AgentQuickState;
+    };
+    /** Agent access changed (from Settings, from a menu, or the endpoint started or stopped). Sent to every workspace. */
+    [IPCEventType.agentQuickStateChanged]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: AgentQuickState;
+        response: never;
+    };
+    /** Main writes one client configuration to the system clipboard; the configuration never crosses to the renderer. */
+    [IPCEventType.agentCopyConfig]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { kind: AgentCopyConfigKind };
+        response: { copied: true };
+    };
+    /**
+     * Copy the bundled agent skill into `<picked folder>/NarraLeaf-Skills`, through a native folder
+     * picker parented to the calling window. An existing non-empty folder is only written into after
+     * a native confirmation.
+     */
+    [IPCEventType.agentExportSkill]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: { canceled: true } | { canceled: false; path: string };
+    };
+    /** Show the folder the last skill export from this window wrote, in the system file manager. */
+    [IPCEventType.agentRevealExportedSkill]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: { revealed: boolean };
+    };
+    /** One agent call main answered itself, for the workspace's Agent log. Fire-and-forget. */
+    [IPCEventType.workspaceAgentActivity]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: AgentMainActivity;
+        response: never;
     };
     [IPCEventType.workspaceResolveAssetUrl]: {
         type: IPCMessageType.request,

@@ -57,8 +57,10 @@ export function StatusBar() {
     // launched without the flag.
     const experimental = isExperimentalMode();
     const running = runActive && !experimental;
-    // An agent at work washes the strip in the binding colour, under the other two: a play-test the
-    // agent starts is still a run, and experimental mode is always on top.
+    // An agent at work washes the strip in the success colour, under the other two: a play-test the
+    // agent starts is still a run, and experimental mode is always on top. Green because each of the
+    // other semantic colours already means something on this strip or elsewhere (primary is the run,
+    // warning is experimental, danger is an error, binding is a blueprint binding).
     const agent = useAgentActive() && !experimental && !running;
 
     // Built-ins first, then runtime registrations — so plugin entries pack closest to the centre.
@@ -146,7 +148,7 @@ export function StatusBar() {
                                 ? "border-warning/60 bg-warning/20"
                                 : running
                                     ? "border-primary bg-primary"
-                                    : agent ? "border-binding/50 bg-binding/15" : "nl-frame-surface border-edge bg-surface-sunken"
+                                    : agent ? "border-success/70 bg-success/45" : "nl-frame-surface border-edge bg-surface-sunken"
                         }`}
                         style={{
                             height: STATUS_BAR_HEIGHT,

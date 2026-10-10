@@ -12,6 +12,8 @@ lists all of them by category; `story_targets` lists every name a line can resol
 #nlstory 1
 #story Skeleton
 #scene Rooftop ⟦9c41d2e0-5b7a-4c1e-9f0a-2d6b8e1c3a77⟧
+#background none
+#music none
 
 /bg bg_rooftop_dusk t=fade d=1
 /bgm bgm_evening track=Music vol=0.7 fade=1.5 loop
@@ -37,6 +39,16 @@ Aoi: It is. I just don't know how to start.
 
 - `#nlstory 1`, `#story <story name>` and `#scene <name> ⟦<scene id>⟧` are the header. Copy them from
   `story_show`; the scene named here is the one replaced.
+- `#background` and `#music` are the **scene's own settings**, not rows: the picture and the music the
+  scene opens on, put up before its first row runs. `story_show` always prints both (`none` when
+  unset). Values: `#background <image>` / `none`; `#music <audio> [track=<track>] [volume=0.7]
+  [loop=true] [fade=1200]` (fade in ms) / `none`. Names with spaces in single quotes, as
+  `story_targets` prints them.
+- A header **without** them keeps whatever the scene had - the `story_apply` answer then says what the
+  scene still opens with. **A reused skeleton demo scene opens on its demo picture** (`#background
+  classroom` and the like): write `#background none` (or your own picture) and `#music none` in your
+  source, or that picture shows for a beat before your first `/bg` - in the game the player sees.
+  `story_targets {query}` lists, under "scene settings", which scenes open on which picture.
 - Two spaces per nesting level. The rows under a menu option or an `/if` branch are indented one level
   deeper than it.
 - A blank line is spacing, not a row.
@@ -90,7 +102,11 @@ those you deliberately keep.
 - **Video**: `/play <video asset> name=<name>` plays it to the end and clears it away (`wait=false`,
   `hide=false`, `muted` change that). `/show` refuses videos.
 - **Camera**: `/transform camera zoom=1.1 d=2 ease=easeOut`.
-- Positions are `left`, `center`, `right`; sprites are drawn at their own pixel size.
+- Positions are `left`, `center`, `right`. A sprite is drawn at its own pixel size times its
+  character's entrance `zoom`, its CENTRE placed at the position: `xalign`/`yalign` are shares of the
+  stage from the left and up from the bottom, `xoffset`/`yoffset` design pixels (+ is up). `pos=`
+  writes `xalign` 0.25/0.5/0.75 and `yalign` 0.5, so the baseline comes from the character's
+  `entranceTransform.position.yoffset`, never from `yalign`. `characters_list` gives `drawnAtCenter`.
 
 ## Sound
 

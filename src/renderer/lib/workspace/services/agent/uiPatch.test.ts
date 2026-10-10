@@ -9,7 +9,7 @@ import { projectHistoryScope, uiSurfaceHistoryScope } from "../history/historySc
 import { Services } from "../services";
 import { UIDocumentService } from "../ui-editor/UIDocumentService";
 import { UIEditorHistoryService } from "../ui-editor/UIEditorHistoryService";
-import { applyUiPatch, readUiPatchOps } from "./uiPatch";
+import { applyUiPatch, readUiPatchOps, routeUiPropsPatch } from "./uiPatch";
 import { assertUiRevision } from "./tools/uiTools";
 
 /**
@@ -156,6 +156,96 @@ describe("applyUiPatch", () => {
         expect(() => applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
             { op: "add", type: "nl.nope" },
         ]), LABEL)).toThrow(/ops\[0\]/);
+    });
+
+    it("routes `layout.*` to the element's layout, dotted or nested, so hiding an element hides it", () => {
+        const { uidoc, steps } = createHarness();
+        applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "set", element: "box", props: { "layout.visible": false } },
+            { op: "set", element: "title", props: { layout: { opacity: 0.5, visible: false } } },
+        ]), LABEL);
+        const doc = uidoc.getDocument();
+        expect(doc.elements.box.layout.visible).toBe(false);
+        expect(doc.elements.box.props?.layout).toBeUndefined();
+        expect(doc.elements.title.layout).toMatchObject({ opacity: 0.5, visible: false });
+        expect(doc.elements.title.props?.layout).toBeUndefined();
+        expect(steps(uiSurfaceHistoryScope("page"))).toBe(1);
+    });
+
+    it("splits a patch by bag on the first segment, as the `.ui` format does", () => {
+        const target = element("t", "nl.text", null, [], {}, { imageFill: { fit: "cover", assetId: "a" } });
+        expect(routeUiPropsPatch(target, {
+            "layout.visible": false,
+            "style.mixBlendMode": "screen",
+            extra: { note: 1 },
+            "imageFill.assetId": "b",
+            "props.layout": "kept as a prop",
+        })).toEqual({
+            props: { imageFill: { fit: "cover", assetId: "b" }, layout: "kept as a prop" },
+            layout: { visible: false },
+            style: { mixBlendMode: "screen" },
+            extra: { note: 1 },
+        });
+        expect(() => routeUiPropsPatch(target, { "layout.visibel": false })).toThrow(/layout has no "visibel"/);
+        expect(() => routeUiPropsPatch(target, { "layout.visible": "no" })).toThrow(/true or false/);
+        expect(() => routeUiPropsPatch(target, { layout: false })).toThrow(/takes an object/);
+    });
+
+    it("writes `style.*` as CSS overrides, a null removing one", () => {
+        const { uidoc } = createHarness();
+        applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "set", element: "box", props: { "style.mixBlendMode": "screen", "style.filter": "blur(2px)" } },
+        ]), LABEL);
+        expect(uidoc.getDocument().elements.box.style).toEqual({ mixBlendMode: "screen", filter: "blur(2px)" });
+        applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "set", element: "box", props: { style: { filter: null } } },
+        ]), LABEL);
+        expect(uidoc.getDocument().elements.box.style).toEqual({ mixBlendMode: "screen" });
+    });
+
+    it("refuses a prop the widget does not know instead of storing it, pointing a bare layout key at `layout.`", () => {
+        const { uidoc, steps, snapshot } = createHarness();
+        const before = snapshot();
+        expect(() => applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "set", element: "box", props: { visible: false } },
+        ]), LABEL)).toThrow(expect.objectContaining({ code: "invalid_args", message: expect.stringMatching(/no prop "visible".*layout\.visible/) }));
+        expect(() => applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "set", element: "box", props: { noSuchProp: 1 } },
+        ]), LABEL)).toThrow(expect.objectContaining({ code: "invalid_args", message: expect.stringMatching(/nl\.container has no prop "noSuchProp"/) }));
+        expect(snapshot()).toEqual(before);
+        expect(steps(uiSurfaceHistoryScope("page"))).toBe(0);
+    });
+
+    it("refuses an operation that changes nothing, so the count it reports is true", () => {
+        const { uidoc, steps } = createHarness();
+        for (const op of [
+            { op: "set", element: "title", props: { text: "Hello" } },
+            { op: "set", element: "box", props: { "layout.visible": true } },
+            { op: "layout", element: "box", x: 100 },
+            { op: "rename", element: "box", name: "box" },
+            { op: "move", element: "box", parent: "root", index: 1 },
+        ]) {
+            expect(() => applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([op]), LABEL))
+                .toThrow(expect.objectContaining({ code: "check_failed", message: expect.stringMatching(/changes nothing/) }));
+        }
+        expect(steps(uiSurfaceHistoryScope("page"))).toBe(0);
+    });
+
+    it("checks a dry run like the real call and writes nothing", () => {
+        const { uidoc, steps, snapshot } = createHarness();
+        const before = snapshot();
+        const revision = uidoc.getSurfaceContentRevision("page");
+        const outcome = applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "add", type: "nl.text", id: "caption", name: "Caption", props: { text: "New" } },
+            { op: "set", element: "box", props: { "layout.visible": false } },
+        ]), LABEL, { dryRun: true });
+        expect(outcome.created).toEqual([expect.objectContaining({ id: "caption" })]);
+        expect(snapshot()).toEqual(before);
+        expect(steps(uiSurfaceHistoryScope("page"))).toBe(0);
+        expect(uidoc.getSurfaceContentRevision("page")).toBe(revision);
+        expect(() => applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "set", element: "box", props: { "layout.visible": true } },
+        ]), LABEL, { dryRun: true })).toThrow(expect.objectContaining({ code: "check_failed" }));
     });
 
     it("refuses deleting the page root", () => {

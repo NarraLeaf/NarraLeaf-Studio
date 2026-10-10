@@ -78,7 +78,8 @@ node project/app/story.js targets Alice --project D:/path/to/project
 `targets` reads the same resolved table a typed line resolves against, so a name
 it prints is a name that resolves. It lists characters, one-off speakers already
 used in the story, images, audio, videos, audio tracks, variables, scenes, pages,
-build variants, value blueprints and choice options. Stage objects and labels are
+build variants, value blueprints and choice options - and, last, the scene settings
+(`#background`, `#music`) each scene opens with. Stage objects and labels are
 scene-scoped and deliberately absent - they belong to the scene being written.
 
 `--story` picks the story when a project has more than one; with a single story
@@ -93,6 +94,8 @@ a line comes from what it starts with and nothing else:
 #nlstory 1
 #story Skeleton
 #scene The corridor ⟦f306e2d5-70c0-421b-ba8a-c7b2d3ce9d33⟧
+#background corridor
+#music none
 
 » Set background corridor  ⟦db4296b2⟧
 /bgm bgm-quiet track=Music vol=0.7 fade=1.2s loop=true  ⟦a63fe9cb⟧
@@ -132,6 +135,32 @@ is filed under, and its block id is what a save anchor and a row-level launch
 point resolve against. A line with an anchor keeps its row; a line without one is
 a new row; **a line deleted takes its row with it**, because a file describes the
 whole scene.
+
+### `#background` and `#music` are the scene's own settings
+
+A scene can open on a background and with music of its own, before its first row runs -
+the engine puts both up as part of the scene's init. They are not rows, so they live in
+the header:
+
+```
+#background corridor          the image the scene opens on, or none
+#background 'night street'    a name with spaces, quoted the way targets prints it
+#music bgm-quiet track=Music volume=0.7 loop=true fade=1200
+#music none
+```
+
+`#music` takes the clip, then any of `track=` (an audio track's name), `volume=` (0 to
+1), `loop=` (true or false) and `fade=` (milliseconds); a key left out is left out of
+the record and the track's own default answers. A name may also be the asset's id, which
+is what `show` prints for one whose name is ambiguous or no longer resolves.
+
+`show` always writes both lines. **A file that leaves one out leaves that setting as it
+is** - unlike rows, which a file lists in full - and `apply` says so, naming what the
+scene still opens on. So a scene reused for something new (the skeleton's demo scenes)
+keeps opening on its old picture for a beat before the first `/bg` row until the file
+says `#background none` (or names the new picture). `targets` lists every scene setting
+under "scene settings", which is where an image the linter counts as used, and no row
+names, is used.
 
 ### `/show <asset>` and `/play <clip>` write `name=`, and have to
 
@@ -285,11 +314,14 @@ were already there are counted in one line and left alone; `check` is where they
 are read. Two findings are told apart by rule and site, and counted, so a second
 empty choice on a new row is new even though the project already had one.
 
-Five things to know before using it:
+Six things to know before using it:
 
 - **A file describes a whole scene.** Applying it deletes every row the file does
   not mention; `apply` names them before it happens, and writes nothing without
   `--write`.
+- **Scene settings change only when the header states them.** `#background` and
+  `#music` left out of a file are kept, and `apply` names what the scene still opens
+  with; `#background none` / `#music none` clear them.
 - **A project's own errors do not block it.** One bad row in another chapter used
   to mean nothing could be written anywhere.
 - **A zero-edit round trip changes nothing.** `show` then `apply` on an untouched

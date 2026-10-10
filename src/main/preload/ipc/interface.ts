@@ -5,6 +5,7 @@ import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu"
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import type { AgentCallRequest, AgentCallResult } from "@shared/agent/protocol";
 import type { AgentSettingsPatch, AgentSettingsSnapshot } from "@shared/agent/settings";
+import type { AgentCopyConfigKind, AgentMainActivity, AgentQuickState, AgentQuickTogglePatch } from "@shared/agent/workspaceAccess";
 import type { LibraryExchangeKind } from "@shared/story/libraryExchange";
 import type { AssetUrlDirectory, BlueprintPersistenceProjectRef, RendererErrorReport, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
@@ -336,6 +337,15 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         updateSettings: (patch: AgentSettingsPatch) => ipcClient.invoke(IPCEventType.agentSettingsUpdate, patch),
         regenerateToken: () => ipcClient.invoke(IPCEventType.agentSettingsRegenerateToken, {}),
         addImportRoot: () => ipcClient.invoke(IPCEventType.agentSettingsAddImportRoot, {}),
+        getQuickState: () => ipcClient.invoke(IPCEventType.agentQuickState, {}),
+        quickToggle: (patch: AgentQuickTogglePatch) => ipcClient.invoke(IPCEventType.agentQuickToggle, patch),
+        onQuickStateChanged: (handler: (state: AgentQuickState) => void) =>
+            ipcClient.onMessage(IPCEventType.agentQuickStateChanged, handler),
+        copyConfig: (kind: AgentCopyConfigKind) => ipcClient.invoke(IPCEventType.agentCopyConfig, { kind }),
+        exportSkill: () => ipcClient.invoke(IPCEventType.agentExportSkill, {}),
+        revealExportedSkill: () => ipcClient.invoke(IPCEventType.agentRevealExportedSkill, {}),
+        onActivity: (handler: (activity: AgentMainActivity) => void) =>
+            ipcClient.onMessage(IPCEventType.workspaceAgentActivity, handler),
     },
     projectTrust: {
         query: (projectPath: string) =>

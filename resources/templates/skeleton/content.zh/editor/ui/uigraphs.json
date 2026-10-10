@@ -7634,8 +7634,283 @@
           "elementId": "160cd898-a7c9-4246-8b09-7583e70b9d49"
         },
         "graphs": {
-          "eventIds": [],
-          "events": {},
+          "eventIds": [
+            "aad6a0ba-dc85-4585-9989-75dc7ac62b6f"
+          ],
+          "events": {
+            "aad6a0ba-dc85-4585-9989-75dc7ac62b6f": {
+              "id": "aad6a0ba-dc85-4585-9989-75dc7ac62b6f",
+              "name": "只在有名字时显示分隔线",
+              "graph": {
+                "nodes": {
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "对话框出现时运行「初始化」，每显示新的一行时运行「刷新时」。「获取名牌」给出名字时显示「名牌分隔线」，没有名字时隐藏：旁白时，以及选项显示期间。由始终显示的底板替其中的分隔线处理这件事。",
+                      "width": 760,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "appear": {
+                    "id": "appear",
+                    "type": "blueprint.event.head.init",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -319
+                      }
+                    }
+                  },
+                  "appearName": {
+                    "id": "appearName",
+                    "type": "blueprint.game.getNametag",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 22
+                      }
+                    }
+                  },
+                  "appearBlank": {
+                    "id": "appearBlank",
+                    "type": "blueprint.string.isBlank",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 260,
+                        "y": 22
+                      }
+                    }
+                  },
+                  "appearHas": {
+                    "id": "appearHas",
+                    "type": "blueprint.boolean.not",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 548,
+                        "y": 22
+                      }
+                    }
+                  },
+                  "appearRule": {
+                    "id": "appearRule",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "3ebaa80a-4d54-4457-ae33-5fccc7d94f5b",
+                      "elementId": "dabc3786-ba7c-4e2b-8624-69c75370da9e",
+                      "elementType": "nl.container"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 538,
+                        "y": -229
+                      }
+                    }
+                  },
+                  "appearShow": {
+                    "id": "appearShow",
+                    "type": "blueprint.element.displayable.setProperty",
+                    "params": {
+                      "property": "visible"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 842,
+                        "y": -430
+                      }
+                    }
+                  },
+                  "line": {
+                    "id": "line",
+                    "type": "blueprint.event.head.flush",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 301
+                      }
+                    }
+                  },
+                  "lineName": {
+                    "id": "lineName",
+                    "type": "blueprint.game.getNametag",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 642
+                      }
+                    }
+                  },
+                  "lineBlank": {
+                    "id": "lineBlank",
+                    "type": "blueprint.string.isBlank",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 260,
+                        "y": 642
+                      }
+                    }
+                  },
+                  "lineHas": {
+                    "id": "lineHas",
+                    "type": "blueprint.boolean.not",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 548,
+                        "y": 642
+                      }
+                    }
+                  },
+                  "lineRule": {
+                    "id": "lineRule",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "3ebaa80a-4d54-4457-ae33-5fccc7d94f5b",
+                      "elementId": "dabc3786-ba7c-4e2b-8624-69c75370da9e",
+                      "elementType": "nl.container"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 538,
+                        "y": 391
+                      }
+                    }
+                  },
+                  "lineShow": {
+                    "id": "lineShow",
+                    "type": "blueprint.element.displayable.setProperty",
+                    "params": {
+                      "property": "visible"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 842,
+                        "y": 190
+                      }
+                    }
+                  }
+                },
+                "edges": [
+                  {
+                    "from": {
+                      "nodeId": "appear",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "appearShow",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "appearName",
+                      "port": "nametag"
+                    },
+                    "to": {
+                      "nodeId": "appearBlank",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "appearBlank",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "appearHas",
+                      "port": "a"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "appearHas",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "appearShow",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "appearRule",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "appearShow",
+                      "port": "element"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "line",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "lineShow",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "lineName",
+                      "port": "nametag"
+                    },
+                    "to": {
+                      "nodeId": "lineBlank",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "lineBlank",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "lineHas",
+                      "port": "a"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "lineHas",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "lineShow",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "lineRule",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "lineShow",
+                      "port": "element"
+                    }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
+            }
+          },
           "functionIds": [],
           "functions": {}
         },
@@ -10289,8 +10564,145 @@
           "elementId": "045e8980-4223-4e3c-a70f-018da858f371"
         },
         "graphs": {
-          "eventIds": [],
-          "events": {},
+          "eventIds": [
+            "86a4d04c-b01e-4b5f-95da-1f7a578e87fc"
+          ],
+          "events": {
+            "86a4d04c-b01e-4b5f-95da-1f7a578e87fc": {
+              "id": "86a4d04c-b01e-4b5f-95da-1f7a578e87fc",
+              "name": "以说话人的颜色显示名字",
+              "graph": {
+                "nodes": {
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "对话框出现时运行「初始化」，每显示新的一行时运行「刷新时」；两者都把这段文本设为正在说话的角色的颜色（「角色」面板），角色没有设置颜色时使用调色板的「主色」。名字本身来自「名牌」的蓝图值。",
+                      "width": 760,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "appear": {
+                    "id": "appear",
+                    "type": "blueprint.event.head.init",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -430
+                      }
+                    }
+                  },
+                  "appearColor": {
+                    "id": "appearColor",
+                    "type": "blueprint.game.getSpeakerColor",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 260,
+                        "y": -339
+                      }
+                    }
+                  },
+                  "appearSet": {
+                    "id": "appearSet",
+                    "type": "blueprint.text.setTextColor",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 520,
+                        "y": -430
+                      }
+                    }
+                  },
+                  "line": {
+                    "id": "line",
+                    "type": "blueprint.event.head.flush",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -172
+                      }
+                    }
+                  },
+                  "lineColor": {
+                    "id": "lineColor",
+                    "type": "blueprint.game.getSpeakerColor",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 260,
+                        "y": -81
+                      }
+                    }
+                  },
+                  "lineSet": {
+                    "id": "lineSet",
+                    "type": "blueprint.text.setTextColor",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 520,
+                        "y": -172
+                      }
+                    }
+                  }
+                },
+                "edges": [
+                  {
+                    "from": {
+                      "nodeId": "appear",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "appearSet",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "appearColor",
+                      "port": "color"
+                    },
+                    "to": {
+                      "nodeId": "appearSet",
+                      "port": "color"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "line",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "lineSet",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "lineColor",
+                      "port": "color"
+                    },
+                    "to": {
+                      "nodeId": "lineSet",
+                      "port": "color"
+                    }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
+            }
+          },
           "functionIds": [],
           "functions": {}
         },
@@ -24337,6 +24749,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-10-07T01:00:07.465Z"
+    "updatedAt": "2026-10-10T07:50:46.630Z"
   }
 }

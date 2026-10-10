@@ -47,7 +47,7 @@ import { BlueprintDebuggerOverlay } from "./debugger/BlueprintDebuggerOverlay";
 import { BlueprintDebuggerPanel } from "./debugger/BlueprintDebuggerPanel";
 import type { DevModePanelChrome } from "./DevModePanelChrome";
 import { GameApp, type GameAppTestControls } from "@/lib/ui-editor/runtime/app/GameApp";
-import type { DevModeAgentResult } from "@shared/types/devMode";
+import { browserPlaytestClock, runAgentDriveAction } from "../agentPlaytestDrive";
 import type {
     GameAppBootAction,
     GameAppCompositeView,
@@ -865,12 +865,6 @@ function DevModeDebugOverlay(props: {
     );
 }
 
-/**
- * The pause between an agent's play-test steps: long enough for a line's text to start and a choice
- * menu to open, so the next click lands on what the player would see rather than on a transition.
- */
-const AGENT_STEP_PAUSE_MS = 250;
-
 export function DevModeContent(props: DevModeContentProps) {
     const { t, locale } = useTranslation();
     const {
@@ -1595,46 +1589,15 @@ export function DevModeContent(props: DevModeContentProps) {
 
     // An agent's play-test drives this game the way a test harness drives a standalone run: through
     // the test controls GameApp publishes once a story could be started (`GameAppTestControls`), so
-    // every advance is the click a player makes. Registered on mount; a request that arrives before
-    // the game is up is answered with the reason rather than left waiting.
+    // every advance is the click a player makes. Registered on mount; what it does between the
+    // clicks - one step is one line, every wait bounded - is `agentPlaytestDrive`.
     const testControlsRef = useRef<GameAppTestControls | null>(null);
     const onTestControlsChanged = useCallback((controls: GameAppTestControls | null) => {
         testControlsRef.current = controls;
     }, []);
     useEffect(() => {
-        const token = getInterface().devMode.onAgentDrive(async ({ action }) => {
-            const controls = testControlsRef.current;
-            if (action.kind === "capture") {
-                try {
-                    const png = controls ? await controls.capture() : null;
-                    return { success: true, data: { kind: "capture", png: png ?? "", source: "engine" } satisfies DevModeAgentResult };
-                } catch (error) {
-                    return { success: false, error: error instanceof Error ? error.message : String(error) };
-                }
-            }
-            if (!controls) {
-                return { success: false, error: "The game is still starting; try again in a moment." };
-            }
-            let advanced = 0;
-            try {
-                if (action.choice !== undefined) {
-                    await controls.choose(action.choice);
-                    advanced += 1;
-                    await new Promise(resolve => window.setTimeout(resolve, AGENT_STEP_PAUSE_MS));
-                }
-                while (advanced < action.steps) {
-                    await controls.advance();
-                    advanced += 1;
-                    await new Promise(resolve => window.setTimeout(resolve, AGENT_STEP_PAUSE_MS));
-                }
-                return { success: true, data: { kind: "advance", advanced } satisfies DevModeAgentResult };
-            } catch (error) {
-                return {
-                    success: true,
-                    data: { kind: "advance", advanced, error: error instanceof Error ? error.message : String(error) } satisfies DevModeAgentResult,
-                };
-            }
-        });
+        const token = getInterface().devMode.onAgentDrive(({ action }) =>
+            runAgentDriveAction(() => testControlsRef.current, action, browserPlaytestClock));
         return () => token.cancel();
     }, []);
 

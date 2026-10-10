@@ -68,7 +68,7 @@ Scale proportionally for other resolutions.
 | Game title | 72-110 px |
 | Screen titles (Save, Config) | 40-56 px |
 | Dialogue text | 30-36 px, line height 1.5-1.7 |
-| Speaker name | 28-34 px, weight 600-700, character's `nameColor` |
+| Speaker name | 28-34 px, weight 600-700; the skeleton's nametag paints it in the speaker's `nameColor`, or the palette's `primary` when the character has none (its blueprint: Get Speaker Color -> Set Text Color on Init and On Flush - text colour cannot be bound, so a nametag of your own needs the same two nodes) |
 | Choice options | 30-34 px |
 | Menu / rail buttons | 28-32 px |
 | Secondary text (dates, values) | 20-24 px |
@@ -115,15 +115,22 @@ about 7:1; `#6E7681` on `#15171D` about 4:1 (too low for small text).
 
 ## Page by page
 
+Element, page and blueprint names in the skeleton are in the project's language (the title's
+`Key art` image is named in Chinese in a Chinese project), so find elements with `ui_show` by type and
+position rather than by the English names below; page ids such as `narraleaf-studio:main-surface`
+are the same in every language.
+
 - **Title** (`narraleaf-studio:main-surface`): set the key art (`Key art` image's `imageFill.assetId`,
   `fillOpacity` 1 when the art is made for it, lower to dim a busy picture), the game title text, and
   the menu column. Keep the menu to Start, Continue, Load, Config, Extra, Quit. If the game has no
-  gallery content, hide the Extra button (`set` with `{"layout.visible": false}`) rather than deleting
-  it, so its blueprint is not left without an element; close the gap in the column. Screenshot at full
-  size.
+  gallery content, hide the Extra button (`ui_patch` `set` with `{"layout.visible": false}`) rather
+  than deleting it, so its blueprint is not left without an element; close the gap in the column.
+  Screenshot at full size. (`ui_patch` refuses a key the widget does not know and an edit that
+  changes nothing, so "Applied" means it changed.)
 - **Dialogue** (Game UI, slot `dialog`): the band at the bottom, the nametag plate and rule, the
   sentence box, the avatar. Match the band's height to three lines of text plus the name; keep the
-  quick menu clear of it.
+  quick menu clear of it. The nametag rule hides itself when nobody speaks (narration, a choice on
+  screen).
 - **Choice** (slot `choice`): options centred over the art, each a full-width plate with clear hover;
   room for the longest option; at most 4-5 options visible.
 - **Quick menu** (slot `onStage`): small, quiet, just above the band's top-right; Auto and Skip have a
@@ -132,7 +139,8 @@ about 7:1; `#6E7681` on `#15171D` about 4:1 (too low for small text).
   restyle the component once and every slot follows.
 - **Config**: rail, category rail, one pane at a time. Sliders and toggles are wired; restyle their
   parts (track, handle) and the selected variants.
-- **Log** (backlog): a vertical list of speaker + line; readable, with the speaker in their colour.
+- **Log** (backlog): a vertical list of speaker + line; readable, the speaker set apart from the line
+  by weight or a palette colour (a list row cannot take each speaker's own colour).
 - **Splash**: the studio or game wordmark and the disclaimer text; replace the words, keep it brief.
 - **Extra**: CG, recollection, music, voice tabs over the Gallery plugin. It shows nothing until the
   author fills the gallery in Studio; restyle it, and list it on the hand-over.

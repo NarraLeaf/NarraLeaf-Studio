@@ -13,6 +13,12 @@
  * and may refer to elements an earlier operation in the same call created, by the id or name they
  * gave it.
  *
+ * "Applied N operations" has to be true. An operation that would change nothing - a prop the widget
+ * does not know, a value it already holds, a layout key a placed component does not take - is
+ * refused rather than counted, because an agent that is told an edit landed moves on, and the author
+ * finds the button that was meant to be hidden still on the title page. A dry run goes through the
+ * same checks and puts the document back, so it answers exactly what the real call would.
+ *
  * Comments in English per project convention.
  */
 
@@ -22,6 +28,8 @@ import type { HistoryLabel } from "../history/historyModel";
 import type { UIDocumentService } from "../ui-editor/UIDocumentService";
 import { cloneUIHistoryDocument } from "../ui-editor/UIEditorHistoryService";
 import { refuse } from "./agentCall";
+import { widgetKnownPropKeys } from "@/lib/ui-cli/catalog";
+import { nearest } from "@/lib/ui-cli/text";
 import { buildUiPropsPatch, resolveUiElementRef, uiElementPath, type UIElementPool } from "./uiElementRefs";
 
 export type UIPatchOpKind = "add" | "set" | "layout" | "move" | "rename" | "delete" | "instantiate";
@@ -76,6 +84,10 @@ export type UIPatchService = Pick<
     | "reorderComponentChildren"
     | "renameComponentElement"
     | "deleteComponentElements"
+    | "updateElementExtra"
+    | "updateComponentElementExtra"
+    | "updateElementStyle"
+    | "updateComponentElementStyle"
 >;
 
 export const UI_PATCH_OP_KINDS: readonly UIPatchOpKind[] = ["add", "set", "layout", "move", "rename", "delete", "instantiate"];
@@ -105,7 +117,13 @@ export function readUiPatchOps(raw: unknown): UIPatchOp[] {
  *
  * Throws an `AgentRefusal` (and leaves the document as it was) when any operation cannot be done.
  */
-export function applyUiPatch(service: UIPatchService, target: UIPatchTarget, ops: readonly UIPatchOp[], label: HistoryLabel): UIPatchOutcome {
+export function applyUiPatch(
+    service: UIPatchService,
+    target: UIPatchTarget,
+    ops: readonly UIPatchOp[],
+    label: HistoryLabel,
+    options: { dryRun?: boolean } = {},
+): UIPatchOutcome {
     const historySurfaceId = target.kind === "surface" ? target.surfaceId : buildUIComponentEditorSurfaceId(target.componentId);
     const outcome: UIPatchOutcome = { created: [], deleted: [], touched: [] };
     const touched = new Set<string>();
@@ -116,7 +134,15 @@ export function applyUiPatch(service: UIPatchService, target: UIPatchTarget, ops
         try {
             ops.forEach((op, index) => {
                 try {
+                    const watched = CHANGE_CHECKED_OPS.has(op.op) ? watchElement(service, target, op, index) : null;
                     applyOne(service, target, op, index, outcome, touched);
+                    if (watched && watched.before === watched.read()) {
+                        throw refuse(
+                            "check_failed",
+                            `ops[${index}] (${op.op}) changes nothing on ${watched.label}: it already holds those values, or something else decides them (a stack or list parent places its children itself).`,
+                            "Leave the operation out, or call ui_show to see what the element holds.",
+                        );
+                    }
                 } catch (error) {
                     if (error instanceof Error && error.name === "AgentRefusal") {
                         throw error;
@@ -124,6 +150,13 @@ export function applyUiPatch(service: UIPatchService, target: UIPatchTarget, ops
                     throw refuse("invalid_args", `ops[${index}] (${op.op}): ${error instanceof Error ? error.message : String(error)}`);
                 }
             });
+            if (options.dryRun) {
+                // Every check passed against the real document; put it back so the transaction's
+                // "after" equals its "before" and no step is recorded, exactly as a refusal does.
+                const pool = poolOf(service.getDocument(), target);
+                outcome.touched = [...touched].filter(id => Boolean(pool[id]));
+                service.restoreDocumentFromHistory(before);
+            }
         } catch (error) {
             // Put the document back before the transaction takes its "after": the two snapshots are
             // then equal and no step is recorded, so a refused call leaves nothing to undo.
@@ -135,9 +168,31 @@ export function applyUiPatch(service: UIPatchService, target: UIPatchTarget, ops
     if (failure) {
         throw failure;
     }
+    if (options.dryRun) {
+        return outcome;
+    }
     const pool = poolOf(service.getDocument(), target);
     outcome.touched = [...touched].filter(id => Boolean(pool[id]));
     return outcome;
+}
+
+/** Operations that edit one existing element in place, which must leave it different. */
+const CHANGE_CHECKED_OPS = new Set<UIPatchOpKind>(["set", "layout", "move", "rename"]);
+
+/**
+ * What an in-place operation's element looks like now, and a way to read it again afterwards: the
+ * element's own record (its parent included) and its parent's child order, which is everything
+ * set, layout, move and rename can change.
+ */
+function watchElement(service: UIPatchService, target: UIPatchTarget, op: UIPatchOp, index: number): { label: string; before: string; read: () => string } {
+    const element = resolveRef(service, target, requireString(op.element, "element"), index, "element");
+    const id = element.id;
+    const read = () => {
+        const pool = poolOf(service.getDocument(), target);
+        const current = pool[id];
+        return JSON.stringify([current ?? null, current?.parentId ? pool[current.parentId]?.childrenIds ?? null : null]);
+    };
+    return { label: `"${element.name ?? element.type}" (${id})`, before: read(), read };
 }
 
 function poolOf(document: UIDocument, target: UIPatchTarget): UIElementPool {
@@ -208,6 +263,182 @@ function requireProps(value: unknown): Record<string, unknown> {
     return value as Record<string, unknown>;
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** What a `set` writes, bag by bag, once the first segment of each key has said which bag. */
+export type RoutedUiProps = {
+    props: Record<string, unknown>;
+    layout: Partial<UILayout>;
+    style: Record<string, unknown>;
+    extra: Record<string, unknown>;
+};
+
+/** Every key an element's layout holds, with the type a value for it must have. */
+const LAYOUT_KEY_TYPES: Readonly<Record<keyof UILayout, "number" | "boolean">> = {
+    x: "number",
+    y: "number",
+    width: "number",
+    height: "number",
+    rotation: "number",
+    opacity: "number",
+    visible: "boolean",
+    lockAspectRatio: "boolean",
+};
+
+/** The layout keys a placed component takes on the page; the rest come from its definition. */
+const LINKED_LAYOUT_KEYS = new Set<string>(["x", "y", "width", "height", "rotation"]);
+
+function readLayoutValue(key: string, value: unknown): unknown {
+    const expected = (LAYOUT_KEY_TYPES as Record<string, "number" | "boolean" | undefined>)[key];
+    if (!expected) {
+        throw new Error(`an element's layout has no "${key}" (it holds ${Object.keys(LAYOUT_KEY_TYPES).join(", ")})`);
+    }
+    if (expected === "boolean" && typeof value !== "boolean") {
+        throw new Error(`layout.${key} must be true or false`);
+    }
+    if (expected === "number" && (typeof value !== "number" || !Number.isFinite(value))) {
+        throw new Error(`layout.${key} must be a number`);
+    }
+    if ((key === "width" || key === "height") && (value as number) < 0) {
+        throw new Error(`layout.${key} cannot be negative`);
+    }
+    if (key === "opacity" && ((value as number) < 0 || (value as number) > 1)) {
+        throw new Error("layout.opacity runs from 0 to 1");
+    }
+    return value;
+}
+
+/**
+ * Split a props patch by bag, the way the `.ui` format reads an assignment: the first segment of a
+ * key decides. `layout.visible` and `{"layout": {"visible": false}}` both reach the element's layout,
+ * `style.*` its CSS overrides, `extra.*` its extra record; `props.<key>` names a prop whose own name
+ * is one of those words, and every other key is a prop. Dotted keys under a bag merge into what the
+ * element already holds there (`imageFill.assetId` keeps the fit), as `buildUiPropsPatch` does.
+ */
+export function routeUiPropsPatch(element: UIElement, patch: Readonly<Record<string, unknown>>): RoutedUiProps {
+    const layout: Record<string, unknown> = {};
+    const bagged: Record<"props" | "style" | "extra", Record<string, unknown>> = { props: {}, style: {}, extra: {} };
+    const objectOf = (head: string, value: unknown): Record<string, unknown> => {
+        if (!isPlainObject(value)) {
+            throw new Error(`\`${head}\` takes an object (or write \`${head}.<key>\`)`);
+        }
+        return value;
+    };
+    for (const [key, value] of Object.entries(patch)) {
+        const segments = key.split(".").filter(Boolean);
+        if (segments.length === 0) {
+            throw new Error("a prop key cannot be empty");
+        }
+        const [head, ...rest] = segments;
+        if (head === "layout") {
+            const entries = rest.length === 0 ? Object.entries(objectOf(head, value)) : [[rest.join("."), value] as const];
+            for (const [layoutKey, layoutValue] of entries) {
+                layout[layoutKey] = readLayoutValue(layoutKey, layoutValue);
+            }
+            continue;
+        }
+        if (head === "props" || head === "style" || head === "extra") {
+            if (rest.length === 0) {
+                Object.assign(bagged[head], objectOf(head, value));
+            } else {
+                bagged[head][rest.join(".")] = value;
+            }
+            continue;
+        }
+        bagged.props[key] = value;
+    }
+    return {
+        props: buildUiPropsPatch(element.props ?? {}, bagged.props),
+        layout: layout as Partial<UILayout>,
+        style: buildUiPropsPatch(element.style ?? {}, bagged.style),
+        extra: buildUiPropsPatch(element.extra ?? {}, bagged.extra),
+    };
+}
+
+/**
+ * Write a `set` (or an `add`'s props) to `element`, refusing what would land nowhere: a prop the
+ * widget does not know, a bag a placed component does not take, a record the editor manages itself.
+ * Whether the write changed anything at all is checked by the caller, which sees the element after.
+ */
+function writeRoutedProps(
+    service: UIPatchService,
+    componentId: string | null,
+    element: UIElement,
+    patch: Record<string, unknown>,
+    index: number,
+): void {
+    if (Object.keys(patch).length === 0) {
+        throw new Error("`props` is empty");
+    }
+    const routed = routeUiPropsPatch(element, patch);
+    const label = element.name ?? element.id;
+
+    if (!componentId && isLinkedUIComponentElement(element)) {
+        const notLayout = [...Object.keys(routed.props), ...Object.keys(routed.style).map(key => `style.${key}`), ...Object.keys(routed.extra).map(key => `extra.${key}`)];
+        if (notLayout.length > 0) {
+            throw new Error(`${label} is a placed component, whose props come from its definition (${notLayout.join(", ")}); edit the component instead`);
+        }
+        const fromDefinition = Object.keys(routed.layout).filter(key => !LINKED_LAYOUT_KEYS.has(key));
+        if (fromDefinition.length > 0) {
+            throw new Error(
+                `${label} is a placed component: on the page it takes only ${[...LINKED_LAYOUT_KEYS].join(", ")}, and its ${fromDefinition.map(key => `layout.${key}`).join(", ")} come from its definition; `
+                + "edit the component, or hide this placement from a blueprint (setVisible)",
+            );
+        }
+    }
+
+    const known = widgetKnownPropKeys(element.type);
+    if (known) {
+        const current = element.props ?? {};
+        for (const key of Object.keys(routed.props)) {
+            if (known.has(key) || key in current) {
+                continue;
+            }
+            const asLayout = key in LAYOUT_KEY_TYPES ? ` - did you mean \`layout.${key}\`?` : "";
+            const close = asLayout ? [] : nearest(key, [...known], 3);
+            throw refuse(
+                "invalid_args",
+                `ops[${index}] (set): ${element.type} has no prop "${key}"${asLayout}${close.length > 0 ? ` - did you mean ${close.map(item => `"${item}"`).join(", ")}?` : ""}`,
+                "ui_widget lists the type's props; layout keys (visible, opacity, rotation, x, y, width, height) are written `layout.<key>`.",
+            );
+        }
+    }
+    if ("componentLink" in routed.extra) {
+        throw new Error("`extra.componentLink` is how a placed component names its definition; place one with the instantiate op instead");
+    }
+
+    if (Object.keys(routed.props).length > 0) {
+        if (componentId) {
+            service.updateComponentElementProps(componentId, element.id, routed.props);
+        } else {
+            service.updateElementProps(element.id, routed.props);
+        }
+    }
+    if (Object.keys(routed.layout).length > 0) {
+        if (componentId) {
+            service.updateComponentElementLayout(componentId, element.id, routed.layout);
+        } else {
+            service.updateElementLayout(element.id, routed.layout);
+        }
+    }
+    if (Object.keys(routed.style).length > 0) {
+        if (componentId) {
+            service.updateComponentElementStyle(componentId, element.id, routed.style);
+        } else {
+            service.updateElementStyle(element.id, routed.style);
+        }
+    }
+    if (Object.keys(routed.extra).length > 0) {
+        if (componentId) {
+            service.updateComponentElementExtra(componentId, element.id, routed.extra);
+        } else {
+            service.updateElementExtra(element.id, routed.extra);
+        }
+    }
+}
+
 /** The order of `parent`'s children with `childId` moved to `index` (clamped), or null when unchanged. */
 function reordered(children: readonly string[], childId: string, index: number): string[] | null {
     const rest = children.filter(id => id !== childId);
@@ -268,12 +499,9 @@ function applyOne(
                 }
             }
             if (op.props !== undefined && op.op === "add") {
-                const current = pool()[id]?.props ?? {};
-                const patch = buildUiPropsPatch(current, requireProps(op.props));
-                if (componentId) {
-                    service.updateComponentElementProps(componentId, id, patch);
-                } else {
-                    service.updateElementProps(id, patch);
+                const element = pool()[id];
+                if (element) {
+                    writeRoutedProps(service, componentId, element, requireProps(op.props), index);
                 }
             }
             if (op.index !== undefined) {
@@ -300,15 +528,7 @@ function applyOne(
         }
         case "set": {
             const element = resolveRef(service, target, requireString(op.element, "element"), index, "element");
-            if (!componentId && isLinkedUIComponentElement(element)) {
-                throw new Error(`${element.name ?? element.id} is a placed component, whose props come from its definition; edit the component instead`);
-            }
-            const patch = buildUiPropsPatch(element.props ?? {}, requireProps(op.props));
-            if (componentId) {
-                service.updateComponentElementProps(componentId, element.id, patch);
-            } else {
-                service.updateElementProps(element.id, patch);
-            }
+            writeRoutedProps(service, componentId, element, requireProps(op.props), index);
             touched.add(element.id);
             return;
         }

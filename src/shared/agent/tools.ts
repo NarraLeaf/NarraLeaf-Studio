@@ -125,12 +125,13 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     main(
         "project_create",
         "Create a project",
-        "Creates a new NarraLeaf project from a template and opens it in Studio. Use the `skeleton` template for a game: it ships a title page, dialogue box, save/load, settings and history that work out of the box, which you then restyle. `dir` is the parent directory; the project is created in `<dir>/<name>`.",
+        "Creates a new NarraLeaf project from a template and opens it in Studio. Use the `skeleton` template for a game: it ships a title page, dialogue box, save/load, settings and history that work out of the box, which you then restyle. `dir` is the PARENT directory: the project folder is created inside it, named after a lower-case ASCII slug of `name` (末班车 becomes `mo-ban-che`); the result gives the full path. The skeleton's pages, scenes, variables and folders are named in `language`. The game carries `language` only, plus any `languages` you list (the skeleton's sample translations of other languages are not kept).",
         {
             name: { type: "string", description: "Project (and game) name." },
-            dir: { type: "string", description: "Absolute parent directory. Defaults to Studio's default projects directory." },
+            dir: { type: "string", description: "Absolute PARENT directory; the project folder is created inside it. Defaults to Studio's default projects directory." },
             template: { type: "string", enum: ["skeleton", "empty"], default: "skeleton" },
             language: { type: "string", description: "Source language of the game text, e.g. `zh-CN`, `en`, `ja`.", default: "en" },
+            languages: { type: "array", items: { type: "string" }, description: "Further languages the game offers, untranslated at first. Defaults to none; project_settings_set can add or remove languages later." },
             width: { type: "integer", description: "Design width in pixels.", default: 1920 },
             height: { type: "integer", description: "Design height in pixels.", default: 1080 },
         },
@@ -152,11 +153,13 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "project_settings_set",
         "Change project settings",
-        "Changes the project's name or design resolution. Changing the resolution after the interface is built does not rescale it.",
+        "Changes the project's name, design resolution or game languages. Changing the resolution after the interface is built does not rescale it. `languages` is the full list the game offers (the source language must be in it); a language that holds translations is dropped only when `removeLanguages` names it, and its translation file stays on disk.",
         {
             name: { type: "string" },
             width: { type: "integer" },
             height: { type: "integer" },
+            languages: { type: "array", items: { type: "string" }, description: "Every language the game offers, e.g. `[\"zh-CN\", \"en\"]`. Languages not listed and holding no translations are removed; new ones are added untranslated." },
+            removeLanguages: { type: "array", items: { type: "string" }, description: "Languages to drop even though they hold translations. Never the source language." },
         },
         [],
         true,
@@ -176,7 +179,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "assets_import",
         "Import files",
-        "Imports files from disk into the project. Paths must be inside the project or a directory the author allowed (see agent_status). Each asset is named after its file name without extension unless `names` says otherwise - pick names a story line can use (e.g. `bg_classroom_day`).",
+        "Imports files from disk into the project. Paths must be inside the project or a directory the author allowed (see agent_status). Each asset is named after its file name without extension unless `names` says otherwise - pick names a story line can use (e.g. `bg_classroom_day`). `warnings` flags a portrait-shaped image with no transparency: as a sprite it would show as a rectangle.",
         {
             paths: { type: "array", items: { type: "string" }, description: "Absolute file paths." },
             type: { type: "string", enum: ["image", "audio", "video", "font"], description: "Omit to infer from each extension." },
@@ -184,6 +187,17 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
             folder: { type: "string", description: "Asset folder name to put them in; created if missing." },
         },
         ["paths"],
+        true,
+    ),
+    ws(
+        "asset_delete",
+        "Delete an asset",
+        "Deletes an asset from the project - for clearing the skeleton's leftover demo pictures and music once nothing uses them, say. Refused while anything still refers to it (a story row, a scene's `#background`/`#music`, a character pose, a page or blueprint); the refusal lists where. One step of undo; the file goes to the project's recycle bin.",
+        {
+            asset: { type: "string", description: "Asset name or id (assets_list)." },
+            type: { type: "string", enum: ["image", "audio", "video", "font", "json", "model", "other"], description: "Only needed when two assets of different types share the name." },
+        },
+        ["asset"],
         true,
     ),
     ws(
@@ -203,11 +217,15 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ),
 
     // ── Characters, variables, audio tracks ─────────────────────────────────────────────────────
-    ws("characters_list", "List characters", "Lists characters with id, name, nicknames, name colour and poses (sprite images)."),
+    ws(
+        "characters_list",
+        "List characters",
+        "Lists characters with id, name, nicknames, name colour, poses (sprite images) and `entranceTransform` (how big the sprite is drawn and where it stands). `spriteSize` is the default pose's pixels and `drawnAtCenter` the box it occupies on a `/show <name> pos=center` row, in design pixels from the stage's top-left - check it instead of guessing from a screenshot.",
+    ),
     ws(
         "character_upsert",
         "Create or update a character",
-        "Creates a character, or updates the one with this `id` or exact `name`. Poses are sprite images already imported as assets. A line `Name: text` in a story resolves to the character with that name or nickname.",
+        "Creates a character, or updates the one with this `id` or exact `name`. Poses are sprite images already imported as assets. A line `Name: text` in a story resolves to the character with that name or nickname. A sprite is drawn at its own pixel size times `zoom`, its centre placed by `position`; a character that gets poses and has no `entranceTransform` yet is given a standing one (feet on the bottom edge, own pixel size, scaled down only if taller than the stage). A reused character keeps the entrance its old art was tuned for - the answer warns; pass `entranceTransform: \"standing\"` to refit. Warns when a pose image has no transparency.",
         {
             id: { type: "string" },
             name: { type: "string" },
@@ -223,6 +241,28 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
                 },
             },
             defaultPose: { type: "string", description: "Pose name shown when a line names none." },
+            entranceTransform: {
+                description:
+                    "What every entrance (`/show`) falls back to - the Entrance section of the character panel. `\"standing\"` fits it to the default pose (feet on the bottom edge); null clears it; an object replaces it. `position` places the sprite's CENTRE: `xalign`/`yalign` are shares of the stage from the left and up from the bottom, `xoffset`/`yoffset` design pixels (+ is up). `pos=left|center|right` on a row writes `xalign` and `yalign: 0.5`, so set the baseline with `yoffset` (drawn height / 2 - stage height / 2), not `yalign`. `scaleX: -1` mirrors.",
+                oneOf: [
+                    { type: "string", enum: ["standing"] },
+                    { type: "null" },
+                    {
+                        type: "object",
+                        properties: {
+                            zoom: { type: "number", description: "Multiplies the sprite's pixel size; 1 = drawn at its own pixels." },
+                            scaleX: { type: "number" },
+                            scaleY: { type: "number" },
+                            position: {
+                                type: "object",
+                                properties: { xalign: { type: "number" }, yalign: { type: "number" }, xoffset: { type: "number" }, yoffset: { type: "number" } },
+                                additionalProperties: false,
+                            },
+                        },
+                        additionalProperties: false,
+                    },
+                ],
+            },
         },
         [],
         true,
@@ -231,14 +271,24 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "variable_upsert",
         "Create or update a variable",
-        "Declares a global variable. `saved` belongs to one playthrough (affection, flags); `persistent` survives across saves (endings seen, gallery unlocks).",
+        "Declares a global variable, or updates one: by `id` (the way to rename one - rows and nodes hold the id, so they follow) or by exact `name`. `name` and `valueType` are required only to create. `saved` belongs to one playthrough (affection, flags); `persistent` survives across saves (endings seen, gallery unlocks); the scope cannot change later. One step of undo.",
         {
-            name: { type: "string" },
+            id: { type: "string", description: "The variable to update or rename (variables_list)." },
+            name: { type: "string", description: "Name to create under, or the new name when `id` is given." },
             valueType: { type: "string", enum: ["number", "boolean", "string"] },
             scope: { type: "string", enum: ["saved", "persistent"], default: "saved" },
             defaultValue: { description: "Initial value, of the declared type." },
+            description: { type: "string", description: "Note shown in the Variables panel; \"\" clears it." },
         },
-        ["name", "valueType"],
+        [],
+        true,
+    ),
+    ws(
+        "variable_delete",
+        "Delete a variable",
+        "Deletes a global variable - for clearing the skeleton's demo variables, say. Refused while any story row, blueprint or page still uses it; the refusal lists where, so rewrite those first (or rename it with variable_upsert instead). One step of undo.",
+        { variable: { type: "string", description: "Variable name or id." } },
+        ["variable"],
         true,
     ),
     ws("audio_tracks_list", "List audio tracks", "Lists the audio tracks (Music, Sound, Voice and any custom ones) that `/bgm track=` and sound props can name."),
@@ -254,21 +304,21 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "story_targets",
         "Names a story line can use",
-        "Lists every name a story line can resolve: characters, images, audio, videos, audio tracks, variables, scenes, pages. A name not in this list does not resolve.",
+        "Lists every name a story line can resolve: characters, images, audio, videos, audio tracks, variables, scenes, pages - and, under \"scene settings\", the background and music each scene opens on (`#background` / `#music`), which no row names. A name not in this list does not resolve.",
         { query: { type: "string" } },
     ),
     ws("story_list", "List stories and scenes", "Lists stories, their chapters and scenes in order, with the entry scene marked."),
     ws(
         "story_show",
         "Read a scene as text",
-        "Prints one scene in the `.story` text format, with its `revision`. Edit the text and pass it to story_apply.",
+        "Prints one scene in the `.story` text format, with its `revision`. The header names the scene's own settings - `#background` (the image it opens on before its first row) and `#music` - or `none`. Edit the text and pass it to story_apply.",
         { scene: { type: "string", description: "Scene name or id." }, story: { type: "string", description: "Story name or id; defaults to the first story." } },
         ["scene"],
     ),
     ws(
         "story_apply",
         "Write a scene",
-        "Replaces the rows of the scene named in the source's `#scene` header with the rows in `source`. Rows the source does not mention are deleted. Checked first: a source with an error writes nothing. One step of undo in Studio. Write one scene per call so the author can watch it arrive.",
+        "Replaces the rows of the scene named in the source's `#scene` header with the rows in `source`. Rows the source does not mention are deleted. The scene's own settings change only when the header states them: `#background none` / `#music none` clear them (do this when reusing a skeleton demo scene, or its old picture shows before your first /bg), and a header without them keeps them - the answer says what the scene still opens with. Checked first: a source with an error writes nothing. One step of undo in Studio. Write one scene per call so the author can watch it arrive.",
         { source: { type: "string", description: "A `.story` document (one scene)." }, baseRevision: BASE_REVISION, dryRun: DRY_RUN },
         ["source"],
         true,
@@ -286,7 +336,15 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
         ["name"],
         true,
     ),
-    ws("scene_rename", "Rename a scene", "Renames a scene. Jumps that name it follow, because they hold its id.", { scene: { type: "string" }, name: { type: "string" }, story: { type: "string" } }, ["scene", "name"], true),
+    ws("scene_rename", "Rename a scene", "Renames a scene. Jumps that name it follow, because they hold its id. A rename changes the scene's revision; the result returns the new one for story_apply's baseRevision.", { scene: { type: "string" }, name: { type: "string" }, story: { type: "string" } }, ["scene", "name"], true),
+    ws(
+        "story_rename",
+        "Rename a story",
+        "Renames a story - the skeleton's is called \"Skeleton\", which the author sees in Studio's story list. Nothing refers to a story by its name, so nothing else changes. One step of undo.",
+        { story: { type: "string", description: "Story name or id; defaults to the first story." }, name: { type: "string" } },
+        ["name"],
+        true,
+    ),
     ws("scene_set_entry", "Set the entry scene", "Makes a scene the one the game starts on when the player presses Start.", { scene: { type: "string" }, story: { type: "string" } }, ["scene"], true),
     ws(
         "scene_delete",
@@ -339,11 +397,16 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "ui_screenshot",
         "Look at a page",
-        "Renders a page (or one element of it) as it looks in the game and returns the image. Do this after every visible change and check alignment, contrast, overlap and text overflow before moving on.",
+        "Renders a page (or one element of it) as it looks in the game and returns the image. Do this after every visible change and check alignment, contrast, overlap and text overflow before moving on. Elements are drawn at rest; pass `element` with `state: \"hovered\"` or `\"active\"` to see a button's hover or pressed look.",
         {
             surface: { type: "string", description: "Page name or id." },
             component: { type: "string", description: "Component name or id, instead of a page." },
             element: { type: "string", description: "Element id or path; crops to it." },
+            state: {
+                type: "string",
+                enum: ["hovered", "active", "focused", "selected", "disabled"],
+                description: "Draw `element` (and what is inside it) as it looks in this state - `hovered` under the pointer, `active` pressed - to check its hover and pressed looks. Needs `element`.",
+            },
             maxSize: { type: "integer", description: "Longest edge in pixels.", default: 1280 },
         },
     ),
@@ -358,7 +421,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "ui_patch",
         "Edit elements",
-        "Small edits to one page without rewriting it: add an element, set props, move/resize, re-parent, rename, delete, place a component. All operations in one call are one step of undo. Prefer several small patches over one big apply when building a page, so the author can watch it come together.",
+        "Small edits to one page without rewriting it: add an element, set props, move/resize, re-parent, rename, delete, place a component. All operations in one call are one step of undo, and all or nothing: an operation that would change nothing (a prop the widget does not know, a value already held) refuses the whole call, so \"Applied N operation(s)\" means N real changes. Hide an element with `set` `{\"layout.visible\": false}`. Prefer several small patches over one big apply when building a page, so the author can watch it come together.",
         {
             surface: { type: "string", description: "Page or component name or id." },
             ops: {
@@ -378,12 +441,17 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
                         y: { type: "number" },
                         width: { type: "number" },
                         height: { type: "number" },
-                        props: { type: "object", description: "add/set: props to merge, `.ui` dotted keys allowed (`imageFill.assetId`)." },
+                        props: {
+                            type: "object",
+                            description:
+                                "add/set: props to merge, `.ui` dotted keys allowed (`imageFill.assetId`). As in the `.ui` format the first segment picks the bag: `layout.visible`/`layout.opacity`/`layout.rotation` (or `{\"layout\": {\"visible\": false}}`) write the element's layout, `style.*` its CSS overrides, `extra.*` its extra record; every other key is a widget prop and must be one the widget knows (ui_widget lists them).",
+                        },
                     },
                     required: ["op"],
                 },
             },
             baseRevision: BASE_REVISION,
+            dryRun: DRY_RUN,
         },
         ["surface", "ops"],
         true,
@@ -412,7 +480,13 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ),
     ws("blueprint_node", "Blueprint node details", "Pins, inspector params, graph kinds and scope of one node type.", { type: { type: "string" } }, ["type"]),
     ws("blueprint_list", "List blueprints", "Lists blueprints with their owner (surface/element) and event heads.", { query: { type: "string" } }),
-    ws("blueprint_show", "Read a blueprint as text", "Prints one blueprint (or all of one owner) in the `.bp` text format.", { blueprint: { type: "string", description: "Blueprint name or id." } }, ["blueprint"]),
+    ws(
+        "blueprint_show",
+        "Read a blueprint as text",
+        "Prints one blueprint (or all of one owner) in the `.bp` text format. Blueprint names are in the project's language (the skeleton's title Start button's is `开始` in a Chinese project), so find one by its owner: ui_show prints `# blueprint: <name>` after the element that owns it, and an owner key `widgetMain:<surfaceId>:<elementId>` shows all of that element's blueprints.",
+        { blueprint: { type: "string", description: "Blueprint name or id, or an owner key `widgetMain:<surfaceId>:<elementId>`." } },
+        ["blueprint"],
+    ),
     ws(
         "blueprint_apply",
         "Write blueprints",
@@ -434,17 +508,25 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "playtest_start",
         "Play the game",
-        "Opens the game in Dev Mode, from the start or from a scene (and row). The author sees it too. Then use playtest_advance and playtest_screenshot.",
+        "Opens the game in Dev Mode, from the title page or from a scene (and row). The author sees it too. From a scene it returns once the first line is shown in full (or a menu is up), and says what it is (speaker and text). Then use playtest_advance and playtest_screenshot.",
         { scene: { type: "string" }, row: { type: "integer", description: "1-based row in the scene." } },
     ),
-    ws("playtest_advance", "Advance the game", "Clicks through `steps` lines of dialogue (or picks `choice` when a menu is showing).", { steps: { type: "integer", default: 1 }, choice: { type: "integer", description: "1-based option to pick." } }),
-    ws("playtest_screenshot", "Look at the game", "Screenshot of the running Dev Mode game.", { maxSize: { type: "integer", default: 1280 } }),
+    ws(
+        "playtest_advance",
+        "Advance the game",
+        "Reads on `steps` lines of a running story. One step is one line: a click on the line shown in full, then a wait until the game is at rest again - on the next line, finished typing (rows without a line, such as /show or /sound, are not steps), a menu, or out of the story. So the answer names exactly what is on screen, and a screenshot taken next shows that whole line. Stops early at a choice menu, at an ending (names it, and the page the game went to: the title or an ending page), or when a click does not move the game; says why. With `choice`, picks that option first (counts as one step). Does nothing on the title page: start from a scene.",
+        {
+            steps: { type: "integer", default: 1, description: "Lines to read on, 1-50." },
+            choice: { type: "integer", description: "1-based option of the menu showing, in the order shown (hidden options are not counted)." },
+        },
+    ),
+    ws("playtest_screenshot", "Look at the game", "Screenshot of the running Dev Mode game: the stage with its Game UI, or the window when a page such as the title is showing. Fails within about 10 s, saying why, when the game cannot be captured.", { maxSize: { type: "integer", default: 1280 } }),
     ws("playtest_stop", "Stop playing", "Closes the Dev Mode game."),
     ws("console_read", "Read Studio's console", "Recent lines from Studio's console (build, story, blueprint, runtime channels).", { channel: { type: "string" }, level: { type: "string", enum: ["debug", "info", "warning", "error"] }, limit: { type: "integer", default: 100 } }),
     main(
         "build",
         "Build the game",
-        "Builds a playable package of the project. Runs the same pipeline as Studio's Build menu. Returns the output directory.",
+        "Builds a playable package of the project. Runs the same pipeline as Studio's Build menu. Returns the output directory and, in `artifacts`, what was built (the `.app` bundle, installer or app folder) - the thing to open.",
         {
             project: PROJECT_ARG,
             target: { type: "string", enum: ["current", "windows", "macos", "linux", "web"], default: "current" },

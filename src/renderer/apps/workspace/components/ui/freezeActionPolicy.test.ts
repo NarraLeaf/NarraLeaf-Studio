@@ -20,6 +20,8 @@ import {
 
 const FILE_GROUP = "narraleaf-studio:file";
 const HELP_GROUP = "narraleaf-studio:help";
+/** Pause, follow and the log keep working in a frozen project; see the table's note. */
+const AGENT_GROUP = "narraleaf-studio:agent";
 const BUILD_ACTION = "narraleaf-studio:build";
 
 /**
@@ -55,9 +57,10 @@ function fileMenuItems(): ActionMenuItem[] {
 const actionsOf = (items: ActionMenuItem[]): ActionDefinition[] => items.filter(isActionMenuAction);
 
 describe("freeze exemption table", () => {
-    it("exempts the File and Help groups and nothing else", () => {
+    it("exempts the File, Help and Agent groups and nothing else", () => {
         expect(isFreezeExemptActionGroup(FILE_GROUP)).toBe(true);
         expect(isFreezeExemptActionGroup(HELP_GROUP)).toBe(true);
+        expect(isFreezeExemptActionGroup(AGENT_GROUP)).toBe(true);
         // Build starts a production build - a side effect the write boundary cannot catch.
         expect(isFreezeExemptActionGroup(BUILD_ACTION)).toBe(false);
         expect(isFreezeExemptActionGroup("some-plugin:tools")).toBe(false);

@@ -33,32 +33,60 @@ returns findings, errors first. `lint {severity:"error"}` shows only errors.
 - `test {id:"narraleaf-studio:project-diagnostics"}` - a general health check.
 
 A scene the coverage test cannot reach is usually a missing `/jump`, a jump inside a branch that can
-never be true, or a leftover skeleton demo scene (tell the author to delete it in Studio).
+never be true, or a leftover skeleton demo scene (`scene_delete` it once nothing jumps to it).
 
 ## 3. Playtest
 
 `playtest_start` opens the game in Dev Mode, which the author sees too. With `scene` (and optionally
 `row`) it starts there; without, it starts as a player would, on the splash and title.
 
+How the playtest tools behave:
+
+- `playtest_start {scene}` returns once the scene's first line is shown in full, and names that line
+  (speaker and text); from the title page it returns when the page is up.
+- `playtest_advance {steps:N}` reads on **line by line**. One step is one line: a click on the line
+  shown in full, then a wait until the game is at rest on the next line, finished typing. Rows with
+  no line (`/show`, `/sound`, `/bg`, a transition) are not steps; the call waits them out. When it
+  returns, the line it names is exactly the one on screen, whole, so a screenshot right after shows
+  it - no need to pause between calls.
+- It stops early at a choice menu, when a click does not move the game, when no line comes up for
+  10 s (a timed pause, a video), and at an **ending**: the answer names the ending reached (`Read on
+  3 line(s) and reached the ending "Sunrise"`) and the page the game went to - the project's ending
+  page, or the title page when it has none (the skeleton has none). That is the run finished, not an
+  error.
+- `steps` past an ending are simply unused, and the click that ends the story leaves its last line:
+  to screenshot a route's last line, advance one step at a time near the end.
+- Every result names the line it is on (and a menu's options), so take a `playtest_screenshot` only
+  when you need to see the picture.
+- `playtest_advance {choice:K}`: K is **1-based** in the order the options are shown (1 is the top
+  one); the pick counts as one step. `playtest_advance` does nothing on the title page: start from a
+  scene.
+- A failing `playtest_screenshot` fails within about 15 s and says why; when it says the window is not
+  responding or drew no frame, call `playtest_stop` and then `playtest_start`.
+
 You cannot press interface buttons in the playtest, so: check the title and system screens with
-`ui_screenshot`, and play the story by starting at scenes.
+`ui_screenshot` - `ui_screenshot {surface, element, state:"hovered"}` (or `"active"`, `"focused"`,
+`"selected"`, `"disabled"`) draws one control and what is inside it in that state, which is how you
+check hover and pressed looks - and play the story by starting at scenes.
 
 For each route:
 
 1. `playtest_start {scene:"<first scene of the route>"}`.
 2. `playtest_screenshot` - the opening frame: background, characters, music started (check the
    console if unsure).
-3. `playtest_advance {steps:N}` to the next moment that matters - a new background, an entrance, an
-   expression change, a CG, a menu - and screenshot it.
+3. `playtest_advance {steps:N}` (N lines) to the next moment that matters - a new background, an
+   entrance, an expression change, a CG, a menu - and screenshot it.
 4. At a menu, screenshot it, then `playtest_advance {choice:K}` for the option this route takes.
-5. Continue to the `/ending`. Screenshot the last line and what follows it.
+5. Continue to the `/ending`: one step at a time over the last lines, screenshot the last line, then
+   one more step - the answer names the ending - and screenshot the page it landed on.
 6. `console_read {level:"error"}` - any runtime error names the row or graph; fix and replay.
 7. `playtest_stop` before starting the next route (or start the next one directly).
 
 What to look for in each screenshot:
 
-- [ ] the right background and sprites, at a believable size and position (sprites are drawn at their
-  pixel size; a sprite cut off at the top or tiny in the corner needs resizing - tell the author);
+- [ ] the right background and sprites, at a believable size and position (a sprite is its pixel size
+  times its character's entrance `zoom`; fix a floating or shrunken one with `character_upsert
+  {id, entranceTransform:"standing"}`);
 - [ ] the speaker's name and colour correct; the line fully inside the box, no overflow;
 - [ ] the dialogue band readable over this background (contrast);
 - [ ] the choice menu legible and not covering a face;
@@ -97,7 +125,10 @@ Tell the author, in this order:
    added.
 2. **Placeholders** - every placeholder asset, what it stands for, and its name, so they can replace
    it (in Studio, replacing an asset's file keeps every reference).
-3. **For them to do in Studio** - leftover skeleton scenes or variables to delete, sprite scales, the
-   gallery (Extra) contents, files that need converting, anything you could not do with the tools.
-4. **How to run it** - the build directory and the file to open; or press Play in Studio.
+3. **For them to do in Studio** - leftover skeleton content you could not delete, the gallery (Extra)
+   contents, files that need converting, the app icon, signing, anything you could not do with the
+   tools. Say which languages the game offers (`project_info`) and which are untranslated.
+4. **How to run it** - the file to open, from the build result's `artifacts` (the `.app`, installer or
+   app folder); an unsigned macOS build has to be allowed once in System Settings > Privacy &
+   Security. Or press Play in Studio.
 5. **Known limits** - anything you simplified from their script, and why.

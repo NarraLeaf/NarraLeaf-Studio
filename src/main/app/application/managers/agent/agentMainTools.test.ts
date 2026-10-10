@@ -89,9 +89,16 @@ describe("project_create", () => {
             parentDir: "/home/me/NarraLeaf",
             template: "skeleton",
             language: "en",
+            languages: [],
             width: 1920,
             height: 1080,
         });
+    });
+
+    it("passes further languages through, and none unless asked", async () => {
+        const host = fakeHost();
+        await AGENT_MAIN_TOOL_HANDLERS.project_create(host, { name: "Ghost", language: "zh-CN", languages: ["en"] }, ctx);
+        expect(host.createProject).toHaveBeenCalledWith(expect.objectContaining({ language: "zh-CN", languages: ["en"] }));
     });
 });
 

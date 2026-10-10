@@ -10,7 +10,8 @@ import { IPCEventType } from "@shared/types/ipcEvents";
 import { BRAND_DOCUMENT_PATH } from "@shared/documents/specs";
 import { ATOMIC_WRITE_TEMP_PATTERN } from "@shared/utils/fs";
 import { DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus } from "@shared/types/devMode";
-import type { DevModeAgentAction, DevModeAgentResult } from "@shared/types/devMode";
+import { DevModeAgentErrorCode, type DevModeAgentAction, type DevModeAgentResult } from "@shared/types/devMode";
+import { DevModeAgentError, driveDevModeWindow } from "./devModeAgentDrive";
 import type { RevisionId } from "@shared/types/vcs";
 import { WindowAppType } from "@shared/types/window";
 import { INLangCompiler, NullNLangCompiler } from "./compiler/INLangCompiler";
@@ -139,36 +140,40 @@ export class DevModeManager {
     }
 
     /**
-     * An agent's play-test action on the project's running game: capture it, or advance it.
+     * An agent's play-test action on the project's running game: read it, capture it, or advance it.
      *
      * Answered by the Dev Mode window through the game's own test controls. A capture the game cannot
      * make - nothing has been entered yet, a page such as the title is showing - falls back to the
-     * window's pixels. ⚠ That fallback reads the window surface, which on a hidden or occluded window
-     * can be the last frame painted rather than the current one; the engine capture has no such
-     * problem, which is why it is asked first.
+     * window's pixels. Every wait is bounded and every refusal carries a `code`
+     * (`DevModeAgentErrorCode`); see `devModeAgentDrive`.
      */
     public async agentControl(projectPath: string, action: DevModeAgentAction): Promise<DevModeAgentResult> {
         const session = this.sessions.get(this.projectKey(projectPath));
         const window = session?.window;
-        if (!session || !window || window.isClosed() || !session.windowReady) {
-            throw new Error("Dev Mode is not running for this project. Start it with playtest_start.");
+        if (!session || !window || window.isClosed()) {
+            throw new DevModeAgentError("Dev Mode is not running for this project.", DevModeAgentErrorCode.notRunning);
         }
-        const answer = await window.invokeIpcRequest(
-            IPCEventType.devModeAgentDrive,
-            { action },
-            { timeoutMs: DevModeManager.AgentDriveTimeoutMs },
-        );
-        if (!answer.success) {
-            throw new Error(answer.error ?? "The game did not answer.");
+        if (!session.windowReady) {
+            throw new DevModeAgentError("The Dev Mode window is still loading.", DevModeAgentErrorCode.starting);
         }
-        if (answer.data.kind === "capture" && !answer.data.png) {
-            const image = await window.win.webContents.capturePage();
-            return { kind: "capture", png: image.toDataURL(), source: "window" };
-        }
-        return answer.data;
+        return driveDevModeWindow({
+            ask: (driven, timeoutMs) => window.invokeIpcRequest(IPCEventType.devModeAgentDrive, { action: driven }, { timeoutMs }),
+            capturePage: async () => (await window.win.webContents.capturePage()).toDataURL(),
+            // For the rest of this window's life once an agent has driven it, as a test-driven
+            // standalone run is (`backgroundThrottling` in the runtime's main): between two calls the
+            // game should go on typing and fading as it would in front of a player, not freeze
+            // because the author's editor is in front of it. Without it, the capture of a covered
+            // window never answered at all (see `keepPainting`). Electron's switch also keeps the
+            // page from being hidden, which is what keeps its frames coming.
+            keepPainting: () => {
+                const contents = window.win.webContents;
+                if (contents.getBackgroundThrottling()) {
+                    contents.setBackgroundThrottling(false);
+                }
+            },
+            isClosed: () => window.isClosed(),
+        }, action);
     }
-
-    private static readonly AgentDriveTimeoutMs = 60_000;
 
     public launch(projectPath: string, entry: DevModeEntry): Promise<DevModeStatus> {
         // Before anything is built. A Dev Mode window resolves every asset through this project's

@@ -61,12 +61,32 @@ describe("writeAgentProject", () => {
         });
         const app = config.app as Record<string, any>;
         expect(app.localization.sourceLocale).toBe("en");
-        // The translation the template shipped is registered as a language of the project.
-        expect(app.localization.locales.map((entry: { code: string }) => entry.code)).toEqual(["en", "ja"]);
+        // The game carries its source language alone: the template's translation of its sample
+        // content would be stale after the first rewritten line, so it is not kept.
+        expect(app.localization.locales.map((entry: { code: string }) => entry.code)).toEqual(["en"]);
+        expect(fs.existsSync(path.join(result.projectPath, "editor", "localization", "ja.json"))).toBe(false);
+        expect(result.languages).toEqual(["en"]);
         expect(app.mobile.orientation).toBe("landscape");
         expect(config.dependencies?.plugins).toEqual([
             expect.objectContaining({ id: "narraleaf.gallery", builtIn: true, authoredVersion: "1.2.3", hard: true }),
         ]);
+    });
+
+    it("adds exactly the languages asked for, keeping a shipped translation only for those", async () => {
+        fs.writeFileSync(path.join(templatesDir, "skeleton", "content", "editor", "localization", "zh-CN.json"), "{}");
+        const result = await writeAgentProject(input({ languages: ["ja", "fr", "en"] }), { templatesDir, installedPlugins: plugins });
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect(result.languages).toEqual(["en", "ja", "fr"]);
+        const localization = path.join(result.projectPath, "editor", "localization");
+        expect(fs.existsSync(path.join(localization, "ja.json"))).toBe(true);
+        expect(fs.existsSync(path.join(localization, "zh-CN.json"))).toBe(false);
+    });
+
+    it("refuses a language list entry that is not a language code", async () => {
+        const result = await writeAgentProject(input({ languages: ["not a code"] }), { templatesDir, installedPlugins: plugins });
+        expect(result).toMatchObject({ ok: false, code: "invalid_args" });
+        expect(fs.existsSync(parentDir)).toBe(false);
     });
 
     it("refuses a size the template was not drawn for", async () => {

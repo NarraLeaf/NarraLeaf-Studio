@@ -1,5 +1,5 @@
 /**
- * `assets_list`, `assets_import`, `assets_placeholder`.
+ * `assets_list`, `assets_import`, `assets_placeholder`, `asset_delete`.
  *
  * Imports go through `AssetsService` like a drop on the asset panel, so the new entries appear in the
  * panel as they land and each one is checked by the same format gate. Two things are added for an
@@ -11,6 +11,12 @@
  * always is; an allowed import root is readable only if main granted it when the author allowed it
  * (see `AgentMcpServer`). A path this check admits but the window may not read fails at import with
  * `sourceUnreadable`, and the answer says so.
+ *
+ * An image that cannot be transparent and is taller than it is wide gets a warning: that shape is a
+ * standing sprite, and an opaque sprite shows on the stage as a rectangle. Every opaque image is not
+ * warned about, because backgrounds and CGs are opaque by design - a warning on every background
+ * would teach an agent to read past the one that matters. `character_upsert` warns for every opaque
+ * pose whatever its shape, since there the use is no longer a guess.
  *
  * Comments in English per project convention.
  */
@@ -32,8 +38,11 @@ import {
     refuse,
     type AgentToolHandler,
 } from "../agentCall";
+import { describeBlockedDelete } from "../../assets/assetDeleteGuard";
 import { AGENT_ASSET_TYPES, assetsService, listAssets, stripExtension } from "../agentLookups";
 import { findAllowedImportRoot } from "../agentPaths";
+import { opaqueImageWarning } from "../imageAlpha";
+import { readImageFacts } from "./castTools";
 
 const IMPORTABLE_TYPES: readonly AssetType[] = [AssetType.Image, AssetType.Audio, AssetType.Video, AssetType.Font];
 
@@ -192,6 +201,7 @@ export const assetsImport: AgentToolHandler = async (args, { ctx, request, follo
     const imported: ReturnType<typeof describeAsset>[] = [];
     const duplicates: { path: string; existing: ReturnType<typeof describeAsset> }[] = [];
     const failed: { path: string; reason: string }[] = [];
+    const warnings: string[] = [];
 
     for (let index = 0; index < paths.length; index += 1) {
         const path = paths[index];
@@ -219,6 +229,12 @@ export const assetsImport: AgentToolHandler = async (args, { ctx, request, follo
         const wanted = names?.[index]?.trim() || stripExtension(basename(path));
         const finished = await finishImported(ctx, status.data as Asset<AssetType, AssetSource>, wanted, folder);
         imported.push(describeAsset(service, finished));
+        if (finished.type === AssetType.Image) {
+            const facts = await readImageFacts(ctx, finished.id);
+            if (facts && facts.header.alpha === false && facts.size && facts.size.height > facts.size.width) {
+                warnings.push(opaqueImageWarning(finished.name, facts.header));
+            }
+        }
     }
 
     log("info", `imported ${imported.length}, duplicates ${duplicates.length}, failed ${failed.length}`);
@@ -226,8 +242,9 @@ export const assetsImport: AgentToolHandler = async (args, { ctx, request, follo
         `Imported ${imported.length} of ${paths.length}.`,
         duplicates.length > 0 ? `${duplicates.length} already in the project under another name (not imported again).` : "",
         failed.length > 0 ? `${failed.length} failed.` : "",
+        warnings.length > 0 ? `${warnings.length} warning(s).` : "",
     ].filter(Boolean).join(" ");
-    return answerJson({ imported, duplicates, failed }, lead);
+    return answerJson({ imported, duplicates, failed, ...(warnings.length > 0 ? { warnings } : {}) }, lead);
 };
 
 const PLACEHOLDER_MAX_EDGE = 8192;
@@ -320,5 +337,76 @@ export const assetsPlaceholder: AgentToolHandler = async (args, { ctx, request, 
     return answerJson(
         { asset: describeAsset(service, finished), width, height },
         `Added placeholder image "${finished.name}" (${width}x${height}). Tell the author it is a placeholder to replace.`,
+    );
+};
+
+// ── asset_delete ─────────────────────────────────────────────────────────────────────────────────
+
+/** The asset `ref` names, by id or by name across every type; `type` narrows a name two types share. */
+function resolveAnyAsset(ctx: WorkspaceContext, ref: string, type: AssetType | undefined): Asset<AssetType, AssetSource> {
+    const pool = listAssets(ctx, type ? [type] : AGENT_ASSET_TYPES);
+    const byId = pool.find(asset => asset.id === ref);
+    if (byId) {
+        return byId;
+    }
+    const named = pool.filter(asset => asset.name === ref || stripExtension(asset.name) === ref);
+    if (named.length > 1) {
+        throw refuse(
+            "invalid_args",
+            `${named.length} assets are called "${ref}" (${named.map(asset => asset.type).join(", ")}).`,
+            "Name the asset by id (assets_list), or pass `type`.",
+        );
+    }
+    if (named.length === 0) {
+        throw refuse("not_found", `No asset "${ref}"${type ? ` of type ${type}` : ""}.`, "Call assets_list for the names.");
+    }
+    return named[0];
+}
+
+/**
+ * Delete an asset nothing refers to.
+ *
+ * The question "does anything still use it" is the one Studio's own delete asks, answered by the same
+ * reverse index (`AssetsService.findAssetReferences`: story rows, scene settings, character poses,
+ * pages, blueprints, voice tables), flushed first so a reference an edit just removed is not still
+ * counted. Unlike Studio, an agent is never offered "delete anyway": it gets the list and rewrites
+ * those first. The delete itself is the service's, one step of undo with the file in the recycle bin.
+ */
+export const assetDelete: AgentToolHandler = async (args, { ctx, request, follow }) => {
+    const type = readOptionalString(args, "type") as AssetType | undefined;
+    if (type && !AGENT_ASSET_TYPES.includes(type)) {
+        throw refuse("invalid_args", `Unknown asset type "${type}".`);
+    }
+    const asset = resolveAnyAsset(ctx, readString(args, "asset"), type);
+    follow.describeCall(request.callId, asset.name);
+    const service = assetsService(ctx);
+    const report = await service.findAssetReferences([asset.id], [asset.type]);
+    if (!report.checked) {
+        throw refuse(
+            "unavailable",
+            describeBlockedDelete(report, new Map([[asset.id, asset.name]])),
+            "Nothing was deleted. Call lint to find what Studio cannot read, then try again.",
+        );
+    }
+    const references = report.references.get(asset.id) ?? [];
+    if (references.length > 0) {
+        const lines = references.map(reference => {
+            const where = [reference.label, reference.detail].filter(Boolean).join(" › ");
+            return `- ${where} (${reference.field})${reference.dormant ? " - stored but not shown right now; it shows again if switched back" : ""}`;
+        });
+        throw refuse(
+            "unavailable",
+            `${asset.type} "${asset.name}" is still used in ${references.length} place(s):\n${lines.join("\n")}`,
+            "Rewrite those first - story_apply for rows and a scene's #background / #music, character_upsert for poses, "
+                + "ui_patch or blueprint_apply for pages - then delete it. Nothing was deleted.",
+        );
+    }
+    const result = await service.deleteAsset(asset);
+    if (!result.success) {
+        throw refuse("unavailable", `${asset.type} "${asset.name}" could not be deleted: ${result.error ?? "unknown reason"}.`);
+    }
+    return answerJson(
+        { deleted: { id: asset.id, name: asset.name, type: asset.type } },
+        `Deleted ${asset.type} "${asset.name}". One step of undo in Studio.`,
     );
 };

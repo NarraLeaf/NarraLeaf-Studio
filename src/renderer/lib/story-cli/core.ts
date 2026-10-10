@@ -41,6 +41,7 @@ import {
     type StoryLintStory,
 } from "./check";
 import { printStoryScene } from "./dsl/print";
+import { describeSceneSettings } from "./dsl/sceneSettings";
 import { LINE_SHAPES_HELP } from "./dsl/shapes";
 import { buildLookups } from "./lookups";
 import { buildContext, findScene, orderedScenes, type ProjectData, type StorySummary } from "./model";
@@ -159,7 +160,8 @@ export function storyTargetsCommand(
 ): CommandResult {
     const io = commandWriter();
     const context = buildContext(data, document, null);
-    io.out(options.json === true ? JSON.stringify(context, null, 2) : formatTargets(context, options.search ?? ""));
+    const sceneSettings = orderedScenes(document).map(scene => ({ scene: scene.name, ...describeSceneSettings(scene, context) }));
+    io.out(options.json === true ? JSON.stringify(context, null, 2) : formatTargets(context, options.search ?? "", sceneSettings));
     return io.finish(0);
 }
 
@@ -320,9 +322,18 @@ export async function storyApplyCommand(
         return { ...io.finish(2), check };
     }
     const data = input.data;
-    const lookups = buildLookups(data, document, existing, buildContext(data, document, existing));
-    const summary = summariseApply(existing, check.scene, blockId =>
-        describeStoryBlock(existing.blocks[blockId], { ...lookups.rowLookups, scene: existing }));
+    const existingContext = buildContext(data, document, existing);
+    const lookups = buildLookups(data, document, existing, existingContext);
+    const summary = summariseApply(
+        existing,
+        check.scene,
+        blockId => describeStoryBlock(existing.blocks[blockId], { ...lookups.rowLookups, scene: existing }),
+        {
+            before: describeSceneSettings(existing, existingContext),
+            after: describeSceneSettings(check.scene, existingContext),
+            stated: check.settingsStated ?? { background: false, music: false },
+        },
+    );
 
     // A document read at an older schema was migrated on the way in, and writing it back is what
     // makes that migration permanent. Said out loud rather than done quietly: it changes rows this

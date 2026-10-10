@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import path from "path";
+import { dialog, shell } from "electron";
 import { unpatchedFs, unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { WindowAppType } from "@shared/types/window";
@@ -20,12 +21,19 @@ import {
 import type { AgentGuideChapter, AgentToolDescriptor } from "@shared/agent/tools";
 import {
     agentEndpointUrl,
+    buildAgentClientConfig,
     isUsableAgentPort,
     AGENT_PORT_MAX,
     AGENT_PORT_MIN,
     type AgentSettingsPatch,
     type AgentSettingsSnapshot,
 } from "@shared/agent/settings";
+import {
+    AGENT_SKILL_EXPORT_FOLDER,
+    toAgentQuickState,
+    type AgentCopyConfigKind,
+    type AgentQuickTogglePatch,
+} from "@shared/agent/workspaceAccess";
 import type { App } from "../../../app";
 import type { AppWindow } from "../window/appWindow";
 import { dialogTranslator, showOpenDialog } from "../window/fileDialog";
@@ -46,6 +54,7 @@ import {
 import { writeAgentProject, type AgentProjectCreateInput } from "./agentProjectCreate";
 import { guideFileCandidates, stripFrontMatter } from "./agentGuide";
 import { agentCallTimeoutMs } from "./agentCallTimeout";
+import { activityProjectPath, copySkillTree, isNonEmptyDirectory, mainActivity } from "./agentWorkspaceAccess";
 
 /**
  * Agent access, as the rest of Studio sees it: the author's switches, the MCP endpoint they control,
@@ -68,6 +77,8 @@ export class AgentManager implements AgentMainToolHost {
     /** Import roots already granted to each workspace, so a grant is not stacked on every call. */
     private readonly grantedRoots = new WeakMap<AppWindow, Set<string>>();
     private readonly projectNames = new Map<string, string | null>();
+    /** What the last skill export from each window wrote, so "show in folder" needs no path from the renderer. */
+    private readonly exportedSkillDirs = new WeakMap<AppWindow, string>();
     /** Serializes start/stop so two quick toggles cannot leave two servers or none. */
     private lifecycle: Promise<void> = Promise.resolve();
     private initialized = false;
@@ -149,7 +160,9 @@ export class AgentManager implements AgentMainToolHost {
         } else if (!after.enabled && wasEnabled) {
             await this.serialize(() => this.stopServer());
         }
-        return this.snapshot();
+        const snapshot = await this.snapshot();
+        this.broadcastQuickState(snapshot);
+        return snapshot;
     }
 
     public async regenerateToken(): Promise<AgentSettingsSnapshot> {
@@ -192,6 +205,127 @@ export class AgentManager implements AgentMainToolHost {
     public endpointUrl(): string | null {
         const port = this.server?.port;
         return port ? agentEndpointUrl(port) : null;
+    }
+
+    // ── The workspace's Agent menu ───────────────────────────────────────────────────────────────
+    //
+    // A narrower door onto the same switches, for workspace windows. Nothing here hands the token
+    // or the address to the caller: the handlers project every answer through `toAgentQuickState`.
+
+    /**
+     * Flip agent access or write access on behalf of a workspace's menu.
+     *
+     * Turning write access ON is confirmed in a native dialog parented to the asking window. A
+     * workspace runs plugin code, and a plugin must not be able to grant every connected agent
+     * write access by calling this; a native dialog is the one thing in the window it cannot answer.
+     * Switching off needs no confirmation - withdrawing access is always safe.
+     */
+    public async quickToggle(window: AppWindow, patch: AgentQuickTogglePatch): Promise<AgentSettingsSnapshot> {
+        const current = await this.store.load();
+        const next: AgentSettingsPatch = {};
+        if (typeof patch.enabled === "boolean") {
+            next.enabled = patch.enabled;
+        }
+        if (typeof patch.allowWrites === "boolean") {
+            if (patch.allowWrites && !current.allowWrites && !(await this.confirmAllowWrites(window))) {
+                return this.snapshot();
+            }
+            next.allowWrites = patch.allowWrites;
+        }
+        if (next.enabled === undefined && next.allowWrites === undefined) {
+            return this.snapshot();
+        }
+        return this.updateSettings(next);
+    }
+
+    private async confirmAllowWrites(window: AppWindow): Promise<boolean> {
+        const { t } = dialogTranslator(window);
+        window.refuseUnattendedPrompt("Agent access asked whether agents may make changes");
+        const buttons = [t("workspace.agent.confirm.allowWrites.allow"), t("common.cancel")];
+        const answer = await dialog.showMessageBox(window.win, {
+            type: "question",
+            message: t("workspace.agent.confirm.allowWrites.message"),
+            detail: t("workspace.agent.confirm.allowWrites.detail"),
+            buttons,
+            defaultId: 1,
+            cancelId: 1,
+            noLink: true,
+        });
+        return answer.response === 0;
+    }
+
+    /** One client configuration with the endpoint and token filled in. Main only: it goes to the clipboard from here. */
+    public async clientConfig(kind: AgentCopyConfigKind): Promise<string> {
+        const snapshot = await this.snapshot();
+        return buildAgentClientConfig(kind, snapshot.url, snapshot.token, snapshot.stdio);
+    }
+
+    /**
+     * Copy the bundled skill (`resources/agent/skills`: the skill folder, README, AGENTS.md and the
+     * client configurations) into `<picked>/NarraLeaf-Skills`. Writing into a folder that already
+     * holds something is confirmed first; files of the same name are replaced and nothing else in
+     * it is removed.
+     */
+    public async exportSkill(window: AppWindow): Promise<{ canceled: true } | { canceled: false; path: string }> {
+        const { t } = dialogTranslator(window);
+        const source = this.app.resolveResource(path.join("agent", "skills"));
+        const picked = await showOpenDialog(window, {
+            title: t("workspace.agent.confirm.exportSkill.title"),
+            properties: ["openDirectory", "createDirectory"],
+            buttonLabel: t("dialogs.file.button.exportHere"),
+        });
+        if (picked.canceled || !picked.filePaths[0]) {
+            return { canceled: true };
+        }
+        const target = path.join(path.resolve(picked.filePaths[0]), AGENT_SKILL_EXPORT_FOLDER);
+        if (await isNonEmptyDirectory(fs, target)) {
+            window.refuseUnattendedPrompt("Agent skill export asked whether to write into an existing folder");
+            const buttons = [t("workspace.agent.confirm.exportSkill.replace"), t("common.cancel")];
+            const answer = await dialog.showMessageBox(window.win, {
+                type: "warning",
+                message: t("workspace.agent.confirm.exportSkill.existsMessage", { folder: AGENT_SKILL_EXPORT_FOLDER }),
+                detail: t("workspace.agent.confirm.exportSkill.existsDetail"),
+                buttons,
+                defaultId: 1,
+                cancelId: 1,
+                noLink: true,
+            });
+            if (answer.response !== 0) {
+                return { canceled: true };
+            }
+        }
+        const copied = await copySkillTree(fs, source, target);
+        this.exportedSkillDirs.set(window, target);
+        this.app.logger.info(`[Agent] Exported the agent skill to ${target} (${copied} files)`);
+        return { canceled: false, path: target };
+    }
+
+    /** Show what the last export from this window wrote. False when it exported nothing yet. */
+    public revealExportedSkill(window: AppWindow): boolean {
+        const target = this.exportedSkillDirs.get(window);
+        if (!target) {
+            return false;
+        }
+        shell.showItemInFolder(target);
+        return true;
+    }
+
+    /**
+     * Tell every workspace's Agent menu what agent access looks like now - and the Settings window,
+     * whose panel reads its full snapshot again when a menu changed something behind it.
+     */
+    private broadcastQuickState(snapshot: AgentSettingsSnapshot): void {
+        const state = toAgentQuickState(snapshot);
+        const settingsWindows = this.app.windowManager.getWindows().filter(window =>
+            window.getWindowType() === WindowAppType.Settings && !window.isClosed(),
+        );
+        for (const window of [...this.workspaceWindows(), ...settingsWindows]) {
+            try {
+                window.sendIpcEvent(IPCEventType.agentQuickStateChanged, state);
+            } catch {
+                // A window going away between the list and the send has nothing to update.
+            }
+        }
     }
 
     // ── Server lifecycle ─────────────────────────────────────────────────────────────────────────
@@ -256,27 +390,65 @@ export class AgentManager implements AgentMainToolHost {
 
     // ── Calls ────────────────────────────────────────────────────────────────────────────────────
 
+    /**
+     * Every call an agent makes. Calls answered here in main - main-side tools, and the refusals
+     * made before routing - are also reported to the workspace's Agent log; a call that reaches a
+     * workspace is logged there by the bridge that carries it out.
+     */
     public async callTool(tool: AgentToolDescriptor, args: Record<string, unknown>, context: AgentCallContext): Promise<AgentCallResult> {
+        const started = Date.now();
+        const outcome = await this.dispatchTool(tool, args, context);
+        if (outcome.answeredInMain) {
+            this.reportActivity(tool.name, args, outcome.result, context.clientName, Date.now() - started);
+        }
+        return outcome.result;
+    }
+
+    private async dispatchTool(
+        tool: AgentToolDescriptor,
+        args: Record<string, unknown>,
+        context: AgentCallContext,
+    ): Promise<{ result: AgentCallResult; answeredInMain: boolean }> {
+        const inMain = (result: AgentCallResult) => ({ result, answeredInMain: true });
         if (tool.write && !this.store.current.allowWrites) {
-            return agentRefusal(
+            return inMain(agentRefusal(
                 "writes_disabled",
                 `${tool.name} changes the project, and the author has not allowed agents to make changes.`,
                 "Ask the author to turn on \"Allow agents to make changes\" in Studio's Settings > Agent access. Read tools keep working meanwhile.",
-            );
+            ));
         }
         if (tool.side === "main") {
             const handler = AGENT_MAIN_TOOL_HANDLERS[tool.name];
             if (!handler) {
-                return agentRefusal("unknown_tool", `${tool.name} has no handler in this Studio.`);
+                return inMain(agentRefusal("unknown_tool", `${tool.name} has no handler in this Studio.`));
             }
-            return handler(this, args, context);
+            return inMain(await handler(this, args, context));
         }
         const project = typeof args.project === "string" && args.project ? path.resolve(args.project) : null;
         const choice = this.route(project);
         if (!choice.ok) {
-            return noWorkspace(choice);
+            return inMain(noWorkspace(choice));
         }
-        return this.forward(choice.window, tool.name, args, context);
+        return { result: await this.forward(choice.window, tool.name, args, context), answeredInMain: false };
+    }
+
+    /**
+     * Send one main-answered call to the Agent log of the window it concerns, or of every workspace
+     * when it concerns none (the session status, a guide chapter, a project that is not open).
+     * Fire-and-forget: a log line is never worth delaying or failing the call for.
+     */
+    private reportActivity(tool: string, args: Record<string, unknown>, result: AgentCallResult, clientName: string | null, durationMs: number): void {
+        try {
+            const activity = mainActivity(tool, args, result, clientName, durationMs);
+            const projectPath = activityProjectPath(tool, args, result);
+            const windows = this.workspaceWindows();
+            const concerned = projectPath ? windows.filter(window => identity(window.getProps().projectPath) === identity(projectPath)) : [];
+            for (const window of concerned.length > 0 ? concerned : windows) {
+                window.sendIpcEvent(IPCEventType.workspaceAgentActivity, activity);
+            }
+        } catch (error) {
+            this.app.logger.warn(`[Agent] Could not report ${tool} to the Agent log: ${describe(error)}`);
+        }
     }
 
     /** Workspace windows an agent may address: open, and not a headless command-line run. */

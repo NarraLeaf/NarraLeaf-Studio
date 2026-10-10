@@ -63,7 +63,13 @@ export function AgentAccessPanel() {
 
     useEffect(() => {
         void getInterface().agent.getSettings().then(adopt).catch(() => undefined);
+        // A workspace's Agent menu can switch access or writes while this panel is open; main says
+        // so, and the full snapshot is read again rather than patched from the menu's three booleans.
+        const token = getInterface().agent.onQuickStateChanged(() => {
+            void getInterface().agent.getSettings().then(adopt).catch(() => undefined);
+        });
         return () => {
+            token.cancel();
             if (copiedTimer.current) {
                 clearTimeout(copiedTimer.current);
             }

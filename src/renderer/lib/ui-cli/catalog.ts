@@ -396,6 +396,35 @@ function ownBlueprintNodeCategories(type: string): string[] {
 }
 
 /**
+ * Every prop key a widget of `type` knows, or null for a type the catalogue has no module for.
+ *
+ * The same set the `.ui` compiler checks a file against before it notes `ui.unknown_prop`: the
+ * module's defaults (a default it leaves unset still names its key), the interaction sounds, the
+ * words prop and the key and marks props a text site reads its words through. Cheaper than
+ * {@link describeWidget}, which also walks the blueprint palette - a patch asks this once per
+ * element it writes.
+ */
+export function widgetKnownPropKeys(type: string): Set<string> | null {
+    const module = findWidgetModule(type);
+    if (!module) {
+        return null;
+    }
+    const props = readProps(module);
+    const keys = new Set(Object.keys(props));
+    for (const prop of interactionSoundProps(module.type, props)) {
+        keys.add(prop.key);
+    }
+    for (const site of uiTextSitesOf(module.type)) {
+        for (const sourceProp of [site.textProp, site.keyProp, site.marksProp]) {
+            if (sourceProp) {
+                keys.add(sourceProp);
+            }
+        }
+    }
+    return keys;
+}
+
+/**
  * The hover and click sound props, which every type but the root reads and no new element carries.
  *
  * Listed so `widget <type>` names them and a file that sets them is not reported as setting a key

@@ -31,7 +31,13 @@ import { isActionMenuAction, isActionMenuSeparator } from "./actionMenuModel";
  * editor had to be given a fixed id first, since it used to build one per tab and a table that
  * matches ids exactly can name no such thing.
  *
- * A fourth escape is conditional rather than absolute, and is why everything here takes the freeze
+ * The fourth is the Agent menu. Pausing the agent, following it and reading its log are how an author
+ * keeps hold of an agent at any time - a frozen project is exactly when a paused agent must be able
+ * to stay paused - and the rest of the menu changes agent access as a whole (Studio-wide settings
+ * main owns), copies a configuration or exports the skill: none of it writes this project, and
+ * agent writes are refused by the bridge while frozen anyway.
+ *
+ * A further escape is conditional rather than absolute, and is why everything here takes the freeze
  * KIND instead of a boolean: an action that only *starts* something main owns - the production build
  * - is exempt from the freezes main itself does not refuse. See {@link FREEZE_OPERATION_ACTION_IDS}.
  */
@@ -39,6 +45,7 @@ const FREEZE_EXEMPT_GROUP_IDS: ReadonlySet<string> = new Set([
     "narraleaf-studio:file",
     "narraleaf-studio:help",
     "narraleaf-studio:image-preview-actions",
+    "narraleaf-studio:agent",
 ]);
 
 /** Whether a top-bar action group and everything inside it keeps working while frozen. */

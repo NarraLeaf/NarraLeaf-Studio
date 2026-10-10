@@ -17,6 +17,7 @@ import {
     UIComponentId,
     UISlotDefinition,
     UILayout,
+    UIStyle,
     isUIFlowLayoutParentElement,
     uiElementTypeAcceptsChildren,
     uiElementTypeAcceptsUserChildren,
@@ -325,6 +326,19 @@ function createDefaultPageSurfaceSettings(settings?: UISurfaceSettings): UISurfa
 
 const DEFAULT_STAGE_SLOT_ID: UIStageSlotId = DEFAULT_UI_STAGE_SLOT_ID;
 const COMPONENT_LINKED_LAYOUT_KEYS = new Set<keyof UILayout>(["x", "y", "width", "height", "rotation"]);
+
+/** `style` with `patch` merged in and its `null` values removed; undefined when nothing is left. */
+function mergeUIStylePatch(style: UIStyle | undefined, patch: Record<string, unknown>): UIStyle | undefined {
+    const next: UIStyle = { ...(style ?? {}) };
+    for (const [key, value] of Object.entries(patch)) {
+        if (value === null) {
+            delete next[key];
+        } else {
+            next[key] = value;
+        }
+    }
+    return Object.keys(next).length > 0 ? next : undefined;
+}
 const DEFAULT_COMPONENT_SIZE: UISurfaceDesignSize = { width: 240, height: 120 };
 const DIALOG_SENTENCE_WIDGET_TYPE = "nl.dialog.sentence";
 const NOTIFICATION_LIST_WIDGET_TYPE = "nl.notification.list";
@@ -2059,6 +2073,36 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 ? {
                       surfaceId,
                       mergeKey: `extra:${elementId}:${Object.keys(extraPatch).sort().join(",")}`,
+                  }
+                : false,
+        });
+    }
+
+    /**
+     * Merge CSS overrides into an element's `style`; a `null` value removes that override.
+     *
+     * The renderer spreads `style` over the widget's own styles (`extractStyleOverrides`), so this is
+     * the bag a `.ui` file's `style.*` lines write. Nothing in the editor's panels writes it; the
+     * agent's `ui_patch` does, with the same refusal for a placed component that props have.
+     */
+    public updateElementStyle(elementId: string, stylePatch: Record<string, unknown>): void {
+        const surfaceId = this.getElementSurfaceId(elementId);
+        this.mutateDocument(document => {
+            const element = document.elements[elementId];
+            if (!element || isLinkedUIComponentElement(element)) {
+                return;
+            }
+            const style = mergeUIStylePatch(element.style, stylePatch);
+            if (style) {
+                element.style = style;
+            } else {
+                delete element.style;
+            }
+        }, {
+            history: surfaceId
+                ? {
+                      surfaceId,
+                      mergeKey: `style:${elementId}:${Object.keys(stylePatch).sort().join(",")}`,
                   }
                 : false,
         });
@@ -4686,6 +4730,30 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             component.updatedAt = new Date().toISOString();
         }, {
             history: this.componentHistory(componentId, `extra:${elementId}:${Object.keys(extraPatch).sort().join(",")}`),
+        });
+    }
+
+    /** The component-definition counterpart of {@link updateElementStyle}. */
+    public updateComponentElementStyle(
+        componentId: string,
+        elementId: string,
+        stylePatch: Record<string, unknown>,
+    ): void {
+        this.mutateDocument(document => {
+            const component = (document.components ?? []).find(item => item.id === componentId);
+            const element = component?.elements[elementId];
+            if (!component || !element) {
+                return;
+            }
+            const style = mergeUIStylePatch(element.style, stylePatch);
+            if (style) {
+                element.style = style;
+            } else {
+                delete element.style;
+            }
+            component.updatedAt = new Date().toISOString();
+        }, {
+            history: this.componentHistory(componentId, `style:${elementId}:${Object.keys(stylePatch).sort().join(",")}`),
         });
     }
 

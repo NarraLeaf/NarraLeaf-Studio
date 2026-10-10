@@ -11,7 +11,7 @@
 
 import { createTranslator, type TranslationKey } from "@shared/i18n";
 import { listSceneBlocksInDocumentOrder } from "@shared/types/story";
-import type { DevModeEntry } from "@shared/types/devMode";
+import type { DevModeAgentGameState, DevModeEntry } from "@shared/types/devMode";
 import type { GameBuildPlatform, GameBuildStateSnapshot } from "@shared/types/gameBuild";
 import { getInterface } from "@/lib/app/bridge";
 import { describeLintLocation } from "@/lib/lint/locationText";
@@ -37,6 +37,7 @@ import {
 } from "../agentCall";
 import { resolveScene, resolveStory } from "../agentLookups";
 import { downscaleImage } from "../domRaster";
+import { describeAdvance, describeGameState, gameStateData, launchIsUp, playtestHint } from "./playtestReport";
 
 const english = createTranslator("en");
 const translate = (key: TranslationKey, params?: Record<string, string | number>) => english.t(key, params);
@@ -149,6 +150,13 @@ export const playtestStart: AgentToolHandler = async (args, { ctx, request, foll
     follow.describeCall(request.callId, from);
 
     const service = devMode(ctx);
+    const projectPath = ctx.project.getConfig().projectPath;
+    // A game already running in place is replaced by this launch; how many times it had entered a
+    // story is what tells the new game from it below. Nothing running reads as "none yet".
+    const before = await getInterface().devMode.agentControl(projectPath, { kind: "state" });
+    const entriesBefore = before.success && before.data.kind === "state" && before.data.state.ready
+        ? before.data.state.entries
+        : -1;
     let status = await service.launch(entry);
     // The launch answers once the window is asked for; compiling follows. Wait (bounded) for the game
     // to be running so the next playtest call has something to act on.
@@ -160,27 +168,68 @@ export const playtestStart: AgentToolHandler = async (args, { ctx, request, foll
     if (status === "error") {
         throw refuse("check_failed", "Dev Mode could not start the game.", "Call console_read with channel \"build\" for the reason, fix it, and start again.");
     }
-    return answerJson({ status, from }, `Dev Mode is ${status}, from ${from}. Use playtest_screenshot to look and playtest_advance to click through.`);
+    // "Running" is main having sent the game its documents, not the game being on its first line: an
+    // advance sent now used to land in the scene's fade-in and be lost. So wait (bounded) until the
+    // game this launch asked for is up - a story entered since the launch, with a line or a menu
+    // showing - and then let that first line finish typing, so the first screenshot shows it whole.
+    const story = entry.kind === "story";
+    let state: DevModeAgentGameState | null = null;
+    let sawOutOfStory = false;
+    const readyBy = Date.now() + 20_000;
+    while (status === "running" && Date.now() < readyBy) {
+        const read = await getInterface().devMode.agentControl(projectPath, { kind: "state" });
+        if (read.success && read.data.kind === "state") {
+            state = read.data.state;
+            sawOutOfStory = sawOutOfStory || (state.ready && !state.inGame);
+            if (launchIsUp(state, { story, entriesBefore, sawOutOfStory })) {
+                break;
+            }
+        }
+        await delay(250);
+    }
+    if (story && state && launchIsUp(state, { story, entriesBefore, sawOutOfStory })) {
+        const settled = await getInterface().devMode.agentControl(projectPath, { kind: "state", settle: true });
+        if (settled.success && settled.data.kind === "state") {
+            state = settled.data.state;
+        }
+    }
+    const where = state ? ` ${describeGameState(state)}` : "";
+    return answerJson(
+        { status, from, ...(state ? gameStateData(state) : {}) },
+        `Dev Mode is ${status}, from ${from}.${where} Use playtest_screenshot to look and playtest_advance to read on.`,
+    );
 };
+
+function playtestRefusal(result: { error?: string; code?: string }) {
+    return refuse("unavailable", result.error ?? "The game did not answer.", playtestHint(result.code));
+}
 
 export const playtestAdvance: AgentToolHandler = async (args, { ctx }) => {
     const steps = readOptionalInteger(args, "steps", { min: 1, max: 50 }) ?? 1;
     const choice = readOptionalInteger(args, "choice", { min: 1, max: 50 });
+    // `choice` crosses as the agent gave it - 1-based, over the options as shown - and the window
+    // maps it onto the engine's own index (see `DevModeAgentAction`).
     const result = await getInterface().devMode.agentControl(ctx.project.getConfig().projectPath, {
         kind: "advance",
-        steps: choice !== undefined ? Math.max(steps, 1) : steps,
-        ...(choice !== undefined ? { choice: choice - 1 } : {}),
+        steps,
+        ...(choice !== undefined ? { choice } : {}),
     });
     if (!result.success) {
-        throw refuse("unavailable", result.error ?? "The game did not answer.", "Start the game with playtest_start first.");
+        throw playtestRefusal(result);
     }
     if (result.data.kind !== "advance") {
         throw refuse("internal", "The game answered something other than an advance.");
     }
-    const { advanced, error } = result.data;
+    const { advanced, error, ending, state } = result.data;
+    const where = state ? ` ${describeGameState(state)}` : "";
     return answerJson(
-        { advanced, ...(error ? { stoppedBecause: error } : {}) },
-        error ? `Advanced ${advanced} step(s), then stopped: ${error}` : `Advanced ${advanced} step(s). Take a playtest_screenshot to see where the game is.`,
+        {
+            advanced,
+            ...(error ? { stoppedBecause: error } : {}),
+            ...(ending ? { ending: ending.name } : {}),
+            ...(state ? gameStateData(state) : {}),
+        },
+        `${describeAdvance(result.data)}${where}`,
     );
 };
 
@@ -188,7 +237,7 @@ export const playtestScreenshot: AgentToolHandler = async (args, { ctx }) => {
     const maxSize = readOptionalInteger(args, "maxSize", { min: 64, max: 4096 }) ?? 1280;
     const result = await getInterface().devMode.agentControl(ctx.project.getConfig().projectPath, { kind: "capture" });
     if (!result.success) {
-        throw refuse("unavailable", result.error ?? "The game did not answer.", "Start the game with playtest_start first.");
+        throw playtestRefusal(result);
     }
     if (result.data.kind !== "capture" || !result.data.png) {
         throw refuse("unavailable", "The game had nothing to capture.");
@@ -326,8 +375,12 @@ export const internalBuild: AgentToolHandler = async (args, { ctx, request, foll
     if (state.status !== "done") {
         throw refuse("check_failed", `The build did not finish: ${state.error ?? state.status}.`, "Run lint and fix its errors, then build again; console_read with channel \"build\" has the log.");
     }
+    // The checksum list rides along with the artifacts; it is not something to open.
+    const artifacts = (state.artifacts ?? []).filter(artifact => !/(^|[\\/])SHA256SUMS(\.asc)?$/.test(artifact));
     return answerJson(
-        { outputDir: state.outputDir ?? null, artifacts: state.artifacts ?? [], platform },
-        `Built for ${platform} into ${state.outputDir ?? "the project's dist directory"}.`,
+        { outputDir: state.outputDir ?? null, artifacts, platform },
+        `Built for ${platform} into ${state.outputDir ?? "the project's dist directory"}.`
+            + (artifacts.length > 0 ? `\nTo play it, open: ${artifacts.join(", ")}` : "")
+            + (platform === "macos" ? "\nUnless the project is set up to sign macOS builds, Gatekeeper blocks this app on other Macs: tell the author, and that a player opens it once through System Settings > Privacy & Security > Open Anyway." : ""),
     );
 };

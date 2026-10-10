@@ -39,6 +39,11 @@ traps that do not produce a refusal at all.
   nickname exactly (case, spaces, full-width colon). Fix the label or add a nickname with
   `character_upsert`.
 - **Dialogue split oddly.** A `: ` inside narration made it dialogue - escape it as `\: `.
+- **A skeleton picture (classroom, corridor) flashes between scenes, or lint never calls it unused.**
+  A reused demo scene opens on it: `story_show` prints `#background classroom` in its header. Apply
+  the scene with `#background none` (and `#music none`), then `asset_delete` the picture.
+- **`story_apply` says the scene "still opens with" a background or music.** Your source left out
+  `#background` / `#music`, so the scene's own setting was kept. State it (`none` clears it).
 - **Start opens the old demo scene.** The title's Start button names a scene by id; see
   `blueprint-format`.
 - **A later row names something created earlier in the same source and is refused.** Apply in two
@@ -61,6 +66,9 @@ traps that do not produce a refusal at all.
 
 ## Blueprint traps
 
+- **`blueprint_show` by owner key.** `widgetMain:<surfaceId>:<elementId>` works with the ids as
+  `ui_show` prints them, the title page's `narraleaf-studio:main-surface` included; the blueprint's name
+  works too.
 - **A layer disappeared.** `blueprint_apply` replaces every graph of the owner; `compile.graph_dropped`
   warned. Start from `blueprint_show`.
 - **A node does nothing, no error.** An Element node pointing at an id the page does not have
@@ -74,8 +82,21 @@ traps that do not produce a refusal at all.
   MP3, images to PNG.
 - **Video plays sound over black.** HEVC/H.265 MP4, ProRes MOV or Theora OGV; convert to WebM or H.264
   MP4.
-- **A sprite is gigantic or tiny.** Sprites are drawn at their pixel size in design space. Ask for a
-  resized file, or for the author to scale the character in Studio's character panel.
+- **A sprite is gigantic, tiny or floating.** A sprite is drawn at its pixel size times its
+  character's entrance `zoom`, centred at the `/show` position. `character_upsert {id,
+  entranceTransform:"standing"}` puts its feet on the bottom edge at its own size; for a smaller
+  figure give `{zoom:z, position:{xalign:0.5, yalign:0.5, yoffset: round(h*z/2 - H/2)}}` (h sprite
+  height, H stage height). A reused skeleton character carries the demo's zoom 0.624.
+- **A sprite is a rectangle.** The image has no transparency; ask the author for a cut-out.
+- **`asset_delete` refused.** Something still uses the asset; the refusal lists each place (a row, a
+  scene's `#background`/`#music`, a character pose, a page). Rewrite those, then delete. Lint's
+  `assets/unused` warnings are the list of leftovers safe to delete.
+
+## Variable traps
+
+- **`variable_upsert` warns after a retype.** The listed rows still write or test the old type (`/set
+  好感 true` on a number, `? 好感` testing it as true/false). Rewrite each with `story_apply` (`? 好感 >
+  0`, `/set 好感 1`); blueprints it lists, check with `blueprint_show`.
 
 ## When stuck
 

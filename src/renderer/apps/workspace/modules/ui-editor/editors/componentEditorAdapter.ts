@@ -125,6 +125,7 @@ type ProjectMember =
     | "updateComponentElementAnimation"
     | "updateComponentElementNavigation"
     | "updateComponentElementExtra"
+    | "updateComponentElementStyle"
     | "renameComponentElement"
     | "reorderComponentChildren"
     | "deleteComponentElements"
@@ -205,6 +206,7 @@ export class ComponentDocumentServiceAdapter implements UIDocumentServiceSurface
     public readonly updateComponentElementAnimation = this.project("updateComponentElementAnimation");
     public readonly updateComponentElementNavigation = this.project("updateComponentElementNavigation");
     public readonly updateComponentElementExtra = this.project("updateComponentElementExtra");
+    public readonly updateComponentElementStyle = this.project("updateComponentElementStyle");
     public readonly renameComponentElement = this.project("renameComponentElement");
     public readonly reorderComponentChildren = this.project("reorderComponentChildren");
     public readonly deleteComponentElements = this.project("deleteComponentElements");
@@ -422,6 +424,13 @@ export class ComponentDocumentServiceAdapter implements UIDocumentServiceSurface
             return;
         }
         this.base.updateComponentElementExtra(this.componentId, elementId, extraPatch);
+    }
+
+    public updateElementStyle(elementId: string, stylePatch: Record<string, unknown>): void {
+        if (this.isVirtualRoot(elementId)) {
+            return;
+        }
+        this.base.updateComponentElementStyle(this.componentId, elementId, stylePatch);
     }
 
     public updateElementAnimation(

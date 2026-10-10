@@ -30601,8 +30601,19 @@
                     {
                       "conditions": null,
                       "value": "nlbrand:pageBackground"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:raisedFill"
                     }
-                  ]
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
                 },
                 {
                   "key": "borderRadius",
@@ -34848,6 +34859,12 @@
                     {
                       "conditions": null,
                       "value": "nlbrand:pageBackground"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:raisedFill"
                     }
                   ],
                   "transition": {
@@ -34967,6 +34984,12 @@
                     {
                       "conditions": null,
                       "value": "nlbrand:pageBackground"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:raisedFill"
                     }
                   ],
                   "transition": {
@@ -35072,7 +35095,56 @@
         "paddingX": 0,
         "paddingY": 0,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "デフォルト",
+              "propertyGroups": [
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:pageBackground"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:raisedFill"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
       }
     },
     "689bbcf1-237c-4d9c-b78b-0c68f4a70b8c": {
@@ -35110,7 +35182,56 @@
         "paddingX": 0,
         "paddingY": 0,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "デフォルト",
+              "propertyGroups": [
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:pageBackground"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:raisedFill"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
       }
     },
     "62765948-305a-4320-8276-7ba2ea9e5fd0": {
@@ -35148,7 +35269,56 @@
         "paddingX": 0,
         "paddingY": 0,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "デフォルト",
+              "propertyGroups": [
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:pageBackground"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:raisedFill"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
       }
     },
     "f099e023-88ca-4998-9387-b213df1f41ba": {
@@ -35186,7 +35356,56 @@
         "paddingX": 0,
         "paddingY": 0,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "デフォルト",
+              "propertyGroups": [
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:pageBackground"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:raisedFill"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
       }
     },
     "04bf9d9c-d215-4f75-98c2-a4e461f2db4b": {
@@ -42591,7 +42810,56 @@
         "paddingX": 0,
         "paddingY": 0,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "デフォルト",
+              "propertyGroups": [
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:pageBackground"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:raisedFill"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
       }
     },
     "2475e4b4-922a-42be-86a8-3bf2309116aa": {
@@ -49910,7 +50178,7 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-10-07T00:59:53.063Z"
+    "updatedAt": "2026-10-10T07:54:00.838Z"
   },
   "structs": {},
   "entrySurfaceId": "5107c0a1-0000-4000-8000-000000000500"

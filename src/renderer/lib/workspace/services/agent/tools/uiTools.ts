@@ -22,6 +22,7 @@ import { cssFamilyForAssetId } from "../../ui-editor/UIEditorFontFaceService";
 import type { BrandService } from "../../brand/BrandService";
 import {
     answerJson,
+    readOptionalBoolean,
     readOptionalInteger,
     readOptionalRecord,
     readOptionalString,
@@ -38,6 +39,8 @@ import { blobToDataUrl, rasterizeElement } from "../domRaster";
 import { OffscreenCapture, waitForOffscreenPage } from "../offscreenCapture";
 import { AssetLoadTrackerContext } from "@/lib/ui-editor/runtime/assetLoadTracker";
 import { AssetResolutionReporterContext } from "@/lib/ui-editor/runtime/useAssetResolutionReport";
+import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
+import { FORCEABLE_UI_STATES, ForcedStateStore, forcedStateElementIds, type ForceableUIState } from "../forcedStateStore";
 
 function uiDocumentService(ctx: WorkspaceContext): UIDocumentService {
     return ctx.services.get<UIDocumentService>(Services.UIDocument);
@@ -110,6 +113,7 @@ export const uiPatch: AgentToolHandler = async (args, { ctx, request, follow }) 
     const ref = readString(args, "surface");
     const ops = readUiPatchOps(args.ops);
     const baseRevision = readOptionalInteger(args, "baseRevision");
+    const dryRun = readOptionalBoolean(args, "dryRun") ?? false;
     const uidoc = uiDocumentService(ctx);
     const found = resolveSurfaceOrComponent(uidoc.getDocument(), ref);
     const target: UIPatchTarget = found.kind === "surface"
@@ -119,7 +123,13 @@ export const uiPatch: AgentToolHandler = async (args, { ctx, request, follow }) 
     follow.describeCall(request.callId, name);
     assertUiRevision(ctx, target, baseRevision);
 
-    const outcome = applyUiPatch(uidoc, target, ops, AGENT_HISTORY_LABEL);
+    const outcome = applyUiPatch(uidoc, target, ops, AGENT_HISTORY_LABEL, { dryRun });
+    if (dryRun) {
+        return answerJson(
+            { revision: uiContentRevision(ctx, target), dryRun: true, wouldCreate: outcome.created, wouldDelete: outcome.deleted },
+            `All ${ops.length} operation(s) on "${name}" check out and each changes something. Nothing was written; send the same call without dryRun to apply it.`,
+        );
+    }
     follow.noteWrite(target.kind === "surface"
         ? { kind: "surface", surfaceId: target.surfaceId, name, elementIds: outcome.touched }
         : { kind: "component", componentId: target.componentId, name, elementIds: outcome.touched });
@@ -203,6 +213,14 @@ export const uiScreenshot: AgentToolHandler = async (args, tool) => {
     const componentRef = readOptionalString(args, "component");
     const elementRef = readOptionalString(args, "element");
     const maxSize = readOptionalInteger(args, "maxSize", { min: 64, max: 4096 }) ?? 1280;
+    const stateArg = readOptionalString(args, "state");
+    if (stateArg !== undefined && !FORCEABLE_UI_STATES.includes(stateArg as ForceableUIState)) {
+        throw refuse("invalid_args", `\`state\` must be one of ${FORCEABLE_UI_STATES.join(", ")}.`);
+    }
+    if (stateArg !== undefined && !elementRef) {
+        throw refuse("invalid_args", "`state` needs `element`: it shows that one element (and what is drawn inside it) in the state.");
+    }
+    const forcedState = stateArg as ForceableUIState | undefined;
     const document = uiDocumentService(ctx).getDocument();
 
     let surface: UISurface | undefined;
@@ -255,10 +273,18 @@ export const uiScreenshot: AgentToolHandler = async (args, tool) => {
         }
         return names;
     });
+    // A forced state is drawn through a runtime store that answers "is this hovered/pressed/…" with
+    // yes for the target and its insides (see `ForcedStateStore`); nothing else on the page changes.
+    const stateful = forcedState && targetElement
+        ? createElement(
+            WidgetRuntimeStateProvider,
+            { externalStore: new ForcedStateStore(forcedStateElementIds(document, pool, targetElement.id), forcedState), children: rendered },
+        )
+        : rendered;
     const tracked = createElement(
         AssetLoadTrackerContext.Provider,
         { value: capture },
-        createElement(AssetResolutionReporterContext.Provider, { value: capture.report }, rendered),
+        createElement(AssetResolutionReporterContext.Provider, { value: capture.report }, stateful),
     );
     // The nearest element of this page's own pool: an element inside a placed component carries the
     // definition's id, which the page does not have, so the walk goes on up to the placement.
@@ -299,7 +325,7 @@ export const uiScreenshot: AgentToolHandler = async (args, tool) => {
         const elementCount = listUiSubtree(pool, rootId).length;
         const notDrawn = [...new Set([...capture.failedSlots(), ...raster.missing])];
         const summary = [
-            `"${name}"${targetElement ? `, cropped to ${uiElementPath(pool, targetElement)}` : ""}: ${plan.width}x${plan.height} px`
+            `"${name}"${targetElement ? `, cropped to ${uiElementPath(pool, targetElement)}` : ""}${forcedState ? ` in the ${forcedState} state` : ""}: ${plan.width}x${plan.height} px`
                 + ` (design ${design.width}x${design.height}, ${elementCount} elements).`,
             surface?.kind === "stageSurface" ? "Transparent areas are where the game stage shows through." : "",
             readiness.outstanding.length > 0

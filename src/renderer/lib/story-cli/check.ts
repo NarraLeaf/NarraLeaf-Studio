@@ -47,6 +47,8 @@ export type CheckResult = {
     scene: StoryScene | null;
     /** Rule categories this run did not cover, so the caller can say so. */
     notRun: readonly string[];
+    /** Which scene settings the file's header states (`#background`, `#music`); absent with no file. */
+    settingsStated?: { background: boolean; music: boolean };
 };
 
 /**
@@ -89,6 +91,7 @@ export async function checkStorySource(
     input: { data: ProjectData; story: StoryLintStory; scene: StoryScene | null },
 ): Promise<CheckResult> {
     const parsed = parseStoryFile(source);
+    const settingsStated = { background: Boolean(parsed.ast.settings.background), music: Boolean(parsed.ast.settings.music) };
     const { data, story } = input;
     const document = story.document;
     const existing = input.scene ?? (parsed.ast.sceneId ? document.scenes?.[parsed.ast.sceneId] ?? null : null);
@@ -104,7 +107,7 @@ export async function checkStorySource(
                     : "The file's #scene directive carries no id, so there is nothing to check it against.",
             },
         ];
-        return { diagnostics, fileDiagnostics: diagnostics, projectFindings: [], scene: null, notRun: [] };
+        return { diagnostics, fileDiagnostics: diagnostics, projectFindings: [], scene: null, notRun: [], settingsStated };
     }
 
     const lookups = buildLookups(data, document, existing, buildContext(data, document, existing));
@@ -128,6 +131,7 @@ export async function checkStorySource(
             projectFindings: [],
             scene: compiled.scene,
             notRun: notRunCategories(),
+            settingsStated,
         };
     }
     const withEdit: StoryDocument = {
@@ -141,6 +145,7 @@ export async function checkStorySource(
         projectFindings,
         scene: compiled.scene,
         notRun: notRunCategories(),
+        settingsStated,
     };
 }
 

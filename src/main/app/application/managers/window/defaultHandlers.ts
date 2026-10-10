@@ -202,6 +202,13 @@ import {
     AgentSettingsRegenerateTokenHandler,
     AgentSettingsUpdateHandler,
 } from "./handlers/agentSettingsAction";
+import {
+    AgentCopyConfigHandler,
+    AgentExportSkillHandler,
+    AgentQuickStateHandler,
+    AgentQuickToggleHandler,
+    AgentRevealExportedSkillHandler,
+} from "./handlers/agentQuickAction";
 
 /**
  * All default IPC handlers. Handlers are stateless - they receive the target
@@ -312,6 +319,11 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new AgentSettingsUpdateHandler(),
         new AgentSettingsRegenerateTokenHandler(),
         new AgentSettingsAddImportRootHandler(),
+        new AgentQuickStateHandler(),
+        new AgentQuickToggleHandler(),
+        new AgentCopyConfigHandler(),
+        new AgentExportSkillHandler(),
+        new AgentRevealExportedSkillHandler(),
         new WorkspaceLiveIntentTakenHandler(),
         new AppClaimExperimentalNoticeHandler(),
         new WorkspaceOpenProjectFolderHandler(),

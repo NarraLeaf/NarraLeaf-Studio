@@ -22,6 +22,14 @@ import { listProjectTemplates, scaffoldProjectFromTemplate, type ScaffoldResult 
  * plugin dependencies), because those live in the wizard's renderer code; they are short, and the
  * comments on the wizard's versions say why each exists.
  *
+ * Languages differ from the wizard on purpose. A template ships translations of its sample content
+ * (the skeleton carries English, Chinese and Japanese), and the wizard registers all of them. An
+ * agent writes a new game over that sample, so every one of those translations is stale the moment
+ * the first line changes: a player whose system language is another one would get the skeleton's
+ * old title and untranslated lines. So the project carries the source language alone, plus exactly
+ * the languages `languages` names; the template's translation files for any other language are
+ * removed from the new project rather than left on disk addressed to nobody.
+ *
  * The directory the agent names was not picked in a folder dialog. That is acceptable because the
  * author switched agent writes on, which is the consent this tool runs under; what this module adds
  * is refusing to write into a directory that already has anything in it.
@@ -33,6 +41,8 @@ export type AgentProjectCreateInput = {
     parentDir: string;
     template: "skeleton" | "empty";
     language: string;
+    /** Languages the game offers besides `language`; none by default. */
+    languages?: readonly string[];
     width: number;
     height: number;
 };
@@ -44,7 +54,7 @@ export type InstalledPluginInfo = {
 };
 
 export type AgentProjectCreateResult =
-    | { ok: true; projectPath: string; appId: string; scaffold: ScaffoldResult | null }
+    | { ok: true; projectPath: string; appId: string; scaffold: ScaffoldResult | null; languages: string[] }
     | { ok: false; code: "invalid_args" | "unavailable"; message: string; hint?: string };
 
 export async function writeAgentProject(
@@ -65,6 +75,21 @@ export async function writeAgentProject(
     const designSize: StageSize = { width: input.width, height: input.height };
     if (!Number.isInteger(designSize.width) || !Number.isInteger(designSize.height) || designSize.width < 64 || designSize.height < 64) {
         return { ok: false, code: "invalid_args", message: "width and height must be whole numbers of at least 64 pixels." };
+    }
+
+    const sourceLocale = input.language.trim();
+    const extraLanguages: string[] = [];
+    for (const raw of input.languages ?? []) {
+        const code = raw.trim();
+        if (!isValidLocaleCode(code)) {
+            return { ok: false, code: "invalid_args", message: `languages: "${raw}" is not a language code.`, hint: "Use BCP 47 codes such as `en`, `zh-CN`, `ja`." };
+        }
+        if (code !== sourceLocale && !extraLanguages.includes(code)) {
+            extraLanguages.push(code);
+        }
+    }
+    if (extraLanguages.length > 0 && !isValidLocaleCode(sourceLocale)) {
+        return { ok: false, code: "invalid_args", message: `language: "${sourceLocale}" is not a language code, so the project has no source language to add others to.` };
     }
 
     if (input.template !== "empty") {
@@ -100,7 +125,6 @@ export async function writeAgentProject(
     }
 
     await fs.mkdir(projectPath, { recursive: true });
-    const sourceLocale = input.language.trim();
     const configPath = path.join(projectPath, getProjectConfigFileName(name));
     let config: ProjectConfigData = {
         name,
@@ -126,17 +150,23 @@ export async function writeAgentProject(
     }
 
     let scaffold: ScaffoldResult | null = null;
+    let next = config;
     if (input.template !== "empty") {
         scaffold = await scaffoldProjectFromTemplate(deps.templatesDir, input.template, projectPath, sourceLocale);
-        const withLocales = registerTemplateLocales(config, scaffold.locales);
-        const withDependencies = await registerTemplateDependencies(withLocales, scaffold.dependencies, deps.installedPlugins);
-        if (withDependencies !== config) {
-            config = withDependencies;
-            await fs.writeFile(configPath, encodeProjectConfig(config));
+        for (const code of scaffold.locales) {
+            if (code !== sourceLocale && !extraLanguages.includes(code)) {
+                await fs.rm(path.join(projectPath, ...LOCALIZATION_DIR, `${code}.json`), { force: true });
+            }
         }
+        next = await registerTemplateDependencies(next, scaffold.dependencies, deps.installedPlugins);
     }
-
-    return { ok: true, projectPath, appId, scaffold };
+    next = registerLanguages(next, extraLanguages);
+    if (next !== config) {
+        config = next;
+        await fs.writeFile(configPath, encodeProjectConfig(config));
+    }
+    const localization = (config.app as { localization?: { locales: { code: string }[] } } | undefined)?.localization;
+    return { ok: true, projectPath, appId, scaffold, languages: localization?.locales.map(entry => entry.code) ?? [] };
 }
 
 /**
@@ -163,8 +193,15 @@ function newProjectAppConfiguration(sourceLocale: string, designSize: StageSize)
     };
 }
 
-/** The wizard's `registerTemplateLocales`: the translations a template shipped, made reachable. */
-function registerTemplateLocales(config: ProjectConfigData, codes: readonly string[]): ProjectConfigData {
+/** Where a project keeps one translation file per language, as `<code>.json`. */
+const LOCALIZATION_DIR = ["editor", "localization"] as const;
+
+/**
+ * The wizard's `registerTemplateLocales`, given the languages the agent asked for rather than every
+ * translation the template shipped. A language with no translation file starts untranslated; the
+ * Localization service creates its file on the first save.
+ */
+function registerLanguages(config: ProjectConfigData, codes: readonly string[]): ProjectConfigData {
     const app = config.app as { localization?: { sourceLocale: string; locales: { code: string; displayName: string }[] } } | undefined;
     const existing = app?.localization;
     if (!existing || !isValidLocaleCode(existing.sourceLocale)) {

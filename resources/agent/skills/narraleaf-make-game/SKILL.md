@@ -15,6 +15,7 @@ step that needs it, not all at once.
 
 | Chapter | Read it before | File | Also served as |
 |---|---|---|---|
+| Workflow | starting a game (this file) | `SKILL.md` | `agent_guide {chapter:"workflow"}` |
 | Story format | writing any scene | `references/story-format.md` | `agent_guide {chapter:"story-format"}` |
 | Interface format | reading or writing a page | `references/ui-format.md` | `agent_guide {chapter:"ui-format"}` |
 | Interface design | restyling the interface | `references/ui-design.md` | `agent_guide {chapter:"ui-design"}` |
@@ -41,8 +42,8 @@ call `agent_guide`.
    redo your edit on the new text. Never re-send your old text.
 4. **Small visible steps.** One scene per `story_apply`, one pass over one page per `ui_patch`.
    The author is watching; a whole game in one call is a wall nobody can follow or undo sensibly.
-5. **Dry-run when unsure.** `story_apply`, `ui_apply` and `blueprint_apply` take `dryRun: true`,
-   which checks and writes nothing.
+5. **Dry-run when unsure.** `story_apply`, `ui_apply`, `ui_patch` and `blueprint_apply` take
+   `dryRun: true`, which checks and writes nothing.
 6. **The author's words are the author's.** Keep a supplied script verbatim. Write or polish prose
    only where the author asked for it, following `script-adaptation`.
 7. **A refusal is an answer.** It carries a `code`, a message and often a `hint` saying what to do.
@@ -57,17 +58,14 @@ paused, and the directories you may import files from.
 
 - **No answer at all / tools missing** - the MCP server is not connected. Tell the author: open
   NarraLeaf Studio, *Settings -> Agent access*, switch on agent access, copy the configuration for
-  their agent, and reconnect (the README in this skill folder has every agent's recipe).
-- **Writes off** - tell the author: *Settings -> Agent access -> allow agents to make changes*. You
-  can read and plan meanwhile.
-- **Paused** - the author paused you from Studio's status bar. Wait for them to resume; do not work
-  around it.
+  their agent, and reconnect (the README next to this skill folder has every agent's recipe).
+- **Writes off** - tell the author: *Settings -> Agent access -> allow agents to make changes*.
+- **Paused** - the author paused you from the status bar. Wait for them to resume.
 - **Import directories** - if the author's art lives outside the listed directories, ask them to add
   that folder under *Settings -> Agent access* (or to copy the files into the project folder).
 - **No project open** - fine for a new game (step 2). For an existing one, ask for its folder.
 
-Checkpoint: you know whether you can write, which project (if any) is open, and where assets may come
-from.
+Checkpoint: you know whether you can write, which project is open, and where assets may come from.
 
 ## Step 1 - Brief
 
@@ -94,24 +92,36 @@ Checkpoint: a filled brief and, for a supplied script, an inventory and name map
 ## Step 2 - Project
 
 - **New game:** `project_create` with `name`, `language` (the game text language, e.g. `zh-CN`,
-  `en`, `ja`), `width`/`height`, and `template: "skeleton"`. The skeleton is a small working game:
-  splash, title, dialogue box, choice menu, quick menu, save/load, settings, backlog, extras, and a
-  three-scene demo story - all wired. You restyle and refill it; you do not build those screens from
-  nothing.
+  `en`, `ja`), `width`/`height`, and `template: "skeleton"`. `dir` is the **parent** folder; the
+  project folder is created inside it, named after an ASCII slug of the name (`末班车` ->
+  `mo-ban-che`) - the result gives the full path. The game carries `language` only; add
+  `languages: ["en"]` (or later `project_settings_set {languages}`) only for languages the author
+  wants translated. The skeleton is a small working game: splash, title, dialogue box, choice menu,
+  quick menu, save/load, settings, backlog, extras, and a three-scene demo story - all wired. You
+  restyle and refill it; you do not build those screens from nothing.
 - **Existing game:** `project_open` with its folder.
-- Name or resolution wrong? `project_settings_set` - now, before the interface work: changing the
-  resolution later does not rescale pages already built.
+- Name, resolution or languages wrong? `project_settings_set` - now, before the interface work:
+  changing the resolution later does not rescale pages already built. `languages` is the full list
+  (source language included); a language holding translations goes only when `removeLanguages`
+  names it.
 
 Then `project_info` (resolution, languages, entry page and scene, counts) and `story_list`,
-`characters_list`, `variables_list`, `assets_list`, `ui_surfaces` to learn what is there. In a fresh
-skeleton you will find: scenes *The corridor* (entry), *The clubroom*, *Last light*; characters
-*Narra* (with a sprite) and *Aoi*; variables *Honest* (saved) and *Location* (persistent - the save
-screen shows it, keep it); demo images and music; UI sounds `ui-confirm`, `ui-hover`, `ui-back` that
-the buttons use (keep them).
+`characters_list`, `variables_list`, `assets_list`, `ui_surfaces` to learn what is there. **The
+skeleton's content is named in the project's language**, so never hard-code the English names below
+- find each by listing (`story_list`, `characters_list`, `variables_list`, `blueprint_list`,
+`ui_surfaces`). In an English skeleton: scenes *The corridor* (entry), *The clubroom*, *Last light*;
+characters *Narra* (with a sprite) and *Aoi*; variables *Honest* (saved) and *Location* (persistent -
+the save screen shows it, keep it); asset folders *Backgrounds*, *Characters*, *Music*, *UI sounds*;
+UI sounds `ui-confirm`, `ui-hover`, `ui-back` that the buttons use (keep them). In a Chinese one the
+scenes are 走廊 / 社团活动室 / 最后的光, the variables 真心 / 地点, and so on.
 
-There is no tool that deletes a scene, character, variable or page. **Reuse the skeleton's demo
-content** instead of piling new beside it: rename and rewrite the demo scenes, rename the demo
-characters. Anything left over at the end goes on the hand-over list for the author.
+**Reuse the skeleton's demo content** instead of piling new beside it: rename the story
+(`story_rename`; the skeleton's is *Skeleton* / 骨架), rename and rewrite the demo scenes - clearing
+their own opening picture and music (step 5) - re-cast the demo characters (`character_upsert` with
+their `id`), rename or re-type the demo variables (`variable_upsert` with their `id`). What you do not
+reuse, delete once nothing refers to it: `scene_delete`, `character_delete`, `variable_delete`,
+`asset_delete` (the demo pictures and music lint lists as `assets/unused`) refuse while something
+still does and list what. Pages are not deleted - hide what the game does not need.
 
 Checkpoint: the project is open in Studio and you have its overview.
 
@@ -124,9 +134,12 @@ Checkpoint: the project is open in Studio and you have its overview.
    MP4 (H.264); fonts TTF/OTF/WOFF/WOFF2. AVI, WMV, FLV, MPEG, TS, TIFF and AIFF are refused; HEVC
    MP4, ProRes MOV and Theora OGV import but play sound over a black picture. Tell the author which
    files need converting rather than importing broken ones.
-3. Sprites are drawn **at their own pixel size** in design space: a 1920x1080 game wants a standing
-   sprite roughly 800-1000 px tall. A much larger sprite overflows the screen. Note any mismatch for
-   the author (Studio's character panel can scale a character once).
+3. **Sprites need a transparent background** - an opaque one shows as a rectangle. `assets_import`
+   and `character_upsert` return `warnings` for an opaque sprite; ask the author for a cut-out, and
+   list it on the hand-over if none comes. A sprite is drawn at its own pixel size times its
+   character's entrance `zoom`, centred where the `/show` row places it; the character's
+   `entranceTransform` sets zoom and baseline (step 4). For 1920x1080, standing sprites about
+   900-1080 px tall and 500-900 wide.
 4. For each missing asset, `assets_placeholder` with a clear `caption` ("BG: rooftop at dusk") and a
    colour that fits the palette; backgrounds at the project resolution, sprites around 600x950.
    **Tell the author every placeholder you made**; they go on the hand-over list.
@@ -142,12 +155,19 @@ Checkpoint: every asset in the name map exists in the project under its agreed n
   `defaultPose`. Pose names are what `/show Aoi smile` and `/char Aoi sad` say, so keep them short
   and consistent across characters (`normal`, `smile`, `sad`, `angry`, `surprised`).
 - Reuse the skeleton's characters for your first two: `characters_list`, then `character_upsert`
-  with their `id` and your name and poses.
+  with their `id` and your name and poses. A reused character keeps the entrance tuned for the demo
+  sprite (zoom 0.624): pass `entranceTransform: "standing"` with the new poses. A new character
+  given poses gets a standing entrance by itself - feet on the bottom edge, at its own pixel size
+  (art taller than the stage is scaled to fit). `characters_list` shows each one's `drawnAtCenter`
+  box; the lower third of a full-height sprite behind the dialogue band is normal VN framing.
 - A speaker with no sprite still deserves a character (name colour, backlog, voice later). Truly
   one-off speakers may stay plain `Name: text` lines.
 - `variable_upsert` for every flag, counter and route switch the story needs: `saved` for anything
   belonging to one playthrough (affection, choices made), `persistent` for anything that survives
   across saves (endings seen, unlocks). Name them as a script would (`trust_aoi`, `took_the_key`).
+  Turn a demo variable into one of yours with `variable_upsert {id, name, valueType, description}`
+  (a retype warns with every row whose value no longer fits - rewrite those); `variable_delete` the
+  rest (it refuses, listing users, while anything still reads it).
 
 Checkpoint: `story_targets` lists every speaker, asset and variable the script will name.
 
@@ -156,13 +176,15 @@ Checkpoint: `story_targets` lists every speaker, asset and variable the script w
 Read `story-format` first. Then, for each scene in order:
 
 1. **Have a scene.** First scenes: `scene_rename` the skeleton's demo scenes (that keeps the title
-   screen's Start button, which names the first scene by id, pointing at your opening). Further
-   scenes: `scene_create {name, chapter, after}`.
+   screen's Start button, which names the first scene by id, pointing at your opening; it returns
+   the scene's new revision). Further scenes: `scene_create {name, chapter, after}`.
 2. `story_show {scene}` - note the `revision`.
 3. Write the scene as a `.story` document: keep the `#nlstory`/`#story`/`#scene` header that
-   `story_show` printed, replace the body with your rows. Open the scene with its stage: `/bg`, then
-   `/show` each character present, then `/bgm` if the music changes. Every scene starts with an empty
-   stage - a character or picture must be brought on in the scene that hides or moves it.
+   `story_show` printed, replace the body with your rows. The header's `#background` / `#music` are
+   the scene's own opening picture and music: a reused demo scene has the demo's (`#background
+   classroom`) - write `#background none` and `#music none` (or your own), or it flashes before your
+   first `/bg`; a header without them keeps them. Open the scene with its stage: `/bg`, then `/show`
+   each character present, then `/bgm` if the music changes. Every scene starts with an empty stage.
 4. `story_apply {source, baseRevision}` (add `dryRun: true` the first time you use an unfamiliar
    command). One scene per call. Fix every error the check reports; nothing was written if it failed.
 5. If a name fails to resolve, `story_targets {query}` shows what does resolve. Do not invent a
@@ -177,9 +199,11 @@ duplicating it.
 Never put `/bg` inside an `/if` branch or a menu option - the game crashes at start. Change the
 picture with `/show <image> name=...` / `/swap` there instead (`story-format` has the pattern).
 
-When every scene is written: `scene_set_entry` on the opening scene, then `blueprint_show
-{blueprint:"Start"}` and check its Start Game node's `sceneId` is your opening scene's id
-(`story_list` shows ids); fix it with `blueprint_apply` if not.
+When every scene is written: `scene_set_entry` on the opening scene, then find the title's Start
+button blueprint - `ui_show` the title page and read the `# blueprint: <name>` after the Start
+button (its name is in the project's language), then `blueprint_show` that name - and check its
+Start Game node's `sceneId` is your opening scene's id (`story_list` shows ids); fix it with
+`blueprint_apply` if not.
 
 Checkpoint: `story_list` shows every scene; each applies cleanly; every route reaches an `/ending`.
 
@@ -222,8 +246,7 @@ unlock. Read `blueprint-format`, then:
 
 1. `ui_surfaces {query}` for the owner ids (surface and element), `blueprint_list` /
    `blueprint_show` for what already hangs there.
-2. `blueprint_nodes {query}` to find nodes, `blueprint_node {type}` for each node's pins before using
-   it.
+2. `blueprint_nodes {query}` to find nodes, `blueprint_node {type}` for a node's pins before using it.
 3. `blueprint_apply {source}` (try `dryRun: true` first). A block replaces every graph of its owner,
    so start from `blueprint_show` when the owner already has one.
 
@@ -240,9 +263,12 @@ Read `verify-and-ship`. In short:
 2. `test {id:"narraleaf-studio:route-coverage"}` (every scene reachable) and
    `test {id:"narraleaf-studio:reachable-endings"}` (every ending reachable).
 3. Play it: `playtest_start {scene}` at the opening and at each route's key moments,
-   `playtest_advance {steps}` / `{choice}` through them, `playtest_screenshot` at every new
-   background, character entrance, menu and ending. Look at each image: right picture, sprite size
-   and position, text readable and inside the box, choice menu legible.
+   `playtest_advance {steps}` / `{choice}` (1-based, top option is 1) through them. One step = one
+   line; rows without a line are not steps; when it returns, the line it names is on screen, whole.
+   At an ending it names the ending and the page the game went to (title or ending page) - the run is
+   done. `playtest_screenshot` at every new background, character entrance, menu, last line and
+   ending. Look at each image: right picture, sprite size and position, text readable and inside the
+   box, choice menu legible.
 4. `console_read {level:"error"}` after each run for runtime errors; fix the row or graph named.
 5. `playtest_stop` when done.
 
@@ -255,10 +281,10 @@ is clean.
 
 - what was made: scenes, routes and endings, characters, pages restyled, behaviour added;
 - **every placeholder asset still in the game** and what it stands for;
-- anything left for them to do in Studio (leftover demo scenes or variables to delete, sprite scale,
-  gallery entries, files to convert);
-- where the build is and how to run it, and that they can keep editing in Studio and ask you for
-  more.
+- anything left for them to do in Studio (leftover demo content, gallery entries, files to convert,
+  untranslated languages, the app icon and signing);
+- the file to open (the build result's `artifacts`), and that they can keep editing in Studio and
+  ask you for more.
 
 ## Working while the author watches
 

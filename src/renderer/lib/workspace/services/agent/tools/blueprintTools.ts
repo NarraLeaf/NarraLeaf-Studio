@@ -30,6 +30,7 @@ import {
 } from "@/lib/agent-core";
 import type { Blueprint, BlueprintDocument, BlueprintOwnerRef, BlueprintPrivateOwnerRecord } from "@shared/types/blueprint/document";
 import { buildUIComponentEditorSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
+import { readTypedBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import { ownerRefToIndexKey } from "../../ui-editor/blueprint/ownerKeys";
 import { Services, type WorkspaceContext } from "../../services";
 import type { BlueprintNodeCatalogService } from "../../ui-editor/BlueprintNodeCatalogService";
@@ -103,14 +104,21 @@ export const blueprintList: AgentToolHandler = async (args, { ctx }) => {
     return answer(capText(text, "Pass `query` to narrow it."));
 };
 
+/** What `blueprint_show` matches stored owner keys against, for a `blueprint` that names no blueprint. */
+export function ownerQueryOf(wanted: string): string {
+    const owner = readTypedBlueprintOwnerKey(wanted);
+    return owner ? ownerRefToIndexKey(owner) : wanted;
+}
+
 export const blueprintShow: AgentToolHandler = async (args, { ctx, request, follow }) => {
     const wanted = readString(args, "blueprint");
     const document = liveBlueprintDocument(ctx);
     let shown = blueprintShowCommand(document, { blueprint: wanted });
     if (shown.exitCode !== 0) {
-        // An owner key (`widgetMain:<surface>:<element>`, as ui_surfaces prints owners) names all
-        // of that owner's blueprints.
-        shown = blueprintShowCommand(document, { owner: wanted });
+        // An owner key names all of that owner's blueprints - escaped as stored, or written the way
+        // its ids read (`widgetMain:narraleaf-studio:main-surface:<element>`, whose surface id holds
+        // the separator). Either way it is turned into the stored spelling before it is matched.
+        shown = blueprintShowCommand(document, { owner: ownerQueryOf(wanted) });
     }
     if (shown.exitCode !== 0) {
         throw refuse("not_found", `No blueprint matches "${wanted}".`, "Call blueprint_list for the blueprints and their owners.");

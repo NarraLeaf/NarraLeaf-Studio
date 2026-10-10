@@ -98,12 +98,21 @@ export const storyShow: AgentToolHandler = async (args, { ctx, request, follow }
     }
     const revision = storyService(ctx).getSceneContentRevision(entry.id, scene.id);
     const notice = shown.stats && shown.opaqueRows ? formatOpaqueRowNotice({ stats: shown.stats, opaqueRows: shown.opaqueRows }) : [];
+    // The notice rides at the top as `#` comments, inside the one text block, rather than as a
+    // second block after the document: clients join content blocks, and a line after the `#data`
+    // footer made the footer unreadable when the agent sent the text straight back to story_apply.
+    const header = [
+        revisionComment(revision, "story_apply"),
+        ...(notice.length > 0
+            ? [`${shown.stats?.rows ?? 0} rows. ${notice.join("\n")}`]
+                .join("\n")
+                .split("\n")
+                .map(line => `# ${line.trim()}`)
+            : []),
+    ];
     return {
         ok: true,
-        content: [
-            { type: "text", text: `${revisionComment(revision, "story_apply")}\n${shown.text.trimEnd()}` },
-            ...(notice.length > 0 ? [{ type: "text" as const, text: `${shown.stats?.rows ?? 0} rows. ${notice.join("\n")}` }] : []),
-        ],
+        content: [{ type: "text", text: `${header.join("\n")}\n${shown.text.trimEnd()}` }],
         structured: {
             story: { id: entry.id, name: entry.name },
             scene: { id: scene.id, name: scene.name },
@@ -248,5 +257,6 @@ export const storyApply: AgentToolHandler = async (args, { ctx, request, follow 
         revision: revision ?? service.getSceneContentRevision(story.id, scene.id),
         rows: { added: summary.added, changed: summary.changed, removed: summary.removed },
         renamedTo: summary.renamedTo,
+        sceneSettings: { changed: summary.settingsChanged, kept: summary.settingsKept },
     });
 };

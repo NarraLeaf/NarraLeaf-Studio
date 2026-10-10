@@ -1,6 +1,7 @@
 import type { ProjectTrustRecord } from "./projectTrust";
 import type { AgentCallRequest, AgentCallResult } from "../agent/protocol";
 import type { AgentSettingsPatch, AgentSettingsSnapshot } from "../agent/settings";
+import type { AgentCopyConfigKind, AgentMainActivity, AgentQuickState, AgentQuickTogglePatch } from "../agent/workspaceAccess";
 import type { ProjectSessionHolder, ProjectSessionLockOutcome } from "./projectSession";
 import type { ExternalScriptEditor, ScriptOpenTargetId } from "./scriptEditors";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
@@ -436,8 +437,9 @@ export interface RendererPreloadedInterface {
      * judged runs in a renderer and a renderer's belief is not a boundary.
      */
     /**
-     * Agent access (the MCP endpoint). Every call is refused outside the Settings window: these
-     * decide whether an outside program may change a project, and they hand out its token.
+     * Agent access (the MCP endpoint). The settings calls are refused outside the Settings window:
+     * they decide whether an outside program may change a project, and they hand out its token. The
+     * `quick` calls below them are the workspace's Agent menu, and carry no secret.
      */
     agent: {
         getSettings(): Promise<RequestStatus<AgentSettingsSnapshot>>;
@@ -445,6 +447,22 @@ export interface RendererPreloadedInterface {
         regenerateToken(): Promise<RequestStatus<AgentSettingsSnapshot>>;
         /** Opens the native folder picker; a cancelled picker answers the unchanged settings. */
         addImportRoot(): Promise<RequestStatus<AgentSettingsSnapshot>>;
+        /**
+         * The Agent menu's narrow view, for workspace windows: three booleans, never the token or the
+         * address. See `@shared/agent/workspaceAccess`.
+         */
+        getQuickState(): Promise<RequestStatus<AgentQuickState>>;
+        /** Turning write access on asks the author in a native dialog; a declined dialog answers the unchanged state. */
+        quickToggle(patch: AgentQuickTogglePatch): Promise<RequestStatus<AgentQuickState>>;
+        onQuickStateChanged(handler: (state: AgentQuickState) => void): AppEventToken;
+        /** Main writes the configuration to the system clipboard; only the fact that it did comes back. */
+        copyConfig(kind: AgentCopyConfigKind): Promise<RequestStatus<{ copied: true }>>;
+        /** Native folder picker, then a copy of the bundled skill into `<folder>/NarraLeaf-Skills`. */
+        exportSkill(): Promise<RequestStatus<{ canceled: true } | { canceled: false; path: string }>>;
+        /** Reveal what the last `exportSkill` from this window wrote. */
+        revealExportedSkill(): Promise<RequestStatus<{ revealed: boolean }>>;
+        /** A call main answered itself, for the Agent log. */
+        onActivity(handler: (activity: AgentMainActivity) => void): AppEventToken;
     };
     projectTrust: {
         query(projectPath: string): Promise<RequestStatus<{

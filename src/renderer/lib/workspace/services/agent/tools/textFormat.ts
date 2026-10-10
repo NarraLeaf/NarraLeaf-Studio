@@ -67,7 +67,12 @@ export function forAgent(text: string): string {
         .replace("Nothing written. Pass --write.", "Dry run: nothing written.")
         .replace("Dry run - pass --write to save.", "Dry run: nothing written.")
         .replace(/ Pass --write to do it\.$/m, " (dry run: nothing written).")
-        .replace("so it is done in Studio.", "so it is done with scene_rename.");
+        .replace("so it is done in Studio.", "so it is done with scene_rename.")
+        .replace(/`story check --project <dir>` lists (it|them)\./g, "The `lint` tool lists $1.")
+        .replace(
+            /Not checked here: (.+?)\. Those rules read asset bytes or the reference index, which only a running Studio builds - so this says nothing about them either way\./,
+            "Not checked by this write: $1. Those rules read asset bytes and the reference index; the `lint` tool runs them.",
+        );
 }
 
 /**
@@ -103,7 +108,7 @@ export function diagnosticsForRefusal(report: string): string {
 
 /** The refusal for a source with errors: nothing was written, and here is why. */
 export function checkFailed(report: string, hint?: string): AgentRefusal {
-    return refuse("check_failed", `The source has errors, so nothing was written.\n${diagnosticsForRefusal(report)}`, hint);
+    return refuse("check_failed", `The source has errors, so nothing was written.\n${diagnosticsForRefusal(forAgent(report))}`, hint);
 }
 
 /** The comment line a show answer opens with, so the revision travels with the text. */

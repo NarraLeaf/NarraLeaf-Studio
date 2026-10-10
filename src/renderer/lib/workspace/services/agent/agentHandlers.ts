@@ -15,9 +15,9 @@
 import { AGENT_INTERNAL_TOOL_BUILD, AGENT_INTERNAL_TOOL_TEST } from "@shared/agent/protocol";
 import type { AgentToolHandler } from "./agentCall";
 import { projectInfo, projectSettingsSet } from "./tools/projectTools";
-import { assetsImport, assetsList, assetsPlaceholder } from "./tools/assetTools";
-import { audioTracksList, characterDelete, characterUpsert, charactersList, variableUpsert, variablesList } from "./tools/castTools";
-import { sceneCreate, sceneDelete, sceneRename, sceneSetEntry, storyList } from "./tools/storyTools";
+import { assetDelete, assetsImport, assetsList, assetsPlaceholder } from "./tools/assetTools";
+import { audioTracksList, characterDelete, characterUpsert, charactersList, variableDelete, variableUpsert, variablesList } from "./tools/castTools";
+import { sceneCreate, sceneDelete, sceneRename, sceneSetEntry, storyList, storyRename } from "./tools/storyTools";
 import { storyApply, storyCommand, storyCommands, storyShow, storyTargets } from "./tools/storyTextTools";
 import { brandGet, brandSet, uiPatch, uiScreenshot, uiSelection, uiTemplateApply, uiTemplates } from "./tools/uiTools";
 import { uiApply, uiShow, uiSurfaces, uiUsage, uiWidget, uiWidgets } from "./tools/uiTextTools";
@@ -40,16 +40,19 @@ export function createAgentToolHandlers(): Record<string, AgentToolHandler> {
         assets_list: assetsList,
         assets_import: assetsImport,
         assets_placeholder: assetsPlaceholder,
+        asset_delete: assetDelete,
         characters_list: charactersList,
         character_upsert: characterUpsert,
         character_delete: characterDelete,
         variables_list: variablesList,
         variable_upsert: variableUpsert,
+        variable_delete: variableDelete,
         audio_tracks_list: audioTracksList,
         story_commands: storyCommands,
         story_command: storyCommand,
         story_targets: storyTargets,
         story_list: storyList,
+        story_rename: storyRename,
         story_show: storyShow,
         story_apply: storyApply,
         scene_create: sceneCreate,

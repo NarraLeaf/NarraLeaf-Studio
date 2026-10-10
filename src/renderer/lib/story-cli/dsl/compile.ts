@@ -76,6 +76,7 @@ import { errorAt, type StoryFileAst, type StoryFileDiagnostic, type StoryFileLin
 import { conditionFromSource, type ConditionLookups } from "./condition";
 import { sameRowContent } from "./equal";
 import { buildProseBlock, type ProseLookups } from "./prose";
+import { applySceneSettings } from "./sceneSettings";
 import { BRANCH_ELSE, unescapeText } from "./shapes";
 
 export type CompileInput = {
@@ -101,7 +102,15 @@ export function compileStoryFile(input: CompileInput): CompileResult {
     const minted = new Map<number, string[]>();
     const first = compilePass(input, input.contextFor(input.existing), minted, null);
     const stage = first.scene ? withoutRows(first.scene, first.guessedRowIds) : input.existing;
-    return compilePass(input, input.contextFor(stage), minted, first.lineRowIds);
+    const context = input.contextFor(stage);
+    const second = compilePass(input, context, minted, first.lineRowIds);
+    if (!second.scene) {
+        return second;
+    }
+    // The header's scene settings, after the rows: they name assets, never rows, so neither pass's
+    // stage has anything to say about them.
+    const settled = applySceneSettings(second.scene, input.ast.settings, context);
+    return { ...second, scene: settled.scene, diagnostics: [...second.diagnostics, ...settled.diagnostics] };
 }
 
 type PassResult = CompileResult & {

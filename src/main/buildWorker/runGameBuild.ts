@@ -352,8 +352,12 @@ async function packageDesktopTargets(config: GameBuildWorkerConfig, log: GameBui
         const builderFormats = zipsItself ? target.formats.filter(format => format !== "zip") : target.formats;
         const configuration = builderConfiguration(runConfig, target, log);
         // A holder rather than a plain local: it is set inside the hook, which the compiler cannot follow.
-        const laidOut: { appOutDir: string | null } = { appOutDir: null };
+        const laidOut: { appOutDir: string | null; app: string | null } = { appOutDir: null, app: null };
         const ownAfterPack = configuration.afterPack;
+        // A `dir` target is the laid-out app itself, and electron-builder reports no artifact for it
+        // - so without this a folder build answered "done" with nothing to open. The hook names what
+        // it laid out: the `.app` bundle on macOS, the folder holding the executable elsewhere.
+        const wantsDir = target.formats.includes("dir");
         const produced = await build({
             // Exactly one arch per target: a multi-arch NSIS request would be
             // folded into a single installer whose name drops the ${arch} macro,
@@ -363,11 +367,14 @@ async function packageDesktopTargets(config: GameBuildWorkerConfig, log: GameBui
                 BUILDER_ARCHS[target.arch],
             ),
             projectDir: appDir,
-            config: zipsItself
+            config: zipsItself || wantsDir
                 ? {
                     ...configuration,
                     afterPack: async context => {
                         laidOut.appOutDir = context.appOutDir;
+                        laidOut.app = context.electronPlatformName === "darwin"
+                            ? path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`)
+                            : context.appOutDir;
                         if (typeof ownAfterPack === "function") {
                             await ownAfterPack(context);
                         }
@@ -376,6 +383,9 @@ async function packageDesktopTargets(config: GameBuildWorkerConfig, log: GameBui
                 : configuration,
         });
         const artifacts = produced.map(artifact => path.resolve(artifact));
+        if (wantsDir && laidOut.app && !artifacts.includes(path.resolve(laidOut.app))) {
+            artifacts.push(path.resolve(laidOut.app));
+        }
         if (zipsItself) {
             if (!laidOut.appOutDir) {
                 throw new Error(`electron-builder laid out no ${target.platform} app to zip`);

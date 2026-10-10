@@ -17,7 +17,7 @@ export const StatusBarExperimentalContext = createContext(false);
 
 /**
  * True while an agent connected over MCP is at work in this project, i.e. the whole status bar is
- * washed in the binding colour - the author watching the agent sees at a glance that edits are not
+ * washed in the success colour - the author watching the agent sees at a glance that edits are not
  * theirs. Provided by {@link StatusBar}; the experimental and running washes both win over it, so a
  * play-test the agent starts still reads as a run.
  */
@@ -86,9 +86,12 @@ export function StatusEntry({
             ? `${toneOverride ?? (emphasis ? "text-warning" : "text-warning/85")} ${
                 onClick ? "cursor-default hover:bg-warning/20 hover:text-warning" : ""
             }`
+            // Body ink rather than success ink: at the depth the agent wash is drawn, green text on
+            // green wash falls to about 3:1, below what 2xs text needs. The wash carries the colour;
+            // the words only have to be read.
             : agent
-                ? `${toneOverride ?? (emphasis ? "text-binding" : "text-binding/85")} ${
-                    onClick ? "cursor-default hover:bg-binding/20 hover:text-binding" : ""
+                ? `${toneOverride ?? (emphasis ? "text-fg" : "text-fg/80")} ${
+                    onClick ? "cursor-default hover:bg-success/30 hover:text-fg" : ""
                 }`
                 : `${toneOverride ?? (emphasis ? "text-fg-muted" : "text-fg-subtle")} ${
                     onClick ? "cursor-default hover:bg-fill hover:text-fg" : ""

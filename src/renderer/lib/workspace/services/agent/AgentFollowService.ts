@@ -72,6 +72,7 @@ export const AGENT_ACTIVE_IDLE_MS = 15000;
 type AgentFollowEvents = {
     changed: AgentFollowState;
     wrote: AgentWriteTarget;
+    highlight: AgentWriteTarget;
 };
 
 const PANEL_STATE_ID = "narraleaf-studio:agent";
@@ -119,6 +120,18 @@ export class AgentFollowService extends Service<AgentFollowService> {
 
     public onWrote(handler: (target: AgentWriteTarget) => void): () => void {
         return this.events.on("wrote", handler);
+    }
+
+    /**
+     * Outline what a past write changed, now - the Agent log's row, once it has opened the tab. The
+     * workspace host draws it, the same outline follow mode draws for a write as it lands.
+     */
+    public requestHighlight(target: AgentWriteTarget): void {
+        this.events.emit("highlight", target);
+    }
+
+    public onHighlightRequested(handler: (target: AgentWriteTarget) => void): () => void {
+        return this.events.on("highlight", handler);
     }
 
     public setPaused(paused: boolean): void {
