@@ -36,7 +36,7 @@ import type { AgentMainActivity } from "@shared/agent/workspaceAccess";
 import { AGENT_TOOLS_BY_NAME } from "@shared/agent/tools";
 import { looksLikeAgentPluginToolName, type AgentPluginToolDescriptor } from "@shared/agent/pluginTools";
 import { getProjectWriteFreeze } from "@/lib/app/writeFreeze";
-import { getInterface } from "@/lib/app/bridge";
+import { getAgentBridgeInterface, getInterface } from "@/lib/app/bridge";
 import { Service } from "../Service";
 import { Services, type WorkspaceContext } from "../services";
 import type { ConsoleService, ConsoleLogLevel } from "../core/ConsoleService";
@@ -301,7 +301,7 @@ function pluginMeta(descriptor: AgentPluginToolDescriptor): AgentActivityToolMet
 function reportPluginToolsToMain(registry: PluginAgentToolRegistry): (() => void) | null {
     let report: ((tools: readonly AgentPluginToolDescriptor[]) => void) | undefined;
     try {
-        report = getInterface().agent?.reportPluginTools;
+        report = getAgentBridgeInterface().reportPluginTools;
     } catch {
         return null;
     }
