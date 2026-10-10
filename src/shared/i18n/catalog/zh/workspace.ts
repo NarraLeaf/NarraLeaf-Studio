@@ -431,12 +431,12 @@ export const workspace = {
             loadError: "无法读取该请求",
             allowWrites: {
                 message: "允许 Agent 修改项目？",
-                detail: "已连接的 Agent 将可以修改页面、场景、蓝图和资产，每次修改记为一步撤销",
+                detail: "已连接的 Agent 将可以新建、修改和删除已打开项目中的内容，大部分修改可以撤销",
                 allow: "允许",
             },
             exportSkill: {
                 title: "导出 Agent Skill",
-                existsMessage: "该位置已有“{folder}”文件夹",
+                existsMessage: "该位置已有「{folder}」文件夹",
                 existsDetail: "同名文件将被替换，文件夹中的其他文件保留",
                 replace: "替换",
             },
@@ -446,7 +446,7 @@ export const workspace = {
                 messageMany: "{client} 请求读取以下文件夹",
                 detail: "Agent 将读取其中的文件并导入到本项目，不会更改项目以外的任何内容",
                 reason: "Agent 说明的用途：{reason}",
-                settings: "已允许的文件夹可在“设置 > Agent 接入”中查看，完全访问也在此处开启",
+                settings: "已允许的文件夹对所有 Agent 持续有效，直到在「设置 ▸ Agent 接入」中移除，完全访问也在此处开启",
                 allowOne: "允许访问此文件夹",
                 allowMany: "允许访问这些文件夹",
                 deny: "拒绝",
@@ -454,7 +454,7 @@ export const workspace = {
             },
             fullAccess: {
                 message: "允许 Agent 完全访问？",
-                detail: "已连接的 Agent 将可以修改项目，并可不经询问读取任意文件夹中的文件，Studio 自身的设置文件夹仍不开放，可在 Agent 菜单或“设置 > Agent 接入”中关闭",
+                detail: "已连接的 Agent 将可以修改项目，并可不经询问读取任意文件夹中的文件（Studio 自身的文件夹、整个主文件夹和磁盘根目录除外），可在 Agent 菜单或「设置 ▸ Agent 接入」中关闭",
                 allow: "允许完全访问",
             },
         },

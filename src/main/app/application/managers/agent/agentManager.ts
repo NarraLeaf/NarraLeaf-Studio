@@ -601,8 +601,8 @@ export class AgentManager implements AgentMainToolHost {
         if (tool.write && !this.policy().writesEnabled) {
             return inMain(agentRefusal(
                 "writes_disabled",
-                `${tool.name} changes the project, and the author has not allowed agents to make changes.`,
-                "Ask the author to turn on \"Allow agents to make changes\" in Studio's Settings > Agent access. Read tools keep working meanwhile.",
+                `${tool.name} changes the project, and the author has not allowed agents to change projects.`,
+                "Ask the author to turn on \"Allow agents to change projects\" in Studio's Settings > Agent access. Read tools keep working meanwhile.",
             ));
         }
         if (tool.side === "main") {
