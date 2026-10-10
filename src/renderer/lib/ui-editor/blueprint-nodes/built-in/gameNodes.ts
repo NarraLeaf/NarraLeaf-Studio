@@ -1287,9 +1287,9 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
                 /** The same host-composed face `Get Speaker Avatar` publishes; see the note there. */
                 assetRef: { kind: "image", origin: "published" },
             },
-            // The visible half of "this character was deleted". Without it a dangling reference is
-            // indistinguishable from a character whose name is blank and whose colour is unset -
-            // both would read as empty string / default white with nothing to branch on.
+            // The visible half of "this character was deleted". Without it a dangling reference
+            // reads as an empty name and default white, with nothing to branch on - and a colour is
+            // no test, since an unnamed character in a white palette reads exactly the same.
             {
                 id: "found",
                 kind: "output",
@@ -1312,7 +1312,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             return {
                 outputValues: {
                     name: character?.name ?? "",
-                    characterColor: blueprintCharacterColorOrDefault(character?.color),
+                    characterColor: blueprintCharacterColorOrDefault(character),
                     characterAvatar: character?.avatar ?? null,
                     found: Boolean(character),
                 },

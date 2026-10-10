@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import {
+    blueprintCharacterColorOrDefault,
     blueprintSpeakerColor,
     normalizeBlueprintCharacterInfo,
     toBlueprintCharacterColor,
@@ -45,9 +46,10 @@ describe("toBlueprintCharacterColor", () => {
     });
 
     /**
-     * Null, not white. A colour pin's own fallback is the caller's decision
-     * (`blueprintCharacterColorOrDefault`), and collapsing "the author set nothing" into "the author
-     * set white" here would take that decision away from every consumer at once.
+     * Null, not white. What a colour pin paints a colourless character in is decided further out
+     * (the palette's primary, in `blueprintCharacterColorOrDefault` and `blueprintSpeakerColor`), and
+     * collapsing "the author set nothing" into "the author set white" here would make that decision
+     * impossible for every consumer at once.
      */
     it("answers null for every way there is no colour", () => {
         expect(toBlueprintCharacterColor(undefined)).toBeNull();
@@ -122,5 +124,48 @@ describe("blueprintSpeakerColor", () => {
 
         expect(blueprintSpeakerColor(alice, true)).toBeNull();
         expect(blueprintSpeakerColor(null, true)).toBeNull();
+    });
+});
+
+/**
+ * What `Get Character`'s colour pin reads. It paints a colourless character the way
+ * `Get Speaker Color` does - a nametag built on either node must not turn white for the skeleton's
+ * own uncoloured cast - while a reference that points at nobody keeps the pin's plain default.
+ */
+describe("blueprintCharacterColorOrDefault", () => {
+    beforeEach(() => {
+        setActiveBrandPalette([
+            ...BUILTIN_BRAND_COLORS.map(color => (color.id === "primary" ? { ...color, value: "#F2A65A" } : color)),
+            { id: "cast.alice", value: "#123456" },
+        ]);
+    });
+
+    afterEach(() => {
+        setActiveBrandPalette(BUILTIN_BRAND_COLORS);
+    });
+
+    it("reads a character's own colour", () => {
+        const alice = toBlueprintCharacterInfo({ id: "c1", name: "Alice", color: "nlbrand:cast.alice" });
+
+        expect(blueprintCharacterColorOrDefault(alice)).toEqual({ r: 0x12, g: 0x34, b: 0x56, a: 1 });
+    });
+
+    it("paints a character with no colour in the palette's primary, the same colour as a speaker", () => {
+        const plain = toBlueprintCharacterInfo({ id: "c2", name: "Bob" });
+
+        expect(blueprintCharacterColorOrDefault(plain)).toEqual({ r: 0xf2, g: 0xa6, b: 0x5a, a: 1 });
+        expect(blueprintCharacterColorOrDefault(plain)).toEqual(blueprintSpeakerColor(plain, false));
+    });
+
+    it("keeps opaque white for a character that is not there, which `Found` tells apart", () => {
+        expect(blueprintCharacterColorOrDefault(null)).toEqual({ r: 255, g: 255, b: 255, a: 1 });
+        expect(blueprintCharacterColorOrDefault(undefined)).toEqual({ r: 255, g: 255, b: 255, a: 1 });
+    });
+
+    it("falls to opaque white when the palette has no primary", () => {
+        setActiveBrandPalette(BUILTIN_BRAND_COLORS.filter(color => color.id !== "primary"));
+        const plain = toBlueprintCharacterInfo({ id: "c2", name: "Bob" });
+
+        expect(blueprintCharacterColorOrDefault(plain)).toEqual({ r: 255, g: 255, b: 255, a: 1 });
     });
 });

@@ -1,4 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
+import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type {
     AutoSaveEntry,
     SaveRecordLine,
@@ -276,6 +278,7 @@ import {
     type BlueprintImageAsset,
 } from "@shared/types/blueprint/valueTypes";
 import {
+    blueprintSpeakerColor,
     findBlueprintCharacterInfo,
     toBlueprintCharacterInfo,
     type BlueprintCharacterInfo,
@@ -8333,11 +8336,39 @@ describe("character data nodes", () => {
         expect(resolveCharacterPin("found", {}, [ALICE])).toBe(false);
     });
 
-    it("separates a character with no colour from one that is missing", () => {
-        const params = { characterId: "char-mute" };
-        expect(resolveCharacterPin("found", params, [MUTE])).toBe(true);
-        expect(resolveCharacterPin("name", params, [MUTE])).toBe("Mute");
-        expect(resolveCharacterPin("characterColor", params, [MUTE])).toEqual({ r: 255, g: 255, b: 255, a: 1 });
+    describe("a character with no colour of their own", () => {
+        afterEach(() => {
+            setActiveBrandPalette(BUILTIN_BRAND_COLORS);
+        });
+
+        it("separates a character with no colour from one that is missing", () => {
+            const params = { characterId: "char-mute" };
+            expect(resolveCharacterPin("found", params, [MUTE])).toBe(true);
+            expect(resolveCharacterPin("name", params, [MUTE])).toBe("Mute");
+        });
+
+        it("paints them in the palette's primary, as Get Speaker Color does, as the palette stands now", () => {
+            const params = { characterId: "char-mute" };
+            setActiveBrandPalette(
+                BUILTIN_BRAND_COLORS.map(color => (color.id === "primary" ? { ...color, value: "#F2A65A" } : color)),
+            );
+            expect(resolveCharacterPin("characterColor", params, [MUTE])).toEqual({ r: 0xf2, g: 0xa6, b: 0x5a, a: 1 });
+            // The same answer the dialog bridge gives for them as a speaker - one helper decides both.
+            expect(resolveCharacterPin("characterColor", params, [MUTE])).toEqual(blueprintSpeakerColor(MUTE, false));
+            // A deleted reference is not painted in the theme: `found` is false and the colour stays white.
+            expect(resolveCharacterPin("characterColor", params, [])).toEqual({ r: 255, g: 255, b: 255, a: 1 });
+
+            setActiveBrandPalette(
+                BUILTIN_BRAND_COLORS.map(color => (color.id === "primary" ? { ...color, value: "#123456" } : color)),
+            );
+            expect(resolveCharacterPin("characterColor", params, [MUTE])).toEqual({ r: 0x12, g: 0x34, b: 0x56, a: 1 });
+        });
+
+        it("reads opaque white when the palette has no primary to paint them in", () => {
+            setActiveBrandPalette(BUILTIN_BRAND_COLORS.filter(color => color.id !== "primary"));
+            expect(resolveCharacterPin("characterColor", { characterId: "char-mute" }, [MUTE]))
+                .toEqual({ r: 255, g: 255, b: 255, a: 1 });
+        });
     });
 
     it("registers both nodes in the Game category and offers them to value graphs", () => {
