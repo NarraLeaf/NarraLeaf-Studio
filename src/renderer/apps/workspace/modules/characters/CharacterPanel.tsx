@@ -783,7 +783,7 @@ function CharacterRow({ item, thumbnailUrl, isFocused, onSelect, onOpen, onMenu 
     onOpen: (character: Character) => void;
     onMenu: (event: React.MouseEvent, target: MenuTarget) => void;
 }) {
-    const { t } = useTranslation();
+    const { t, formatList } = useTranslation();
     const claimedBy = useCharacterClaim(item.id);
 
     return (
@@ -813,7 +813,7 @@ function CharacterRow({ item, thumbnailUrl, isFocused, onSelect, onOpen, onMenu 
                     {item.name}
                 </div>
                 {item.nicknames.length > 0 && (
-                    <div className="text-xs text-fg-subtle truncate">{item.nicknames.join(", ")}</div>
+                    <div className="text-xs text-fg-subtle truncate">{formatList(item.nicknames, { style: "narrow" })}</div>
                 )}
             </div>
             {/* Before the actions button rather than after it, so the monogram keeps its place while
