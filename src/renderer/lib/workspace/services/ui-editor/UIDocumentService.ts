@@ -989,6 +989,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     /** Where edits go instead of into the document, when something else owns them. See {@link UIOpSink}. */
     private opSink: UIOpSink | null = null;
     private historySuppressionDepth = 0;
+    /** How deep inside {@link runDetachedDraft} this is: edits then land on a private copy and nowhere else. */
+    private draftDepth = 0;
     private readonly contentRevisions = new UIDocumentContentRevisions();
     /** What the v13 step changed that an author can see, until the workspace has said so. */
     private textSourceMigrationChanges: UITextMigrationChange[] = [];
@@ -1232,6 +1234,68 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             after: historyService.captureSnapshot(surfaceId),
             label: options.label,
         });
+    }
+
+    /**
+     * {@link runSurfaceHistoryTransaction}, all or nothing: when `action` throws, `surfaceId`'s slice
+     * of both documents - its elements and its widgets' blueprints - is put back exactly as the
+     * editor's own undo would put it, nothing is recorded, and the error is rethrown.
+     *
+     * Through the history snapshot rather than a copy of the interface document, because the edits
+     * inside have already run the blueprint reconcile: a deleted widget's graph is gone, and putting
+     * the element back alone would have the reconcile give it a fresh, empty graph under the same id.
+     */
+    public runAtomicSurfaceTransaction(surfaceId: string, action: () => void, options: { label?: HistoryLabel } = {}): void {
+        const historyService = this.getHistoryService();
+        if (!historyService) {
+            const before = cloneUIHistoryDocument(this.getDocument());
+            try {
+                action();
+            } catch (error) {
+                this.restoreDocumentFromHistory(before);
+                throw error;
+            }
+            return;
+        }
+        const beforeHistory = historyService.captureSnapshot(surfaceId);
+        this.historySuppressionDepth += 1;
+        try {
+            action();
+        } catch (error) {
+            historyService.restoreSnapshot(surfaceId, beforeHistory);
+            throw error;
+        } finally {
+            this.historySuppressionDepth -= 1;
+        }
+        historyService.record({
+            surfaceId,
+            before: beforeHistory,
+            after: historyService.captureSnapshot(surfaceId),
+            label: options.label,
+        });
+    }
+
+    /**
+     * Run this service's own edits against a private copy of the document, then throw the copy away.
+     *
+     * What a dry run needs: every check an edit makes runs exactly as it would for real, against the
+     * document as the earlier edits in the same run left it, and nothing outside this service hears of
+     * any of it - no `documentChanged`, no auto-save, no undo step, no live-session message and, above
+     * all, no blueprint reconcile. The reconcile is not undone by putting the document back: it deletes
+     * the graph of every widget the copy lost, and then gives the restored widget an empty one.
+     *
+     * The document's revision does not move, so nothing that reads it should be asked inside.
+     */
+    public runDetachedDraft<T>(action: () => T): T {
+        const original = this.getDocument();
+        this.document = cloneUIHistoryDocument(original);
+        this.draftDepth += 1;
+        try {
+            return action();
+        } finally {
+            this.draftDepth -= 1;
+            this.document = original;
+        }
     }
 
     /**
@@ -2440,6 +2504,11 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     }
 
     private mutateDocument(mutator: (document: UIDocument) => void, options: UIDocumentMutationOptions = {}): void {
+        if (this.draftDepth > 0) {
+            // A private copy (see {@link runDetachedDraft}): the edit lands there and nowhere else.
+            mutator(this.getDocument());
+            return;
+        }
         if (this.opSink && !options.live) {
             // Run the gesture against a copy and state what it did to the document, rather than
             // doing it. Nothing here reads the gesture: the comparison *is* the statement, which is

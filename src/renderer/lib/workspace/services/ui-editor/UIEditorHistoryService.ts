@@ -494,6 +494,18 @@ export class UIEditorHistoryService
         });
     }
 
+    /**
+     * Put `surfaceId`'s slice of the two documents back as `snapshot` holds it - the path undo takes,
+     * blueprints included - and record nothing.
+     *
+     * For an edit that has to be all or nothing: a batch that fails part way is put back to the
+     * snapshot taken before it, and a restore of the interface document alone would leave every widget
+     * the batch deleted with a fresh, empty blueprint in place of its own.
+     */
+    public restoreSnapshot(surfaceId: string, snapshot: UIEditorHistorySnapshot): void {
+        this.history().withoutRecording(() => this.restore(surfaceId, snapshot));
+    }
+
     public canUndo(surfaceId: string): boolean {
         return this.history().canUndo(uiEditorHistoryScope(surfaceId));
     }
