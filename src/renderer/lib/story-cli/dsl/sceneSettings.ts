@@ -34,6 +34,7 @@
 import type { StoryScene, StorySceneBgm } from "@shared/types/story";
 import type { StoryCommandContext, StoryCommandNamedRef } from "@/apps/workspace/modules/story/scene-editor/storyCommandValues";
 import { errorAt, type StoryFileDiagnostic } from "./ast";
+import { sameValue } from "./equal";
 
 export const DIRECTIVE_BACKGROUND = "#background";
 export const DIRECTIVE_MUSIC = "#music";
@@ -234,7 +235,9 @@ function withBackground(scene: StoryScene, assetId: string | null): StoryScene {
 }
 
 function withMusic(scene: StoryScene, bgm: StorySceneBgm | null): StoryScene {
-    if (JSON.stringify(scene.bgm ?? null) === JSON.stringify(bgm)) {
+    // By value: the record a file reads back has its keys in the reader's order, the stored one in
+    // whatever order the scene panel spread them, and an unedited line is not a change.
+    if (sameValue(scene.bgm ?? null, bgm)) {
         return scene;
     }
     const { bgm: _cleared, ...rest } = scene;

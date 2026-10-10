@@ -108,6 +108,28 @@ describe("#background and #music", () => {
         expect(settingsOf("#music bgm-quiet fade=-1").diagnostics[0].message).toMatch(/fade= takes milliseconds/);
     });
 
+    it("reads an unedited #music back as the stored record whatever order the scene panel spread its keys in", () => {
+        // The panel builds the record with `{ ...bgm, ...next }`, so keys land in the order they were
+        // edited, and a cleared track is `audioTrackId: undefined` in memory.
+        const panelOrder: StoryScene = {
+            ...bare,
+            bgm: { assetId: "aud-quiet", fadeMs: 1200, loop: true, volume: 0.7, audioTrackId: undefined },
+        };
+        const back = settingsOf(printSceneSettings(panelOrder, lookups).join("\n"), panelOrder);
+        expect(back.diagnostics).toEqual([]);
+        expect(back.scene).toBe(panelOrder);
+
+        const readerOrder: StoryScene = { ...bare, bgm: { assetId: "aud-quiet", volume: 0.7, loop: true, fadeMs: 1200 } };
+        const summary = summariseApply(panelOrder, readerOrder, () => "", {
+            before: describeSceneSettings(panelOrder, lookups),
+            after: describeSceneSettings(readerOrder, lookups),
+            stated: { background: true, music: true },
+        });
+        expect(summary.settingsChanged).toEqual([]);
+        expect(settingsOf("#music bgm-quiet volume=0.7 loop=true fade=1500", panelOrder).scene.bgm)
+            .toEqual({ assetId: "aud-quiet", volume: 0.7, loop: true, fadeMs: 1500 });
+    });
+
     it("keeps an id nothing answers to any more when the file leaves it as printed", () => {
         const scene: StoryScene = { ...bare, defaultBackgroundAssetId: "deleted-asset" };
         const printed = printSceneSettings(scene, lookups);
@@ -227,6 +249,18 @@ describe("story show / apply on the command line", () => {
         expect(applied.out).toContain("No row changed.");
         expect(applied.out).not.toContain("Scene setting:");
         expect(stored().bgm).toEqual({ assetId: "49b1db61-3d5e-4453-aa78-531a78e38de5", fadeMs: 2009.9999999999998 });
+    });
+
+    it("re-applies an unedited file without reporting a music change when the stored keys are in panel order", async () => {
+        const bgm = { assetId: "49b1db61-3d5e-4453-aa78-531a78e38de5", fadeMs: 1200, loop: false, volume: 0.5 };
+        storeMusic(bgm);
+        const file = path.join(projectDir, "clubroom.story");
+        await cli("show", "--project", projectDir, "--scene", "The clubroom", "--out", file);
+
+        const applied = await cli("apply", file, "--project", projectDir, "--write");
+        expect(applied.code, applied.out + applied.err).toBe(0);
+        expect(applied.out).not.toContain("Scene setting:");
+        expect(Object.keys(stored().bgm ?? {})).toEqual(Object.keys(bgm));
     });
 
     it("clears a reused scene's opening background with #background none, and lists it under targets before", async () => {
