@@ -7,19 +7,21 @@ import type { AgentClientConfigKind, AgentSettingsSnapshot } from "./settings";
  *
  * Everything in `./settings.ts` that the Settings window sees - the token above all, and the address
  * that pairs with it - stays there. A workspace shows project content and runs plugin code, so it is
- * given exactly three booleans and a set of actions whose results carry no secret: copying a client
+ * given exactly four booleans and a set of actions whose results carry no secret: copying a client
  * configuration is done by main, straight onto the system clipboard, and the answer is only that it
  * happened.
  *
  * Comments in English per project convention.
  */
 
-/** What the Agent menu shows of agent access. Never more than these three fields. */
+/** What the Agent menu shows of agent access. Never more than these four fields. */
 export type AgentQuickState = {
     /** The author switched the endpoint on. */
     enabled: boolean;
     /** Write tools are let through. */
     allowWrites: boolean;
+    /** Full access is on: writes allowed and every folder but Studio's own readable without asking. */
+    fullAccess: boolean;
     /** The endpoint is listening right now (it can be enabled and have failed to start). */
     running: boolean;
 };
@@ -28,6 +30,8 @@ export type AgentQuickState = {
 export type AgentQuickTogglePatch = {
     enabled?: boolean;
     allowWrites?: boolean;
+    /** Turning it on is confirmed in the agent access window, as turning writes on is. */
+    fullAccess?: boolean;
 };
 
 /** The client configurations the Agent menu can copy; the same kinds the Settings panel offers. */
@@ -44,10 +48,11 @@ export const AGENT_SKILL_EXPORT_FOLDER = "NarraLeaf-Skills";
  * Built field by field rather than by deleting the secret ones, so that a field added to the
  * snapshot later is withheld from the workspace until someone decides otherwise.
  */
-export function toAgentQuickState(snapshot: Pick<AgentSettingsSnapshot, "enabled" | "allowWrites" | "running">): AgentQuickState {
+export function toAgentQuickState(snapshot: Pick<AgentSettingsSnapshot, "enabled" | "allowWrites" | "fullAccess" | "running">): AgentQuickState {
     return {
         enabled: snapshot.enabled === true,
         allowWrites: snapshot.allowWrites === true,
+        fullAccess: snapshot.fullAccess === true,
         running: snapshot.running === true,
     };
 }

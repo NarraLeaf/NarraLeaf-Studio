@@ -387,6 +387,30 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
     }
 
     /**
+     * Write several takes of one voice language exactly as given - an agent's batch link, and the
+     * undo of one. A null take unlinks its line.
+     *
+     * One operation for the lot, as an import and {@link removeUnits} are, so a session carries it as
+     * one gesture and the history holding the batch takes it back in one step. Each take is stored as
+     * it arrives, hash and sign-off included: the caller has already decided what the line's take is
+     * (`updateUnit`'s re-stamping rules are for a single gesture in the table). A null for a line with
+     * no take is skipped; nothing at all is a no-op.
+     */
+    public setUnits(locale: string, entries: readonly { unitId: string; unit: VoiceUnit | null }[]): void {
+        const document = this.requireLoadedDocument(locale);
+        const changed = entries
+            .filter(entry => entry.unitId && (entry.unit !== null || document.units[entry.unitId]))
+            .map(entry => ({ unitId: entry.unitId, unit: entry.unit ? { ...entry.unit } : null }));
+        if (changed.length === 0) {
+            return;
+        }
+        if (this.opSink?.handle({ op: "set-takes", locale, units: changed })) {
+            return;
+        }
+        this.writeUnits(locale, document, changed);
+    }
+
+    /**
      * File takes under unit ids this project has just minted - what a line carries with it when a
      * copy or a paste renames it (see `storyVoiceTransfer`).
      *

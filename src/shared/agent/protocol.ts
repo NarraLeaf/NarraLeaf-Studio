@@ -127,10 +127,57 @@ export type AgentSessionPolicy = {
     /** Directories `assets_import` may read from (absolute, normalised). The project directory is always allowed. */
     allowedImportRoots: string[];
     /**
+     * The author turned on full access: `writesEnabled` is already true because of it, and a path
+     * outside the allowed roots is readable once main grants its folder - which it does without
+     * asking, except for Studio's own folders, the home folder and a file-system root. Optional so a
+     * policy built before the switch existed reads as off.
+     */
+    fullAccess?: boolean;
+    /**
      * Plugins whose agent tools the author switched off in Settings > Agent access. Main already
      * refuses their calls; the workspace refuses them again, so the list holds on both hops.
      */
     blockedPluginIds?: string[];
+};
+
+/**
+ * Workspace → main: an agent call in flight in this window needs to read files outside the project
+ * and the allowed folders. Main asks the author in Studio's agent access window (or, under full access, grants
+ * at once) and answers which folders the window may now read.
+ *
+ * Only `callId` and the paths cross: the client's name, the tool and how long the call may still
+ * take are read from main's own record of the call it sent, so a plugin in the workspace cannot
+ * put words in the author's dialog or ask outside a real agent call.
+ */
+export type AgentFolderAccessRequest = {
+    /** The `callId` of the {@link AgentCallRequest} being carried out. */
+    callId: string;
+    /** Absolute paths of the files (or folders) the call wants to read. */
+    paths: string[];
+};
+
+/** Why a folder was not even put to the author. */
+export type AgentFolderRefusalReason =
+    /** A file-system root, or a folder holding the home folder (`/`, `C:\`, `/Users`). */
+    | "root"
+    /** The home folder itself. */
+    | "home"
+    /** Studio's own folders, or a folder holding one: its settings (with the agent token) and the app. */
+    | "studio"
+    /** More folders than one dialog asks about; ask again for these. */
+    | "tooMany"
+    /** Not an absolute path. */
+    | "relative";
+
+export type AgentFolderAccessAnswer = {
+    /** Folders the window may read now - newly allowed, or allowed already. */
+    granted: string[];
+    /** Folders the author declined. */
+    denied: string[];
+    /** Folders the author has not answered yet; the dialog is still open. Call again once they do. */
+    pending: string[];
+    /** Folders that were never asked about, and why. */
+    refused: { folder: string; reason: AgentFolderRefusalReason }[];
 };
 
 /** The workspace's own state, reported to main for `agent_status` and the status bar. */

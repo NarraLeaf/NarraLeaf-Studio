@@ -20,7 +20,7 @@ const AGENT_MENU_ORDER = 25;
 const NO_SUBSCRIPTION = () => () => {};
 
 /**
- * Agent access as main reports it: whether it is on, writes are allowed and the endpoint listens.
+ * Agent access as main reports it: whether it is on, writes or full access are allowed and the endpoint listens.
  * Null until main answers. Kept current by main's broadcast, which follows every change - from this
  * menu, another window's menu, the Settings window, or the endpoint starting or failing.
  */
@@ -137,6 +137,7 @@ export function AgentMenu() {
                 openLog: () => context?.services.get<UIService>(Services.UI).panels.show(AGENT_LOG_PANEL_ID),
                 toggleEnabled: () => toggle({ enabled: !(quick?.enabled ?? false) }),
                 toggleAllowWrites: () => toggle({ allowWrites: !(quick?.allowWrites ?? false) }),
+                toggleFullAccess: () => toggle({ fullAccess: !(quick?.fullAccess ?? false) }),
                 copyConfig,
                 exportSkill,
                 openSettings: () => {

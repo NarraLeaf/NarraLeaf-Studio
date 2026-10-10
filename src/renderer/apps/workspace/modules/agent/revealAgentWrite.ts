@@ -9,6 +9,12 @@ import { createStorySceneEditorTab } from "../story/scene-editor/openStorySceneE
 import { getStorySceneEditorTabId } from "../story/scene-editor/storySceneEditorTabId";
 import { createBlueprintEntryEditorTab, showBlueprintEntryEditorTab } from "../blueprint-lite/openBlueprintEditorTab";
 import { blueprintOwnerOpenTarget } from "../search/blueprintJumpTarget";
+import type { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
+import type { VoiceService } from "@/lib/workspace/services/voice/VoiceService";
+import { createLocalizationEditorTab } from "../localization/openLocalizationEditorTab";
+import { getLocalizationEditorTabId, nextTableRevealToken } from "../localization/localizationEditorTabId";
+import { createVoiceEditorTab } from "../voice/openVoiceEditorTab";
+import { getVoiceEditorTabId } from "../voice/voiceEditorTabId";
 
 /**
  * Taking the author to what an agent changed: the editor tab a write landed in, and where on screen
@@ -88,6 +94,31 @@ export function revealAgentWrite(context: WorkspaceContext, target: AgentWriteTa
             }
             const tab = createBlueprintEntryEditorTab(blueprintOwnerOpenTarget(target.blueprintId, owner, context));
             showBlueprintEntryEditorTab(tab, definition => show(definition.id, () => editor.open(definition, undefined, { activate })));
+            return true;
+        }
+        case "translation":
+        case "voice": {
+            // A language's table, landed on the first unit the write changed. Unlike a page, the
+            // table is re-opened even when it is open: the row is named by the payload's reveal, the
+            // same deep link a search hit sends, and the table's own view (source, filter) survives
+            // it. Not while the author is typing in it - their caret is worth more than the scroll.
+            const entry = target.kind === "translation"
+                ? context.services.get<LocalizationService>(Services.Localization).getConfiguration().locales.find(locale => locale.code === target.locale)
+                : context.services.get<VoiceService>(Services.Voice).getConfiguration().voicedLocales.find(locale => locale.code === target.locale);
+            if (!entry) {
+                return false;
+            }
+            const tabId = target.kind === "translation" ? getLocalizationEditorTabId(target.locale) : getVoiceEditorTabId(target.locale);
+            if (!activate && editor.isOpen(tabId)) {
+                return true;
+            }
+            const reveal = { unitId: target.unitId, ...(target.storyId ? { storyId: target.storyId } : {}), token: nextTableRevealToken() };
+            const title = entry.displayName || entry.code;
+            editor.open(
+                target.kind === "translation" ? createLocalizationEditorTab(target.locale, title, reveal) : createVoiceEditorTab(target.locale, title, reveal),
+                undefined,
+                { activate },
+            );
             return true;
         }
     }

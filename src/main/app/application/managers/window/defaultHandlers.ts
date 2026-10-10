@@ -53,7 +53,7 @@ import {
     WorkspaceExportProjectPackageHandler,
     WorkspaceImportProjectPackageHandler,
 } from "./handlers/projectPackageAction";
-import { PsdBakeHandler, PsdOpenHandler } from "./handlers/psdImport";
+import { PsdBakeHandler, PsdOpenHandler, PsdReadHandler } from "./handlers/psdImport";
 import {
     MediaConvertCancelHandler,
     MediaConvertGetStatusHandler,
@@ -208,6 +208,7 @@ import {
     AgentQuickStateHandler,
     AgentReportPluginToolsHandler,
     AgentQuickToggleHandler,
+    AgentRequestFolderAccessHandler,
     AgentRevealExportedSkillHandler,
 } from "./handlers/agentQuickAction";
 
@@ -294,6 +295,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new WorkspaceIsProjectOpenHandler(),
         new WorkspaceSelectFolderHandler(),
         new PsdOpenHandler(),
+        new PsdReadHandler(),
         new PsdBakeHandler(),
         new MediaProbeHandler(),
         new FontCoverageProbeHandler(),
@@ -326,6 +328,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new AgentCopyConfigHandler(),
         new AgentExportSkillHandler(),
         new AgentRevealExportedSkillHandler(),
+        new AgentRequestFolderAccessHandler(),
         new WorkspaceLiveIntentTakenHandler(),
         new AppClaimExperimentalNoticeHandler(),
         new WorkspaceOpenProjectFolderHandler(),

@@ -7,6 +7,7 @@ import {
     AgentExportSkillHandler,
     AgentQuickStateHandler,
     AgentQuickToggleHandler,
+    AgentRequestFolderAccessHandler,
     AgentRevealExportedSkillHandler,
 } from "./agentQuickAction";
 
@@ -26,6 +27,7 @@ const TOKEN = "t".repeat(48);
 const SNAPSHOT: AgentSettingsSnapshot = {
     enabled: true,
     allowWrites: false,
+    fullAccess: false,
     port: 54080,
     token: TOKEN,
     allowedImportRoots: ["/Users/author/Pictures"],
@@ -43,6 +45,7 @@ function makeWindow(windowType: WindowAppType = WindowAppType.Workspace) {
         clientConfig: vi.fn(async () => `claude mcp add --header "Authorization: Bearer ${TOKEN}"`),
         exportSkill: vi.fn(async () => ({ canceled: false as const, path: "/Users/author/Desktop/NarraLeaf-Skills" })),
         revealExportedSkill: vi.fn(() => true),
+        requestFolderAccessForCall: vi.fn(async () => ({ granted: ["/Users/author/kit"], denied: [], pending: [], refused: [] })),
     };
     const window = {
         getWindowType: () => windowType,
@@ -76,18 +79,21 @@ beforeEach(() => {
 });
 
 describe("the Agent menu's narrow handlers", () => {
-    it("answer the state as three booleans and nothing else", async () => {
+    it("answer the state as four booleans and nothing else", async () => {
         const { window } = makeWindow();
         const result = await new AgentQuickStateHandler().handle(window);
-        expect(result).toEqual({ success: true, data: { enabled: true, allowWrites: false, running: true } });
+        expect(result).toEqual({ success: true, data: { enabled: true, allowWrites: false, fullAccess: false, running: true } });
         expectNoSecret(result);
     });
 
-    it("pass only the two switches to the manager and project its answer", async () => {
+    it("pass only the three switches to the manager and project its answer", async () => {
         const { window, manager } = makeWindow();
-        const result = await new AgentQuickToggleHandler().handle(window, { allowWrites: true, port: 1, removeImportRoot: "/" } as never);
+        const result = await new AgentQuickToggleHandler().handle(window, { allowWrites: true, fullAccess: "yes", port: 1, removeImportRoot: "/" } as never);
         expect(manager.quickToggle).toHaveBeenCalledWith(window, { allowWrites: true });
-        expect(result).toEqual({ success: true, data: { enabled: true, allowWrites: true, running: true } });
+        expect(result).toEqual({ success: true, data: { enabled: true, allowWrites: true, fullAccess: false, running: true } });
+        expectNoSecret(result);
+        await new AgentQuickToggleHandler().handle(window, { fullAccess: true });
+        expect(manager.quickToggle).toHaveBeenLastCalledWith(window, { fullAccess: true });
         expectNoSecret(result);
     });
 
@@ -128,5 +134,17 @@ describe("the Agent menu's narrow handlers", () => {
             expect(manager.exportSkill).not.toHaveBeenCalled();
         }
         expect(clipboardWrites).toHaveLength(0);
+    });
+
+    it("pass a folder request on with only the call id and the paths, from a workspace only", async () => {
+        const { window, manager } = makeWindow();
+        const result = await new AgentRequestFolderAccessHandler().handle(window, { callId: "call-1", paths: ["/Users/author/kit/a.png"], clientName: "spoofed" } as never);
+        expect(manager.requestFolderAccessForCall).toHaveBeenCalledWith(window, { callId: "call-1", paths: ["/Users/author/kit/a.png"] });
+        expect(result).toEqual({ success: true, data: { granted: ["/Users/author/kit"], denied: [], pending: [], refused: [] } });
+        for (const windowType of [WindowAppType.Settings, WindowAppType.DevMode]) {
+            const other = makeWindow(windowType);
+            expect((await new AgentRequestFolderAccessHandler().handle(other.window, { callId: "call-1", paths: [] })).success).toBe(false);
+            expect(other.manager.requestFolderAccessForCall).not.toHaveBeenCalled();
+        }
     });
 });

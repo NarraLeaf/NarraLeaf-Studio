@@ -24,7 +24,10 @@ NarraLeaf-Skills/
 1. Open NarraLeaf Studio.
 2. **Settings -> Agent access** (also in the menu bar's *Agent* menu, *智能体* in Chinese Studio): switch on agent access.
 3. Switch on **Allow agents to make changes** when you want the agent to edit (it can read without).
-4. Under **Folders agents may import from**, add the folder that holds your art and audio.
+4. Optional: under **Folders agents may import from**, add the folder that holds your art and audio.
+   You can skip this - when the agent needs a folder outside the project, Studio asks you in a dialog
+   and adds it to the list when you allow it. **Full access** lets the agent change projects and read
+   any folder without asking (Studio's own folders stay closed); leave it off unless you want that.
 5. **Copy configuration** gives you the address (`http://127.0.0.1:<PORT>/mcp`, port 54080 unless you
    changed it) and the access token, already filled into the settings for the agent you pick.
 
@@ -128,8 +131,8 @@ itself:
 - the **`make_game` prompt** - in clients that show MCP prompts (often as a slash command such as
   `/make_game`, or `/mcp__narraleaf__make_game` in Claude Code), it starts the whole workflow;
 - the **`agent_guide` tool** - the agent can call it for any chapter (`workflow`, `story-format`,
-  `ui-format`, `blueprint-format`, `ui-design`, `script-adaptation`, `verify-and-ship`,
-  `troubleshooting`);
+  `ui-format`, `blueprint-format`, `ui-design`, `script-adaptation`, `layered-sprites`, `verify-and-ship`,
+  `localization-and-voice`, `troubleshooting`);
 - the same chapters as MCP resources at `narraleaf://guide/<chapter>`.
 
 So with any MCP client, this first message works:
@@ -149,11 +152,19 @@ Skeleton template, import your assets (making labelled placeholders for anything
 characters and variables, write the story scene by scene, restyle the interface, check and playtest
 every route, and build the game. You watch it happen in Studio and can step in at any point.
 
+It can also translate a finished game into another language, scene by scene, and wire a folder of
+voice recordings to the lines they belong to:
+
+> Translate the game into English. Then link the Japanese voice recordings in
+> `~/Documents/winter-story/voice-ja` and tell me which lines still have no recording.
+
 ## Troubleshooting the connection
 
 - **The agent has no NarraLeaf tools.** Studio is closed, agent access is off, or the port/token is
   wrong. Re-copy the configuration from Studio and restart the agent.
 - **"writes_disabled".** Switch on *Allow agents to make changes*.
-- **"path_not_allowed" when importing.** Add the folder under *Folders agents may import from*.
+- **"path_not_allowed" when importing.** You declined Studio's folder dialog, or have not answered it
+  yet (look for it on the Studio window). Allow the folder there, or add it under *Folders agents may
+  import from*.
 - **The agent edits the wrong project.** With several projects open, the agent must name the project
   folder; or close the others.

@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import path from "path";
-import { dialog, shell } from "electron";
+import { shell } from "electron";
 import { unpatchedFs, unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { WindowAppType } from "@shared/types/window";
@@ -15,6 +15,8 @@ import {
     agentText,
     type AgentCallRequest,
     type AgentCallResult,
+    type AgentFolderAccessAnswer,
+    type AgentFolderAccessRequest,
     type AgentSessionPolicy,
     type AgentWorkspaceState,
 } from "@shared/agent/protocol";
@@ -63,6 +65,8 @@ import { writeAgentProject, type AgentProjectCreateInput } from "./agentProjectC
 import { guideFileCandidates, pluginGuideFile, stripFrontMatter, AGENT_PLUGIN_GUIDE_MAX_BYTES } from "./agentGuide";
 import { agentCallTimeoutMs } from "./agentCallTimeout";
 import { activityProjectPath, copySkillTree, isNonEmptyDirectory, mainActivity } from "./agentWorkspaceAccess";
+import { AgentFolderAccess, type AgentFolderPrompt, type AgentFolderRules } from "./agentFolderAccess";
+import type { AgentAccessPromptProps } from "@shared/types/agentAccess";
 
 /**
  * Agent access, as the rest of Studio sees it: the author's switches, the MCP endpoint they control,
@@ -95,6 +99,19 @@ export class AgentManager implements AgentMainToolHost {
     private readonly pluginToolWindowsWatched = new WeakSet<AppWindow>();
     /** What `tools/list` last answered, as a comparable string, so a report that changes nothing notifies nobody. */
     private advertisedPluginTools = "";
+    /** Calls sent to a workspace and not answered yet, by call id: what a folder request is checked against. */
+    private readonly inFlight = new Map<string, InFlightCall>();
+    private readonly folderAccess = new AgentFolderAccess<AppWindow>({
+        rules: () => this.folderRules(),
+        allowedFolders: window => this.allowedFolders(window),
+        fullAccess: () => this.store.current.fullAccess,
+        isClosed: window => window.isClosed(),
+        ask: (window, folders, prompt) => this.askFolderAccess(window, folders, prompt),
+        remember: folders => this.rememberImportRoots(folders),
+        grant: (window, folders) => this.grantFolders(window, folders),
+        now: () => Date.now(),
+        warn: message => this.app.logger.warn(`[Agent] ${message}`),
+    });
 
     constructor(private readonly app: App) {
         this.store = new AgentSettingsStore(app.getUserDataDir());
@@ -128,6 +145,7 @@ export class AgentManager implements AgentMainToolHost {
         return {
             enabled: settings.enabled,
             allowWrites: settings.allowWrites,
+            fullAccess: settings.fullAccess,
             port: settings.port,
             token: settings.token,
             allowedImportRoots: settings.allowedImportRoots.map(root => root.path),
@@ -164,11 +182,19 @@ export class AgentManager implements AgentMainToolHost {
         }
     }
 
-    public async updateSettings(patch: AgentSettingsPatch): Promise<AgentSettingsSnapshot> {
+    /**
+     * Apply a change from the Settings window or the Agent menu. `confirmWith` is the window asking:
+     * turning full access on is put to the author in the agent access window over it first, and the
+     * rest of the patch still applies when they decline.
+     */
+    public async updateSettings(patch: AgentSettingsPatch, confirmWith?: AppWindow): Promise<AgentSettingsSnapshot> {
         if (patch.port !== undefined && !isUsableAgentPort(patch.port)) {
             throw new Error(`The port must be a whole number from ${AGENT_PORT_MIN} to ${AGENT_PORT_MAX}.`);
         }
         const before = await this.store.load();
+        if (patch.fullAccess === true && !before.fullAccess && confirmWith && !(await this.confirmFullAccess(confirmWith))) {
+            patch = { ...patch, fullAccess: undefined };
+        }
         const wasEnabled = before.enabled;
         const previousPort = before.port;
         const after = await this.store.update(draft => {
@@ -177,6 +203,9 @@ export class AgentManager implements AgentMainToolHost {
             }
             if (typeof patch.allowWrites === "boolean") {
                 draft.allowWrites = patch.allowWrites;
+            }
+            if (typeof patch.fullAccess === "boolean") {
+                draft.fullAccess = patch.fullAccess;
             }
             if (patch.port !== undefined) {
                 draft.port = patch.port;
@@ -199,6 +228,9 @@ export class AgentManager implements AgentMainToolHost {
         }
         if (after.allowWrites !== before.allowWrites) {
             this.app.logger.info(`[Agent] Write access ${after.allowWrites ? "allowed" : "withdrawn"}`);
+        }
+        if (after.fullAccess !== before.fullAccess) {
+            this.app.logger.info(`[Agent] Full access ${after.fullAccess ? "allowed" : "withdrawn"}`);
         }
         if (after.enabled && (!wasEnabled || after.port !== previousPort || !this.server)) {
             await this.serialize(async () => {
@@ -245,9 +277,12 @@ export class AgentManager implements AgentMainToolHost {
     public policy(): AgentSessionPolicy {
         const settings = this.store.current;
         return {
-            writesEnabled: settings.allowWrites,
+            // Full access lets writes through without rewriting the author's own write switch, so
+            // switching it off again leaves that switch as they set it.
+            writesEnabled: settings.allowWrites || settings.fullAccess,
             allowedImportRoots: settings.allowedImportRoots.map(root => path.resolve(root.path)),
             blockedPluginIds: [...settings.blockedPluginTools],
+            fullAccess: settings.fullAccess,
         };
     }
 
@@ -353,9 +388,9 @@ export class AgentManager implements AgentMainToolHost {
     /**
      * Flip agent access or write access on behalf of a workspace's menu.
      *
-     * Turning write access ON is confirmed in a native dialog parented to the asking window. A
+     * Turning write access ON is confirmed in the agent access window over the asking one. A
      * workspace runs plugin code, and a plugin must not be able to grant every connected agent
-     * write access by calling this; a native dialog is the one thing in the window it cannot answer.
+     * write access by calling this; a window of Studio's own is something it cannot draw or answer.
      * Switching off needs no confirmation - withdrawing access is always safe.
      */
     public async quickToggle(window: AppWindow, patch: AgentQuickTogglePatch): Promise<AgentSettingsSnapshot> {
@@ -370,26 +405,41 @@ export class AgentManager implements AgentMainToolHost {
             }
             next.allowWrites = patch.allowWrites;
         }
-        if (next.enabled === undefined && next.allowWrites === undefined) {
+        if (typeof patch.fullAccess === "boolean") {
+            // Confirmed by `updateSettings`, against the same window.
+            next.fullAccess = patch.fullAccess;
+        }
+        if (next.enabled === undefined && next.allowWrites === undefined && next.fullAccess === undefined) {
             return this.snapshot();
         }
-        return this.updateSettings(next);
+        return this.updateSettings(next, window);
     }
 
     private async confirmAllowWrites(window: AppWindow): Promise<boolean> {
-        const { t } = dialogTranslator(window);
         window.refuseUnattendedPrompt("Agent access asked whether agents may make changes");
-        const buttons = [t("workspace.agent.confirm.allowWrites.allow"), t("common.cancel")];
-        const answer = await dialog.showMessageBox(window.win, {
-            type: "question",
-            message: t("workspace.agent.confirm.allowWrites.message"),
-            detail: t("workspace.agent.confirm.allowWrites.detail"),
-            buttons,
-            defaultId: 1,
-            cancelId: 1,
-            noLink: true,
-        });
-        return answer.response === 0;
+        return this.askInStudioWindow(window, { kind: "allowWrites" }, true);
+    }
+
+    /**
+     * Full access is the widest thing agent access can hand out - writes, and every folder but
+     * Studio's own without asking - so it is confirmed from the Settings window as well as
+     * from a workspace's menu, unlike write access alone, which the Settings switch turns on directly.
+     */
+    private async confirmFullAccess(window: AppWindow): Promise<boolean> {
+        window.refuseUnattendedPrompt("Agent access asked whether agents may have full access");
+        return this.askInStudioWindow(window, { kind: "fullAccess" }, true);
+    }
+
+    /**
+     * Every question agent access puts to the author goes through here, into Studio's own agent
+     * access window (`AgentAccessApp`) rather than a native message box: the same look as the rest
+     * of Studio, and still out of reach of the workspace that asked, which runs plugin code. What the
+     * window shows is these props, held by main; it sends back only the answer. Anything but an
+     * explicit "Allow" - Escape, closing it, its parent going away - is "no".
+     */
+    private async askInStudioWindow(window: AppWindow, props: AgentAccessPromptProps, activate: boolean): Promise<boolean> {
+        const result = await this.app.askAgentAccess(window, props, { activate });
+        return result?.allowed === true;
     }
 
     /** One client configuration with the endpoint and token filled in. Main only: it goes to the clipboard from here. */
@@ -418,17 +468,12 @@ export class AgentManager implements AgentMainToolHost {
         const target = path.join(path.resolve(picked.filePaths[0]), AGENT_SKILL_EXPORT_FOLDER);
         if (await isNonEmptyDirectory(fs, target)) {
             window.refuseUnattendedPrompt("Agent skill export asked whether to write into an existing folder");
-            const buttons = [t("workspace.agent.confirm.exportSkill.replace"), t("common.cancel")];
-            const answer = await dialog.showMessageBox(window.win, {
-                type: "warning",
-                message: t("workspace.agent.confirm.exportSkill.existsMessage", { folder: AGENT_SKILL_EXPORT_FOLDER }),
-                detail: t("workspace.agent.confirm.exportSkill.existsDetail"),
-                buttons,
-                defaultId: 1,
-                cancelId: 1,
-                noLink: true,
-            });
-            if (answer.response !== 0) {
+            const replace = await this.askInStudioWindow(
+                window,
+                { kind: "exportOverwrite", folder: AGENT_SKILL_EXPORT_FOLDER, path: target },
+                true,
+            );
+            if (!replace) {
                 return { canceled: true };
             }
         }
@@ -553,7 +598,7 @@ export class AgentManager implements AgentMainToolHost {
         context: AgentCallContext,
     ): Promise<{ result: AgentCallResult; answeredInMain: boolean }> {
         const inMain = (result: AgentCallResult) => ({ result, answeredInMain: true });
-        if (tool.write && !this.store.current.allowWrites) {
+        if (tool.write && !this.policy().writesEnabled) {
             return inMain(agentRefusal(
                 "writes_disabled",
                 `${tool.name} changes the project, and the author has not allowed agents to make changes.`,
@@ -699,6 +744,7 @@ export class AgentManager implements AgentMainToolHost {
             clientName: context.clientName,
             policy: this.policy(),
         };
+        this.inFlight.set(request.callId, { window, tool, clientName: context.clientName, deadline: Date.now() + timeoutMs, timeoutMs });
         try {
             const status = await window.invokeIpcRequest(IPCEventType.workspaceAgentCall, request, { timeoutMs });
             if (!status.success) {
@@ -717,6 +763,8 @@ export class AgentManager implements AgentMainToolHost {
                 );
             }
             return agentRefusal("no_workspace", `The project's window went away before answering ${tool}.`);
+        } finally {
+            this.inFlight.delete(request.callId);
         }
     }
 
@@ -728,23 +776,139 @@ export class AgentManager implements AgentMainToolHost {
      */
     private grantImportRoots(window: AppWindow): void {
         const roots = this.store.current.allowedImportRoots;
-        if (roots.length === 0) {
-            return;
+        if (roots.length > 0) {
+            this.grantFolders(window, roots.map(root => root.path));
         }
+    }
+
+    /**
+     * Let `window` read each folder, recursively and read-only, once per window. A folder on the
+     * allowed list carries the macOS bookmark the picker returned, when it did; one granted under
+     * full access or from a folder dialog has none, and needs none outside the Mac App Store sandbox.
+     */
+    private grantFolders(window: AppWindow, folders: readonly string[]): void {
         const granted = this.grantedRoots.get(window) ?? new Set<string>();
-        for (const root of roots) {
-            const key = identity(root.path);
-            if (granted.has(key)) {
+        const bookmarks = new Map(this.store.current.allowedImportRoots.map(root => [identity(root.path), root.bookmark]));
+        for (const folder of folders) {
+            const key = identity(folder);
+            if (granted.has(key) || key === identity((window as AppWindow<WindowAppType.Workspace>).getProps?.()?.projectPath ?? "")) {
                 continue;
             }
             try {
-                this.app.storageManager.grantFileSystemAccess(window, root.path, "read", true, root.bookmark, "window");
+                this.app.storageManager.grantFileSystemAccess(window, folder, "read", true, bookmarks.get(key), "window");
                 granted.add(key);
             } catch (error) {
-                this.app.logger.warn(`[Agent] Could not grant ${root.path} to a workspace: ${describe(error)}`);
+                this.app.logger.warn(`[Agent] Could not grant ${folder} to a workspace: ${describe(error)}`);
             }
         }
         this.grantedRoots.set(window, granted);
+    }
+
+    // ── Folder access ────────────────────────────────────────────────────────────────────────────
+    //
+    // An agent that needs a file outside the project and the allowed folders is not refused at once:
+    // the author is asked, in the agent access window over the workspace the call is for. The rules
+    // and the one-question-at-a-time queue are `agentFolderAccess.ts`; what lives here is Electron.
+
+    /**
+     * A workspace's request, made while carrying out an agent call. Only a call main sent to that
+     * window and has not had answered yet may ask, and its client name and deadline are main's own
+     * record, never the renderer's word: a workspace runs plugin code.
+     */
+    public async requestFolderAccessForCall(window: AppWindow, request: AgentFolderAccessRequest): Promise<AgentFolderAccessAnswer> {
+        const call = typeof request?.callId === "string" ? this.inFlight.get(request.callId) : undefined;
+        if (!call || call.window !== window) {
+            throw new Error("Folder access can only be asked for during an agent call to this window.");
+        }
+        const paths = readRequestedPaths(request.paths);
+        // Leave the call time to import once the author answers: wait at most a quarter of the
+        // call's budget short of its deadline, and never longer than a client is likely to wait.
+        const remaining = call.deadline - Date.now() - Math.max(FOLDER_PROMPT_MARGIN_MS, call.timeoutMs / 4);
+        const waitMs = Math.max(0, Math.min(FOLDER_PROMPT_WAIT_MS, remaining));
+        return this.folderAccess.request(window, await this.foldersOf(paths), { clientName: call.clientName }, waitMs);
+    }
+
+    /** `request_folder_access`: the same conversation, asked up front by the agent itself. */
+    public async requestFolderAccess(
+        handle: AgentWorkspaceHandle,
+        paths: readonly string[],
+        context: AgentCallContext,
+        reason?: string,
+    ): Promise<AgentFolderAccessAnswer> {
+        const window = (handle as AgentWorkspaceHandle & { window?: AppWindow<WindowAppType.Workspace> }).window;
+        if (!window || window.isClosed()) {
+            return { granted: [], denied: [], pending: [], refused: [] };
+        }
+        const prompt: AgentFolderPrompt = { clientName: context.clientName, ...(reason ? { reason } : {}) };
+        return this.folderAccess.request(window, await this.foldersOf(readRequestedPaths(paths)), prompt, FOLDER_PROMPT_WAIT_MS);
+    }
+
+    /** Each path's folder: a directory is its own, anything else (a file, or nothing yet) its parent's. */
+    private async foldersOf(paths: readonly string[]): Promise<string[]> {
+        return Promise.all(paths.map(async requested => {
+            if (!path.isAbsolute(requested)) {
+                return requested;
+            }
+            const resolved = path.resolve(requested);
+            try {
+                return (await fs.stat(resolved)).isDirectory() ? resolved : path.dirname(resolved);
+            } catch {
+                return path.dirname(resolved);
+            }
+        }));
+    }
+
+    private folderRules(): AgentFolderRules {
+        const electronApp = this.app.electronApp;
+        const studioDirs = [this.app.getUserDataDir()];
+        for (const resolve of [() => this.app.getAppPath(), () => this.app.getResourcesDir(), () => applicationBundle(electronApp.getPath("exe"))]) {
+            try {
+                studioDirs.push(resolve());
+            } catch {
+                // A folder Electron cannot name is one nobody can ask for either.
+            }
+        }
+        return {
+            pathApi: path,
+            caseInsensitive: process.platform === "win32",
+            home: electronApp.getPath("home"),
+            studioDirs,
+        };
+    }
+
+    private allowedFolders(window: AppWindow): string[] {
+        const roots = this.store.current.allowedImportRoots.map(root => path.resolve(root.path));
+        const projectPath = (window as AppWindow<WindowAppType.Workspace>).getProps?.()?.projectPath;
+        return typeof projectPath === "string" && projectPath ? [path.resolve(projectPath), ...roots] : roots;
+    }
+
+    private async rememberImportRoots(folders: readonly string[]): Promise<void> {
+        await this.store.update(draft => {
+            for (const folder of folders) {
+                const key = identity(folder);
+                if (!draft.allowedImportRoots.some(root => identity(root.path) === key)) {
+                    draft.allowedImportRoots.push({ path: path.resolve(folder) });
+                }
+            }
+        });
+        this.app.logger.info(`[Agent] The author allowed agents to read ${folders.join(", ")}`);
+        this.broadcastQuickState(await this.snapshot());
+    }
+
+    /**
+     * The question itself, in the agent access window over the workspace the call is for. Nobody
+     * at the screen started it, so it is shown without pulling Studio in front of another
+     * application, as the native sheet before it was: no raising, no activating.
+     */
+    private async askFolderAccess(window: AppWindow, folders: readonly string[], prompt: AgentFolderPrompt): Promise<boolean> {
+        window.refuseUnattendedPrompt("An agent asked to read a folder outside the project");
+        const clientName = prompt.clientName?.trim() || null;
+        const reason = prompt.reason?.trim();
+        return this.askInStudioWindow(
+            window,
+            { kind: "folderAccess", clientName, folders: [...folders], ...(reason ? { reason } : {}) },
+            false,
+        );
     }
 
     // ── Guide ────────────────────────────────────────────────────────────────────────────────────
@@ -1047,6 +1211,36 @@ export class AgentManager implements AgentMainToolHost {
 }
 
 const STATE_TIMEOUT_MS = 3000;
+/** Longest a call waits for the author to answer a folder dialog before it answers `pending`. */
+const FOLDER_PROMPT_WAIT_MS = 50 * 1000;
+/** Least time left on a call once the dialog wait ends, for the import the answer allows. */
+const FOLDER_PROMPT_MARGIN_MS = 15 * 1000;
+/** Most paths one folder request reads. */
+const FOLDER_REQUEST_MAX_PATHS = 500;
+
+type InFlightCall = {
+    window: AppWindow;
+    tool: string;
+    clientName: string | null;
+    /** When main stops waiting for the answer. */
+    deadline: number;
+    timeoutMs: number;
+};
+
+function readRequestedPaths(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+        throw new Error("paths must be an array of strings.");
+    }
+    return value
+        .filter((entry): entry is string => typeof entry === "string" && entry.length > 0 && entry.length <= 4096 && !entry.includes("\0"))
+        .slice(0, FOLDER_REQUEST_MAX_PATHS);
+}
+
+/** The `.app` bundle an executable sits in on macOS, else the executable's own folder. */
+function applicationBundle(executable: string): string {
+    const bundle = /^(.*?\.app)(?:[\\/]|$)/i.exec(executable);
+    return process.platform === "darwin" && bundle ? bundle[1] : path.dirname(executable);
+}
 const OPEN_TIMEOUT_MS = 90 * 1000;
 const HEADLESS_SILENCE_MS = 5 * 60 * 1000;
 

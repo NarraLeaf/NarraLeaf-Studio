@@ -1,5 +1,5 @@
 import type { ProjectTrustRecord } from "./projectTrust";
-import type { AgentCallRequest, AgentCallResult } from "../agent/protocol";
+import type { AgentCallRequest, AgentCallResult, AgentFolderAccessAnswer, AgentFolderAccessRequest } from "../agent/protocol";
 import type { AgentSettingsPatch, AgentSettingsSnapshot } from "../agent/settings";
 import type { AgentCopyConfigKind, AgentMainActivity, AgentQuickState, AgentQuickTogglePatch } from "../agent/workspaceAccess";
 import type { AgentPluginToolDescriptor } from "../agent/pluginTools";
@@ -262,6 +262,8 @@ export interface RendererPreloadedInterface {
     selectFolder(): Promise<RequestStatus<{ path: string | null }>>;
     /** Pick a PSD through the native dialog and read its layer tree. */
     openPsd(): Promise<RequestStatus<{ filePath: string | null; document: PsdDocument | null }>>;
+    /** Read the layer tree of a PSD at a path this window may already read (no dialog). */
+    readPsd(filePath: string): Promise<RequestStatus<{ document: PsdDocument }>>;
     /** Bake the chosen layers to full-canvas PNGs. */
     bakePsd(request: PsdBakeRequest): Promise<RequestStatus<{ layers: PsdBakedLayer[] }>>;
     /**
@@ -466,6 +468,12 @@ export interface RendererPreloadedInterface {
         onActivity(handler: (activity: AgentMainActivity) => void): AppEventToken;
         /** The agent tools this workspace's plugins registered, the whole set. Main lists them in `tools/list`. */
         reportPluginTools(tools: readonly AgentPluginToolDescriptor[]): void;
+        /**
+         * During an agent call: ask main to let this window read the folders holding `paths`. Main
+         * puts it to the author in a native dialog (or grants at once under full access); folders
+         * still unanswered after about a minute come back `pending`.
+         */
+        requestFolderAccess(request: AgentFolderAccessRequest): Promise<RequestStatus<AgentFolderAccessAnswer>>;
     };
     projectTrust: {
         query(projectPath: string): Promise<RequestStatus<{

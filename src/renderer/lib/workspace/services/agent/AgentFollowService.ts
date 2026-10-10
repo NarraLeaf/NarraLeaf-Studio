@@ -26,7 +26,13 @@ export type AgentWriteTarget =
     | { kind: "surface"; surfaceId: string; name: string; elementIds?: readonly string[] }
     | { kind: "component"; componentId: string; name: string; elementIds?: readonly string[] }
     | { kind: "scene"; storyId: string; sceneId: string; name: string; blockIds?: readonly string[] }
-    | { kind: "blueprint"; blueprintId: string; name: string };
+    | { kind: "blueprint"; blueprintId: string; name: string }
+    /**
+     * Translations or takes of one language. Follow mode opens that language's table on `unitId`, the
+     * first unit the write changed; `storyId` names the story the table should be showing for it.
+     */
+    | { kind: "translation"; locale: string; unitId: string; storyId?: string; name: string }
+    | { kind: "voice"; locale: string; unitId: string; storyId?: string; name: string };
 
 /** The call in flight, as the status bar names it. */
 export type AgentActivity = {

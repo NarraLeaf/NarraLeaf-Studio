@@ -53,7 +53,8 @@ export class AgentSettingsUpdateHandler extends IPCHandler<IPCEventType.agentSet
             return this.failed(refused);
         }
         try {
-            return this.success(await window.getApp().getAgentManager().updateSettings(patch ?? {}));
+            // The window goes along so that turning full access on is confirmed in a dialog on it.
+            return this.success(await window.getApp().getAgentManager().updateSettings(patch ?? {}, window));
         } catch (error) {
             return this.failed(error);
         }

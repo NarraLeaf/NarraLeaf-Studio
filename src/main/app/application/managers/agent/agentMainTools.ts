@@ -5,11 +5,13 @@ import {
     agentRefusal,
     agentText,
     type AgentCallResult,
+    type AgentFolderAccessAnswer,
     type AgentSessionPolicy,
     type AgentWorkspaceState,
 } from "@shared/agent/protocol";
 import { AGENT_GUIDE_CHAPTERS, type AgentGuideChapter } from "@shared/agent/tools";
 import { AGENT_PLUGIN_GUIDE_CHAPTER_PREFIX } from "@shared/agent/pluginTools";
+import { describeAgentFolderAccess } from "@shared/agent/folderAccess";
 import type { AgentCallContext } from "./agentMcpServer";
 import type { AgentRoutingChoice } from "./agentRouting";
 import type { AgentProjectCreateInput } from "./agentProjectCreate";
@@ -58,6 +60,11 @@ export interface AgentMainToolHost {
     createProject(input: AgentProjectCreateInput): Promise<AgentCallResult>;
     /** Run a registered test headlessly on a project that is not open. */
     runHeadlessTest(projectPath: string, testId: string): Promise<AgentCallResult>;
+    /**
+     * Ask the author, in a dialog parented to the workspace, to let agents read the folders holding
+     * `paths`. Answers within about a minute; folders still unanswered then come back `pending`.
+     */
+    requestFolderAccess(handle: AgentWorkspaceHandle, paths: readonly string[], context: AgentCallContext, reason?: string): Promise<AgentFolderAccessAnswer>;
 }
 
 /** A plugin's guide chapter, as the chapter list names it. */
@@ -76,6 +83,7 @@ export type AgentMainToolHandler = (
 export const AGENT_MAIN_TOOL_HANDLERS: Readonly<Record<string, AgentMainToolHandler>> = {
     agent_status: agentStatus,
     agent_guide: agentGuide,
+    request_folder_access: requestFolderAccess,
     project_create: projectCreate,
     project_open: projectOpen,
     test: runTest,
@@ -113,14 +121,17 @@ async function agentStatus(host: AgentMainToolHost): Promise<AgentCallResult> {
         policy.writesEnabled
             ? "Write access: on."
             : "Write access: OFF. Read tools work; every write is refused until the author turns on \"Allow agents to make changes\" in Studio's Settings > Agent access.",
-        policy.allowedImportRoots.length > 0
-            ? `You may import files from: ${policy.allowedImportRoots.join(", ")} (and from inside each project).`
-            : "You may import files only from inside the project; the author can allow more folders in Settings > Agent access.",
+        policy.fullAccess
+            ? "Full access: on. You may read files in any folder without asking, except Studio's own folders, the home folder as a whole and file-system roots."
+            : policy.allowedImportRoots.length > 0
+                ? `You may import files from: ${policy.allowedImportRoots.join(", ")} (and from inside each project). For a file anywhere else, Studio asks the author to allow its folder; call request_folder_access first for a big import.`
+                : "You may import files from inside the project. For a file anywhere else, Studio asks the author to allow its folder; call request_folder_access first for a big import.",
         "Before starting a game, read the workflow with agent_guide { chapter: \"workflow\" }.",
     ].filter(Boolean);
     return agentText(lines.join("\n"), {
         projects,
         writesEnabled: policy.writesEnabled,
+        fullAccess: policy.fullAccess === true,
         allowedImportRoots: policy.allowedImportRoots,
         endpoint: host.endpointUrl(),
     });
@@ -167,6 +178,37 @@ async function chapterList(host: AgentMainToolHost): Promise<string> {
             : "No enabled plugin ships a chapter.",
         "Pass one as `chapter`; start with `workflow`.",
     ].join("\n");
+}
+
+/** Longest `reason` shown in the dialog; the rest is cut, so an agent cannot fill the author's screen. */
+const FOLDER_REASON_MAX = 300;
+
+async function requestFolderAccess(host: AgentMainToolHost, args: Record<string, unknown>, context: AgentCallContext): Promise<AgentCallResult> {
+    const paths = Array.isArray(args.paths) ? args.paths.filter((entry): entry is string => typeof entry === "string" && entry.trim() !== "") : [];
+    if (paths.length === 0) {
+        return agentRefusal("invalid_args", "`paths` must list at least one absolute path.");
+    }
+    if (paths.length > 500) {
+        return agentRefusal("invalid_args", "Ask about at most 500 paths per call.");
+    }
+    const relative = paths.filter(entry => !path.isAbsolute(entry));
+    if (relative.length > 0) {
+        return agentRefusal("invalid_args", `Paths must be absolute: ${relative.slice(0, 5).join(", ")}.`);
+    }
+    const project = typeof args.project === "string" && args.project ? path.resolve(args.project) : null;
+    const choice = host.route(project);
+    if (!choice.ok) {
+        return noWorkspace(choice);
+    }
+    const reason = typeof args.reason === "string" ? oneLine(args.reason).slice(0, FOLDER_REASON_MAX) : "";
+    const answer = await host.requestFolderAccess(choice.window, paths, context, reason || undefined);
+    return agentText(describeAgentFolderAccess(answer).join("\n") || "Nothing to ask about.", { ...answer, project: choice.window.projectPath });
+}
+
+/** Line breaks and control characters out: the reason is one line of the dialog, in the agent's words. */
+function oneLine(value: string): string {
+    // eslint-disable-next-line no-control-regex
+    return value.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 async function projectCreate(host: AgentMainToolHost, args: Record<string, unknown>): Promise<AgentCallResult> {

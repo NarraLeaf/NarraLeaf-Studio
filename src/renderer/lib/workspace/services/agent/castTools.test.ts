@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/app/writeFreeze", () => ({ getProjectWriteFreeze: () => null }));
 import type { AgentCallResult } from "@shared/agent/protocol";
 import type { StoryTransformProps } from "@shared/types/story";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { AssetType } from "../assets/assetTypes";
 import { Services } from "../services";
+import { HistoryService } from "../history/HistoryService";
+import { projectHistoryScope } from "../history/historyScopes";
+import { CharacterService } from "../core/CharacterService";
 import { AgentRefusal, type AgentToolContext, type AgentToolHandler } from "./agentCall";
 import { characterUpsert, charactersList, variableDelete, variableUpsert } from "./tools/castTools";
 
@@ -51,40 +56,15 @@ type Fakes = {
     registry: ReturnType<typeof fakeRegistry>;
     transactions: number;
     sceneBlocks: Record<string, unknown>;
-    characters: ReturnType<typeof fakeCharacter>[];
+    characters: CharacterSeed[];
+    history: HistoryService;
     images: Record<string, { id: string; name: string; type: AssetType; bytes: Uint8Array }>;
 };
 
-function fakeCharacter(id: string, name: string, entrance?: StoryTransformProps) {
-    let poses: { id: string; name: string; assetId?: string }[] = [];
-    let defaultPoseId: string | null = null;
-    let entranceTransform = entrance;
-    let poseSeq = 0;
-    const appearance = {
-        getKind: () => "preset",
-        getPoses: () => poses,
-        getPose: (poseId: string) => poses.find(pose => pose.id === poseId),
-        removePose: (poseId: string) => { poses = poses.filter(pose => pose.id !== poseId); },
-        createPose: (poseName: string) => { const pose = { id: `p${++poseSeq}`, name: poseName }; poses.push(pose); return pose; },
-        setPoseAsset: (poseId: string, assetId: string) => { poses.find(pose => pose.id === poseId)!.assetId = assetId; },
-        getDefaultPoseId: () => defaultPoseId ?? poses[0]?.id ?? null,
-        setDefaultPoseId: (poseId: string) => { defaultPoseId = poseId; },
-        resolvePoseAssetId: () => poses.find(pose => pose.id === (defaultPoseId ?? poses[0]?.id))?.assetId ?? null,
-    };
-    const profile = {
-        getId: () => id,
-        getName: () => name,
-        getColor: () => undefined,
-        setColor: () => undefined,
-        getNicknames: () => [] as string[],
-        hasNickname: () => false,
-        addNickname: () => undefined,
-        removeNickname: () => undefined,
-        getEntranceTransform: () => entranceTransform,
-        setEntranceTransform: (props: StoryTransformProps | undefined) => { entranceTransform = props; },
-        appearance,
-    };
-    return { profile };
+type CharacterSeed = { id: string; name: string; entrance?: StoryTransformProps };
+
+function fakeCharacter(id: string, name: string, entrance?: StoryTransformProps): CharacterSeed {
+    return { id, name, entrance };
 }
 
 function harness(init: Partial<Pick<Fakes, "sceneBlocks" | "characters">> & { variables?: VariableRegistryEntry[] } = {}) {
@@ -93,6 +73,7 @@ function harness(init: Partial<Pick<Fakes, "sceneBlocks" | "characters">> & { va
         transactions: 0,
         sceneBlocks: init.sceneBlocks ?? {},
         characters: init.characters ?? [],
+        history: new HistoryService(),
         images: {
             sprite: { id: "sprite", name: "lin_normal", type: AssetType.Image, bytes: png(2, 700, 1000) },
             cutout: { id: "cutout", name: "lin_smile", type: AssetType.Image, bytes: png(6, 700, 1000) },
@@ -114,17 +95,29 @@ function harness(init: Partial<Pick<Fakes, "sceneBlocks" | "characters">> & { va
         },
         [Services.UIGraph]: { getDocument: () => ({ blueprintDocument: { blueprints: {}, ownerRecords: {} } }) },
         [Services.UIDocument]: { getDocument: () => ({ surfaces: [], elements: {}, components: [] }) },
-        [Services.Character]: {
-            listCharacter: () => fakes.characters,
-            getCharacter: (id: string) => fakes.characters.find(item => item.profile.getId() === id),
-            createCharacter: (name: string) => { const made = fakeCharacter(`c${fakes.characters.length + 1}`, name); fakes.characters.push(made); return made; },
-        },
+        [Services.History]: fakes.history,
+        [Services.UI]: { showError: vi.fn() },
+        [Services.FileSystem]: {},
+        [Services.ServiceAssets]: { deleteFile: vi.fn(async () => ({ ok: true })) },
         [Services.Assets]: {
             getAssets: () => ({ [AssetType.Image]: fakes.images }),
             fetch: async (asset: { id: string }) => ({ success: true, data: { data: fakes.images[asset.id].bytes, metadata: {} } }),
         },
         [Services.Project]: { getProjectConfig: () => ({ metadata: { resolution: { width: 1920, height: 1080 } } }) },
     };
+    // The real cast service over these stand-ins, so a write is checked to be one step of undo.
+    const ids = fakes.characters.map(seed => seed.id);
+    let next = 0;
+    services[Services.Uuid] = { generate: () => ids.shift() ?? `c${++next}` };
+    const context = { project: {} as never, services: { get: (name: string) => services[name] } as never, commandLineRun: false };
+    const cast = new CharacterService();
+    fakes.history.setContext(context);
+    cast.setContext(context);
+    services[Services.Character] = cast;
+    for (const seed of fakes.characters) {
+        const made = cast.createCharacter(seed.name);
+        if (seed.entrance) made.profile.setEntranceTransform(seed.entrance);
+    }
     const tool = {
         ctx: { services: { get: (name: string) => services[name] } },
         request: { callId: "call" },
@@ -144,7 +137,7 @@ function harness(init: Partial<Pick<Fakes, "sceneBlocks" | "characters">> & { va
         }
         throw new Error("expected a refusal");
     };
-    return { fakes, run, refusal };
+    return { fakes, cast, run, refusal };
 }
 
 const HONEST: VariableRegistryEntry = { id: "v-honest", storageKey: "v-honest", name: "真心", scope: "saved", valueType: "boolean" };
@@ -229,5 +222,31 @@ describe("character_upsert entrance and alpha", () => {
         const out = await run(charactersList, {});
         expect(out.stage).toEqual({ width: 1920, height: 1080 });
         expect(out.characters[0]).toMatchObject({ spriteSize: { width: 700, height: 1000 }, drawnAtCenter: { top: 80, height: 1000 } });
+    });
+});
+
+describe("character_upsert undo", () => {
+    it("lands a rename, a colour and new poses as one step that undo takes back whole", async () => {
+        const { cast, fakes, run } = harness({ characters: [fakeCharacter("narra", "Narra")] });
+        const before = cast.getCharacter("narra")!.toJSON();
+        await run(characterUpsert, { id: "narra", name: "Lin", nameColor: "#ff0000", nicknames: ["L"], poses: [{ name: "smile", asset: "lin_smile" }] });
+        const live = cast.getCharacter("narra")!;
+        expect(live.profile.getName()).toBe("Lin");
+        expect(live.profile.appearance.getPoses().map(pose => pose.name)).toEqual(["smile"]);
+        expect(fakes.history.describe().find(entry => entry.scopeId === projectHistoryScope())?.undo).toBe(1);
+
+        fakes.history.undo(projectHistoryScope());
+        await fakes.history.settled();
+        expect(cast.getCharacter("narra")!.toJSON()).toEqual(before);
+    });
+
+    it("undoes a creation by removing the character", async () => {
+        const { cast, fakes, run } = harness();
+        const out = await run(characterUpsert, { name: "林", poses: [{ name: "normal", asset: "lin_smile" }] });
+        expect(cast.listCharacter()).toHaveLength(1);
+        expect(fakes.history.peekUndo(projectHistoryScope())).toEqual({ key: "characters.history.createCharacter", params: { name: "林" } });
+        fakes.history.undo(projectHistoryScope());
+        await fakes.history.settled();
+        expect(cast.getCharacter(out.character.id)).toBeUndefined();
     });
 });

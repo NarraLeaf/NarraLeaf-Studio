@@ -65,6 +65,44 @@ const DRY_RUN: AgentJsonSchema = {
     default: false,
 };
 
+/** A character's entrance defaults, as the layered character tools take them (see character_upsert). */
+const LAYERED_ENTRANCE: AgentJsonSchema = {
+    description:
+        "Entrance defaults, as on character_upsert: `\"standing\"` fits them to the canvas (feet on the bottom edge), null clears them, an object `{ zoom, scaleX, scaleY, position: { xalign, yalign, xoffset, yoffset } }` replaces them. A new character, or one whose canvas changed, gets a standing entrance when it has none.",
+    oneOf: [
+        { type: "string", enum: ["standing"] },
+        { type: "null" },
+        { type: "object" },
+    ],
+};
+
+const CONFIRM_SWITCH: AgentJsonSchema = {
+    type: "boolean",
+    description:
+        "Required to turn a character of another kind (preset poses, or a Live2D/Spine model) into this one. The switch DISCARDS its current looks - nothing is converted - and the story rows that chose one fall back to the default; call without it first to read which rows.",
+    default: false,
+};
+
+/** Image assets named `<prefix>_<layer>` / `<prefix>_<layer>_<tag>`, read by character_layers_import. */
+const LAYER_IMPORT_SOURCE = {
+    prefix: { type: "string", description: "What every file name starts with; defaults to the character's name." },
+    assets: { type: "array", items: { type: "string" }, description: "Image assets (names or ids) to build from. Default: every image named `<prefix>_…`." },
+    folder: { type: "string", description: "Take the images from this asset-library folder instead." },
+    psd: { type: "string", description: "Absolute path of a .psd/.psb (inside the project or an allowed directory) to build from instead of images: each top-level group of 2+ layers becomes an axis (its layers the tags), every other layer a fixed layer; layers are baked full-canvas and imported as assets." },
+    blendModes: {
+        type: "object",
+        additionalProperties: { type: "string", enum: ["merge", "skip"] },
+        description: "PSD only: for each layer whose blend mode the stage cannot draw (multiply, screen, ...), keyed `\"<group>/<layer>\"`: merge it onto the layer below, or skip it. The refusal lists the ones to decide.",
+    },
+    order: { type: "array", items: { type: "string" }, description: "Images only: every layer name, bottom to top. Required with more than one layer - stacking cannot be read off file names." },
+    axes: {
+        type: "object",
+        additionalProperties: { type: "array", items: { type: "string" } },
+        description: "Images only: axis name -> the layers it drives, e.g. `{ \"expression\": [\"brows\", \"eyes\", \"mouth\"] }`. A varying layer not listed follows an axis of its own name.",
+    },
+    defaults: { type: "object", additionalProperties: { type: "string" }, description: "Images only: axis name -> default tag. Otherwise `normal`/`default`/`neutral` if present, else the first." },
+} satisfies Record<string, AgentJsonSchema>;
+
 function ws(
     name: string,
     title: string,
@@ -111,13 +149,25 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     main(
         "agent_guide",
         "Read the guide",
-        "Returns one chapter of the NarraLeaf game-making guide as Markdown: `workflow` (the end-to-end order of work - read it before starting a game), `story-format`, `ui-format`, `blueprint-format`, `ui-design`, `script-adaptation`, `verify-and-ship`, `troubleshooting`. A plugin that offers its own tools may ship a chapter too, named `plugin:<pluginId>` (`plugin:narraleaf.gallery` for the Gallery's EXTRA page). Without a chapter, lists every chapter there is. The same text is served as MCP resources `narraleaf://guide/<chapter>` and `narraleaf://guide/plugin/<pluginId>`.",
+        "Returns one chapter of the NarraLeaf game-making guide as Markdown: `workflow` (the end-to-end order of work - read it before starting a game), `story-format`, `ui-format`, `blueprint-format`, `ui-design`, `script-adaptation`, `layered-sprites` (characters built from layer images: axes, layers, /char), `verify-and-ship`, `localization-and-voice` (translating the game and wiring voice-over), `troubleshooting`. A plugin that offers its own tools may ship a chapter too, named `plugin:<pluginId>` (`plugin:narraleaf.gallery` for the Gallery's EXTRA page). Without a chapter, lists every chapter there is. The same text is served as MCP resources `narraleaf://guide/<chapter>` and `narraleaf://guide/plugin/<pluginId>`.",
         {
             chapter: {
                 type: "string",
                 description: "A chapter id from the list above, or `plugin:<pluginId>`. Leave it out to list the chapters.",
             },
         },
+    ),
+
+    main(
+        "request_folder_access",
+        "Ask for folder access",
+        "Asks the author, in one Studio dialog, to let you read files outside the project - call it before a big import from the author's own folders (asset packs, recordings, a PSD) so the import does not stop to ask. Pass the files or folders you will read; Studio asks for the folders that hold them (at most 5 per dialog; a file-system root, the home folder itself and Studio's own folders are never allowed). Answers `granted`, `denied` and `pending` (the author has not answered yet - call again later; do not repeat a denied request). Folders already allowed come back granted at once; agent_status lists them. Under the author's Full access setting every other folder is granted without a dialog.",
+        {
+            paths: { type: "array", items: { type: "string" }, description: "Absolute paths of the files or folders you will read." },
+            reason: { type: "string", description: "One sentence on what you will do with them; shown in the dialog as your stated purpose." },
+            project: PROJECT_ARG,
+        },
+        ["paths"],
     ),
 
     // ── Projects ─────────────────────────────────────────────────────────────────────────────────
@@ -152,7 +202,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "project_settings_set",
         "Change project settings",
-        "Changes the project's name, design resolution or game languages. Changing the resolution after the interface is built does not rescale it. `languages` is the full list the game offers (the source language must be in it); a language that holds translations is dropped only when `removeLanguages` names it, and its translation file stays on disk.",
+        "Changes the project's name, design resolution or game languages. Changing the resolution after the interface is built does not rescale it. `languages` is the full list the game offers (the source language must be in it); a language that holds translations is dropped only when `removeLanguages` names it, and its translation file stays on disk. Translate with localization_list / localization_set; voice-over languages are separate (voice_settings_set).",
         {
             name: { type: "string" },
             width: { type: "integer" },
@@ -178,7 +228,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "assets_import",
         "Import files",
-        "Imports files from disk into the project. Paths must be inside the project or a directory the author allowed (see agent_status). Each asset is named after its file name without extension unless `names` says otherwise - pick names a story line can use (e.g. `bg_classroom_day`). `warnings` flags a portrait-shaped image with no transparency: as a sprite it would show as a rectangle.",
+        "Imports files from disk into the project. Paths must be absolute. A path outside the project and the folders the author allowed (see agent_status) makes Studio ask the author for its folder first; for a big import, call request_folder_access up front. Each asset is named after its file name without extension unless `names` says otherwise - pick names a story line can use (e.g. `bg_classroom_day`). `warnings` flags a portrait-shaped image with no transparency: as a sprite it would show as a rectangle.",
         {
             paths: { type: "array", items: { type: "string" }, description: "Absolute file paths." },
             type: { type: "string", enum: ["image", "audio", "video", "font"], description: "Omit to infer from each extension." },
@@ -219,12 +269,12 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "characters_list",
         "List characters",
-        "Lists characters with id, name, nicknames, name colour, poses (sprite images) and `entranceTransform` (how big the sprite is drawn and where it stands). `spriteSize` is the default pose's pixels and `drawnAtCenter` the box it occupies on a `/show <name> pos=center` row, in design pixels from the stage's top-left - check it instead of guessing from a screenshot.",
+        "Lists characters with id, name, nicknames, name colour, `kind` and their looks: a `preset` character's `poses` (one sprite image each); a `layered` character's `layered` block (canvas, axes with their tags and default, and the layer stack bottom to top with what each layer draws per tag - the exact shape character_layered_set takes, so edit it and send it back); a `live2d`/`spine`/`puppet` character's model (read-only: those are set up in Studio). Also `entranceTransform` (how big the sprite is drawn and where it stands). `spriteSize` is the default look's pixels (a layered character's canvas) and `drawnAtCenter` the box it occupies on a `/show <name> pos=center` row, in design pixels from the stage's top-left - check it instead of guessing from a screenshot.",
     ),
     ws(
         "character_upsert",
         "Create or update a character",
-        "Creates a character, or updates the one with this `id` or exact `name`. Poses are sprite images already imported as assets. A line `Name: text` in a story resolves to the character with that name or nickname. A sprite is drawn at its own pixel size times `zoom`, its centre placed by `position`; a character that gets poses and has no `entranceTransform` yet is given a standing one (feet on the bottom edge, own pixel size, scaled down only if taller than the stage). A reused character keeps the entrance its old art was tuned for - the answer warns; pass `entranceTransform: \"standing\"` to refit. Warns when a pose image has no transparency.",
+        "Creates a character, or updates the one with this `id` or exact `name`. Poses are sprite images already imported as assets. A line `Name: text` in a story resolves to the character with that name or nickname. A sprite is drawn at its own pixel size times `zoom`, its centre placed by `position`; a character that gets poses and has no `entranceTransform` yet is given a standing one (feet on the bottom edge, own pixel size, scaled down only if taller than the stage). A reused character keeps the entrance its old art was tuned for - the answer warns; pass `entranceTransform: \"standing\"` to refit. Warns when a pose image has no transparency. Name, colour, nicknames and entrance work on a layered character too; its looks are written with character_layered_set. One step of undo.",
         {
             id: { type: "string" },
             name: { type: "string" },
@@ -240,6 +290,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
                 },
             },
             defaultPose: { type: "string", description: "Pose name shown when a line names none." },
+            confirmSwitch: CONFIRM_SWITCH,
             entranceTransform: {
                 description:
                     "What every entrance (`/show`) falls back to - the Entrance section of the character panel. `\"standing\"` fits it to the default pose (feet on the bottom edge); null clears it; an object replaces it. `position` places the sprite's CENTRE: `xalign`/`yalign` are shares of the stage from the left and up from the bottom, `xoffset`/`yoffset` design pixels (+ is up). `pos=left|center|right` on a row writes `xalign` and `yalign: 0.5`, so set the baseline with `yoffset` (drawn height / 2 - stage height / 2), not `yalign`. `scaleX: -1` mirrors.",
@@ -265,6 +316,76 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
         },
         [],
         true,
+    ),
+    ws(
+        "character_layered_set",
+        "Lay out a layered character",
+        "Creates a layered character, or replaces the looks of one (by `character` name or id): its AXES - named choices such as expression (normal/smile/angry) or outfit (school/casual) - and its LAYERS, the image stack bottom to top. A layer either always draws one `asset`, or follows one `axis` and gives `options`: an image per tag of that axis, `null` where it draws nothing for that tag (a jacket only the casual outfit has). Every tag of the axis must appear in each layer that follows it. One axis may drive several layers (expression moves brows, eyes and mouth together). Images are assets already imported, all the SAME pixel size (the canvas - each layer is drawn centred at its own size, so a cropped part would land off-register; refused with the sizes). Tag names must be unique across the character's axes, because a story row names a tag alone: `/char Mei smile` changes the expression and keeps the outfit, `/show Mei casual` shows her with every other axis at its default. Restating keeps the ids of every axis, tag and layer whose name is unchanged, so existing rows keep their looks; a removed tag is reported with the rows that chose it. Checked like Studio's character editor (a look that draws nothing is an error). One step of undo. Read the `layered-sprites` guide chapter first.",
+        {
+            character: { type: "string", description: "Character name or id. Created (as layered) when there is none." },
+            axes: {
+                type: "array",
+                description: "The axes, each with its tags in order; `default` is the tag a /show uses when the row names none (first tag otherwise).",
+                items: {
+                    type: "object",
+                    properties: { name: { type: "string" }, tags: { type: "array", items: { type: "string" } }, default: { type: "string" } },
+                    required: ["name", "tags"],
+                    additionalProperties: false,
+                },
+            },
+            layers: {
+                type: "array",
+                description: "Bottom to top. `{ name, asset }` for a layer that always draws, `{ name, axis, options: { <tag>: <image or null> } }` for one that follows an axis.",
+                items: {
+                    type: "object",
+                    properties: {
+                        name: { type: "string" },
+                        axis: { oneOf: [{ type: "string" }, { type: "null" }] },
+                        asset: { oneOf: [{ type: "string" }, { type: "null" }] },
+                        options: { type: "object", additionalProperties: { oneOf: [{ type: "string" }, { type: "null" }] } },
+                    },
+                    required: ["name"],
+                    additionalProperties: false,
+                },
+            },
+            entranceTransform: LAYERED_ENTRANCE,
+            confirmSwitch: CONFIRM_SWITCH,
+            dryRun: DRY_RUN,
+        },
+        ["character", "axes", "layers"],
+        true,
+    ),
+    ws(
+        "character_layers_import",
+        "Build a layered character from files",
+        "Builds a layered character's stack from image assets named by convention - `<prefix>_<layer>` for a layer that always draws, `<prefix>_<layer>_<tag>` for one tag of a varying layer (e.g. mei_body, mei_eyes_smile, mei_mouth_smile, mei_outfit_casual; a layer name has no `_`, use `back-hair`) - or from a PSD (top-level groups become axes). Then writes it exactly as character_layered_set would (same checks, one step of undo); the answer includes the derived stack, which you can adjust and send to character_layered_set. With images, state the stacking `order` (bottom to top) and group layers that change together into one axis with `axes`. Import the files with assets_import first, naming them by the convention.",
+        {
+            character: { type: "string", description: "Character name or id. Created (as layered) when there is none." },
+            ...LAYER_IMPORT_SOURCE,
+            entranceTransform: LAYERED_ENTRANCE,
+            confirmSwitch: CONFIRM_SWITCH,
+            dryRun: DRY_RUN,
+        },
+        ["character"],
+        true,
+    ),
+    ws(
+        "character_preview",
+        "Look at a character",
+        "Returns a picture of one of a character's looks, composited the way Studio's editor draws it (the sprite alone, transparent around it, not placed on the stage). For a layered character pass `look`: `{ \"expression\": \"smile\", \"outfit\": \"casual\" }` or a tag list `[\"smile\", \"casual\"]`; axes you leave out take their default. For a preset character pass `pose`. Use it to check a combination before writing scenes that use it. Live2D/Spine characters only render in the running game (playtest_screenshot).",
+        {
+            character: { type: "string", description: "Character name or id." },
+            look: {
+                oneOf: [
+                    { type: "object", additionalProperties: { type: "string" } },
+                    { type: "array", items: { type: "string" } },
+                ],
+                description: "Layered: axis -> tag, or a list of tag names.",
+            },
+            pose: { type: "string", description: "Preset: the pose to show; defaults to the default pose." },
+            maxSize: { type: "integer", minimum: 64, maximum: 2048, default: 768, description: "Longest edge of the picture, in pixels." },
+        },
+        ["character"],
     ),
     ws("variables_list", "List variables", "Lists the project's global variables (saved with the game or persistent across saves)."),
     ws(
@@ -495,6 +616,137 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
         true,
     ),
 
+    // ── Translation and voice ───────────────────────────────────────────────────────────────────
+    ws(
+        "localization_status",
+        "Translation progress",
+        "How far each target language is translated: per language, `done` / `reviewed` / `translated` / `machine` / `stale` (translated before the source line changed) / `missing`, split by origin - `story` (scene lines), `names` (character, scene, ending and /rename names), `interface` (words on pages and components), `keys` (named translation keys), `plugins`. With `language`, also each scene's lines left to do - plan the work scene by scene from it. The game's languages themselves are set with project_settings_set.",
+        { language: { type: "string", description: "One target language for a per-scene breakdown, e.g. `en`." } },
+    ),
+    ws(
+        "localization_list",
+        "List text to translate",
+        "Lists translation units of one target language in reading order, a page at a time: each with its `id`, `kind`, `where` (scene and row, page and element, key), `speaker`, `source`, current `target`, `status`, translator `note` and `rev`. One id runs through story lines, interface words and keys, so they are all listed and written the same way. Work a scene at a time (`scene` + `status: \"todo\"`), a few hundred units per call, and follow `nextCursor` until it is null. `source` shows run tags (`‹1›word‹/1›` styled span, `‹2/›` pause or event) and `{0}` values where the line has them - the translation must carry them too.",
+        {
+            language: { type: "string", description: "Target language code (not the source language)." },
+            origin: { type: "string", enum: ["story", "names", "interface", "keys", "plugins"], description: "Only units of this origin." },
+            story: { type: "string", description: "Story name or id." },
+            scene: { type: "string", description: "Scene name or id: its lines and its own scene, ending and /rename names." },
+            page: { type: "string", description: "Page or component name: only its interface words." },
+            status: {
+                type: "string",
+                enum: ["missing", "stale", "machine", "translated", "reviewed", "todo", "unreviewed"],
+                description: "`todo` = missing or stale (still needs a translation); `unreviewed` = machine or translated.",
+            },
+            query: { type: "string", description: "Substring of the source or the translation." },
+            cursor: { type: "string", description: "`nextCursor` from the previous page." },
+            limit: { type: "integer", default: 200, minimum: 1, maximum: 500 },
+        },
+        ["language"],
+    ),
+    ws(
+        "localization_set",
+        "Write translations",
+        "Writes translations of one target language: `entries` is `[{unitId, target, status?, note?, rev?}]`, up to 1000 per call - a scene or a few hundred lines at a time, so the author can watch the table fill. The whole call is one step of undo. `status` defaults to `machine` (an agent's translation, for the author to review); pass `translated` when the author asked for final text, `reviewed` only when they said they reviewed it. `target: \"\"` clears a translation. Pass each unit's `rev` from localization_list: a unit whose source changed since is skipped and returned with its new source. Unknown unit ids refuse the whole call; the source language is refused. Lost `{n}` values, run tags, `{name}` placeholders or line breaks are written but warned about - fix and resend those.",
+        {
+            language: { type: "string", description: "Target language code." },
+            entries: {
+                type: "array",
+                items: {
+                    type: "object",
+                    properties: {
+                        unitId: { type: "string" },
+                        target: { type: "string", description: "The translation; \"\" clears it." },
+                        status: { type: "string", enum: ["machine", "translated", "reviewed"] },
+                        note: { type: "string", description: "Translator note shown in the table; \"\" clears it." },
+                        rev: { type: "string", description: "The unit's `rev` from localization_list." },
+                    },
+                    required: ["unitId", "target"],
+                },
+            },
+            dryRun: DRY_RUN,
+        },
+        ["language", "entries"],
+        true,
+    ),
+    ws(
+        "voice_status",
+        "Voice-over progress",
+        "The game's voice languages (separate from its text languages), the recording file-name rule (`namingPattern`, explained, with an example), whether choice options are voiced, and per language and per character how many lines have a take (`covered`, `approved`, `stale` - the line changed after its take was linked - and `missing`). Studio never records: a line is voiced by linking an imported audio asset to it.",
+        { language: { type: "string", description: "Only this voice language." } },
+    ),
+    ws(
+        "voice_list",
+        "List voiced lines",
+        "Lists the voiced lines of one voice language in story order, a page at a time: each with its `id`, `where`, `speaker`, `text` (the line as the actor of that language reads it - its translation when there is one), `expect` (the file name the recording rule gives it), linked `take` (asset id and name), `status` and director's `note`. `unlinkedOnly` lists the gaps after voice_auto_link.",
+        {
+            language: { type: "string", description: "Voice language code." },
+            story: { type: "string" },
+            scene: { type: "string", description: "Scene name or id." },
+            character: { type: "string", description: "Character name or id, or the narration label." },
+            status: { type: "string", enum: ["missing", "linked", "approved", "stale", "todo"], description: "`todo` = missing or stale." },
+            unlinkedOnly: { type: "boolean", description: "Only lines with no take." },
+            query: { type: "string", description: "Substring of the line or its expected file name." },
+            cursor: { type: "string", description: "`nextCursor` from the previous page." },
+            limit: { type: "integer", default: 200, minimum: 1, maximum: 500 },
+        },
+        ["language"],
+    ),
+    ws(
+        "voice_link",
+        "Link voice takes",
+        "Links audio assets to voiced lines of one voice language, for the lines voice_auto_link could not match: `links` is `[{unitId, asset?, status?, note?}]`. `asset` is an audio asset's id or library name (import files with assets_import first); `\"\"` unlinks. Without `asset`, `status: \"approved\"` signs off the take the line already has - approve only when the author says so. A new take starts `linked`. The whole call is one step of undo; a line id or asset that does not resolve refuses the whole call and lists them.",
+        {
+            language: { type: "string", description: "Voice language code." },
+            links: {
+                type: "array",
+                items: {
+                    type: "object",
+                    properties: {
+                        unitId: { type: "string", description: "Line id from voice_list." },
+                        asset: { type: "string", description: "Audio asset id or name; \"\" unlinks." },
+                        status: { type: "string", enum: ["linked", "approved"] },
+                        note: { type: "string", description: "Director's note; \"\" clears it." },
+                    },
+                    required: ["unitId"],
+                },
+            },
+            dryRun: DRY_RUN,
+        },
+        ["language", "links"],
+        true,
+    ),
+    ws(
+        "voice_auto_link",
+        "Link takes by name",
+        "Links every voiced line to the audio asset named after it by the recording rule - the matching the Voice panel's audio import and the voice table's Assign use: names compared ignoring case, spaces, punctuation and folders, against each asset's library name. A name several assets or several lines share is never guessed at: it is returned as `ambiguous`. Lines that already have a different take are left alone unless `relink`. Returns what linked, what was ambiguous, the lines still `missing` with their expected names, and the assets that matched no line. One step of undo. Typical flow: assets_import the recordings into a folder, voice_auto_link with that folder (dryRun first), then voice_list {unlinkedOnly} and voice_link the rest.",
+        {
+            language: { type: "string", description: "Voice language code." },
+            assetFolder: { type: "string", description: "Only audio assets in this asset folder (or folders inside it)." },
+            assetQuery: { type: "string", description: "Only audio assets whose name contains this." },
+            story: { type: "string" },
+            scene: { type: "string", description: "Only lines of this scene." },
+            relink: { type: "boolean", default: false, description: "Replace a take a line already has when another asset carries its name." },
+            status: { type: "string", enum: ["linked", "approved"], default: "linked" },
+            dryRun: DRY_RUN,
+        },
+        ["language"],
+        true,
+    ),
+    ws(
+        "voice_settings_set",
+        "Change voice settings",
+        "Sets the game's voice languages, the recording file-name rule and whether choice options are voiced. `languages` is the full list of voice languages - independent of the text languages (a game may be dubbed in Japanese and read in English); a language that holds takes is dropped only when `removeLanguages` names it, and its take file stays on disk. `namingPattern` uses `{scene}`, `{index}`, `{character}`, `{locale}`, `{unit}`; change it before the booth records, since files are matched by it. One step of undo.",
+        {
+            languages: { type: "array", items: { type: "string" }, description: "Every voice language, e.g. `[\"ja\"]`." },
+            removeLanguages: { type: "array", items: { type: "string" }, description: "Voice languages to drop even though they hold takes." },
+            namingPattern: { type: "string", description: "Default `{scene}_{index}_{character}`." },
+            voiceChoices: { type: "boolean", description: "Whether choice options are lines an actor records." },
+        },
+        [],
+        true,
+    ),
+
     // ── Verify and ship ──────────────────────────────────────────────────────────────────────────
     ws("lint", "Check the project", "Runs every project lint rule and returns the findings, errors first. Fix every error before a build.", { severity: { type: "string", enum: ["error", "warning", "info"], default: "warning" } }),
     main(
@@ -549,7 +801,9 @@ export const AGENT_GUIDE_CHAPTERS = [
     "blueprint-format",
     "ui-design",
     "script-adaptation",
+    "layered-sprites",
     "verify-and-ship",
+    "localization-and-voice",
     "troubleshooting",
 ] as const;
 export type AgentGuideChapter = (typeof AGENT_GUIDE_CHAPTERS)[number];

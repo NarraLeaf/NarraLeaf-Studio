@@ -4,8 +4,13 @@
  * A character's name colour is the profile's main colour (`CharacterProfile.color`): it is what Dev
  * Mode's timeline and the `Get Speaker Color` node read for the speaker, and the skeleton's dialogue
  * box paints the name tag with it. Poses exist only on preset characters - a layered character's
- * looks are axes and layers, which this tool does not author, and it says so rather than half-writing
- * them.
+ * looks are axes and layers, written by `layeredTools.ts`, and a puppet's (Live2D, Spine, an author's
+ * own runtime) are named by its model and set up in Studio; `characters_list` describes all three.
+ *
+ * Every write here is one step of undo: the character is shaped on a detached copy of its record and
+ * landed whole through `CharacterService.commitCharacterRecord`, because the setters the editor uses
+ * record no history and a call that set a name, a colour and five poses would otherwise be six saves
+ * and nothing to take back.
  *
  * How big a sprite is drawn and where its feet land is the character's `entranceTransform` - the
  * transform every entrance row falls back to, channel by channel, and the "Entrance" section of
@@ -23,7 +28,9 @@ import { AssetType } from "../../assets/assetTypes";
 import type { Asset, AssetSource } from "../../assets/types";
 import { Services, type WorkspaceContext } from "../../services";
 import type { CharacterService } from "../../core/CharacterService";
-import type { Character } from "../../character/Character";
+import { Character } from "../../character/Character";
+import { isPuppetAppearance, type StoredCharacter } from "../../character/types";
+import type { TranslationKey } from "@shared/i18n";
 import type { VariableRegistryService } from "../../variables/VariableRegistryService";
 import type { AudioTrackService } from "../../audio/AudioTrackService";
 import type { AssetsService } from "../../core/AssetsService";
@@ -41,10 +48,12 @@ import { assetsService, resolveAsset } from "../agentLookups";
 import { blueprintReferencesTo, formatReferrers, storyReferencesTo, storyUsesNotFitting, uiReferencesTo } from "../agentReferences";
 import { opaqueImageWarning, readImageAlpha, type ImageAlphaFacts } from "../imageAlpha";
 import { drawnBoxAtCenter, stageSizeOf, standingEntrance, type PixelSize } from "../spriteStage";
+import { describeLayered } from "../layeredSpec";
+import { storyRowsChoosingLook } from "../characterLooks";
 import { liveBlueprintDocument, loadAllStories, uiDocumentService } from "./textFormat";
 
 /** The project's design resolution: the stage every sprite position is a share of. */
-function stageSize(ctx: WorkspaceContext): PixelSize {
+export function stageSize(ctx: WorkspaceContext): PixelSize {
     return stageSizeOf(ctx.services.get<ProjectService>(Services.Project).getProjectConfig().metadata?.resolution);
 }
 
@@ -71,40 +80,144 @@ export async function readImageFacts(ctx: WorkspaceContext, assetId: string): Pr
     return { name: asset.name, size: width && height ? { width, height } : null, header: facts };
 }
 
-function describeCharacter(character: Character, assets: AssetsService, stage: PixelSize, sprite: PixelSize | null) {
+/**
+ * One character as the cast tools report it.
+ *
+ * The appearance is spelled per kind: a preset's `poses`; a layered character's `layered` block -
+ * axes, the layer stack bottom to top and what each layer draws per tag, in exactly the words
+ * `character_layered_set` takes, so it can be edited and sent back; a puppet's model and runtime,
+ * read-only, because a Live2D or Spine model is set up in Studio (the runtime is the author's own
+ * licensed copy, which Studio may neither ship nor fetch).
+ */
+export function describeCharacter(character: Character, assets: AssetsService, stage: PixelSize, sprite: PixelSize | null) {
     const profile = character.profile;
     const appearance = profile.appearance;
     const images = assets.getAssets()[AssetType.Image] ?? {};
-    const defaultPoseId = appearance.getDefaultPoseId();
     const entranceTransform = profile.getEntranceTransform();
+    const stored = appearance.toJSON();
+    const kind = appearance.getKind();
+    const looks: Record<string, unknown> = {};
+    if (stored.kind === "preset") {
+        const defaultPoseId = appearance.getDefaultPoseId();
+        looks.poses = appearance.getPoses().map(pose => ({
+            name: pose.name,
+            assetId: pose.assetId ?? null,
+            assetName: pose.assetId ? images[pose.assetId]?.name ?? null : null,
+        }));
+        looks.defaultPose = defaultPoseId ? appearance.getPose(defaultPoseId)?.name ?? null : null;
+    } else if (stored.kind === "layered") {
+        looks.layered = describeLayered(stored, assetId => images[assetId]?.name ?? null);
+    } else if (isPuppetAppearance(stored)) {
+        const model = stored.assetId ? Object.values(assets.getAssets()).map(map => map?.[stored.assetId!]).find(Boolean) : undefined;
+        looks.puppet = {
+            runtime: stored.kind,
+            backend: stored.backend || null,
+            model: model ? model.name : stored.assetId,
+            entry: stored.entry,
+            size: stored.size,
+            defaultState: stored.defaultState ?? null,
+            note: "Drawn by a runtime the author installs in Studio (Live2D / Spine / their own); set up in Studio's character editor. "
+                + "Story rows can still drive it: /char (expression), /motion, /skin, /param with the model's own names.",
+        };
+    }
     return {
         id: profile.getId(),
         name: profile.getName(),
         nicknames: [...profile.getNicknames()],
         nameColor: profile.getColor() ?? null,
-        kind: appearance.getKind(),
-        poses: appearance.getPoses().map(pose => ({
-            name: pose.name,
-            assetId: pose.assetId ?? null,
-            assetName: pose.assetId ? images[pose.assetId]?.name ?? null : null,
-        })),
-        defaultPose: defaultPoseId ? appearance.getPose(defaultPoseId)?.name ?? null : null,
+        kind,
+        ...looks,
         entranceTransform: entranceTransform ?? null,
-        // The default pose's own pixels, and the box it lands in on a `pos=center` row - the
-        // numbers an agent needs to judge size and baseline without a playtest screenshot.
+        // The default look's own pixels (a layered character's canvas), and the box it lands in on a
+        // `pos=center` row - the numbers an agent needs to judge size and baseline without a
+        // playtest screenshot.
         spriteSize: sprite,
         drawnAtCenter: sprite ? drawnBoxAtCenter(sprite, entranceTransform, stage) : null,
     };
 }
 
-/** The default pose's pixel size, for a preset character; null for anything else. */
-async function defaultSpriteSize(ctx: WorkspaceContext, character: Character): Promise<PixelSize | null> {
+/**
+ * The default look's pixel size: a preset's default pose, a layered character's canvas (every layer
+ * is drawn at it), a puppet's stage box when one is set. Null when it cannot be known.
+ */
+export async function defaultSpriteSize(ctx: WorkspaceContext, character: Character): Promise<PixelSize | null> {
     const appearance = character.profile.appearance;
-    if (appearance.getKind() !== "preset") {
-        return null;
+    const stored = appearance.toJSON();
+    if (stored.kind === "layered") {
+        return stored.canvas ? { ...stored.canvas } : null;
+    }
+    if (isPuppetAppearance(stored)) {
+        return stored.size ? { ...stored.size } : null;
     }
     const assetId = appearance.resolvePoseAssetId(undefined);
     return assetId ? (await readImageFacts(ctx, assetId))?.size ?? null : null;
+}
+
+/** A character by id or exact name; `null` when there is none, a refusal when the name is ambiguous. */
+export function findCharacter(cast: CharacterService, ref: string): Character | null {
+    const byId = cast.getCharacter(ref);
+    if (byId) {
+        return byId;
+    }
+    const named = cast.listCharacter().filter(item => item.profile.getName() === ref);
+    if (named.length > 1) {
+        throw refuse("invalid_args", `${named.length} characters are called "${ref}".`, "Name the character by id (characters_list).");
+    }
+    return named[0] ?? null;
+}
+
+/** The undo label for a whole-record write: "create character X" or "edit character X". */
+export function characterStepLabel(created: boolean, name: string) {
+    return {
+        key: (created ? "characters.history.createCharacter" : "characters.history.editCharacter") as TranslationKey,
+        params: { name },
+    };
+}
+
+/**
+ * The rows a cold switch between appearance kinds leaves choosing a look that no longer exists, and
+ * the refusal when the agent has not confirmed it.
+ *
+ * Studio has no conversion between the kinds (user ruling 2026-07-26): a stack cannot be inferred
+ * from finished sprites, and flattening a stack is a render. Switching discards the appearance, so
+ * the agent has to have read what that costs before it happens.
+ */
+export async function coldSwitchCheck(
+    ctx: WorkspaceContext,
+    character: Character,
+    to: "preset" | "layered",
+    confirmed: boolean,
+): Promise<string[]> {
+    const from = character.profile.appearance.getKind();
+    if (from === to) {
+        return [];
+    }
+    const { stories } = await loadAllStories(ctx);
+    const rows = storyRowsChoosingLook(stories, character.profile.getId());
+    const stored = character.profile.appearance.toJSON();
+    const what = stored.kind === "preset"
+        ? `its ${stored.poses.length} pose(s)`
+        : stored.kind === "layered"
+            ? `its ${stored.axes.length} axis/axes and ${stored.layers.length} layer(s)`
+            : `its ${from} model setup`;
+    const name = character.profile.getName();
+    const summary = `"${name}" is a ${from} character; making it ${to} discards ${what} - a cold switch, nothing is converted.`
+        + (rows.length > 0
+            ? ` ${rows.length} story row(s) choose one of its looks and will fall back to the default look:\n${formatReferrers(rows)}`
+            : " No story row chooses one of its looks.");
+    if (!confirmed) {
+        throw refuse(
+            "unavailable",
+            summary,
+            "If that is what the author wants, call again with `confirmSwitch: true`; then rewrite those rows (story_show / story_apply) to name the new looks.",
+        );
+    }
+    return [summary];
+}
+
+/** Land a shaped record as one step of undo, labelled for what it did. False when nothing changed. */
+export function commitRecord(cast: CharacterService, record: StoredCharacter, created: boolean): boolean {
+    return cast.commitCharacterRecord(record, characterStepLabel(created, record.profile.name));
 }
 
 export const charactersList: AgentToolHandler = async (_args, { ctx }) => {
@@ -137,12 +250,12 @@ function readPoses(raw: unknown): PoseInput[] | undefined {
 }
 
 /** What `entranceTransform` asks for: leave it, clear it, fit it to the art, or state it. */
-type EntranceInput = { kind: "keep" } | { kind: "clear" } | { kind: "standing" } | { kind: "set"; props: StoryTransformProps };
+export type EntranceInput = { kind: "keep" } | { kind: "clear" } | { kind: "standing" } | { kind: "set"; props: StoryTransformProps };
 
 const ENTRANCE_KEYS = ["zoom", "scaleX", "scaleY", "position"] as const;
 const POSITION_KEYS = ["xalign", "yalign", "xoffset", "yoffset"] as const;
 
-function readEntrance(args: Record<string, unknown>): EntranceInput {
+export function readEntrance(args: Record<string, unknown>): EntranceInput {
     if (!("entranceTransform" in args) || args.entranceTransform === undefined) {
         return { kind: "keep" };
     }
@@ -190,6 +303,51 @@ function readEntrance(args: Record<string, unknown>): EntranceInput {
     return { kind: "set", props };
 }
 
+/**
+ * Set a character's entrance defaults on `profile` as `entrance` asks, given the default look's
+ * pixel size. Returns a sentence for the answer when a default was chosen without being asked for.
+ *
+ * A character that gets art and has none stands on the bottom edge at its own pixels: the stage's
+ * neutral would centre it vertically, which no visual novel wants, and an agent cannot see the stage
+ * to notice. A character that already has defaults keeps them - they are an author's decision - but
+ * when its art was just replaced the numbers were chosen for other pixels (the skeleton's demo cast
+ * is tuned for its demo sprite), so a warning says so.
+ */
+export function applyEntrance(
+    profile: Character["profile"],
+    entrance: EntranceInput,
+    sprite: PixelSize | null,
+    stage: PixelSize,
+    gotArt: boolean,
+    warnings: string[],
+): string {
+    if (entrance.kind === "set") {
+        profile.setEntranceTransform(entrance.props);
+        return "";
+    }
+    if (entrance.kind === "clear") {
+        profile.setEntranceTransform(undefined);
+        return "";
+    }
+    if (entrance.kind === "standing" || (gotArt && profile.getEntranceTransform() === undefined)) {
+        if (!sprite) {
+            if (entrance.kind === "standing") {
+                throw refuse("unavailable", `"${profile.getName()}" has no readable picture to fit.`, "Give it art first, or state `entranceTransform` as numbers.");
+            }
+            return "";
+        }
+        profile.setEntranceTransform(standingEntrance(sprite, stage));
+        return entrance.kind === "standing" ? "" : " Entrance set to a standing sprite (feet on the bottom edge, own pixel size).";
+    }
+    if (gotArt && profile.getEntranceTransform() !== undefined) {
+        warnings.push(
+            `"${profile.getName()}" keeps its entrance defaults ${JSON.stringify(profile.getEntranceTransform())}, chosen for its previous art. `
+            + "Check drawnAtCenter below; pass `entranceTransform: \"standing\"` to refit them to the new art, or state them.",
+        );
+    }
+    return "";
+}
+
 export const characterUpsert: AgentToolHandler = async (args, { ctx, request, follow }) => {
     const id = readOptionalString(args, "id");
     const name = readOptionalString(args, "name");
@@ -198,6 +356,7 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
     const poses = readPoses(args.poses);
     const defaultPose = readOptionalString(args, "defaultPose");
     const entrance = readEntrance(args);
+    const confirmSwitch = args.confirmSwitch === true;
     if (!id && !name) {
         throw refuse("invalid_args", "Give the character's `id` (to update one) or `name`.");
     }
@@ -211,23 +370,26 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
     }
 
     const cast = ctx.services.get<CharacterService>(Services.Character);
-    let character: Character | undefined = id ? cast.getCharacter(id) : undefined;
+    let character: Character | null = id ? cast.getCharacter(id) ?? null : null;
     if (id && !character) {
         throw refuse("not_found", `No character with id ${id}.`, "Call characters_list for the ids.");
     }
     if (!character && name) {
-        const named = cast.listCharacter().filter(item => item.profile.getName() === name);
-        if (named.length > 1) {
-            throw refuse("invalid_args", `${named.length} characters are called "${name}".`, "Name the character by id.");
-        }
-        character = named[0];
+        character = findCharacter(cast, name);
     }
     follow.describeCall(request.callId, name ?? character?.profile.getName() ?? "");
-    if (poses && character && character.profile.appearance.getKind() !== "preset") {
-        throw refuse("unavailable", `"${character.profile.getName()}" is a layered character; its poses are axes and layers, which are edited in Studio's character editor.`);
-    }
-    if (entrance.kind === "standing" && character && character.profile.appearance.getKind() !== "preset") {
-        throw refuse("unavailable", `"${character.profile.getName()}" is a layered character, which has no single picture to fit; state \`entranceTransform\` as numbers instead.`);
+    const kind = character?.profile.appearance.getKind() ?? "preset";
+    const warnings: string[] = [];
+    if (character && kind !== "preset") {
+        if (poses) {
+            // Poses on a layered or puppet character is a request to make it a preset one - the cold
+            // switch, which discards its looks and so has to be confirmed after seeing the cost.
+            warnings.push(...await coldSwitchCheck(ctx, character, "preset", confirmSwitch));
+        } else if (defaultPose) {
+            throw refuse("unavailable", `"${character.profile.getName()}" is a ${kind} character, which has no poses.`, kind === "layered" ? "Its looks are axes and tags: character_layered_set." : undefined);
+        } else if (entrance.kind === "standing" && kind !== "layered") {
+            throw refuse("unavailable", `"${character.profile.getName()}" is a ${kind} character, which has no single picture to fit; state \`entranceTransform\` as numbers instead.`);
+        }
     }
 
     // Read before writing, so an opaque picture is reported with the write rather than discovered on
@@ -238,24 +400,20 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
             poseFacts.set(pose.assetId, await readImageFacts(ctx, pose.assetId));
         }
     }
-    const warnings: string[] = [];
     for (const facts of poseFacts.values()) {
         if (facts && facts.header.alpha === false) {
             warnings.push(opaqueImageWarning(facts.name, facts.header));
         }
     }
 
-    let created = false;
-    if (!character) {
-        const made = cast.createCharacter(name!, "preset", nameColor ? { color: nameColor } : undefined);
-        character = cast.getCharacter(made.profile.getId()) ?? made;
-        created = true;
-    }
-    const profile = character.profile;
+    // Shaped on a detached copy and landed whole, so the call is one step of undo.
+    const created = !character;
+    const draft = character ? Character.fromJSON(character.toJSON()) : cast.draftCharacter(name!, "preset");
+    const profile = draft.profile;
     if (!created && name && name !== profile.getName()) {
-        await cast.renameCharacter(profile.getId(), name);
+        profile.setName(name);
     }
-    if (!created && nameColor !== undefined && nameColor !== profile.getColor()) {
+    if (nameColor !== undefined && nameColor !== profile.getColor()) {
         profile.setColor(nameColor);
     }
     if (nicknames) {
@@ -271,6 +429,9 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
         }
     }
     const appearance = profile.appearance;
+    if (poses && appearance.getKind() !== "preset") {
+        appearance.setKind("preset");
+    }
     if (poses) {
         for (const pose of [...appearance.getPoses()]) {
             appearance.removePose(pose.id);
@@ -290,46 +451,23 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
         appearance.setDefaultPoseId(pose.id);
     }
 
-    // Entrance defaults. A character that gets art and has none stands on the bottom edge at its
-    // own pixels: the stage's neutral would centre it vertically, which no visual novel wants, and an
-    // agent cannot see the stage to notice. A character that already has defaults keeps them - they
-    // are an author's decision - but when its art was just replaced the numbers were chosen for other
-    // pixels (the skeleton's demo cast is tuned for its demo sprite), so the answer says so.
     const stage = stageSize(ctx);
     const defaultAssetId = appearance.getKind() === "preset" ? appearance.resolvePoseAssetId(undefined) : null;
     const defaultSprite = defaultAssetId
         ? (poseFacts.get(defaultAssetId) ?? await readImageFacts(ctx, defaultAssetId))?.size ?? null
-        : null;
-    let entranceNote = "";
-    if (entrance.kind === "set") {
-        profile.setEntranceTransform(entrance.props);
-    } else if (entrance.kind === "clear") {
-        profile.setEntranceTransform(undefined);
-    } else if (entrance.kind === "standing" || (poses && poses.length > 0 && profile.getEntranceTransform() === undefined)) {
-        if (!defaultSprite) {
-            if (entrance.kind === "standing") {
-                throw refuse("unavailable", `"${profile.getName()}" has no readable pose image to fit.`, "Give `poses` first, or state `entranceTransform` as numbers.");
-            }
-        } else {
-            profile.setEntranceTransform(standingEntrance(defaultSprite, stage));
-            entranceNote = entrance.kind === "standing" ? "" : " Entrance set to a standing sprite (feet on the bottom edge, own pixel size).";
-        }
-    } else if (poses && profile.getEntranceTransform() !== undefined) {
-        warnings.push(
-            `"${profile.getName()}" keeps its entrance defaults ${JSON.stringify(profile.getEntranceTransform())}, chosen for its previous art. `
-            + "Check drawnAtCenter below; pass `entranceTransform: \"standing\"` to refit them to the new pose, or state them.",
-        );
-    }
+        : await defaultSpriteSize(ctx, draft);
+    const entranceNote = applyEntrance(profile, entrance, defaultSprite, stage, Boolean(poses && poses.length > 0), warnings);
 
-    const current = cast.getCharacter(profile.getId()) ?? character;
-    const sprite = defaultSprite ?? await defaultSpriteSize(ctx, current);
+    const changed = commitRecord(cast, draft.toJSON() as StoredCharacter, created);
+    const current = cast.getCharacter(profile.getId()) ?? draft;
     return answerJson(
         {
             created,
-            character: describeCharacter(current, assetsService(ctx), stage, sprite),
+            character: describeCharacter(current, assetsService(ctx), stage, defaultSprite),
             ...(warnings.length > 0 ? { warnings } : {}),
         },
-        `${created ? "Created" : "Updated"} character "${current.profile.getName()}".${entranceNote}${warnings.length > 0 ? ` ${warnings.length} warning(s).` : ""}`,
+        `${created ? "Created" : changed ? "Updated" : "Nothing to change on"} character "${current.profile.getName()}".${entranceNote}`
+            + `${changed ? " One step of undo in Studio." : ""}${warnings.length > 0 ? ` ${warnings.length} warning(s).` : ""}`,
     );
 };
 

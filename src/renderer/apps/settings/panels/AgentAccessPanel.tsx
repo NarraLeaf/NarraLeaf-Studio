@@ -30,8 +30,8 @@ const CONFIG_KINDS: {
 ];
 
 /**
- * Agent access: the MCP endpoint an author's own AI agent connects to, and the two switches that
- * decide what it may do.
+ * Agent access: the MCP endpoint an author's own AI agent connects to, and the switches that decide
+ * what it may do.
  *
  * Everything here lives in the main process (`AgentManager`), not in the settings store - the token
  * is a secret and the switches decide whether an outside program may change a project - so the
@@ -136,13 +136,24 @@ export function AgentAccessPanel() {
                     aria-label={t("settings.agent.enable")}
                 />
             </Row>
+            {/* Full access lets writes through on its own; while it is on, the write switch shows that and holds still. */}
             <Row label={t("settings.agent.allowWrites")} description={t("settings.agent.allowWritesHint")}>
                 <Switch
-                    checked={settings.allowWrites}
-                    disabled={busy}
+                    checked={settings.allowWrites || settings.fullAccess}
+                    disabled={busy || settings.fullAccess}
                     onCheckedChange={checked => void update({ allowWrites: checked })}
                     size="md"
                     aria-label={t("settings.agent.allowWrites")}
+                />
+            </Row>
+            {/* Turning it on is confirmed in the agent access window by main; a declined prompt answers the switch off again. */}
+            <Row label={t("settings.agent.fullAccess")} description={t("settings.agent.fullAccessHint")}>
+                <Switch
+                    checked={settings.fullAccess}
+                    disabled={busy}
+                    onCheckedChange={checked => void update({ fullAccess: checked })}
+                    size="md"
+                    aria-label={t("settings.agent.fullAccess")}
                 />
             </Row>
             <Row

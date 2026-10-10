@@ -115,7 +115,9 @@ const GUIDE_TITLES: Record<AgentGuideChapter, string> = {
     "blueprint-format": "The .bp text format",
     "ui-design": "Designing visual-novel interfaces",
     "script-adaptation": "Turning a script into scenes",
+    "layered-sprites": "Characters drawn from layers: axes, tags and looks",
     "verify-and-ship": "Checking, play-testing and building",
+    "localization-and-voice": "Translating the game and wiring voice-over",
     troubleshooting: "Refusals and what to do about them",
 };
 
