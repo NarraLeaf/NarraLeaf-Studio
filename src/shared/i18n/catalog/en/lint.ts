@@ -794,7 +794,9 @@ export const lint = {
             message: "Nothing opens this page",
             help:
                 "A page nothing opens: it is not the entry page, no blueprint node picks it (Go Page, Show "
-                + "Layer and Quit Game are examples), and no Page widget shows it. Game UI is not checked.\n"
+                + "Layer and Quit Game are examples), no Page widget shows it, no /quit or /ending row names it, "
+                + "and neither the project nor a build variant shows it when the story ends. Game UI is not "
+                + "checked.\n"
                 + "\n"
                 + "No player can open the page.\n"
                 + "\n"
