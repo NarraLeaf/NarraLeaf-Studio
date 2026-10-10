@@ -2109,9 +2109,15 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
     // props accumulated against the built-in singletons (scene background / built-in layers).
     const backgroundProps = snapshot.backgroundProps;
     const builtinLayerProps = snapshot.builtinLayerProps;
+    // The camera too, as a launch poses it: a still of a row after a pan is a still of the panned
+    // shot - and of the layers at their distances inside it - not of a camera that never moved.
+    const cameraProps = snapshot.camera?.props ?? {};
     statements.push(Script.execute(((scriptCtx: ScriptCtx) => {
         for (const registration of registrations) {
             DevTools.registerDisplayable(scriptCtx.gameState, registration.element as any, previewScene, registration.layer ?? null);
+        }
+        if (Object.keys(cameraProps).length > 0) {
+            DevTools.setDisplayableTransformProps(scriptCtx.gameState, nlrStory.camera as any, cameraProps);
         }
         if (Object.keys(backgroundProps).length > 0) {
             DevTools.setDisplayableTransformProps(scriptCtx.gameState, previewScene.background as any, backgroundProps);
@@ -2136,6 +2142,9 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         }
     }
     statements.push(...await compileSnapshotEffects(ctx, previewScene.background, snapshot.backgroundEffects));
+    if (snapshot.camera) {
+        statements.push(...await compileSnapshotEffects(ctx, nlrStory.camera, snapshot.camera.effects));
+    }
 
     // The stage is now a faithful still of the snapshot; hold here until the host reveals the
     // buffer so the target's own action plays entirely on a visible stage.
