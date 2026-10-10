@@ -20,6 +20,7 @@
  */
 
 import { getInterface } from "@/lib/app/bridge";
+import { i18nStore } from "@/lib/i18n";
 import {
     applyBlueprintsToDocument,
     BLUEPRINT_OWNER_KINDS,
@@ -126,7 +127,7 @@ export const blueprintShow: AgentToolHandler = async (args, { ctx, request, foll
     if (shown.exitCode !== 0) {
         throw refuse("not_found", `No blueprint matches "${wanted}".`, "Call blueprint_list for the blueprints and their owners.");
     }
-    follow.describeCall(request.callId, shown.blueprints.map(item => item.name).join(", "));
+    follow.describeCall(request.callId, i18nStore.getTranslator().formatList(shown.blueprints.map(item => item.name)));
     const blueprints = shown.blueprints.map(item => ({
         id: item.id,
         name: item.name,
@@ -237,7 +238,7 @@ export const blueprintApply: AgentToolHandler = async (args, { ctx, request, fol
     if (blueprints.length === 0) {
         throw refuse("invalid_args", "The source holds no `blueprint` block, so there is nothing to write.");
     }
-    follow.describeCall(request.callId, blueprints.map(blueprint => blueprint.name).join(", "));
+    follow.describeCall(request.callId, i18nStore.getTranslator().formatList(blueprints.map(blueprint => blueprint.name)));
     // Checked against the live document after the awaits above, right before the write: an edit the
     // author made while the source was being checked counts.
     assertBlueprintRevision(liveBlueprintDocument(ctx), blueprints, baseRevision);

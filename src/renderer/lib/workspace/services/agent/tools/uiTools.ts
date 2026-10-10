@@ -7,6 +7,7 @@
 
 import { createElement, type ReactElement } from "react";
 import { getInterface } from "@/lib/app/bridge";
+import { translate } from "@/lib/i18n";
 import type { UIComponentDefinition, UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { readUIComponentEditorSurfaceComponentId } from "@shared/types/ui-editor/componentInstanceKey";
 import { parseBrandLink } from "@shared/brand/brandLink";
@@ -429,7 +430,8 @@ export const brandSet: AgentToolHandler = async (args, { ctx, request, follow })
     if (!colors && !fonts) {
         throw refuse("invalid_args", "Give `colors`, `fonts` or both.");
     }
-    follow.describeCall(request.callId, "brand");
+    // The palette has no name of its own; the log names it the way a comparison does.
+    follow.describeCall(request.callId, translate("documentDiff.name.brand"));
     const brand = ctx.services.get<BrandService>(Services.Brand);
 
     // Checked whole before anything is written.

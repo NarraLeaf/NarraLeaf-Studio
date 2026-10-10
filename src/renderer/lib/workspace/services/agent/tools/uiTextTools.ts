@@ -13,6 +13,7 @@
  */
 
 import { getInterface } from "@/lib/app/bridge";
+import { i18nStore, translate } from "@/lib/i18n";
 import {
     applyCompiledUi,
     checkUiSource,
@@ -249,7 +250,10 @@ export const uiApply: AgentToolHandler = async (args, { ctx, request, follow }) 
     const names = [...targets.existing, ...targets.added].map(target => target.kind === "surface"
         ? compiled.surfaces.find(item => item.surface.id === target.surfaceId)?.surface.name
         : compiled.components.find(item => item.component.id === target.componentId)?.component.name);
-    follow.describeCall(request.callId, names.filter(Boolean).join(", ") || "interface");
+    // Joined as the author's language writes a list; a source naming none falls back to what the
+    // author calls the pages as a whole.
+    const shown = names.filter((name): name is string => Boolean(name));
+    follow.describeCall(request.callId, shown.length > 0 ? i18nStore.getTranslator().formatList(shown) : translate("documentDiff.name.uiDocument"));
     for (const target of targets.existing) {
         try {
             assertUiRevision(ctx, target, baseRevision);
