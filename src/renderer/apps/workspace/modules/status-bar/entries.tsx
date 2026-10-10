@@ -18,6 +18,7 @@ import { NOTIFICATIONS_PANEL_ID } from "../notifications";
 import { StatusEntry } from "./StatusEntry";
 import { useActiveRunMode } from "./useActiveRunMode";
 import { useProjectDistrusted } from "../../hooks/useProjectDistrusted";
+import { useShortcutLabels } from "../../hooks/useShortcutLabels";
 import { useStudioTasks } from "./useStudioTasks";
 import { useVersionSurface } from "../../hooks/useVersionSurface";
 import { openVersionRail } from "../../components/layout/versionRailController";
@@ -485,8 +486,13 @@ export function DistrustedProjectEntry() {
 
 export function ShortcutsEntry() {
     const { t } = useTranslation();
+    const key = useShortcutLabels().forBinding("workspace-keybinding-cheatsheet");
     return (
-        <StatusEntry tooltip={t("workspace.shell.statusBar.shortcuts")} onClick={openKeybindingCheatSheet}>
+        <StatusEntry
+            tooltip={t("workspace.shell.statusBar.shortcuts")}
+            onClick={openKeybindingCheatSheet}
+            dataAttributes={key ? { "data-tip-shortcut": key } : undefined}
+        >
             <Keyboard className="h-3 w-3" />
         </StatusEntry>
     );
