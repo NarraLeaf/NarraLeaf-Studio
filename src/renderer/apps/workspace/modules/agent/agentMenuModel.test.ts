@@ -54,8 +54,14 @@ describe("the Agent menu's status line", () => {
         expect(agentMenuStatusLine(zh, "Claude Code", "working")).toBe("Agent：Claude Code · 工作中");
         expect(agentMenuStatusLine(zh, "opencode", "idle")).toBe("Agent：opencode · 空闲");
         expect(agentMenuStatusLine(zh, "Claude Code", "paused")).toBe("Agent：Claude Code · 已暂停");
-        expect(agentMenuStatusLine(zh, null, "off")).toBe("Agent：未连接 · 未开启");
         expect(agentMenuStatusLine(en, null, "idle")).toBe("Agent: Not connected · Idle");
+    });
+
+    it("names no agent while access is off, not even the last one that called", () => {
+        expect(agentMenuStatusLine(zh, "Claude Code (drive)", "off")).toBe("Agent 接入：未开启");
+        expect(agentMenuStatusLine(zh, null, "off")).toBe("Agent 接入：未开启");
+        expect(agentMenuStatusLine(en, "Claude Code", "off")).toBe("Agent access: Off");
+        expect(agentMenuStatusLine(createTranslator("ja").t, "Claude Code", "off")).toBe("エージェント連携：無効");
     });
 
     it("puts access being off before everything, then pause, then work", () => {
@@ -171,6 +177,7 @@ describe("the Agent menu's rows", () => {
             "---",
             AGENT_MENU_ACTIONS.settings,
         ]);
+        expect(items.filter(isActionMenuAction).find(item => item.id === AGENT_MENU_ACTIONS.status)).toMatchObject({ label: "Agent 接入：未开启", disabled: true });
         const enable = items.filter(isActionMenuAction).find(item => item.id === AGENT_MENU_ACTIONS.enable);
         expect(enable).toMatchObject({ checked: false, label: "启用 Agent 接入" });
         expect(enable?.disabled).toBeFalsy();

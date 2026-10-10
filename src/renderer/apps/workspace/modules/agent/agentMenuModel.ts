@@ -51,15 +51,20 @@ export function agentMenuStateKind(
     return session.busy ? "working" : "idle";
 }
 
-const STATE_KEYS: Record<AgentMenuStateKind, TranslationKey> = {
+const STATE_KEYS: Record<Exclude<AgentMenuStateKind, "off">, TranslationKey> = {
     working: "workspace.agent.appMenu.state.working",
     idle: "workspace.agent.appMenu.state.idle",
     paused: "workspace.agent.appMenu.state.paused",
-    off: "workspace.agent.appMenu.state.off",
 };
 
-/** `Agent: Claude Code · Working`, or `Agent: Not connected · Off`. */
+/**
+ * `Agent: Claude Code · Working`, or `Agent: Not connected · Idle`. With access off there is no
+ * agent, so no client is named - not even the last one that called - only `Agent access: Off`.
+ */
 export function agentMenuStatusLine(t: Translator["t"], clientName: string | null, state: AgentMenuStateKind): string {
+    if (state === "off") {
+        return t("workspace.agent.appMenu.statusOff");
+    }
     return t("workspace.agent.appMenu.status", {
         client: clientName ?? t("workspace.agent.appMenu.notConnected"),
         state: t(STATE_KEYS[state]),

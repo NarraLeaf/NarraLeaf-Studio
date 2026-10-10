@@ -445,12 +445,12 @@ export const workspace = {
         appMenu: {
             title: "Agent",
             status: "Agent: {client} · {state}",
+            statusOff: "Agent access: Off",
             notConnected: "Not connected",
             state: {
                 working: "Working",
                 idle: "Idle",
                 paused: "Paused",
-                off: "Off",
             },
             log: "Agent log",
             enable: "Enable agent access",

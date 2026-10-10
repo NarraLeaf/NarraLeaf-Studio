@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import { getInterface } from "@/lib/app/bridge";
 import { revealInFileManagerKey } from "@/lib/app/platform";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { AgentFollowService, AgentFollowState } from "@/lib/workspace/services/agent/AgentFollowService";
-import type { AgentCopyConfigKind, AgentQuickState, AgentQuickTogglePatch } from "@shared/agent/workspaceAccess";
+import type { AgentCopyConfigKind, AgentQuickTogglePatch } from "@shared/agent/workspaceAccess";
 import { useRegistry } from "@/apps/workspace/registry";
 import { useWorkspace } from "../../context";
 import { AGENT_MENU_GROUP_ID, agentCopyKindLabel, agentMenuStateKind, buildAgentMenuItems } from "./agentMenuModel";
 import { AGENT_LOG_PANEL_ID } from "./agentLogIds";
+import { adoptAgentQuickState, useAgentQuickState } from "./useAgentQuickState";
 
 /** The setting row Settings opens at for agent access (`appSettings.ts`). */
 const AGENT_ACCESS_SETTING_KEY = "agent.access";
@@ -18,30 +19,6 @@ const AGENT_ACCESS_SETTING_KEY = "agent.access";
 const AGENT_MENU_ORDER = 25;
 
 const NO_SUBSCRIPTION = () => () => {};
-
-/**
- * Agent access as main reports it: whether it is on, writes or full access are allowed and the endpoint listens.
- * Null until main answers. Kept current by main's broadcast, which follows every change - from this
- * menu, another window's menu, the Settings window, or the endpoint starting or failing.
- */
-function useAgentQuickState(): [AgentQuickState | null, (state: AgentQuickState) => void] {
-    const [state, setState] = useState<AgentQuickState | null>(null);
-    useEffect(() => {
-        let alive = true;
-        const agent = getInterface().agent;
-        void agent.getQuickState().then(result => {
-            if (alive && result.success) {
-                setState(result.data);
-            }
-        }).catch(() => undefined);
-        const token = agent.onQuickStateChanged(next => setState(next));
-        return () => {
-            alive = false;
-            token.cancel();
-        };
-    }, []);
-    return [state, setState];
-}
 
 /**
  * The Agent menu, registered as a top-level group: on macOS it is synced to the native menu bar
@@ -56,7 +33,7 @@ export function AgentMenu() {
     const { t } = useTranslation();
     const { context } = useWorkspace();
     const { registerActionGroup, unregisterActionGroup } = useRegistry();
-    const [quick, setQuick] = useAgentQuickState();
+    const quick = useAgentQuickState();
 
     let follow: AgentFollowService | null = null;
     try {
@@ -82,12 +59,12 @@ export function AgentMenu() {
         void (async () => {
             const result = await getInterface().agent.quickToggle(patch);
             if (result.success) {
-                setQuick(result.data);
+                adoptAgentQuickState(result.data);
             } else {
                 notify(t("workspace.agent.appMenu.notice.toggleFailed", { error: result.error ?? "" }), "error");
             }
         })();
-    }, [notify, setQuick, t]);
+    }, [notify, t]);
 
     const copyConfig = useCallback((kind: AgentCopyConfigKind) => {
         void (async () => {

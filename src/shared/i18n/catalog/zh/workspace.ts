@@ -403,12 +403,12 @@ export const workspace = {
             // title included, so the menu and the rows inside it name the same thing.
             title: "Agent",
             status: "Agent：{client} · {state}",
+            statusOff: "Agent 接入：未开启",
             notConnected: "未连接",
             state: {
                 working: "工作中",
                 idle: "空闲",
                 paused: "已暂停",
-                off: "未开启",
             },
             log: "Agent 日志",
             enable: "启用 Agent 接入",
