@@ -270,6 +270,7 @@ describe("plugin story action runner", () => {
     const fakeGameState = {
         game: { getLiveGame: () => ({ getStorable: () => ({ getNamespace: () => ({}) }) }) },
         logger: { warn: () => undefined },
+        events: { on: () => ({ cancel: () => undefined }) },
     };
     const pluginGame = { log: () => undefined } as unknown as RuntimePluginGame;
 
