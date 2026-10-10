@@ -15,7 +15,8 @@
  *     #music <audio> [track=<audio track>] [volume=0.8] [loop=false] [fade=1200]
  *     #music none
  *
- * `fade` is milliseconds. A key left out of `#music` is left out of the record, which is what lets
+ * `fade` is milliseconds, printed whole; a fade the file leaves as printed is the stored one, even when
+ * the store holds float noise. A key left out of `#music` is left out of the record, which is what lets
  * the track's own defaults answer - the same rule the scene panel follows. A bare `none` clears;
  * `'none'` in quotes is an asset that happens to be called that.
  *
@@ -186,8 +187,10 @@ function printMusic(bgm: StorySceneBgm | undefined, lookups: SceneSettingsLookup
     if (bgm.loop !== undefined) {
         parts.push(`loop=${bgm.loop}`);
     }
-    if (bgm.fadeMs !== undefined) {
-        parts.push(`fade=${bgm.fadeMs}`);
+    if (bgm.fadeMs !== undefined && Number.isFinite(bgm.fadeMs)) {
+        // Whole milliseconds: the scene panel stores seconds times a thousand, so a stored fade can
+        // carry float noise (2009.9999999999998) that no one typed and the reader below folds back.
+        parts.push(`fade=${Math.round(bgm.fadeMs)}`);
     }
     return parts.join(" ");
 }
@@ -318,10 +321,10 @@ function readMusic(
             }
             case "fade": {
                 const fadeMs = Number(value);
-                if (value === "" || !Number.isInteger(fadeMs) || fadeMs < 0) {
-                    return refuse(`${DIRECTIVE_MUSIC} fade= takes whole milliseconds, not "${value}".`);
+                if (value === "" || !Number.isFinite(fadeMs) || fadeMs < 0) {
+                    return refuse(`${DIRECTIVE_MUSIC} fade= takes milliseconds, a number from 0 up, not "${value}".`);
                 }
-                bgm.fadeMs = fadeMs;
+                bgm.fadeMs = keptFade(fadeMs, current?.fadeMs);
                 break;
             }
             default:
@@ -329,6 +332,18 @@ function readMusic(
         }
     }
     return bgm;
+}
+
+/**
+ * The fade to store for one read from the file: whole milliseconds, unless it is the fade the scene
+ * already holds to the millisecond the file prints - then the stored value, float noise and all, so
+ * printing a scene and applying it untouched is never a change.
+ */
+function keptFade(read: number, current: number | undefined): number {
+    if (current !== undefined && Number.isFinite(current) && Math.round(read) === Math.round(current)) {
+        return current;
+    }
+    return Math.round(read);
 }
 
 /**

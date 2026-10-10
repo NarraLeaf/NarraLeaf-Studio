@@ -91,6 +91,23 @@ describe("#background and #music", () => {
         expect(parseStoryFile("#nlstory 1\n#background a\n#background b\n").diagnostics).toMatchObject([{ code: "file.duplicate_setting", line: 3 }]);
     });
 
+    it("prints a fade with float noise in whole milliseconds, and reads it back as the stored value", () => {
+        // The scene panel stores `Number(seconds) * 1000`, so these are real stored values.
+        for (const fadeMs of [2009.9999999999998, 16100.000000000002]) {
+            const scene: StoryScene = { ...bare, bgm: { assetId: "aud-quiet", fadeMs } };
+            const printed = printSceneSettings(scene, lookups);
+            expect(printed[1]).toBe(`#music bgm-quiet fade=${Math.round(fadeMs)}`);
+            const back = settingsOf(printed.join("\n"), scene);
+            expect(back.diagnostics).toEqual([]);
+            expect(back.scene).toBe(scene);
+        }
+        // A fraction typed into the file is a fade like any other, kept to the millisecond.
+        const typed = settingsOf("#music bgm-quiet fade=1200.6");
+        expect(typed.diagnostics).toEqual([]);
+        expect(typed.scene.bgm).toEqual({ assetId: "aud-quiet", fadeMs: 1201 });
+        expect(settingsOf("#music bgm-quiet fade=-1").diagnostics[0].message).toMatch(/fade= takes milliseconds/);
+    });
+
     it("keeps an id nothing answers to any more when the file leaves it as printed", () => {
         const scene: StoryScene = { ...bare, defaultBackgroundAssetId: "deleted-asset" };
         const printed = printSceneSettings(scene, lookups);
@@ -181,11 +198,36 @@ describe("story show / apply on the command line", () => {
         return { code, out: out.join("\n"), err: err.join("\n") };
     }
 
-    function stored(): StoryScene {
+    function storyFile(): string {
         const storyId = fs.readdirSync(path.join(projectDir, "editor/story/stories"))[0];
-        const document = JSON.parse(fs.readFileSync(path.join(projectDir, "editor/story/stories", storyId, "storydoc.json"), "utf8")) as StoryDocument;
+        return path.join(projectDir, "editor/story/stories", storyId, "storydoc.json");
+    }
+
+    function stored(): StoryScene {
+        const document = JSON.parse(fs.readFileSync(storyFile(), "utf8")) as StoryDocument;
         return sceneNamed(document, "The clubroom");
     }
+
+    /** Give the clubroom's stored scene its music, as the scene panel would have written it. */
+    function storeMusic(bgm: StoryScene["bgm"]): void {
+        const document = JSON.parse(fs.readFileSync(storyFile(), "utf8")) as StoryDocument;
+        const scene = sceneNamed(document, "The clubroom");
+        document.scenes[scene.id] = { ...scene, bgm };
+        fs.writeFileSync(storyFile(), JSON.stringify(document, null, 2), "utf8");
+    }
+
+    it("applies a printed scene whose stored fade carries float noise as no change at all", async () => {
+        storeMusic({ assetId: "49b1db61-3d5e-4453-aa78-531a78e38de5", fadeMs: 2009.9999999999998 });
+        const file = path.join(projectDir, "clubroom.story");
+        expect((await cli("show", "--project", projectDir, "--scene", "The clubroom", "--out", file)).code).toBe(0);
+        expect(fs.readFileSync(file, "utf8")).toContain("\n#music bgm-quiet fade=2010\n");
+
+        const applied = await cli("apply", file, "--project", projectDir, "--write");
+        expect(applied.code, applied.out + applied.err).toBe(0);
+        expect(applied.out).toContain("No row changed.");
+        expect(applied.out).not.toContain("Scene setting:");
+        expect(stored().bgm).toEqual({ assetId: "49b1db61-3d5e-4453-aa78-531a78e38de5", fadeMs: 2009.9999999999998 });
+    });
 
     it("clears a reused scene's opening background with #background none, and lists it under targets before", async () => {
         const targets = await cli("targets", "classroom", "--project", projectDir);
