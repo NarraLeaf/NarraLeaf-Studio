@@ -131,7 +131,7 @@ async function agentStatus(host: AgentMainToolHost): Promise<AgentCallResult> {
         projects.length > 1 ? "More than one project is open: pass `project` (its path) to every workspace tool." : "",
         policy.writesEnabled
             ? "Write access: on."
-            : "Write access: OFF. Read tools work; every write is refused until the author turns on \"Allow agents to make changes\" in Studio's Settings > Agent access.",
+            : "Write access: OFF. Read tools work; every write is refused until the author turns on \"Allow agents to change projects\" in Studio's Settings > Agent access.",
         policy.fullAccess
             ? "Full access: on. You may read files in any folder without asking, except Studio's own folders, the home folder as a whole and file-system roots."
             : policy.allowedImportRoots.length > 0
