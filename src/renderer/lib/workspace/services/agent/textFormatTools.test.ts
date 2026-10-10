@@ -231,6 +231,29 @@ describe("story_apply", () => {
         expect(Object.keys(story.getStoryDocument(storyId).scenes[sceneId].blocks)).toEqual(["a"]);
     }, 60_000);
 
+    it("without a baseRevision, refuses rather than overwrite an edit the author made while it was checking", async () => {
+        const { story, storyId, sceneId, steps, run } = createHarness();
+        const shown = await showScene(run, "Opening");
+        // The author types into the scene right after the call has read it, while the check runs.
+        const read = story.getSceneContentRevision.bind(story);
+        let typed = false;
+        story.getSceneContentRevision = (storyRef: string, sceneRef: string) => {
+            const revision = read(storyRef, sceneRef);
+            if (!typed) {
+                typed = true;
+                queueMicrotask(() => story.updateBlock(storyId, sceneId, "a", note("a", "typed by the author").payload));
+            }
+            return revision;
+        };
+        const refused = await refusal(run(storyApply, { source: withNarration(shown.text, "Overwritten?") }));
+        expect(refused.code).toBe("stale_revision");
+        expect(refused.message).toContain("Nothing was written");
+        const scene = story.getStoryDocument(storyId).scenes[sceneId];
+        expect(Object.keys(scene.blocks)).toEqual(["a"]);
+        expect((scene.blocks.a as StoryNoteBlock).payload.text.value).toBe("typed by the author");
+        expect(steps(storySceneHistoryScope(storyId, sceneId))).toBe(0);
+    }, 60_000);
+
     it("refuses a header naming a scene that does not exist, pointing at scene_create", async () => {
         const { run } = createHarness();
         const byId = await refusal(run(storyApply, { source: "#format 1\n#story Tale\n#scene Gone ⟦11111111-2222-4333-8444-555555555555⟧\nHello." }));

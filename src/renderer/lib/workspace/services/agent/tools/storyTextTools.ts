@@ -219,6 +219,10 @@ export const storyApply: AgentToolHandler = async (args, { ctx, request, follow 
             throw staleScene(baseRevision, now);
         }
     }
+    // Without a baseRevision the scene as it stands now is the base: the check below awaits the
+    // project lint, and the write replaces the whole scene, so an edit the author makes meanwhile
+    // would otherwise be overwritten by a scene built before it existed.
+    const startRevision = service.getSceneContentRevision(story.id, scene.id);
 
     // The vocabulary is not pinned here: see `withCanonicalCommandVocabulary`. Both spellings parse.
     let revision = null as number | null;
@@ -229,6 +233,16 @@ export const storyApply: AgentToolHandler = async (args, { ctx, request, follow 
             : next => {
                 // The check awaited the project lint; the author may have paused meanwhile.
                 assertAgentMayStillWrite({ ctx, request, follow });
+                if (baseRevision === undefined) {
+                    const now = service.getSceneContentRevision(story.id, scene.id);
+                    if (now !== startRevision) {
+                        throw refuse(
+                            "stale_revision",
+                            `The author changed scene "${scene.name}" while this call was checking it (revision ${startRevision}, now ${now}). Nothing was written.`,
+                            "Call story_show again, redo the edit on what it prints, and pass its revision as baseRevision.",
+                        );
+                    }
+                }
                 const written = next.scenes[scene.id];
                 revision = writeSceneForAgent({ ctx, follow }, {
                     storyId: story.id,
