@@ -84,7 +84,7 @@ const USAGE = `story - query the command catalogue, read a project's scenes, wri
   show                        Print a scene in the text format. Needs --project.
                               --story <name|id> --scene <name|id> --out [file]
   check [file.story]          Check a text file, or the whole project when given no file.
-                              --deep also compiles the scene. --rules to list what ran.
+                              Needs --project. --story <name|id> --scene <name|id>
   apply <file.story>          Compile a text file into the project. Needs --project.
                               Writes nothing without --write.
 
@@ -482,4 +482,4 @@ export function parseArgs(argv: readonly string[], booleanFlags: ReadonlySet<str
     return { command: positional.shift() ?? "", positional, flags };
 }
 
-export { COMMANDS, USAGE, readSource, requireProject, optionalProject, stringFlag, UsageError };
+export { COMMANDS, COMMON_FLAGS, USAGE, readSource, requireProject, optionalProject, stringFlag, UsageError };

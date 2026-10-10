@@ -44,6 +44,7 @@ import {
     BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY,
 } from "@/lib/ui-editor/blueprint-nodes/types";
 import { ownerRefToIndexKey } from "@services/ui-editor/blueprint/ownerKeys";
+import { parseBlueprintVariableRef } from "@services/ui-editor/blueprint/blueprintVariableRefs";
 import type { BpBlueprintAst, BpDiagnostic, BpDocumentAst, BpEndpointAst, BpGraphAst, BpNodeAst } from "./ast";
 import { autoLayout } from "./layout";
 import { valueToJs } from "./values";
@@ -150,7 +151,7 @@ function compileBlueprint(
             eventIds.push(graphId);
             continue;
         }
-        const ir = compileGraph(graphAst, owner, previousGraph?.graph ?? null, options, diagnostics);
+        const ir = compileGraph(graphAst, id, owner, previousGraph?.graph ?? null, options, diagnostics);
         if (graphAst.kind === "event") {
             if (events[graphId]) {
                 pushError(diagnostics, graphAst.line, "compile.duplicate_graph", `Two event layers share id "${graphId}".`);
@@ -278,6 +279,7 @@ function reportDroppedGraphs(
 
 function compileGraph(
     ast: BpGraphAst,
+    blueprintId: string,
     owner: BlueprintOwnerRef,
     previous: BlueprintGraphIr | null,
     options: BpCompileOptions,
@@ -298,7 +300,7 @@ function compileGraph(
             continue;
         }
         declared.set(nodeAst.id, nodeAst);
-        params.set(nodeAst.id, compileParams(nodeAst, ast, owner, options, diagnostics));
+        params.set(nodeAst.id, compileParams(nodeAst, ast, blueprintId, owner, options, diagnostics));
     }
 
     const edges: BlueprintGraphEdge[] = [];
@@ -425,6 +427,7 @@ function compileGraph(
 function compileParams(
     nodeAst: BpNodeAst,
     graphAst: BpGraphAst,
+    blueprintId: string,
     owner: BlueprintOwnerRef,
     options: BpCompileOptions,
     diagnostics: BpDiagnostic[],
@@ -528,7 +531,45 @@ function compileParams(
         raw[BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY] = inlineLiteralPins;
     }
     fillElementReferenceType(nodeAst, definition, raw, options, diagnostics);
+    writeOwnVariableRefsBare(nodeAst, entry.inspectorParams ?? [], blueprintId, raw, diagnostics);
     return raw;
+}
+
+/**
+ * Write a reference to this blueprint's own variable as its bare id.
+ *
+ * A variable is named two ways: bare (`<variableId>`) for the blueprint's own, and
+ * `bp:<blueprintId>:<variableId>` for another blueprint's - a page's or the project's, read from a
+ * widget. Both resolve at runtime, so a file that spelled its own variable the long way ran and
+ * passed every check, and then the editor's variable list, which offers the blueprint's own under
+ * the bare id only, showed the field as empty. There is one spelling per variable, and this writes it.
+ */
+function writeOwnVariableRefsBare(
+    nodeAst: BpNodeAst,
+    inspectorParams: readonly { key: string; kind: string }[],
+    blueprintId: string,
+    raw: Record<string, unknown>,
+    diagnostics: BpDiagnostic[],
+): void {
+    for (const param of inspectorParams) {
+        const value = raw[param.key];
+        if (param.kind !== "variableRef" || typeof value !== "string") {
+            continue;
+        }
+        const ref = parseBlueprintVariableRef(value, blueprintId);
+        if (!ref?.explicit || ref.blueprintId !== blueprintId) {
+            continue;
+        }
+        raw[param.key] = ref.variableId;
+        diagnostics.push({
+            severity: "info",
+            code: "compile.own_variable_ref",
+            line: nodeAst.params.find(item => item.key === param.key)?.line ?? nodeAst.line,
+            message: `${param.key} names this blueprint's own variable as "${value.trim()}"; written as "${ref.variableId}".`,
+            hint: "Write a blueprint's own variable as its bare id. bp:<blueprint>:<variable> is for another "
+                + "blueprint's variable.",
+        });
+    }
 }
 
 /**
