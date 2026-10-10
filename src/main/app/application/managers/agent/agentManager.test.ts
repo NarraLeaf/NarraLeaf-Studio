@@ -13,6 +13,7 @@ vi.mock("electron", () => ({
 }));
 
 import { AgentManager } from "./agentManager";
+import { IPC_PAGE_GONE } from "../window/ipcHost";
 import { agentCallTimeoutMs } from "./agentCallTimeout";
 
 /**
@@ -95,6 +96,19 @@ describe("AgentManager calls", () => {
         const result = await manager.callTool(tool("story_list"), {}, ctx);
         expect(result).toMatchObject({ ok: false, error: { code: "unavailable" } });
         expect(result.ok ? "" : result.error.hint).toContain("it will not run at all");
+    });
+
+    it("answers at once when the workspace's page reloads mid-call, saying part of it may be done", async () => {
+        const workspace = fakeWorkspace("/games/a");
+        workspace.invokeIpcRequest.mockRejectedValueOnce(Object.assign(
+            new Error("The page reloaded or navigated away before replying to IPC request: workspaceAgentCall"),
+            { code: IPC_PAGE_GONE },
+        ));
+        const manager = await createManager([workspace]);
+        const result = await manager.callTool(tool("story_list"), {}, ctx);
+        expect(result).toMatchObject({ ok: false, error: { code: "unavailable" } });
+        expect(result.ok ? "" : result.error.message).toBe("The project's window reloaded, or its page crashed, before answering story_list.");
+        expect(result.ok ? "" : result.error.hint).toContain("Part of it may have been done");
     });
 });
 

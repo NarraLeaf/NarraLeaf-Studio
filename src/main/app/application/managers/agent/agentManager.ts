@@ -45,6 +45,7 @@ import {
 } from "@shared/agent/workspaceAccess";
 import type { App } from "../../../app";
 import type { AppWindow } from "../window/appWindow";
+import { IPC_PAGE_GONE } from "../window/ipcHost";
 import { dialogTranslator, showOpenDialog } from "../window/fileDialog";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { defaultTestEdition } from "../../utils/testEdition";
@@ -784,6 +785,13 @@ export class AgentManager implements AgentMainToolHost {
                 : agentRefusal("internal", `The workspace answered ${tool} with something that is not a tool result.`);
         } catch (error) {
             const message = describe(error);
+            if ((error as { code?: unknown } | null)?.code === IPC_PAGE_GONE) {
+                return agentRefusal(
+                    "unavailable",
+                    `The project's window reloaded, or its page crashed, before answering ${tool}.`,
+                    "Part of it may have been done. Wait for the project to load again (agent_status says when it is answering), read the state back with a show tool, then redo only what is missing.",
+                );
+            }
             if (/timed out/i.test(message)) {
                 return agentRefusal(
                     "unavailable",
