@@ -650,3 +650,44 @@ describe("a project this tool cannot read", () => {
         expect(context.images).toEqual([]);
     });
 });
+
+describe("a /transform bound to the row that walked a character on", () => {
+    /**
+     * A character brought on by `/show <name>` keys on its id, and the row that brought it on carries
+     * no typed name - so the declaring row's label is the placeholder "Character". A `/transform` in
+     * the same file binds to that row, and used to print its subject as that placeholder: a word the
+     * target slot does not answer to, so the echo check failed and the row came back opaque.
+     */
+    it("prints the character's cast name, and reads back as the same row", () => {
+        commandI18nStore.setPreference(false);
+        const project = skeletonProject();
+        expect(project).not.toBeNull();
+        const { data, document } = project!;
+        const scene = { ...(Object.values(document.scenes)[0] as StoryScene), rootBlockIds: [], blocks: {} };
+        const lookups = buildLookups(data, document, scene, buildContext(data, document, scene));
+        const line = "/transform Narra pos=0.5,0.3056 zoom=1.4 d=0.75s ease=easeInOut";
+        const source = `#nlstory 1\n#scene ${scene.name} ⟦${scene.id}⟧\n\n/show Narra\n${line}\n`;
+        let next = 0;
+        const compiled = compileStoryFile({
+            ast: parseStoryFile(source).ast,
+            existing: scene,
+            document,
+            contextFor: stage => buildContext(data, document, stage ?? scene),
+            prose: lookups.prose,
+            conditions: lookups.conditions,
+            mintId: () => `00000000-0000-4000-8000-${String(next++).padStart(12, "0")}`,
+        });
+        expect(compiled.diagnostics).toEqual([]);
+        const written = compiled.scene!;
+        const transform = written.blocks[written.rootBlockIds[1]];
+        expect(transform?.kind === "action" && transform.payload.action === "displayable"
+            ? transform.payload.target.sourceBlockId : undefined).toBe(written.rootBlockIds[0]);
+
+        const { printed, parseDiagnostics, compiled: again } = roundTrip(data, { ...document, scenes: { ...document.scenes, [written.id]: written } }, written);
+        expect(printed.stats.opaque).toBe(0);
+        expect(printed.text).toContain(`${line}  ⟦${transform!.id}⟧`);
+        expect(parseDiagnostics).toEqual([]);
+        expect(again.diagnostics).toEqual([]);
+        expect(sameRowContent(again.scene!.blocks[transform!.id], transform!)).toBe(true);
+    });
+});

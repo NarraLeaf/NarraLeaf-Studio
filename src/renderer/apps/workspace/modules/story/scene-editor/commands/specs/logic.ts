@@ -15,6 +15,11 @@ export const ifCommand = defineStoryCommand({
     category: "flow",
     icon: GitBranch,
     examples: ["/if gold > 10", "/if met"],
+    sequence: {
+        note: "The row alone runs nothing: the rows to run go indented under it. For else-branches write a bare `/if`, "
+            + "then `? <expression>` and `? else` lines, each with its rows indented under it.",
+        lines: ["/if gold > 10", "  The purse is heavy.", "/if", "  ? met", "    Mei: You again.", "  ? else", "    Mei: Who are you?"],
+    },
     params: {
         test: { hint: "condition", type: { kind: "expression", expects: "boolean" }, positional: true, greedy: true, core: true },
     },
@@ -32,6 +37,11 @@ export const menu = defineStoryCommand({
     category: "flow",
     icon: ListChecks,
     examples: ["/menu Which way?"],
+    sequence: {
+        note: "Each option is a `- text` line indented one level under the menu, with its rows indented under it. "
+            + "After the menu the scene continues for every option that does not jump away.",
+        lines: ["/menu Which way?", "  - Left", "    The path narrows.", "  - Right", "    /jump 'Chapter 2'"],
+    },
     params: {
         text: { hint: "content", type: { kind: "text" }, positional: true, greedy: true },
     },

@@ -47,6 +47,7 @@ export const storyExpr = {
         notPuppetCharacter: "{value} 不是由运行时绘制的角色，没有动作或皮肤可设置",
         ambiguousName: "有多个名为「{value}」的对象，重命名其中一个",
         conflictingParams: "{keys} 不能写在同一行，拆成两行",
+        positionOutOfRange: "「{value}」不是舞台上的位置。pos=x,y 取舞台的比例而非像素：x 从左边缘（0）到右边缘（1），y 从底边（0）到顶边（1），表示对象中心所在之处；-1 到 2 之间的值可置于画面之外",
         repeatTimesAndUntil: "重复只能按次数或按条件之一执行，不能同时指定；删除其中一项",
         expressionError: "{message}",
         expressionNotBoolean: "条件必须是真假判断，例如 gold >= 100",

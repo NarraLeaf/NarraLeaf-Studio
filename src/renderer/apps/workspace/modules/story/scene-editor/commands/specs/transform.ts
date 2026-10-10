@@ -20,6 +20,7 @@ import {
     filterWritersOf,
     parseFromProps,
     parsePositionValue,
+    positionBeyondReach,
     CAMERA_ONLY_PROP_KEYS,
     RESET_CHANNEL_KEYS,
     RESET_PROP_PARAMS,
@@ -238,8 +239,15 @@ function validateProps(
     // A position that is neither a placement word nor an align pair. The grammar cannot check it -
     // the pair has no closed value set - so the spec is the only place it can be said.
     const posSpan = ctx.spanOf("pos");
-    if (posSpan && args.pos !== undefined && parsePositionValue(args.pos.kind === "text" ? args.pos.value : undefined) === null && args.pos.kind === "text") {
-        issues.push({ code: "unsupportedOption", span: posSpan, value: args.pos.value, allowed: ["left", "center", "right", "x,y"] });
+    if (posSpan && args.pos?.kind === "text") {
+        const position = parsePositionValue(args.pos.value);
+        if (position === null) {
+            issues.push({ code: "unsupportedOption", span: posSpan, value: args.pos.value, allowed: ["left", "center", "right", "x,y"] });
+        } else if (positionBeyondReach(position)) {
+            // Shares, not pixels: `pos=100,200` parses, and would send the object a hundred stage
+            // widths off to the right. Refused rather than stored, since no picture is visible there.
+            issues.push({ code: "positionOutOfRange", span: posSpan, value: args.pos.value });
+        }
     }
 
     // A Story Motion is a whole keyframed shot with its own timing; a prop bag is a destination with
@@ -336,6 +344,7 @@ export const transform = defineStoryCommand({
     icon: Move3d,
     examples: [
         "/transform hero pos=left d=0.4",
+        "/transform hero pos=0.3,0.6 d=0.4",
         "/transform hero blur=4 gray=1",
         "/transform Alice flip=on",
         "/transform hero loop scaleY=1.02 d=0.9 repeatType=mirror",

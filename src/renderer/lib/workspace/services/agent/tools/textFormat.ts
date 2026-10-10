@@ -69,6 +69,12 @@ export function forAgent(text: string): string {
         .replace(/ Pass --write to do it\.$/m, " (dry run: nothing written).")
         .replace("so it is done in Studio.", "so it is done with scene_rename.")
         .replace(/`story check --project <dir>` lists (it|them)\./g, "The `lint` tool lists $1.")
+        // `ui.orphaned_blueprint`'s hint names the command line's removal; an agent has the tool.
+        .replace(/The blueprint stays in uigraphs\.json with an owner nothing points at\./g, "The blueprint stays in the project with an owner nothing points at.")
+        .replace(
+            /Keep the element, or take the blueprint away first: `blueprint remove --blueprint <id> --project <dir> --write`\./g,
+            "Keep the element, or remove the blueprint once the element is gone: `blueprint_remove` with its name or id.",
+        )
         .replace(
             /Not checked here: (.+?)\. Those rules read asset bytes or the reference index, which only a running Studio builds - so this says nothing about them either way\./,
             "Not checked by this write: $1. Those rules read asset bytes and the reference index; the `lint` tool runs them.",

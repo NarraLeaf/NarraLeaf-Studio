@@ -528,6 +528,11 @@ export type StoryCommandResolutionIssue =
     | { code: "repeatTimesAndUntil"; span: StoryCommandSpan }
     /** An enum value this command's variant of the shared vocabulary does not support (`/bg t=zoom`). */
     | { code: "unsupportedOption"; span: StoryCommandSpan; value: string; allowed: readonly string[] }
+    /**
+     * A `pos=x,y` pair too far out to be a share of the stage (`pos=100,200`): almost always pixels
+     * typed where fractions belong, and the object would land far off screen.
+     */
+    | { code: "positionOutOfRange"; span: StoryCommandSpan; value: string }
     /** Carries the whole underlying {@link StoryExpressionIssue} - its params make the message worth having. */
     | { code: "expressionError"; span: StoryCommandSpan; value: string; issue: StoryExpressionIssue }
     /** `/if gold` - parses fine, but a condition that is not a comparison is nearly always unfinished. */

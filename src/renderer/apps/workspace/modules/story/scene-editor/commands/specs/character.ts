@@ -339,7 +339,7 @@ export const show = defineStoryCommand({
     aliases: ["enter"],
     category: "character",
     icon: Eye,
-    examples: ["/show Alice", "/show Alice smile pos=left", "/show night pos=center in=fade d=0.5"],
+    examples: ["/show Alice", "/show Alice smile pos=left", "/show night name=sky pos=center in=fade d=0.5"],
     // Inline quick-edit: how long the entrance takes - the duration this line writes onto the
     // show transform, which is what drives a character's entrance (the placement `at=` stays a word).
     quickParams: ["d"],

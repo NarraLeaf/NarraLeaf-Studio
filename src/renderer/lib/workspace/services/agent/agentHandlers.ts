@@ -22,7 +22,8 @@ import { sceneCreate, sceneDelete, sceneRename, sceneSetEntry, storyList, storyR
 import { storyApply, storyCommand, storyCommands, storyShow, storyTargets } from "./tools/storyTextTools";
 import { brandGet, brandSet, uiPatch, uiScreenshot, uiSelection, uiTemplateApply, uiTemplates } from "./tools/uiTools";
 import { uiApply, uiShow, uiSurfaces, uiUsage, uiWidget, uiWidgets } from "./tools/uiTextTools";
-import { blueprintApply, blueprintList, blueprintNode, blueprintNodes, blueprintShow } from "./tools/blueprintTools";
+import { uiPageDelete, uiPageRename, uiPageSetEntry } from "./tools/uiPageTools";
+import { blueprintApply, blueprintList, blueprintNode, blueprintNodes, blueprintRemove, blueprintShow } from "./tools/blueprintTools";
 import { localizationList, localizationSet, localizationStatus } from "./tools/localizationTools";
 import { voiceAutoLink, voiceLink, voiceList, voiceSettingsSet, voiceStatus } from "./tools/voiceTools";
 import {
@@ -76,6 +77,12 @@ export function createAgentToolHandlers(): Record<string, AgentToolHandler> {
         ui_screenshot: uiScreenshot,
         ui_templates: uiTemplates,
         ui_template_apply: uiTemplateApply,
+        ui_page_rename: uiPageRename,
+        ui_page_delete: uiPageDelete,
+        ui_page_set_entry: uiPageSetEntry,
+        // Loaded when first called: it reads the starter template's whole interface through the
+        // template modules, which every other tool can do without.
+        ui_install_standard_screens: async (args, tool) => (await import("./tools/standardScreensTool")).uiInstallStandardScreens(args, tool),
         brand_get: brandGet,
         brand_set: brandSet,
         blueprint_nodes: blueprintNodes,
@@ -83,6 +90,7 @@ export function createAgentToolHandlers(): Record<string, AgentToolHandler> {
         blueprint_list: blueprintList,
         blueprint_show: blueprintShow,
         blueprint_apply: blueprintApply,
+        blueprint_remove: blueprintRemove,
         localization_status: localizationStatus,
         localization_list: localizationList,
         localization_set: localizationSet,

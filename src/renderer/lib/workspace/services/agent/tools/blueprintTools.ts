@@ -31,6 +31,7 @@ import {
 import type { Blueprint, BlueprintDocument, BlueprintOwnerRef, BlueprintPrivateOwnerRecord } from "@shared/types/blueprint/document";
 import { buildUIComponentEditorSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
 import { readTypedBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
+import { planBlueprintRemoval, removeBlueprint, type RemovalElement } from "@/lib/blueprint-cli/remove";
 import { ownerRefToIndexKey } from "../../ui-editor/blueprint/ownerKeys";
 import { Services, type WorkspaceContext } from "../../services";
 import type { BlueprintNodeCatalogService } from "../../ui-editor/BlueprintNodeCatalogService";
@@ -251,5 +252,83 @@ export const blueprintApply: AgentToolHandler = async (args, { ctx, request, fol
         added,
         replaced,
         blueprints: blueprints.map(blueprint => ({ id: blueprint.id, name: blueprint.name, owner: ownerRefToIndexKey(blueprint.owner) })),
+    });
+};
+
+// ── blueprint_remove ─────────────────────────────────────────────────────────────────────────────
+
+/** Every interface element in the project, pages and component definitions alike, by id. */
+function allInterfaceElements(ctx: WorkspaceContext): Record<string, RemovalElement> {
+    const document = uiDocumentService(ctx).getDocument();
+    const out: Record<string, RemovalElement> = { ...document.elements };
+    for (const component of document.components ?? []) {
+        Object.assign(out, component.elements);
+    }
+    return out;
+}
+
+/**
+ * Take one blueprint out of the project: the agent's `blueprint remove`.
+ *
+ * The same plan the command line follows (`blueprint-cli/remove.ts`) - only a widget's, a component
+ * element's or a value binding's blueprint, and only while nothing names it - written through the
+ * live graph document as one step on the project's stack, the way {@link commitBlueprints} records a
+ * write that belongs to no one editor.
+ */
+export const blueprintRemove: AgentToolHandler = async (args, { ctx, request, follow }) => {
+    const wanted = readString(args, "blueprint");
+    const dryRun = readOptionalBoolean(args, "dryRun") ?? false;
+    const live = liveBlueprintDocument(ctx);
+    // One blueprint exactly, by id or by whole name: a part of a name is the right answer to "show
+    // it" and the wrong one to "delete it".
+    const matched = Object.values(live.blueprints).filter(item => item.id === wanted || item.name === wanted);
+    if (matched.length === 0) {
+        throw refuse("not_found", `No blueprint has the id or the whole name "${wanted}".`, "Call blueprint_list for the blueprints and their owners.");
+    }
+    if (matched.length > 1) {
+        throw refuse(
+            "invalid_args",
+            `${matched.length} blueprints are called "${wanted}": ${matched.map(item => `${item.id} (${ownerRefToIndexKey(item.owner)})`).join(", ")}.`,
+            "Name one by its id.",
+        );
+    }
+    const blueprint = matched[0];
+    follow.describeCall(request.callId, blueprint.name);
+    const plan = planBlueprintRemoval(live, blueprint, allInterfaceElements(ctx));
+    if (plan.refusals.length > 0) {
+        throw refuse(
+            "unavailable",
+            `"${blueprint.name}" cannot be removed:\n${plan.refusals.map(reason => `  ${reason.replace("Empty it with `apply` instead.", "Empty it with blueprint_apply instead.").replace("with `ui apply` first", "with ui_apply or ui_patch first")}`).join("\n")}`,
+            "Nothing was written.",
+        );
+    }
+    const owner = ownerRefToIndexKey(blueprint.owner);
+    if (dryRun) {
+        return answer(`Would remove "${blueprint.name}" (${owner}) (dry run: nothing written).`, {
+            dryRun: true,
+            written: false,
+            blueprint: { id: blueprint.id, name: blueprint.name, owner },
+        });
+    }
+    const graph = ctx.services.get<UIGraphService>(Services.UIGraph);
+    const blueprintIds = new Set([blueprint.id]);
+    const before = captureSlice(live, plan.ownerKeys, blueprintIds);
+    graph.applyGraphMutation(document => {
+        const target = document.blueprintDocument.blueprints[blueprint.id];
+        if (target) {
+            removeBlueprint(document.blueprintDocument, target, plan);
+        }
+    });
+    const after = captureSlice(graph.getDocument().blueprintDocument, plan.ownerKeys, blueprintIds);
+    const restore = (slice: BlueprintSlice) => graph.applyGraphMutation(document => restoreSlice(document.blueprintDocument, slice));
+    ctx.services.get<HistoryService>(Services.History).pushCommand(projectHistoryScope(), {
+        label: AGENT_HISTORY_LABEL,
+        undo: () => restore(before),
+        redo: () => restore(after),
+    });
+    return answer(`Removed "${blueprint.name}" (${owner}). One step of undo in Studio.`, {
+        dryRun: false,
+        written: true,
+        blueprint: { id: blueprint.id, name: blueprint.name, owner },
     });
 };

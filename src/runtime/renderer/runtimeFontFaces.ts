@@ -18,6 +18,9 @@
  * Comments in English per project convention.
  */
 
+import { loadFontFaceFromUrl } from "@/lib/ui-editor/fonts/fontFaceFromUrl";
+import { getGameRuntimeBridge } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
+
 /** Asset ids whose face is registered on the document, and the family it went in under. */
 const registered = new Map<string, string>();
 
@@ -79,14 +82,41 @@ async function registerFace(assetId: string, url: string): Promise<string | null
         return null;
     }
     const cssFamily = runtimeFontCssFamily(assetId);
-    const face = await new FontFace(cssFamily, `url("${url.replace(/"/g, "\\\"")}")`).load();
+    let face: FontFace;
+    try {
+        // From the bytes, not from `url(...)`: see `fontFaceFromUrl` for why the browser's font
+        // loader is not handed an asset URL.
+        face = await loadFontFaceFromUrl(cssFamily, url);
+    } catch (error) {
+        reportFontFailure(assetId, error);
+        throw error;
+    }
     document.fonts.add(face);
     registered.set(assetId, cssFamily);
     return cssFamily;
+}
+
+/** Asset ids whose failure is already in the log, so a page of text widgets writes one line. */
+const reportedFailures = new Set<string>();
+
+/**
+ * Say in the game's log that a font did not load.
+ *
+ * The text falls back to the next family in its list either way, and before this nothing else
+ * happened: a game set in the wrong typeface with not one line anywhere saying why.
+ */
+function reportFontFailure(assetId: string, error: unknown): void {
+    if (reportedFailures.has(assetId)) {
+        return;
+    }
+    reportedFailures.add(assetId);
+    const reason = error instanceof Error ? error.message : String(error);
+    getGameRuntimeBridge()?.log("warning", `[fonts] font ${assetId} ${reason}; its text is drawn in the next font of its list`);
 }
 
 /** Forget everything registered. For tests, which share one module instance across cases. */
 export function resetRuntimeFontFacesForTest(): void {
     registered.clear();
     inFlight.clear();
+    reportedFailures.clear();
 }

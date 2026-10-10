@@ -87,22 +87,34 @@ export function storyReferencesTo(
     return out;
 }
 
-/** Every blueprint that names `id`, by name and owner. */
-export function blueprintReferencesTo(document: BlueprintDocument, id: string): string[] {
+/**
+ * Every blueprint that names `id`, by name and owner. `skip` leaves out blueprints that go with the
+ * thing being deleted - a page's own, which may name the page they are on.
+ */
+export function blueprintReferencesTo(
+    document: BlueprintDocument,
+    id: string,
+    skip?: (blueprint: BlueprintDocument["blueprints"][string]) => boolean,
+): string[] {
     const ownerOf = new Map<string, string>();
     for (const [ownerKey, record] of Object.entries(document.ownerRecords ?? {})) {
         ownerOf.set(record.blueprintId, ownerKey);
     }
     return Object.values(document.blueprints ?? {})
+        .filter(blueprint => !skip?.(blueprint))
         .filter(blueprint => holdsId(blueprint.graphs, id) || holdsId(blueprint.bindings, id))
         .map(blueprint => `blueprint "${blueprint.name}"${ownerOf.has(blueprint.id) ? ` (${ownerOf.get(blueprint.id)})` : ""}`);
 }
 
-/** Every interface element that names `id` in its props, by page or component and name. */
-export function uiReferencesTo(document: UIDocument, id: string): string[] {
+/**
+ * Every interface element that names `id` in its props, by page or component and name.
+ * `skipSurfaceId` leaves out one page's own elements: the page being deleted.
+ */
+export function uiReferencesTo(document: UIDocument, id: string, skipSurfaceId?: string): string[] {
     const out: string[] = [];
     const describe = (element: UIElement) => element.name?.trim() || element.type;
     const pageOf = new Map<string, string>();
+    const skipped = new Set<string>();
     for (const surface of document.surfaces) {
         const stack = [surface.rootElementId];
         while (stack.length > 0) {
@@ -112,11 +124,14 @@ export function uiReferencesTo(document: UIDocument, id: string): string[] {
                 continue;
             }
             pageOf.set(elementId, surface.name);
+            if (surface.id === skipSurfaceId) {
+                skipped.add(elementId);
+            }
             stack.push(...(element.childrenIds ?? []));
         }
     }
     for (const element of Object.values(document.elements)) {
-        if (holdsId(element.props, id)) {
+        if (!skipped.has(element.id) && holdsId(element.props, id)) {
             out.push(`page "${pageOf.get(element.id) ?? "?"}", element "${describe(element)}"`);
         }
     }

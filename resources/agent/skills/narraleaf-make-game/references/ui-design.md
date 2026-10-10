@@ -19,6 +19,33 @@ a time, checking each pass with your own eyes (`ui_screenshot`).
 
 The skeleton already has these shapes. Keep them; change the look.
 
+## A project with no interface yet
+
+A project made from the empty template has one blank page: no title, no dialogue box, no save, load,
+settings or log. Store templates (`ui_templates`) do not fix that - they are layouts, and the answer
+of `ui_template_apply` says how much logic each page brought, usually none. Get the working screens
+first, then restyle them like the skeleton's:
+
+1. `ui_install_standard_screens {dryRun: true}` - it lists the pages, Game UIs and components that
+   would arrive, any Game UI slot the project already fills (skipped unless `replace: true`) and any
+   page left out because the project lacks a plugin its logic needs (the Extra page without the
+   Gallery), with the buttons that only opened it.
+2. The same call without `dryRun`. It is one step of undo. The splash becomes the entry page in place
+   of the blank one (when the entry page is not blank it stays, and the answer says so - move it with
+   `ui_page_set_entry`), and Start begins the project's default story at its entry scene.
+3. Check what arrived:
+   - [ ] `project_info` names the splash (or the title) as the entry page; `ui_surfaces` lists Title,
+     Save, Load, Config, Log, Confirm and the Dialogue, Choice, Quick menu and Notifications Game UIs,
+     and no leftover blank page;
+   - [ ] the title's Start blueprint (`ui_show` the title, then `blueprint_show` the `# blueprint:`
+     named after Start) starts the scene you mean (`story_list` shows ids);
+   - [ ] `lint` reports nothing dangling: no page nothing reaches, no missing asset, no node naming
+     something gone;
+   - [ ] `ui_screenshot` of the title and the dialogue box looks like the skeleton's.
+4. If the author picked a store look instead, apply it as well, wire or replace what it lacks, make
+   its title the entry (`ui_page_set_entry`) and remove the pages it replaced (`ui_page_delete`,
+   once nothing opens them).
+
 ## Palette first
 
 `brand_get` shows the palette. The ids that matter:
@@ -118,7 +145,8 @@ about 7:1; `#6E7681` on `#15171D` about 4:1 (too low for small text).
 Element, page and blueprint names in the skeleton are in the project's language (the title's
 `Key art` image is named in Chinese in a Chinese project), so find elements with `ui_show` by type and
 position rather than by the English names below; page ids such as `narraleaf-studio:main-surface`
-are the same in every language.
+are the same in every language. Screens brought in by `ui_install_standard_screens` keep their names
+but get ids of their own, so find those pages by name (`ui_surfaces`).
 
 - **Title** (`narraleaf-studio:main-surface`): set the key art (`Key art` image's `imageFill.assetId`,
   `fillOpacity` 1 when the art is made for it, lower to dim a busy picture), the game title text, and
@@ -150,6 +178,14 @@ are the same in every language.
 ## Templates instead
 
 `ui_templates` lists ready-made interface sets from Studio's template store and `ui_template_apply`
-adds one's pages to the project. Use it only when the author picks one; then restyle it with the
-same passes, and make sure the entry page and the title (`narraleaf-studio:main-surface`) are the
-ones you expect (`ui_surfaces`, `project_info`).
+adds one's pages to the project as new pages. They are visual layouts: a description says what a
+screen looks like, not that it works, and the answer of `ui_template_apply` counts each page's
+blueprints and bound props - for the store's themes, none. Their Start does nothing, their save
+slots are not bound to saves, their log to the history or their sliders to volumes until you wire
+them (`blueprint-format`; `ui_usage` and `blueprint_show` on the standard screens show how). Use them
+only when the author picks one. Then:
+
+- make its title the entry page with `ui_page_set_entry` - an applied page never is one;
+- wire every control the game uses, or keep the standard screen for it and borrow only the look;
+- delete the pages it replaced with `ui_page_delete` once nothing opens them, and check with
+  `ui_surfaces` and `project_info` that the entry page is the one you expect.

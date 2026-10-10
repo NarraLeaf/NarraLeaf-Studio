@@ -6,7 +6,17 @@ four layers, cheapest first, and do not build until all four are clean.
 ## 1. Lint
 
 `lint` runs every project rule (story, interface, blueprints, assets, variables, localization…) and
-returns findings, errors first. `lint {severity:"error"}` shows only errors.
+returns findings, errors first, 150 to a page. `lint {severity:"error"}` shows only errors.
+
+- The answer opens with a count per rule over the whole report (`byRule`). Read it first: one rule
+  with hundreds of findings (`assets/unused` on a skeleton project) fills the page and hides the rest.
+- Narrow with `rule`: an exact id (`lint {rule:"story/dead-end"}`) or a category prefix ending in `/`
+  (`lint {rule:"story/"}`).
+- When the answer has a `nextCursor`, call `lint` again with `cursor` set to it and the same filters
+  for the next page. After you change the project, start again without a cursor.
+- Messages are in English with their rule id, whatever language the author's Studio is in. When you
+  tell the author about one, name the rule id: their lint panel shows the same finding in their
+  language.
 
 - **Fix every error.** A build refuses a project with lint errors.
 - Read every warning; fix the ones your work caused. Common ones and what they mean:

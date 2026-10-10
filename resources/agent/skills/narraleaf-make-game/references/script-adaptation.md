@@ -42,7 +42,7 @@ fill them before step 3.
 | Narration, inner monologue | a plain line |
 | Unknown speaker "???" | `???: …` as a one-off speaker, or `/rename Aoi ???` then `/rename Aoi Aoi` at the reveal |
 | `play music x fadein 2` | `/bgm bgm_x fade=2 loop` |
-| `stop music fadeout 2` | `/stop fade=2` (confirm with `story_command stop`) |
+| `stop music fadeout 2` | `/stop bgm fade=2` |
 | `play sound door` | `/sound se_door` |
 | CG shown over the scene | `/show cg_x name=cg pos=center in=fade d=0.6`, later `/hide cg` |
 | `with dissolve` / fade between pictures | the row's `t=` / `in=` / `out=` and `d=` |

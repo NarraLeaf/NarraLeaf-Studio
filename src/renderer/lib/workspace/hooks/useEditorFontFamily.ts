@@ -9,6 +9,7 @@ import type { UIEditorFontFaceService } from "@/lib/workspace/services/ui-editor
 import { getInterface } from "@/lib/app/bridge";
 import { resolveGameRuntimeAssetUrl } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
 import { resolveDevModeAssetUrl } from "@/lib/ui-editor/runtime/devModeAssetUrls";
+import { loadFontFaceFromUrl } from "@/lib/ui-editor/fonts/fontFaceFromUrl";
 import {
     getActiveProjectFontIds,
     resolveFontStackIds,
@@ -203,11 +204,6 @@ function resolveBuiltinFont(assetId: string): ResolvedFont | null {
 }
 
 /**
- * Dev Mode's route to a project font: no workspace services, so the bytes arrive over IPC and the
- * face is registered here. Cached for the window's lifetime - Dev Mode has no asset events to
- * invalidate against, and a reload builds a fresh window anyway.
- */
-/**
  * Register a project font in Dev Mode's registry before any widget asks for it.
  *
  * The same registry the widgets read (`devModeFontCache`), so a text widget mounting afterwards finds
@@ -221,6 +217,11 @@ export async function warmDevModeFont(assetId: string): Promise<void> {
     }
 }
 
+/**
+ * Dev Mode's route to a project font: no workspace services, so the window's own grant URL for the
+ * asset is read and the face is registered here. Cached for the window's lifetime - Dev Mode has no
+ * asset events to invalidate against, and a reload builds a fresh window anyway.
+ */
 async function resolveDevModeFont(assetId: string): Promise<ResolvedFont> {
     const cached = devModeFontCache.get(assetId);
     if (cached) {
@@ -231,20 +232,40 @@ async function resolveDevModeFont(assetId: string): Promise<ResolvedFont> {
             ?? resolveDevModeAssetUrl(assetId)
             ?? await resolveDevModeFontUrl(assetId);
         const cssFamily = devModeCssFamilyForAssetId(assetId);
-        const fontFace = new FontFace(cssFamily, `url(${url})`);
-        await fontFace.load();
+        // From the bytes, not from `url(...)`, as the editor does with the same file - see
+        // `fontFaceFromUrl` for why the browser's font loader is not handed an asset URL.
+        const fontFace = await loadFontFaceFromUrl(cssFamily, url);
         document.fonts.add(fontFace);
         devModeFontCache.set(assetId, { cssFamily, fontFace });
         return { assetId, cssFamily, error: null };
     } catch (err) {
-        return { assetId, cssFamily: null, error: err instanceof Error ? err.message : String(err) };
+        const error = err instanceof Error ? err.message : String(err);
+        reportDevModeFontFailure(assetId, error);
+        return { assetId, cssFamily: null, error };
     }
 }
 
+/** Asset ids whose failure this window has already reported, so a page of widgets writes one line. */
+const reportedDevModeFontFailures = new Set<string>();
+
+/**
+ * Put a font that did not load into the window's output.
+ *
+ * The text quietly takes the next family in its list, so without this a game set in the wrong
+ * typeface said nothing at all about why - the `error` above reaches no one but the hook's state.
+ */
+function reportDevModeFontFailure(assetId: string, error: string): void {
+    if (reportedDevModeFontFailures.has(assetId)) {
+        return;
+    }
+    reportedDevModeFontFailures.add(assetId);
+    console.warn(`[DevMode] font ${assetId} ${error}; its text is drawn in the next font of its list`);
+}
+
 async function resolveDevModeFontUrl(assetId: string): Promise<string> {
-    const result = await getInterface().devMode.resolveImageAssetUrl(assetId);
+    const result = await getInterface().devMode.resolveAssetUrl(assetId, "font");
     if (!result.success || !result.data?.url) {
-        throw new Error(result.error ?? "Font asset not found");
+        throw new Error(`could not be found (${result.error ?? "no such asset"})`);
     }
     return result.data.url;
 }

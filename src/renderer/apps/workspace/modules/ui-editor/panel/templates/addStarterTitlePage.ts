@@ -53,7 +53,8 @@ export type AddStarterTitlePageResult =
     /** `frozen`: the workspace stopped taking writes part-way, which its own notice already says. */
     | { ok: false; frozen?: true; error?: string };
 
-type Ports = {
+/** The services this flow reads; exported for the agent's standard-screens install, which reads the same. */
+export type Ports = {
     documents: UIDocumentService;
     blueprints: LocalBlueprintService;
     stories: StoryService;
@@ -65,7 +66,7 @@ type Ports = {
     catalog: BlueprintNodeCatalogService | null;
 };
 
-function readPorts(context: WorkspaceContext): Ports {
+export function readPorts(context: WorkspaceContext): Ports {
     const optional = <T extends Service>(key: Services): T | null => {
         try {
             return context.services.get<T>(key);
@@ -90,7 +91,7 @@ function readPorts(context: WorkspaceContext): Ports {
  * The language the page's words are read in: the one the project's story is written in, which is
  * the one the wizard picked the template's own copy by. A project with none set reads in Studio's.
  */
-function contentLocale(project: ProjectService): string {
+export function contentLocale(project: ProjectService): string {
     try {
         const source = project.getLocalizationConfiguration().sourceLocale.trim();
         if (source) {
@@ -110,7 +111,7 @@ function contentLocale(project: ProjectService): string {
  * nothing does nothing - and the story panel's New Story makes exactly this story, with its first
  * chapter and scene, the moment an author names one.
  */
-async function resolveStartTarget(ports: Ports): Promise<StarterStartTarget | null> {
+export async function resolveStartTarget(ports: Pick<Ports, "stories" | "project">): Promise<StarterStartTarget | null> {
     let storyId = ports.stories.getDefaultStoryId() ?? ports.stories.listStories()[0]?.id;
     if (!storyId) {
         let name = "";
@@ -158,8 +159,8 @@ function decodeBase64(dataBase64: string): Uint8Array {
  * at one keeps pointing at it, and asking twice files nothing twice. A file that cannot be brought
  * costs the page that one picture or sound, and the project check names it.
  */
-async function importTemplateFiles(
-    ports: Ports,
+export async function importTemplateFiles(
+    ports: Pick<Ports, "assets">,
     content: ProjectTemplateInterfaceContent,
     assetIds: readonly string[],
     locale: string,
@@ -193,7 +194,7 @@ async function importTemplateFiles(
 }
 
 /** The page's editor tab and any of its blueprints' tabs, which would otherwise outlive the page. */
-function closeSurfaceTabs(ui: UIService, surfaceId: string): void {
+export function closeSurfaceTabs(ui: UIService, surfaceId: string): void {
     for (const tab of ui.editor.getAll()) {
         const payload = tab.payload as { surfaceId?: unknown } | undefined;
         if (
@@ -205,7 +206,7 @@ function closeSurfaceTabs(ui: UIService, surfaceId: string): void {
     }
 }
 
-function readTemplateBlueprints(raw: unknown): BlueprintDocument | null {
+export function readTemplateBlueprints(raw: unknown): BlueprintDocument | null {
     const document = raw && typeof raw === "object" ? (raw as { blueprintDocument?: unknown }).blueprintDocument : undefined;
     if (!document) {
         return null;

@@ -30,6 +30,7 @@ import { cloneUIHistoryDocument } from "../ui-editor/UIEditorHistoryService";
 import { refuse } from "./agentCall";
 import { widgetKnownPropKeys } from "@/lib/ui-cli/catalog";
 import { nearest } from "@/lib/ui-cli/text";
+import { describeInvalidEnumProp, findInvalidEnumProps } from "@/lib/ui-cli/propValues";
 import { buildUiPropsPatch, resolveUiElementRef, uiElementPath, type UIElementPool } from "./uiElementRefs";
 
 export type UIPatchOpKind = "add" | "set" | "layout" | "move" | "rename" | "delete" | "instantiate";
@@ -404,6 +405,16 @@ function writeRoutedProps(
                 "ui_widget lists the type's props; layout keys (visible, opacity, rotation, x, y, width, height) are written `layout.<key>`.",
             );
         }
+    }
+    // A word outside the prop's list would be stored and then drawn as the browser's default with
+    // nothing said - see `@/lib/ui-cli/propValues`.
+    const [badValue] = findInvalidEnumProps(routed.props);
+    if (badValue) {
+        throw refuse(
+            "invalid_args",
+            `ops[${index}] (set): ${element.name ?? element.id}: ${describeInvalidEnumProp(badValue)}.`,
+            "Write one of the listed words; ui_widget shows the widget's default.",
+        );
     }
     if ("componentLink" in routed.extra) {
         throw new Error("`extra.componentLink` is how a placed component names its definition; place one with the instantiate op instead");

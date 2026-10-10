@@ -230,6 +230,19 @@ export function compactBase(type: string, without: readonly string[]): {
     const defaults = stableWidgetDefaults(type);
     const props = clone({ ...(defaults?.props ?? {}) });
     const layout = clone({ ...(defaults?.layout ?? {}) });
+    // The default appearance restates every default prop as a base row, and the renderer reads the
+    // row over the prop. Kept verbatim, a line that changes the prop (`imageFill.assetId = …`) would
+    // leave the row holding the default, and the element would draw as though the line were not
+    // there. So its rows that only repeat a default start as bare keys, which
+    // `expandAppearanceGroups` rebuilds from the element's props once its lines are applied - the
+    // row follows the prop, as it does in the inspector. An element whose text states its own
+    // `appearance` replaces this one whole.
+    if (defaults && isRecord(props[APPEARANCE_PROP])) {
+        const shortened = compactAppearance(props[APPEARANCE_PROP], defaults.props as Record<string, unknown>, defaults);
+        if (shortened !== undefined) {
+            props[APPEARANCE_PROP] = shortened;
+        }
+    }
     const unknownWithout: string[] = [];
     for (const key of without) {
         const layoutKey = key.startsWith("layout.") ? key.slice("layout.".length) : null;

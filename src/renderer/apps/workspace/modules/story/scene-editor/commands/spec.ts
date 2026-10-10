@@ -158,6 +158,17 @@ export type StoryCommandSpec<P extends StoryCommandParamsShape = StoryCommandPar
      * author a line that no longer works. Use the fixture's names (`Alice`, `forest_day`, `gold`, …).
      */
     examples?: readonly string[];
+    /**
+     * A worked sequence of rows, for a command whose row is not the whole story on its own.
+     *
+     * The case it exists for is a declaration: `/image`, `/text` and `/vfx` put an object on the
+     * stage's books without putting it on screen, and a single example line reads as though it
+     * displayed something. `note` says what the row does and does not do; `lines` are the rows that
+     * together do the thing, in order. English, like the examples - the command catalogue prints it
+     * for an agent; the editor does not. The story CLI's catalogue test applies every sequence as a
+     * scene, so a sequence that stopped working fails the suite.
+     */
+    sequence?: { readonly note: string; readonly lines: readonly string[] };
 };
 
 /**

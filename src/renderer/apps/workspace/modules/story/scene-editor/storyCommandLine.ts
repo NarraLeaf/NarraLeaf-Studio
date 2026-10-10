@@ -1643,7 +1643,25 @@ function displayableTargetWord(
     if (target.builtin) {
         return target.builtin;
     }
-    return resolveDisplayableTargetRef(lookups.scene, target).label || undefined;
+    const resolved = resolveDisplayableTargetRef(lookups.scene, target);
+    if (resolved.kind === "character") {
+        // A character walked on without a typed name keys on its id, and the declaring row's label is
+        // then the placeholder "Character" - a word the target slot does not answer to, so the line
+        // failed to read back and the row went opaque. The slot resolves a character by its cast
+        // name, so that is the spelling; a portrait the `/show` row DID name keeps that name.
+        const source = target.sourceBlockId ? lookups.scene?.blocks[target.sourceBlockId] : undefined;
+        const typed = source?.kind === "action" && source.payload.action === "character" ? source.payload.objectName?.trim() : undefined;
+        if (!typed) {
+            const characterId = displayableCharacterId(lookups, target, target.label);
+            const castName = characterId
+                ? lookups.commandContext?.characters?.find(entry => entry.id === characterId)?.name
+                : undefined;
+            if (castName) {
+                return castName;
+            }
+        }
+    }
+    return resolved.label || undefined;
 }
 
 function actionSentence(

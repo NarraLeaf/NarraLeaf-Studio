@@ -132,3 +132,22 @@ describe("the prop vocabulary", () => {
 function patchedFor(key: string): Record<string, unknown> {
     return resetPropsFromArgs({ [key]: { kind: "boolean", value: true } }) as Record<string, unknown>;
 }
+
+describe("the pos= align pair", () => {
+    it("reads two plain decimals as shares of the stage, and nothing looser", () => {
+        expect(parsePositionValue("0.3,0.5")).toEqual({ xalign: 0.3, yalign: 0.5 });
+        expect(parsePositionValue(" -0.25 , 1.1 ")).toEqual({ xalign: -0.25, yalign: 1.1 });
+        expect(parsePositionValue("center")).toMatchObject({ xalign: 0.5, yalign: 0.5 });
+        // `Number()` reads "" as 0 and takes hex: neither is a position anyone typed on purpose.
+        expect(parsePositionValue("0.5,")).toBeNull();
+        expect(parsePositionValue(",")).toBeNull();
+        expect(parsePositionValue("0x10,0.5")).toBeNull();
+        expect(parsePositionValue("50%,20%")).toBeNull();
+        expect(parsePositionValue("0.1,0.2,0.3")).toBeNull();
+    });
+
+    it("lets from= carry a pair only when it is within reach of the stage", () => {
+        expect(parseFromProps("pos=-0.3,0.5").badKeys).toEqual([]);
+        expect(parseFromProps("pos=100,200").badKeys).toEqual(["pos=100,200"]);
+    });
+});

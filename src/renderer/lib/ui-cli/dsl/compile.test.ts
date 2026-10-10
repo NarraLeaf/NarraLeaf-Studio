@@ -11,6 +11,7 @@
 import { describe, expect, it } from "vitest";
 import { compileUiFile } from "./compile";
 import { parseUiFile } from "./parse";
+import { resolveImageRectangleLike } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 
 function compile(text: string) {
     return compileUiFile(parseUiFile(text));
@@ -407,5 +408,44 @@ describe("a page's parameters", () => {
         expect(result.diagnostics).toEqual([]);
         expect(result.surfaces[0].elements.msg?.valueBindings).toEqual({ text: { kind: "pageParam", paramId: "message" } });
         expect(codes(page("string"))).toContain("ui.param_not_text");
+    });
+});
+
+describe("a new element's widget defaults", () => {
+    const existingWith = (elements: Record<string, unknown>) => ({
+        schemaVersion: 12,
+        id: "d",
+        name: "d",
+        surfaces: [{ id: "s", name: "S", host: "app", kind: "appSurface", designSize: { width: 800, height: 600 }, rootElementId: "root" }],
+        elements: { root: { id: "root", type: "nl.root", parentId: null, childrenIds: Object.keys(elements), layout: { x: 0, y: 0, width: 800, height: 600 } }, ...elements },
+    }) as never;
+    const PAGE = 'surface "S" id=s kind=appSurface size=800x600\n    Root: nl.root id=root @0,0 800x600\n';
+    const shot = (flag: string) => `${PAGE}        Shot: nl.image id=shot @0,0 10x10${flag}\n            imageFill = {"mode":"cover","assetId":"art-1"}\n`;
+
+    function drawn(element: { props?: Record<string, unknown> }) {
+        return resolveImageRectangleLike(
+            element as never,
+            (element.props as { appearance?: never } | undefined)?.appearance,
+            { signals: {} } as never,
+        );
+    }
+
+    it("fills a new element from its widget's defaults, so an image given only its picture draws it", () => {
+        const result = compileUiFile(parseUiFile(shot("")), { existing: existingWith({}) });
+        const element = result.surfaces[0].elements.shot;
+        expect(element.props?.fillType).toBe("image");
+        expect(element.props?.fillVisible).toBe(true);
+        expect(drawn(element)).toMatchObject({ fillType: "image", imageFill: { mode: "cover", assetId: "art-1" } });
+    });
+
+    it("lets a line change a default prop under `+defaults` without the default appearance row hiding it", () => {
+        const result = compileUiFile(parseUiFile(shot(" +defaults")));
+        expect(drawn(result.surfaces[0].elements.shot)).toMatchObject({ fillType: "image", imageFill: { mode: "cover", assetId: "art-1" } });
+    });
+
+    it("writes an element the document already has exactly as its lines say", () => {
+        const existing = existingWith({ shot: { id: "shot", type: "nl.image", parentId: "root", childrenIds: [], layout: { x: 0, y: 0, width: 10, height: 10 }, props: {} } });
+        const result = compileUiFile(parseUiFile(shot("")), { existing });
+        expect(result.surfaces[0].elements.shot.props).toEqual({ imageFill: { mode: "cover", assetId: "art-1" } });
     });
 });

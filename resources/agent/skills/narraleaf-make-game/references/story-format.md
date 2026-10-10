@@ -97,23 +97,38 @@ those you deliberately keep.
   the picture by that name, and a `/show` without `name=` means "reveal the object already called
   that". `/image` alone only creates a picture without showing it (`story/declared-never-shown`); use
   `/show <asset> name=`.
+- **Declare, then show.** `/image`, `/text` and `/vfx` rows only declare an object; nothing is on screen
+  until a `/show <name>` row. `/text name=title pos=center Chapter One` then `/show title in=fade d=0.5`;
+  `/vfx snow name=snow` then `/show snow` (and `/hide snow` to stop it). `story_command <token>`
+  prints these pairs under "together".
 - Do not create the same name twice in one scene (`story/stage-object-duplicate`): change the picture
   of an existing one with `/swap <name> <asset>`, bring it back with `/show <name>`.
 - **Video**: `/play <video asset> name=<name>` plays it to the end and clears it away (`wait=false`,
   `hide=false`, `muted` change that). `/show` refuses videos.
 - **Camera**: `/transform camera zoom=1.1 d=2 ease=easeOut`.
-- Positions are `left`, `center`, `right`. A sprite is drawn at its own pixel size times its
-  character's entrance `zoom`, its CENTRE placed at the position: `xalign`/`yalign` are shares of the
-  stage from the left and up from the bottom, `xoffset`/`yoffset` design pixels (+ is up). `pos=`
-  writes `xalign` 0.25/0.5/0.75 and `yalign` 0.5, so the baseline comes from the character's
+- **Positions.** `/show`, `/image` and `/text` take a word: `pos=left|center|right`. `/transform`
+  takes the word or an exact pair, `pos=x,y` (no spaces):
+  - `x` and `y` are **shares of the stage, not pixels and not percentages**. `x` runs from the left
+    edge (0) to the right edge (1); `y` runs from the **bottom** edge (0) up to the top (1).
+  - The pair says where the object's **centre** goes. There is no anchor: the engine always places
+    the centre. `left`/`center`/`right` are `0.25,0.5` / `0.5,0.5` / `0.75,0.5`.
+  - Values a little outside 0..1 park the object off screen - `pos=-0.3,0.5` is a slide-in start.
+    Anything below -1 or above 2 is refused (`pos=100,200` is pixels typed where shares belong).
+  - Pixel offsets (`xoffset`/`yoffset`, design pixels, + is up) have no spelling on a line; a
+    character's `entranceTransform` carries them, and a row holding one prints as `»`.
+  A sprite is drawn at its own pixel size times its character's entrance `zoom`. `pos=` words write
+  `xalign` 0.25/0.5/0.75 and `yalign` 0.5, so the baseline comes from the character's
   `entranceTransform.position.yoffset`, never from `yalign`. `characters_list` gives `drawnAtCenter`.
+- `/transform` moves images, texts, layers, characters and the camera. It refuses videos and `/vfx`
+  overlays (the engine gives them no transform); `/transform camera ...` moves them with the stage.
 
 ## Sound
 
 - `/bgm <audio> track=Music vol=0.7 fade=1.5 loop` - starts (or crossfades to) background music.
   Repeat the line in each scene where the music should change.
 - `/sound <audio> name=<name>` - a sound effect. Give it `name=` if a later row must `/stop` it;
-  `/stop <name> fade=0.5`. `story_command stop` explains what a `/stop` with no target stops.
+  `/stop <name> fade=0.5`. The music is the reserved name `bgm`: `/stop bgm fade=1`, `/vol bgm 0.5`,
+  `/pause bgm`. `music` is not a name - it only works if a row created something called that.
 - `track=` names an audio track from `audio_tracks_list` (Music, SFX, Voice, or custom ones).
 
 ## Branching and flow

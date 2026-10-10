@@ -734,16 +734,12 @@
             "opacity": 1
           },
           "props": {
-            "fitMode": "cover",
-            "flipX": false,
-            "flipY": false,
             "backgroundColor": "nlbrand:pageBackground",
             "fillVisible": true,
             "fillOpacity": 1,
             "borderRadius": 0,
             "borderWidth": 0,
-            "borderStyle": "none",
-            "clipContent": true
+            "borderStyle": "none"
           }
         },
         "889d58ef-100b-4b3c-9d59-3825cf3b50d0": {
@@ -29336,16 +29332,12 @@
         "opacity": 1
       },
       "props": {
-        "fitMode": "cover",
-        "flipX": false,
-        "flipY": false,
         "backgroundColor": "transparent",
         "fillVisible": true,
         "fillOpacity": 0.3,
         "borderRadius": 0,
         "borderWidth": 0,
         "borderStyle": "none",
-        "clipContent": true,
         "fillType": "image",
         "imageFill": {
           "mode": "cover",
@@ -47092,13 +47084,11 @@
         "visible": true
       },
       "props": {
-        "fitMode": "cover",
         "backgroundColor": "nlbrand:pageBackground",
         "fillType": "image",
         "fillVisible": true,
         "borderWidth": 0,
         "borderStyle": "none",
-        "clipContent": true,
         "imageFill": {
           "mode": "cover"
         }
@@ -47266,13 +47256,11 @@
         "visible": true
       },
       "props": {
-        "fitMode": "cover",
         "backgroundColor": "nlbrand:pageBackground",
         "fillType": "image",
         "fillVisible": true,
         "borderWidth": 0,
         "borderStyle": "none",
-        "clipContent": true,
         "imageFill": {
           "mode": "cover"
         }

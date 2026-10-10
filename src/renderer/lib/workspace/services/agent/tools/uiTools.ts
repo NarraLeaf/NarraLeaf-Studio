@@ -7,6 +7,9 @@
 
 import { createElement, type ReactElement } from "react";
 import { getInterface } from "@/lib/app/bridge";
+import { anchorComponentId, anchorSurfaceId } from "@shared/blueprint/ownerShape";
+import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import type { UIGraphService } from "../../ui-editor/UIGraphService";
 import type { UIComponentDefinition, UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { readUIComponentEditorSurfaceComponentId } from "@shared/types/ui-editor/componentInstanceKey";
 import { parseBrandLink } from "@shared/brand/brandLink";
@@ -378,13 +381,68 @@ export const uiTemplates: AgentToolHandler = async () => {
             theme: template.theme ?? null,
             placement: template.surface,
         })),
-    });
+    }, "Store templates are layouts. A description says what a screen looks like, not what is wired: most carry no blueprints, so "
+        + "their buttons, save slots, logs and sliders do nothing until you wire them. ui_template_apply reports what each page brought. "
+        + "For a title, save/load, settings and log that already work, use ui_install_standard_screens.");
 };
+
+/** How much behaviour a page or a component definition carries: graphs with nodes, and bound props. */
+export type WiringCount = { blueprints: number; boundProps: number };
+
+/**
+ * What each surface and component holds in logic: blueprints that have at least one node, and
+ * props bound to something (a value blueprint, a list field, a page or component param).
+ *
+ * The honest half of a template's answer: a store description says what a screen looks like, and
+ * only this says whether pressing anything on it does something.
+ */
+export function countWiring(
+    document: UIDocument,
+    blueprints: BlueprintDocument,
+    surfaceIds: readonly string[],
+    componentIds: readonly string[],
+): { surfaces: Record<string, WiringCount>; components: Record<string, WiringCount> } {
+    const hasNodes = (blueprint: BlueprintDocument["blueprints"][string]) =>
+        [blueprint.graphs.events, blueprint.graphs.functions, blueprint.graphs.macros]
+            .some(pool => Object.values(pool ?? {}).some(entry => Object.keys(entry?.graph?.nodes ?? {}).length > 0));
+    const bound = (elements: Iterable<UIElement>) => {
+        let count = 0;
+        for (const element of elements) {
+            count += Object.keys(element.valueBindings ?? {}).length;
+        }
+        return count;
+    };
+    const wired = Object.values(blueprints.blueprints ?? {}).filter(hasNodes);
+    const surfaces: Record<string, WiringCount> = {};
+    for (const surfaceId of surfaceIds) {
+        const surface = document.surfaces.find(item => item.id === surfaceId);
+        if (!surface) {
+            continue;
+        }
+        surfaces[surfaceId] = {
+            blueprints: wired.filter(blueprint => anchorSurfaceId(blueprint.owner) === surfaceId).length,
+            boundProps: bound(listUiSubtree(document.elements, surface.rootElementId)),
+        };
+    }
+    const components: Record<string, WiringCount> = {};
+    for (const componentId of componentIds) {
+        const component = (document.components ?? []).find(item => item.id === componentId);
+        if (!component) {
+            continue;
+        }
+        components[componentId] = {
+            blueprints: wired.filter(blueprint => anchorComponentId(blueprint.owner) === componentId).length,
+            boundProps: bound(Object.values(component.elements ?? {})),
+        };
+    }
+    return { surfaces, components };
+}
 
 export const uiTemplateApply: AgentToolHandler = async (args, { ctx, request, follow }) => {
     const templateId = readString(args, "template");
     follow.describeCall(request.callId, templateId);
-    const result = await applyUITemplate(templateId, uiDocumentService(ctx));
+    const uidoc = uiDocumentService(ctx);
+    const result = await applyUITemplate(templateId, uidoc);
     if (!result.ok) {
         throw refuse("unavailable", `The template could not be applied: ${result.error}.`);
     }
@@ -392,12 +450,49 @@ export const uiTemplateApply: AgentToolHandler = async (args, { ctx, request, fo
     if (first) {
         follow.noteWrite({ kind: "surface", surfaceId: first.id, name: first.name });
     }
+    const document = uidoc.getDocument();
+    const wiring = countWiring(
+        document,
+        ctx.services.get<UIGraphService>(Services.UIGraph).getDocument().blueprintDocument,
+        result.surfaces.map(surface => surface.id),
+        result.components.map(component => component.id),
+    );
+    const unwired = result.surfaces.filter(surface => {
+        const count = wiring.surfaces[surface.id];
+        return !count || (count.blueprints === 0 && count.boundProps === 0);
+    });
+    const allUnwired = result.surfaces.length > 0
+        && unwired.length === result.surfaces.length
+        && result.components.every(component => (wiring.components[component.id]?.blueprints ?? 0) === 0 && (wiring.components[component.id]?.boundProps ?? 0) === 0);
+    const lines = [
+        `Added ${result.surfaces.length} page(s) and ${result.components.length} component(s) from the template, as new pages; the entry page did not change.`,
+        allUnwired
+            ? "None of it is wired: it carries no blueprints and no bound props, so its buttons do nothing, its slots and lists show no saves or history, and its sliders change nothing. Wire what you keep (blueprint_apply; ui_usage and blueprint_show on a working project show how), or use ui_install_standard_screens for screens that already work."
+            : unwired.length > 0
+                ? `Not wired (no blueprints, no bound props): ${unwired.map(surface => `"${surface.name}"`).join(", ")}. Their controls do nothing until you wire them (blueprint_apply).`
+                : "Each page carries some logic; read it with blueprint_show before relying on it.",
+        result.skippedSlots.length > 0
+            ? `Skipped, because the project already fills these Game UI slots: ${result.skippedSlots.join(", ")}.`
+            : "",
+        "To make one of these pages the game's first, use ui_page_set_entry; delete pages you no longer need with ui_page_delete.",
+    ].filter(Boolean);
     return answerJson({
-        surfaces: result.surfaces.map(surface => ({ id: surface.id, name: surface.name, kind: surface.kind })),
-        components: result.components.map(component => ({ id: component.id, name: component.name })),
+        surfaces: result.surfaces.map(surface => ({
+            id: surface.id,
+            name: surface.name,
+            kind: surface.kind,
+            blueprints: wiring.surfaces[surface.id]?.blueprints ?? 0,
+            boundProps: wiring.surfaces[surface.id]?.boundProps ?? 0,
+        })),
+        components: result.components.map(component => ({
+            id: component.id,
+            name: component.name,
+            blueprints: wiring.components[component.id]?.blueprints ?? 0,
+            boundProps: wiring.components[component.id]?.boundProps ?? 0,
+        })),
         skippedSlots: result.skippedSlots,
         assetsSkipped: result.assetsSkipped,
-    }, `Added ${result.surfaces.length} page(s) and ${result.components.length} component(s) from the template.`);
+    }, lines.join("\n"));
 };
 
 // ── Brand ────────────────────────────────────────────────────────────────────────────────────────

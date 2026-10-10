@@ -1,9 +1,10 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { chmod, link, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ATOMIC_WRITE_TEMP_PATTERN, Fs } from "./fs";
 import { FsRejectErrorCode } from "../types/os";
+import { unpatchedFsPromises } from "./unpatchedFs";
 
 /**
  * `Fs.directorySize` is the single measurement the game build (`GameBuildManager`) and the asset
@@ -303,6 +304,68 @@ describe("Fs atomic writes", () => {
             if (!isWindows) expect((await stat(target)).ino).not.toBe(before.ino);
             expect(await readdir(root)).toEqual(["shard.json"]);
         });
+
+        /**
+         * A link count of zero is the inode a concurrent rename has just unlinked: `lstat` resolved
+         * the name before the rename and read the attributes after it. It says nothing about the
+         * file now at the path, so the gate asks again instead of refusing a write nothing is wrong
+         * with - which is how an asset import lost a metadata shard write to its own parallel flush.
+         */
+        it("asks again when it catches the file a concurrent rename just unlinked", async () => {
+            const target = join(root, "shard.json");
+            await writeFile(target, "{}");
+            const real = await lstat(target);
+            const unlinked = Object.assign(Object.create(Object.getPrototypeOf(real)), real, { nlink: 0 });
+            const spy = vi.spyOn(unpatchedFsPromises, "lstat").mockResolvedValueOnce(unlinked);
+            try {
+                const result = await Fs.writeFileNoFollow(target, "{\"a\":1}");
+
+                expect(result.ok).toBe(true);
+                expect(await readFile(target, "utf-8")).toBe("{\"a\":1}");
+            } finally {
+                spy.mockRestore();
+            }
+        });
+
+        it("still refuses a link count that stays at zero", async () => {
+            const target = join(root, "shard.json");
+            await writeFile(target, "{}");
+            const real = await lstat(target);
+            const unlinked = Object.assign(Object.create(Object.getPrototypeOf(real)), real, { nlink: 0 });
+            const spy = vi.spyOn(unpatchedFsPromises, "lstat").mockResolvedValue(unlinked);
+            try {
+                const result = await Fs.writeFileNoFollow(target, "changed");
+
+                expect(result.ok).toBe(false);
+                if (!result.ok) expect(result.error.code).toBe(FsRejectErrorCode.INVALID_PATH);
+                // Bounded: asked a handful of times, not until the stat changes its mind.
+                expect(spy.mock.calls.length).toBeGreaterThan(1);
+                expect(spy.mock.calls.length).toBeLessThan(20);
+            } finally {
+                spy.mockRestore();
+            }
+            expect(await readFile(target, "utf-8")).toBe("{}");
+        });
+
+        it("does not refuse writers that share a path", async () => {
+            // The real race, unmocked. Before the gate asked again, about one write in sixteen here
+            // came back INVALID_PATH on APFS. A platform whose lstat never shows the race passes
+            // trivially, which is fine: the assertion is that no write is refused, not that it raced.
+            const target = join(root, "assets.metadata.image.json");
+            await writeFile(target, "{}");
+
+            const refused = (await Promise.all(Array.from({ length: 4 }, async (_, writer) => {
+                const codes: string[] = [];
+                for (let index = 0; index < 30; index++) {
+                    const result = await Fs.writeFileNoFollow(target, JSON.stringify({ writer, index }));
+                    if (!result.ok) codes.push(result.error.code);
+                }
+                return codes;
+            }))).flat();
+
+            expect(refused).toEqual([]);
+            expect(await readdir(root)).toEqual(["assets.metadata.image.json"]);
+        }, 60_000);
     });
 
     /**

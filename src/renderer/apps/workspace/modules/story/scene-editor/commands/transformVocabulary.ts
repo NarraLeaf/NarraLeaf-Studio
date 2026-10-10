@@ -173,6 +173,12 @@ function numberParam(hint: string, aliases: readonly string[] | undefined, range
     return { ...(aliases ? { aliases } : {}), hint, type: { kind: "number", ...range } };
 }
 
+/** The align pair's grammar as the command catalogue prints it; {@link parsePositionValue} is what it describes. */
+const POSITION_PAIR_FORMAT = "x,y with no spaces, two shares of the stage giving where the object's CENTRE goes - "
+    + "x from the left edge (0) to the right edge (1), y from the BOTTOM edge (0) to the top (1); "
+    + "left / center / right are 0.25,0.5 / 0.5,0.5 / 0.75,0.5. Not pixels and not percentages; "
+    + "-1 to 2 reaches off screen (a slide-in start), anything further is refused";
+
 /**
  * Every prop param, in the order an author types them: where it is, how big, which way up, how it
  * looks, and only then the escape hatches.
@@ -188,7 +194,10 @@ export const TRANSFORM_PROP_PARAMS = {
         hint: "placement",
         // A word, or an align pair (`0.2,0.9`). The pair has no closed set to check against, so it
         // rides the text branch and `validate` is what rejects a value that is neither.
-        type: [{ kind: "enum", options: PLACEMENT_OPTIONS }, { kind: "text" }] as readonly StoryCommandParamType[],
+        type: [
+            { kind: "enum", options: PLACEMENT_OPTIONS },
+            { kind: "text", format: POSITION_PAIR_FORMAT },
+        ] as readonly StoryCommandParamType[],
     },
     zoom: numberParam("zoom", undefined, { min: 0 }),
     scale: numberParam("scale", undefined, { min: 0 }),
@@ -283,7 +292,18 @@ export type TransformArgs = Readonly<Record<string, StoryCommandValue | undefine
 // Args -> bag
 // ---------------------------------------------------------------------------------------------
 
-/** `left` / `center` / `right`, or an align pair `x,y`. Anything else is not a position. */
+/** One half of an align pair: a plain decimal, signed or not. Not `Number()`, which reads `""` as 0 and takes `0x10`. */
+const ALIGN_NUMBER = /^[-+]?(?:\d+(?:\.\d*)?|\.\d+)$/;
+
+/**
+ * `left` / `center` / `right`, or an align pair `x,y`. Anything else is not a position.
+ *
+ * The pair is the engine's align position, stored as it is typed: `x` is the share of the stage's
+ * width from its left edge and `y` the share of its height from its BOTTOM edge (the engine's stage
+ * origin is bottom-left), and the point they name is where the object's centre goes. So `0.5,0.5`
+ * is dead centre, `0,0` puts the centre on the bottom-left corner, and `left` is `0.25,0.5`. No
+ * pixels, no percentages and no anchor: the engine always places the centre.
+ */
 export function parsePositionValue(raw: string | undefined): StoryAlignPositionValue | null {
     const text = raw?.trim();
     if (!text) {
@@ -293,12 +313,31 @@ export function parsePositionValue(raw: string | undefined): StoryAlignPositionV
     if (preset) {
         return preset;
     }
-    const pair = text.split(",");
-    if (pair.length !== 2) {
+    const pair = text.split(",").map(part => part.trim());
+    if (pair.length !== 2 || !pair.every(part => ALIGN_NUMBER.test(part))) {
         return null;
     }
-    const [xalign, yalign] = pair.map(part => Number(part.trim()));
+    const [xalign, yalign] = pair.map(Number);
     return Number.isFinite(xalign) && Number.isFinite(yalign) ? { xalign, yalign } : null;
+}
+
+/**
+ * How far past the stage an align share may reach: from -1 to 2.
+ *
+ * Shares outside 0..1 are meaningful - a centre at `-0.3` parks the object off the left edge, the
+ * start of a slide-in - so the bound is not the stage itself. It is "too far for any picture to be
+ * partly on screen or about to be": a pair beyond it is pixels typed where shares belong
+ * (`pos=100,200`), which the engine would read as a hundred stage widths to the right.
+ */
+export const ALIGN_REACH = { min: -1, max: 2 } as const;
+
+/** Whether a parsed pair lies beyond {@link ALIGN_REACH} on either axis. */
+export function positionBeyondReach(position: StoryAlignPositionValue | null | undefined): boolean {
+    if (!position) {
+        return false;
+    }
+    return [position.xalign, position.yalign].some(value =>
+        value !== undefined && (value < ALIGN_REACH.min || value > ALIGN_REACH.max));
 }
 
 /** The position a `pos=` arg states, whichever of its two branches the value took. */
@@ -509,7 +548,7 @@ export function parseFromProps(source: string | undefined): { props: StoryTransf
         }
         if (key === "pos" || key === "at" || key === "pan") {
             const position = parsePositionValue(raw);
-            position ? (props.position = position) : badKeys.push(entry);
+            position && !positionBeyondReach(position) ? (props.position = position) : badKeys.push(entry);
             continue;
         }
         if (!Number.isFinite(amount)) {

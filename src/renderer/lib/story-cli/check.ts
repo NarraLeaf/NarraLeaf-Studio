@@ -24,7 +24,7 @@
 
 import { LINT_RULES, resolveLintMessageParams, runLintRules, storyUnreadableFinding, type LintReportEntry } from "@/lib/lint";
 import { buildProjectLintContext, headlessLintCategories } from "@/lib/lint/projectContext";
-import { translate, translateN } from "@/lib/i18n";
+import { createTranslator } from "@shared/i18n";
 import type { StoryDocument, StoryScene } from "@shared/types/story";
 import type { StoryFileDiagnostic } from "./dsl/ast";
 import { compileStoryFile } from "./dsl/compile";
@@ -255,13 +255,29 @@ function findingKey(entry: LintReportEntry): string {
     return [entry.ruleId, entry.messageKey, location.kind, ...site].join("\u0000");
 }
 
+/**
+ * The catalogue a finding is worded from: English, always.
+ *
+ * Not the interface language. Everything else this tool prints - the compiler's diagnostics, the
+ * summary lines, the rule id under each finding - is English, and in Studio the reader is the
+ * author's agent, which reads its tool descriptions in English too. Worded in the interface
+ * language, one `story_apply` answer came back half in Chinese and half in English for an author
+ * whose Studio is in Chinese. The rule id printed beside it is what finds the same finding in the
+ * author's own lint panel.
+ */
+const english = createTranslator("en");
+
 function toDiagnostic(entry: LintReportEntry): StoryFileDiagnostic {
     const where = entry.location.kind === "story"
         ? [entry.location.sceneName, entry.location.line ? `row ${entry.location.line}` : null]
             .filter(Boolean)
             .join(", ")
         : "";
-    const message = translate(entry.messageKey, resolveLintMessageParams(entry, translate, translateN));
+    const message = english.t(entry.messageKey, resolveLintMessageParams(
+        entry,
+        key => english.t(key),
+        (base, count, params) => english.tn(base, count, params),
+    ));
     return {
         code: entry.ruleId,
         // A rule's configured severity, mapped onto the two this tool reports: `info` is advice and

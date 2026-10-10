@@ -263,6 +263,7 @@ describe("readProjectTemplateInterface", () => {
         await writeFile(path.join(content, "editor", "brand.json"), JSON.stringify({ colors: [] }));
         await writeFile(path.join(content, "assets", "assets.metadata.image.json"), JSON.stringify({ a: { name: "art" } }));
         await writeFile(path.join(content, "assets", "assets.groups.image.json"), "{}");
+        await writeFile(path.join(content, "editor", "variables.json"), JSON.stringify({ entries: { v: { name: "Location" } } }));
 
         const read = await readProjectTemplateInterface(templatesDir, "skeleton");
 
@@ -271,6 +272,9 @@ describe("readProjectTemplateInterface", () => {
         expect(read.uiGraphs).toEqual({ blueprintDocument: {} });
         expect(read.brand).toEqual({ colors: [] });
         expect(read.assetRecords).toEqual({ image: { a: { name: "art" } } });
+        // What the interface's blueprints read beyond the interface: its variables and save fields.
+        expect(read.variables).toEqual({ entries: { v: { name: "Location" } } });
+        expect(read.saveSchema).toBeNull();
     });
 
     it("reads the copy written in the author's language, and the base for what it does not replace", async () => {

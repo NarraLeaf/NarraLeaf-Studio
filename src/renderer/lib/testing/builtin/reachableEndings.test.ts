@@ -47,6 +47,16 @@ function quitBlock(id: string, surfaceId: string, parentId: string | null = null
     return { id, kind: "control", parentId, childrenIds: [], payload: { control: "quit", surfaceId } } as StoryBlock;
 }
 
+function narrationBlock(id: string, parentId: string | null = null): StoryBlock {
+    return {
+        id,
+        kind: "nodeAction",
+        parentId,
+        childrenIds: [],
+        payload: { action: "narration", text: { textId: `${id}-text`, role: "narration", value: "Rain on the glass." } },
+    } as StoryBlock;
+}
+
 function emptyBlock(id: string, parentId: string | null = null): StoryBlock {
     return { id, kind: "empty", parentId, childrenIds: [], payload: {} } as StoryBlock;
 }
@@ -329,6 +339,85 @@ describe("narraleaf-studio:reachable-endings", () => {
 
         expect(verdict.status).toBe("passed");
         expect(findings).toEqual([]);
+    });
+
+    it("follows an option that only continues into a second menu written after the first", async () => {
+        // The option plays a few lines and falls through; the scene has no plain exit, but the menu
+        // after the first one is exhaustive and every option of it jumps towards an ending. Nothing
+        // runs out, and saying "Stay" stops would send the author looking for a defect that is not
+        // there.
+        const { verdict, findings } = await run(fixtureHost({
+            stories: oneStory(document([
+                scene("a", "Fork", [
+                    choiceBlock("c1", ["o0"]),
+                    choiceOptionBlock("o0", ["n1", "n2", "n3", "n4"], "Stay", "c1"),
+                    narrationBlock("n1", "o0"),
+                    narrationBlock("n2", "o0"),
+                    narrationBlock("n3", "o0"),
+                    narrationBlock("n4", "o0"),
+                    choiceBlock("c2", ["p0", "p1"]),
+                    choiceOptionBlock("p0", ["j0"], "Left", "c2"),
+                    jumpBlock("j0", "b", "p0"),
+                    choiceOptionBlock("p1", ["j1"], "Right", "c2"),
+                    jumpBlock("j1", "c", "p1"),
+                ]),
+                scene("b", "Left", [endingBlock("end-left", "Left End")]),
+                scene("c", "Right", [endingBlock("end-right", "Right End")]),
+            ], "a")),
+        }));
+
+        expect(findings).toEqual([]);
+        expect(verdict.status).toBe("passed");
+    });
+
+    it("follows an option into a menu nested inside it", async () => {
+        const { verdict, findings } = await run(fixtureHost({
+            stories: oneStory(document([
+                scene("a", "Fork", [
+                    choiceBlock("c1", ["o0"]),
+                    choiceOptionBlock("o0", ["n1", "n2", "n3", "n4", "c2"], "Stay", "c1"),
+                    narrationBlock("n1", "o0"),
+                    narrationBlock("n2", "o0"),
+                    narrationBlock("n3", "o0"),
+                    narrationBlock("n4", "o0"),
+                    choiceBlock("c2", ["p0", "p1"], "o0"),
+                    choiceOptionBlock("p0", ["j0"], "Left", "c2"),
+                    jumpBlock("j0", "b", "p0"),
+                    choiceOptionBlock("p1", ["j1"], "Right", "c2"),
+                    jumpBlock("j1", "c", "p1"),
+                ]),
+                scene("b", "Left", [endingBlock("end-left", "Left End")]),
+                scene("c", "Right", [endingBlock("end-right", "Right End")]),
+            ], "a")),
+        }));
+
+        expect(findings).toEqual([]);
+        expect(verdict.status).toBe("passed");
+    });
+
+    it("still reports the inner option, not the outer one, when a menu it continues into runs out", async () => {
+        // "Stay" continues into the second menu; "Left" leaves, "Wait" only continues and nothing
+        // follows it. The run-out belongs to "Wait" - reporting "Stay" too would name an option the
+        // author has nothing to write after.
+        const { verdict, findings } = await run(fixtureHost({
+            stories: oneStory(document([
+                scene("a", "Fork", [
+                    choiceBlock("c1", ["o0"]),
+                    choiceOptionBlock("o0", ["n1"], "Stay", "c1"),
+                    narrationBlock("n1", "o0"),
+                    choiceBlock("c2", ["p0", "p1"]),
+                    choiceOptionBlock("p0", ["j0"], "Left", "c2"),
+                    jumpBlock("j0", "b", "p0"),
+                    choiceOptionBlock("p1", [], "Wait", "c2"),
+                ]),
+                scene("b", "Left", [endingBlock("end-left", "Left End")]),
+            ], "a")),
+        }));
+
+        expect(verdict.status).toBe("failed");
+        expect(findings.map(finding => finding.message)).toEqual([
+            { key: "test.builtin.reachableEndings.finding.optionRunsOut", params: { option: "Wait" } },
+        ]);
     });
 
     it("passes but says so when nothing reaches a declared ending", async () => {

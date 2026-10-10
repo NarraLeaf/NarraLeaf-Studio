@@ -216,6 +216,24 @@ describe("applyUiPatch", () => {
         expect(steps(uiSurfaceHistoryScope("page"))).toBe(0);
     });
 
+    it("refuses a word a prop's list does not have, naming the words it takes", () => {
+        const { uidoc, steps, snapshot } = createHarness();
+        const before = snapshot();
+        expect(() => applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "set", element: "title", props: { textWrapMode: "char" } },
+        ]), LABEL)).toThrow(expect.objectContaining({
+            code: "invalid_args",
+            message: expect.stringContaining('textWrapMode is "char"; it takes one of: word, character, nowrap'),
+        }));
+        expect(snapshot()).toEqual(before);
+        expect(steps(uiSurfaceHistoryScope("page"))).toBe(0);
+
+        applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "set", element: "title", props: { textWrapMode: "character" } },
+        ]), LABEL);
+        expect(uidoc.getDocument().elements.title.props?.textWrapMode).toBe("character");
+    });
+
     it("refuses an operation that changes nothing, so the count it reports is true", () => {
         const { uidoc, steps } = createHarness();
         for (const op of [

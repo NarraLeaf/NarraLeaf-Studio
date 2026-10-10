@@ -14,7 +14,9 @@ import { listSceneBlocksInDocumentOrder } from "@shared/types/story";
 import type { DevModeAgentGameState, DevModeEntry } from "@shared/types/devMode";
 import type { GameBuildPlatform, GameBuildStateSnapshot } from "@shared/types/gameBuild";
 import { getInterface } from "@/lib/app/bridge";
-import { describeLintLocation } from "@/lib/lint/locationText";
+import { describeLintLocation, LINT_LOCATION_SEPARATOR } from "@/lib/lint/locationText";
+import { createStoryRowLocator, type StoryRowLocator } from "@/lib/lint/storyLocator";
+import type { SearchJumpTarget } from "@/lib/workspace/services/search/searchJumpTarget";
 import { resolveLintMessageParams, type LintSeverity } from "@/lib/lint/types";
 import type { TestRunRecord, TestText } from "@/lib/testing/types";
 import { TEST_TERMINAL_STATUSES } from "@/lib/testing/types";
@@ -35,8 +37,9 @@ import {
     refuse,
     type AgentToolHandler,
 } from "../agentCall";
-import { resolveScene, resolveStory } from "../agentLookups";
+import { resolveScene, resolveStory, storyService } from "../agentLookups";
 import { downscaleImage } from "../domRaster";
+import { describeLintPage, LINT_PAGE_DEFAULT_LIMIT, LINT_PAGE_MAX_LIMIT, pageLintEntries, SEVERITY_RANK } from "./lintPage";
 import { describeAdvance, describeGameState, gameStateData, launchIsUp, playtestHint } from "./playtestReport";
 
 const english = createTranslator("en");
@@ -44,33 +47,44 @@ const translate = (key: TranslationKey, params?: Record<string, string | number>
 
 // ── lint ─────────────────────────────────────────────────────────────────────────────────────────
 
-const SEVERITY_RANK: Record<LintSeverity, number> = { error: 0, warning: 1, info: 2 };
-const LINT_FINDINGS_CAP = 150;
-
 export const lint: AgentToolHandler = async (args, { ctx }) => {
     const threshold = (readOptionalString(args, "severity") ?? "warning") as LintSeverity;
     if (!(threshold in SEVERITY_RANK)) {
         throw refuse("invalid_args", "`severity` must be error, warning or info.");
     }
+    const rule = readOptionalString(args, "rule");
+    const limit = readOptionalInteger(args, "limit", { min: 1, max: LINT_PAGE_MAX_LIMIT }) ?? LINT_PAGE_DEFAULT_LIMIT;
+    const cursor = readOptionalString(args, "cursor");
+    const offset = cursor === undefined ? 0 : Number(cursor);
+    if (!Number.isInteger(offset) || offset < 0) {
+        throw refuse("invalid_args", "`cursor` must be the `nextCursor` a previous lint call returned.");
+    }
+    const request = { threshold, ...(rule ? { rule } : {}), offset, limit };
+
     const report = await ctx.services.get<LintService>(Services.Lint).run();
-    const findings = report.entries
-        .filter(entry => SEVERITY_RANK[entry.severity] <= SEVERITY_RANK[threshold])
-        .sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity])
-        .map(entry => {
-            const location = describeLintLocation(entry.location, key => translate(key));
-            return {
-                severity: entry.severity,
-                rule: entry.ruleId,
-                message: translate(entry.messageKey, resolveLintMessageParams(entry, key => translate(key), (base, count, params) => english.tn(base, count, params))),
-                ...(location ? { location } : {}),
-            };
-        });
-    const shown = findings.slice(0, LINT_FINDINGS_CAP);
+    const { byRule, matched, page, nextCursor } = pageLintEntries(report.entries, request);
+    // Rendered in English and only for the page: the rule id stays beside every message, so an
+    // author reading Studio's own lint panel in their language can find the same finding by it.
+    const findings = page.map(entry => {
+        const location = describeLintLocation(entry.location, key => translate(key));
+        return {
+            severity: entry.severity,
+            rule: entry.ruleId,
+            message: translate(entry.messageKey, resolveLintMessageParams(entry, key => translate(key), (base, count, params) => english.tn(base, count, params))),
+            ...(location ? { location } : {}),
+        };
+    });
     return answerJson(
-        { counts: report.counts, shown: shown.length, total: findings.length, findings: shown },
-        `${report.counts.error} error(s), ${report.counts.warning} warning(s), ${report.counts.info} info.`
-            + (findings.length > shown.length ? ` Showing the first ${shown.length} of ${findings.length}.` : "")
-            + (report.counts.error > 0 ? " Fix every error before building." : ""),
+        {
+            counts: report.counts,
+            byRule,
+            matched,
+            from: offset,
+            shown: findings.length,
+            nextCursor,
+            findings,
+        },
+        describeLintPage(report.counts, { byRule, matched, nextCursor, shown: findings.length }, request),
     );
 };
 
@@ -270,6 +284,36 @@ function testText(text: TestText | undefined): string {
     return text.key ? translate(text.key, text.params) : text.text;
 }
 
+/**
+ * Where a test finding points, spelled the way `lint` spells a story row (`Story / Scene:12`), so a
+ * finding such as `"Stay" stops without reaching an ending` says which scene and row it means. The
+ * report tab has the jump target for that; an agent has only this text.
+ */
+function testFindingLocator(ctx: WorkspaceContext): (target: SearchJumpTarget | undefined) => Promise<string | undefined> {
+    const locators = new Map<string, Promise<StoryRowLocator | null>>();
+    const locatorFor = (storyId: string, storyName: string): Promise<StoryRowLocator | null> => {
+        let locator = locators.get(storyId);
+        if (!locator) {
+            locator = storyService(ctx).loadStory(storyId)
+                .then(document => createStoryRowLocator([{ id: storyId, name: storyName, document }]))
+                .catch(() => null);
+            locators.set(storyId, locator);
+        }
+        return locator;
+    };
+    return async target => {
+        if (!target || (target.kind !== "storyBlock" && target.kind !== "storyScene")) {
+            return undefined;
+        }
+        const scene = `${target.storyName}${LINT_LOCATION_SEPARATOR}${target.sceneName}`;
+        if (target.kind === "storyScene") {
+            return scene;
+        }
+        const row = (await locatorFor(target.storyId, target.storyName))?.(target.storyId, target.sceneId, target.blockId);
+        return row ? `${scene}:${row.line}` : scene;
+    };
+}
+
 function waitFor<T>(subscribe: (listener: () => void) => () => void, read: () => T | null, timeoutMs: number): Promise<T | null> {
     return new Promise(resolve => {
         const immediate = read();
@@ -328,7 +372,11 @@ export const internalTest: AgentToolHandler = async (args, { ctx, request, follo
     if (!run) {
         throw refuse("internal", `Test "${id}" did not finish in time.`);
     }
-    const findings = run.findings.map(finding => ({ severity: finding.severity, message: testText(finding.message) }));
+    const where = testFindingLocator(ctx);
+    const findings = await Promise.all(run.findings.map(async finding => {
+        const location = await where(finding.target);
+        return { severity: finding.severity, message: testText(finding.message), ...(location ? { location } : {}) };
+    }));
     return answerJson(
         { testId: id, status: run.status, summary: testText(run.summary) || null, findings, ...(run.error ? { error: run.error } : {}) },
         `Test ${id}: ${run.status}.${run.summary ? ` ${testText(run.summary)}` : ""}`,

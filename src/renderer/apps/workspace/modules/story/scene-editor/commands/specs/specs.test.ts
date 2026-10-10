@@ -1033,6 +1033,10 @@ describe("logic and effects", () => {
         // Camera only, and structurally so: the engine renders the lens from the camera's own overlay
         // and no other Displayable has one.
         expect(issuesOf("/transform hero lens=blink")).toEqual(["unsupportedParam"]);
+        // Shares of the stage, not pixels: a pair far off it is refused, one just off it is a slide-in start.
+        expect(issuesOf("/transform hero pos=100,200")).toEqual(["positionOutOfRange"]);
+        expect(issuesOf("/transform hero pos=-0.3,0.5")).toEqual([]);
+        expect(issuesOf("/transform hero pos=50%,20%")).toEqual(["unsupportedOption"]);
         expect(issuesOf("/transform hero shutter=1")).toEqual(["unsupportedParam"]);
     });
 

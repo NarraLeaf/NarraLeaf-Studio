@@ -278,8 +278,12 @@ export type StoryCommandParamType =
     /**
      * Free text with no candidates. Two shapes use it: a `greedy` line of prose (`/say`'s text), and a
      * single-token *name the author invents* for a stage object (`/layer overlay`).
+     *
+     * `format`, when a text slot is not free at all but has a shape of its own that no candidate
+     * list can show (`pos=0.3,0.5`), says what that shape is - in English, for the command catalogue
+     * an agent reads; the editor does not print it.
      */
-    | { kind: "text" }
+    | { kind: "text"; format?: string }
     /**
      * A computed value: the `gold + 1` in `/set gold gold + 1`, the `score > 90` in `/if score > 90`.
      *

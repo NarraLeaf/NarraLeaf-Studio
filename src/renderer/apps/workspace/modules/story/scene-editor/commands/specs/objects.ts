@@ -35,7 +35,12 @@ export const image = defineStoryCommand({
     aliases: ["img"],
     category: "image",
     icon: Image,
-    examples: ["/image night", "/image night name=sky pos=center", "/image forest_day name=backdrop in=fade d=0.4"],
+    examples: ["/image night name=sky", "/image night name=sky pos=center", "/image forest_day name=backdrop in=fade d=0.4"],
+    sequence: {
+        note: "Declares an image object and does not display it. A later `/show <name>` reveals it; "
+            + "`/show <image asset> name=<name>` declares and reveals in one row.",
+        lines: ["/image night name=sky pos=center", "/show sky in=fade d=0.5"],
+    },
     params: {
         image: { aliases: ["src"], hint: "imageAsset", type: { kind: "asset", assetType: "image", allowSets: true }, positional: true, core: true },
         name: { hint: "objectName", type: { kind: "text" } },
@@ -74,7 +79,12 @@ export const text = defineStoryCommand({
     aliases: ["txt"],
     category: "text",
     icon: Type,
-    examples: ["/text Welcome home", "/text name=title pos=center Chapter One"],
+    examples: ["/text name=title Welcome home", "/text name=title pos=center Chapter One"],
+    sequence: {
+        note: "Declares a text object and does not display it: nothing is on screen until a `/show <name>` row. "
+            + "Write `name=` (before the text) so the `/show` can address it.",
+        lines: ["/text name=title pos=center Chapter One", "/show title in=fade d=0.5"],
+    },
     params: {
         // `name=` must be typed before the greedy content - the one ordering rule greedy imposes.
         name: { hint: "objectName", type: { kind: "text" } },

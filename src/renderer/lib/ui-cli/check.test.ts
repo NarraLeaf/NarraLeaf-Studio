@@ -219,3 +219,30 @@ ${GALLERY}`;
         expect(frameDiagnostics(result.diagnostics)).toEqual([]);
     });
 });
+
+describe("props that take one word out of a list", () => {
+    it("refuses a word the list does not have and names the words it takes", () => {
+        const result = checkUiSource(`surface "S" id=s kind=appSurface size=8x6
+    Root: nl.root @0,0 8x6
+        Line: nl.text id=line @0,0 8x6
+            textWrapMode = char
+`);
+        expect(result.ok).toBe(false);
+        expect(result.diagnostics).toContainEqual(expect.objectContaining({
+            severity: "error",
+            code: "ui.prop_value",
+            message: expect.stringContaining('textWrapMode is "char"; it takes one of: word, character, nowrap'),
+        }));
+    });
+
+    it("lets every word of the list through", () => {
+        for (const mode of ["word", "character", "nowrap"]) {
+            const result = checkUiSource(`surface "S" id=s kind=appSurface size=8x6
+    Root: nl.root @0,0 8x6
+        Line: nl.text id=line @0,0 8x6
+            textWrapMode = ${mode}
+`);
+            expect(result.diagnostics.filter(item => item.code === "ui.prop_value")).toEqual([]);
+        }
+    });
+});

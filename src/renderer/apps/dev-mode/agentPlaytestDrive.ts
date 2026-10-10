@@ -117,6 +117,18 @@ export function movedOn(from: GameAppTestState, next: GameAppTestState | null): 
 }
 
 /**
+ * Whether `next` is `from`'s own line, now shown in full: a click that only finished the typing, or
+ * the typewriter running out by itself. Not a move - the reader is still on the same line - but not a
+ * stuck game either.
+ */
+export function completedInPlace(from: GameAppTestState, next: GameAppTestState | null): boolean {
+    return Boolean(
+        next?.inGame && from.line && !from.line.complete && next.line?.complete && next.choices === null
+            && lineKey(next) === lineKey(from),
+    );
+}
+
+/**
  * Whether the game has come to rest somewhere a reader stops: a line other than `leftKey`, a menu,
  * or out of the story.
  */
@@ -334,12 +346,38 @@ export async function advanceLines(
                 state = readOrNull();
                 continue;
             }
-            const moved = await waitUntil(game, next => movedOn(from, next), timing.moveMs, clock, timing, deadline);
+            let moved = await waitUntil(
+                game,
+                next => movedOn(from, next) || completedInPlace(from, next),
+                timing.moveMs,
+                clock,
+                timing,
+                deadline,
+            );
+            if (moved === undefined) {
+                // A click can be swallowed - one that lands as a scene comes up after timed waits, say,
+                // while the engine is not yet taking input. A click the engine took leaves this line
+                // (its dialog state is settled at once), so the same line still on screen, whole and
+                // unchanged, means the click went nowhere, and one more cannot skip a line.
+                const still = readOrNull();
+                if (still?.inGame && still.line?.complete && still.choices === null && lineKey(still) === lineKey(from)) {
+                    await game.advance();
+                    moved = await waitUntil(game, next => movedOn(from, next), timing.moveMs, clock, timing, deadline);
+                }
+            }
             if (moved === undefined) {
                 return finish(game.read(),
-                    "The game did not move on after the click: it may be waiting on something a click does not skip "
-                    + "(a timed pause, a video, an input the scene asks for), or the story has nothing after this line.",
+                    `The game did not move on after the click (waited ${Math.round((timing.moveMs * 2) / 1000)} s and clicked twice): `
+                    + "it may be waiting on something a click does not skip (a timed pause longer than that, a video, an input "
+                    + "the scene asks for), or the story has nothing after this line. playtest_screenshot shows where it is; "
+                    + "call playtest_advance again once a timed pause has had time to run.",
                 );
+            }
+            if (!movedOn(from, moved) && completedInPlace(from, moved)) {
+                // The click finished the typing - the earlier completing click was swallowed, or the line
+                // was still typing when the step began. Still the same line: not a step, click again.
+                state = moved;
+                continue;
             }
             advanced += 1;
             state = await settleLine(game, lineKey(from), clock, timing, deadline, { appearMs: timing.appearMs, typingMs: timing.typingMs });

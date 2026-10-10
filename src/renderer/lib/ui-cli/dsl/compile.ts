@@ -124,6 +124,15 @@ class CompileContext {
         this.knownTypes = new Set(listWidgetModules().map(module => module.type));
     }
 
+    /** Whether the document being edited holds an element with this id, on a page or in a definition. */
+    private existingElement(id: string): boolean {
+        if (!this.existing) {
+            return false;
+        }
+        return Boolean(this.existing.elements?.[id])
+            || (this.existing.components ?? []).some(component => Boolean(component.elements?.[id]));
+    }
+
     public declareFileComponent(componentId: string, params: readonly DeclaredParam[]): void {
         this.fileComponentParams.set(componentId, params);
     }
@@ -539,7 +548,16 @@ class CompileContext {
 
 
         // A `+defaults` element (the short form, see `compact.ts`) starts from its widget's defaults.
-        const base = node.fillDefaults ? compactBase(node.type, node.withoutDefaults?.keys ?? []) : { props: {}, layout: {}, unknownWithout: [] };
+        // So does an element the document being edited does not have yet: nothing is stored for it, so
+        // there is no record whose exact keys the text must reproduce, and an element made in the
+        // editor starts from those same defaults. Without them a new image written with only its
+        // picture draws a white box, because `fillType` is not `image` until something says so. An
+        // element that exists is written exactly as its lines say - the long form's promise - and a
+        // file compiled with no document behind it cannot tell new from old, so it is left alone.
+        const isNew = this.existing !== null && !this.existingElement(id);
+        const base = node.fillDefaults || isNew
+            ? compactBase(node.type, node.fillDefaults ? node.withoutDefaults?.keys ?? [] : [])
+            : { props: {}, layout: {}, unknownWithout: [] };
         if (node.withoutDefaults && !node.fillDefaults) {
             this.report(
                 "warning",

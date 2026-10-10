@@ -303,7 +303,7 @@ export const uiApply: AgentToolHandler = async (args, { ctx, request, follow }) 
         name: targetName(uidoc.getDocument(), target),
         revision: uiContentRevision(ctx, target),
     }));
-    const lines = [report, "", forAgent(formatUiApplyResult(changes, !dryRun))];
+    const lines = [forAgent(report), "", forAgent(formatUiApplyResult(changes, !dryRun))];
     for (const item of dropped) {
         lines.push(`Deleted from ${"surface" in item ? `page "${item.surface}"` : `component "${item.component}"`}: ${item.names.join(", ")}`);
     }

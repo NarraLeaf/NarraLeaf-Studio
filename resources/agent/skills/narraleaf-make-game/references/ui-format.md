@@ -16,8 +16,10 @@ nothing.
   dialogue box), `choice` (the menu), `onStage` (the quick menu), `notification`, `nvl`.
 - A **component** is a reusable element tree placed on pages with params (the skeleton's `Save slot`,
   `Volume slider`, `Title button`, `Back button`).
-- The title page has the fixed id `narraleaf-studio:main-surface`. It cannot be deleted and no other
-  page can take that id; restyle it in place.
+- The skeleton's title page has the fixed id `narraleaf-studio:main-surface`; restyle it in place.
+  Which page the game opens on is the entry page (`project_info` names it; `ui_page_set_entry`
+  moves it). `ui_page_rename` renames a page or Game UI and `ui_page_delete` deletes one that nothing
+  opens any more - the entry page never.
 
 `ui_surfaces {query}` lists them all with element paths and ids and the blueprints hanging off each
 element.
@@ -30,7 +32,6 @@ surface Title id=narraleaf-studio:main-surface kind=appSurface size=1920x1080
     Root: nl.root id=8b611438-… @0,0 1920x1080
         Title: nl.container id=b674b641-… @0,0 1920x1080  # blueprint: Title
             "Key art": nl.image id=a4d2552e-… @0,0 1920x1080
-                fitMode = cover
                 fillOpacity = 0.3
                 imageFill = {"mode":"cover","assetId":"5322b0e3-…"}
             "Game title": nl.text id=c6d9dc8d-… @140,150 1000x120
@@ -129,6 +130,11 @@ would lose their element). Pages the document does not mention are untouched. Us
 your own, or a page you are deliberately rebuilding - always starting from `ui_show` so ids survive
 (an element keeps its id when it stays at the same place in the tree).
 
+An element the page does not have yet starts from its widget's defaults, as one added in the editor
+does, so a new image needs only its picture (`imageFill = {"mode":"cover","assetId":"<id>"}`). An
+element that exists is written exactly as its lines say (or, under `+defaults`, as its defaults plus
+its lines).
+
 Other block kinds you may meet:
 
 - `param <id> <name> [type=text|string|number|boolean|list|json] [= default]` under a page: values the
@@ -165,7 +171,8 @@ different rows.
 | `stale_revision` | The author edited the page since your `ui_show`. Read again. |
 
 Notes, not refusals: `ui.unknown_prop` (kept, probably does nothing - check the spelling with
-`ui_widget`), `ui.orphaned_blueprint`, `ui.binding_blueprint_missing`.
+`ui_widget`), `ui.orphaned_blueprint` (a deleted element's blueprint stays behind: remove it with
+`blueprint_remove`), `ui.binding_blueprint_missing`.
 
 ## After every visible change
 

@@ -228,7 +228,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "assets_import",
         "Import files",
-        "Imports files from disk into the project. Paths must be absolute. A path outside the project and the folders the author allowed (see agent_status) makes Studio ask the author for its folder first; for a big import, call request_folder_access up front. Each asset is named after its file name without extension unless `names` says otherwise - pick names a story line can use (e.g. `bg_classroom_day`). `warnings` flags a portrait-shaped image with no transparency: as a sprite it would show as a rectangle.",
+        "Imports files from disk into the project. Paths must be absolute. A path outside the project and the folders the author allowed (see agent_status) makes Studio ask the author for its folder first; for a big import, call request_folder_access up front. Each asset is named after its file name without extension unless `names` says otherwise - pick names a story line can use (e.g. `bg_classroom_day`). Files are deduplicated by content: a file byte-identical to an asset already in the project is not imported again and is listed under `duplicates` with the existing asset's name - no asset is made under the new name, so use the existing one. A path that names no file comes back under `failed` as not found. Transparency is not checked here; character_upsert warns about a pose with no transparency.",
         {
             paths: { type: "array", items: { type: "string" }, description: "Absolute file paths." },
             type: { type: "string", enum: ["image", "audio", "video", "font"], description: "Omit to infer from each extension." },
@@ -576,8 +576,54 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
         ["surface", "ops"],
         true,
     ),
-    ws("ui_templates", "Interface templates", "Lists interface templates available to apply (title screens, dialogue boxes, menus) from Studio's template store."),
-    ws("ui_template_apply", "Apply a template", "Adds a template's pages to the project.", { template: { type: "string", description: "Template id from ui_templates." } }, ["template"], true),
+    ws(
+        "ui_page_rename",
+        "Rename a page",
+        "Renames a page or Game UI (named by its name or id, as ui_surfaces lists it). Go Page nodes and frames that open it hold its id, so they follow. One step of undo.",
+        { page: { type: "string", description: "Page or Game UI name or id." }, name: { type: "string", description: "The new name; no other page may have it." } },
+        ["page", "name"],
+        true,
+    ),
+    ws(
+        "ui_page_delete",
+        "Delete a page",
+        "Deletes a page or Game UI with its elements and blueprints - a template page you do not use, say. Refused for the entry page (ui_page_set_entry another first) and while any blueprint, element or story row elsewhere still opens or names it; the refusal lists them. One step of undo.",
+        { page: { type: "string", description: "Page or Game UI name or id." } },
+        ["page"],
+        true,
+    ),
+    ws(
+        "ui_page_set_entry",
+        "Set the entry page",
+        "Makes a page the one the game opens on (the splash or title). project_info names the current one. One step of undo.",
+        { page: { type: "string", description: "Page name or id; a Game UI cannot be the entry." } },
+        ["page"],
+        true,
+    ),
+    ws(
+        "ui_install_standard_screens",
+        "Install the standard screens",
+        "Brings the skeleton template's working screens into the open project - splash, title, save, load, config, log, extra and confirm pages, the dialogue box, choice menu, quick menu and notifications, their components and every blueprint behind them - for a project made from the empty template, or one whose interface was lost. Start begins the project's own story; the files, palette entries, translation keys, input actions, save field and persistent variable the screens use come along. A Game UI slot the project already fills is left alone unless `replace` is true, which deletes the project's Game UIs in those slots and its empty pages. The splash becomes the entry page when the current entry page is empty (or with `replace`). Pages whose blueprints need a plugin this project does not run (the Gallery's Extra page) are left out, with the buttons that open them. One step of undo; restyle the result like the skeleton.",
+        {
+            replace: { type: "boolean", default: false, description: "Delete the project's Game UIs in the slots these fill, and its empty pages, instead of skipping those Game UIs." },
+            dryRun: DRY_RUN,
+        },
+        [],
+        true,
+    ),
+    ws(
+        "ui_templates",
+        "Interface templates",
+        "Lists interface templates from Studio's online template store. They are layouts: most carry no blueprints, so their buttons do nothing, their save slots are not bound to saves and their sliders to nothing, until you wire them (blueprint_apply). For screens that already work, use ui_install_standard_screens.",
+    ),
+    ws(
+        "ui_template_apply",
+        "Apply a template",
+        "Adds a template's pages (and components) to the project as new pages; it never replaces the entry page. The answer says, per page, how many blueprints and bound props came with it - for most store templates none, so wire them before relying on them, make the title the entry with ui_page_set_entry, and delete pages you replaced with ui_page_delete.",
+        { template: { type: "string", description: "Template id from ui_templates." } },
+        ["template"],
+        true,
+    ),
     ws("brand_get", "Read the palette", "The project's brand palette and fonts. Interface props should refer to palette entries as `nlbrand:<id>` rather than raw colours, so one change restyles the game."),
     ws(
         "brand_set",
@@ -613,6 +659,14 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
         "Applies a `.bp` document: each `blueprint` block replaces every graph of its owner. One step of undo.",
         { source: { type: "string" }, dryRun: DRY_RUN },
         ["source"],
+        true,
+    ),
+    ws(
+        "blueprint_remove",
+        "Remove a blueprint",
+        "Removes one blueprint - typically one left behind when ui_apply or ui_patch deleted the element it hung off (`ui.orphaned_blueprint`). Only a widget's, a component element's or a bound value's blueprint; refused while another blueprint or a bound prop still names it, with the reasons. One step of undo.",
+        { blueprint: { type: "string", description: "Blueprint id, or its whole name when only one blueprint has it (blueprint_list)." }, dryRun: DRY_RUN },
+        ["blueprint"],
         true,
     ),
 
@@ -748,7 +802,17 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ),
 
     // ── Verify and ship ──────────────────────────────────────────────────────────────────────────
-    ws("lint", "Check the project", "Runs every project lint rule and returns the findings, errors first. Fix every error before a build.", { severity: { type: "string", enum: ["error", "warning", "info"], default: "warning" } }),
+    ws(
+        "lint",
+        "Check the project",
+        "Runs every project lint rule and returns the findings, errors first, a page at a time. The answer opens with the totals and a count per rule over the whole report (`byRule`, before any filter), so a flood of one rule - hundreds of `assets/unused` - cannot hide the others: narrow with `rule` and page with `cursor`. Messages are in English with their rule id. Fix every error before a build.",
+        {
+            severity: { type: "string", enum: ["error", "warning", "info"], default: "warning", description: "Leave out findings below this severity." },
+            rule: { type: "string", description: "Only this rule (`story/dead-end`), or a whole category by its prefix ending in `/` (`story/`, `assets/`)." },
+            cursor: { type: "string", description: "`nextCursor` from the previous page, with the same filters. Start again without one after changing the project." },
+            limit: { type: "integer", default: 150, minimum: 1, maximum: 500 },
+        },
+    ),
     main(
         "test",
         "Run a project test",
@@ -765,7 +829,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "playtest_advance",
         "Advance the game",
-        "Reads on `steps` lines of a running story. One step is one line: a click on the line shown in full, then a wait until the game is at rest again - on the next line, finished typing (rows without a line, such as /show or /sound, are not steps), a menu, or out of the story. So the answer names exactly what is on screen, and a screenshot taken next shows that whole line. Stops early at a choice menu, at an ending (names it, and the page the game went to: the title or an ending page), or when a click does not move the game; says why. With `choice`, picks that option first (counts as one step). Does nothing on the title page: start from a scene.",
+        "Reads on `steps` lines of a running story. One step is one line: a click on the line shown in full, then a wait until the game is at rest again - on the next line, finished typing (rows without a line, such as /show or /sound, are not steps), a menu, or out of the story. So the answer names exactly what is on screen, and a screenshot taken next shows that whole line. Stops early at a choice menu, at an ending (names it, and the page the game went to: the title or an ending page), or when a click does not move the game; says why. Rows with no line - timed `/wait`s, transitions - are waited through (up to 10 s for the next line to come up), and a click the game swallowed is repeated once before the step is called stuck. With `choice`, picks that option first (counts as one step). Does nothing on the title page: start from a scene.",
         {
             steps: { type: "integer", default: 1, description: "Lines to read on, 1-50." },
             choice: { type: "integer", description: "1-based option of the menu showing, in the order shown (hidden options are not counted)." },

@@ -108,6 +108,17 @@ Checkpoint: a filled brief and, for a supplied script, an inventory and name map
   quick menu, save/load, settings, backlog, extras, and a three-scene demo story - all wired. You
   restyle and refill it; you do not build those screens from nothing.
 - **Existing game:** `project_open` with its folder.
+- **A project made from the empty template** (or any project whose `ui_surfaces` shows one blank page
+  and no Game UIs): it has no title, dialogue box, save/load, settings or log, and nothing below
+  works until it does. If the game has not been started yet, the simplest fix is a new project from
+  the skeleton - ask the author first. Otherwise call `ui_install_standard_screens` (try `dryRun:
+  true` first): it brings the skeleton's wired screens, components and blueprints into this project
+  in one undo step, with the files, palette entries, input actions, save field and persistent
+  variable they use, makes the splash the entry page in place of the blank one, and points Start at
+  the project's own story. Read what it says it left out: a Game UI slot the project already fills is
+  skipped unless you pass `replace: true`, and the Extra page needs the Gallery plugin. Then check
+  as in step 6. Do not rebuild these screens from store templates (`ui_templates`): those are
+  layouts with no logic behind them.
 - Name, resolution or languages wrong? `project_settings_set` - now, before the interface work:
   changing the resolution later does not rescale pages already built. `languages` is the full list
   (source language included); a language holding translations goes only when `removeLanguages`
@@ -129,7 +140,10 @@ their own opening picture and music (step 5) - re-cast the demo characters (`cha
 their `id`), rename or re-type the demo variables (`variable_upsert` with their `id`). What you do not
 reuse, delete once nothing refers to it: `scene_delete`, `character_delete`, `variable_delete`,
 `asset_delete` (the demo pictures and music lint lists as `assets/unused`) refuse while something
-still does and list what. Pages are not deleted - hide what the game does not need.
+still does and list what. Keep the skeleton's pages: hide what the game does not need rather than
+deleting it, because the other screens' buttons open them. `ui_page_delete` is for a page nothing
+opens any more (a leftover template page, say); it refuses the entry page and lists what still opens
+the page.
 
 Checkpoint: the project is open in Studio and you have its overview.
 
@@ -138,12 +152,17 @@ Checkpoint: the project is open in Studio and you have its overview.
 1. `assets_import` the author's files with `names` chosen from your name map and a `folder` per kind
    (`Backgrounds`, `Sprites`, `CG`, `Music`, `SFX`, `Video`). Paths must be absolute. A path outside
    the project and the allowed directories makes Studio ask the author for its folder first (step 0).
+   Imports are deduplicated by content: a file byte-identical to one already in the project is listed
+   under `duplicates` with the **existing** asset's name and is not imported again, so the name you
+   asked for does not exist - write the existing name into your name map. A path with no file behind
+   it comes back under `failed` as not found; fix the path rather than asking for folder access.
 2. Formats: images PNG/JPEG/WebP/GIF/AVIF/SVG; audio MP3/OGG/Opus/WAV/M4A/AAC/FLAC; video WebM or
    MP4 (H.264); fonts TTF/OTF/WOFF/WOFF2. AVI, WMV, FLV, MPEG, TS, TIFF and AIFF are refused; HEVC
    MP4, ProRes MOV and Theora OGV import but play sound over a black picture. Tell the author which
    files need converting rather than importing broken ones.
-3. **Sprites need a transparent background** - an opaque one shows as a rectangle. `assets_import`
-   and `character_upsert` return `warnings` for an opaque sprite; ask the author for a cut-out, and
+3. **Sprites need a transparent background** - an opaque one shows as a rectangle. `character_upsert`
+   (and the layered tools) return `warnings` for a pose or layer with no transparency; backgrounds and
+   CGs are opaque by design and are not warned about. Ask the author for a cut-out, and
    list it on the hand-over if none comes. A sprite is drawn at its own pixel size times its
    character's entrance `zoom`, centred where the `/show` row places it; the character's
    `entranceTransform` sets zoom and baseline (step 4). For 1920x1080, standing sprites about
@@ -225,7 +244,9 @@ Checkpoint: `story_list` shows every scene; each applies cleanly; every route re
 ## Step 6 - Interface
 
 Read `ui-design` and `ui-format` first. **Restyle the skeleton; do not rebuild it.** Its screens are
-wired to save, load, settings and backlog logic that a rebuilt page would lose.
+wired to save, load, settings and backlog logic that a rebuilt page would lose. A project made from
+the empty template gets the same screens from `ui_install_standard_screens` (step 2); restyle those
+the same way.
 
 1. **Palette first.** `brand_get`, then `brand_set` with colours for the art style (background,
    panel, primary/accent, foreground text, muted text, borders) and the game's font if the author
@@ -253,8 +274,12 @@ wired to save, load, settings and backlog logic that a rebuilt page would lose.
    then `narraleaf_gallery__list` and `narraleaf_gallery__add_entries`. The page shows the catalog by
    itself; restyle it like any other page.
 5. `ui_usage {type}` shows how the skeleton itself uses a widget, in pasteable `.ui` text - the
-   fastest way to get a new element right. `ui_templates` / `ui_template_apply` add a ready-made set
-   of pages from Studio's template store when the author prefers one; restyle it the same way.
+   fastest way to get a new element right. `ui_templates` / `ui_template_apply` add pages from
+   Studio's template store when the author picks a look from it - but they are layouts: the answer
+   says per page what logic came with it, usually none, so Start, save slots, the log and sliders do
+   nothing until you wire them (or take the working screens with `ui_install_standard_screens` and
+   restyle those instead). An applied page is never the entry: `ui_page_set_entry` makes it one,
+   and `ui_page_delete` removes the pages it replaced once nothing opens them.
 6. When the author says "this" or "the selected one", `ui_selection` tells you what they selected.
 
 Checkpoint: every page screenshot passes the checklist, and the title shows the game's title and art.

@@ -486,6 +486,9 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     private dirtyTypes = new Set<AssetType>();
     /** Categories whose `assets.order.<category>.json` is behind the shards it orders. */
     private dirtyOrderCategories = new Set<AssetCategory>();
+    /** The flush writing now, and the one waiting behind it. See {@link flushPendingWrites}. */
+    private runningFlush: Promise<void> | null = null;
+    private queuedFlush: Promise<void> | null = null;
     private assetsMetadataInitializing = false;
     /**
      * Shards whose refused write has already been announced. One notice per shard per library:
@@ -1487,8 +1490,43 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
      * silently diverged from disk. A rejected shard now stays dirty, so the next mutation retries
      * it, and the failure is reported (SaveStatusService observes the write itself and raises the
      * toast / "Storage" console line).
+     *
+     * **One flush at a time.** `markDirty` outside a transaction fires a flush without waiting, so a
+     * bulk import - one transaction per batch, with thumbnails and probes marking types dirty beside
+     * it - used to have several flushes writing the same shard at once. Two things went wrong with
+     * that, and neither was visible: the writes' renames could land out of order, leaving the older
+     * library on disk with nothing still owed; and a write could be refused outright, because the
+     * no-follow gate saw the inode the other write's rename had just unlinked. So a flush asked for
+     * while one is running waits for it and then writes whatever is owed by then, and every request
+     * made in the meantime shares that one follow-up flush.
      */
-    private async flushPendingWrites(): Promise<void> {
+    private flushPendingWrites(): Promise<void> {
+        if (this.queuedFlush) {
+            return this.queuedFlush;
+        }
+        const running = this.runningFlush;
+        if (!running) {
+            return this.startFlush();
+        }
+        const queued = running.catch(() => undefined).then(() => {
+            this.queuedFlush = null;
+            return this.startFlush();
+        });
+        this.queuedFlush = queued;
+        return queued;
+    }
+
+    private startFlush(): Promise<void> {
+        const run: Promise<void> = this.writePendingNow().finally(() => {
+            if (this.runningFlush === run) {
+                this.runningFlush = null;
+            }
+        });
+        this.runningFlush = run;
+        return run;
+    }
+
+    private async writePendingNow(): Promise<void> {
         if (this.dirtyTypes.size > 0) {
             const types = Array.from(this.dirtyTypes);
             this.dirtyTypes.clear();

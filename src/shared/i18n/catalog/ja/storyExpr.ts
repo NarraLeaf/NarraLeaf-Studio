@@ -64,6 +64,7 @@ export const storyExpr = {
         notPuppetCharacter: "{value} はランタイムが描くものではないので、設定できるモーションもスキンもない",
         ambiguousName: "\"{value}\" という名前のものが複数ある。どちらかの名前を変える",
         conflictingParams: "{keys} を 1 行に両方は書けない。行を 2 つに分ける",
+        positionOutOfRange: "\"{value}\" はステージ上の位置ではない。pos=x,y はピクセルではなくステージに対する比率で、x は左端（0）から右端（1）、y は下端（0）から上端（1）、オブジェクトの中心の位置を表す。-1 から 2 の値で画面外に置ける",
         repeatTimesAndUntil: "繰り返しは回数か条件のどちらかで、両方は指定できない。片方を消す",
         expressionError: "{message}",
         expressionNotBoolean: "条件は gold >= 100 のような真偽の判定にする",

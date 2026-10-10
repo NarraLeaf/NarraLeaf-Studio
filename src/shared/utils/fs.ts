@@ -18,6 +18,9 @@ import { ATOMIC_WRITE_TEMP_SUFFIX } from "./atomicWriteTemp";
  */
 export { ATOMIC_WRITE_TEMP_PATTERN, ATOMIC_WRITE_TEMP_SUFFIX } from "./atomicWriteTemp";
 
+/** How many more times the no-follow gate asks when it sees a file that was just unlinked. */
+const GATE_RESTAT_ATTEMPTS = 8;
+
 export type FileStat = {
     name: string;
     ext: string | null;
@@ -159,7 +162,7 @@ export class Fs {
     public static ensureRegularFile(path: string, data: string, encoding: BufferEncoding = "utf-8"): Promise<FsRequestResult<void>> {
         return this.wrap((async () => {
             try {
-                this.assertSafeFileStat(path, await fs.lstat(path));
+                this.assertSafeFileStat(path, await this.lstatForGate(path));
             } catch (error) {
                 if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
                     await fs.writeFile(path, data, {encoding, flag: "wx"});
@@ -216,7 +219,7 @@ export class Fs {
      */
     public static writeFileNoFollow(path: string, data: string, encoding: BufferEncoding = "utf-8"): Promise<FsRequestResult<void>> {
         return this.wrap((async () => {
-            this.assertSafeFileStat(path, await fs.lstat(path));
+            this.assertSafeFileStat(path, await this.lstatForGate(path));
 
             await this.writeFileAtomicCore(path, Buffer.from(data, encoding), false);
         })());
@@ -250,7 +253,7 @@ export class Fs {
     public static writeFileNoFollowOrCreate(path: string, data: string, encoding: BufferEncoding = "utf-8"): Promise<FsRequestResult<void>> {
         return this.wrap((async () => {
             try {
-                this.assertSafeFileStat(path, await fs.lstat(path));
+                this.assertSafeFileStat(path, await this.lstatForGate(path));
             } catch (error) {
                 // "Not there yet" is the one failure this verb absorbs. `assertSafeFileStat`'s own
                 // `EINVAL` and every other stat error propagate, which is what keeps the rejection
@@ -694,6 +697,31 @@ export class Fs {
             // happened either way, so this must never turn a successful write into a failure.
         } finally {
             await handle.close().catch(() => undefined);
+        }
+    }
+
+    /**
+     * `lstat` for the no-follow gate, asked again while it describes a file nobody can reach.
+     *
+     * A link count of **zero** is not a property of the file at `filePath`; it is a race with another
+     * writer of the same path. `lstat` resolves the name to an inode and then reads that inode's
+     * attributes, and when a concurrent `rename` replaces the name in between - which is how
+     * {@link writeFileAtomicCore} commits every write - the attributes come back from the inode that
+     * was just unlinked, with `nlink` 0. Measured on APFS: a few lstats in a thousand against a file
+     * being renamed over, and about one in sixteen no-follow writes refused when four of them share
+     * a path. Each of those refusals was a write the caller had to be lucky to have repeated.
+     *
+     * Only zero is asked again. A planted hard link has a count of two or more for as long as it
+     * exists, and that is what the gate is for, so it is still refused on the first answer. The
+     * retry is bounded: a count that stays zero is refused like any other unsafe answer.
+     */
+    private static async lstatForGate(filePath: string): Promise<Stats> {
+        for (let attempt = 0; ; attempt++) {
+            const stats = await fs.lstat(filePath);
+            if (stats.nlink !== 0 || attempt >= GATE_RESTAT_ATTEMPTS) {
+                return stats;
+            }
+            await new Promise(resolve => setTimeout(resolve, attempt));
         }
     }
 

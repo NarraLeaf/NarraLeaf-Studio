@@ -58,7 +58,7 @@ function virtualClock(options: { frames?: boolean } = {}): PlaytestClock & { adv
     };
 }
 
-function pretendEngine(clock: PlaytestClock, script: ScriptItem[], options: { startAt?: number; readable?: boolean } = {}) {
+function pretendEngine(clock: PlaytestClock, script: ScriptItem[], options: { startAt?: number; readable?: boolean; clickGuardMs?: number } = {}) {
     let position = 0;
     let startedAt = options.startAt ?? 0;
     let started = false;
@@ -142,6 +142,11 @@ function pretendEngine(clock: PlaytestClock, script: ScriptItem[], options: { st
             sync();
             const item = current();
             if (!item || !("say" in item)) {
+                clicks.push("swallowed");
+                return;
+            }
+            // An engine that takes no input for a moment after a line comes up.
+            if (options.clickGuardMs !== undefined && clock.now() - startedAt < options.clickGuardMs) {
                 clicks.push("swallowed");
                 return;
             }
@@ -304,6 +309,34 @@ describe("advanceLines: one step is one line, and the answer is what is on scree
         const lineGame = pretendEngine(clock, [{ say: "one", typeMs: 0 }]);
         expect((await advanceLines(lineGame, { steps: 1, choice: 1 }, clock)).error).toMatch(/No choice menu/);
         expect(menuGame.clicks).toEqual([]);
+    });
+
+    it("reads on from a scene that opens with timed waits, though the click that would complete its first line is swallowed", async () => {
+        const clock = virtualClock();
+        const game = pretendEngine(clock, [
+            { rows: 3000 },
+            { say: "one", typeMs: LONG },
+            { say: "two", typeMs: SHORT },
+        ], { clickGuardMs: 300 });
+        const outcome = await advanceLines(game, { steps: 1 }, clock);
+        expect(outcome.error).toBeUndefined();
+        expect(outcome.advanced).toBe(1);
+        expect(outcome.state?.line).toEqual({ speaker: null, text: "two", complete: true });
+        expect(game.clicks).toEqual(["swallowed", "complete one", "next from one"]);
+    });
+
+    it("clicks once more when a click on a whole line was swallowed", async () => {
+        const clock = virtualClock();
+        const game = pretendEngine(clock, [
+            { say: "one", typeMs: 0 },
+            { say: "two", typeMs: 0 },
+        ], { clickGuardMs: 2000 });
+        clock.advanceTo(10);
+        const outcome = await advanceLines(game, { steps: 1 }, clock);
+        expect(outcome.error).toBeUndefined();
+        expect(outcome.advanced).toBe(1);
+        expect(outcome.state?.line?.text).toBe("two");
+        expect(game.clicks).toEqual(["swallowed", "next from one"]);
     });
 
     it("stops with a reason when a click does not move the game", async () => {

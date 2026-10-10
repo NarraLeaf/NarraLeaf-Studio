@@ -106,6 +106,8 @@ type ProjectMember =
     | "updateSurfaceActionEnablement"
     | "createSurface"
     | "deleteSurface"
+    | "deleteSurfaces"
+    | "installBundle"
     | "reorderSurfaces"
     | "setEntrySurface"
     | "renameSurface"
@@ -187,6 +189,8 @@ export class ComponentDocumentServiceAdapter implements UIDocumentServiceSurface
     public readonly updateSurfaceActionEnablement = this.project("updateSurfaceActionEnablement");
     public readonly createSurface = this.project("createSurface");
     public readonly deleteSurface = this.project("deleteSurface");
+    public readonly deleteSurfaces = this.project("deleteSurfaces");
+    public readonly installBundle = this.project("installBundle");
     public readonly reorderSurfaces = this.project("reorderSurfaces");
     public readonly setEntrySurface = this.project("setEntrySurface");
     public readonly renameSurface = this.project("renameSurface");

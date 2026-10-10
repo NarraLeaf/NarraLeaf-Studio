@@ -893,6 +893,13 @@ export type ImportTemplateResult = {
     skippedSlots: UIStageSlotId[];
     /** Components copied into the project's library; empty for surface-only templates. */
     importedComponents: UIComponentDefinition[];
+    /** Each imported surface's id in this document, by its id in the source. Skipped ones are absent. */
+    surfaceIdMap: Record<string, string>;
+    /**
+     * Input actions the arriving surfaces answer that this project's vocabulary lacked, adopted under
+     * the source's ids. They stay when the import is undone, like the files and translations do.
+     */
+    adoptedActionIds: string[];
 };
 
 /**
@@ -3228,6 +3235,85 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     }
 
     /**
+     * Take surfaces out of the project with their trees and their blueprints, as one step on the
+     * project's undo stack - the shape {@link deleteComponents} gives definitions. Undo puts each one
+     * back where it stood, blueprints first.
+     *
+     * The entry page is refused for the reason {@link deleteSurface} gives, and nothing is taken when
+     * one of the ids is it. Returns the surfaces taken, empty when nothing was.
+     */
+    public deleteSurfaces(surfaceIds: readonly string[], label: HistoryLabel): UISurface[] {
+        const ids = [...new Set(surfaceIds)];
+        const document = this.getDocument();
+        if (ids.length === 0 || ids.some(id => isEntrySurface(document, id))) {
+            return [];
+        }
+        let held = this.takeLibraryRecords({ surfaceIds: ids });
+        if (isEmptyUILibraryRecords(held)) {
+            return [];
+        }
+        this.pushLibraryStep(label, {
+            undo: () => this.putLibraryRecords(held),
+            redo: () => {
+                held = this.takeLibraryRecords({ surfaceIds: ids });
+            },
+        });
+        return held.surfaces.map(record => record.surface);
+    }
+
+    /**
+     * Bring a bundle in, in place of some of the project's surfaces, and make one of its pages the
+     * entry - as one step on the project's undo stack.
+     *
+     * What `importTemplateBundle` does on its own leaves the rest of such a change as separate steps,
+     * and an undo that took back only the import would leave a project with neither the surfaces it
+     * removed nor the ones it brought. Here one Ctrl+Z puts back exactly what was there: the removed
+     * surfaces with their blueprints, the entry page as the document named it, and none of the
+     * arrivals. Files, translations and input actions the import adopted stay, as they do for a plain
+     * import.
+     *
+     * `removeSurfaceIds` may name the entry page; `entrySourceSurfaceId` names a page of the bundle by
+     * its id there. When it is absent or did not arrive, the entry is left to the document's own rule.
+     */
+    public installBundle(
+        input: Omit<ImportTemplateBundleInput, "history"> & {
+            removeSurfaceIds: readonly string[];
+            entrySourceSurfaceId?: string;
+            label: HistoryLabel;
+        },
+    ): ImportTemplateResult & { removedSurfaces: UISurface[] } {
+        const entryBefore = this.getDocument().entrySurfaceId;
+        const removeIds = [...new Set(input.removeSurfaceIds)];
+        let removed = this.takeLibraryRecords({ surfaceIds: removeIds });
+        const result = this.importTemplateBundle({ ...input, history: false });
+        const entry = input.entrySourceSurfaceId ? result.surfaceIdMap[input.entrySourceSurfaceId] : undefined;
+        if (entry) {
+            this.applyEntrySurface(entry);
+        }
+        const entryAfter = this.getDocument().entrySurfaceId;
+        const addedIds = {
+            surfaceIds: result.importedSurfaces.map(surface => surface.id),
+            componentIds: result.importedComponents.map(component => component.id),
+        };
+        if (addedIds.surfaceIds.length > 0 || addedIds.componentIds.length > 0 || !isEmptyUILibraryRecords(removed)) {
+            let added: UILibraryRecords = { surfaces: [], components: [] };
+            this.pushLibraryStep(input.label, {
+                undo: () => {
+                    added = this.takeLibraryRecords(addedIds);
+                    this.putLibraryRecords(removed);
+                    this.applyEntrySurface(entryBefore);
+                },
+                redo: () => {
+                    removed = this.takeLibraryRecords({ surfaceIds: removeIds });
+                    this.putLibraryRecords(added);
+                    this.applyEntrySurface(entryAfter);
+                },
+            });
+        }
+        return { ...result, removedSurfaces: removed.surfaces.map(record => record.surface) };
+    }
+
+    /**
      * Put the surfaces in the order given.
      *
      * The order is the document's own - `document.surfaces` is an array and every list of pages is
@@ -3605,6 +3691,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
         const importedSurfaces: UISurface[] = [];
         const skippedSlots: UIStageSlotId[] = [];
+        /** The source surfaces that arrived, in the order they did. */
+        const arrivedSources: UISurface[] = [];
 
         // Components first: a surface element that is an instance of one carries the
         // source component's id, so the map has to exist before any surface is walked.
@@ -3648,8 +3736,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             );
             if (imported) {
                 importedSurfaces.push(imported);
+                arrivedSources.push(sourceSurface);
             }
         }
+        const adoptedActionIds = this.adoptArrivingInputActions(sourceDocument, arrivedSources);
 
         this.adoptArrivingTranslations(
             arrivals
@@ -3682,7 +3772,46 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 describeImportStep(importedSurfaces, importedComponents),
             );
         }
-        return { importedSurfaces, skippedSlots, importedComponents };
+        const arrivedIdMap: Record<string, string> = {};
+        arrivedSources.forEach((source, index) => {
+            arrivedIdMap[source.id] = importedSurfaces[index].id;
+        });
+        return { importedSurfaces, skippedSlots, importedComponents, surfaceIdMap: arrivedIdMap, adoptedActionIds };
+    }
+
+    /**
+     * Give this project's input vocabulary the actions the arriving surfaces answer and it lacks.
+     *
+     * A surface keeps its replies to the project's actions (`surface.actions`) when it is copied in -
+     * a dialogue box that advances on a click or Space does so because it answers `advance` - and a
+     * reply to an action the project has never declared answers nothing. So each such action comes
+     * along under its own id, with its bindings. One the project already has is the project's, and
+     * keeps the author's bindings; a navigation slot another of the project's actions claims stays
+     * with that one.
+     */
+    private adoptArrivingInputActions(sourceDocument: UIDocument, arrivedSources: readonly UISurface[]): string[] {
+        const sourceActions = sourceDocument.actions ?? {};
+        const wanted = new Set(arrivedSources.flatMap(surface => (surface.actions ?? []).map(entry => entry.actionId)));
+        const current = this.getDocument().actions ?? {};
+        const adopt = [...wanted].filter(id => !current[id] && sourceActions[id]);
+        if (adopt.length === 0) {
+            return [];
+        }
+        const claimed = new Set(Object.values(current).map(action => action.navigationSlot).filter(Boolean));
+        this.mutateDocument(document => {
+            const actions = { ...(document.actions ?? {}) };
+            for (const id of adopt) {
+                const action = cloneJson(sourceActions[id]);
+                if (action.navigationSlot && claimed.has(action.navigationSlot)) {
+                    delete action.navigationSlot;
+                } else if (action.navigationSlot) {
+                    claimed.add(action.navigationSlot);
+                }
+                actions[id] = action;
+            }
+            document.actions = actions;
+        });
+        return adopt;
     }
 
     /**
@@ -3969,6 +4098,12 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         carryCopiedSurfaceNavigation(remappedSettings, sourceSurface.settings, elementIdMap);
 
         const sourcePageParams = getUIPageParams(sourceSurface);
+        // Which of the project's input actions the surface answers - a dialogue box advancing on a
+        // click or Space, a page closing on Escape - is the surface's own record and comes with it.
+        // Left behind, the copy draws the same and answers nothing; the actions it names are adopted
+        // into this project's vocabulary by the caller (`adoptArrivingInputActions`).
+        const sourceActions = normalizeUISurfaceActionEnablements(sourceSurface.actions);
+        const carriedActions = sourceActions.length > 0 ? { actions: sourceActions } : {};
         const newSurface: UISurface = placement.kind === "stageSurface"
             ? {
                 id: newSurfaceId,
@@ -3979,6 +4114,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 rootElementId: newRootElementId,
                 settings: { backgroundColor: "transparent", ...(remappedSettings ?? {}) },
                 mount: { kind: "slot", slotId: placement.slotId ?? DEFAULT_UI_STAGE_SLOT_ID },
+                ...carriedActions,
             }
             : {
                 id: newSurfaceId,
@@ -3991,6 +4127,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 // What the page is opened with comes along with it: the lists on it and the graphs
                 // copied beside it read those names, and the nodes that open it grow inputs from them.
                 ...(sourcePageParams.length > 0 ? { params: sourcePageParams } : {}),
+                ...carriedActions,
             };
 
         localBp?.applyBlueprintMutation(bpDoc => {
