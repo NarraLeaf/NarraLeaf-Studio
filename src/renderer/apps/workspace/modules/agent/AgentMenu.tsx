@@ -93,7 +93,7 @@ export function AgentMenu() {
         void (async () => {
             const result = await getInterface().agent.copyConfig(kind);
             if (result.success) {
-                notify(t("workspace.agent.appMenu.notice.copied", { client: agentCopyKindLabel(t, kind) }), "success");
+                notify(t("workspace.agent.appMenu.notice.copied", { client: agentCopyKindLabel(kind) }), "success");
             } else {
                 notify(t("workspace.agent.appMenu.notice.copyFailed", { error: result.error ?? "" }), "error");
             }

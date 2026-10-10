@@ -1,7 +1,9 @@
 import { spawn } from "child_process";
 import fs from "fs";
+import http from "http";
 import os from "os";
 import path from "path";
+import { Readable } from "stream";
 import { format } from "util";
 import type { App as ElectronApp } from "electron";
 import { AGENT_MCP_STDIO_FLAG, AGENT_SETTINGS_FILE_NAME, type AgentStdioCommand } from "@shared/agent/settings";
@@ -73,6 +75,64 @@ export function agentStdioProfileDir(electronApp: ElectronApp, argv: readonly st
         return path.join(path.resolve(electronApp.getAppPath(), "../.."), ".dev", "temp", "userData-dev");
     }
     return electronApp.getPath("userData");
+}
+
+/**
+ * `fetch` for one request to the endpoint, with no clock of its own: it waits for the answer as
+ * long as the connection stays open.
+ *
+ * Node's global `fetch` is undici's, whose `headersTimeout` and `bodyTimeout` give up after five
+ * minutes, and the endpoint sends a tool call's headers only when the tool has finished - so a
+ * build longer than that was reported to the client as a lost connection while it went on. The
+ * `undici` package that would switch those off is not a dependency Studio ships (only a dev tool's),
+ * so this goes through `http` instead, on a connection of its own (`agent: false`: no pooled socket
+ * and no agent timeout). What comes back is a real `Response`, its body streamed as it arrives, and a
+ * failure to connect rejects the way `fetch` does - a `TypeError` whose `cause` is the socket's
+ * error - so the bridge reads both exactly as before. Plain `http:` only: the endpoint is local.
+ */
+export function fetchWithoutTimeouts(url: string, init: RequestInit = {}): Promise<Response> {
+    return new Promise<Response>((resolve, reject) => {
+        const target = new URL(url);
+        if (target.protocol !== "http:") {
+            reject(new TypeError(`Only http: endpoints can be reached, not ${target.protocol}`));
+            return;
+        }
+        const signal = init.signal ?? undefined;
+        if (signal?.aborted) {
+            reject(signal.reason);
+            return;
+        }
+        const headers = new Headers(init.headers);
+        const body = typeof init.body === "string" ? Buffer.from(init.body, "utf8") : null;
+        if (body) {
+            headers.set("Content-Length", String(body.byteLength));
+        }
+        const method = init.method ?? "GET";
+        const request = http.request(target, { method, headers: Object.fromEntries(headers), agent: false, signal }, incoming => {
+            const status = incoming.statusCode ?? 0;
+            const responseHeaders = new Headers();
+            for (const [name, value] of Object.entries(incoming.headers)) {
+                for (const entry of Array.isArray(value) ? value : value === undefined ? [] : [value]) {
+                    responseHeaders.append(name, entry);
+                }
+            }
+            // `Response` refuses a body for these, as `fetch` never gives them one.
+            const bodyless = method === "HEAD" || status === 204 || status === 205 || status === 304;
+            if (bodyless) {
+                incoming.on("error", () => undefined);
+                incoming.resume();
+            }
+            resolve(new Response(bodyless ? null : Readable.toWeb(incoming) as ReadableStream<Uint8Array>, {
+                status,
+                statusText: incoming.statusMessage ?? "",
+                headers: responseHeaders,
+            }));
+        });
+        request.on("error", error => {
+            reject(signal?.aborted ? signal.reason : new TypeError("fetch failed", { cause: error }));
+        });
+        request.end(body ?? undefined);
+    });
 }
 
 /**
@@ -163,6 +223,7 @@ export function startAgentStdioBridge(electronApp: ElectronApp, argv: readonly s
         },
         log,
         fetch: (input, init) => fetch(input, init),
+        fetchUntimed: fetchWithoutTimeouts,
         readSettings: async () => {
             try {
                 return JSON.parse(await fs.promises.readFile(path.join(profileDir, AGENT_SETTINGS_FILE_NAME), "utf8"));

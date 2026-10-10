@@ -15,8 +15,8 @@ import { IPCHandler } from "./IPCHandler";
  * workspace too, and so nothing they return can carry a secret: state is projected through
  * `toAgentQuickState` (three booleans), a client configuration is written to the system clipboard
  * here in main and only `{ copied: true }` goes back, and the skill export answers the folder it
- * wrote. Turning write access on is confirmed in Studio's agent access window by `AgentManager.quickToggle`,
- * because a workspace runs plugin code.
+ * wrote. Turning agent access or write access on is confirmed in Studio's agent access window by
+ * `AgentManager.quickToggle`, because a workspace runs plugin code.
  *
  * Game windows (Dev Mode, Preview) run project code and are refused, as is everything else that is
  * not a workspace or the Settings window.
@@ -60,8 +60,8 @@ export class AgentQuickToggleHandler extends IPCHandler<IPCEventType.agentQuickT
             return this.failed(refused);
         }
         // Only the three switches the menu holds, and only as booleans: the port and the import
-        // folders stay with the Settings window. Turning writes or full access on is confirmed in
-        // the agent access window by the manager.
+        // folders stay with the Settings window. Turning agent access, writes or full access on is
+        // confirmed in the agent access window by the manager.
         const clean: AgentQuickTogglePatch = {};
         if (typeof patch?.enabled === "boolean") {
             clean.enabled = patch.enabled;
@@ -141,7 +141,8 @@ export class AgentRevealExportedSkillHandler extends IPCHandler<IPCEventType.age
 /**
  * A workspace reporting the agent tools its plugins registered. Workspace windows only: a game
  * window runs project code and has no plugin studio entries to report. The manager reads every
- * descriptor defensively and forgets the window's tools when it closes.
+ * descriptor defensively, keeps only the tools an installed, enabled plugin's manifest declares,
+ * and forgets the window's tools when it closes.
  */
 export class AgentReportPluginToolsHandler extends IPCHandler<IPCEventType.agentReportPluginTools> {
     readonly name = IPCEventType.agentReportPluginTools;
@@ -155,7 +156,8 @@ export class AgentReportPluginToolsHandler extends IPCHandler<IPCEventType.agent
             window.app.logger.warn(`[Agent] Ignored a plugin tool report from a ${window.getWindowType()} window`);
             return this.success(void 0 as never);
         }
-        window.getApp().getAgentManager().reportPluginTools(window as AppWindow<WindowAppType.Workspace>, data?.tools);
+        void window.getApp().getAgentManager().reportPluginTools(window as AppWindow<WindowAppType.Workspace>, data?.tools)
+            .catch(error => window.app.logger.warn(`[Agent] Could not take a plugin tool report: ${error instanceof Error ? error.message : String(error)}`));
         return this.success(void 0 as never);
     }
 }

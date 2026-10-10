@@ -56,4 +56,14 @@ describe("gateAgentCall", () => {
         expect(code(result)).toBe("frozen");
         expect(result && !result.ok ? result.error.message : "").toContain("merge");
     });
+
+    it("refuses writes to a project main says is not trusted, after the write switch and before the rest", () => {
+        const untrusted = { ...allowed, projectTrusted: false };
+        const result = gateAgentCall(input({ policy: untrusted, paused: true }));
+        expect(code(result)).toBe("untrusted");
+        expect(result && !result.ok ? result.error.message : "").toContain("may read it but not change it");
+        expect(code(gateAgentCall(input({ policy: { ...untrusted, writesEnabled: false } })))).toBe("writes_disabled");
+        expect(code(gateAgentCall(input({ write: false, policy: untrusted })))).toBeNull();
+        expect(code(gateAgentCall(input({ policy: { ...allowed, projectTrusted: true } })))).toBeNull();
+    });
 });

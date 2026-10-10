@@ -10,7 +10,9 @@
  *      looking at and the one "this project" means in conversation.
  *   3. With no focus history at all, exactly one open workspace is unambiguous.
  *
- * Anything else is refused with the open projects listed, so the agent can name one.
+ * Anything else is refused with the open projects listed, so the agent can name one. And before
+ * any of it, a write that names no project while several are open is refused outright - see
+ * {@link writeNeedsNamedProject}.
  */
 
 export type AgentRoutingCandidate<W> = {
@@ -50,4 +52,17 @@ export function chooseAgentWorkspace<W>(
         return { ok: true, window: candidates[0].window, projectPath: candidates[0].projectPath };
     }
     return { ok: false, reason: "ambiguous", openProjects };
+}
+
+/**
+ * Whether a call must name its project before it is routed at all: a write, while more than one
+ * project is open.
+ *
+ * Rule 2 is right for a read - its answer says what it read, and nothing changed - but not for a
+ * write. Focus is the author's, and they may click into the other project between two of the
+ * agent's calls; the write then lands in the wrong game. `baseRevision` does not catch it, because
+ * revisions are counted per window and the other project's scene can carry the same number.
+ */
+export function writeNeedsNamedProject(write: boolean, requestedProject: string | null, openCount: number): boolean {
+    return write && !requestedProject && openCount > 1;
 }

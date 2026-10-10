@@ -399,7 +399,7 @@ export const workspace = {
             editing: "エージェントが編集中：{name}",
             working: "エージェントが作業中",
             connected: "エージェント：{client}",
-            edited: "エージェントが編集しました：{name}",
+            edited: "エージェントが編集した：{name}",
             unknownClient: "外部エージェント",
             paused: "エージェントは一時停止中",
         },
@@ -424,7 +424,6 @@ export const workspace = {
             allowWrites: "エージェントによるプロジェクトの変更を許可",
             fullAccess: "エージェントにフルアクセスを許可",
             copyConfig: "接続設定をコピー",
-            copyStdio: "stdio（Claude Desktop）",
             exportSkill: "Agent Skill を書き出す…",
             settings: "エージェント連携の設定…",
             notice: {
@@ -438,9 +437,14 @@ export const workspace = {
         confirm: {
             window: "エージェント連携",
             loadError: "リクエストを読み取れなかった",
+            enable: {
+                message: "エージェント連携を有効にする？",
+                detail: "Studio に接続したエージェントが、Studio で開いているすべてのプロジェクトを読み取れるようになる。プロジェクトの変更には別途許可が必要",
+                allow: "有効にする",
+            },
             allowWrites: {
                 message: "エージェントによるプロジェクトの変更を許可する？",
-                detail: "接続中のエージェントがページ、シーン、ブループリント、アセットを変更できるようになる。変更は 1 回ずつ取り消せる",
+                detail: "接続中のエージェントが、開いているプロジェクトの内容を作成・変更・削除できるようになる。ほとんどの変更は取り消せる",
                 allow: "許可する",
             },
             exportSkill: {
@@ -455,7 +459,7 @@ export const workspace = {
                 messageMany: "{client} が次のフォルダーの読み取りを求めている",
                 detail: "エージェントはフォルダー内のファイルを読み取り、このプロジェクトに読み込む。プロジェクト外のものは変更しない",
                 reason: "エージェントが示した目的：{reason}",
-                settings: "許可したフォルダーは「設定 > エージェント連携」に一覧され、フルアクセスもそこで切り替えられる",
+                settings: "許可したフォルダーは「設定 ▸ エージェント連携」で削除するまで、すべてのエージェントに許可されたままになる。フルアクセスもそこで切り替えられる",
                 allowOne: "このフォルダーへのアクセスを許可",
                 allowMany: "これらのフォルダーへのアクセスを許可",
                 deny: "拒否",
@@ -463,7 +467,7 @@ export const workspace = {
             },
             fullAccess: {
                 message: "エージェントにフルアクセスを許可する？",
-                detail: "接続中のエージェントがプロジェクトを変更し、確認なしで任意のフォルダーのファイルを読み取れるようになる。Studio 自身の設定フォルダーは対象外。エージェントメニューか「設定 > エージェント連携」でオフにできる",
+                detail: "接続中のエージェントがプロジェクトを変更し、確認なしで任意のフォルダーのファイルを読み取れるようになる（Studio 自身のフォルダー、ホームフォルダー全体、ドライブのルートを除く）。エージェントメニューか「設定 ▸ エージェント連携」でオフにできる",
                 allow: "フルアクセスを許可する",
             },
         },
@@ -487,7 +491,8 @@ export const workspace = {
             durationS: "{value} s",
             showChange: "変更箇所を表示",
             targetGone: "対象はもう存在しない",
-            hint: "対処",
+            message: "エージェントへの返答",
+            hint: "エージェントへの指示",
             exported: "エージェントログを {path} に書き出した",
             exportFailed: "エージェントログを書き出せない：{error}",
             exportEmpty: "エージェントログは空",
@@ -1622,6 +1627,9 @@ export const workspace = {
                     zoomIn: "タイムラインを拡大",
                     zoomOut: "タイムラインを縮小",
                     zoomFit: "モーション全体を表示",
+                    libraryRename: "モーションの名前を変更",
+                    libraryDuplicate: "選択したモーションを複製",
+                    libraryDelete: "選択したモーションを削除",
                 },
             },
             // マウス操作。早見表とヘルプでラベルの横にキーの形で表示する。動詞と対象を組み立てず一文で書く。
@@ -1659,6 +1667,7 @@ export const workspace = {
                 clickKeyframe: "キーフレームをクリック",
                 dragAcrossTracks: "トラックの上をドラッグ",
                 clickAsset: "アセットをクリック",
+                clickMotion: "モーションをクリック",
                 doubleClick: "ダブルクリック",
                 dragToEditorArea: "エディター領域へドラッグ",
                 dragOntoGroup: "グループへドラッグ",
@@ -1715,6 +1724,9 @@ export const workspace = {
                     panPreview: "プレビューを動かす",
                     zoom: "プレビューかタイムラインをズーム",
                     scrollTimeline: "タイムラインを横にスクロール",
+                    openMotion: "モーションを開く",
+                    selectMotionRange: "連続したモーションを選択",
+                    selectAllMotions: "すべてのモーションを選択",
                 },
                 assets: {
                     selectAssetRange: "連続したアセットを選択",

@@ -8,6 +8,7 @@ import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { findProjectConfigFileName } from "@shared/utils/nlproj";
 import { PROJECT_TEMPLATES_DIR } from "@shared/constants/projectTemplate";
 import type { CommandLineRunEvent, CommandLineRunJob, CommandLineRunLogLine } from "@shared/types/commandLineRun";
+import type { AppEventToken } from "@shared/types/app";
 import {
     AGENT_INTERNAL_TOOL_STATE,
     AGENT_INTERNAL_TOOL_TEST,
@@ -17,11 +18,13 @@ import {
     type AgentCallResult,
     type AgentFolderAccessAnswer,
     type AgentFolderAccessRequest,
+    type AgentFolderRefusalReason,
     type AgentSessionPolicy,
     type AgentWorkspaceState,
 } from "@shared/agent/protocol";
 import { AGENT_TOOLS, AGENT_TOOLS_BY_NAME, type AgentGuideChapter, type AgentToolDescriptor } from "@shared/agent/tools";
 import {
+    checkReportedAgentPluginTool,
     isAgentPluginToolDescriptor,
     looksLikeAgentPluginToolName,
     readAgentPluginToolDescriptor,
@@ -45,6 +48,7 @@ import {
 } from "@shared/agent/workspaceAccess";
 import type { App } from "../../../app";
 import type { AppWindow } from "../window/appWindow";
+import { IPC_PAGE_GONE } from "../window/ipcHost";
 import { dialogTranslator, showOpenDialog } from "../window/fileDialog";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { defaultTestEdition } from "../../utils/testEdition";
@@ -52,10 +56,11 @@ import { resolveDefaultProjectDirectory } from "../../defaultProjectDirectory";
 import { AgentMcpServer, type AgentCallContext, type AgentMcpHost } from "./agentMcpServer";
 import { AgentSettingsStore, mintAgentToken } from "./agentSettingsStore";
 import { agentStdioCommand } from "./agentStdioMain";
-import { chooseAgentWorkspace, type AgentRoutingChoice } from "./agentRouting";
+import { chooseAgentWorkspace, writeNeedsNamedProject, type AgentRoutingChoice } from "./agentRouting";
 import {
     AGENT_MAIN_TOOL_HANDLERS,
     noWorkspace,
+    untrustedForChanges,
     type AgentMainToolHost,
     type AgentOpenProjectOutcome,
     type AgentPluginGuideEntry,
@@ -65,8 +70,9 @@ import { writeAgentProject, type AgentProjectCreateInput } from "./agentProjectC
 import { guideFileCandidates, pluginGuideFile, stripFrontMatter, AGENT_PLUGIN_GUIDE_MAX_BYTES } from "./agentGuide";
 import { agentCallTimeoutMs } from "./agentCallTimeout";
 import { activityProjectPath, copySkillTree, isNonEmptyDirectory, mainActivity } from "./agentWorkspaceAccess";
-import { AgentFolderAccess, type AgentFolderPrompt, type AgentFolderRules } from "./agentFolderAccess";
+import { AgentFolderAccess, agentFolderRefusal, type AgentFolderPrompt, type AgentFolderRules } from "./agentFolderAccess";
 import type { AgentAccessPromptProps } from "@shared/types/agentAccess";
+import type { PluginListItem } from "@shared/types/plugins";
 
 /**
  * Agent access, as the rest of Studio sees it: the author's switches, the MCP endpoint they control,
@@ -97,6 +103,8 @@ export class AgentManager implements AgentMainToolHost {
     /** The plugin tools each workspace last reported, already checked. */
     private readonly reportedPluginTools = new Map<AppWindow<WindowAppType.Workspace>, AgentPluginToolDescriptor[]>();
     private readonly pluginToolWindowsWatched = new WeakSet<AppWindow>();
+    /** Each window's latest report, numbered: a report checked after a newer one arrived is dropped. */
+    private readonly pluginToolReportSequence = new WeakMap<AppWindow, number>();
     /** What `tools/list` last answered, as a comparable string, so a report that changes nothing notifies nobody. */
     private advertisedPluginTools = "";
     /** Calls sent to a workspace and not answered yet, by call id: what a folder request is checked against. */
@@ -291,13 +299,21 @@ export class AgentManager implements AgentMainToolHost {
     // A workspace reports the agent tools its plugins registered, the whole set on every change;
     // `tools/list` is the built-in table plus the union of what the open workspaces reported, less
     // the plugins the author switched off. Reports are read as untrusted - a workspace runs plugin
-    // code - so each descriptor is checked, and a window's tools are forgotten when it closes.
+    // code - so each descriptor's shape is checked, then its claims against the installed plugins'
+    // manifests, and a window's tools are forgotten when it closes.
 
     /** A workspace's report. Called by the IPC handler; `tools` is whatever the window sent. */
-    public reportPluginTools(window: AppWindow<WindowAppType.Workspace>, tools: unknown): void {
-        const checked = Array.isArray(tools)
+    public async reportPluginTools(window: AppWindow<WindowAppType.Workspace>, tools: unknown): Promise<void> {
+        const sequence = (this.pluginToolReportSequence.get(window) ?? 0) + 1;
+        this.pluginToolReportSequence.set(window, sequence);
+        const shaped = Array.isArray(tools)
             ? tools.slice(0, 500).map(readAgentPluginToolDescriptor).filter((tool): tool is AgentPluginToolDescriptor => tool !== null)
             : [];
+        const checked = shaped.length > 0 ? await this.declaredPluginTools(shaped) : [];
+        if (this.pluginToolReportSequence.get(window) !== sequence || window.isClosed()) {
+            // A newer report is being checked, or there is no window left to hold these.
+            return;
+        }
         if (checked.length > 0) {
             this.reportedPluginTools.set(window, checked);
         } else {
@@ -313,6 +329,30 @@ export class AgentManager implements AgentMainToolHost {
             });
         }
         this.pluginToolsMaybeChanged();
+    }
+
+    /**
+     * The reported tools an installed, enabled plugin declares in `contributes.agentTools` with the
+     * same name and the same `write` - see `checkReportedAgentPluginTool`. A plugin list that cannot
+     * be read keeps none: a tool main cannot vouch for is not advertised.
+     */
+    private async declaredPluginTools(reported: readonly AgentPluginToolDescriptor[]): Promise<AgentPluginToolDescriptor[]> {
+        let plugins: PluginListItem[];
+        try {
+            plugins = await this.app.pluginManager.listPlugins();
+        } catch (error) {
+            this.app.logger.warn(`[Agent] Could not read the installed plugins to check reported agent tools: ${describe(error)}`);
+            return [];
+        }
+        const declared = reported
+            .map(tool => checkReportedAgentPluginTool(tool, plugins))
+            .filter((tool): tool is AgentPluginToolDescriptor => tool !== null);
+        if (declared.length < reported.length) {
+            const kept = new Set(declared.map(tool => tool.name));
+            const dropped = reported.filter(tool => !kept.has(tool.name)).map(tool => tool.name);
+            this.app.logger.warn(`[Agent] Ignored reported agent tools no installed, enabled plugin declares: ${dropped.join(", ")}`);
+        }
+        return declared;
     }
 
     /** The plugin tools `tools/list` offers: open workspaces' reports, first report wins a name, blocked plugins left out. */
@@ -375,6 +415,11 @@ export class AgentManager implements AgentMainToolHost {
         this.server?.notifyToolsChanged();
     }
 
+    /** The port the MCP endpoint is listening on, or null while it is not. */
+    public livePort(): number | null {
+        return this.server?.port ?? null;
+    }
+
     public endpointUrl(): string | null {
         const port = this.server?.port;
         return port ? agentEndpointUrl(port) : null;
@@ -388,15 +433,25 @@ export class AgentManager implements AgentMainToolHost {
     /**
      * Flip agent access or write access on behalf of a workspace's menu.
      *
-     * Turning write access ON is confirmed in the agent access window over the asking one. A
-     * workspace runs plugin code, and a plugin must not be able to grant every connected agent
-     * write access by calling this; a window of Studio's own is something it cannot draw or answer.
-     * Switching off needs no confirmation - withdrawing access is always safe.
+     * Turning agent access ON, and turning write access ON, are each confirmed in the agent access
+     * window over the asking one. A workspace runs plugin code, and a plugin must not be able to
+     * open the endpoint - or grant every connected agent write access - by calling this; a window of
+     * Studio's own is something it cannot draw or answer. Agent access is confirmed as well as
+     * writes because reading is not harmless either: a plugin that switched the endpoint on could
+     * copy the client configuration to the clipboard and read the token back, and with it read
+     * every project open in Studio through the endpoint. Switching off needs no confirmation -
+     * withdrawing access is always safe.
+     *
+     * The Settings window's switches go through `updateSettings` directly, unconfirmed: that window
+     * is Studio's own and runs no plugin code, so its switch is already the author's answer.
      */
     public async quickToggle(window: AppWindow, patch: AgentQuickTogglePatch): Promise<AgentSettingsSnapshot> {
         const current = await this.store.load();
         const next: AgentSettingsPatch = {};
         if (typeof patch.enabled === "boolean") {
+            if (patch.enabled && !current.enabled && !(await this.confirmEnable(window))) {
+                return this.snapshot();
+            }
             next.enabled = patch.enabled;
         }
         if (typeof patch.allowWrites === "boolean") {
@@ -413,6 +468,11 @@ export class AgentManager implements AgentMainToolHost {
             return this.snapshot();
         }
         return this.updateSettings(next, window);
+    }
+
+    private async confirmEnable(window: AppWindow): Promise<boolean> {
+        window.refuseUnattendedPrompt("Agent access asked whether to turn agent access on");
+        return this.askInStudioWindow(window, { kind: "enable" }, true);
     }
 
     private async confirmAllowWrites(window: AppWindow): Promise<boolean> {
@@ -601,9 +661,13 @@ export class AgentManager implements AgentMainToolHost {
         if (tool.write && !this.policy().writesEnabled) {
             return inMain(agentRefusal(
                 "writes_disabled",
-                `${tool.name} changes the project, and the author has not allowed agents to make changes.`,
-                "Ask the author to turn on \"Allow agents to make changes\" in Studio's Settings > Agent access. Read tools keep working meanwhile.",
+                `${tool.name} changes the project, and the author has not allowed agents to change projects.`,
+                "Ask the author to turn on \"Allow agents to change projects\" in Studio's Settings > Agent access. Read tools keep working meanwhile.",
             ));
+        }
+        const unnamed = await this.refuseUnnamedWrite(tool, args);
+        if (unnamed) {
+            return inMain(unnamed);
         }
         if (tool.side === "main") {
             const handler = AGENT_MAIN_TOOL_HANDLERS[tool.name];
@@ -619,6 +683,12 @@ export class AgentManager implements AgentMainToolHost {
         const choice = this.route(project);
         if (!choice.ok) {
             return inMain(noWorkspace(choice));
+        }
+        if (tool.write && !this.isTrusted(choice.window.projectPath)) {
+            // A distrusted project is somebody else's: an agent may read it, as its author may, but
+            // not change it - nor import into it, every import being a write. The workspace refuses
+            // the same again from `policy.projectTrusted`.
+            return inMain(untrustedForChanges(choice.window.projectPath));
         }
         if (isAgentPluginToolDescriptor(tool)) {
             // Routed like any workspace tool, by `project`; the project it lands in must be one whose
@@ -639,6 +709,26 @@ export class AgentManager implements AgentMainToolHost {
             }
         }
         return { result: await this.forward(choice.window, tool.name, args, context), answeredInMain: false };
+    }
+
+    /**
+     * A write that does not say which project it is for while more than one is open: refused rather
+     * than sent to the window focused last (see {@link writeNeedsNamedProject}), naming the open
+     * projects the way `agent_status` does. Only tools routed by `project` - every workspace tool,
+     * and the main tools that take one; `project_create` writes too, but into a project of its own.
+     */
+    private async refuseUnnamedWrite(tool: AgentToolDescriptor, args: Record<string, unknown>): Promise<AgentCallResult | null> {
+        const requested = typeof args.project === "string" && args.project ? args.project : null;
+        const routed = tool.side === "workspace" || Object.prototype.hasOwnProperty.call(tool.inputSchema.properties ?? {}, "project");
+        if (!routed || !writeNeedsNamedProject(tool.write, requested, this.workspaceWindows().length)) {
+            return null;
+        }
+        const open = await this.openWorkspaces();
+        return agentRefusal(
+            "no_workspace",
+            `${tool.name} changes a project, and ${open.length} projects are open in Studio; a write must say which one it is for.`,
+            `Pass \`project\` with the path of one of them: ${open.map(handle => `${handle.name ?? path.basename(handle.projectPath)} (${handle.projectPath})`).join(", ")}.`,
+        );
     }
 
     /**
@@ -736,15 +826,23 @@ export class AgentManager implements AgentMainToolHost {
         if (window.isClosed()) {
             return agentRefusal("no_workspace", "That project's window was closed.");
         }
-        this.grantImportRoots(window);
+        const projectTrusted = this.isTrusted(window.getProps().projectPath);
+        if (projectTrusted) {
+            this.grantImportRoots(window);
+        }
+        // One deadline for both halves: main's wait below ends at it, and the workspace refuses to
+        // start the call once it has passed - a call still queued behind a long one by then is one
+        // the agent has been told timed out, and may already be retrying.
+        const deadline = Date.now() + timeoutMs;
         const request: AgentCallRequest = {
             callId: crypto.randomUUID(),
             tool,
             args,
             clientName: context.clientName,
-            policy: this.policy(),
+            policy: { ...this.policy(), projectTrusted },
+            deadline,
         };
-        this.inFlight.set(request.callId, { window, tool, clientName: context.clientName, deadline: Date.now() + timeoutMs, timeoutMs });
+        this.inFlight.set(request.callId, { window, clientName: context.clientName, deadline, timeoutMs });
         try {
             const status = await window.invokeIpcRequest(IPCEventType.workspaceAgentCall, request, { timeoutMs });
             if (!status.success) {
@@ -755,11 +853,18 @@ export class AgentManager implements AgentMainToolHost {
                 : agentRefusal("internal", `The workspace answered ${tool} with something that is not a tool result.`);
         } catch (error) {
             const message = describe(error);
+            if ((error as { code?: unknown } | null)?.code === IPC_PAGE_GONE) {
+                return agentRefusal(
+                    "unavailable",
+                    `The project's window reloaded, or its page crashed, before answering ${tool}.`,
+                    "Part of it may have been done. Wait for the project to load again (agent_status says when it is answering), read the state back with a show tool, then redo only what is missing.",
+                );
+            }
             if (/timed out/i.test(message)) {
                 return agentRefusal(
                     "unavailable",
                     `The workspace did not answer ${tool} within ${Math.round(timeoutMs / 1000)} seconds.`,
-                    "It may still be working. Read the state back (agent_status, a show tool) before repeating a write.",
+                    "If it was still waiting behind an earlier call, it will not run at all; if it had started, it may still be working. Read the state back (agent_status, a show tool) before repeating a write.",
                 );
             }
             return agentRefusal("no_workspace", `The project's window went away before answering ${tool}.`);
@@ -772,7 +877,8 @@ export class AgentManager implements AgentMainToolHost {
      * Let the workspace read the folders the author allowed agents to import from. The renderer
      * reads files through grants, and the grant the folder picker made belongs to the Settings
      * window; without this, an allowed folder would still be unreadable to the window doing the
-     * import. Read only, and only folders on the list - the renderer checks the list again.
+     * import. Read only, and only folders on the list - the renderer checks the list again. Never
+     * for a window whose project is not trusted (see `invoke`): it is given no folders outside it.
      */
     private grantImportRoots(window: AppWindow): void {
         const roots = this.store.current.allowedImportRoots;
@@ -821,6 +927,9 @@ export class AgentManager implements AgentMainToolHost {
             throw new Error("Folder access can only be asked for during an agent call to this window.");
         }
         const paths = readRequestedPaths(request.paths);
+        if (!this.windowProjectTrusted(window)) {
+            return this.untrustedFolderAnswer(paths);
+        }
         // Leave the call time to import once the author answers: wait at most a quarter of the
         // call's budget short of its deadline, and never longer than a client is likely to wait.
         const remaining = call.deadline - Date.now() - Math.max(FOLDER_PROMPT_MARGIN_MS, call.timeoutMs / 4);
@@ -839,8 +948,25 @@ export class AgentManager implements AgentMainToolHost {
         if (!window || window.isClosed()) {
             return { granted: [], denied: [], pending: [], refused: [] };
         }
+        if (!this.windowProjectTrusted(window)) {
+            return this.untrustedFolderAnswer(readRequestedPaths(paths));
+        }
         const prompt: AgentFolderPrompt = { clientName: context.clientName, ...(reason ? { reason } : {}) };
         return this.folderAccess.request(window, await this.foldersOf(readRequestedPaths(paths)), prompt, FOLDER_PROMPT_WAIT_MS);
+    }
+
+    private windowProjectTrusted(window: AppWindow): boolean {
+        const projectPath = (window as AppWindow<WindowAppType.Workspace>).getProps?.()?.projectPath;
+        return typeof projectPath === "string" && projectPath !== "" && this.isTrusted(projectPath);
+    }
+
+    /**
+     * Every folder refused as `untrusted`, asked about nobody: an untrusted project's window is given
+     * no folder outside it - not from a dialog, and not under full access either.
+     */
+    private async untrustedFolderAnswer(paths: readonly string[]): Promise<AgentFolderAccessAnswer> {
+        const folders = [...new Set(await this.foldersOf(paths))];
+        return { granted: [], denied: [], pending: [], refused: folders.map(folder => ({ folder, reason: "untrusted" as const })) };
     }
 
     /** Each path's folder: a directory is its own, anything else (a file, or nothing yet) its parent's. */
@@ -976,6 +1102,10 @@ export class AgentManager implements AgentMainToolHost {
         return this.app.projectTrustManager.isTrusted(projectPath);
     }
 
+    public folderRefusal(folder: string): AgentFolderRefusalReason | null {
+        return agentFolderRefusal(folder, this.folderRules());
+    }
+
     public defaultProjectsDir(): string {
         const electronApp = this.app.electronApp;
         return resolveDefaultProjectDirectory({
@@ -1052,15 +1182,25 @@ export class AgentManager implements AgentMainToolHost {
     private async waitUntilAnswering(window: AppWindow<WindowAppType.Workspace>, timeoutMs: number): Promise<"ready" | "silent" | "failed"> {
         const deadline = Date.now() + timeoutMs;
         const loaded = await new Promise<boolean | null>(resolve => {
-            const timer = setTimeout(() => resolve(null), timeoutMs);
-            window.onLoadResult(ok => {
+            // Whichever comes first settles it, and takes the others' listeners with it: the close
+            // listener would otherwise stay on the window for as long as it lives.
+            const listeners: AppEventToken[] = [];
+            let settled = false;
+            const settle = (value: boolean | null) => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
                 clearTimeout(timer);
-                resolve(ok);
-            });
-            window.onClose(() => {
-                clearTimeout(timer);
-                resolve(false);
-            });
+                for (const listener of listeners) {
+                    listener.cancel();
+                }
+                resolve(value);
+            };
+            const timer = setTimeout(() => settle(null), timeoutMs);
+            listeners.push(window.onClose(() => settle(false)));
+            // May answer at once, before its token is in the list; the token is a no-op then.
+            listeners.push(window.onLoadResult(ok => settle(ok)));
         });
         if (loaded === false) {
             return "failed";
@@ -1220,7 +1360,6 @@ const FOLDER_REQUEST_MAX_PATHS = 500;
 
 type InFlightCall = {
     window: AppWindow;
-    tool: string;
     clientName: string | null;
     /** When main stops waiting for the answer. */
     deadline: number;

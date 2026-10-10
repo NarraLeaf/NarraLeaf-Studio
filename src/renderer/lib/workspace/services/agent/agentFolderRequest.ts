@@ -7,17 +7,20 @@
  * Comments in English per project convention.
  */
 
-import { getInterface } from "@/lib/app/bridge";
+import { getAgentBridgeInterface } from "@/lib/app/bridge";
 import type { AgentFolderAccessAnswer, AgentFolderAccessRequest } from "@shared/agent/protocol";
 import type { AgentToolContext } from "./agentCall";
 import { ensureAgentMayRead } from "./agentPaths";
 
 async function askMain(request: AgentFolderAccessRequest): Promise<AgentFolderAccessAnswer | null> {
-    const ask = getInterface().agent?.requestFolderAccess;
-    if (!ask) {
+    let bridge: ReturnType<typeof getAgentBridgeInterface>;
+    try {
+        bridge = getAgentBridgeInterface();
+    } catch {
+        // No preload bridge (a unit test): nothing to ask.
         return null;
     }
-    const result = await ask(request);
+    const result = await bridge.requestFolderAccess(request);
     return result.success ? result.data : null;
 }
 

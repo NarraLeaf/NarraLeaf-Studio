@@ -70,7 +70,12 @@ import type {
 } from "@shared/types/team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "@shared/types/teamTransfer";
 import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsProjectServerSession, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
-import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
+import type {
+    RendererAgentBridgeBootstrapInterface,
+    RendererAgentBridgeInterface,
+    RendererPrivilegedBootstrapInterface,
+    RendererPrivilegedInterface,
+} from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
 
@@ -182,6 +187,48 @@ const privilegedBootstrapBridge: RendererPrivilegedBootstrapInterface = {
         privilegedBridgeHardened = true;
     },
     isHardened: () => privilegedBridgeHardened,
+};
+
+/**
+ * The workspace's half of agent access: answering the calls main routes to the window, reporting
+ * the plugin tools it has, and asking for folders mid-call.
+ *
+ * Handed out once, to Studio's own renderer bootstrap (`renderer/lib/app/bridge.ts`), which takes
+ * it before the page has loaded anything else and then hardens the bridge - before any plugin
+ * module is imported. Plugin code shares the page's realm, and on the global bridge these were
+ * plugin code's too: `onAgentCall` listens with `ipcRenderer.on`, so a second listener saw every
+ * agent call, arguments and all, and main took whichever reply came first; `reportPluginTools`
+ * let it advertise tools under any name; `requestFolderAccess` let it ask for folders on an agent's
+ * behalf. None of the three is on the global bridge any more, and the one copy of them lives in a
+ * module plugin code cannot import.
+ */
+let agentBridgeAcquired = false;
+let agentBridgeHardened = false;
+
+const agentBridge: RendererAgentBridgeInterface = {
+    onAgentCall: (handler: (request: AgentCallRequest) => Promise<RequestStatus<AgentCallResult>>) =>
+        ipcClient.onRequest(IPCEventType.workspaceAgentCall, handler),
+    reportPluginTools: (tools: readonly AgentPluginToolDescriptor[]) =>
+        ipcClient.send(IPCEventType.agentReportPluginTools, { tools: [...tools] }),
+    requestFolderAccess: (request: AgentFolderAccessRequest) =>
+        ipcClient.invoke(IPCEventType.agentRequestFolderAccess, { callId: request.callId, paths: [...request.paths] }),
+};
+
+const agentBridgeBootstrap: RendererAgentBridgeBootstrapInterface = {
+    acquire: () => {
+        if (agentBridgeHardened) {
+            throw new Error("The agent bridge has already been hardened");
+        }
+        if (agentBridgeAcquired) {
+            throw new Error("The agent bridge has already been acquired");
+        }
+        agentBridgeAcquired = true;
+        return agentBridge;
+    },
+    harden: () => {
+        agentBridgeHardened = true;
+    },
+    isHardened: () => agentBridgeHardened,
 };
 
 export const IPCInterface: Window[typeof RendererInterfaceKey] = {
@@ -303,8 +350,6 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onRequest(IPCEventType.workspaceConfirmClose, handler),
         onFlushPendingSaves: (handler: () => Promise<RequestStatus<{ flushed: boolean }>>) =>
             ipcClient.onRequest(IPCEventType.workspaceFlushPendingSaves, handler),
-        onAgentCall: (handler: (request: AgentCallRequest) => Promise<RequestStatus<AgentCallResult>>) =>
-            ipcClient.onRequest(IPCEventType.workspaceAgentCall, handler),
         onCloseProgress: (handler: (stage: WorkspaceCloseStage | null) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceCloseProgress, (data) => handler(data.stage)),
         onResolveAssetUrl: (handler: (payload: { assetId: string; assetType?: string }) => Promise<RequestStatus<{ url: string }>>) =>
@@ -348,11 +393,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         revealExportedSkill: () => ipcClient.invoke(IPCEventType.agentRevealExportedSkill, {}),
         onActivity: (handler: (activity: AgentMainActivity) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceAgentActivity, handler),
-        reportPluginTools: (tools: readonly AgentPluginToolDescriptor[]) =>
-            ipcClient.send(IPCEventType.agentReportPluginTools, { tools: [...tools] }),
-        requestFolderAccess: (request: AgentFolderAccessRequest) =>
-            ipcClient.invoke(IPCEventType.agentRequestFolderAccess, { callId: request.callId, paths: [...request.paths] }),
     },
+    agentBridge: agentBridgeBootstrap,
     projectTrust: {
         query: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.projectTrustQuery, { projectPath }),

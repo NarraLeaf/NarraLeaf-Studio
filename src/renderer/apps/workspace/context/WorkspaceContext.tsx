@@ -3,7 +3,7 @@ import { RequestStatus } from "@shared/types/ipcEvents";
 import { WindowAppType } from "@shared/types/window";
 import type { CommandLineRunJob } from "@shared/types/commandLineRun";
 import { throwException } from "@shared/utils/error";
-import { getInterface } from "@/lib/app/bridge";
+import { getAgentBridgeInterface, getInterface } from "@/lib/app/bridge";
 import { setCrashRecoveryFlush } from "@/lib/app/errorHandling/crashRecovery";
 import { freezeProjectWrites, getProjectWriteFreeze, isTakenOver } from "@/lib/app/writeFreeze";
 import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
@@ -421,7 +421,9 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
         // answer, and a call that lands while the workspace is still starting must be told so rather
         // than left to time out. Always answers `success: true` - a refusal is an answer the agent
         // reads (see `@shared/agent/protocol`).
-        const agentToken = getInterface().workspace.onAgentCall(async request => {
+        // Through the agent bridge Studio acquired at boot, which plugin code cannot reach: on the
+        // global bridge any listener heard every call and main took the first reply.
+        const agentToken = getAgentBridgeInterface().onAgentCall(async request => {
             const currentContext = contextRef.current;
             if (!currentContext) {
                 return { success: true, data: agentRefusal("unavailable", "The project is still opening in Studio.", "Try again in a few seconds.") };
