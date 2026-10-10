@@ -37,6 +37,7 @@ function fakeHost(overrides: Partial<AgentMainToolHost> = {}, open: AgentWorkspa
         forward: vi.fn(async (): Promise<AgentCallResult> => agentText("forwarded")),
         isProjectDirectory: async () => true,
         isTrusted: () => true,
+        folderRefusal: () => null,
         defaultProjectsDir: () => "/home/me/NarraLeaf",
         openProject: async (projectPath: string) => ({ ok: true as const, handle: { projectPath, name: "Game" }, alreadyOpen: false }),
         createProject: vi.fn(async () => agentText("created")),
@@ -257,6 +258,55 @@ describe("build", () => {
         const host = fakeHost({}, [{ projectPath: "/games/a", name: "A" }]);
         expect(await AGENT_MAIN_TOOL_HANDLERS.build(host, { project: "/games/b" }, ctx))
             .toMatchObject({ ok: false, error: { code: "unavailable", hint: expect.stringContaining("project_open") } });
+    });
+});
+
+/**
+ * The folders a tool writes into are held to the rule folder reads are: never Studio's own folders,
+ * the home folder itself or a file-system root. `project_create` makes every folder down to the one
+ * it names, and a web build clears a folder inside its output.
+ */
+describe("folders tools write into", () => {
+    const open = [{ projectPath: "/games/a", name: "A" }];
+    const forbidden = new Map<string, "home" | "root" | "studio">([
+        [path.resolve("/home/me"), "home"],
+        [path.resolve("/"), "root"],
+        [path.resolve("/home/me/.config/NarraLeaf Studio"), "studio"],
+    ]);
+    const folderRefusal = (folder: string) => forbidden.get(folder) ?? null;
+
+    it("refuses a build output that is a folder agents are never handed, before the workspace hears of it", async () => {
+        for (const [output, reason] of [["/home/me", "home itself"], ["/", "root"], ["/home/me/.config/NarraLeaf Studio", "Studio's own"]] as const) {
+            const host = fakeHost({ folderRefusal }, open);
+            const result = await AGENT_MAIN_TOOL_HANDLERS.build(host, { output }, ctx);
+            expect(result.ok ? null : result.error.code).toBe("path_not_allowed");
+            expect(result.ok ? "" : result.error.message).toContain(reason === "home itself" ? "home folder itself" : reason === "root" ? "file-system root" : "Studio's own folders");
+            expect(host.forward).not.toHaveBeenCalled();
+        }
+    });
+
+    it("lets a build output of its own through", async () => {
+        const host = fakeHost({ folderRefusal }, open);
+        expect((await AGENT_MAIN_TOOL_HANDLERS.build(host, { output: "/home/me/builds/a" }, ctx)).ok).toBe(true);
+        expect(host.forward).toHaveBeenCalledTimes(1);
+    });
+
+    it("refuses a project directory that is a folder agents are never handed, writing nothing", async () => {
+        const createProject = vi.fn(async () => agentText("created"));
+        for (const dir of ["/home/me", "/", "/home/me/.config/NarraLeaf Studio"]) {
+            const result = await AGENT_MAIN_TOOL_HANDLERS.project_create(fakeHost({ folderRefusal, createProject }), { name: "Game", dir }, ctx);
+            expect(result.ok ? null : result.error.code).toBe("path_not_allowed");
+        }
+        expect(createProject).not.toHaveBeenCalled();
+    });
+
+    it("lets a project directory of its own through, and does not hold Studio's default to the rule", async () => {
+        const createProject = vi.fn(async () => agentText("created"));
+        const host = fakeHost({ folderRefusal: () => "home", createProject });
+        expect((await AGENT_MAIN_TOOL_HANDLERS.project_create(host, { name: "Game" }, ctx)).ok).toBe(true);
+        const ownFolder = fakeHost({ folderRefusal, createProject });
+        expect((await AGENT_MAIN_TOOL_HANDLERS.project_create(ownFolder, { name: "Game", dir: "/home/me/Games" }, ctx)).ok).toBe(true);
+        expect(createProject).toHaveBeenCalledTimes(2);
     });
 });
 

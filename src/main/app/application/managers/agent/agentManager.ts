@@ -18,6 +18,7 @@ import {
     type AgentCallResult,
     type AgentFolderAccessAnswer,
     type AgentFolderAccessRequest,
+    type AgentFolderRefusalReason,
     type AgentSessionPolicy,
     type AgentWorkspaceState,
 } from "@shared/agent/protocol";
@@ -68,7 +69,7 @@ import { writeAgentProject, type AgentProjectCreateInput } from "./agentProjectC
 import { guideFileCandidates, pluginGuideFile, stripFrontMatter, AGENT_PLUGIN_GUIDE_MAX_BYTES } from "./agentGuide";
 import { agentCallTimeoutMs } from "./agentCallTimeout";
 import { activityProjectPath, copySkillTree, isNonEmptyDirectory, mainActivity } from "./agentWorkspaceAccess";
-import { AgentFolderAccess, type AgentFolderPrompt, type AgentFolderRules } from "./agentFolderAccess";
+import { AgentFolderAccess, agentFolderRefusal, type AgentFolderPrompt, type AgentFolderRules } from "./agentFolderAccess";
 import type { AgentAccessPromptProps } from "@shared/types/agentAccess";
 import type { PluginListItem } from "@shared/types/plugins";
 
@@ -1068,6 +1069,10 @@ export class AgentManager implements AgentMainToolHost {
 
     public isTrusted(projectPath: string): boolean {
         return this.app.projectTrustManager.isTrusted(projectPath);
+    }
+
+    public folderRefusal(folder: string): AgentFolderRefusalReason | null {
+        return agentFolderRefusal(folder, this.folderRules());
     }
 
     public defaultProjectsDir(): string {

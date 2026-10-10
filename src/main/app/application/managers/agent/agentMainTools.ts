@@ -6,12 +6,13 @@ import {
     agentText,
     type AgentCallResult,
     type AgentFolderAccessAnswer,
+    type AgentFolderRefusalReason,
     type AgentSessionPolicy,
     type AgentWorkspaceState,
 } from "@shared/agent/protocol";
 import { AGENT_GUIDE_CHAPTERS, type AgentGuideChapter } from "@shared/agent/tools";
 import { AGENT_PLUGIN_GUIDE_CHAPTER_PREFIX } from "@shared/agent/pluginTools";
-import { describeAgentFolderAccess } from "@shared/agent/folderAccess";
+import { describeAgentFolderAccess, describeAgentFolderRefusal } from "@shared/agent/folderAccess";
 import type { AgentCallContext } from "./agentMcpServer";
 import type { AgentRoutingChoice } from "./agentRouting";
 import type { AgentProjectCreateInput } from "./agentProjectCreate";
@@ -53,6 +54,12 @@ export interface AgentMainToolHost {
     forward(handle: AgentWorkspaceHandle, tool: string, args: Record<string, unknown>, context: AgentCallContext): Promise<AgentCallResult>;
     isProjectDirectory(directory: string): Promise<boolean>;
     isTrusted(projectPath: string): boolean;
+    /**
+     * Why an agent may never be handed `folder` (absolute, resolved) - Studio's own folders, the home
+     * folder itself, a file-system root or a folder holding the home folder - or null. The rule
+     * folder reads are held to (`agentFolderRefusal`), applied here to the folders a tool writes into.
+     */
+    folderRefusal(folder: string): AgentFolderRefusalReason | null;
     defaultProjectsDir(): string;
     /** Open (or find) a project's workspace and wait until it answers `__state`. */
     openProject(projectPath: string): Promise<AgentOpenProjectOutcome>;
@@ -211,10 +218,50 @@ function oneLine(value: string): string {
     return value.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
+/**
+ * The refusal for a folder a tool would write into that agents may never be handed. Writing is not
+ * narrower than reading here: `project_create` makes every folder down to the one it names, and a
+ * web build clears a folder inside its output before writing it, so `/`, the home folder or Studio's
+ * settings folder named as either is a request to write - or delete - where nothing of a game belongs.
+ */
+function writeFolderRefused(argument: string, folder: string, reason: AgentFolderRefusalReason, hint: string): AgentCallResult {
+    return agentRefusal(
+        "path_not_allowed",
+        `\`${argument}\` cannot be ${folder}, which is ${whatTheFolderIs(reason)}: agents are never handed that folder to read, and Studio does not write into it for them either.`,
+        hint,
+    );
+}
+
+function whatTheFolderIs(reason: AgentFolderRefusalReason): string {
+    switch (reason) {
+        case "root":
+            return "a file-system root, or a folder holding the home folder";
+        case "home":
+            return "the home folder itself";
+        case "studio":
+            return "one of Studio's own folders (its settings or the application), or a folder holding one";
+        default:
+            return describeAgentFolderRefusal(reason);
+    }
+}
+
 async function projectCreate(host: AgentMainToolHost, args: Record<string, unknown>): Promise<AgentCallResult> {
+    const dir = typeof args.dir === "string" && args.dir.trim() ? args.dir : null;
+    if (dir && path.isAbsolute(dir)) {
+        // Only a folder the agent named: the default is Studio's own choice of projects folder.
+        const refused = host.folderRefusal(path.resolve(dir));
+        if (refused) {
+            return writeFolderRefused(
+                "dir",
+                path.resolve(dir),
+                refused,
+                "Name a folder of its own for projects (for example one inside Documents), or leave `dir` out to use Studio's projects folder.",
+            );
+        }
+    }
     return host.createProject({
         name: String(args.name),
-        parentDir: typeof args.dir === "string" && args.dir.trim() ? args.dir : host.defaultProjectsDir(),
+        parentDir: dir ?? host.defaultProjectsDir(),
         template: args.template === "empty" ? "empty" : "skeleton",
         language: typeof args.language === "string" && args.language.trim() ? args.language : "en",
         languages: Array.isArray(args.languages) ? args.languages.filter((code): code is string => typeof code === "string") : [],
@@ -290,6 +337,17 @@ async function runBuild(host: AgentMainToolHost, args: Record<string, unknown>, 
     }
     if (typeof args.output === "string" && !path.isAbsolute(args.output)) {
         return agentRefusal("invalid_args", `output must be an absolute directory: ${args.output}`);
+    }
+    if (typeof args.output === "string") {
+        const refused = host.folderRefusal(path.resolve(args.output));
+        if (refused) {
+            return writeFolderRefused(
+                "output",
+                path.resolve(args.output),
+                refused,
+                "Name a folder of its own for the build, or leave `output` out to build into the project's usual output folder.",
+            );
+        }
     }
     return translateUnsupported(
         await host.forward(

@@ -49,7 +49,11 @@ export type AgentErrorCode =
     | "check_failed"
     /** A surface, scene, element, asset or character the call names does not exist. */
     | "not_found"
-    /** A file path outside the directories the author allowed agents to read. */
+    /**
+     * A file path outside the directories the author allowed agents to read, or a folder agents are
+     * never handed at all - to read from or to write into (Studio's own folders, the home folder
+     * itself, a file-system root).
+     */
     | "path_not_allowed"
     /** The project is not trusted, so its code may not run (play-test, build). */
     | "untrusted"
