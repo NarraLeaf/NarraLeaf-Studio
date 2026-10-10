@@ -28,8 +28,10 @@ NarraLeaf-Skills/
    You can skip this - when the agent needs a folder outside the project, Studio asks you in a dialog
    and adds it to the list when you allow it. **Full access** lets the agent change projects and read
    any folder without asking (Studio's own folders stay closed); leave it off unless you want that.
-5. **Copy configuration** gives you the address (`http://127.0.0.1:<PORT>/mcp`, port 54080 unless you
-   changed it) and the access token, already filled into the settings for the agent you pick.
+5. **Copy configuration** gives you the address (`http://127.0.0.1:<PORT>/mcp`, usually port 47219)
+   and the access token, already filled into the settings for the agent you pick. If another program
+   holds that port, Studio moves to a nearby one, keeps it from then on and says so on the settings
+   page; copy the configuration again for agents you set up before.
 
 The server listens only on your own computer (127.0.0.1) and refuses any request without the token.
 Treat the token like a password; you can regenerate it in the same settings page.
