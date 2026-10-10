@@ -12,6 +12,7 @@ import { compileStoryFile } from "./dsl/compile";
 import { parseStoryFile } from "./dsl/parse";
 import { printStoryScene } from "./dsl/print";
 import { applySceneSettings, describeSceneSettings, printSceneSettings, type SceneSettingsLookups } from "./dsl/sceneSettings";
+import { LINE_SHAPES_HELP } from "./dsl/shapes";
 import { buildLookups } from "./lookups";
 import { buildContext, readProjectData } from "./project";
 
@@ -58,6 +59,16 @@ function settingsOf(source: string, scene: StoryScene = bare) {
 }
 
 describe("#background and #music", () => {
+    it("are shown in `story lines` inside one unbroken header-and-footer example, explained after it", () => {
+        const example = LINE_SHAPES_HELP.slice(LINE_SHAPES_HELP.indexOf("  #nlstory "));
+        const end = example.indexOf("\n\n");
+        const block = example.slice(0, end).split("\n");
+        // Every line of the example is indented, from the format line to the footer's payload.
+        expect(block.every(line => line.startsWith("  "))).toBe(true);
+        expect(block.slice(-2)[0]).toBe("  #data");
+        expect(example.slice(end)).toMatch(/^\n\n#background and #music are the scene's own settings/);
+    });
+
     it("print both settings, always, and read back as the same record", () => {
         const scene: StoryScene = {
             ...bare,
