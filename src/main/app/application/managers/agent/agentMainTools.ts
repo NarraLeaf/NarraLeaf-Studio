@@ -105,6 +105,7 @@ async function agentStatus(host: AgentMainToolHost): Promise<AgentCallResult> {
         return {
             path: handle.projectPath,
             name: handle.name,
+            trusted: host.isTrusted(handle.projectPath),
             responding: state !== null,
             paused: state?.paused ?? null,
             follow: state?.follow ?? null,
@@ -122,7 +123,10 @@ async function agentStatus(host: AgentMainToolHost): Promise<AgentCallResult> {
             const tools = project.pluginTools.length > 0
                 ? `\n  Plugin tools here: ${project.pluginTools.join(", ")}. If your tool list lacks them, list tools again (your client may cache the list).`
                 : "";
-            return `- ${project.name ?? path.basename(project.path)} (${project.path}): ${flags}${tools}`;
+            const trust = project.trusted
+                ? ""
+                : "\n  NOT TRUSTED by the author: you may read it, but changes, folder access outside it and imports are refused until they trust it.";
+            return `- ${project.name ?? path.basename(project.path)} (${project.path}): ${flags}${trust}${tools}`;
         }),
         projects.length > 1 ? "More than one project is open: pass `project` (its path) to every workspace tool." : "",
         policy.writesEnabled
@@ -206,6 +210,14 @@ async function requestFolderAccess(host: AgentMainToolHost, args: Record<string,
     const choice = host.route(project);
     if (!choice.ok) {
         return noWorkspace(choice);
+    }
+    if (!host.isTrusted(choice.window.projectPath)) {
+        // Refused before the author is asked: a dialog whose "Allow" main would not act on is noise.
+        return agentRefusal(
+            "untrusted",
+            `${choice.window.projectPath} is not trusted in Studio, so agents are given no folders outside it.`,
+            "Ask the author to trust the project (Studio's status bar, or Settings > Data > Trusted projects), or to copy the files into the project directory.",
+        );
     }
     const reason = typeof args.reason === "string" ? oneLine(args.reason).slice(0, FOLDER_REASON_MAX) : "";
     const answer = await host.requestFolderAccess(choice.window, paths, context, reason || undefined);
@@ -385,6 +397,18 @@ export function noWorkspace(choice: Extract<AgentRoutingChoice<unknown>, { ok: f
                 `Pass \`project\` with one of: ${choice.openProjects.join(", ")}.`,
             );
     }
+}
+
+/**
+ * The refusal for a change to a project that is not trusted. Reading it stays open: looking at a
+ * project is what an author does before deciding to trust it, and an agent can help with that.
+ */
+export function untrustedForChanges(projectPath: string): AgentCallResult {
+    return agentRefusal(
+        "untrusted",
+        `${projectPath} is not trusted in Studio, so agents may read it but not change it.`,
+        "Ask the author to trust the project (Studio's status bar, or Settings > Data > Trusted projects), then try again. Read tools keep working meanwhile.",
+    );
 }
 
 function untrusted(projectPath: string): AgentCallResult {

@@ -70,6 +70,22 @@ describe("agent_status", () => {
     });
 });
 
+describe("agent_status and project trust", () => {
+    it("reports each open project's trust, and says what an untrusted one refuses", async () => {
+        const host = fakeHost({ isTrusted: projectPath => projectPath === "/games/a" }, [
+            { projectPath: "/games/a", name: "A" },
+            { projectPath: "/games/b", name: "B" },
+        ]);
+        const result = await AGENT_MAIN_TOOL_HANDLERS.agent_status(host, {}, ctx);
+        expect(result.ok && result.structured).toMatchObject({
+            projects: [{ path: "/games/a", trusted: true }, { path: "/games/b", trusted: false }],
+        });
+        const text = result.ok ? (result.content[0] as { text: string }).text : "";
+        expect(text.match(/NOT TRUSTED/g)).toHaveLength(1);
+        expect(text).toContain("changes, folder access outside it and imports are refused");
+    });
+});
+
 describe("agent_status and full access", () => {
     it("says full access is on and what stays closed", async () => {
         const host = fakeHost({ policy: () => ({ writesEnabled: true, allowedImportRoots: [], fullAccess: true }) });
@@ -116,6 +132,16 @@ describe("request_folder_access", () => {
             .toMatchObject({ ok: false, error: { code: "invalid_args" } });
         expect(await AGENT_MAIN_TOOL_HANDLERS.request_folder_access(fakeHost({ requestFolderAccess }), { paths: ["/kit/a.png"] }, ctx))
             .toMatchObject({ ok: false, error: { code: "no_workspace" } });
+        expect(requestFolderAccess).not.toHaveBeenCalled();
+    });
+});
+
+describe("request_folder_access for an untrusted project", () => {
+    it("refuses without asking the author", async () => {
+        const requestFolderAccess = vi.fn();
+        const host = fakeHost({ isTrusted: () => false, requestFolderAccess }, [{ projectPath: "/games/a", name: "A" }]);
+        const result = await AGENT_MAIN_TOOL_HANDLERS.request_folder_access(host, { paths: ["/kit/a.png"] }, ctx);
+        expect(result).toMatchObject({ ok: false, error: { code: "untrusted" } });
         expect(requestFolderAccess).not.toHaveBeenCalled();
     });
 });

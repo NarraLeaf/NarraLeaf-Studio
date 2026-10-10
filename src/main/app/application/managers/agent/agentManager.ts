@@ -60,6 +60,7 @@ import { chooseAgentWorkspace, writeNeedsNamedProject, type AgentRoutingChoice }
 import {
     AGENT_MAIN_TOOL_HANDLERS,
     noWorkspace,
+    untrustedForChanges,
     type AgentMainToolHost,
     type AgentOpenProjectOutcome,
     type AgentPluginGuideEntry,
@@ -683,6 +684,12 @@ export class AgentManager implements AgentMainToolHost {
         if (!choice.ok) {
             return inMain(noWorkspace(choice));
         }
+        if (tool.write && !this.isTrusted(choice.window.projectPath)) {
+            // A distrusted project is somebody else's: an agent may read it, as its author may, but
+            // not change it - nor import into it, every import being a write. The workspace refuses
+            // the same again from `policy.projectTrusted`.
+            return inMain(untrustedForChanges(choice.window.projectPath));
+        }
         if (isAgentPluginToolDescriptor(tool)) {
             // Routed like any workspace tool, by `project`; the project it lands in must be one whose
             // plugins offer the tool, since a plugin tool is not in every window.
@@ -819,7 +826,10 @@ export class AgentManager implements AgentMainToolHost {
         if (window.isClosed()) {
             return agentRefusal("no_workspace", "That project's window was closed.");
         }
-        this.grantImportRoots(window);
+        const projectTrusted = this.isTrusted(window.getProps().projectPath);
+        if (projectTrusted) {
+            this.grantImportRoots(window);
+        }
         // One deadline for both halves: main's wait below ends at it, and the workspace refuses to
         // start the call once it has passed - a call still queued behind a long one by then is one
         // the agent has been told timed out, and may already be retrying.
@@ -829,7 +839,7 @@ export class AgentManager implements AgentMainToolHost {
             tool,
             args,
             clientName: context.clientName,
-            policy: this.policy(),
+            policy: { ...this.policy(), projectTrusted },
             deadline,
         };
         this.inFlight.set(request.callId, { window, clientName: context.clientName, deadline, timeoutMs });
@@ -867,7 +877,8 @@ export class AgentManager implements AgentMainToolHost {
      * Let the workspace read the folders the author allowed agents to import from. The renderer
      * reads files through grants, and the grant the folder picker made belongs to the Settings
      * window; without this, an allowed folder would still be unreadable to the window doing the
-     * import. Read only, and only folders on the list - the renderer checks the list again.
+     * import. Read only, and only folders on the list - the renderer checks the list again. Never
+     * for a window whose project is not trusted (see `invoke`): it is given no folders outside it.
      */
     private grantImportRoots(window: AppWindow): void {
         const roots = this.store.current.allowedImportRoots;
@@ -916,6 +927,9 @@ export class AgentManager implements AgentMainToolHost {
             throw new Error("Folder access can only be asked for during an agent call to this window.");
         }
         const paths = readRequestedPaths(request.paths);
+        if (!this.windowProjectTrusted(window)) {
+            return this.untrustedFolderAnswer(paths);
+        }
         // Leave the call time to import once the author answers: wait at most a quarter of the
         // call's budget short of its deadline, and never longer than a client is likely to wait.
         const remaining = call.deadline - Date.now() - Math.max(FOLDER_PROMPT_MARGIN_MS, call.timeoutMs / 4);
@@ -934,8 +948,25 @@ export class AgentManager implements AgentMainToolHost {
         if (!window || window.isClosed()) {
             return { granted: [], denied: [], pending: [], refused: [] };
         }
+        if (!this.windowProjectTrusted(window)) {
+            return this.untrustedFolderAnswer(readRequestedPaths(paths));
+        }
         const prompt: AgentFolderPrompt = { clientName: context.clientName, ...(reason ? { reason } : {}) };
         return this.folderAccess.request(window, await this.foldersOf(readRequestedPaths(paths)), prompt, FOLDER_PROMPT_WAIT_MS);
+    }
+
+    private windowProjectTrusted(window: AppWindow): boolean {
+        const projectPath = (window as AppWindow<WindowAppType.Workspace>).getProps?.()?.projectPath;
+        return typeof projectPath === "string" && projectPath !== "" && this.isTrusted(projectPath);
+    }
+
+    /**
+     * Every folder refused as `untrusted`, asked about nobody: an untrusted project's window is given
+     * no folder outside it - not from a dialog, and not under full access either.
+     */
+    private async untrustedFolderAnswer(paths: readonly string[]): Promise<AgentFolderAccessAnswer> {
+        const folders = [...new Set(await this.foldersOf(paths))];
+        return { granted: [], denied: [], pending: [], refused: folders.map(folder => ({ folder, reason: "untrusted" as const })) };
     }
 
     /** Each path's folder: a directory is its own, anything else (a file, or nothing yet) its parent's. */

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentAccessPromptProps } from "@shared/types/agentAccess";
 import { WindowAppType } from "@shared/types/window";
 import { withAgentProjectArgument } from "@shared/agent/pluginTools";
+import { AGENT_TOOLS } from "@shared/agent/tools";
 import type { App } from "../../../app";
 import type { AppWindow } from "../window/appWindow";
 
@@ -65,7 +66,10 @@ afterEach(() => {
 
 type FakePlugin = { pluginId: string; enabled: boolean; builtIn?: boolean; manifest: { name: string; contributes: { agentTools?: { name: string; write: boolean }[] } } };
 
-function makeManager(answer: boolean | null, options: { windows?: unknown[]; plugins?: () => Promise<FakePlugin[]> } = {}) {
+function makeManager(
+    answer: boolean | null,
+    options: { windows?: unknown[]; plugins?: () => Promise<FakePlugin[]>; trusted?: (projectPath: string) => boolean } = {},
+) {
     const asked: AgentAccessPromptProps[] = [];
     const app = {
         getUserDataDir: () => dir,
@@ -78,6 +82,10 @@ function makeManager(answer: boolean | null, options: { windows?: unknown[]; plu
         electronApp: { on: vi.fn(), getPath: () => dir },
         pluginManager: { listPlugins: options.plugins ?? (async () => []) },
         getAppInfo: () => ({ version: "1.0.0" }),
+        projectTrustManager: { isTrusted: options.trusted ?? (() => true) },
+        storageManager: { grantFileSystemAccess: vi.fn() },
+        getAppPath: () => path.join(dir, "app"),
+        getResourcesDir: () => path.join(dir, "resources"),
     };
     const manager = new AgentManager(app as unknown as App);
     const window = { refuseUnattendedPrompt: vi.fn() } as unknown as AppWindow;
@@ -241,5 +249,60 @@ describe("reported plugin tools", () => {
         await manager.updateSettings({});
         await manager.reportPluginTools(window as never, [tool("narraleaf.gallery", "add", true)]);
         expect(manager.listTools().some(entry => "pluginId" in entry)).toBe(false);
+    });
+});
+
+/**
+ * A project the author has not trusted is somebody else's: an agent may read it, but main refuses
+ * its changes and its folder grants before the workspace or the author hears of them, and tells the
+ * workspace on every call so it can refuse the same again.
+ */
+describe("an untrusted project", () => {
+    const writeTool = AGENT_TOOLS.find(tool => tool.side === "workspace" && tool.write)!;
+    const readTool = AGENT_TOOLS.find(tool => tool.side === "workspace" && !tool.write)!;
+
+    function workspace() {
+        return {
+            getWindowType: () => WindowAppType.Workspace,
+            isClosed: () => false,
+            getProps: () => ({ projectPath: dir }),
+            onEvent: vi.fn(),
+            sendIpcEvent: vi.fn(),
+            invokeIpcRequest: vi.fn(async () => ({ success: true, data: { ok: true, content: [{ type: "text", text: "done" }] } })),
+        };
+    }
+
+    it("has its changes refused in main, and its reads carried out with the trust attached", async () => {
+        const window = workspace();
+        const { manager } = makeManager(true, { windows: [window], trusted: () => false });
+        await manager.updateSettings({ allowWrites: true });
+
+        const write = await manager.callTool(writeTool, {}, { clientName: null });
+        expect(write).toMatchObject({ ok: false, error: { code: "untrusted" } });
+        expect(window.invokeIpcRequest).not.toHaveBeenCalled();
+
+        expect((await manager.callTool(readTool, {}, { clientName: null })).ok).toBe(true);
+        const [, request] = window.invokeIpcRequest.mock.calls[0] as unknown as [unknown, { policy: { projectTrusted?: boolean } }];
+        expect(request.policy.projectTrusted).toBe(false);
+    });
+
+    it("is given no folder, from a dialog or under full access", async () => {
+        const window = workspace();
+        const { manager, asked } = makeManager(true, { windows: [window], trusted: () => false });
+        await manager.updateSettings({ allowWrites: true, fullAccess: true });
+        const handle = { projectPath: dir, name: null, window } as never;
+        const answer = await manager.requestFolderAccess(handle, [path.join(dir, "..", "kit", "a.png")], { clientName: null });
+        expect(answer.granted).toEqual([]);
+        expect(answer.refused.map(entry => entry.reason)).toEqual(["untrusted"]);
+        expect(asked).toEqual([]);
+    });
+
+    it("leaves a trusted project's calls as they were", async () => {
+        const window = workspace();
+        const { manager } = makeManager(true, { windows: [window] });
+        await manager.updateSettings({ allowWrites: true });
+        expect((await manager.callTool(writeTool, {}, { clientName: null })).ok).toBe(true);
+        const [, request] = window.invokeIpcRequest.mock.calls[0] as unknown as [unknown, { policy: { projectTrusted?: boolean } }];
+        expect(request.policy.projectTrusted).toBe(true);
     });
 });

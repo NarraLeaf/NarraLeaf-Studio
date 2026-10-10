@@ -167,6 +167,14 @@ export type AgentSessionPolicy = {
      * refuses their calls; the workspace refuses them again, so the list holds on both hops.
      */
     blockedPluginIds?: string[];
+    /**
+     * Whether the project of the window this call went to is trusted. Set by main on every call it
+     * sends a workspace; an untrusted project may be read but not changed, and is given no folders
+     * outside it. Main refuses those calls before they are sent; the workspace refuses them again
+     * when this is `false`, so the rule holds on both hops. Absent in a policy built before it
+     * existed, which the workspace reads as nothing to add.
+     */
+    projectTrusted?: boolean;
 };
 
 /**
@@ -195,6 +203,8 @@ export type AgentFolderRefusalReason =
     | "studio"
     /** More folders than one dialog asks about; ask again for these. */
     | "tooMany"
+    /** The project the call is for is not trusted, and an untrusted project is given no folders. */
+    | "untrusted"
     /** Not an absolute path. */
     | "relative";
 
