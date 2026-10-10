@@ -9,8 +9,8 @@
  * Comments in English per project convention.
  */
 
-import type { StoryDocument, StoryScene } from "@shared/types/story";
-import { answerJson, readOptionalString, readString, refuse, type AgentToolHandler, type AgentToolContext } from "../agentCall";
+import type { StoryChapter, StoryDocument, StoryScene } from "@shared/types/story";
+import { answer, answerJson, readOptionalString, readString, refuse, type AgentToolHandler, type AgentToolContext } from "../agentCall";
 import { AGENT_HISTORY_LABEL, resolveScene, resolveStory, storyService } from "../agentLookups";
 import { blueprintReferencesTo, formatReferrers, storyReferencesTo, uiReferencesTo } from "../agentReferences";
 import { Services } from "../../services";
@@ -111,6 +111,7 @@ export const sceneCreate: AgentToolHandler = async (args, { ctx, request, follow
     // A story `story` names that does not exist yet is made, so that "write a scene in story X" is
     // one call on an empty project.
     let target: Awaited<ReturnType<typeof resolveStory>>;
+    let fresh = false;
     try {
         target = await resolveStory(ctx, storyRef);
     } catch (error) {
@@ -119,8 +120,34 @@ export const sceneCreate: AgentToolHandler = async (args, { ctx, request, follow
         }
         const entry = story.createStory(storyRef ?? "Main");
         target = { entry, document: await story.loadStory(entry.id) };
+        fresh = true;
     }
     const { entry, document } = target;
+
+    // A story made by this call starts with a default chapter holding one empty scene. That chapter
+    // and scene become the ones asked for, renamed, rather than being left beside them: an agent that
+    // asked for "Opening" in "Prologue" gets exactly that, not a stray "Chapter 1 / Scene 1" too.
+    if (fresh && !afterRef) {
+        const defaultChapter = document.chapters[0];
+        const defaultSceneId = defaultChapter?.sceneIds.length === 1 ? defaultChapter.sceneIds[0] : undefined;
+        if (defaultChapter && defaultSceneId && document.scenes[defaultSceneId]?.rootBlockIds.length === 0) {
+            if (chapterName) {
+                story.renameChapter(entry.id, defaultChapter.id, chapterName);
+            }
+            story.renameScene(entry.id, defaultSceneId, name);
+            const created = story.getStoryDocument(entry.id).scenes[defaultSceneId];
+            follow.noteWrite({ kind: "scene", storyId: entry.id, sceneId: defaultSceneId, name: created?.name ?? name });
+            return answerJson(
+                {
+                    story: { id: entry.id, name: entry.name },
+                    scene: { id: defaultSceneId, name: created?.name ?? name },
+                    entry: story.getStoryDocument(entry.id).entrySceneId === defaultSceneId,
+                    revision: story.getSceneContentRevision(entry.id, defaultSceneId),
+                },
+                `Created story "${entry.name}" with scene "${created?.name ?? name}"${chapterName ? ` in chapter "${chapterName}"` : ""}. Write its rows with story_apply.`,
+            );
+        }
+    }
 
     let chapterId: string | undefined;
     if (chapterName) {
@@ -268,3 +295,48 @@ export function writeSceneForAgent(
     });
     return story.getSceneContentRevision(input.storyId, input.sceneId);
 }
+
+/** A chapter of `document` by name or id, or a refusal listing the chapters there are. */
+function resolveChapter(document: StoryDocument, ref: string): StoryChapter {
+    const chapter = document.chapters.find(item => item.id === ref) ?? document.chapters.find(item => item.name === ref);
+    if (!chapter) {
+        throw refuse(
+            "not_found",
+            `No chapter "${ref}" in story "${document.name}".`,
+            `Chapters: ${document.chapters.map(item => `"${item.name}"`).join(", ") || "none"}.`,
+        );
+    }
+    return chapter;
+}
+
+export const chapterRename: AgentToolHandler = async (args, { ctx, request, follow }) => {
+    const chapterRef = readString(args, "chapter");
+    const name = readString(args, "name");
+    const { entry, document } = await resolveStory(ctx, readOptionalString(args, "story"));
+    const chapter = resolveChapter(document, chapterRef);
+    follow.describeCall(request.callId, chapter.name);
+    const before = chapter.name;
+    if (!storyService(ctx).renameChapterWithHistory(entry.id, chapter.id, name)) {
+        throw refuse("internal", `Chapter "${before}" could not be renamed.`);
+    }
+    return answer(`Renamed chapter "${before}" to "${name}" in story "${entry.name}".`, { chapter: { id: chapter.id, name } });
+};
+
+export const chapterDelete: AgentToolHandler = async (args, { ctx, request, follow }) => {
+    const chapterRef = readString(args, "chapter");
+    const { entry, document } = await resolveStory(ctx, readOptionalString(args, "story"));
+    const chapter = resolveChapter(document, chapterRef);
+    follow.describeCall(request.callId, chapter.name);
+    if (chapter.sceneIds.length > 0) {
+        const names = chapter.sceneIds.map(id => `"${document.scenes[id]?.name ?? id}"`).join(", ");
+        throw refuse(
+            "unavailable",
+            `Chapter "${chapter.name}" still holds ${chapter.sceneIds.length} scene(s): ${names}.`,
+            "Delete them with scene_delete, or recreate them in another chapter, then delete the chapter.",
+        );
+    }
+    if (!storyService(ctx).deleteChapter(entry.id, chapter.id)) {
+        throw refuse("internal", `Chapter "${chapter.name}" could not be deleted.`);
+    }
+    return answer(`Deleted the empty chapter "${chapter.name}" from story "${entry.name}".`, { chapter: { id: chapter.id, name: chapter.name } });
+};

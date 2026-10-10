@@ -27,8 +27,7 @@ import { focusNavigationTarget } from "@/lib/ui-editor/runtime/navigation/focusN
 import { useGameNavigationEnabled } from "@/lib/ui-editor/runtime/navigation/gameNavigationContext";
 import { resolvePageAnimationMotion } from "@/lib/ui-editor/runtime/pageAnimation";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
-import type { UIStructDef } from "@shared/types/ui-editor/struct";
-import { makeDefaultStructItem, readUIStructFieldValue } from "@shared/types/ui-editor/struct";
+import { makeDefaultStructItem } from "@shared/types/ui-editor/struct";
 import { DEFAULT_ELEMENT_EFFECT_VALUES } from "@shared/types/ui-editor/effects";
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
@@ -50,6 +49,7 @@ import {
     resolveListItemContentAlignmentStyle,
     resolveListItemsBindingArray,
     resolveListRepeatLayout,
+    resolveListRowKeys,
 } from "./helpers";
 import { pressIsAnsweredInRow } from "./rowPress";
 
@@ -171,29 +171,6 @@ function findRenderedUiElement(root: Element | null, id: string): HTMLElement | 
         }
     }
     return null;
-}
-
-/**
- * What keys one row.
- *
- * The declared key field when it holds something usable, the row's position otherwise. Falling back
- * to the index rather than refusing to draw is deliberate: rows arrive from graphs and from the slot
- * bridge, and a list whose first row is missing an id should still be a list.
- */
-function itemKey(
-    item: unknown,
-    index: number,
-    struct: UIStructDef | null,
-    fieldId: string | null | undefined,
-): string {
-    const raw = readUIStructFieldValue(struct, fieldId, item);
-    if (typeof raw === "string" && raw.length > 0) {
-        return raw;
-    }
-    if (typeof raw === "number" && Number.isFinite(raw)) {
-        return String(raw);
-    }
-    return String(index);
 }
 
 function styleToRectangleLike(style: UIListScrollbarPartStyle): RectangleLikeProps {
@@ -411,6 +388,8 @@ export function ListRenderer(props: WidgetRendererProps) {
         ? [...runtimeListItems]
         : boundItems ?? (p.items.length > 0 ? p.items : placeholderItems);
     const count = Math.min(128, items.length);
+    const shownItems = items.slice(0, count);
+    const rowKeys = resolveListRowKeys(shownItems, itemStruct, p.itemKeyFieldId);
     const itemTemplateIds = element.childrenIds.filter(childId => isUIListItemTemplateChild(document.elements[childId]));
     const itemTemplateDescendantIds = useMemo(
         () => collectElementDescendants(document, itemTemplateIds),
@@ -619,8 +598,8 @@ export function ListRenderer(props: WidgetRendererProps) {
         ? resolvePageAnimationMotion({ settings: p.itemAnimation })
         : null;
     const rowStaggerMs = Math.max(0, (p.itemAnimation?.childStaggerSeconds ?? 0) * 1000);
-    const listBody = items.slice(0, count).map((item, i) => {
-        const key = itemKey(item, i, itemStruct, p.itemKeyFieldId);
+    const listBody = shownItems.map((item, i) => {
+        const key = rowKeys[i]!;
         const instanceKey = buildUIListItemInstanceKey(outerInstanceKey, element.id, key);
         // On the canvas nothing is selected: `selectedIndex` defaults to a row, and drawing the
         // template in its selected state would show the author a row most rows will never look like.

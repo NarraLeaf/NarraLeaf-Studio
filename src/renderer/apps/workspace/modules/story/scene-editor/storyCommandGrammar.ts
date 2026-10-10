@@ -257,6 +257,13 @@ export type StoryCommandParamType =
            * Optional on input in every locale — the bare number is still the canonical spelling.
            */
           unit?: string;
+          /**
+           * What the number MEANS, when its type alone does not say - the unit it is counted in and
+           * which way a positive value goes (`xoffset=` is design pixels, + is right). In English, for
+           * the command catalogue an agent reads, exactly as the text branch's `format` is; the editor
+           * does not print it.
+           */
+          format?: string;
       }
     | { kind: "boolean" }
     | { kind: "color" }

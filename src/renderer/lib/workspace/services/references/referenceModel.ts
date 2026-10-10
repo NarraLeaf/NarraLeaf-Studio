@@ -465,11 +465,27 @@ export function listBlockAssetSites(block: StoryBlock): StoryBlockAssetSite[] {
         case "video":
             sites.push({ field: "video.assetId", assetId: payload.assetId });
             break;
-        case "displayable":
-            sites.push({ field: "displayable.maskAssetId", assetId: payload.transform?.to?.maskAssetId ?? undefined });
+        case "vfx":
+            // An overlay plays a video asset - the same pipeline `/video` uses - and a scene full of
+            // `/vfx fire name=…` rows was reporting its clips as unused, which the guide reads as
+            // "safe to delete".
+            sites.push({ field: "vfx.assetId", assetId: payload.assetId });
             break;
         default:
             break;
+    }
+    // Every transform a row carries can name a mask picture - a `/transform`, and equally the pose a
+    // `/show`, `/image`, `/text`, `/layer` or character row brings an object on with - and so can the
+    // `from=` bag it starts from. Collected after the switch for every payload that has one, so a new
+    // transform-carrying action cannot forget it. `displayable` keeps its historical field name.
+    if ("transform" in payload && payload.transform) {
+        const prefix = payload.action === "displayable" ? "displayable" : `${payload.action}.transform`;
+        const to = payload.transform.to?.maskAssetId;
+        const from = payload.transform.from?.maskAssetId;
+        sites.push({ field: payload.action === "displayable" ? "displayable.maskAssetId" : `${prefix}.maskAssetId`, assetId: to ?? undefined });
+        if (from) {
+            sites.push({ field: `${prefix}.from.maskAssetId`, assetId: from });
+        }
     }
     return sites;
 }

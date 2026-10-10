@@ -139,8 +139,10 @@ scenes are 走廊 / 社团活动室 / 最后的光, the variables 真心 / 地�
 their own opening picture and music (step 5) - re-cast the demo characters (`character_upsert` with
 their `id`), rename or re-type the demo variables (`variable_upsert` with their `id`). What you do not
 reuse, delete once nothing refers to it: `scene_delete`, `character_delete`, `variable_delete`,
-`asset_delete` (the demo pictures and music lint lists as `assets/unused`) refuse while something
-still does and list what. Keep the skeleton's pages: hide what the game does not need rather than
+`asset_delete` (the demo pictures and music lint lists as `assets/unused` - check each with
+`asset_usage` first and delete only what it shows unused) refuse while something still does and list
+what; a chapter left empty goes with `chapter_delete` (`chapter_rename` renames
+one). Keep the skeleton's pages: hide what the game does not need rather than
 deleting it, because the other screens' buttons open them. `ui_page_delete` is for a page nothing
 opens any more (a leftover template page, say); it refuses the entry page and lists what still opens
 the page.
@@ -320,8 +322,11 @@ Read `verify-and-ship`. In short:
    done. `playtest_screenshot` at every new background, character entrance, menu, last line and
    ending. Look at each image: right picture, sprite size and position, text readable and inside the
    box, choice menu legible.
-4. `console_read {level:"error"}` after each run for runtime errors; fix the row or graph named.
-5. `playtest_stop` when done.
+4. Press every button you wired or restyled: `playtest_click {element}` (by id, path, name or the
+   words it shows), `playtest_key {key:"Escape"}` and the arrows for keyboard paths, then
+   `playtest_screenshot`. Each answer says what opened or closed (`verify-and-ship`).
+5. `console_read {level:"error"}` after each run for runtime errors; fix the row or graph named.
+6. `playtest_stop` when done.
 
 Checkpoint: lint has no errors, both tests pass, every route was played to its ending, the console
 is clean.

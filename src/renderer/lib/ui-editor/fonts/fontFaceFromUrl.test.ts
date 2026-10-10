@@ -20,12 +20,15 @@ describe("loading a game font from its URL", () => {
     it("reads the bytes and builds the face from them, not from the URL", async () => {
         const env = environment();
 
-        await loadFontFaceFromUrl("nlRuntimeFont_body", "nlgame://asset/body?v=1", env);
+        const loaded = await loadFontFaceFromUrl("nlRuntimeFont_body", "nlgame://asset/body?v=1", env);
 
         expect(env.fetch).toHaveBeenCalledWith("nlgame://asset/body?v=1");
         expect(env.built).toHaveLength(1);
         expect(env.built[0].family).toBe("nlRuntimeFont_body");
         expect(env.built[0].source.byteLength).toBe(8);
+        // Handed back with the face, for the stylesheet rule a picture of the stage reads.
+        expect(loaded.bytes).toBe(env.built[0].source);
+        expect(loaded.face).toEqual({ family: "nlRuntimeFont_body" });
     });
 
     it("says the bytes could not be read when the URL answers with an error", async () => {

@@ -45,6 +45,8 @@ import {
 import { describeBlockedDelete } from "../../assets/assetDeleteGuard";
 import { AGENT_ASSET_TYPES, assetsService, listAssets, stripExtension } from "../agentLookups";
 import { ensureAgentMayReadPaths } from "../agentFolderRequest";
+import { findAssetMentions, type AssetMention } from "../assetMentions";
+import { liveBlueprintDocument, loadAllStories, uiDocumentService } from "./textFormat";
 
 const IMPORTABLE_TYPES: readonly AssetType[] = [AssetType.Image, AssetType.Audio, AssetType.Video, AssetType.Font];
 
@@ -408,6 +410,17 @@ export const assetDelete: AgentToolHandler = async (args, { ctx, request, follow
                 + "ui_patch or blueprint_apply for pages - then delete it. Nothing was deleted.",
         );
     }
+    // The index found nothing. Ask the stored values too before deleting: a row kind the index does
+    // not know reads as unused there, and this is the call that would delete what it uses.
+    const mentioned = await assetMentionsIn(ctx, asset.id);
+    if (mentioned.length > 0) {
+        throw refuse(
+            "unavailable",
+            `${asset.type} "${asset.name}" is not in Studio's usage index, but its id is still written in ${mentioned.length} place(s):\n`
+                + `${describeMentions(mentioned)}\nThese are uses the index does not count, so lint may list the asset as unused. Nothing was deleted.`,
+            "Leave it, or rewrite those places first and try again.",
+        );
+    }
     const result = await service.deleteAsset(asset);
     if (!result.success) {
         throw refuse("unavailable", `${asset.type} "${asset.name}" could not be deleted: ${result.error ?? "unknown reason"}.`);
@@ -415,5 +428,68 @@ export const assetDelete: AgentToolHandler = async (args, { ctx, request, follow
     return answerJson(
         { deleted: { id: asset.id, name: asset.name, type: asset.type } },
         `Deleted ${asset.type} "${asset.name}". One step of undo in Studio.`,
+    );
+};
+
+/** Every place the project's stored values write an asset's id - the second opinion beside the index. */
+async function assetMentionsIn(ctx: WorkspaceContext, assetId: string): Promise<AssetMention[]> {
+    const { stories } = await loadAllStories(ctx);
+    let uiDocument = null;
+    try {
+        uiDocument = uiDocumentService(ctx).getDocument();
+    } catch {
+        // No interface document open: nothing there to name it.
+    }
+    let blueprintDocument = null;
+    try {
+        blueprintDocument = liveBlueprintDocument(ctx);
+    } catch {
+        // Likewise for the blueprints.
+    }
+    return findAssetMentions({ assetId, stories, uiDocument, blueprintDocument });
+}
+
+const MENTIONS_SPELLED_OUT = 30;
+
+function describeMentions(mentioned: readonly AssetMention[]): string {
+    const lines = mentioned.slice(0, MENTIONS_SPELLED_OUT).map(item => `- ${item.where}`);
+    if (mentioned.length > MENTIONS_SPELLED_OUT) {
+        lines.push(`- ...and ${mentioned.length - MENTIONS_SPELLED_OUT} more`);
+    }
+    return lines.join("\n");
+}
+
+export const assetUsage: AgentToolHandler = async (args, { ctx, request, follow }) => {
+    const type = readOptionalString(args, "type") as AssetType | undefined;
+    if (type && !AGENT_ASSET_TYPES.includes(type)) {
+        throw refuse("invalid_args", `Unknown asset type "${type}".`);
+    }
+    const asset = resolveAnyAsset(ctx, readString(args, "asset"), type);
+    follow.describeCall(request.callId, asset.name);
+    const report = await assetsService(ctx).findAssetReferences([asset.id], [asset.type]);
+    const indexed = (report.references.get(asset.id) ?? []).map(reference => ({
+        where: [reference.label, reference.detail].filter(Boolean).join(" › "),
+        field: reference.field ?? null,
+        ...(reference.dormant ? { dormant: true } : {}),
+    }));
+    const mentioned = await assetMentionsIn(ctx, asset.id);
+    const used = indexed.length > 0 || mentioned.length > 0;
+    const lines = [
+        used
+            ? `${asset.type} "${asset.name}" is used. Do not delete it until every place below is rewritten.`
+            : `${asset.type} "${asset.name}" is not used anywhere Studio can see: nothing in its usage index, and its id is written nowhere in the stories, pages or blueprints.`,
+    ];
+    if (!report.checked) {
+        lines.push("Studio's usage index is incomplete right now (lint names what it cannot read), so treat a clean answer with care.");
+    }
+    if (indexed.length > 0) {
+        lines.push(`In the usage index (${indexed.length}):`, ...indexed.map(item => `- ${item.where}${item.field ? ` (${item.field})` : ""}`));
+    }
+    if (mentioned.length > 0) {
+        lines.push(`Where its id is written (${mentioned.length}):`, describeMentions(mentioned));
+    }
+    return answerJson(
+        { asset: { id: asset.id, name: asset.name, type: asset.type }, used, indexComplete: report.checked, indexed, mentioned },
+        lines.join("\n"),
     );
 };

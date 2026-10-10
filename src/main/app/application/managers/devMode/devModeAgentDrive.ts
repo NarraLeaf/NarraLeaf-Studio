@@ -52,6 +52,8 @@ const ACTION_NAMES: Record<DevModeAgentAction["kind"], string> = {
     capture: "screenshot",
     state: "status read",
     advance: "advance",
+    pointer: "pointer act",
+    key: "key press",
 };
 
 function seconds(ms: number): string {

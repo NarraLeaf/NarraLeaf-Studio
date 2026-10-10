@@ -19,8 +19,7 @@ import { resetVariableBlock } from "./variables";
 import {
     filterWritersOf,
     parseFromProps,
-    parsePositionValue,
-    positionBeyondReach,
+    positionIssues,
     CAMERA_ONLY_PROP_KEYS,
     RESET_CHANNEL_KEYS,
     RESET_PROP_PARAMS,
@@ -236,19 +235,9 @@ function validateProps(
         }
     }
 
-    // A position that is neither a placement word nor an align pair. The grammar cannot check it -
-    // the pair has no closed value set - so the spec is the only place it can be said.
-    const posSpan = ctx.spanOf("pos");
-    if (posSpan && args.pos?.kind === "text") {
-        const position = parsePositionValue(args.pos.value);
-        if (position === null) {
-            issues.push({ code: "unsupportedOption", span: posSpan, value: args.pos.value, allowed: ["left", "center", "right", "x,y"] });
-        } else if (positionBeyondReach(position)) {
-            // Shares, not pixels: `pos=100,200` parses, and would send the object a hundred stage
-            // widths off to the right. Refused rather than stored, since no picture is visible there.
-            issues.push({ code: "positionOutOfRange", span: posSpan, value: args.pos.value });
-        }
-    }
+    // A position that is neither a placement word nor an align pair, or an offset with no pair to
+    // shift. The grammar cannot check either, so the spec is the only place it can be said.
+    issues.push(...positionIssues(args, ctx));
 
     // A Story Motion is a whole keyframed shot with its own timing; a prop bag is a destination with
     // one. A row carrying both says two different things about the same move.
@@ -268,7 +257,7 @@ function validateProps(
             code: "unsupportedOption",
             span: fromSpan,
             value: from.badKeys[0],
-            allowed: ["pos", "zoom", "scale", "rot", "opacity", "blur", "bright", "gray", "sat", "sepia", "hue", "invert"],
+            allowed: ["pos", "xoffset", "yoffset", "zoom", "scale", "rot", "opacity", "blur", "bright", "gray", "sat", "sepia", "hue", "invert"],
         });
     }
 
@@ -345,6 +334,7 @@ export const transform = defineStoryCommand({
     examples: [
         "/transform hero pos=left d=0.4",
         "/transform hero pos=0.3,0.6 d=0.4",
+        "/transform hero pos=0.5,0.5 xoffset=40 yoffset=-12 d=0.4",
         "/transform hero blur=4 gray=1",
         "/transform Alice flip=on",
         "/transform hero loop scaleY=1.02 d=0.9 repeatType=mirror",

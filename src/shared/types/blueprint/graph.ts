@@ -1247,6 +1247,11 @@ export const BLUEPRINT_NODE_TYPE_GAME_IS_NARRATOR = "blueprint.game.isNarrator" 
  */
 export const BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER = "blueprint.game.getCharacter" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS = "blueprint.game.getNotifications" as const;
+/**
+ * Show a line in the running game's notification stream - the one the engine's own notices go
+ * into, which `Get Notifications` reads and the Game UI notification slot draws.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_POST_NOTIFICATION = "blueprint.game.postNotification" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT = "blueprint.game.getChoiceCount" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE = "blueprint.game.isNvlMode" as const;
 /** True while a dialog line is on screen and its message is read (seen before, or display finished). */

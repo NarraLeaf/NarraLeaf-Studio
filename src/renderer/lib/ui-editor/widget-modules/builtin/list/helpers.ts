@@ -8,6 +8,8 @@ import type {
 } from "@shared/types/ui-editor/list";
 import { isUIListItemsBindingKind } from "@shared/types/ui-editor/list";
 import { normalizeGradientFill } from "@shared/types/ui-editor/gradientFill";
+import type { UIStructDef } from "@shared/types/ui-editor/struct";
+import { readUIStructFieldValue } from "@shared/types/ui-editor/struct";
 import {
     isDefaultUIPageAnimationSettings,
     normalizeUIPageAnimationSettings,
@@ -25,6 +27,66 @@ import {
     type ListDirection,
     type ListWidgetProps,
 } from "./types";
+
+/**
+ * What keys one row, before it is told apart from the rows around it.
+ *
+ * The declared key field when it holds something usable, the row's position otherwise. Falling back
+ * to the index rather than refusing to draw is deliberate: rows arrive from graphs and from the slot
+ * bridge, and a list whose first row is missing an id should still be a list.
+ */
+function declaredRowKey(
+    item: unknown,
+    index: number,
+    struct: UIStructDef | null,
+    fieldId: string | null | undefined,
+): string {
+    const raw = readUIStructFieldValue(struct, fieldId, item);
+    if (typeof raw === "string" && raw.length > 0) {
+        return raw;
+    }
+    if (typeof raw === "number" && Number.isFinite(raw)) {
+        return String(raw);
+    }
+    return String(index);
+}
+
+/**
+ * The key of every row, one per item and never two alike.
+ *
+ * A row's key is both its React key and the last segment of its drawing's instance key, so two rows
+ * holding the same key are not two rows to React: when the items change, it reconciles them as one,
+ * and the ones it loses track of are never removed. They stay in the list as stale, empty rows that
+ * still take up their height. The common way in is a list drawing its placeholder rows - each one
+ * the declared shape at its empty values, so every row of a list keyed on `index` reads `0` - and
+ * then receiving its real items: a choice menu of two options came out with two blank rows between
+ * them, at three times the pitch its template asks for. A graph handing a list two records with the
+ * same id did the same.
+ *
+ * So the first row to claim a key keeps it, and each later one is told apart by its position. The
+ * key it is moved to is checked against every key the list declares, not only the ones taken so far,
+ * so it can never land on the key a row further down asks for.
+ */
+export function resolveListRowKeys(
+    items: readonly unknown[],
+    struct: UIStructDef | null,
+    fieldId: string | null | undefined,
+): string[] {
+    const declared = items.map((item, index) => declaredRowKey(item, index, struct, fieldId));
+    const declaredSet = new Set(declared);
+    const taken = new Set<string>();
+    return declared.map((own, index) => {
+        let key = own;
+        if (taken.has(key)) {
+            key = `${own}#${index}`;
+            for (let attempt = 1; taken.has(key) || declaredSet.has(key); attempt++) {
+                key = `${own}#${index}.${attempt}`;
+            }
+        }
+        taken.add(key);
+        return key;
+    });
+}
 
 export type ListItemContentAlignmentStyle = {
     justifyContent?: "flex-end";

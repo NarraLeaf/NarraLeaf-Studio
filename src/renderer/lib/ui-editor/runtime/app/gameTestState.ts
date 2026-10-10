@@ -63,6 +63,18 @@ export type GameTestState = {
     lastEnding: string | null;
     /** The page on screen by name - the title, an ending page - when no story is. */
     page: string | null;
+    /**
+     * The story is stopped on a `/wait click` row: no line, no menu, and nothing moves until the
+     * player clicks. Read off the play head - the row the engine is executing - since the screen
+     * shows nothing that says so.
+     */
+    waitingForClick: boolean;
+    /**
+     * What the story is holding on by itself, with no line on screen: a timed `/wait` (`ms` long, as
+     * written) or a `/video` it waits out. Null otherwise. Read off the play head, like
+     * {@link waitingForClick}.
+     */
+    pausedBy: { kind: "timed"; ms: number } | { kind: "video" } | null;
 };
 
 export type GameTestStateInputs = {
@@ -75,6 +87,10 @@ export type GameTestStateInputs = {
     endings: number;
     lastEnding: string | null;
     page: string | null;
+    /** The engine's current action is a `/wait click` row's; see {@link GameTestState.waitingForClick}. */
+    waitingForClick?: boolean;
+    /** See {@link GameTestState.pausedBy}. */
+    pausedBy?: GameTestState["pausedBy"];
 };
 
 export function buildGameTestState(inputs: GameTestStateInputs): GameTestState {
@@ -92,6 +108,8 @@ export function buildGameTestState(inputs: GameTestStateInputs): GameTestState {
         endings: inputs.endings,
         lastEnding: inputs.lastEnding,
         page: inGame ? null : inputs.page,
+        waitingForClick: Boolean(inGame && inputs.waitingForClick && !line && !inputs.choices),
+        pausedBy: inGame && !line && !inputs.choices && inputs.pausedBy ? inputs.pausedBy : null,
     };
 }
 

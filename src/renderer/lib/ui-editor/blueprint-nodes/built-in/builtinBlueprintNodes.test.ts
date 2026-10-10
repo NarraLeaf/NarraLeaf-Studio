@@ -487,6 +487,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     getSpeakerColor: () => ({ r: 255, g: 255, b: 255, a: 1 }),
                     getCharacter: () => null,
                     getNotifications: () => [],
+                    postNotification: () => undefined,
                     getChoiceCount: () => 0,
                     isNvlMode: () => false,
                     isCurrentTextRead: () => false,
@@ -681,6 +682,7 @@ function createPageNavigationHostAdapter(
                     getSpeakerColor: () => ({ r: 255, g: 255, b: 255, a: 1 }),
                     getCharacter: () => null,
                     getNotifications: () => [],
+                    postNotification: () => undefined,
                     getChoiceCount: () => 0,
                     isNvlMode: () => false,
                     isCurrentTextRead: () => false,
@@ -884,6 +886,7 @@ function createGameSaveHostAdapter(options: {
                     getCharacter: (characterId: string) =>
                         findBlueprintCharacterInfo(options.characters ?? [], characterId),
                     getNotifications: () => options.notifications ?? [],
+                    postNotification: () => undefined,
                     getChoiceCount: () => options.choiceCount ?? 0,
                     isNvlMode: () => options.nvlMode ?? false,
                     isCurrentTextRead: () => options.textRead ?? false,

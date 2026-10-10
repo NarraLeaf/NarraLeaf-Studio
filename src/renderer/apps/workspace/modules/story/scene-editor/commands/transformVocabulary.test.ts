@@ -9,9 +9,11 @@ import {
     parsePositionValue,
     patchTransformProp,
     patchTransformTiming,
+    positionPropArgs,
     RESET_CHANNEL_KEYS,
     resetPropsFromArgs,
     transformPropArgs,
+    transformPropsFromArgs,
     transformTimingArgs,
 } from "./transformVocabulary";
 
@@ -77,9 +79,10 @@ describe("the prop vocabulary", () => {
     });
 
     it("prints nothing for a channel no line can spell", () => {
-        // A row may only ever show a line the author could type back, so an offset position and a
-        // mask whose asset is gone print nothing and stay the inspector's.
-        expect(transformPropArgs({ position: { xalign: 0.5, yalign: 0.5, xoffset: 20 } }, () => undefined)).toEqual([]);
+        // A row may only ever show a line the author could type back, so an offset beside a
+        // half-stated pair and a mask whose asset is gone print nothing and stay the inspector's.
+        expect(transformPropArgs({ position: { xalign: 0.5, xoffset: 20 } }, () => undefined)).toEqual([]);
+        expect(transformPropArgs({ position: { xoffset: 20, yoffset: 4 } }, () => undefined)).toEqual([]);
         expect(transformPropArgs({ maskAssetId: "gone" }, () => undefined)).toEqual([{ key: "mask", value: undefined }]
             .filter(entry => entry.value !== undefined));
     });
@@ -149,5 +152,76 @@ describe("the pos= align pair", () => {
     it("lets from= carry a pair only when it is within reach of the stage", () => {
         expect(parseFromProps("pos=-0.3,0.5").badKeys).toEqual([]);
         expect(parseFromProps("pos=100,200").badKeys).toEqual(["pos=100,200"]);
+    });
+});
+
+/** The args a line's `pos=` / `xoffset=` / `yoffset=` resolve to, as the build reads them. */
+function positionArgs(pos: string, offsets: { xoffset?: number; yoffset?: number } = {}) {
+    return {
+        pos: /^[a-z]+$/.test(pos) ? { kind: "enum" as const, value: pos } : { kind: "text" as const, value: pos },
+        ...(offsets.xoffset !== undefined ? { xoffset: { kind: "number" as const, value: offsets.xoffset } } : {}),
+        ...(offsets.yoffset !== undefined ? { yoffset: { kind: "number" as const, value: offsets.yoffset } } : {}),
+    };
+}
+
+describe("pixel offsets beside a position", () => {
+    it("adds them to the pair the line states, and prints both shares beside them", () => {
+        const props = transformPropsFromArgs(positionArgs("0.5,0.5", { xoffset: 40, yoffset: -12 }));
+        expect(props.position).toEqual({ xalign: 0.5, yalign: 0.5, xoffset: 40, yoffset: -12 });
+        expect(transformPropArgs(props, () => undefined)).toEqual([
+            { key: "pos", value: "0.5,0.5", enum: true },
+            { key: "xoffset", value: "40" },
+            { key: "yoffset", value: "-12" },
+        ]);
+    });
+
+    it("never prints an offset as a placement word, so the word cannot drop it", () => {
+        // `left` is a bare pair; with pixels on top it is no longer the word's position, and the row
+        // spells the shares out rather than rounding the offset away.
+        const props = transformPropsFromArgs(positionArgs("left", { xoffset: 40 }));
+        expect(props.position).toEqual({ xalign: 0.25, yalign: 0.5, xoffset: 40 });
+        expect(positionPropArgs(props.position)).toEqual([
+            { key: "pos", value: "0.25,0.5", enum: true },
+            { key: "xoffset", value: "40" },
+        ]);
+        expect(positionPropArgs({ xalign: 0.25, yalign: 0.5 })).toEqual([{ key: "pos", value: "left", enum: true }]);
+        // A zero is a stated value, not an absent one: it prints, and it comes back.
+        expect(positionPropArgs({ xalign: 0.25, yalign: 0.5, xoffset: 0 }).map(arg => arg.key)).toEqual(["pos", "xoffset"]);
+    });
+
+    it("reads no position from an offset alone", () => {
+        // The spec refuses such a line (`offsetWithoutPosition`); the build must not invent shares.
+        expect(transformPropsFromArgs({ xoffset: { kind: "number", value: 40 } }).position).toBeUndefined();
+    });
+
+    it("round-trips a position with offsets through print and parse", () => {
+        for (const position of [
+            { xalign: 0.5, yalign: 0.5, xoffset: 40 },
+            { xalign: 0.3, yalign: 0.25, yoffset: -12 },
+            { xalign: -0.2, yalign: 0.5, xoffset: 120, yoffset: 8 },
+            { xalign: 0.75, yalign: 0.5, xoffset: -6.5 },
+        ]) {
+            const printed = Object.fromEntries(positionPropArgs(position).map(arg => [arg.key, arg.value]));
+            const reread = transformPropsFromArgs(positionArgs(printed.pos, {
+                ...(printed.xoffset !== undefined ? { xoffset: Number(printed.xoffset) } : {}),
+                ...(printed.yoffset !== undefined ? { yoffset: Number(printed.yoffset) } : {}),
+            }));
+            expect(reread.position, JSON.stringify(position)).toEqual(position);
+        }
+    });
+
+    it("keeps the offsets when only the anchor is edited, and edits one offset in place", () => {
+        const bag = { position: { xalign: 0.5, yalign: 0.5, xoffset: 40, yoffset: -12 } };
+        expect(patchTransformProp(bag, "pos", "right").position).toEqual({ xalign: 0.75, yalign: 0.5, xoffset: 40, yoffset: -12 });
+        expect(patchTransformProp(bag, "xoffset", "-8").position).toEqual({ xalign: 0.5, yalign: 0.5, xoffset: -8, yoffset: -12 });
+        expect(patchTransformProp(bag, "yoffset", "oops")).toEqual(bag);
+    });
+
+    it("lets from= carry offsets only beside a pair", () => {
+        const { props, badKeys } = parseFromProps("xoffset=-80 pos=0.5,0.5 opacity=0");
+        expect(badKeys).toEqual([]);
+        expect(props.position).toEqual({ xalign: 0.5, yalign: 0.5, xoffset: -80 });
+        expect(fromPropsWord(props)).toBe("pos=0.5,0.5 xoffset=-80 opacity=0");
+        expect(parseFromProps("yoffset=10 zoom=1.2").badKeys).toEqual(["yoffset=10"]);
     });
 });

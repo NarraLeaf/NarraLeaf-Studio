@@ -274,6 +274,7 @@ const NODE_TITLE_KEYS: Record<string, TranslationKey> = {
     "Get Character": "blueprint.node.getCharacter",
     "Get Normalized Value": "blueprint.node.getNormalizedValue",
     "Get Notifications": "blueprint.node.getNotifications",
+    "Post Notification": "blueprint.node.postNotification",
     "Get Opacity": "blueprint.node.getOpacity",
     "Get Page Param": "blueprint.node.getPageParam",
     "Get Page Props": "blueprint.node.getPageProps",

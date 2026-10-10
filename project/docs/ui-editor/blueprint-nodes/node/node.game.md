@@ -36,6 +36,19 @@ Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(.
 
 该节点是 pure 节点，可放入 Blueprint Value 或普通事件图。默认 Notification 模板不使用该节点：通知内容由 Notification List 的 item 模板通过 `Get List Item Props -> Get JSON Field("message")` 的 Blueprint Value 读取。
 
+## Post Notification
+
+`blueprint.game.postNotification` - Post Notification
+
+把一条消息写入当前游戏的通知流。该通知流与引擎自身的提示（例如读档被拒绝时的说明）相同：项目有 Notification Game UI 时由其显示，没有时由引擎自带的通知组件显示；通知关闭前，`Get Notifications` 会列出该条。
+
+- `in` - 执行入口
+- `next` - 执行出口
+- `Message` - `string`（传入引脚，可内联填写），通知文字；为空时执行失败
+- `Duration (s)` - `float`（可选传入引脚，可内联填写），显示时长（秒）；留空使用引擎默认的 3 秒，不大于 0 时执行失败
+
+非 latent 执行节点，只用于 `event` 和 `macro` 图。没有进行中的游戏时执行失败，并提示该节点需要进行中的游戏。
+
 ## Get Choice Count
 
 `blueprint.game.getChoiceCount` - Get Choice Count

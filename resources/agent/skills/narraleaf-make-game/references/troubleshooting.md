@@ -102,7 +102,9 @@ traps that do not produce a refusal at all.
   only with their agreement.
 - **`asset_delete` refused.** Something still uses the asset; the refusal lists each place (a row, a
   scene's `#background`/`#music`, a character pose, a page). Rewrite those, then delete. Lint's
-  `assets/unused` warnings are the list of leftovers safe to delete.
+  `assets/unused` warnings are candidates, not a verdict: before deleting one, call `asset_usage
+  {asset}`; delete only when both of its lists are empty. It also lists places that write the asset's
+  id but that Studio's usage index does not count, and `asset_delete` refuses those too.
 
 ## Variable traps
 

@@ -28,6 +28,7 @@ import type { StoryRowLookups } from "@/lib/story/storyRowProjection";
 import { getStorySceneName } from "@/lib/story/storyRowProjection";
 import { projectSceneTimeline } from "./storyRuntimeDebugModel";
 import type { GameAppRuntimeIssue } from "@/lib/ui-editor/runtime/app/GameAppHost";
+import type { DevModeAgentIssue } from "@shared/types/devMode";
 import {
     describeAssetResolutionFailure,
     type AssetResolutionFailure,
@@ -459,5 +460,22 @@ export function locateRuntimeIssue(
         location: locateStoryBlock(bundle, issue.blockId),
         ...(surface ? { surface } : {}),
         ...(issue.pluginName ? { pluginName: issue.pluginName } : {}),
+    };
+}
+
+/**
+ * An issue as an agent's play-test is told it (`DevModeAgentIssue`): the words, and the scene and
+ * row - or the page - it happened at, by the names the author sees. In English, like everything an
+ * agent reads, apart from the message itself, which is the one the panel shows.
+ */
+export function runtimeIssueForAgent(issue: LocatedRuntimeIssue): DevModeAgentIssue {
+    return {
+        level: issue.level === "error" ? "error" : "warning",
+        message: issue.message,
+        ...(issue.location
+            ? { story: issue.location.storyName, scene: issue.location.sceneName, row: issue.location.lineNumber }
+            : {}),
+        ...(issue.surface ? { surface: issue.surface.surfaceName ?? "(a page that no longer exists)" } : {}),
+        ...(issue.pluginName ? { plugin: issue.pluginName } : {}),
     };
 }

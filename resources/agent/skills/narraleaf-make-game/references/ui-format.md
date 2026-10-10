@@ -24,6 +24,26 @@ nothing.
 `ui_surfaces {query}` lists them all with element paths and ids and the blueprints hanging off each
 element.
 
+### Creating and renaming pages with `ui_apply`
+
+A `surface` block in `ui_apply` is matched to a page by its `id=`, or by its name when it has no
+`id=`:
+
+- **A new page**: a block whose `id=` (or, without one, whose name) matches no page creates it. Give
+  it an `id=` you choose, so blueprints (`Go Page surfaceId=…`) can point at it before and after
+  renames: `surface Gallery id=gallery-page kind=appSurface size=1920x1080` and a root
+  `Root: nl.root @0,0 1920x1080` with the page's elements under it. A new Game UI also needs its
+  slot: `surface "Mini menu" id=mini-menu kind=stageSurface slot=onStage`. Without `id=` the id is
+  derived from the name.
+- **A rename**: a block with an existing page's `id=` and a different name renames that page (and
+  replaces its tree with the block's, like any apply). `ui_page_rename` does the same without
+  rewriting the tree, and is the safer choice when only the name changes.
+- A block **without** `id=` whose name is new always creates a page, even if you meant an existing
+  one: to rename, use the id.
+
+Then `ui_page_set_entry` makes it the entry page if it should be (or `document <name> entry=<page>`
+in the same file), and `ui_page_delete` removes a page nothing opens any more.
+
 ## Reading a dump
 
 ```

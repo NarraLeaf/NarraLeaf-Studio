@@ -1139,3 +1139,94 @@ describe("projectStoryCommandLine — what a word points at", () => {
         expect(storyCommandLineParts(line.source, line.edits).some(part => part.link)).toBe(false);
     });
 });
+
+/**
+ * `xoffset=` / `yoffset=`: the pixel halves of the engine's align position, which the line could not
+ * spell before - a row carrying one printed nothing for its position, so the story file wrote it as an
+ * opaque `»` line. Two rules are held here: an offset is only ever written with both shares of
+ * `pos=` beside it, and the line the row prints builds the same row again.
+ */
+describe("pixel offsets beside a position", () => {
+    function issueCodes(source: string): string[] {
+        const line = parseCommandLine(source);
+        if (line.kind !== "command") {
+            throw new Error(`not a command: ${source}`);
+        }
+        return [...line.issues, ...resolveCommandLine(line, CONTEXT).issues].map(issue => issue.code);
+    }
+
+    it("prints the pair beside every offset, and the line rebuilds the row", () => {
+        const lines: [typed: string, printed: string][] = [
+            ["/transform hero pos=0.5,0.5 xoffset=40 yoffset=-12 d=0.4", "/transform hero pos=0.5,0.5 xoffset=40 yoffset=-12 d=0.4s"],
+            // A word with pixels on top is no longer the word's position, so the shares are spelled out.
+            ["/transform hero pos=left xoffset=40", "/transform hero pos=0.25,0.5 xoffset=40"],
+            ["/transform Alice pos=0.3,0.2 yoffset=24", "/transform Alice pos=0.3,0.2 yoffset=24"],
+            ["/show Alice pos=0.25,0.5 xoffset=-40", "/show Alice pos=0.25,0.5 xoffset=-40 d=0.3s"],
+            ["/show Alice smile pos=right yoffset=16 d=0.4", "/show Alice smile pos=0.75,0.5 yoffset=16 d=0.4s"],
+            ["/show night name=sky pos=0.5,0.5 yoffset=20", "/show night name=sky pos=0.5,0.5 yoffset=20 d=0.25s"],
+            ["/image night name=sky pos=0.5,0.6 xoffset=12", "/image night name=sky pos=0.5,0.6 xoffset=12"],
+            ["/text name=title pos=0.5,0.8 yoffset=-8 Chapter One", "/text name=title pos=0.5,0.8 yoffset=-8 Chapter One"],
+            // The camera is one more subject of the same bag.
+            ["/transform camera pan=0.5,0.5 xoffset=30", "/transform camera pos=0.5,0.5 xoffset=30 d=0.6s"],
+        ];
+        for (const [typed, printed] of lines) {
+            const first = build(typed);
+            expect(project(typed), typed).toBe(printed);
+            expect(comparable(build(printed)), printed).toEqual(comparable(first));
+            // And once more, from the printed line: print → parse → print is a fixed point.
+            expect(project(printed), printed).toBe(printed);
+        }
+    });
+
+    it("stores the offsets as design pixels on the position the shares name", () => {
+        const transform = (build("/transform hero pos=0.5,0.5 xoffset=40 yoffset=-12").payload as { transform?: { to?: unknown } }).transform;
+        expect(transform?.to).toEqual({ position: { xalign: 0.5, yalign: 0.5, xoffset: 40, yoffset: -12 } });
+        const enter = (build("/show Alice pos=left xoffset=-40").payload as { transform?: { to?: { position?: unknown } } }).transform;
+        expect(enter?.to?.position).toEqual({ xalign: 0.25, yalign: 0.5, xoffset: -40 });
+    });
+
+    it("refuses an offset with no pos= to shift", () => {
+        expect(issueCodes("/transform hero xoffset=40")).toEqual(["offsetWithoutPosition"]);
+        expect(issueCodes("/transform hero yoffset=10 zoom=1.2")).toEqual(["offsetWithoutPosition"]);
+        expect(issueCodes("/show Alice xoffset=40 yoffset=10")).toEqual(["offsetWithoutPosition", "offsetWithoutPosition"]);
+        expect(issueCodes("/image night name=sky yoffset=10")).toEqual(["offsetWithoutPosition"]);
+        // The pair beside it is still held to the stage's reach.
+        expect(issueCodes("/show Alice pos=100,200 xoffset=4")).toEqual(["positionOutOfRange"]);
+        // And a stopped loop states no destination, offsets included.
+        expect(issueCodes("/transform hero stopLoop pos=0.5,0.5 xoffset=4")).toContain("conflictingParams");
+    });
+
+    it("prints no position for an offset beside a half-stated pair, rather than one that drops it", () => {
+        // The inspector writes a single share when a portrait is dragged along one axis. The line has
+        // no spelling for "keep the other share", so the position stays the inspector's - and the story
+        // file's echo check writes such a row as `»` with its payload, losing nothing.
+        const block = build("/transform hero zoom=1.2");
+        const payload = block.payload as { transform?: { to?: Record<string, unknown> } };
+        const row = { ...block, payload: { ...payload, transform: { ...payload.transform, to: { ...payload.transform?.to, position: { xalign: 0.4, xoffset: 40 } } } } } as StoryBlock;
+        expect(projectStoryCommandLine(row, LOOKUPS)?.source).toBe("/transform hero zoom=1.2");
+    });
+
+    it("edits an offset in place, and keeps the offsets when only the anchor moves", () => {
+        const edited = (source: string, current: string, next: string): string => {
+            const block = build(source);
+            const line = projectStoryCommandLine(block, LOOKUPS)!;
+            const edit = line.edits.find(entry => entry.value === current);
+            if (!edit) {
+                throw new Error(`${source} has no editable value "${current}" (has ${line.edits.map(e => e.value).join(", ")})`);
+            }
+            return projectStoryCommandLine({ ...block, payload: edit.apply(next) } as StoryBlock, LOOKUPS)!.source;
+        };
+        expect(edited("/transform hero pos=0.5,0.5 xoffset=40", "40", "-8")).toBe("/transform hero pos=0.5,0.5 xoffset=-8");
+        expect(edited("/transform hero pos=0.5,0.5 xoffset=40", "0.5,0.5", "right")).toBe("/transform hero pos=0.75,0.5 xoffset=40");
+        expect(edited("/show Alice pos=0.25,0.5 yoffset=16", "16", "24")).toBe("/show Alice pos=0.25,0.5 yoffset=24 d=0.3s");
+        expect(edited("/show Alice pos=0.25,0.5 yoffset=16", "0.25,0.5", "0.4,0.5")).toBe("/show Alice pos=0.4,0.5 yoffset=16 d=0.3s");
+    });
+
+    it("takes the offsets in the command language too", () => {
+        i18nStore.setLocale("zh");
+        expect(build("/transform hero pos=0.5,0.5 横向偏移=40 纵向偏移=-12").payload)
+            .toEqual(build("/transform hero pos=0.5,0.5 xoffset=40 yoffset=-12").payload);
+        expect(build(project("/show Alice pos=0.25,0.5 xoffset=-40")).payload)
+            .toEqual(build("/show Alice pos=0.25,0.5 xoffset=-40").payload);
+    });
+});

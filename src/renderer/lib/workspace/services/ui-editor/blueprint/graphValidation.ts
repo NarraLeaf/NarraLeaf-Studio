@@ -15,6 +15,9 @@ import { ownerLabelKey } from "@shared/types/ui-editor/ownerLabels";
 import {
     BLUEPRINT_NODE_PARAM_FN_NAME,
     BLUEPRINT_NODE_PARAM_FN_REF,
+    BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
+    BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
+    BLUEPRINT_NODE_TYPE_FLOW_WHILE,
     BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_FN_HEAD,
     BLUEPRINT_NODE_TYPE_FN_RETURN,
@@ -940,12 +943,90 @@ export function validateBlueprintGraphIr(
     }
 
     validateBlueprintFnRules(ir, ctx, out);
+    validateLoopBodies(ir, ctx, out);
 
     if (ctx.graphKind === "event" && isStoryConditionOwner(ctx.blueprintOwner)) {
         validateStoryConditionReturnType(ir, ctx, out);
     }
 
     return out;
+}
+
+/** Loop nodes whose `loop` output starts a pass that has to come back to their `in` for the next one. */
+const LOOP_NODE_TYPES: ReadonlySet<string> = new Set([
+    BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
+    BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
+    BLUEPRINT_NODE_TYPE_FLOW_WHILE,
+]);
+
+/**
+ * A loop whose body never leads back to it runs one pass and stops.
+ *
+ * A loop here is not a block with a body the runtime returns from: `Loop` is an exec output like any
+ * other, and the next pass happens when the flow arrives at the loop's `In` again. So the body has to
+ * be wired back to it - the end of the body, through whatever it awaits - and a body that ends on a
+ * node with nothing after it is a pass that ends the run: no second index, no `Completed`. That is
+ * sometimes meant (a walk that stops at the first match leaves the loop on that branch only), so it is
+ * said only when *no* path out of `Loop` comes back, which is never what an author meant.
+ */
+function validateLoopBodies(
+    ir: BlueprintGraphIr,
+    ctx: { graphKind: "event" | "function"; graphId: string },
+    out: BlueprintGraphEditorDiagnostic[],
+): void {
+    const nodes = ir.nodes ?? {};
+    const edges = ir.edges ?? [];
+    const execOutputs = new Map<string, ReadonlySet<string>>();
+    const execOutputsOf = (nodeId: string): ReadonlySet<string> => {
+        let ports = execOutputs.get(nodeId);
+        if (!ports) {
+            const node = nodes[nodeId];
+            ports = new Set(node
+                ? resolveBlueprintNodeEditorCatalogEntryForNode(node.type, node.params).pins
+                    .filter(pin => pin.kind === "output" && pin.semantic === "exec")
+                    .map(pin => pin.id)
+                : []);
+            execOutputs.set(nodeId, ports);
+        }
+        return ports;
+    };
+    for (const [loopId, loop] of Object.entries(nodes)) {
+        if (!LOOP_NODE_TYPES.has(loop.type)) {
+            continue;
+        }
+        const starts = edges.filter(edge => edge.from.nodeId === loopId && edge.from.port === "loop").map(edge => edge.to.nodeId);
+        if (starts.length === 0) {
+            continue;
+        }
+        const seen = new Set<string>();
+        const queue = [...starts];
+        let returns = false;
+        while (queue.length > 0 && !returns) {
+            const nodeId = queue.shift()!;
+            if (nodeId === loopId) {
+                returns = true;
+                break;
+            }
+            if (seen.has(nodeId)) {
+                continue;
+            }
+            seen.add(nodeId);
+            const ports = execOutputsOf(nodeId);
+            for (const edge of edges) {
+                if (edge.from.nodeId === nodeId && ports.has(edge.from.port)) {
+                    queue.push(edge.to.nodeId);
+                }
+            }
+        }
+        if (!returns) {
+            out.push({
+                severity: "warning",
+                code: "node.loop_body_not_closed",
+                message: translate("blueprint.diagnostics.node.loopBodyNotClosed", { node: diagnosticNodeTitle(loop) }),
+                target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: loopId },
+            });
+        }
+    }
 }
 
 /**

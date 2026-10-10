@@ -16,6 +16,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import {
+    BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     BLUEPRINT_NODE_TYPE_TIME_ADD,
@@ -365,6 +366,58 @@ describe("Get Save Time", () => {
             blueprintLocals: locals,
         });
         expect(locals).toMatchObject({ savedAt: 0, createdAt: 0, exists: false });
+    });
+});
+
+describe("a loop whose body awaits Get Save Time", () => {
+    it("runs every pass and then Completed, once the body is wired back to the loop", async () => {
+        // A loop's next pass is the flow arriving at its In again; the executor awaits the latent
+        // node in between like any other, so a body that waits on a save read still loops.
+        const locals: Record<string, unknown> = {};
+        const entered: string[] = [];
+        let reads = 0;
+        const host = {
+            host: "player",
+            blueprintRuntime: {
+                hostApi: {
+                    game: {
+                        getSaveTimes: async () => {
+                            reads += 1;
+                            await new Promise(resolve => setTimeout(resolve, 1));
+                            return { savedAt: 1_700_000_000_000 + reads, createdAt: 0 };
+                        },
+                    },
+                },
+            },
+        } as unknown as UIHostAdapter;
+        await executeGraph({
+            graph: {
+                id: "loopOverSlots",
+                entries: { main: { start: { nodeId: "loop", port: "in" } } },
+                nodes: {
+                    loop: { id: "loop", type: BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP, params: { start: 1, end: 3, step: 1 } },
+                    index: { id: "index", type: BLUEPRINT_NODE_TYPE_LOCAL_SET, params: { variableId: "lastIndex" } },
+                    get: { id: "get", type: BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME, params: { id: "slot" } },
+                    savedAt: { id: "savedAt", type: BLUEPRINT_NODE_TYPE_LOCAL_SET, params: { variableId: "savedAt" } },
+                    done: { id: "done", type: BLUEPRINT_NODE_TYPE_LOCAL_SET, params: { variableId: "completed", value: true } },
+                },
+                edges: [
+                    { from: { nodeId: "loop", port: "loop" }, to: { nodeId: "index", port: "in" } },
+                    { from: { nodeId: "loop", port: "index" }, to: { nodeId: "index", port: "value" } },
+                    { from: { nodeId: "index", port: "next" }, to: { nodeId: "get", port: "in" } },
+                    { from: { nodeId: "get", port: "next" }, to: { nodeId: "savedAt", port: "in" } },
+                    { from: { nodeId: "get", port: "savedAt" }, to: { nodeId: "savedAt", port: "value" } },
+                    { from: { nodeId: "savedAt", port: "next" }, to: { nodeId: "loop", port: "in" } },
+                    { from: { nodeId: "loop", port: "completed" }, to: { nodeId: "done", port: "in" } },
+                ],
+            } as UIGraph,
+            entry: { start: { nodeId: "loop", port: "in" } },
+            hostAdapter: host,
+            blueprintLocals: locals,
+            trace: { executionId: "loop", graphId: "loopOverSlots", emit: event => { if (event.type === "node.enter" && event.nodeId === "get") entered.push(event.nodeId); } },
+        });
+        expect(entered).toHaveLength(3);
+        expect(locals).toMatchObject({ lastIndex: 3, savedAt: 1_700_000_000_003, completed: true });
     });
 });
 

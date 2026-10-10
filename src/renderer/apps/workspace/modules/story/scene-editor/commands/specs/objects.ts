@@ -10,7 +10,6 @@ import {
     asText,
     defineStoryCommand,
     holdParam,
-    placementParam,
     secondsParam,
     targetParam,
     type StoryCommandValidateContext,
@@ -25,6 +24,7 @@ import {
     withTransitionRef,
 } from "../payloadHelpers";
 import { clipConcealOptions, transitionOptions } from "../transitions";
+import { PLACEMENT_PARAMS, positionFromArgs, positionIssues } from "../transformVocabulary";
 import { validateNameTarget } from "./character";
 
 /** Media objects: `/image`, `/text`, `/layer`, `/swap`, `/play`, `/front`, `/font`. */
@@ -44,7 +44,7 @@ export const image = defineStoryCommand({
     params: {
         image: { aliases: ["src"], hint: "imageAsset", type: { kind: "asset", assetType: "image", allowSets: true }, positional: true, core: true },
         name: { hint: "objectName", type: { kind: "text" } },
-        pos: placementParam(),
+        ...PLACEMENT_PARAMS,
         // `in=`, the same rename `/show` carries: what this writes is the create's entrance TRANSFORM,
         // not a `StoryTransitionRef`. An image has no transition field at all.
         in: { aliases: ["reveal"], hint: "reveal", type: { kind: "enum", options: transitionOptions("reveal") } },
@@ -67,10 +67,11 @@ export const image = defineStoryCommand({
         // Placement wins when both are given - a create is placed; its entrance rides `t=` only when
         // no placement pins the preset (the transform holds one preset).
         const transform = args.pos
-            ? withPlacementTransform(payload.transform, args.pos, args.d)
+            ? withPlacementTransform(payload.transform, positionFromArgs(args), args.d)
             : withRevealTransform(payload.transform, "reveal", args.in, args.d);
         return { ...block, payload: { ...payload, ...(transform ? { transform } : {}) } };
     },
+    validate: (args, ctx) => positionIssues(args, ctx),
 });
 
 export const text = defineStoryCommand({
@@ -88,7 +89,7 @@ export const text = defineStoryCommand({
     params: {
         // `name=` must be typed before the greedy content - the one ordering rule greedy imposes.
         name: { hint: "objectName", type: { kind: "text" } },
-        pos: placementParam(),
+        ...PLACEMENT_PARAMS,
         content: { hint: "content", type: { kind: "text" }, positional: true, greedy: true, core: true },
     },
     deriveArgs: deriveObjectName("text", null, "text"),
@@ -105,9 +106,10 @@ export const text = defineStoryCommand({
         if (args.content?.kind === "text") {
             payload.text = args.content.value;
         }
-        const transform = withPlacementTransform(payload.transform, args.pos, undefined);
+        const transform = withPlacementTransform(payload.transform, positionFromArgs(args), undefined);
         return { ...block, payload: { ...payload, ...(transform ? { transform } : {}) } };
     },
+    validate: (args, ctx) => positionIssues(args, ctx),
 });
 
 export const layer = defineStoryCommand({

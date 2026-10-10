@@ -10,7 +10,6 @@ import {
     asTarget,
     asText,
     defineStoryCommand,
-    placementParam,
     holdParam,
     puppetNameParam,
     secondsParam,
@@ -22,6 +21,7 @@ import {
 } from "../spec";
 import { actionableTargetRef, clipLeaveDurationMs, deriveShownObjectName, displayableTargetRef, vfxOperationBlock, withPlacementTransform, withRevealTransform, withTransitionRef } from "../payloadHelpers";
 import { CLIP_CONCEAL_WORDS, supportedTransitionWords, transformEffectFor, transitionOptions } from "../transitions";
+import { PLACEMENT_PARAMS, positionFromArgs, positionIssues } from "../transformVocabulary";
 
 /**
  * The generic verbs and the character commands: `/show`, `/hide`, `/char`, `/motion`, `/skin`,
@@ -192,7 +192,13 @@ function stageObjectBlockId(
  */
 function buildShowAsset(
     target: Extract<StoryCommandTargetValue, { type: "asset" }>,
-    args: { readonly name?: StoryCommandValue; readonly pos?: StoryCommandValue; readonly d?: StoryCommandValue },
+    args: {
+        readonly name?: StoryCommandValue;
+        readonly pos?: StoryCommandValue;
+        readonly xoffset?: StoryCommandValue;
+        readonly yoffset?: StoryCommandValue;
+        readonly d?: StoryCommandValue;
+    },
     ctx: StoryCommandBuildContext,
     word: StoryCommandValue | undefined,
 ): StoryBlock {
@@ -203,7 +209,7 @@ function buildShowAsset(
     }
     const payload = { ...block.payload, objectName: name, assetId: target.assetId };
     const transform = args.pos
-        ? withPlacementTransform(payload.transform, args.pos, args.d)
+        ? withPlacementTransform(payload.transform, positionFromArgs(args), args.d)
         : withRevealTransform(payload.transform, "reveal", word, args.d);
     return { ...block, payload: { ...payload, ...(transform ? { transform } : {}) } };
 }
@@ -214,6 +220,8 @@ function buildShowHide<P extends StoryCommandParamsShape>(
         readonly target?: StoryCommandValue;
         readonly form?: StoryCommandValue;
         readonly pos?: StoryCommandValue;
+        readonly xoffset?: StoryCommandValue;
+        readonly yoffset?: StoryCommandValue;
         readonly in?: StoryCommandValue;
         readonly out?: StoryCommandValue;
         readonly d?: StoryCommandValue;
@@ -255,7 +263,7 @@ function buildShowHide<P extends StoryCommandParamsShape>(
         // Placement wins when both are given, the rule `/image` already follows: a transform holds one
         // preset, and `at=` is the more specific instruction.
         const placed = direction === "show"
-            ? withPlacementTransform(payload.transform, args.pos, args.d)
+            ? withPlacementTransform(payload.transform, positionFromArgs(args), args.d)
             : withPlacementTransform(payload.transform, undefined, args.d);
         const transform = direction === "show" && args.pos
             ? placed
@@ -339,7 +347,12 @@ export const show = defineStoryCommand({
     aliases: ["enter"],
     category: "character",
     icon: Eye,
-    examples: ["/show Alice", "/show Alice smile pos=left", "/show night name=sky pos=center in=fade d=0.5"],
+    examples: [
+        "/show Alice",
+        "/show Alice smile pos=left",
+        "/show Alice pos=0.25,0.5 xoffset=-40",
+        "/show night name=sky pos=center in=fade d=0.5",
+    ],
     // Inline quick-edit: how long the entrance takes - the duration this line writes onto the
     // show transform, which is what drives a character's entrance (the placement `at=` stays a word).
     quickParams: ["d"],
@@ -355,7 +368,9 @@ export const show = defineStoryCommand({
         // which is a thing that has a name of its own already - and omitting it is the ordinary case:
         // the file's own name stands, the rule `/image` and `/sound` follow.
         name: { hint: "objectName", type: { kind: "text" } },
-        pos: placementParam(),
+        // A placement word, or an align pair with pixel offsets beside it - the same slots, and the
+        // same channel, as `/transform pos=`.
+        ...PLACEMENT_PARAMS,
         // `in=`, not `t=`. What this slot writes is a TRANSFORM preset - a bag of props the entrance
         // interpolates - and it always was: the engine ignores a character's `StoryTransitionRef` on
         // the way in, and a stage object has none at all. Calling it "transition" made it look like
@@ -378,6 +393,7 @@ export const show = defineStoryCommand({
         ...validateFormTarget(args, ctx),
         ...validateOverlayOnlyParams(args, ctx),
         ...validateNameTarget(args, ctx),
+        ...positionIssues(args, ctx),
     ],
 });
 

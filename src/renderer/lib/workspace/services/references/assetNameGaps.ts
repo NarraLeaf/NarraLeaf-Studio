@@ -7,7 +7,30 @@ import type {
     BlueprintOwnerRef,
 } from "@shared/types/blueprint/document";
 import {
+    BLUEPRINT_NODE_PARAM_FIELD,
+    BLUEPRINT_NODE_PARAM_FIELD_STRUCT,
     BLUEPRINT_NODE_TYPE_BROADCAST_SEND,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_CONCAT,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FILTER,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIND,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIRST,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_GET,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_INSERT,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_LAST,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_PUSH,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_REVERSE,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SET,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SLICE,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SORT,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_UNIQUE,
+    BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_MERGE,
+    BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_SET_FIELD,
+    BLUEPRINT_NODE_TYPE_DATA_JSON_CLONE,
+    BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_ARRAY,
+    BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT,
+    BLUEPRINT_NODE_TYPE_DATA_JSON_MERGE_OBJECT,
+    BLUEPRINT_NODE_TYPE_DATA_JSON_SET,
+    BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE,
     BLUEPRINT_NODE_TYPE_ELEMENT_LIST_APPEND_ITEM,
@@ -73,7 +96,8 @@ import { hasScriptLayer } from "@shared/blueprint/blueprintLayers";
 import { anchorElementId, anchorSurfaceId } from "@shared/blueprint/ownerShape";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
-import { isSelfContainedStructImageField } from "@shared/types/ui-editor/builtinStructs";
+import { isSelfContainedStructImageField, resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
+import { findUIStructField } from "@shared/types/ui-editor/struct";
 import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemContext";
 import type { StoryDocument, StoryExpr, StoryVariableRef } from "@shared/types/story";
 import { listSceneBlocksInDocumentOrder, listScenesInDocumentOrder } from "@shared/types/story";
@@ -118,8 +142,18 @@ import { mergeBlueprintAssetPins, type BlueprintAssetPin, type BlueprintAssetPin
  * **The bar only moves the safe way.** A node that declares nothing assembles. A carrier this walk
  * cannot identify - a variable named by a wired value, a list reached through something other than
  * an element reference, rows kept in page state a script writes - counts as assembled too. What is
- * given up is precision rather than safety: a list's rows are one value, so a row whose label was
- * put together taints the picture beside it.
+ * given up is precision rather than safety.
+ *
+ * ## One field of a row
+ *
+ * A picture bound to a row's field reads that field and nothing else, so a save slot's screenshot is
+ * not tainted by the formatted date beside it in the same row. The walk follows a **field slot** -
+ * "field F of whatever this slot holds" - through the nodes that build rows and arrays of rows
+ * (Make Object, Object Merge, Make Array, the array edits, Set JSON Field, For Each's item), through
+ * the carriers that hold a value whole (variables, function parameters, a list's rows) and into the
+ * list writers. Anywhere else it falls back to the whole value, which is always safe: a node this
+ * walk does not take apart could have put anything into F. A value put together is never dropped by
+ * the projection - an assembled string's field F is still assembled.
  *
  * A node type the catalogue has never heard of is on the same side of the bar - nothing can say
  * what it hands out - but it is recorded as its own reason (`unknownType`), because what an author
@@ -1079,6 +1113,9 @@ class AssetNameWalk {
     contributions(key: string): Contribution[] {
         const parts = key.split(KEY_SEPARATOR);
         const [carrier] = parts;
+        if (carrier === "field") {
+            return this.fieldContributions(parts[1], parts.slice(2).join(KEY_SEPARATOR));
+        }
         if (carrier === "in" || carrier === "out") {
             const [, blueprintId, graphKind, graphId, nodeId, pinId] = parts;
             const site = this.graphByKey.get(graphKey(blueprintId, graphKind as GraphKind, graphId));
@@ -1191,6 +1228,13 @@ class AssetNameWalk {
             default:
                 break;
         }
+        if (node.type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD) {
+            // The one field it reads, of the object wired in or else of the row in scope.
+            const wired = site.incoming.has(incomingEdgeKey(node.id, FIELD_READER_OBJECT_PIN));
+            const source = wired ? inputKey(site, node.id, FIELD_READER_OBJECT_PIN) : this.rowListKey(site);
+            const field = this.fieldReaderKey(site, node, wired);
+            return [{ kind: "slot", key: field ? fieldKey(field, source) : source }];
+        }
         if (ROW_SCOPE_READERS.has(node.type)) {
             return [{ kind: "slot", key: this.rowListKey(site) }];
         }
@@ -1225,6 +1269,238 @@ class AssetNameWalk {
     /** A value blueprint's result: whatever reaches any of its Return Value nodes. */
     private valueBindingContributions(blueprintId: string): Contribution[] {
         return this.returnValueSlots.get(blueprintId) ?? [];
+    }
+
+    // -- one field of a value -------------------------------------------------------------------
+
+    /** The key a row field is stored under, through the list's shape; null when it cannot be told. */
+    private rowFieldKey(place: ElementPlace, fieldId: string): string | null {
+        const owning = findOwningListItemTemplate(place.pool, place.element);
+        if (!owning) {
+            return null;
+        }
+        const list = place.pool.elements[owning.listElementId];
+        const structId = (list?.props as { itemStructId?: unknown } | undefined)?.itemStructId;
+        return this.structFieldKey(typeof structId === "string" ? structId : null, fieldId);
+    }
+
+    /** A field id as the key it is stored under, by the named shape; null when either is unknown. */
+    private structFieldKey(structId: string | null, fieldId: unknown): string | null {
+        if (typeof fieldId !== "string" || !fieldId.trim()) {
+            return null;
+        }
+        const struct = resolveUIStruct(this.project.uiDocument ?? null, structId);
+        return findUIStructField(struct, fieldId)?.key ?? null;
+    }
+
+    /** The key a Get Field node reads, through its stored shape or the row's; null when unknown. */
+    private fieldReaderKey(site: GraphSite, node: BlueprintGraphNode, objectWired: boolean): string | null {
+        const fieldId = node.params?.[BLUEPRINT_NODE_PARAM_FIELD];
+        const structId = node.params?.[BLUEPRINT_NODE_PARAM_FIELD_STRUCT];
+        if (typeof structId === "string" && structId.trim()) {
+            return this.structFieldKey(structId, fieldId);
+        }
+        if (objectWired) {
+            return null;
+        }
+        const own = this.ownList(site) ?? this.owningListOf(site);
+        const list = own ? this.places.get(own)?.element : undefined;
+        const listStruct = (list?.props as { itemStructId?: unknown } | undefined)?.itemStructId;
+        return this.structFieldKey(typeof listStruct === "string" ? listStruct : null, fieldId);
+    }
+
+    private owningListOf(site: GraphSite): string | null {
+        const elementId = anchorElementId(site.blueprint.owner);
+        const place = elementId ? this.places.get(elementId) : undefined;
+        return place ? findOwningListItemTemplate(place.pool, place.element)?.listElementId ?? null : null;
+    }
+
+    /**
+     * What feeds field `field` of what `inner` holds. See "One field of a row" at the top: precise
+     * through the nodes that build rows and the carriers that hold a value whole, the whole value
+     * everywhere else.
+     */
+    private fieldContributions(field: string, inner: string): Contribution[] {
+        const whole: Contribution[] = [{ kind: "slot", key: inner }];
+        const parts = inner.split(KEY_SEPARATOR);
+        const [carrier] = parts;
+        const project = (contributions: readonly Contribution[]): Contribution[] =>
+            contributions.map(contribution => (contribution.kind === "slot"
+                ? { kind: "slot" as const, key: fieldKey(field, contribution.key) }
+                : contribution));
+        if (carrier === "in") {
+            const [, blueprintId, graphKind, graphId, nodeId, pinId] = parts;
+            const site = this.graphByKey.get(graphKey(blueprintId, graphKind as GraphKind, graphId));
+            const node = site?.nodes[nodeId];
+            return site && node ? project(this.inputContributions(site, node, pinId)) : whole;
+        }
+        if (carrier === "out") {
+            const [, blueprintId, graphKind, graphId, nodeId, pinId] = parts;
+            const site = this.graphByKey.get(graphKey(blueprintId, graphKind as GraphKind, graphId));
+            const node = site?.nodes[nodeId];
+            return site && node ? this.outputFieldContributions(site, node, pinId, field) ?? whole : whole;
+        }
+        if (inner === LIST_ANY) {
+            return project(this.contributions(inner));
+        }
+        if (carrier === "list") {
+            return this.listFieldContributions(field, inner);
+        }
+        const wildcard = parts[parts.length - 1] === "*";
+        // The carriers that hold exactly what was written into them; a reader of any other carrier
+        // (page props, frame params, a broadcast) may take a value apart, so it is followed whole.
+        if ((carrier === "local" || carrier === "var") && !wildcard) {
+            return project(this.contributions(inner));
+        }
+        if (carrier === "fnParam" || carrier === "fnReturn" || carrier === "binding") {
+            return project(this.contributions(inner));
+        }
+        return whole;
+    }
+
+    /** Field `field` of a list's rows: through the writers that hand it rows, whole otherwise. */
+    private listFieldContributions(field: string, listSlot: string): Contribution[] {
+        const out: Contribution[] = [];
+        const writers = listSlot === LIST_UNKNOWN_TARGET
+            ? this.writers.get(listSlot) ?? []
+            : [...(this.writers.get(listSlot) ?? []), { kind: "slot" as const, key: LIST_UNKNOWN_TARGET }];
+        for (const writer of writers) {
+            if (writer.kind !== "slot") {
+                out.push(writer);
+                continue;
+            }
+            if (writer.key === LIST_UNKNOWN_TARGET) {
+                out.push({ kind: "slot", key: fieldKey(field, writer.key) });
+                continue;
+            }
+            const parts = writer.key.split(KEY_SEPARATOR);
+            if (parts[0] !== "in") {
+                out.push(writer);
+                continue;
+            }
+            const [, blueprintId, graphKind, graphId, nodeId, pinId] = parts;
+            const site = this.graphByKey.get(graphKey(blueprintId, graphKind as GraphKind, graphId));
+            const node = site?.nodes[nodeId];
+            if (!site || !node) {
+                out.push(writer);
+                continue;
+            }
+            if (ROW_PIN_IDS.has(pinId)) {
+                // Rows, or an array of rows: field F of each.
+                out.push({ kind: "slot", key: fieldKey(field, writer.key) });
+                continue;
+            }
+            if ((node.type === BLUEPRINT_NODE_TYPE_LIST_SET_ITEM_FIELD_AT || node.type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SET_ITEM_FIELD_AT) && pinId === "value") {
+                // The value becomes one field of a row: this field's whole value, or none of it.
+                const written = this.listWriterFieldKey(site, node, listSlot);
+                if (written === null || written === field) {
+                    out.push(writer);
+                }
+                continue;
+            }
+            out.push(writer);
+        }
+        return out;
+    }
+
+    /** The key a Set Item Field At writes, through the list's shape; null when it cannot be told. */
+    private listWriterFieldKey(_site: GraphSite, node: BlueprintGraphNode, listSlot: string): string | null {
+        const listId = listSlot.split(KEY_SEPARATOR)[1];
+        const list = listId ? this.places.get(listId)?.element : undefined;
+        const structId = (list?.props as { itemStructId?: unknown } | undefined)?.itemStructId;
+        return this.structFieldKey(typeof structId === "string" ? structId : null, node.params?.[BLUEPRINT_NODE_PARAM_FIELD]);
+    }
+
+    /**
+     * Field `field` of one node's output, for the nodes that build objects and arrays; null for every
+     * other node, which the caller follows whole.
+     */
+    private outputFieldContributions(site: GraphSite, node: BlueprintGraphNode, pinId: string, field: string): Contribution[] | null {
+        const input = (pin: string): string => inputKey(site, node.id, pin);
+        const fieldOf = (pin: string): Contribution => ({ kind: "slot", key: fieldKey(field, input(pin)) });
+        const wholeOf = (pin: string): Contribution => ({ kind: "slot", key: input(pin) });
+        const literal = (pin: string): string | null => {
+            if (site.incoming.has(incomingEdgeKey(node.id, pin))) {
+                return null;
+            }
+            const value = node.params?.[pin];
+            return typeof value === "string" ? value.trim() : value === undefined || value === null ? "" : String(value).trim();
+        };
+        const dataInputs = (): string[] =>
+            (this.info(node)?.pins ?? []).filter(pin => pin.kind === "input" && pin.semantic === "data").map(pin => pin.id);
+        switch (node.type) {
+            case BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT: {
+                const inputs = dataInputs();
+                const present = new Set(inputs);
+                const out: Contribution[] = [];
+                for (const pin of inputs) {
+                    if (pin.endsWith(MAKE_OBJECT_NAME_SUFFIX) && present.has(`${pin.slice(0, -MAKE_OBJECT_NAME_SUFFIX.length)}${MAKE_OBJECT_VALUE_SUFFIX}`)) {
+                        continue;
+                    }
+                    if (pin.endsWith(MAKE_OBJECT_VALUE_SUFFIX)) {
+                        const namePin = `${pin.slice(0, -MAKE_OBJECT_VALUE_SUFFIX.length)}${MAKE_OBJECT_NAME_SUFFIX}`;
+                        if (present.has(namePin)) {
+                            const name = literal(namePin);
+                            if (name === null || name === field) {
+                                out.push(wholeOf(pin));
+                            }
+                            continue;
+                        }
+                    }
+                    // A field named by a label this walk does not read: it may be this one.
+                    out.push(wholeOf(pin));
+                }
+                return out;
+            }
+            case BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_MERGE:
+            case BLUEPRINT_NODE_TYPE_DATA_JSON_MERGE_OBJECT:
+                return [fieldOf("a"), fieldOf("b")];
+            case BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_ARRAY:
+            case BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_CONCAT:
+                return dataInputs().map(fieldOf);
+            case BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_PUSH:
+            case BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_INSERT:
+            case BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SET:
+                return pinId === "result" ? [fieldOf("array"), fieldOf("item")] : null;
+            case BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_GET:
+            case BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIRST:
+            case BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_LAST:
+            case BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SLICE:
+            case BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_REVERSE:
+            case BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_UNIQUE:
+            case BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SORT:
+            case BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FILTER:
+            case BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIND:
+                return pinId === "item" || pinId === "result" ? [fieldOf("array")] : null;
+            case BLUEPRINT_NODE_TYPE_DATA_JSON_CLONE:
+                return [fieldOf("value")];
+            case BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH:
+                return pinId === "item" ? [fieldOf("items")] : null;
+            case BLUEPRINT_NODE_TYPE_DATA_JSON_SET:
+            case BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_SET_FIELD: {
+                const objectPin = node.type === BLUEPRINT_NODE_TYPE_DATA_JSON_SET ? "json" : "object";
+                const path = literal(node.type === BLUEPRINT_NODE_TYPE_DATA_JSON_SET ? "path" : "field");
+                if (path === field) {
+                    return [wholeOf("value")];
+                }
+                if (path !== null && !path.startsWith(`${field}.`)) {
+                    return [fieldOf(objectPin)];
+                }
+                return [wholeOf("value"), fieldOf(objectPin)];
+            }
+            default:
+                break;
+        }
+        // The carriers that hold a value whole, read by a node whose output is that value.
+        if (WHOLE_VALUE_READERS.has(node.type) || ((ELEMENT_LIST_READERS.has(node.type) || SELF_LIST_READERS.has(node.type) || ROW_EVENT_HEADS.has(node.type)) && ROW_PIN_IDS.has(pinId))) {
+            const carried = this.carrierRead(site, node, pinId);
+            return carried
+                ? carried.map(contribution => (contribution.kind === "slot"
+                    ? { kind: "slot" as const, key: fieldKey(field, contribution.key) }
+                    : contribution))
+                : null;
+        }
+        return null;
     }
 
     // -- the sinks ---------------------------------------------------------------------------
@@ -1278,9 +1554,12 @@ class AssetNameWalk {
                     continue;
                 }
                 const reads = binding.kind === "blueprintValue";
+                const rows = reads ? null : this.owningListKey(place.element.id);
+                const field = binding.kind === "listItemField" ? this.rowFieldKey(place, binding.fieldId) : null;
                 out.push({
                     assetKind,
-                    key: reads ? joinKey("binding", binding.blueprintId) : this.owningListKey(place.element.id),
+                    // Only the bound field of the rows: a row's other fields are not this picture's name.
+                    key: reads ? joinKey("binding", binding.blueprintId) : field ? fieldKey(field, rows!) : rows!,
                     sink: {
                         kind: "binding",
                         elementId: place.element.id,
@@ -1303,6 +1582,31 @@ class AssetNameWalk {
 function joinKey(...parts: string[]): string {
     return parts.join(KEY_SEPARATOR);
 }
+
+/** Field `field` of whatever slot `key` holds. See "One field of a row". */
+function fieldKey(field: string, key: string): string {
+    return joinKey("field", field, key);
+}
+
+/** Get Field's object input (`BLUEPRINT_FIELD_READER_INPUT_PIN`). */
+const FIELD_READER_OBJECT_PIN = "object";
+
+/** Make Object's paired field pins, `<base>_name` and `<base>_value`. */
+const MAKE_OBJECT_NAME_SUFFIX = "_name";
+const MAKE_OBJECT_VALUE_SUFFIX = "_value";
+
+/** Pins that carry a row or an array of rows, on the list readers and writers. */
+const ROW_PIN_IDS: ReadonlySet<string> = new Set(["item", "items"]);
+
+/** Readers whose output is exactly the value their carrier holds. */
+const WHOLE_VALUE_READERS: ReadonlySet<string> = new Set([
+    BLUEPRINT_NODE_TYPE_LOCAL_GET,
+    BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
+    BLUEPRINT_NODE_TYPE_SAVED_GET,
+    BLUEPRINT_NODE_TYPE_SCENE_GET,
+    BLUEPRINT_NODE_TYPE_FN_HEAD,
+    BLUEPRINT_NODE_TYPE_FN_CALL,
+]);
 
 const LIST_ANY = joinKey("list", "*any");
 /** Rows written by a node whose list this walk cannot name: they may be any list's. */

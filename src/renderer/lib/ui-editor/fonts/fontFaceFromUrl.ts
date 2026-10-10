@@ -58,17 +58,28 @@ function reasonOf(error: unknown): string {
     return String(error);
 }
 
+/** A face built from a font file, and the file it was built from. */
+export type LoadedFontFace = {
+    face: FontFace;
+    /**
+     * The bytes the face was built from, for the stylesheet rule a picture of the stage reads
+     * (see `documentFontFaces`): a face registered from script alone never reaches one.
+     */
+    bytes: ArrayBuffer;
+};
+
 /**
  * Fetch a font's bytes from `url` and build a loaded `FontFace` from them under `family`.
  *
  * The face is returned loaded but **not** added to the document: the callers keep their own record
- * of what is registered, and adding is the step that record is written beside.
+ * of what is registered, and adding (`addFontFaceToDocument`) is the step that record is written
+ * beside.
  */
 export async function loadFontFaceFromUrl(
     family: string,
     url: string,
     environment: FontFaceEnvironment = pageEnvironment(),
-): Promise<FontFace> {
+): Promise<LoadedFontFace> {
     let bytes: ArrayBuffer;
     try {
         const response = await environment.fetch(url);
@@ -83,7 +94,8 @@ export async function loadFontFaceFromUrl(
         throw new FontFaceLoadError("read", "could not be read (the file is empty)");
     }
     try {
-        return (await environment.createFontFace(family, bytes).load()) as FontFace;
+        const face = (await environment.createFontFace(family, bytes).load()) as FontFace;
+        return { face, bytes };
     } catch (error) {
         throw new FontFaceLoadError("decode", `is not a font this browser can draw (${reasonOf(error)})`);
     }

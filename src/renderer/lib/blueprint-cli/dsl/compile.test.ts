@@ -263,6 +263,64 @@ event E
     });
 });
 
+describe("a var declared without id=", () => {
+    const SOURCE = `blueprint Rows owner=globalMain id=bp
+    var rows type=array default=[]
+    var "save rows" type=array default=[]
+event Fill id=ev
+    boot: blueprint.event.head.appBoot
+    set: blueprint.local.set
+        variableId = rows
+    keep: blueprint.local.set
+        variableId = save rows
+    boot -> set -> keep
+`;
+
+    it("takes its name as its id, so a node naming it finds it", () => {
+        const { blueprint, graph, diagnostics } = compile(SOURCE);
+        expect(blueprint.members?.variables.rows).toMatchObject({ id: "rows", name: "rows" });
+        expect(graph?.nodes?.set.params?.variableId).toBe("rows");
+        expect(diagnostics.map(item => item.code)).not.toContain("node.variable_id_invalid");
+    });
+
+    it("points a node naming a variable whose name cannot be an id at that variable's id", () => {
+        const { blueprint, graph } = compile(SOURCE);
+        const saveRows = Object.values(blueprint.members?.variables ?? {}).find(variable => variable.name === "save rows");
+        expect(saveRows?.id).toMatch(/^id-/);
+        expect(graph?.nodes?.keep.params?.variableId).toBe(saveRows?.id);
+    });
+
+    it("keeps its id on the next apply and prints back to text that compiles to the same ids", () => {
+        const first = compile(SOURCE);
+        const document: BlueprintDocument = {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            blueprints: { bp: first.blueprint },
+            ownerRecords: {},
+        } as unknown as BlueprintDocument;
+        const again = compile(SOURCE, document);
+        expect(Object.keys(again.blueprint.members?.variables ?? {}).sort())
+            .toEqual(Object.keys(first.blueprint.members?.variables ?? {}).sort());
+        const printed = printBlueprint(first.blueprint);
+        expect(printed).toContain("id=rows");
+        const reread = compile(printed, document);
+        expect(reread.errors).toEqual([]);
+        expect(reread.blueprint.members?.variables).toEqual(first.blueprint.members?.variables);
+        expect(reread.graph?.nodes?.keep.params?.variableId).toBe(first.graph?.nodes?.keep.params?.variableId);
+    });
+
+    it("leaves an explicit id alone, even one that is another variable's name", () => {
+        const { blueprint } = compile(`blueprint B owner=globalMain
+    var score type=number id=total
+    var total type=number
+event E
+    x: blueprint.log
+`);
+        expect(blueprint.members?.variables.total?.name).toBe("score");
+        const other = Object.values(blueprint.members?.variables ?? {}).find(variable => variable.name === "total");
+        expect(other?.id).not.toBe("total");
+    });
+});
+
 describe("script layers in a .bp file", () => {
     it("round-trips a script layer instead of flattening it to an empty graph", () => {
         const blueprint: Blueprint = {

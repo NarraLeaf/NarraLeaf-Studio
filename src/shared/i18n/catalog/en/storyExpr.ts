@@ -64,6 +64,7 @@ export const storyExpr = {
         ambiguousName: "More than one thing is called \"{value}\". Rename one of them.",
         conflictingParams: "{keys} cannot both be set on one line. Split the line in two.",
         positionOutOfRange: "\"{value}\" is not a place on the stage. pos=x,y takes shares of the stage, not pixels: x from the left edge (0) to the right edge (1), y from the bottom (0) to the top (1), giving where the object's centre goes. Values from -1 to 2 reach off screen.",
+        offsetWithoutPosition: "{key}= adds pixels to a position, so it needs pos=x,y on the same line.",
         repeatTimesAndUntil: "A repeat runs a set number of times or until a condition, not both. Remove one of them.",
         expressionError: "{message}",
         expressionNotBoolean: "A condition has to be a true/false test, like gold >= 100.",

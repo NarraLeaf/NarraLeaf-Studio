@@ -38,7 +38,9 @@ const LOCAL_ONLY_CSP = [
     "script-src 'self' app: file: 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'",
     "style-src 'self' app: file: 'unsafe-inline'",
     "img-src 'self' app: file: data: blob:",
-    "font-src 'self' app: file: data:",
+    // `blob:` as the shipped game's policy has it: a project font is also written as an `@font-face`
+    // rule over a blob of its bytes, so the stage capture (html-to-image) can carry it into a picture.
+    "font-src 'self' app: file: data: blob:",
     "media-src 'self' app: file: data: blob:",
     "connect-src 'self' app: file: data: blob:",
     "worker-src 'self' app: blob:",

@@ -68,7 +68,7 @@ import {
 import { AssetResolutionReporterContext } from "@/lib/ui-editor/runtime/useAssetResolutionReport";
 import { setRuntimeLocaleSource } from "@/lib/ui-editor/runtime/localization/runtimeLocale";
 import { setActiveProjectLocale } from "@shared/typography/projectFonts";
-import type { UISurface } from "@shared/types/ui-editor/document";
+import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
 import { resolveEntrySurface } from "@shared/types/ui-editor/entrySurface";
 import { toBlueprintImageAsset, type BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import { resolveDefaultCharacterAvatarAssetId } from "@shared/utils/characterAvatar";
@@ -187,7 +187,12 @@ import {
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { createSoundTransport } from "./soundTransport";
 import { attachAudioBusPersistence, audioTracksToBusDeclarations } from "./audioBusRuntime";
-import { attachPlayerPreferences, startPlaythroughPreferences, type PreferenceStoreLike } from "./preferenceRuntime";
+import {
+    attachPlayerPreferences,
+    createDetachedPlayerPreferences,
+    startPlaythroughPreferences,
+    type PreferenceStoreLike,
+} from "./preferenceRuntime";
 import { translate } from "@/lib/i18n";
 import { listPlayerSaveIds, loadSaveIntoGame, SAVE_LOAD_NOTICE_DURATION_MS, type SaveLoadOutcome } from "./saveLoad";
 import { legacyElementIdTableFor } from "./legacyElementIds";
@@ -445,6 +450,14 @@ export type GameAppTestControls = {
     capture(): Promise<string | null>;
     /** Where the game is, read without acting on it. See {@link GameAppTestState}. */
     readState(): GameAppTestState;
+    /**
+     * The element the game draws into, for a driver that points at what is on screen the way a
+     * player does - an agent's `playtest_click` finds an element there and presses it with the
+     * pointer events a mouse raises. Null before the root is mounted.
+     */
+    readGameRoot(): HTMLElement | null;
+    /** The interface document the game is drawing, for naming the elements found under the root. */
+    readUiDocument(): UIDocument;
 };
 
 /**
@@ -2624,9 +2637,34 @@ export function GameApp(props: GameAppProps): ReactNode {
         });
     }, [core, bundle.voice, readVoiceLocale]);
 
+    /**
+     * The player's preferences while no game runs - a settings screen opened from the title - read
+     * from and written to the store the boot path restores a game's preferences from (see
+     * `createDetachedPlayerPreferences`). Built once and reading refs, like the session gate, because
+     * a Game UI slot surface keeps the callbacks it was given. A change is announced the way a live
+     * one is, so `On Preference Changed` and the mixer listeners hear a title-screen slider too.
+     */
+    const detachedPreferenceCoreRef = useRef(core);
+    detachedPreferenceCoreRef.current = core;
+    /** The preference store of a game mounted but not live yet; set in `mountNlrSession`, cleared once it is live. */
+    const bootingPreferenceStoreRef = useRef<PreferenceStoreLike | null>(null);
+    const detachedPreferences = useMemo(() => createDetachedPlayerPreferences({
+        getDefaults: () => currentBundleRef.current.preferences,
+        getBootingStore: () => bootingPreferenceStoreRef.current,
+        read: key => detachedPreferenceCoreRef.current?.scopeBridge.persistenceGet(key),
+        write: async (key, value) => {
+            await detachedPreferenceCoreRef.current?.scopeBridge.persistenceSet(key, value);
+        },
+        onChange: (key, value, previousValue) => {
+            dispatchPreferenceChangeRef.current?.(key, value, previousValue);
+            preferenceListenersRef.current.forEach(listener => listener());
+        },
+    }), []);
+
     const {
         onGetNametag: getCurrentNametag,
         onGetNotifications: getNotificationsInGame,
+        onPostNotification: postNotificationInGame,
         onGetFuture: getFutureInGame,
         onGetHistory: getHistoryInGame,
         onCanRedoHistory: canRedoHistoryInGame,
@@ -2654,7 +2692,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         displaySpeakerName,
         // The same answer Play Voice acts on, so a backlog row offers a replay exactly when one plays.
         canReplayVoice: unitId => Boolean(nlrCompiledRef.current?.getVoicePlayback?.(unitId)),
-    }), [requireActiveLiveGame, displaySpeakerName]);
+        detachedPreferences,
+    }), [requireActiveLiveGame, displaySpeakerName, detachedPreferences]);
 
     /**
      * Which actions the dialogue box reads on with, as far as playing has shown - the half of
@@ -4560,6 +4599,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             onCanRedoHistory: canRedoHistoryInGame,
             onGetNametag: getCurrentNametag,
             onGetNotifications: getNotificationsInGame,
+            onPostNotification: postNotificationInGame,
             onGetChoiceCount: getChoiceCountInGame,
             onIsNvlMode: isNvlModeInGame,
             onIsCurrentTextRead: isCurrentTextReadInGame,
@@ -4627,6 +4667,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         getFutureInGame,
         getHistoryInGame,
         getNotificationsInGame,
+        postNotificationInGame,
         getSaveMetadata,
         getSaveTimes,
         getSaveLine,
@@ -4793,6 +4834,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             configureEngine: config => game.configure(config),
             log: (level, message) => host.log(level, message),
         });
+        // From here until it is live this game holds the preferences it will play with, so a title
+        // screen's settings written meanwhile have to reach it as well as the store.
+        bootingPreferenceStoreRef.current = (game as { preference?: PreferenceStoreLike }).preference ?? null;
         // The player's own volumes, restored on top of the author's declaration and written back on
         // every change. Deliberately here rather than after the Player mounts: setting a volume for
         // a bus whose channel does not exist yet is normal and is applied when it is realized, so
@@ -5115,11 +5159,22 @@ export function GameApp(props: GameAppProps): ReactNode {
                     lastEnding: endingsReachedRef.current.last,
                     // A page hidden under the running game is not the one showing.
                     page: studioPageHiddenForGameRef.current ? null : activePageNameRef.current,
+                    ...(() => {
+                        // The row the engine is executing right now, by its action - never the last
+                        // named row, which would go on saying "video" after the clip has ended.
+                        const actionId = inGame ? playHead.actionId() : null;
+                        const binding = actionId
+                            ? nlrCompiledRef.current?.actionIdBindings.find(entry => entry.staticId === actionId)
+                            : undefined;
+                        return { waitingForClick: Boolean(binding?.waitsForClick), pausedBy: binding?.pause ?? null };
+                    })(),
                 });
             },
+            readGameRoot: () => gameRootRef.current,
+            readUiDocument: () => bundle.ui.uidoc,
         });
         return () => onTestControlsChanged(null);
-    }, [activeSurface, choiceMenus, core, nextInGame, nlrSession, onTestControlsChanged, selectChoiceInGame, startStoryInGame]);
+    }, [activeSurface, bundle.ui.uidoc, choiceMenus, core, nextInGame, nlrSession, onTestControlsChanged, playHead, selectChoiceInGame, startStoryInGame]);
 
     const buildHostAdapterBundle = useCallback((entry: AppSurfaceLayerNavEntry, surface: UISurface) => {
         if (!core || !gameHostCapabilities) {
@@ -6799,6 +6854,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                     });
                 }
                 nlrLiveGameRef.current = liveGame;
+                if (bootingPreferenceStoreRef.current === (liveGame.game as { preference?: unknown }).preference) {
+                    bootingPreferenceStoreRef.current = null;
+                }
                 nlrLiveGameSessionIdRef.current = sessionId;
                 for (const waiter of [...liveGameWaitersRef.current]) {
                     waiter(liveGame);

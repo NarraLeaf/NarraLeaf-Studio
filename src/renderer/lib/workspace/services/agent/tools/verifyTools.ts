@@ -11,7 +11,14 @@
 
 import { createTranslator, type TranslationKey } from "@shared/i18n";
 import { listSceneBlocksInDocumentOrder } from "@shared/types/story";
-import type { DevModeAgentGameState, DevModeEntry } from "@shared/types/devMode";
+import {
+    DevModeAgentErrorCode,
+    type DevModeAgentAction,
+    type DevModeAgentGameState,
+    type DevModeAgentIssue,
+    type DevModeAgentPointerGesture,
+    type DevModeEntry,
+} from "@shared/types/devMode";
 import type { GameBuildPlatform, GameBuildStateSnapshot } from "@shared/types/gameBuild";
 import { getInterface } from "@/lib/app/bridge";
 import { describeLintLocation, LINT_LOCATION_SEPARATOR } from "@/lib/lint/locationText";
@@ -30,6 +37,7 @@ import type { BuildService } from "../../core/BuildService";
 import {
     answer,
     answerJson,
+    readOptionalBoolean,
     readOptionalInteger,
     readOptionalRecord,
     readOptionalString,
@@ -37,10 +45,11 @@ import {
     refuse,
     type AgentToolHandler,
 } from "../agentCall";
+import type { AgentCallResult } from "@shared/agent/protocol";
 import { resolveScene, resolveStory, storyService } from "../agentLookups";
 import { downscaleImage } from "../domRaster";
 import { describeLintPage, LINT_PAGE_DEFAULT_LIMIT, LINT_PAGE_MAX_LIMIT, pageLintEntries, SEVERITY_RANK } from "./lintPage";
-import { describeAdvance, describeGameState, gameStateData, launchIsUp, playtestHint } from "./playtestReport";
+import { describeAdvance, describeGameState, describeInputResult, describeIssues, gameStateData, launchIsUp, playtestHint } from "./playtestReport";
 
 const english = createTranslator("en");
 const translate = (key: TranslationKey, params?: Record<string, string | number>) => english.t(key, params);
@@ -167,7 +176,7 @@ export const playtestStart: AgentToolHandler = async (args, { ctx, request, foll
     const projectPath = ctx.project.getConfig().projectPath;
     // A game already running in place is replaced by this launch; how many times it had entered a
     // story is what tells the new game from it below. Nothing running reads as "none yet".
-    const before = await getInterface().devMode.agentControl(projectPath, { kind: "state" });
+    const before = await getInterface().devMode.agentControl(projectPath, { kind: "state", baseline: true });
     const entriesBefore = before.success && before.data.kind === "state" && before.data.state.ready
         ? before.data.state.entries
         : -1;
@@ -201,16 +210,24 @@ export const playtestStart: AgentToolHandler = async (args, { ctx, request, foll
         }
         await delay(250);
     }
+    let issues: DevModeAgentIssue[] | undefined;
     if (story && state && launchIsUp(state, { story, entriesBefore, sawOutOfStory })) {
         const settled = await getInterface().devMode.agentControl(projectPath, { kind: "state", settle: true });
         if (settled.success && settled.data.kind === "state") {
             state = settled.data.state;
+            issues = settled.data.issues;
+        }
+    } else if (status === "running") {
+        const read = await getInterface().devMode.agentControl(projectPath, { kind: "state" });
+        if (read.success && read.data.kind === "state") {
+            issues = read.data.issues;
         }
     }
     const where = state ? ` ${describeGameState(state)}` : "";
+    const reported = describeIssues(issues);
     return answerJson(
-        { status, from, ...(state ? gameStateData(state) : {}) },
-        `Dev Mode is ${status}, from ${from}.${where} Use playtest_screenshot to look and playtest_advance to read on.`,
+        { status, from, ...(state ? gameStateData(state) : {}), ...(issues?.length ? { issues } : {}) },
+        `Dev Mode is ${status}, from ${from}.${where} Use playtest_screenshot to look and playtest_advance to read on.${reported ? `\n${reported}` : ""}`,
     );
 };
 
@@ -234,16 +251,18 @@ export const playtestAdvance: AgentToolHandler = async (args, { ctx }) => {
     if (result.data.kind !== "advance") {
         throw refuse("internal", "The game answered something other than an advance.");
     }
-    const { advanced, error, ending, state } = result.data;
+    const { advanced, error, ending, state, issues } = result.data;
     const where = state ? ` ${describeGameState(state)}` : "";
+    const reported = describeIssues(issues);
     return answerJson(
         {
             advanced,
             ...(error ? { stoppedBecause: error } : {}),
             ...(ending ? { ending: ending.name } : {}),
             ...(state ? gameStateData(state) : {}),
+            ...(issues?.length ? { issues } : {}),
         },
-        `${describeAdvance(result.data)}${where}`,
+        `${describeAdvance(result.data)}${where}${reported ? `\n${reported}` : ""}`,
     );
 };
 
@@ -268,6 +287,66 @@ export const playtestScreenshot: AgentToolHandler = async (args, { ctx }) => {
         ],
         structured: { width: scaled.width, height: scaled.height, source: result.data.source },
     };
+};
+
+/**
+ * A pointer or key act's answer: what was done, what it changed, what is on screen now - and the
+ * nudge to look, because a sentence can say a page opened but not whether it is laid out right.
+ */
+async function playtestInput(ctx: WorkspaceContext, action: DevModeAgentAction): Promise<AgentCallResult> {
+    const result = await getInterface().devMode.agentControl(ctx.project.getConfig().projectPath, action);
+    if (!result.success) {
+        if (result.code === DevModeAgentErrorCode.inputTarget) {
+            throw refuse("invalid_args", result.error ?? "The game could not act on that.");
+        }
+        throw playtestRefusal(result);
+    }
+    if (result.data.kind !== "input") {
+        throw refuse("internal", "The game answered something other than an input.");
+    }
+    const { did, changed, surfaces, state, issues } = result.data;
+    const reported = describeIssues(issues);
+    return answerJson(
+        { did, changed, surfaces, ...gameStateData(state), ...(issues?.length ? { issues } : {}) },
+        `${describeInputResult(result.data)}${reported ? `\n${reported}` : ""}`,
+    );
+}
+
+export const playtestClick: AgentToolHandler = async (args, { ctx }) => playtestPointer(ctx, args, "click");
+
+export const playtestHover: AgentToolHandler = async (args, { ctx }) => playtestPointer(ctx, args, "hover");
+
+async function playtestPointer(
+    ctx: WorkspaceContext,
+    args: Record<string, unknown>,
+    gesture: DevModeAgentPointerGesture,
+): Promise<AgentCallResult> {
+    const at = readOptionalRecord(args, "at");
+    let point: { x: number; y: number } | undefined;
+    if (at) {
+        const x = at.x;
+        const y = at.y;
+        if (typeof x !== "number" || typeof y !== "number" || !Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1 || y < 0 || y > 1) {
+            throw refuse("invalid_args", "`at` must be `{ x, y }`, each a share of the element's box from 0 to 1 (0,0 is its top-left corner).");
+        }
+        point = { x, y };
+    }
+    const index = readOptionalInteger(args, "index", { min: 1, max: 500 });
+    const surface = readOptionalString(args, "surface");
+    return playtestInput(ctx, {
+        kind: "pointer",
+        gesture,
+        element: readString(args, "element"),
+        ...(surface ? { surface } : {}),
+        ...(index !== undefined ? { index } : {}),
+        ...(point ? { at: point } : {}),
+    });
+}
+
+export const playtestKey: AgentToolHandler = async (args, { ctx }) => {
+    const key = readString(args, "key");
+    const shift = readOptionalBoolean(args, "shift");
+    return playtestInput(ctx, { kind: "key", key, ...(shift ? { shift } : {}) });
 };
 
 export const playtestStop: AgentToolHandler = async (_args, { ctx }) => {

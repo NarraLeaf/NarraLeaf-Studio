@@ -8,6 +8,9 @@ Two pieces:
 
 - **NarraLeaf Studio's MCP server** - built into Studio. It gives the agent tools to create projects,
   import assets, write scenes, restyle the interface, playtest and build. Studio must be open.
+- **The `narraleaf-port-renpy` skill** (optional) - for moving an existing Ren'Py game, with its
+  source, into Studio: a converter-based method, Ren'Py-to-Studio mappings, and tracing the interface
+  from screenshots of the running Ren'Py game. It builds on `narraleaf-make-game`.
 - **The `narraleaf-make-game` skill** - the guide the agent follows: the order of work, the text
   formats it writes, interface design rules and the traps to avoid.
 
@@ -17,6 +20,7 @@ NarraLeaf-Skills/
   AGENTS.md                  pointer for agents that read AGENTS.md
   mcp-configs/               ready-made connection settings per agent
   narraleaf-make-game/       the skill (SKILL.md + references/ + assets/)
+  narraleaf-port-renpy/      the Ren'Py porting skill (needs narraleaf-make-game too)
 ```
 
 ## 1. Switch on agent access in Studio
@@ -111,7 +115,8 @@ Claude Desktop example.
 ## 3. Give your agent the skill
 
 The skill is the folder `narraleaf-make-game/`. Copy the whole folder (not just `SKILL.md`) to where
-your agent looks for skills:
+your agent looks for skills (do the same with `narraleaf-port-renpy/` if you are porting a Ren'Py
+game - it relies on `narraleaf-make-game`, so install both):
 
 | Agent | Personal (every folder) | One project |
 |---|---|---|

@@ -106,21 +106,31 @@ those you deliberately keep.
 - **Video**: `/play <video asset> name=<name>` plays it to the end and clears it away (`wait=false`,
   `hide=false`, `muted` change that). `/show` refuses videos.
 - **Camera**: `/transform camera zoom=1.1 d=2 ease=easeOut`.
-- **Positions.** `/show`, `/image` and `/text` take a word: `pos=left|center|right`. `/transform`
-  takes the word or an exact pair, `pos=x,y` (no spaces):
+- **Positions.** `/show`, `/image`, `/text` and `/transform` all take a word, `pos=left|center|right`,
+  or an exact pair, `pos=x,y` (no spaces):
   - `x` and `y` are **shares of the stage, not pixels and not percentages**. `x` runs from the left
     edge (0) to the right edge (1); `y` runs from the **bottom** edge (0) up to the top (1).
   - The pair says where the object's **centre** goes. There is no anchor: the engine always places
     the centre. `left`/`center`/`right` are `0.25,0.5` / `0.5,0.5` / `0.75,0.5`.
   - Values a little outside 0..1 park the object off screen - `pos=-0.3,0.5` is a slide-in start.
     Anything below -1 or above 2 is refused (`pos=100,200` is pixels typed where shares belong).
-  - Pixel offsets (`xoffset`/`yoffset`, design pixels, + is up) have no spelling on a line; a
-    character's `entranceTransform` carries them, and a row holding one prints as `»`.
+  - **Pixel offsets**: `xoffset=` and `yoffset=` add design pixels (the project resolution's pixels,
+    so the same distance at any window size) to the pair. `+xoffset` moves **right**; `+yoffset`
+    moves **up**, because the stage origin is its bottom-left corner. They are only accepted beside a
+    `pos=`, and a printed row always writes both shares with them: `/transform Mei pos=0.5,0.5
+    xoffset=40 yoffset=-12 d=0.4`, `/show Aki pos=0.25,0.5 xoffset=-40`. A word with an offset reads
+    back as its pair (`pos=left xoffset=40` prints as `pos=0.25,0.5 xoffset=40`). `xoffset=40` with
+    no `pos=` is refused. A row whose position has an offset but only one share (the inspector writes
+    that when a sprite is dragged along one axis) still prints as `»`.
   A sprite is drawn at its own pixel size times its character's entrance `zoom`. `pos=` words write
   `xalign` 0.25/0.5/0.75 and `yalign` 0.5, so the baseline comes from the character's
   `entranceTransform.position.yoffset`, never from `yalign`. `characters_list` gives `drawnAtCenter`.
-- `/transform` moves images, texts, layers, characters and the camera. It refuses videos and `/vfx`
-  overlays (the engine gives them no transform); `/transform camera ...` moves them with the stage.
+  A `yoffset=` on a character's `/show` **replaces** that entrance `yoffset` rather than adding to it
+  (the row and the entrance are merged axis by axis), so restate the baseline in it when you use one.
+- `/transform` moves images, texts, layers, characters and the camera. These params reach neither an
+  anchor nor a video's or `/vfx` overlay's own transform: `/transform` refuses videos and overlays
+  (the engine gives them none), and `/transform camera ...` moves them together with the rest of the
+  stage, while the dialogue box and menus stay put.
 
 ## Sound
 

@@ -533,6 +533,12 @@ export type StoryCommandResolutionIssue =
      * typed where fractions belong, and the object would land far off screen.
      */
     | { code: "positionOutOfRange"; span: StoryCommandSpan; value: string }
+    /**
+     * `xoffset=` / `yoffset=` with no `pos=` on the line: pixels added to shares the line never
+     * states. Refused rather than stored, because the row would mean "40 pixels right of wherever an
+     * earlier row left it" and would print back without the pair it shifts.
+     */
+    | { code: "offsetWithoutPosition"; span: StoryCommandSpan; key: string }
     /** Carries the whole underlying {@link StoryExpressionIssue} - its params make the message worth having. */
     | { code: "expressionError"; span: StoryCommandSpan; value: string; issue: StoryExpressionIssue }
     /** `/if gold` - parses fine, but a condition that is not a comparison is nearly always unfinished. */

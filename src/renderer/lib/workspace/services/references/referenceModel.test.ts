@@ -968,3 +968,39 @@ describe("assetNameGapTarget", () => {
             .toEqual({ kind: "uiComponent", componentId: "card", elementId: "row-art" });
     });
 });
+
+describe("every story row that names an asset is a use of it", () => {
+    // `assets/unused` is exactly as good as this list, and the guide tells an agent to delete what it
+    // reports. A row kind missing from it turns a live asset into a deletion candidate - 164 `/vfx`
+    // rows once left their 27 clips listed as unused. One row per kind that can name an asset, and
+    // each must be counted.
+    const mask = (id: string) => ({ to: { maskAssetId: id } });
+    const rows: Record<string, StoryBlock> = {
+        background: actionBlock("background", { action: "setBackground", assetId: "a-background", transition: { kind: "rule", ruleAssetId: "a-rule" } }),
+        character: actionBlock("character", { action: "character", operation: "enter", assetId: "a-character", transform: mask("a-character-mask") }),
+        audio: actionBlock("audio", { action: "audio", assetId: "a-audio" }),
+        image: actionBlock("image", { action: "image", operation: "create", assetId: "a-image", transform: mask("a-image-mask") }),
+        displayable: actionBlock("displayable", { action: "displayable", operation: "transform", transform: { ...mask("a-transform-mask"), from: { maskAssetId: "a-from-mask" } } }),
+        text: actionBlock("text", { action: "text", operation: "create", text: "Aki", transform: mask("a-text-mask") }),
+        layer: actionBlock("layer", { action: "layer", operation: "transform", transform: mask("a-layer-mask") }),
+        video: actionBlock("video", { action: "video", operation: "play", assetId: "a-video" }),
+        vfx: actionBlock("vfx", { action: "vfx", operation: "create", assetId: "a-vfx" }),
+        camera: actionBlock("camera", { action: "camera", operation: "transform", transform: mask("a-camera-mask") }),
+        dialogue: { id: "dialogue", kind: "nodeAction", parentId: null, childrenIds: [], payload: { action: "dialogue", characterId: "c", voiceAssetId: "a-voice", text: { textId: "t", value: "Hi", role: "dialogue" } } } as unknown as StoryBlock,
+        jump: { id: "jump", kind: "jump", parentId: null, childrenIds: [], payload: { targetSceneId: "scene-1", transition: { kind: "rule", ruleAssetId: "a-jump-rule" } } } as unknown as StoryBlock,
+    };
+
+    it("counts each kind", () => {
+        const used = new Set(extractStoryAssetReferences(storyDoc(rows, "a-scene-background"), "Main").map(reference => reference.assetId));
+        expect([...used].sort()).toEqual([
+            "a-audio", "a-background", "a-camera-mask", "a-character", "a-character-mask", "a-from-mask", "a-image",
+            "a-image-mask", "a-jump-rule", "a-layer-mask", "a-rule", "a-scene-background", "a-text-mask",
+            "a-transform-mask", "a-vfx", "a-video", "a-voice",
+        ]);
+    });
+
+    it("names the field a /vfx row uses its clip through", () => {
+        const references = extractStoryAssetReferences(storyDoc({ vfx: rows.vfx }), "Main");
+        expect(references).toEqual([expect.objectContaining({ assetId: "a-vfx", field: "vfx.assetId" })]);
+    });
+});

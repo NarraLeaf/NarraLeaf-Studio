@@ -28,6 +28,9 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_LIST_ITEM_REFRESH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL,
+    BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
+    BLUEPRINT_NODE_TYPE_FLOW_IF,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_INDEX,
     BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
@@ -74,6 +77,49 @@ describe("blueprint graph validation", () => {
         });
 
         expect(diagnostics.map(d => d.code)).toContain("edge.pin_multiple");
+    });
+
+    describe("a loop body that never comes back", () => {
+        // `Loop` is an exec output like any other: the next pass is the flow arriving at the loop's
+        // `In` again. A body that ends without coming back runs once - no second index, no Completed.
+        function loopGraph(bodyEdges: BlueprintGraphIr["edges"]): BlueprintGraphIr {
+            return {
+                nodes: {
+                    click: { id: "click", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK },
+                    loop: { id: "loop", type: BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP, params: { start: 1, end: 3 } },
+                    log: { id: "log", type: BLUEPRINT_NODE_TYPE_LOG },
+                    time: { id: "time", type: BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME },
+                    check: { id: "check", type: BLUEPRINT_NODE_TYPE_FLOW_IF },
+                },
+                edges: [
+                    { from: { nodeId: "click", port: "then" }, to: { nodeId: "loop", port: "in" } },
+                    { from: { nodeId: "loop", port: "loop" }, to: { nodeId: "log", port: "in" } },
+                    { from: { nodeId: "log", port: "next" }, to: { nodeId: "time", port: "in" } },
+                    ...(bodyEdges ?? []),
+                ],
+            };
+        }
+        const codes = (ir: BlueprintGraphIr) => {
+            registerCoreBlueprintNodes();
+            return validateBlueprintGraphIr(ir, { blueprintId: "bp", graphKind: "event", graphId: "event" }).map(d => d.code);
+        };
+
+        it("is said when no path out of Loop leads back to the loop", () => {
+            expect(codes(loopGraph([]))).toContain("node.loop_body_not_closed");
+        });
+
+        it("is not said when the body, through an awaited node, comes back", () => {
+            expect(codes(loopGraph([
+                { from: { nodeId: "time", port: "next" }, to: { nodeId: "loop", port: "in" } },
+            ]))).not.toContain("node.loop_body_not_closed");
+        });
+
+        it("is not said when only one branch stops early - a walk that ends at its first match", () => {
+            expect(codes(loopGraph([
+                { from: { nodeId: "time", port: "next" }, to: { nodeId: "check", port: "in" } },
+                { from: { nodeId: "check", port: "false" }, to: { nodeId: "loop", port: "in" } },
+            ]))).not.toContain("node.loop_body_not_closed");
+        });
     });
 
     it("accepts the Story Action On Call head as a valid event head", () => {

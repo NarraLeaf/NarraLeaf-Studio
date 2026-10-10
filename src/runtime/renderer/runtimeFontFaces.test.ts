@@ -127,6 +127,33 @@ describe("runtime font faces", () => {
         expect(face.source).toBeInstanceOf(ArrayBuffer);
     });
 
+    it("publishes the face as a stylesheet rule as well, so the engine's picture of the stage is set in it", async () => {
+        // The engine's stage capture reads `@font-face` rules out of the document's style sheets and
+        // nothing else; a face only in `document.fonts` left every save thumbnail in the fallback face.
+        const written: string[] = [];
+        const sheet = {
+            setAttribute: () => undefined,
+            appendChild: (node: { text: string }) => written.push(node.text),
+        };
+        vi.stubGlobal("document", {
+            fonts: { add: (face: unknown) => added.push(face) },
+            head: { querySelector: () => null, appendChild: () => undefined },
+            createElement: () => sheet,
+            createTextNode: (text: string) => ({ text }),
+        });
+        vi.stubGlobal("URL", { createObjectURL: () => "blob:nlgame://runtime/1" });
+
+        const load = loadRuntimeFontFace("body", "nlgame://asset/body");
+        await vi.waitFor(() => expect(resolveLoads).toHaveLength(1));
+        resolveLoads[0]();
+        await load;
+
+        expect(added).toHaveLength(1);
+        expect(written).toHaveLength(1);
+        expect(written[0]).toContain(`font-family: "${runtimeFontCssFamily("body")}"`);
+        expect(written[0]).toContain('src: url("blob:nlgame://runtime/1")');
+    });
+
     it("says in the game's log once when a font's bytes cannot be read, and draws nothing from it", async () => {
         const log = vi.fn();
         vi.stubGlobal("window", { [GAME_RUNTIME_BRIDGE_KEY]: { log } });

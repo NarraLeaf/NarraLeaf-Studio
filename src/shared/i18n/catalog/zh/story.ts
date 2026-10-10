@@ -614,6 +614,9 @@ export const story = {
         size: "字号",
         z: "层级",
         // 变换属性词表（`commands/transformVocabulary.ts`），一个通道一个键。
+        // 两个偏移是叠加在 `pos=` 上的设计像素，正值向右、向上。
+        xOffset: "横向偏移",
+        yOffset: "纵向偏移",
         zoom: "缩放",
         scale: "比例",
         scaleX: "横向比例",
@@ -1469,6 +1472,7 @@ export const story = {
     history: {
         deleteScene: "删除场景 {name}",
         deleteChapter: "删除章节 {name}",
+        renameChapter: "重命名章节 {name}",
         deleteStory: "删除故事 {name}",
         deleteAnimation: "删除动效 {name}",
         // 换章和调位置是同一个拖拽手势，撤销的人不会去分它们，所以只有一种说法。

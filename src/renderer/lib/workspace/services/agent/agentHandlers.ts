@@ -15,10 +15,10 @@
 import { AGENT_INTERNAL_TOOL_BUILD, AGENT_INTERNAL_TOOL_TEST } from "@shared/agent/protocol";
 import type { AgentToolHandler } from "./agentCall";
 import { projectInfo, projectSettingsSet } from "./tools/projectTools";
-import { assetDelete, assetsImport, assetsList, assetsPlaceholder } from "./tools/assetTools";
+import { assetDelete, assetsImport, assetsList, assetsPlaceholder, assetUsage } from "./tools/assetTools";
 import { audioTracksList, characterDelete, characterUpsert, charactersList, variableDelete, variableUpsert, variablesList } from "./tools/castTools";
 import { characterLayeredSet, characterLayersImport, characterPreview } from "./tools/layeredTools";
-import { sceneCreate, sceneDelete, sceneRename, sceneSetEntry, storyList, storyRename } from "./tools/storyTools";
+import { chapterDelete, chapterRename, sceneCreate, sceneDelete, sceneRename, sceneSetEntry, storyList, storyRename } from "./tools/storyTools";
 import { storyApply, storyCommand, storyCommands, storyShow, storyTargets } from "./tools/storyTextTools";
 import { brandGet, brandSet, uiPatch, uiScreenshot, uiSelection, uiTemplateApply, uiTemplates } from "./tools/uiTools";
 import { uiApply, uiShow, uiSurfaces, uiUsage, uiWidget, uiWidgets } from "./tools/uiTextTools";
@@ -32,6 +32,9 @@ import {
     internalTest,
     lint,
     playtestAdvance,
+    playtestClick,
+    playtestHover,
+    playtestKey,
     playtestScreenshot,
     playtestStart,
     playtestStop,
@@ -44,6 +47,7 @@ export function createAgentToolHandlers(): Record<string, AgentToolHandler> {
         assets_list: assetsList,
         assets_import: assetsImport,
         assets_placeholder: assetsPlaceholder,
+        asset_usage: assetUsage,
         asset_delete: assetDelete,
         characters_list: charactersList,
         character_upsert: characterUpsert,
@@ -64,6 +68,8 @@ export function createAgentToolHandlers(): Record<string, AgentToolHandler> {
         story_apply: storyApply,
         scene_create: sceneCreate,
         scene_rename: sceneRename,
+        chapter_rename: chapterRename,
+        chapter_delete: chapterDelete,
         scene_set_entry: sceneSetEntry,
         scene_delete: sceneDelete,
         ui_widgets: uiWidgets,
@@ -104,6 +110,9 @@ export function createAgentToolHandlers(): Record<string, AgentToolHandler> {
         playtest_start: playtestStart,
         playtest_advance: playtestAdvance,
         playtest_screenshot: playtestScreenshot,
+        playtest_click: playtestClick,
+        playtest_hover: playtestHover,
+        playtest_key: playtestKey,
         playtest_stop: playtestStop,
     };
     return handlers;

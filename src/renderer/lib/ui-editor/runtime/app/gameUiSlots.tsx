@@ -21,6 +21,7 @@ import type { GameHostCapabilities } from "./gameHostApiOptions";
 import { readNlrLastDialogSpeaker } from "./nlrDialogReaders";
 import { findStageSurfaceForSlot } from "./stageSlots";
 import { needsRunningGame, refusal } from "./runtimeRefusals";
+import type { DetachedPlayerPreferences } from "./preferenceRuntime";
 import { translate } from "@/lib/i18n";
 import { takeGlobalInputTurn } from "@/lib/ui-editor/runtime/input/surfaceInputDom";
 import type { TranslationKey } from "@shared/i18n";
@@ -248,6 +249,14 @@ export type LiveGameUiCallbackDeps = {
      * host that cannot play a take - the story preview - and every backlog row then says it has none.
      */
     canReplayVoice?: (unitId: string) => boolean;
+    /**
+     * The player's preferences as they are kept between games, for the moments no game is running:
+     * a settings screen opened from the title. With it, the preference getters and setters (and
+     * `Set Sentence Speed`) read and write what the next game will start with instead of refusing;
+     * without it (the story preview, which always has its game) they refuse as before. Never
+     * consulted while a live game exists - its own store answers then.
+     */
+    detachedPreferences?: DetachedPlayerPreferences;
 };
 
 /**
@@ -257,7 +266,7 @@ export type LiveGameUiCallbackDeps = {
  * declared again, so a host builds its capabilities by spreading this in and TypeScript accounts
  * for every key exactly once.
  *
- * `NonNullable` because these nineteen are the ones a running game always answers: a host declares
+ * `NonNullable` because these twenty are the ones a running game always answers: a host declares
  * a capability it lacks by writing `undefined`, and there is no such thing as a `LiveGame` that
  * cannot be asked what the play head is on.
  */
@@ -265,6 +274,7 @@ export type LiveGameUiCallbacks = {
     [K in
     | "onGetNametag"
     | "onGetNotifications"
+    | "onPostNotification"
     | "onGetHistory"
     | "onGetFuture"
     | "onRestoreHistory"
@@ -445,7 +455,17 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
         resolveSpeakerAvatar,
         displaySpeakerName,
         canReplayVoice,
+        detachedPreferences,
     } = deps;
+
+    /**
+     * The kept preferences, when there is no game to ask: what a settings screen on the title reads
+     * and writes. Null when a live game exists (its store is the truth then) or when this host keeps
+     * nothing between games, and the callers below fall through to the live game - or its refusal.
+     */
+    const preferencesWithoutGame = (): DetachedPlayerPreferences | null => (
+        detachedPreferences && !getLiveGame() ? detachedPreferences : null
+    );
 
     return {
         onGetNametag: (): string | null => {
@@ -480,6 +500,18 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
                 const record = entry as Record<string, unknown>;
                 return [{ id: String(record.id ?? ""), message: String(record.message ?? "") }];
             });
+        },
+
+        onPostNotification: (message: string, durationMs?: number): void => {
+            // The engine's own channel - the one a refused save load speaks through - so the line
+            // lands in the same manager `onGetNotifications` reads and is drawn by the same slot.
+            // No duration leaves the engine's default in force instead of a copy of it here.
+            const liveGame = requireLiveGame("blueprint.node.postNotification");
+            if (durationMs === undefined) {
+                liveGame.notify(message);
+            } else {
+                liveGame.notify(message, durationMs);
+            }
         },
 
         onGetHistory: (): BlueprintGameHistoryEntry[] => {
@@ -596,10 +628,24 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
             if (!Number.isFinite(value) || value <= 0) {
                 throw new Error(translate("blueprint.runtimeError.valueAbove", { name: "CPS", min: "0" }));
             }
+            const kept = preferencesWithoutGame();
+            if (kept) {
+                await kept.set("cps", value);
+                return;
+            }
             requireLiveGame("blueprint.node.setSentenceSpeed").game.preference.setPreference("cps", value);
         },
 
         onGetGamePreference: (key: BlueprintGamePreferenceKey): BlueprintGamePreferenceValue => {
+            const kept = preferencesWithoutGame();
+            if (kept?.canRead(key)) {
+                return kept.get(key) as BlueprintGamePreferenceValue;
+            }
+            // A runtime preference describes a game in progress, so with none it reads as a game
+            // that has not started: `Get Skipping` answers false rather than refusing a title screen.
+            if (kept && Object.prototype.hasOwnProperty.call(RUNTIME_PREFERENCE_DEFAULTS, key)) {
+                return RUNTIME_PREFERENCE_DEFAULTS[key as keyof typeof RUNTIME_PREFERENCE_DEFAULTS];
+            }
             const preference = requireLiveGame(null).game.preference as {
                 getPreference: (preferenceKey: BlueprintGamePreferenceKey) => unknown;
             };
@@ -610,6 +656,11 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
             key: BlueprintGamePreferenceKey,
             value: BlueprintGamePreferenceValue,
         ): Promise<void> => {
+            const kept = preferencesWithoutGame();
+            if (kept?.canWrite(key)) {
+                await kept.set(key, value);
+                return;
+            }
             const preference = requireLiveGame(null).game.preference as {
                 setPreference: (preferenceKey: BlueprintGamePreferenceKey, preferenceValue: BlueprintGamePreferenceValue) => void;
             };

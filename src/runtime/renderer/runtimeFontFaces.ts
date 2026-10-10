@@ -18,7 +18,8 @@
  * Comments in English per project convention.
  */
 
-import { loadFontFaceFromUrl } from "@/lib/ui-editor/fonts/fontFaceFromUrl";
+import { loadFontFaceFromUrl, type LoadedFontFace } from "@/lib/ui-editor/fonts/fontFaceFromUrl";
+import { addFontFaceToDocument } from "@/lib/ui-editor/fonts/documentFontFaces";
 import { getGameRuntimeBridge } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
 
 /** Asset ids whose face is registered on the document, and the family it went in under. */
@@ -82,16 +83,18 @@ async function registerFace(assetId: string, url: string): Promise<string | null
         return null;
     }
     const cssFamily = runtimeFontCssFamily(assetId);
-    let face: FontFace;
+    let loaded: LoadedFontFace;
     try {
         // From the bytes, not from `url(...)`: see `fontFaceFromUrl` for why the browser's font
         // loader is not handed an asset URL.
-        face = await loadFontFaceFromUrl(cssFamily, url);
+        loaded = await loadFontFaceFromUrl(cssFamily, url);
     } catch (error) {
         reportFontFailure(assetId, error);
         throw error;
     }
-    document.fonts.add(face);
+    // With the stylesheet rule beside the face, so the engine's picture of the stage - what a save
+    // shows on its slot - is set in this font too. See `documentFontFaces`.
+    addFontFaceToDocument(cssFamily, loaded);
     registered.set(assetId, cssFamily);
     return cssFamily;
 }

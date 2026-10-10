@@ -12,7 +12,7 @@ import {
     type MouseEvent,
 } from "react";
 import { motion } from "motion/react";
-import { effectShadowStoredToCss } from "@shared/types/ui-editor/effects";
+import { effectTextShadowStoredToCss } from "@shared/types/ui-editor/effects";
 import { resolveUITextRuns } from "@shared/types/ui-editor/textRuns";
 import { uiTextRuntimeOriginOf, uiTextRuntimeUnitOf } from "@shared/types/ui-editor/textSource";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
@@ -314,7 +314,7 @@ export function ButtonRenderer(props: WidgetRendererProps) {
     // string in as `hex` would leave `normalizeHex` to reject it and paint white.
     const color = colorValueToCss(parseColorValue(v.color, { hex: "#FFFFFF", alpha: 1 }));
     const { cssFamily: editorFontFamily } = useEditorFontFamily(v.fontAssetId);
-    const labelTextShadow = effectShadowStoredToCss(v.effects.effectTextShadow, "outer");
+    const labelTextShadow = effectTextShadowStoredToCss(v.effects.effectTextShadow);
     const labelTypography: CSSProperties = {
         margin: 0,
         width: "100%",

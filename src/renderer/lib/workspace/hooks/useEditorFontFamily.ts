@@ -10,6 +10,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { resolveGameRuntimeAssetUrl } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
 import { resolveDevModeAssetUrl } from "@/lib/ui-editor/runtime/devModeAssetUrls";
 import { loadFontFaceFromUrl } from "@/lib/ui-editor/fonts/fontFaceFromUrl";
+import { addFontFaceToDocument } from "@/lib/ui-editor/fonts/documentFontFaces";
 import {
     getActiveProjectFontIds,
     resolveFontStackIds,
@@ -234,9 +235,11 @@ async function resolveDevModeFont(assetId: string): Promise<ResolvedFont> {
         const cssFamily = devModeCssFamilyForAssetId(assetId);
         // From the bytes, not from `url(...)`, as the editor does with the same file - see
         // `fontFaceFromUrl` for why the browser's font loader is not handed an asset URL.
-        const fontFace = await loadFontFaceFromUrl(cssFamily, url);
-        document.fonts.add(fontFace);
-        devModeFontCache.set(assetId, { cssFamily, fontFace });
+        const loaded = await loadFontFaceFromUrl(cssFamily, url);
+        // With the stylesheet rule beside the face, so the engine's picture of the stage - a save's
+        // thumbnail, an agent's play-test capture - is set in this font too. See `documentFontFaces`.
+        addFontFaceToDocument(cssFamily, loaded);
+        devModeFontCache.set(assetId, { cssFamily, fontFace: loaded.face });
         return { assetId, cssFamily, error: null };
     } catch (err) {
         const error = err instanceof Error ? err.message : String(err);

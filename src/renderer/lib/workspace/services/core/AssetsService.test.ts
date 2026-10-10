@@ -124,6 +124,10 @@ interface HarnessOptions {
     /** Simulate an index that answered but does not cover the whole project. */
     assetIndex?: ReferenceIndexResult;
     groups?: AssetGroup[];
+    /** Answers whether the next shard write is refused; every write succeeds when absent. */
+    refuseWrite?: (path: string) => boolean;
+    /** Every shard path written, in order. */
+    written?: string[];
 }
 
 function createHarness(assets: Asset<AssetType, AssetSource.Local>[], options: HarnessOptions = {}) {
@@ -176,7 +180,12 @@ function createHarness(assets: Asset<AssetType, AssetSource.Local>[], options: H
             get(serviceId: Services) {
                 if (serviceId === Services.FileSystem) {
                     return {
-                        writeFileNoFollow: async () => ({ ok: true, data: undefined }),
+                        writeFileNoFollow: async (path: string) => {
+                            options.written?.push(path);
+                            return options.refuseWrite?.(path)
+                                ? { ok: false, error: { code: "EACCES", message: "refused" } }
+                                : { ok: true, data: undefined };
+                        },
                         writeFileNoFollowOrCreate: async () => ({ ok: true, data: undefined }),
                         write: async () => ({ ok: true, data: undefined }),
                     };
@@ -586,5 +595,34 @@ describe("AssetsService deletion undo", () => {
         expect(history.undo(projectHistoryScope())).toBe(true);
         await history.settled();
         expect(metadata[AssetType.Image]["asset-1"]).toBeDefined();
+    });
+});
+
+describe("AssetsService owed library writes", () => {
+    it("writes a shard the disk refused once more when the workspace closes", async () => {
+        let refusing = true;
+        const written: string[] = [];
+        const { service } = createHarness([imageAsset("asset-1")], { refuseWrite: () => refusing, written });
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+        try {
+            service.markDirty(AssetType.Image);
+            await vi.waitFor(() => expect(written.length).toBeGreaterThan(0));
+            const attempts = written.length;
+
+            // Still refused: the close says the library did not reach the disk rather than nothing.
+            await expect(service.flushOwedWrites()).rejects.toThrow(/asset library sections not written: image/);
+            expect(written.length).toBeGreaterThan(attempts);
+
+            // The disk is back: the close pays the debt, and nothing is owed after it.
+            refusing = false;
+            const beforeClose = written.length;
+            await service.flushOwedWrites();
+            expect(written.length).toBeGreaterThan(beforeClose);
+            const settled = written.length;
+            await service.flushOwedWrites();
+            expect(written.length).toBe(settled);
+        } finally {
+            warn.mockRestore();
+        }
     });
 });

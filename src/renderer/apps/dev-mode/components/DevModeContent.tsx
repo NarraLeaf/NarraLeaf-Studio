@@ -65,6 +65,7 @@ import { RuntimeIssueStrip } from "./RuntimeIssueStrip";
 import { RuntimeIssuesPanel } from "./RuntimeIssuesPanel";
 import {
     appendRuntimeIssue,
+    runtimeIssueForAgent,
     assetResolutionIssues,
     blueprintDebugEventIssue,
     locateRuntimeIssue,
@@ -987,6 +988,9 @@ export function DevModeContent(props: DevModeContentProps) {
      * the previous revision is worse than no line at all.
      */
     const [runtimeIssues, setRuntimeIssues] = useState<readonly LocatedRuntimeIssue[]>([]);
+    /** The same list, for an agent's play-test, which reads it from outside a render. */
+    const runtimeIssuesRef = useRef<readonly LocatedRuntimeIssue[]>([]);
+    runtimeIssuesRef.current = runtimeIssues;
     /**
      * What the strip has already announced.
      *
@@ -1597,7 +1601,10 @@ export function DevModeContent(props: DevModeContentProps) {
     }, []);
     useEffect(() => {
         const token = getInterface().devMode.onAgentDrive(({ action }) =>
-            runAgentDriveAction(() => testControlsRef.current, action, browserPlaytestClock));
+            runAgentDriveAction(() => testControlsRef.current, action, browserPlaytestClock, undefined, {
+                // What the issue strip counts, so an agent hears about the warnings the author sees.
+                readIssues: () => runtimeIssuesRef.current.map(runtimeIssueForAgent),
+            }));
         return () => token.cancel();
     }, []);
 

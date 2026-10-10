@@ -14,7 +14,7 @@ import { formatStoryBezierEasing, isStoryBezierEasing, storyBezierPoints } from 
 import { STORY_CAMERA_LOOK_PRESETS } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import { STORY_CAMERA_LENS_PRESETS } from "@/lib/ui-editor/runtime/game/cameraLensPresets";
 import type { StoryCommandEnumFreeform, StoryCommandEnumOption, StoryCommandParamType } from "../storyCommandGrammar";
-import type { StoryCommandValue } from "../storyCommandValues";
+import type { StoryCommandResolutionIssue, StoryCommandValue } from "../storyCommandValues";
 import {
     asColor,
     asDurationMs,
@@ -26,6 +26,7 @@ import {
     secondsParam,
     type StoryCommandParamSpec,
     type StoryCommandParamsShape,
+    type StoryCommandValidateContext,
 } from "./spec";
 
 /**
@@ -177,7 +178,24 @@ function numberParam(hint: string, aliases: readonly string[] | undefined, range
 const POSITION_PAIR_FORMAT = "x,y with no spaces, two shares of the stage giving where the object's CENTRE goes - "
     + "x from the left edge (0) to the right edge (1), y from the BOTTOM edge (0) to the top (1); "
     + "left / center / right are 0.25,0.5 / 0.5,0.5 / 0.75,0.5. Not pixels and not percentages; "
-    + "-1 to 2 reaches off screen (a slide-in start), anything further is refused";
+    + "-1 to 2 reaches off screen (a slide-in start), anything further is refused. "
+    + "Pixels go in xoffset= / yoffset= beside it";
+
+/**
+ * What an offset is, as the catalogue prints it beside `xoffset=` / `yoffset=`.
+ *
+ * The direction is the engine's, and it is worth spelling out because half of it is the opposite of a
+ * screen's: the stage origin is its BOTTOM-left corner (the engine's default `"bottom left"` origin,
+ * which the compiler never changes), so the engine lays an align position out as
+ * `left: (xalign + xoffset / designWidth) * 100%` and `bottom: (yalign + yoffset / designHeight) * 100%`.
+ * A positive `yoffset` therefore raises the object, where a CSS `top` would lower it. The design size
+ * is the project's resolution, which is why an offset means the same distance at every window size.
+ */
+function offsetFormat(axis: "x" | "y"): string {
+    const direction = axis === "x" ? "+ moves right, - moves left" : "+ moves UP, - moves down (the stage origin is its bottom-left corner)";
+    return `design pixels of the stage (the project resolution), added to the ${axis} share of pos=; ${direction}. `
+        + "Only beside pos=, and a row always prints both shares with it (pos=0.5,0.5 xoffset=40)";
+}
 
 /**
  * Every prop param, in the order an author types them: where it is, how big, which way up, how it
@@ -199,6 +217,12 @@ export const TRANSFORM_PROP_PARAMS = {
             { kind: "text", format: POSITION_PAIR_FORMAT },
         ] as readonly StoryCommandParamType[],
     },
+    // Pixels on top of the shares, the two halves of the engine's align position that `pos=` cannot
+    // hold. Never a channel of their own: an offset is only ever written beside the pair it shifts
+    // (see `positionPropArgs`), and a line that names one without `pos=` is refused rather than
+    // guessed at - "40 pixels right of where?" has no answer the line states.
+    xoffset: { hint: "xOffset", type: { kind: "number", format: offsetFormat("x") } },
+    yoffset: { hint: "yOffset", type: { kind: "number", format: offsetFormat("y") } },
     zoom: numberParam("zoom", undefined, { min: 0 }),
     scale: numberParam("scale", undefined, { min: 0 }),
     scaleX: numberParam("scaleX", undefined, {}),
@@ -246,6 +270,23 @@ mask: { hint: "maskImage", type: [NONE_OPTION, { kind: "asset", assetType: "imag
     // A named gesture off the lens library. It sits beside `look=` because the two are the same kind
     // of word - a name for something the author would otherwise have to keyframe.
     lens: { hint: "cameraLens", type: { kind: "enum", options: LENS_OPTIONS } },
+} as const satisfies StoryCommandParamsShape;
+
+/**
+ * The placement slots a create or reveal row takes (`/show`, `/image`, `/text`): `pos=` and the two
+ * offsets, read straight off the prop table so a placement and a `/transform` position are one
+ * spelling of one channel.
+ *
+ * `pos` is the canonical key since M2, and `at` stays as an alias. The two were always the same slot;
+ * what changed is which of them the prop vocabulary spells. `at` is kept rather than burned because a
+ * param key is not a command token: an old `/image forest at=left` re-parses to exactly the same row,
+ * so there is nothing for a rename to silently reinterpret. `pan` is not offered here - that word is
+ * the camera's, and a placement never addresses the camera.
+ */
+export const PLACEMENT_PARAMS = {
+    pos: { aliases: ["at"], hint: TRANSFORM_PROP_PARAMS.pos.hint, type: TRANSFORM_PROP_PARAMS.pos.type },
+    xoffset: TRANSFORM_PROP_PARAMS.xoffset,
+    yoffset: TRANSFORM_PROP_PARAMS.yoffset,
 } as const satisfies StoryCommandParamsShape;
 
 /**
@@ -345,6 +386,79 @@ function positionOf(value: StoryCommandValue | undefined): StoryAlignPositionVal
     return parsePositionValue(asEnum(value) ?? asText(value));
 }
 
+/** The two pixel halves of an align position, in the order a row prints them. */
+const OFFSET_KEYS = ["xoffset", "yoffset"] as const;
+
+/**
+ * The whole position a line states: `pos=` with whatever `xoffset=` / `yoffset=` sit beside it.
+ *
+ * `null` without a `pos=`, offsets or not. An offset alone is refused by {@link positionIssues}, so a
+ * line that reaches a build never has one; reading it as "keep the shares, set the pixels" would give
+ * a row whose meaning depends on whatever an earlier row left the shares at, and the row would print
+ * back a line with no `pos=` on it.
+ */
+export function positionFromArgs(args: TransformArgs): StoryAlignPositionValue | null {
+    const position = positionOf(args.pos);
+    if (!position) {
+        return null;
+    }
+    const xoffset = asNumber(args.xoffset);
+    const yoffset = asNumber(args.yoffset);
+    return {
+        ...position,
+        ...(xoffset !== undefined ? { xoffset } : {}),
+        ...(yoffset !== undefined ? { yoffset } : {}),
+    };
+}
+
+/**
+ * A new pair of shares, carrying the offsets the position it replaces had.
+ *
+ * What an edit of `pos=` alone means on a committed row: the author moved the anchor, and the pixels
+ * they set on top of it are a separate setting the edit did not touch. A word (`left`) has no offsets
+ * of its own, so without this, picking one from the row's menu would silently drop them.
+ */
+export function withOffsetsOf(
+    position: StoryAlignPositionValue,
+    previous: StoryAlignPositionValue | undefined,
+): StoryAlignPositionValue {
+    return {
+        ...position,
+        ...(previous?.xoffset !== undefined ? { xoffset: previous.xoffset } : {}),
+        ...(previous?.yoffset !== undefined ? { yoffset: previous.yoffset } : {}),
+    };
+}
+
+/**
+ * What a line's position slots get wrong, where the grammar cannot see it: a `pos=` that is neither a
+ * placement word nor an align pair, a pair too far out to be shares, and an offset with no `pos=` to
+ * shift. Shared by every command that takes {@link PLACEMENT_PARAMS} or the prop table.
+ */
+export function positionIssues(args: TransformArgs, ctx: StoryCommandValidateContext): StoryCommandResolutionIssue[] {
+    const issues: StoryCommandResolutionIssue[] = [];
+    // The pair has no closed value set, so the spec is the only place a bad one can be reported.
+    const posSpan = ctx.spanOf("pos");
+    if (posSpan && args.pos?.kind === "text") {
+        const position = parsePositionValue(args.pos.value);
+        if (position === null) {
+            issues.push({ code: "unsupportedOption", span: posSpan, value: args.pos.value, allowed: ["left", "center", "right", "x,y"] });
+        } else if (positionBeyondReach(position)) {
+            // Shares, not pixels: `pos=100,200` parses, and would send the object a hundred stage
+            // widths off to the right. Refused rather than stored, since no picture is visible there.
+            issues.push({ code: "positionOutOfRange", span: posSpan, value: args.pos.value });
+        }
+    }
+    if (args.pos === undefined) {
+        for (const key of OFFSET_KEYS) {
+            const span = args[key] === undefined ? undefined : ctx.spanOf(key);
+            if (span) {
+                issues.push({ code: "offsetWithoutPosition", span, key });
+            }
+        }
+    }
+    return issues;
+}
+
 /** A `none` on a channel that takes a value, i.e. "back to neutral" - which the bag spells `null`. */
 function clearedOr<T>(value: StoryCommandValue | undefined, read: (value: StoryCommandValue) => T | undefined): T | null | undefined {
     if (value === undefined) {
@@ -399,7 +513,7 @@ export function filterWritersOf(args: TransformArgs): readonly FilterWriter[] {
  */
 export function transformPropsFromArgs(args: TransformArgs): StoryTransformProps {
     const props: StoryTransformProps = {};
-    const position = positionOf(args.pos);
+    const position = positionFromArgs(args);
     if (position) {
         props.position = position;
     }
@@ -533,6 +647,8 @@ export function transformPropsFromArgs(args: TransformArgs): StoryTransformProps
 export function parseFromProps(source: string | undefined): { props: StoryTransformProps; badKeys: readonly string[] } {
     const props: StoryTransformProps = {};
     const badKeys: string[] = [];
+    // Held until the list is read: an offset shifts the pair, and the pair may come after it.
+    const offsets: { entry: string; key: (typeof OFFSET_KEYS)[number]; amount: number }[] = [];
     for (const entry of (source ?? "").split(/\s+/)) {
         if (!entry) {
             continue;
@@ -555,6 +671,10 @@ export function parseFromProps(source: string | undefined): { props: StoryTransf
             badKeys.push(entry);
             continue;
         }
+        if (key === "xoffset" || key === "yoffset") {
+            offsets.push({ entry, key, amount });
+            continue;
+        }
         switch (key) {
             case "zoom": props.zoom = amount; break;
             case "scale": props.scaleX = amount; props.scaleY = amount; break;
@@ -563,6 +683,15 @@ export function parseFromProps(source: string | undefined): { props: StoryTransf
             case "rot": case "rotate": props.rotation = amount; break;
             case "opacity": case "alpha": props.opacity = amount; break;
             default: badKeys.push(entry); break;
+        }
+    }
+    // The rule the line itself follows: an offset only beside a pair. One with nothing to shift is
+    // reported as the bad key it is, rather than stored as a position missing both of its shares.
+    for (const offset of offsets) {
+        if (props.position) {
+            props.position = { ...props.position, [offset.key]: offset.amount };
+        } else {
+            badKeys.push(offset.entry);
         }
     }
     return { props, badKeys };
@@ -665,38 +794,62 @@ function numberWord(value: number | undefined): string | undefined {
     return value === undefined ? undefined : String(Number(value.toFixed(4)));
 }
 
-/** The three placement words, or the align pair - the inverse of {@link parsePositionValue}. */
-function positionWord(position: StoryAlignPositionValue | undefined): string | undefined {
-    if (!position) {
-        return undefined;
+/** The placement word a position is, or `null` - only a bare pair on the vertical middle has one. */
+function placementWord(position: StoryAlignPositionValue): string | null {
+    if (position.xoffset !== undefined || position.yoffset !== undefined || position.yalign !== 0.5) {
+        return null;
     }
-    if (position.xoffset === undefined && position.yoffset === undefined && position.yalign === 0.5) {
-        for (const word of ["left", "center", "right"] as const) {
-            if (legacyPresetPosition(word, {})?.xalign === position.xalign) {
-                return word;
-            }
+    for (const word of ["left", "center", "right"] as const) {
+        if (legacyPresetPosition(word, {})?.xalign === position.xalign) {
+            return word;
         }
     }
-    // An offset has no spelling in the vocabulary, so a bag carrying one prints nothing rather than
-    // an align pair that would silently drop it on the way back in.
-    if (position.xoffset !== undefined || position.yoffset !== undefined) {
-        return undefined;
+    return null;
+}
+
+/**
+ * A stored position as the slots that would produce it - the inverse of {@link positionFromArgs}.
+ *
+ * A placement word when the position is one, otherwise the pair, followed by whichever offsets the
+ * position carries. **An offset is never printed without both shares beside it**: `pos=0.5,0.5
+ * xoffset=40`, never a bare `xoffset=40`. The line has to say what the pixels are added to, and an
+ * offset alone would read back as no position at all (see {@link positionFromArgs}).
+ *
+ * Both shares or nothing. A bag holding one of them - which the inspector writes whenever an author
+ * drags a portrait along a single axis - used to interpolate the missing half straight into the
+ * pair, so the row printed `pos=0.45,undefined`: a value `parsePositionValue` rejects, and one the
+ * author was reading on their own line. Nothing is the honest answer, offsets or not; it leaves the
+ * position the inspector's, and the story file's echo check writes such a row as an opaque `»` line
+ * with its payload in `#data`, so nothing the line cannot say is lost on the way through a file.
+ */
+export function positionPropArgs(position: StoryAlignPositionValue | undefined): readonly TransformPropArg[] {
+    if (!position) {
+        return [];
+    }
+    const word = placementWord(position);
+    if (word) {
+        return [{ key: "pos", value: word, enum: true }];
     }
     const xalign = numberWord(position.xalign);
     const yalign = numberWord(position.yalign);
-    // Both axes or neither. A bag holding one of them - which the inspector writes whenever an author
-    // drags a portrait along a single axis - used to interpolate the missing half straight into the
-    // pair, so the row printed `pos=0.45,undefined`: a value `parsePositionValue` rejects, and one
-    // the author was reading on their own line. Nothing is the honest answer, and it is the same one
-    // the offset case above already gives.
-    return xalign !== undefined && yalign !== undefined ? `${xalign},${yalign}` : undefined;
+    if (xalign === undefined || yalign === undefined) {
+        return [];
+    }
+    const args: TransformPropArg[] = [{ key: "pos", value: `${xalign},${yalign}`, enum: true }];
+    for (const key of OFFSET_KEYS) {
+        const value = numberWord(position[key]);
+        if (value !== undefined) {
+            args.push({ key, value });
+        }
+    }
+    return args;
 }
 
 /**
  * A stored bag as the props an author would have typed for it.
  *
  * The exact inverse of {@link transformPropsFromArgs} on everything a line can spell, and silent on
- * everything it cannot (an offset position, a mask whose asset is gone, a `maskSize`) - a row may
+ * everything it cannot (an offset beside a half-stated pair, a mask whose asset is gone, a `maskSize`) - a row may
  * only ever show a line the author could type back, so a channel with no spelling prints nothing and
  * stays the inspector's.
  */
@@ -713,7 +866,7 @@ export function transformPropArgs(
             args.push({ key, value, ...(isEnum ? { enum: true } : {}) });
         }
     };
-    push("pos", positionWord(props.position), true);
+    args.push(...positionPropArgs(props.position));
     push("zoom", numberWord(props.zoom));
     // A mirror is a `scaleX` of ∓1 with no vertical scale beside it, and it reads back as the word
     // that produced it rather than as the number - `flip=on` is what the author typed and what the
@@ -783,7 +936,7 @@ function percentWord(value: string | null | undefined): string | undefined {
 /** A `from=` bag as the quoted list that would produce it, or nothing when it states none. */
 export function fromPropsWord(props: StoryTransformProps | undefined): string | undefined {
     const args = transformPropArgs(props, () => undefined)
-        .filter(arg => ["pos", "zoom", "scale", "scaleX", "scaleY", "rot", "opacity", ...FILTER_SUGAR_KEYS].includes(arg.key as FilterSugarKey));
+        .filter(arg => ["pos", ...OFFSET_KEYS, "zoom", "scale", "scaleX", "scaleY", "rot", "opacity", ...FILTER_SUGAR_KEYS].includes(arg.key as FilterSugarKey));
     return args.length === 0 ? undefined : args.map(arg => `${arg.key}=${arg.value}`).join(" ");
 }
 
@@ -819,7 +972,7 @@ export function transformSecondsToMs(next: string): number {
  *
  * A writer, not a rebuild: it patches the single channel the printed value came from and leaves
  * everything else alone. Rebuilding the bag from the line would silently drop every channel the line
- * cannot spell - an offset position, a `maskSize`, a `from` bag - which is the failure the row
+ * cannot spell - a `maskSize`, a `from` bag - which is the failure the row
  * projection's `apply` contract exists to prevent.
  *
  * `mask` has no arm and prints without an editor: its value on the line is the asset's NAME while the
@@ -834,7 +987,15 @@ export function patchTransformProp(props: StoryTransformProps | undefined, key: 
         return { ...bag, filter: { ...(bag.filter ?? {}), [FILTER_SUGAR[sugar].fn]: amount } };
     }
     switch (key) {
-        case "pos": return { ...bag, position: parsePositionValue(next) ?? bag.position };
+        // A new anchor keeps the pixels set on top of the old one; see `withOffsetsOf`.
+        case "pos": {
+            const position = parsePositionValue(next);
+            return position ? { ...bag, position: withOffsetsOf(position, bag.position) } : bag;
+        }
+        // Only ever printed beside both shares, so the position it lands in already has them.
+        case "xoffset":
+        case "yoffset":
+            return bag.position && Number.isFinite(amount) ? { ...bag, position: { ...bag.position, [key]: amount } } : bag;
         case "zoom": return { ...bag, zoom: amount };
         case "scale": return { ...bag, scaleX: amount, scaleY: amount };
         case "scaleX": return { ...bag, scaleX: amount };

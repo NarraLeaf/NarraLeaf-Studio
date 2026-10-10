@@ -259,7 +259,8 @@ export function describeParamType(type: StoryCommandParamType): string {
                 type.integer ? "integer" : null,
                 type.unit ? `may be written with "${type.unit}"` : null,
             ].filter(Boolean);
-            return bounds.length > 0 ? `number, ${bounds.join(", ")}` : "number";
+            const number = bounds.length > 0 ? `number, ${bounds.join(", ")}` : "number";
+            return type.format ? `${number}: ${type.format}` : number;
         }
         case "boolean":
             return "boolean";

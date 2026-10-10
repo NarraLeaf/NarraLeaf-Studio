@@ -1,5 +1,6 @@
 import type { TranslationKey } from "@shared/i18n";
 import { translate } from "@/lib/i18n";
+import type { AssetsService } from "../core/AssetsService";
 import { CharacterService } from "../core/CharacterService";
 import { ConsoleService } from "../core/ConsoleService";
 import { Services, type WorkspaceContext } from "../services";
@@ -47,7 +48,8 @@ function withTimeout(promise: Promise<void>, timeoutMs: number, label: string): 
  *
  * The auto-savers come from {@link SaveStatusService}, which every document service registers with.
  * {@link CharacterService} is listed separately because it predates the shared saver and still runs
- * its own (already bounded) timer.
+ * its own (already bounded) timer, and the asset library because it has no timer at all: it writes
+ * as it changes, and what it can still owe is a write the disk refused.
  */
 function collectTargets(ctx: WorkspaceContext): FlushTarget[] {
     const targets: FlushTarget[] = [];
@@ -65,6 +67,18 @@ function collectTargets(ctx: WorkspaceContext): FlushTarget[] {
         }
     } catch {
         // No save-status service means no registered savers to flush.
+    }
+
+    try {
+        // Not a debounced saver: the library writes as it changes, and only a write the disk refused
+        // is still owed - retried by the next change, which a closing window never makes.
+        const assets = ctx.services.get<AssetsService>(Services.Assets);
+        targets.push({
+            labelKey: "workspace.shell.save.stores.assets",
+            flush: () => assets.flushOwedWrites(),
+        });
+    } catch {
+        // No asset service, nothing owed.
     }
 
     try {

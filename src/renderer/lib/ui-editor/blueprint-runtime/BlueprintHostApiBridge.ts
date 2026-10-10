@@ -661,6 +661,15 @@ export type BlueprintHostApiRuntime = {
          */
         getCharacter: (characterId: string) => BlueprintCharacterInfo | null;
         getNotifications: () => BlueprintGameNotification[];
+        /**
+         * Add a line to the running game's notification stream - the one the engine's own notices
+         * go into, so it is drawn by the Game UI notification slot (or the engine's own toast when
+         * the project has none) and listed by `getNotifications` until it times out.
+         *
+         * `durationSeconds` undefined means the engine's default. Throws with no game running:
+         * there is no stream to post into.
+         */
+        postNotification: (message: string, durationSeconds?: number) => void;
         getChoiceCount: () => number;
         isNvlMode: () => boolean;
         /** True while a dialog line is on screen and its message is marked read. */
@@ -997,6 +1006,12 @@ export type CreateBlueprintHostApiRuntimeOptions = {
      */
     onGetCharacter?: (characterId: string) => unknown;
     onGetNotifications?: () => BlueprintGameNotification[];
+    /**
+     * Posts into the running game's notification stream, with the duration in milliseconds
+     * (undefined for the engine's default). Absent where no game can run - an interface previewed
+     * in Studio - and `Post Notification` then says it needs a running game.
+     */
+    onPostNotification?: (message: string, durationMs?: number) => void;
     onGetChoiceCount?: () => number;
     onIsNvlMode?: () => boolean;
     onIsCurrentTextRead?: () => boolean;
@@ -2696,6 +2711,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onGetSpeakerColor,
         onGetCharacter,
         onGetNotifications,
+        onPostNotification,
         onGetChoiceCount,
         onIsNvlMode,
         onIsCurrentTextRead,
@@ -4650,6 +4666,22 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         ? onGetNotifications()
                         : scope.globalGet(BLUEPRINT_GAME_NOTIFICATIONS_STATE_KEY);
                     return normalizeBlueprintGameNotifications(value);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            postNotification: (message: string, durationSeconds?: number) => {
+                const cap = "game.postNotification";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onPostNotification) {
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.postNotification") }));
+                    }
+                    // The engine counts in milliseconds; a node counts in seconds, like every other
+                    // duration an author types. Undefined passes through so the engine's own default
+                    // applies, rather than a copy of it here that could drift.
+                    const durationMs = durationSeconds === undefined ? undefined : Math.round(durationSeconds * 1000);
+                    onPostNotification(String(message), durationMs);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

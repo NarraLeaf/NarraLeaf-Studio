@@ -241,13 +241,23 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "asset_delete",
         "Delete an asset",
-        "Deletes an asset from the project - for clearing the skeleton's leftover demo pictures and music once nothing uses them, say. Refused while anything still refers to it (a story row, a scene's `#background`/`#music`, a character pose, a page or blueprint); the refusal lists where. One step of undo; the file goes to the project's recycle bin.",
+        "Deletes an asset from the project - for clearing the skeleton's leftover demo pictures and music once nothing uses them, say. Refused while anything still refers to it (a story row, a scene's `#background`/`#music`, a character pose, a page or blueprint), or while its id is still written in a story, page or blueprint the usage index does not count; the refusal lists where. One step of undo; the file goes to the project's recycle bin.",
         {
             asset: { type: "string", description: "Asset name or id (assets_list)." },
             type: { type: "string", enum: ["image", "audio", "video", "font", "json", "model", "other"], description: "Only needed when two assets of different types share the name." },
         },
         ["asset"],
         true,
+    ),
+    ws(
+        "asset_usage",
+        "Where an asset is used",
+        "Lists every place an asset is used, two ways: Studio's usage index (the one lint's `assets/unused` and asset_delete read), and every place its id is written in the stories, pages and blueprints. Call it before deleting an asset lint lists as unused: a use the index does not count shows up in the second list.",
+        {
+            asset: { type: "string", description: "Asset name or id (assets_list)." },
+            type: { type: "string", enum: ["image", "audio", "video", "font", "json", "model", "other"], description: "Only needed when two assets of different types share the name." },
+        },
+        ["asset"],
     ),
     ws(
         "assets_placeholder",
@@ -446,7 +456,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "scene_create",
         "Create a scene",
-        "Creates an empty scene in a story (and the story itself if `story` names none that exists). Returns its id; then write its rows with story_apply.",
+        "Creates an empty scene in a story (and the story itself if `story` names none that exists - then the new story holds just this scene, in `chapter` when given, with no default chapter or scene beside it). Returns its id; then write its rows with story_apply.",
         {
             name: { type: "string" },
             story: { type: "string", description: "Story name or id; defaults to the first story." },
@@ -463,6 +473,22 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
         "Renames a story - the skeleton's is called \"Skeleton\", which the author sees in Studio's story list. Nothing refers to a story by its name, so nothing else changes. One step of undo.",
         { story: { type: "string", description: "Story name or id; defaults to the first story." }, name: { type: "string" } },
         ["name"],
+        true,
+    ),
+    ws(
+        "chapter_rename",
+        "Rename a chapter",
+        "Renames a chapter of a story (story_list shows them). Chapters only group scenes; nothing refers to one by name. One step of undo.",
+        { chapter: { type: "string", description: "Chapter name or id." }, name: { type: "string" }, story: { type: "string", description: "Story name or id; defaults to the first story." } },
+        ["chapter", "name"],
+        true,
+    ),
+    ws(
+        "chapter_delete",
+        "Delete a chapter",
+        "Deletes an empty chapter. Refused while it still holds scenes (the refusal lists them): move them with scene_create's placement or delete them with scene_delete first. One step of undo.",
+        { chapter: { type: "string", description: "Chapter name or id." }, story: { type: "string", description: "Story name or id; defaults to the first story." } },
+        ["chapter"],
         true,
     ),
     ws("scene_set_entry", "Set the entry scene", "Makes a scene the one the game starts on when the player presses Start.", { scene: { type: "string" }, story: { type: "string" } }, ["scene"], true),
@@ -823,19 +849,56 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "playtest_start",
         "Play the game",
-        "Opens the game in Dev Mode, from the title page or from a scene (and row). The author sees it too. From a scene it returns once the first line is shown in full (or a menu is up), and says what it is (speaker and text). Then use playtest_advance and playtest_screenshot.",
+        "Opens the game in Dev Mode, from the title page or from a scene (and row). The author sees it too. From a scene it returns once the first line is shown in full (or a menu is up), and says what it is (speaker and text). Then use playtest_advance and playtest_screenshot. Every playtest answer also lists the errors and warnings Dev Mode has reported in this run (`issues`, with scene and row or page) - the ones its issue strip counts.",
         { scene: { type: "string" }, row: { type: "integer", description: "1-based row in the scene." } },
     ),
     ws(
         "playtest_advance",
         "Advance the game",
-        "Reads on `steps` lines of a running story. One step is one line: a click on the line shown in full, then a wait until the game is at rest again - on the next line, finished typing (rows without a line, such as /show or /sound, are not steps), a menu, or out of the story. So the answer names exactly what is on screen, and a screenshot taken next shows that whole line. Stops early at a choice menu, at an ending (names it, and the page the game went to: the title or an ending page), or when a click does not move the game; says why. Rows with no line - timed `/wait`s, transitions - are waited through (up to 10 s for the next line to come up), and a click the game swallowed is repeated once before the step is called stuck. With `choice`, picks that option first (counts as one step). Does nothing on the title page: start from a scene.",
+        "Reads on `steps` lines of a running story. One step is one line: a click on the line shown in full, then a wait until the game is at rest again - on the next line, finished typing (rows without a line, such as /show or /sound, are not steps), a menu, or out of the story. So the answer names exactly what is on screen, and a screenshot taken next shows that whole line. Stops early at a choice menu, at an ending (names it, and the page the game went to: the title or an ending page), or when a click does not move the game; says why. Rows with no line are waited through: a transition up to 10 s, a timed `/wait` for its length plus 10 s, a `/video` the story waits on for as long as the call allows (the answer says `pausedBy` when one is still running, and an ending reached after the call ran out is reported by the next call), and a click the game swallowed is repeated once before the step is called stuck. A `/wait click` row (stopped for a click, no line on screen) is clicked through and counts as one step; the answer says `waitingForClick` while it waits. With `choice`, picks that option first (counts as one step). Does nothing on the title page: start from a scene.",
         {
             steps: { type: "integer", default: 1, description: "Lines to read on, 1-50." },
             choice: { type: "integer", description: "1-based option of the menu showing, in the order shown (hidden options are not counted)." },
         },
     ),
     ws("playtest_screenshot", "Look at the game", "Screenshot of the running Dev Mode game: the stage with its Game UI, or the window when a page such as the title is showing. Fails within about 10 s, saying why, when the game cannot be captured.", { maxSize: { type: "integer", default: 1280 } }),
+    ws(
+        "playtest_click",
+        "Click in the game",
+        "Clicks an element of the interface in the running Dev Mode game - a page, a layer such as the Confirm dialog, or the Game UI on the stage - the way a player's mouse does: pointer events at a point inside the element, landing on whatever is on top there. Use it to exercise buttons you wired: Start, a save or load slot, a settings control, a quick-menu button. `element` is an id, a path of names (`Title / Menu / Start`, the page name allowed first), a name unique on screen, or the words it shows. Ambiguous or missing names are refused with the elements on screen listed; an element drawn several times (list rows) needs `index`; one covered by something else is refused, naming what covers it. Returns what was done, what changed (pages and layers that opened or closed, a story starting, the line on screen) and what is showing now. Then call playtest_screenshot to look.",
+        {
+            element: { type: "string", description: "Id, path of names, unique name, or shown words of the element." },
+            surface: { type: "string", description: "The page, layer or Game UI surface it is on (name or id), to narrow the search." },
+            index: { type: "integer", description: "1-based drawing in screen order (top to bottom, then left to right), for an element drawn more than once." },
+            at: { type: "object", description: "Where in the element's box: `{ x, y }` as shares from its top-left corner, 0-1 each. Defaults to the centre. Use it for a slider's track." },
+        },
+        ["element"],
+    ),
+    ws(
+        "playtest_hover",
+        "Point at something in the game",
+        "Rests the pointer on an element of the running game without pressing it, the way a player's mouse does: its hover look and its On Mouse Enter graph run, and the element the pointer rested on before is left. Takes the same `element`, `surface`, `index` and `at` as playtest_click and answers the same way. Call playtest_screenshot to see the hover look.",
+        {
+            element: { type: "string", description: "Id, path of names, unique name, or shown words of the element." },
+            surface: { type: "string", description: "The page, layer or Game UI surface it is on (name or id)." },
+            index: { type: "integer", description: "1-based drawing in screen order, for an element drawn more than once." },
+            at: { type: "object", description: "`{ x, y }` in the element's box, 0-1 each. Defaults to the centre." },
+        },
+        ["element"],
+    ),
+    ws(
+        "playtest_key",
+        "Press a key in the game",
+        "Presses and releases a key in the running game the way a player's keyboard does, so the input actions bound to it (Advance, Skip, Menu, Dismiss...) and the keyboard/gamepad focus navigation answer it: arrows move the focus between controls, Enter or Space presses the focused one, Escape goes back or closes a layer. `rightClick`, `wheelUp` and `wheelDown` are the pointer gestures that name no element, aimed at the middle of the game (right click usually opens the menu; wheel up the backlog). Answers like playtest_click.",
+        {
+            key: {
+                type: "string",
+                description: "Escape, Enter, Space, Tab, Backspace, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, PageUp, PageDown, Home, End, F1-F12, a single letter or digit, or rightClick, wheelUp, wheelDown.",
+            },
+            shift: { type: "boolean", description: "Hold Shift (Shift+Tab moves the focus backwards)." },
+        },
+        ["key"],
+    ),
     ws("playtest_stop", "Stop playing", "Closes the Dev Mode game."),
     ws("console_read", "Read Studio's console", "Recent lines from Studio's console (build, story, blueprint, runtime channels).", { channel: { type: "string" }, level: { type: "string", enum: ["debug", "info", "warning", "error"] }, limit: { type: "integer", default: 100 } }),
     main(

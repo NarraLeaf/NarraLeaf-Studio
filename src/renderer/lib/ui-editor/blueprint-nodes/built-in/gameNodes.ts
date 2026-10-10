@@ -15,6 +15,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_MUTE_ON_WINDOW_BLUR,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
     BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS,
+    BLUEPRINT_NODE_TYPE_GAME_POST_NOTIFICATION,
     BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ,
     BLUEPRINT_NODE_TYPE_GAME_IS_DIALOG_WAITING,
     BLUEPRINT_NODE_TYPE_GAME_IS_NARRATOR,
@@ -761,6 +762,32 @@ function resolveSentenceCps(ctx: Parameters<NonNullable<BlueprintNodeDef["execut
     return cps;
 }
 
+/**
+ * `Post Notification`'s optional duration, in seconds. Unwired and untyped is undefined, which the
+ * host reads as the engine's default; anything else has to be a number above zero, since a line
+ * that times out before it is drawn is a mistake rather than a request.
+ */
+function resolveNotificationDuration(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0]): number | undefined {
+    const value = resolveNodeInput(ctx, "duration");
+    if (value === undefined || value === null || (typeof value === "string" && !value.trim())) {
+        return undefined;
+    }
+    const seconds = typeof value === "number" ? value : Number(value);
+    if (!Number.isFinite(seconds)) {
+        throw new BlueprintGraphExecutionError(
+            translate("blueprint.runtimeError.valueNotNumber", { name: translate("blueprint.port.durationS") }),
+            ctx.node.id,
+        );
+    }
+    if (seconds <= 0) {
+        throw new BlueprintGraphExecutionError(
+            translate("blueprint.runtimeError.valueAbove", { name: translate("blueprint.port.durationS"), min: "0" }),
+            ctx.node.id,
+        );
+    }
+    return seconds;
+}
+
 function resolvePreferenceValue(
     ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0],
     meta: GamePreferenceNodeMeta,
@@ -1489,6 +1516,64 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
                     notifications: requireHostApi(ctx).game.getNotifications(),
                 },
             };
+        },
+    },
+    {
+        /**
+         * The writing half of `Get Notifications`: one line into the stream the engine's own notices
+         * use, so it is drawn by the project's Notifications surface when there is one and by the
+         * engine's toast when there is not, and `Get Notifications` lists it until it times out.
+         *
+         * Not latent: posting is done within the tick, there is nothing to wait for. Refused with no
+         * game running - unlike its reader, which answers an empty list there - because a line with
+         * nowhere to go would otherwise vanish without a word.
+         */
+        type: BLUEPRINT_NODE_TYPE_GAME_POST_NOTIFICATION,
+        displayName: "Post Notification",
+        description: "blueprint.nodeDescription.postNotification",
+        category: "Game",
+        keywords: [
+            "game", "notification", "notify", "toast", "message", "show", "post", "alert", "popup",
+            "achievement", "nlr",
+        ],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: false,
+        pins: [
+            execIn,
+            execNext,
+            {
+                id: "message",
+                kind: "input",
+                semantic: "data",
+                valueType: "string",
+                label: "Message",
+                allowInlineLiteral: true,
+            },
+            {
+                id: "duration",
+                kind: "input",
+                semantic: "data",
+                valueType: "float",
+                label: "Duration (s)",
+                optional: true,
+                allowInlineLiteral: true,
+            },
+        ],
+        execute(ctx) {
+            const raw = resolveNodeInput(ctx, "message");
+            const message = raw === undefined || raw === null ? "" : String(raw);
+            if (!message.trim()) {
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.inputEmpty", {
+                        node: translate("blueprint.node.postNotification"),
+                        pin: translate("blueprint.port.message"),
+                    }),
+                    ctx.node.id,
+                );
+            }
+            requireHostApi(ctx).game.postNotification(message, resolveNotificationDuration(ctx));
+            return { nextPort: "next" };
         },
     },
     {

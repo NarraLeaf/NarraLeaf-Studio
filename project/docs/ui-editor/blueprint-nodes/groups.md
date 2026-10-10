@@ -173,6 +173,7 @@ Game 节点组默认具有：
 - `blueprint.game.startStory` - 启动指定 Story / Scene（尾节点，无执行出口）
 - `blueprint.game.getNametag` - 读取当前 Dialog 说话人名字；没有说话人时返回 `null`；pure 节点，可用于 Blueprint Value
 - `blueprint.game.getNotifications` - 读取当前 NarraLeaf 通知数组（`{id, message}` 的 `array`）；pure 节点，可用于 Blueprint Value
+- `blueprint.game.postNotification` - `Post Notification`，把 `Message` 写入引擎自身使用的通知流，由 Notification Game UI（没有时由引擎自带通知）显示，`Get Notifications` 在通知关闭前列出该条；`Duration (s)` 可选，留空为引擎默认 3 秒；非 latent 执行节点，只用于 `event` 和 `macro` 图；没有进行中的游戏时执行失败
 - `blueprint.game.getChoiceCount` - 读取当前选择菜单的可见选项数量；没有活动菜单时返回 `0`；pure 节点，可用于 Blueprint Value
 - `blueprint.game.isNvlMode` - 读取当前是否处于 NVL 模式；pure 节点，可用于 Blueprint Value
 - `blueprint.game.choose` - `Select Choice`，按原始选项序号选择当前菜单的选项；默认 Choice 模板在 Choice List 蓝图中预接 `Item Click → Select Choice`；hidden/disabled 选项拒绝，无活动菜单时执行失败

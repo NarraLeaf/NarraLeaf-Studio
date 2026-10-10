@@ -1516,6 +1516,28 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         return queued;
     }
 
+    /**
+     * Write whatever the library still owes the disk, for a workspace that is closing.
+     *
+     * A write the disk refused stays owed (see {@link flushPendingWrites}) and is retried only by the
+     * next change to the library - which, for a window being closed, never comes. So the shutdown
+     * flush (`flushPendingSaves`) asks here, and an import or an edit whose shard write failed gets
+     * one more try before the window goes. Throws when a shard is still owed afterwards, so the
+     * shutdown flush says which store did not reach the disk; a shard that could not be read is left
+     * out of that, since its refusal is deliberate and already on screen.
+     */
+    public async flushOwedWrites(): Promise<void> {
+        if (!this.assetsMetadataManager || (this.dirtyTypes.size === 0 && this.dirtyOrderCategories.size === 0)) {
+            return;
+        }
+        await this.flushPendingWrites();
+        const unreadable = this.assetsMetadataManager.getUnreadableShards();
+        const owed = Array.from(this.dirtyTypes).filter(type => !unreadable.has(type));
+        if (owed.length > 0) {
+            throw new Error(`asset library sections not written: ${owed.join(", ")}`);
+        }
+    }
+
     private startFlush(): Promise<void> {
         const run: Promise<void> = this.writePendingNow().finally(() => {
             if (this.runningFlush === run) {

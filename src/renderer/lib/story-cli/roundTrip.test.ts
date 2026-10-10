@@ -691,3 +691,85 @@ describe("a /transform bound to the row that walked a character on", () => {
         expect(sameRowContent(again.scene!.blocks[transform!.id], transform!)).toBe(true);
     });
 });
+
+describe("pixel offsets in a story file", () => {
+    /**
+     * `xoffset=` / `yoffset=` through a whole file and back: written as lines, applied, printed, and
+     * read again. Before they had a spelling, every one of these rows printed as an opaque `»` line;
+     * now each is a line, with both shares of `pos=` beside its offsets, and the scene reads back as
+     * itself. The one shape the line still cannot say - an offset beside a half-stated pair - keeps
+     * going through the escape hatch, whole.
+     */
+    function applied(lines: readonly string[]) {
+        commandI18nStore.setPreference(false);
+        const project = skeletonProject();
+        expect(project).not.toBeNull();
+        const { data, document } = project!;
+        const scene = { ...(Object.values(document.scenes)[0] as StoryScene), rootBlockIds: [], blocks: {} };
+        const lookups = buildLookups(data, document, scene, buildContext(data, document, scene));
+        const source = `#nlstory 1\n#scene ${scene.name} ⟦${scene.id}⟧\n\n${lines.join("\n")}\n`;
+        let next = 0;
+        const compiled = compileStoryFile({
+            ast: parseStoryFile(source).ast,
+            existing: scene,
+            document,
+            contextFor: stage => buildContext(data, document, stage ?? scene),
+            prose: lookups.prose,
+            conditions: lookups.conditions,
+            mintId: () => `00000000-0000-4000-8000-${String(next++).padStart(12, "0")}`,
+        });
+        expect(compiled.diagnostics).toEqual([]);
+        const written = compiled.scene!;
+        return { data, document: { ...document, scenes: { ...document.scenes, [written.id]: written } }, scene: written };
+    }
+
+    it("writes every row with an offset as a line, and reads the scene back as itself", () => {
+        const lines = [
+            "/show Narra pos=0.25,0.5 xoffset=-40 d=0.3s",
+            "/transform Narra pos=0.5,0.5 xoffset=40 yoffset=-12 d=0.4s",
+            "/image classroom name=poster pos=0.5,0.6 yoffset=20",
+            "/show poster",
+            "/text name=sign pos=0.5,0.8 xoffset=-8 Closed today",
+            "/show sign",
+        ];
+        const { data, document, scene } = applied(lines);
+        const positions = scene.rootBlockIds.map(id => {
+            const block = scene.blocks[id];
+            return block?.kind === "action" ? (block.payload as { transform?: { to?: { position?: unknown } } }).transform?.to?.position : undefined;
+        });
+        expect(positions[0]).toEqual({ xalign: 0.25, yalign: 0.5, xoffset: -40 });
+        expect(positions[1]).toEqual({ xalign: 0.5, yalign: 0.5, xoffset: 40, yoffset: -12 });
+        expect(positions[2]).toEqual({ xalign: 0.5, yalign: 0.6, yoffset: 20 });
+        expect(positions[4]).toEqual({ xalign: 0.5, yalign: 0.8, xoffset: -8 });
+
+        const { printed, parseDiagnostics, compiled } = roundTrip(data, document, scene);
+        expect(printed.stats.opaque).toBe(0);
+        // The rows with an offset print exactly as they were typed; the bare `/show` rows spell out
+        // the house reveal they were given, which is not what this is about.
+        for (const index of [0, 1, 2, 4]) {
+            expect(printed.text).toContain(`${lines[index]}  ⟦${scene.rootBlockIds[index]}⟧`);
+        }
+        expect(parseDiagnostics).toEqual([]);
+        expect(compiled.diagnostics).toEqual([]);
+        for (const [id, block] of Object.entries(scene.blocks)) {
+            expect(sameRowContent(compiled.scene!.blocks[id], block), `row ${id}`).toBe(true);
+        }
+    });
+
+    it("keeps an offset beside a half-stated pair whole, as an opaque row", () => {
+        const { data, document, scene } = applied(["/show Narra", "/transform Narra zoom=1.2 d=0.4s"]);
+        const id = scene.rootBlockIds[1];
+        const block = scene.blocks[id];
+        expect(block?.kind === "action" && block.payload.action === "displayable").toBe(true);
+        const payload = block!.payload as Extract<StoryBlock["payload"], { action: "displayable" }>;
+        const dragged: StoryBlock = {
+            ...block!,
+            payload: { ...payload, transform: { ...payload.transform, to: { ...payload.transform?.to, position: { xalign: 0.4, xoffset: 40 } } } },
+        } as StoryBlock;
+        const edited = { ...scene, blocks: { ...scene.blocks, [id]: dragged } };
+        const { printed, compiled } = roundTrip(data, { ...document, scenes: { ...document.scenes, [edited.id]: edited } }, edited);
+        expect(printed.stats.opaque).toBe(1);
+        expect(printed.opaqueRows.map(row => row.anchor)).toEqual([id]);
+        expect(sameRowContent(compiled.scene!.blocks[id], dragged)).toBe(true);
+    });
+});

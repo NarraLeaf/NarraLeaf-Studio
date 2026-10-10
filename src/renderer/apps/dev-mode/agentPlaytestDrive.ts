@@ -20,9 +20,24 @@ import {
     DevModeAgentErrorCode,
     type DevModeAgentAction,
     type DevModeAgentGameState,
+    type DevModeAgentIssue,
     type DevModeAgentResult,
 } from "@shared/types/devMode";
 import type { RequestStatus } from "@shared/types/ipcEvents";
+import {
+    actOnElement,
+    browserInputEnvironment,
+    describeDrawnElement,
+    describeKnownKeys,
+    gameCentre,
+    isPointerKey,
+    keyEventInit,
+    listDrawnSurfaces,
+    PlaytestPointer,
+    pressKey,
+    resolveInputTarget,
+    type InputEnvironment,
+} from "./agentPlaytestInput";
 
 export type PlaytestClock = {
     now(): number;
@@ -59,6 +74,12 @@ export const PLAYTEST_TIMING = {
     blindPauseMs: 400,
     /** How long a page (the title, an ending page) is given to come up once the story is left. */
     pageMs: 8000,
+    /** The least a pointer or key act waits before reading what it did: a press is answered asynchronously. */
+    inputMinMs: 300,
+    /** How long what is on screen has to hold still after a pointer or key act before it is read. */
+    inputQuietMs: 500,
+    /** The most a pointer or key act waits for the screen to settle (a page transition, a fade). */
+    inputMaxMs: 4000,
 };
 
 export type PlaytestTiming = typeof PLAYTEST_TIMING;
@@ -89,6 +110,8 @@ export function toAgentGameState(state: GameAppTestState | null): DevModeAgentGa
         line: state.line ? { ...state.line } : null,
         choices: state.choices ? state.choices.map(choice => ({ text: choice.text, disabled: choice.disabled })) : null,
         page: state.page,
+        ...(state.waitingForClick ? { waitingForClick: true } : {}),
+        ...(state.pausedBy ? { pausedBy: { ...state.pausedBy } } : {}),
     };
 }
 
@@ -106,6 +129,9 @@ export function movedOn(from: GameAppTestState, next: GameAppTestState | null): 
         return true;
     }
     if (next.choices !== null && from.choices === null) {
+        return true;
+    }
+    if (from.waitingForClick !== next.waitingForClick) {
         return true;
     }
     if (lineKey(next) !== lineKey(from)) {
@@ -136,7 +162,7 @@ function reachedStop(state: GameAppTestState | null, leftKey: string | null): bo
     if (!state) {
         return false;
     }
-    if (!state.inGame || state.choices !== null) {
+    if (!state.inGame || state.choices !== null || state.waitingForClick) {
         return true;
     }
     return state.line !== null && lineKey(state) !== leftKey;
@@ -182,6 +208,46 @@ async function settleOutOfStory(
 }
 
 /**
+ * Wait (bounded) for the game to come to rest, the way {@link settleLine} needs it: up to `appearMs`
+ * for a line, a menu or the story leaving - and longer while the story is visibly holding on
+ * something of its own. A timed `/wait` gets its own length on top, and a `/video` the story waits
+ * out gets as long as the call allows: neither is a game that is stuck, and a 10 s window used to
+ * call a scene that ended on `/wait 3`, a video and an `/ending` stuck on every call, never reaching
+ * the ending.
+ */
+async function waitForStop(
+    game: PlaytestGame,
+    leftKey: string | null,
+    appearMs: number,
+    clock: PlaytestClock,
+    timing: PlaytestTiming,
+    deadline: number,
+): Promise<GameAppTestState | null> {
+    let end = Math.min(clock.now() + appearMs, deadline);
+    let pausedSince: string | null = null;
+    for (;;) {
+        const state = game.read();
+        if (reachedStop(state, leftKey)) {
+            return state;
+        }
+        const pause = state?.inGame ? state.pausedBy : null;
+        const key = pause ? JSON.stringify(pause) : null;
+        if (pause && key !== pausedSince) {
+            // Measured from when the pause is first seen, once per pause: a timed wait gets its own
+            // length plus the usual window, a video the whole call.
+            pausedSince = key;
+            end = pause.kind === "video"
+                ? deadline
+                : Math.min(Math.max(end, clock.now() + pause.ms + appearMs), deadline);
+        }
+        if (clock.now() >= end) {
+            return state;
+        }
+        await clock.sleep(timing.pollMs);
+    }
+}
+
+/**
  * Bring the game to rest: wait for a line other than `leftKey` (any line when null), a menu, or the
  * game leaving the story; let a line still typing finish - clicking once to complete it when it
  * takes longer than `typingMs`. Answers where the game ended up.
@@ -196,7 +262,7 @@ async function settleLine(
 ): Promise<GameAppTestState | null> {
     let state = game.read();
     if (!reachedStop(state, leftKey)) {
-        state = await waitUntil(game, next => reachedStop(next, leftKey), options.appearMs, clock, timing, deadline) ?? game.read();
+        state = await waitForStop(game, leftKey, options.appearMs, clock, timing, deadline);
     }
     if (!state || !state.inGame) {
         return settleOutOfStory(game, clock, timing, deadline);
@@ -234,6 +300,22 @@ async function settleLine(
     return game.read();
 }
 
+/** Why an advance stopped with no line on screen, as specifically as the game can say. */
+function noLineMessage(state: GameAppTestState, timing: PlaytestTiming): string {
+    const pause = state.pausedBy;
+    if (pause?.kind === "video") {
+        return "A video is playing and the story waits for it to end; it had not ended when this call ran out of time. "
+            + "Call playtest_advance again to keep waiting, or skip it as a player can with playtest_key {key:\"Space\"} "
+            + "(or a click on the stage).";
+    }
+    if (pause?.kind === "timed") {
+        return `The story is in a timed wait (/wait ${Math.round(pause.ms / 100) / 10} s) that had not finished. `
+            + "Call playtest_advance again once it has had time to run.";
+    }
+    return `No line came up within ${Math.round(timing.appearMs / 1000)} s: the scene may be waiting on `
+        + "something a click does not skip (an input the scene asks for, a blueprint that has not answered).";
+}
+
 /**
  * Where an advance ended. `state` is null only when the game had no controls at the end. `ending`
  * is set when an `/ending` row ran during the advance: its name, or null for one with no name.
@@ -255,14 +337,17 @@ export type PlaytestAdvanceOutcome = {
  */
 export async function advanceLines(
     game: PlaytestGame,
-    request: { steps: number; choice?: number },
+    request: { steps: number; choice?: number; endingsSeen?: number },
     clock: PlaytestClock,
     timing: PlaytestTiming = PLAYTEST_TIMING,
     budgetMs: number = DEV_MODE_AGENT_BUDGET_MS.advance - 2000,
 ): Promise<PlaytestAdvanceOutcome> {
     const deadline = clock.now() + budgetMs;
     let advanced = 0;
-    let endingsBefore: number | null = null;
+    // Endings the window had already told an agent about. One that ran between two calls - the
+    // story held on a video past the last call's budget and then ended - is reported by the next
+    // call, rather than lost behind "no story is running".
+    let endingsBefore: number | null = request.endingsSeen ?? null;
     let last: GameAppTestState | null = null;
     const readOrNull = (): GameAppTestState | null => {
         try {
@@ -282,10 +367,19 @@ export async function advanceLines(
     };
     try {
         let state = game.read();
+        if (state && endingsBefore !== null && state.endings < endingsBefore) {
+            // A fresh game app counts from zero again.
+            endingsBefore = 0;
+        }
         if (!state || !state.inGame) {
+            last = state;
+            if (state && reachedEnding(state)) {
+                // Said as what happened: the story reached its ending since the last call.
+                return finish(state);
+            }
             return finish(state, NOT_IN_GAME_MESSAGE);
         }
-        endingsBefore = state.endings;
+        endingsBefore ??= state.endings;
         // A scene still coming up gets its first line before anything is clicked - a click into a
         // transition is swallowed - and a line still typing is completed, so the first step reads
         // on to the NEXT line rather than spending itself finishing this one.
@@ -321,6 +415,10 @@ export async function advanceLines(
 
         while (advanced < request.steps) {
             if (clock.now() >= deadline) {
+                if (state?.inGame && !state.line && !state.choices && state.pausedBy) {
+                    // Out of time while the story holds on something of its own: say what.
+                    return finish(state, noLineMessage(state, timing));
+                }
                 return finish(state, `Stopped after ${advanced} of ${request.steps} step(s): one advance may take at most ${Math.round(budgetMs / 1000)} s.`);
             }
             if (!state || !state.inGame) {
@@ -334,9 +432,27 @@ export async function advanceLines(
                 // An ending with no page of its own leaves the last frame standing, story and all.
                 return finish(state);
             }
+            if (!state.line && state.waitingForClick) {
+                // A `/wait click` row: the story is stopped until the player clicks, with no line on
+                // screen. The click a player makes is one step, like reading on past a line.
+                const waiting = state;
+                await game.advance();
+                let released = await waitUntil(game, next => !next || !next.waitingForClick || movedOn(waiting, next), timing.moveMs, clock, timing, deadline);
+                if (released === undefined) {
+                    await game.advance();
+                    released = await waitUntil(game, next => !next || !next.waitingForClick || movedOn(waiting, next), timing.moveMs, clock, timing, deadline);
+                }
+                if (released === undefined) {
+                    return finish(game.read(), "The game is waiting for a click (a `/wait click` row) and two clicks on the stage did not "
+                        + "release it. Try playtest_click on the element the scene expects, or playtest_key {key:\"Enter\"}.");
+                }
+                advanced += 1;
+                state = await settleLine(game, null, clock, timing, deadline, { appearMs: timing.appearMs, typingMs: timing.typingMs });
+                last = state ?? last;
+                continue;
+            }
             if (!state.line && !blind) {
-                return finish(state, `No line came up within ${Math.round(timing.appearMs / 1000)} s: the scene may be waiting on `
-                    + "something a click does not skip (a timed pause, a video, an input the scene asks for).");
+                return finish(state, noLineMessage(state, timing));
             }
             const from = state;
             await game.advance();
@@ -430,6 +546,203 @@ export async function captureWithin(
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Pointer and key acts
+// ---------------------------------------------------------------------------------------------
+
+/** How a pointer or key act reaches the game; the browser's DOM in Dev Mode, a stand-in under test. */
+export type PlaytestInputOptions = {
+    /** The game as the input module reads it, or null when it has no root yet. */
+    environment?: (controls: GameAppTestControls) => InputEnvironment | null;
+    /** Where the pointer rests between acts; one per window. */
+    pointer?: PlaytestPointer;
+    /**
+     * The errors and warnings the window has reported in this run, newest first - what its issue
+     * strip counts. Attached to every answer that says where the game is, so an agent hears about a
+     * warning the author can see.
+     */
+    readIssues?: () => DevModeAgentIssue[];
+    /** What the window remembers between calls; one per window. */
+    memory?: PlaytestMemory;
+};
+
+/**
+ * What a window remembers between an agent's calls: the endings it has already reported. An ending
+ * reached while no call was running - the story held on a video past the last call's budget, then
+ * ended - is the next call's to report.
+ */
+export type PlaytestMemory = { endingsReported: number | null };
+
+const windowMemory: PlaytestMemory = { endingsReported: null };
+
+const windowPointer = new PlaytestPointer();
+
+function browserEnvironmentOf(controls: GameAppTestControls): InputEnvironment | null {
+    const root = controls.readGameRoot();
+    return root ? browserInputEnvironment(root, controls.readUiDocument()) : null;
+}
+
+type ScreenReading = { state: DevModeAgentGameState; surfaces: string[] };
+
+function readScreen(getControls: () => GameAppTestControls | null, environment: PlaytestInputOptions["environment"]): ScreenReading {
+    const controls = getControls();
+    if (!controls) {
+        return { state: toAgentGameState(null), surfaces: [] };
+    }
+    const env = (environment ?? browserEnvironmentOf)(controls);
+    return { state: toAgentGameState(controls.readState()), surfaces: env ? listDrawnSurfaces(env) : [] };
+}
+
+function screenKey(reading: ScreenReading): string {
+    const { state } = reading;
+    return JSON.stringify([
+        state.ready, state.inGame, state.entries, state.page, state.line, state.choices, reading.surfaces,
+    ]);
+}
+
+/**
+ * Wait (bounded) for the screen to hold still after an act: at least `inputMinMs`, then until nothing
+ * on it - the surfaces drawn, the page, the line, the menu - has changed for `inputQuietMs`, or
+ * `inputMaxMs` has passed. A press opens a page through a transition and runs its graph
+ * asynchronously, so what is on screen the instant after the click is not what the click did.
+ */
+async function settleScreen(
+    read: () => ScreenReading,
+    clock: PlaytestClock,
+    timing: PlaytestTiming,
+): Promise<ScreenReading> {
+    const start = clock.now();
+    let last = read();
+    let lastKey = screenKey(last);
+    let stableSince = start;
+    for (;;) {
+        await clock.sleep(timing.pollMs * 2);
+        const now = clock.now();
+        const next = read();
+        const key = screenKey(next);
+        if (key !== lastKey) {
+            last = next;
+            lastKey = key;
+            stableSince = now;
+        }
+        if (now - start >= timing.inputMinMs && now - stableSince >= timing.inputQuietMs) {
+            return last;
+        }
+        if (now - start >= timing.inputMaxMs) {
+            return last;
+        }
+    }
+}
+
+function quoted(names: readonly string[]): string {
+    return names.map(name => `"${name}"`).join(", ");
+}
+
+/** What an act changed on screen, one phrase each, for the agent that cannot see it. */
+export function describeScreenChange(before: ScreenReading, after: ScreenReading): string[] {
+    const changed: string[] = [];
+    const opened = after.surfaces.filter(name => !before.surfaces.includes(name));
+    const closed = before.surfaces.filter(name => !after.surfaces.includes(name));
+    if (opened.length > 0) {
+        changed.push(`now showing ${quoted(opened)}`);
+    }
+    if (closed.length > 0) {
+        changed.push(`no longer showing ${quoted(closed)}`);
+    }
+    const was = before.state;
+    const is = after.state;
+    if (!was.inGame && is.inGame) {
+        changed.push("a story started");
+    } else if (was.inGame && !is.inGame) {
+        changed.push("the story was left");
+    } else if (is.inGame && is.entries !== was.entries) {
+        changed.push("a story was entered again (a load or a restart)");
+    }
+    if (is.page !== was.page && is.page) {
+        changed.push(`the page on screen is now "${is.page}"`);
+    }
+    const lineKey = (line: DevModeAgentGameState["line"]) => (line ? `${line.speaker ?? ""}\u0000${line.text}` : null);
+    if (lineKey(is.line) !== lineKey(was.line) && is.line) {
+        changed.push(`the line on screen is now ${is.line.speaker ?? "narration"}: "${is.line.text}"`);
+    }
+    if (!was.choices && is.choices) {
+        changed.push("a choice menu came up");
+    } else if (was.choices && !is.choices) {
+        changed.push("the choice menu closed");
+    }
+    return changed;
+}
+
+async function runInputAction(
+    getControls: () => GameAppTestControls | null,
+    controls: GameAppTestControls,
+    action: Extract<DevModeAgentAction, { kind: "pointer" | "key" }>,
+    clock: PlaytestClock,
+    timing: PlaytestTiming,
+    input: PlaytestInputOptions,
+): Promise<RequestStatus<DevModeAgentResult>> {
+    const environmentOf = input.environment ?? browserEnvironmentOf;
+    const pointer = input.pointer ?? windowPointer;
+    const env = environmentOf(controls);
+    if (!env) {
+        return {
+            success: false,
+            code: DevModeAgentErrorCode.starting,
+            error: "The game in the Dev Mode window has not drawn anything yet; try again in a moment.",
+        };
+    }
+    const refuse = (message: string): RequestStatus<DevModeAgentResult> => ({
+        success: false,
+        code: DevModeAgentErrorCode.inputTarget,
+        error: message,
+    });
+    const before = readScreen(getControls, environmentOf);
+    let did: string;
+    if (action.kind === "pointer") {
+        const resolved = resolveInputTarget(env, { element: action.element, surface: action.surface, index: action.index });
+        if (resolved.kind === "refused") {
+            return refuse(resolved.message);
+        }
+        const outcome = actOnElement(env, pointer, resolved.target, action.gesture, action.at);
+        if (outcome.kind === "refused") {
+            return refuse(outcome.message);
+        }
+        const verb = action.gesture === "click" ? "Clicked" : "Pointed at";
+        did = `${verb} ${describeDrawnElement(outcome.target)}.`;
+    } else if (isPointerKey(action.key)) {
+        const centre = gameCentre(env);
+        if (!centre) {
+            return refuse("The game has no box on screen to aim at.");
+        }
+        pointer.moveTo(centre.node, centre.x, centre.y);
+        if (action.key === "rightClick") {
+            pointer.press(2);
+            did = "Right-clicked the middle of the game.";
+        } else {
+            pointer.wheel(action.key === "wheelUp" ? -100 : 100);
+            did = `Turned the wheel ${action.key === "wheelUp" ? "up" : "down"} one notch over the middle of the game.`;
+        }
+    } else {
+        const init = keyEventInit(action.key);
+        if (!init) {
+            return refuse(`"${action.key}" is not a key playtest_key presses. Keys: ${describeKnownKeys()}.`);
+        }
+        pressKey(env, init, action.shift === true);
+        did = `Pressed ${action.shift ? "Shift+" : ""}${action.key}.`;
+    }
+    const after = await settleScreen(() => readScreen(getControls, environmentOf), clock, timing);
+    return {
+        success: true,
+        data: {
+            kind: "input",
+            did,
+            surfaces: after.surfaces,
+            changed: describeScreenChange(before, after),
+            state: after.state,
+        },
+    };
+}
+
 /**
  * One play-test action, start to answer. `getControls` is read at every act rather than once,
  * because the game app republishes its controls whenever its session is remounted (a start, a
@@ -440,6 +753,27 @@ export async function runAgentDriveAction(
     action: DevModeAgentAction,
     clock: PlaytestClock,
     timing: PlaytestTiming = PLAYTEST_TIMING,
+    input: PlaytestInputOptions = {},
+): Promise<RequestStatus<DevModeAgentResult>> {
+    const result = await runAgentDriveActionInner(getControls, action, clock, timing, input);
+    if (!result.success || result.data.kind === "capture" || !input.readIssues) {
+        return result;
+    }
+    let issues: DevModeAgentIssue[] = [];
+    try {
+        issues = input.readIssues();
+    } catch {
+        // The list is a courtesy; an answer about where the game is must not fail on it.
+    }
+    return issues.length > 0 ? { success: true, data: { ...result.data, issues } } : result;
+}
+
+async function runAgentDriveActionInner(
+    getControls: () => GameAppTestControls | null,
+    action: DevModeAgentAction,
+    clock: PlaytestClock,
+    timing: PlaytestTiming,
+    input: PlaytestInputOptions,
 ): Promise<RequestStatus<DevModeAgentResult>> {
     if (action.kind === "capture") {
         const controls = getControls();
@@ -451,7 +785,7 @@ export async function runAgentDriveAction(
     // The game app publishes its controls once a story could be started; a request that arrives
     // before then waits a little for them, so a call right after a launch is not lost.
     let controls = getControls();
-    if (!controls && (action.kind === "advance" || action.settle)) {
+    if (!controls && (action.kind === "advance" || action.kind === "pointer" || action.kind === "key" || action.settle)) {
         const end = clock.now() + timing.firstAppearMs;
         while (!controls && clock.now() < end) {
             await clock.sleep(timing.pollMs * 4);
@@ -467,6 +801,14 @@ export async function runAgentDriveAction(
             code: DevModeAgentErrorCode.starting,
             error: "The game in the Dev Mode window is still starting; try again in a moment.",
         };
+    }
+
+    if (action.kind === "pointer" || action.kind === "key") {
+        try {
+            return await runInputAction(getControls, controls, action, clock, timing, input);
+        } catch (error) {
+            return { success: false, error: error instanceof Error ? error.message : String(error) };
+        }
     }
 
     const live = (): GameAppTestControls => {
@@ -485,6 +827,9 @@ export async function runAgentDriveAction(
     };
 
     if (action.kind === "state") {
+        if (action.baseline) {
+            (input.memory ?? windowMemory).endingsReported = game.read()?.endings ?? 0;
+        }
         try {
             const state = action.settle
                 ? await settleLine(game, null, clock, timing, clock.now() + DEV_MODE_AGENT_BUDGET_MS.state - 1000, {
@@ -498,7 +843,17 @@ export async function runAgentDriveAction(
         }
     }
 
-    const outcome = await advanceLines(game, { steps: action.steps, choice: action.choice }, clock, timing);
+    const memory = input.memory ?? windowMemory;
+    const outcome = await advanceLines(
+        game,
+        { steps: action.steps, choice: action.choice, ...(memory.endingsReported !== null ? { endingsSeen: memory.endingsReported } : {}) },
+        clock,
+        timing,
+    );
+    const endedAt = outcome.state ?? game.read();
+    if (endedAt) {
+        memory.endingsReported = endedAt.endings;
+    }
     return {
         success: true,
         data: {

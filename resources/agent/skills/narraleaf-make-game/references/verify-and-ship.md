@@ -29,7 +29,7 @@ returns findings, errors first, 150 to a page. `lint {severity:"error"}` shows o
 | `story/background-unchanged` | A `/bg` repeats the picture already on screen | Drop the row or its transition |
 | `story/ending-name-duplicate` | Two endings share a name | Rename one |
 | dead end / unreachable scene | A scene with no way out, or none in | Add the `/jump` or `/ending`; jump to it from somewhere |
-| `assets/unused` | An asset nothing uses | Expected for the skeleton's demo images; list for the author |
+| `assets/unused` | An asset the usage index finds no use of | Expected for the skeleton's demo images. Before deleting one, `asset_usage {asset}` must show no use at all; otherwise list it for the author |
 | `variables/unused` | A variable nothing reads | Expected for the skeleton's `Honest` once its scenes are rewritten |
 | `ui/empty-behavior` | A control with no behaviour | Ships with the skeleton (about three dozen); not yours unless you added the control |
 | `story/input-action-missing` | `/waitinput` etc. naming an input action that does not exist | Pick one from `story_targets` |
@@ -59,8 +59,15 @@ How the playtest tools behave:
   no line (`/show`, `/sound`, `/bg`, a transition) are not steps; the call waits them out. When it
   returns, the line it names is exactly the one on screen, whole, so a screenshot right after shows
   it - no need to pause between calls.
+- A `/wait click` row stops the story with no line on screen until the player clicks: the answer
+  says so (`waitingForClick`), and the next step clicks through it - it counts as one step.
+- Rows with no line are waited out: a timed `/wait` for its length, a `/video` the story waits on for
+  as long as the call allows (about two minutes). When one is still running at the end of the call,
+  the answer says so (`pausedBy`: `video` or `timed`) - call `playtest_advance` again to keep waiting,
+  or skip a video as a player can with `playtest_key {key:"Space"}`. An ending the story reaches
+  after a call ran out is reported by the next call.
 - It stops early at a choice menu, when a click does not move the game, when no line comes up for
-  10 s (a timed pause, a video), and at an **ending**: the answer names the ending reached (`Read on
+  10 s with nothing holding the story (an input the scene asks for), and at an **ending**: the answer names the ending reached (`Read on
   3 line(s) and reached the ending "Sunrise"`) and the page the game went to - the project's ending
   page, or the title page when it has none (the skeleton has none). That is the run finished, not an
   error.
@@ -68,16 +75,66 @@ How the playtest tools behave:
   to screenshot a route's last line, advance one step at a time near the end.
 - Every result names the line it is on (and a menu's options), so take a `playtest_screenshot` only
   when you need to see the picture.
+- Every result also lists the errors and warnings Dev Mode has reported in this run, newest first,
+  with the scene and row (or the page) each came from (`issues`) - the same ones the issue strip at
+  the top of the Dev Mode window counts. Read them: a warning there is usually a blueprint input left
+  unwired or a node that needs a running game.
 - `playtest_advance {choice:K}`: K is **1-based** in the order the options are shown (1 is the top
   one); the pick counts as one step. `playtest_advance` does nothing on the title page: start from a
   scene.
 - A failing `playtest_screenshot` fails within about 15 s and says why; when it says the window is not
   responding or drew no frame, call `playtest_stop` and then `playtest_start`.
 
-You cannot press interface buttons in the playtest, so: check the title and system screens with
-`ui_screenshot` - `ui_screenshot {surface, element, state:"hovered"}` (or `"active"`, `"focused"`,
-`"selected"`, `"disabled"`) draws one control and what is inside it in that state, which is how you
-check hover and pressed looks - and play the story by starting at scenes.
+### Pressing the interface
+
+`playtest_click`, `playtest_hover` and `playtest_key` act on the running game the way a player's mouse
+and keyboard do, so every button you wired can be exercised, not just looked at:
+
+- `playtest_click {element}` clicks an element on screen: a page's button, a row of a list, a button
+  on the Confirm layer, a quick-menu button on the stage. `element` is the id, a path of names
+  (`Title / Menu / Start`, the page name allowed first), a name unique on screen, or the words the
+  button shows (`"New game"`). Add `surface` to narrow it to one page or layer.
+  - A name two elements share is refused with both listed (path and id): call again with the id.
+  - An element drawn several times - the rows of a save list - needs `index`, counted top to bottom,
+    then left to right (`playtest_click {element:"Slot", index:2}`).
+  - An element under something else (a page under the Confirm layer, a button behind a transparent
+    box) is refused, naming what covers it: that is what a player would have pressed.
+  - `at: {x, y}` aims inside the element's box, as shares from its top-left (0-1); the centre by
+    default. `{x:0.8, y:0.5}` on a slider sets it near its top end.
+- `playtest_hover {element}` rests the pointer on an element without pressing: its hover look and
+  On Mouse Enter graph run. The next hover or click leaves it, as a mouse does.
+- `playtest_key {key}` presses a key through the game's own input handling, so input actions bound
+  to it fire and the focus navigation answers it: `ArrowDown` moves the focus to the next control,
+  `Enter` or `Space` presses the focused one, `Escape` goes back or dismisses a layer, `Tab` /
+  `{key:"Tab", shift:true}` steps through controls. `rightClick`, `wheelUp` and `wheelDown` are the
+  pointer gestures that aim at no element (by default right click opens the menu and wheel up the
+  backlog).
+
+Each answer says what was done, what changed - pages and layers that opened or closed (`now showing
+"Load"`), a story starting, the line on screen - and which surfaces are on screen now. "Nothing
+visible changed" means the element does not answer that press, or changed something not on screen
+(a setting): check with `playtest_screenshot` and `console_read {channel:"blueprint"}`.
+
+Verifying a button, the recipe:
+
+1. `playtest_start` (no scene) to begin on the title page, or `playtest_start {scene}` for the Game
+   UI's buttons.
+2. `playtest_click {element:"Start"}`; the answer should say a story started. For a button that opens
+   a page: `now showing "<page>"`.
+3. `playtest_screenshot` to see the page it opened.
+4. On a Confirm: `playtest_click {element:"<button words>", surface:"Confirm"}`, and read what the
+   choice did.
+5. Back out with `playtest_key {key:"Escape"}` or the page's own Back button, and check the answer
+   says the page closed.
+6. For hover looks, `playtest_hover {element}` then `playtest_screenshot`.
+
+A save slot: start a scene, read on a few lines, open the save page (the quick-menu Save button, or
+`playtest_key {key:"rightClick"}` for the menu), `playtest_click {element:"<slot>", index:1}`, then
+`playtest_screenshot` to see the slot filled; load it from the title page the same way.
+
+For a look at a page that is not open in the game, `ui_screenshot {surface, element, state:"hovered"}`
+(or `"active"`, `"focused"`, `"selected"`, `"disabled"`) draws one control in that state without
+playing.
 
 For each route:
 

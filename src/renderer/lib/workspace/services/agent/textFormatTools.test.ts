@@ -16,6 +16,7 @@ import { UIEditorHistoryService } from "../ui-editor/UIEditorHistoryService";
 import { AgentFollowService, type AgentWriteTarget } from "./AgentFollowService";
 import { AgentRefusal, type AgentToolContext, type AgentToolHandler } from "./agentCall";
 import { storyApply, storyShow } from "./tools/storyTextTools";
+import { chapterDelete, chapterRename, sceneCreate } from "./tools/storyTools";
 import { uiApply, uiShow } from "./tools/uiTextTools";
 import { commitBlueprints, ownerQueryOf, sharedHistorySurface } from "./tools/blueprintTools";
 import { ownerRefToIndexKey } from "../ui-editor/blueprint/ownerKeys";
@@ -236,6 +237,52 @@ describe("story_apply", () => {
         expect(byName.code).toBe("not_found");
         expect(byName.hint).toContain("scene_create");
     });
+});
+
+describe("scene_create in a story it creates, and the chapter tools", () => {
+    it("puts the scene where it was asked, with no default chapter or scene beside it", async () => {
+        const { story, run } = createHarness();
+        const result = await run(sceneCreate, { name: "Arrival", story: "Side", chapter: "Prologue" });
+        expect(textOf(result)).toContain('Created story "Side" with scene "Arrival" in chapter "Prologue"');
+        const created = story.listStories().find(entry => entry.name === "Side")!;
+        const document = story.getStoryDocument(created.id);
+        expect(document.chapters.map(chapter => chapter.name)).toEqual(["Prologue"]);
+        expect(document.chapters[0].sceneIds.map(id => document.scenes[id].name)).toEqual(["Arrival"]);
+        expect(Object.keys(document.scenes)).toHaveLength(1);
+        expect(document.entrySceneId).toBe(document.chapters[0].sceneIds[0]);
+    }, 60_000);
+
+    it("adds a scene to a story that exists as before, creating the chapter it names", async () => {
+        const { story, storyId, run } = createHarness();
+        await run(sceneCreate, { name: "Later", story: "Tale", chapter: "Two" });
+        const document = story.getStoryDocument(storyId);
+        expect(document.chapters.map(chapter => chapter.name)).toEqual(["Chapter 1", "Two"]);
+    }, 60_000);
+
+    it("renames a chapter as one undo step", async () => {
+        const { story, storyId, history, run } = createHarness();
+        await run(chapterRename, { chapter: "Chapter 1", name: "Act One" });
+        expect(story.getStoryDocument(storyId).chapters[0].name).toBe("Act One");
+        history.undo(projectHistoryScope());
+        expect(story.getStoryDocument(storyId).chapters[0].name).toBe("Chapter 1");
+    }, 60_000);
+
+    it("deletes an empty chapter as one undo step, and refuses one that still holds scenes", async () => {
+        const { story, storyId, history, run } = createHarness();
+        const busy = await refusal(run(chapterDelete, { chapter: "Chapter 1" }));
+        expect(busy.code).toBe("unavailable");
+        expect(busy.message).toContain('"Opening"');
+
+        const empty = story.createChapter(storyId, "Spare");
+        await run(chapterDelete, { chapter: "Spare" });
+        expect(story.getStoryDocument(storyId).chapters.map(chapter => chapter.id)).not.toContain(empty.id);
+        history.undo(projectHistoryScope());
+        expect(story.getStoryDocument(storyId).chapters.map(chapter => chapter.name)).toContain("Spare");
+
+        const missing = await refusal(run(chapterDelete, { chapter: "Nowhere" }));
+        expect(missing.code).toBe("not_found");
+        expect(missing.hint).toContain('"Chapter 1"');
+    }, 60_000);
 });
 
 describe("ui_apply", () => {

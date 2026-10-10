@@ -97,7 +97,16 @@ export type DevModeAgentAction =
      * menu to come up, and let a line still typing finish - clicking once to complete it when it
      * takes longer than a reader would wait - so what the agent looks at next is a whole line.
      */
-    | { kind: "state"; settle?: boolean }
+    | {
+          kind: "state";
+          settle?: boolean;
+          /**
+           * Take this read as the point from which endings count: a launch reads it before it starts
+           * the game, so an ending the new run reaches before the agent's first advance is reported
+           * by that advance.
+           */
+          baseline?: boolean;
+      }
     /**
      * Read on `steps` lines. One step is one line: the click on a line shown in full that moves
      * the game on, then a wait for the game to come to rest - on the next line, finished typing
@@ -107,7 +116,45 @@ export type DevModeAgentAction =
      * `choice` is 1-based and counts the options as the player sees them - an option hidden by its
      * condition is not counted. When given, it is picked first and counts as one step.
      */
-    | { kind: "advance"; steps: number; choice?: number };
+    | { kind: "advance"; steps: number; choice?: number }
+    /**
+     * Point at an element of the interface on screen and click it, or rest the pointer on it.
+     *
+     * The element is found among the elements drawn right now - a page, a layer over it, the Game UI
+     * on the stage - and the press lands where a player's would: at a point inside its box, on
+     * whatever is on top there. One covered by something else is refused, naming what covers it.
+     */
+    | {
+          kind: "pointer";
+          gesture: DevModeAgentPointerGesture;
+          /** By id, by its path of names (`Title / Menu / Start`), by a name unique on screen, or by its words. */
+          element: string;
+          /** The page, layer or Game UI surface it is on, by name or id. Narrows the search. */
+          surface?: string;
+          /** Which drawing, 1-based in screen order, when the element is drawn more than once (list rows). */
+          index?: number;
+          /** Where in its box, as shares of its width and height from the top-left; the centre when absent. */
+          at?: { x: number; y: number };
+      }
+    /**
+     * Press a key the way a player's keyboard does - through the game's own key handling, so the
+     * input actions bound to it and the focus navigation answer it - or a pointer gesture that names
+     * no element (`rightClick`, `wheelUp`, `wheelDown`, aimed at the middle of the game).
+     */
+    | { kind: "key"; key: string; shift?: boolean };
+
+export type DevModeAgentPointerGesture = "click" | "hover";
+
+/** The named keys `DevModeAgentAction.key` takes, besides a single letter or digit. */
+export const DEV_MODE_AGENT_KEYS = [
+    "Escape", "Enter", "Space", "Tab", "Backspace",
+    "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+    "PageUp", "PageDown", "Home", "End",
+    "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
+] as const;
+
+/** The pointer gestures `DevModeAgentAction.key` takes, which aim at the middle of the game. */
+export const DEV_MODE_AGENT_POINTER_KEYS = ["rightClick", "wheelUp", "wheelDown"] as const;
 
 /** The line on the game's dialogue box, as an agent is told it. */
 export type DevModeAgentLine = {
@@ -140,6 +187,27 @@ export type DevModeAgentGameState = {
     choices: { text: string; disabled: boolean }[] | null;
     /** The page showing by name (the title, an ending page) when no story is; null in a story. */
     page: string | null;
+    /** The story is stopped on a `/wait click` row, waiting for a click with no line on screen. */
+    waitingForClick?: boolean;
+    /** The story is holding on a timed `/wait` or a `/video` by itself, with no line on screen. */
+    pausedBy?: { kind: "timed"; ms: number } | { kind: "video" };
+};
+
+/**
+ * One error or warning the Dev Mode window has reported in this run - what its issue strip counts
+ * ("0 errors · 20 warnings") and its Issues panel lists - as an agent is told it.
+ */
+export type DevModeAgentIssue = {
+    level: "error" | "warning";
+    message: string;
+    /** Where in the story, when it was pinned to a row. */
+    story?: string;
+    scene?: string;
+    /** 1-based row in the scene, as the story editor and `playtest_start {row}` number them. */
+    row?: number;
+    /** The page or Game UI it happened on, for an interface failure. */
+    surface?: string;
+    plugin?: string;
 };
 
 export type DevModeAgentResult =
@@ -154,7 +222,7 @@ export type DevModeAgentResult =
            */
           source: "engine" | "window";
       }
-    | { kind: "state"; state: DevModeAgentGameState }
+    | { kind: "state"; state: DevModeAgentGameState; issues?: DevModeAgentIssue[] }
     | {
           kind: "advance";
           advanced: number;
@@ -162,6 +230,18 @@ export type DevModeAgentResult =
           /** An `/ending` row ran during the advance: its display name, or null for an unnamed one. */
           ending?: { name: string | null };
           state?: DevModeAgentGameState;
+          issues?: DevModeAgentIssue[];
+      }
+    | {
+          kind: "input";
+          /** What was done, as a sentence: `Clicked "Start" on the "Title" page.` */
+          did: string;
+          /** The surfaces drawn after the act, by name, bottom first: pages, layers, the Game UI. */
+          surfaces: string[];
+          /** What differs from before the act, one phrase each; empty when nothing visible changed. */
+          changed: string[];
+          state: DevModeAgentGameState;
+          issues?: DevModeAgentIssue[];
       };
 
 /**
@@ -176,6 +256,8 @@ export const DEV_MODE_AGENT_BUDGET_MS = {
     capture: 10_000,
     state: 12_000,
     advance: 120_000,
+    pointer: 10_000,
+    key: 10_000,
 } as const satisfies Record<DevModeAgentAction["kind"], number>;
 
 export const DEV_MODE_AGENT_ANSWER_GRACE_MS = 5_000;
@@ -193,6 +275,12 @@ export const DevModeAgentErrorCode = {
     noAnswer: "devmode_no_answer",
     /** The engine's stage capture did not finish within its budget. */
     captureTimeout: "devmode_capture_timeout",
+    /**
+     * A pointer or key act named something the game cannot act on: no such element on screen, more
+     * than one, one covered by something else, or a key it does not know. The message lists what is
+     * there.
+     */
+    inputTarget: "devmode_input_target",
 } as const;
 
 export type DevModeConsoleLogLevel = "verbose" | "info" | "success" | "warning" | "error";

@@ -56,8 +56,12 @@ event "Ask, then quit the game"
   the node's only execution pin on that side. A node with two execution outputs (`if`: `true` /
   `false`) must be told which.
 - **`<pin> <- <node>.<port>`** under a node is the same edge written from the input side.
-- **`var <name> type=… default=…`** declares a member variable; **`script <path>`** a layer that runs one
-  of the project's script files.
+- **`var <name> type=… default=…`** declares a member variable (`id=` optional). Get / Set Local name it
+  with `variableId = <id>`; a variable declared without `id=` takes its name as its id when the name
+  is a plain identifier (`var rows type=array default=[]` -> `variableId = rows`), and a node may name
+  any variable of the same block by its name - it is stored as the id. Once applied, the id stays the
+  same on every later apply. **`script <path>`** declares a layer that runs one of the project's script
+  files.
 - Values are JSON where unambiguous, otherwise a bare word is a string.
 
 ## Writing one
@@ -98,9 +102,88 @@ Verify each with `blueprint_node` - pins and fields change.
 | `blueprint.sound.play` | Play Sound | A sound that depends on something (a locked item); plain click sounds are props. |
 | `if` | If | Branch on a boolean (`true` / `false` outputs). |
 
+## Wiring rules that are easy to trip over
+
+**Loops come back by a wire.** `blueprint.flow.forLoop`, `forEach` and `while` have a `loop` exec
+output and a `completed` one, but no body the runtime returns from: the next pass happens when the
+flow arrives at the loop's `in` again. Wire the end of the body back to the loop:
+
+```
+    loop: blueprint.flow.forLoop start=1 end=3
+    time: blueprint.game.save.getTime id=slot-1
+    show: blueprint.log
+    done: blueprint.log
+
+    loop.loop -> time.in
+    time.next -> show.in
+    show.next -> loop.in
+    loop.completed -> done.in
+```
+
+A body that ends on a node with nothing after it runs once and stops - no second index, no
+`completed`, no error (`blueprint_apply` warns `node.loop_body_not_closed`). Nodes that wait (a save
+read, a Delay, a Show Confirm) are fine in a body; the loop resumes after them. Leaving one branch
+unwired is how a loop stops early on purpose (a search that ends at its first match).
+
+**An output pin takes one wire.** Every output - exec or data - may be wired to only one input
+(`edge.pin_multiple`); an input that receives exec may take many wires. For exec, that is the order
+of a run: to do two things after one event, chain them, or use Sequence (`blueprint.flow.sequence`).
+For data it is on purpose too: a pure node's output is worked out again for every read, so two
+consumers of one `Get Time` read at different moments could see two different values. The
+exceptions are literals, `blueprint.element.ref`, a function's parameters and
+`blueprint.data.memo`'s `result`. To use one value twice:
+
+- in an exec chain, put it through **Memo** (`blueprint.data.memo`): wire the value into its `value`,
+  run it (`in`/`next`) before the consumers, and fan out its `result`;
+- or store it with Set Local and read it with one Get Local per consumer;
+- for a pure, cheap node (To String, a maths node) in a value graph, place a second copy of the node.
+
 Conventions the skeleton follows and you should too: show and hide with Set Element Property, not
 Set Element Display (which cannot revive a hidden element); one Element node per consumer; a value
 typed into a node's field rather than a separate literal node where the field exists.
+
+## The Confirm page
+
+`blueprint.layer.confirm` (Show Confirm) opens the page named in its `surfaceId` field as a modal
+layer that Go back can dismiss, waits for it to close, then leaves through one of its outputs. The
+page is an ordinary page; the node and the page talk only through the page's props going in and the
+layer's result coming out.
+
+**Props in.** The page is opened with these props (the skeleton's Confirm page declares `message`
+(type `text`) and `buttons` (type `list`, struct `nl.confirmButton`) as page params):
+
+| Prop | Value |
+|---|---|
+| `message` | The node's `message` input, as a string. |
+| `buttons` | One row per button pin pair, in card order: `{ id: "button-<i>", text: <label>, index: <i>, disabled: false }`, `i` counting from 0. |
+| `tag` | The node's `tag` input, or null. |
+| `data` | The node's `data` input, or null. |
+
+On the skeleton's page, the `Message` text is bound to the param (`bind text = param message`), the
+`Buttons` list takes its rows from the prop (its `itemsBinding` prop is `{ "kind": "pageProp",
+"key": "buttons" }` and its `itemStructId` is `nl.confirmButton`), and each row's text is
+`bind text = field text`.
+
+**Result out.** The page answers by closing itself with `blueprint.layer.closeSelf` (Close This
+Layer). The skeleton's `Buttons` list does it in its row click graph
+(`blueprint.event.head.itemClick` -> Close This Layer, with the row's `index` field, read by
+`blueprint.list.getItemField field=index`, wired into `result`). Show Confirm reads the result as:
+
+- a whole number `i` (or a numeric string, or an object with an `index` field) -> the `i`-th button
+  pair in card order runs its `button_<n>_pressed` output; `Index` is `i` and `Label` its text.
+  `i` is a position from 0, not the number in the pin id: with the pins `button_1_*` and
+  `button_2_*`, result `0` runs `button_1_pressed`, result `1` runs `button_2_pressed`. Deleting a
+  pair from the middle shifts the positions of the pairs after it, not their pins.
+- anything else - null, a number with no matching button, the layer dismissed by Go back (Escape or
+  the pad's B through the `back` input action, or a page's Back button) - runs `dismissed`, with `Index` -1 and `Label` "".
+
+Nothing fires on the page itself when it opens beyond its own `Surface Init`; the events that run on
+the caller are exactly one of the button outputs or `dismissed`. Only one confirm is on screen at a
+time: a second Show Confirm waits until the first has closed.
+
+Test it in a playtest: trigger the question, then `playtest_click {element:"<button words>",
+surface:"Confirm"}` and read the answer, or `playtest_key {key:"Escape"}` for the dismissal
+(`verify-and-ship`).
 
 ## The title screen's Start button
 

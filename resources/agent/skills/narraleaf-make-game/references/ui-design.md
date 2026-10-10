@@ -173,7 +173,10 @@ but get ids of their own, so find those pages by name (`ui_surfaces`).
 - **Extra**: CG, recollection, music, voice tabs over the Gallery plugin. It shows what the gallery
   catalog holds: fill it with the gallery tools (`agent_guide {chapter:"plugin:narraleaf.gallery"}`),
   then restyle it.
-- **Confirm**: the yes/no dialog every risky action uses; make it match the rest.
+- **Confirm**: the yes/no dialog every risky action uses; make it match the rest. Restyle it freely,
+  but keep its two page params, its `Buttons` list bound to the `buttons` prop and the list's row
+  click graph: that is the contract Show Confirm talks through (`blueprint-format`, "The Confirm
+  page"). A second confirm page of your own must keep the same contract.
 
 ## Templates instead
 

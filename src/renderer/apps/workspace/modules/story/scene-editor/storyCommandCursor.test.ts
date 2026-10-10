@@ -501,11 +501,14 @@ describe("candidate marks", () => {
             { kind: "number", duration: true },
             { kind: "number", duration: true },
         ]);
-        // The two trailing numbers are the overlay knobs `/show` carries for an ambience target;
-        // they are offered on every `/show`, and refused with a reason on anything else.
+        // The two numbers after the placement are its pixel offsets (`xoffset=` / `yoffset=`). The two
+        // trailing numbers are the overlay knobs `/show` carries for an ambience target; they are
+        // offered on every `/show`, and refused with a reason on anything else.
         expect(marks("/show Alice smile |")).toEqual([
             { kind: "text" },
             { kind: "options", lead: "left" },
+            { kind: "number" },
+            { kind: "number" },
             { kind: "options", lead: "fade" },
             { kind: "number", duration: true },
             { kind: "number" },

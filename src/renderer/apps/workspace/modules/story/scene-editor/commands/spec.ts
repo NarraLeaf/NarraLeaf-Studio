@@ -331,23 +331,6 @@ export function appTagParam(hint = "appTag"): StoryCommandParamSpec {
 }
 
 /**
- * `pos=` - a placement.
- *
- * `pos` is the canonical key since M2, and `at` stays as an alias. The two were always the same slot;
- * what changed is which of them the prop vocabulary spells, and a placement is a POSITION - the same
- * channel `/transform pos=` writes - so the two surfaces now say one word for one channel. `at` is
- * kept rather than burned because a param key is not a command token: an old `/image forest at=left`
- * re-parses to exactly the same row, so there is nothing for a rename to silently reinterpret.
- */
-export function placementParam(): StoryCommandParamSpec {
-    return {
-        aliases: ["at"],
-        hint: "placement",
-        type: { kind: "enum", options: PLACEMENT_OPTIONS },
-    };
-}
-
-/**
  * A positional reference to something already on stage, or a character - the generic verbs' subject.
  *
  * `accepts` is load-bearing twice over: resolution dispatches on it, and the sidebar files the command

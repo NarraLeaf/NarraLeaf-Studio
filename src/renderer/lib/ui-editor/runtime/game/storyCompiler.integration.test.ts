@@ -189,6 +189,28 @@ describe("compileStudioStoryToNlr", () => {
         expect(compiled.actionIdBindings.find(binding => binding.blockId === "say")?.staticId).toContain("text-say");
     });
 
+    it("marks the action of a /wait click row, and only that one, as waiting for a click", async () => {
+        // An agent's play-test reads this off the play head: the screen shows nothing that says the
+        // story is stopped for a click.
+        const blocks: Record<string, StoryBlock> = {
+            a: narrationBlock("a", "text-a", "Before."),
+            click: { id: "click", kind: "action", parentId: null, childrenIds: [], payload: { action: "wait", mode: "click" } },
+            pause: { id: "pause", kind: "action", parentId: null, childrenIds: [], payload: { action: "wait", mode: "duration", durationMs: 100 } },
+            b: narrationBlock("b", "text-b", "After."),
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["a", "click", "pause", "b"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        const waiting = compiled.actionIdBindings.filter(binding => binding.waitsForClick).map(binding => binding.blockId);
+        expect(waiting.length).toBeGreaterThan(0);
+        expect(new Set(waiting)).toEqual(new Set(["click"]));
+        // A timed wait says how long, so a driver waits it out rather than calling the game stuck.
+        const paused = compiled.actionIdBindings.filter(binding => binding.pause);
+        expect(paused.map(binding => [binding.blockId, binding.pause])).toEqual([["pause", { kind: "timed", ms: 100 }]]);
+    });
+
     it("compiles a disabled row out — no output, no diagnostic (schema v7)", async () => {
         const blocks: Record<string, StoryBlock> = {
             a: narrationBlock("a", "text-a", "Kept."),

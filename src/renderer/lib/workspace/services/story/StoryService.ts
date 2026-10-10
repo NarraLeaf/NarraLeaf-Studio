@@ -1055,6 +1055,31 @@ export class StoryService extends Service<StoryService> implements IStoryService
         return this.applyChapterName(storyId, chapterId, trimmed);
     }
 
+    /**
+     * The same rename, as one step of the project's undo history - what an agent's `chapter_rename`
+     * asks for, since an author watching an agent work takes its edits back with Undo. Outside a live
+     * session only; inside one it is {@link renameChapter}, whose inverse is the session's to give.
+     */
+    public renameChapterWithHistory(storyId: StoryId, chapterId: string, name: string): boolean {
+        const trimmed = name.trim();
+        if (!trimmed) {
+            return false;
+        }
+        if (this.handedToSink(storyId, { op: "rename-chapter", chapterId, name: trimmed })) {
+            return true;
+        }
+        const before = this.captureStoryStructure(storyId);
+        const previous = this.getStoryDocument(storyId).chapters.find(chapter => chapter.id === chapterId)?.name ?? "";
+        const changed = this.applyChapterName(storyId, chapterId, trimmed);
+        if (changed) {
+            this.recordStructuralChange(storyId, {
+                key: "story.history.renameChapter" as TranslationKey,
+                params: { name: previous },
+            }, before);
+        }
+        return changed;
+    }
+
     private applyChapterName(storyId: StoryId, chapterId: string, trimmed: string): boolean {
         let changed = false;
         this.mutateDocument(storyId, document => {

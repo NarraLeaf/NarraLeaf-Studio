@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 41 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 42 as const;
 
 /** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
 export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
@@ -819,6 +819,21 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             async: false,
             input: {},
             output: [],
+        },
+        /**
+         * Add a line to the running game's notification stream, the same one the engine's own
+         * notices go into, so the Game UI notification slot draws it and `getNotifications` lists it
+         * until it times out. `durationSeconds` absent means the engine's default. Refused with no
+         * game running: there is no stream to post into, and a line dropped silently would read as
+         * a node that does nothing.
+         */
+        postNotification: {
+            capabilityId: "game.postNotification",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: false,
+            input: { message: "", durationSeconds: 0 },
+            output: null,
         },
         getChoiceCount: {
             capabilityId: "game.getChoiceCount",

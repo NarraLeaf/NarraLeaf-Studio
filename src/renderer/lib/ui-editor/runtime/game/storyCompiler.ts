@@ -651,6 +651,18 @@ export type NlrActionIdBinding = {
      * re-pointed a row at a different file.
      */
     audioAssetId?: string;
+    /**
+     * Set on the action of a `/wait click` row: the story is stopped until the player clicks, with
+     * no line on screen. A driver that reads on line by line (an agent's play-test) needs to know
+     * that a click is what the game is waiting for, since nothing else on screen says so.
+     */
+    waitsForClick?: true;
+    /**
+     * Set on the actions of a row the story holds on by itself for a while, with no line on screen:
+     * a timed `/wait` (`ms` long) or a `/video` play the story waits out. Read by the same driver as
+     * {@link waitsForClick}, which otherwise sees nothing but "no line yet" and calls the game stuck.
+     */
+    pause?: { kind: "timed"; ms: number } | { kind: "video" };
 };
 
 type NlrAction = Parameters<typeof DevTools.setActionId>[0];
@@ -3680,7 +3692,16 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
         const chain = payload.mode === "click"
             ? Control.waitForClick()
             : Control.sleep(Math.max(0, payload.durationMs ?? 0));
-        return [recordStatement(ctx, chain, block)];
+        const firstBinding = ctx.actionIdBindings.length;
+        const recorded = recordStatement(ctx, chain, block);
+        for (const binding of ctx.actionIdBindings.slice(firstBinding)) {
+            if (payload.mode === "click") {
+                binding.waitsForClick = true;
+            } else {
+                binding.pause = { kind: "timed", ms: Math.max(0, payload.durationMs ?? 0) };
+            }
+        }
+        return [recorded];
     }
 
     if (payload.action === "image") {
@@ -4868,7 +4889,19 @@ function compileVideoPlay(
     payload: Extract<StoryActionPayload, { action: "video" }>,
     video: Video,
 ): NlrStatement {
-    const record = (statement: NlrStatement): NlrStatement => recordStatement(ctx, statement, block);
+    const waits = videoPlayWaits(payload);
+    const record = (statement: NlrStatement): NlrStatement => {
+        const firstBinding = ctx.actionIdBindings.length;
+        const recorded = recordStatement(ctx, statement, block);
+        if (waits) {
+            // Every action of a play the story waits on - the race against a click included - is
+            // the story holding on the clip, which is what a driver needs to hear.
+            for (const binding of ctx.actionIdBindings.slice(firstBinding)) {
+                binding.pause = { kind: "video" };
+            }
+        }
+        return recorded;
+    };
     const steps: NlrStatement[] = [record(video.show())];
     if (videoPlayWaits(payload)) {
         steps.push(skippableVideoPlay(record, video));

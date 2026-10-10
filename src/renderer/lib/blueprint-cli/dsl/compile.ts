@@ -31,7 +31,7 @@ import type { UIElement } from "@shared/types/ui-editor/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { SCRIPTS_DIR, SCRIPTS_MODULES_DIR, isScriptSourcePath } from "@shared/project/scriptsDirectory";
 import { blueprintContract } from "@shared/blueprint/ownerShape";
-import type { BlueprintGraphKind } from "@shared/types/blueprint/graph";
+import { BLUEPRINT_NODE_TYPE_LOCAL_GET, BLUEPRINT_NODE_TYPE_LOCAL_SET, type BlueprintGraphKind } from "@shared/types/blueprint/graph";
 import { anchorComponentId, isWidgetEventGraph } from "@shared/blueprint/ownerShape";
 import {
     blueprintNodeRegistry,
@@ -171,8 +171,12 @@ function compileBlueprint(
     reportDroppedGraphs(previous, ast, eventIds, functionIds, diagnostics);
 
     const variables: Record<string, BlueprintVariable> = {};
+    const declaredIds = new Set(ast.variables.map(variableAst => variableAst.id).filter((value): value is string => Boolean(value)));
     for (const variableAst of ast.variables) {
-        const variableId = variableAst.id ?? previousVariableId(previous, variableAst.name) ?? newId();
+        const variableId = variableAst.id
+            ?? previousVariableId(previous, variableAst.name)
+            ?? nameDerivedVariableId(variableAst.name, variables, declaredIds)
+            ?? newId();
         variables[variableId] = {
             id: variableId,
             name: variableAst.name,
@@ -182,6 +186,11 @@ function compileBlueprint(
                 : {}),
         };
     }
+
+    resolveVariableNamesToIds(variables, [
+        ...Object.values(events).map(layer => layer.graph),
+        ...Object.values(functions).map(fn => fn.graph),
+    ]);
 
     const blueprint: Blueprint = {
         id,
@@ -836,6 +845,60 @@ function findExistingGraph(
         return pool[ast.id];
     }
     return Object.values(pool).find(graph => graph.name === ast.name) ?? null;
+}
+
+/** A `var` name that can serve as its own id: a plain identifier no other variable here uses. */
+const PLAIN_VARIABLE_ID = /^[A-Za-z_][A-Za-z0-9_-]*$/;
+
+/**
+ * The id a `var` declared without `id=` gets on its first apply: its own name, when that is a plain
+ * identifier nothing else in the block claims. So `var rows type=array` and `variableId = rows` on a
+ * Get/Set Local name the same variable, and the id printed back is the word the author wrote. A
+ * later apply finds the variable by name (`previousVariableId`) and keeps the id, whatever it is.
+ * Null for a name that cannot be an id (`save rows`): a fresh id then, and the name is still
+ * resolved on the nodes by {@link resolveVariableNamesToIds}.
+ */
+function nameDerivedVariableId(
+    name: string,
+    taken: Readonly<Record<string, BlueprintVariable>>,
+    declaredIds: ReadonlySet<string>,
+): string | null {
+    return PLAIN_VARIABLE_ID.test(name) && !taken[name] && !declaredIds.has(name) ? name : null;
+}
+
+/**
+ * Point Get / Set Local nodes that name a variable of this block by its name at its id.
+ *
+ * `variableId` is an id, and the printer writes ids; but an author writing a block by hand names the
+ * variable they just declared - `var "save rows" type=array` then `variableId = save rows` - and
+ * before this the node pointed at nothing and the check said only `node.variable_id_invalid`. An id
+ * always wins over a name, so a block that already writes ids reads exactly as it did.
+ */
+function resolveVariableNamesToIds(
+    variables: Readonly<Record<string, BlueprintVariable>>,
+    graphs: ReadonlyArray<BlueprintGraphIr | undefined>,
+): void {
+    const byName = new Map<string, string>();
+    for (const variable of Object.values(variables)) {
+        if (!byName.has(variable.name)) {
+            byName.set(variable.name, variable.id);
+        }
+    }
+    for (const graph of graphs) {
+        for (const node of Object.values(graph?.nodes ?? {})) {
+            if (node.type !== BLUEPRINT_NODE_TYPE_LOCAL_GET && node.type !== BLUEPRINT_NODE_TYPE_LOCAL_SET) {
+                continue;
+            }
+            const ref = node.params?.variableId;
+            if (typeof ref !== "string" || variables[ref.trim()]) {
+                continue;
+            }
+            const id = byName.get(ref.trim());
+            if (id) {
+                node.params = { ...node.params, variableId: id };
+            }
+        }
+    }
 }
 
 function previousVariableId(previous: Blueprint | null, name: string): string | undefined {
