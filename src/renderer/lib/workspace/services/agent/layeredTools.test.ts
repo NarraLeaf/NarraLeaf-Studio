@@ -12,6 +12,7 @@ import {
     canvasFromSizes,
     characterLayeredSet,
     characterLayersImport,
+    characterLabel,
     characterPreview,
     specFromPsdPlan,
 } from "./tools/layeredTools";
@@ -125,7 +126,7 @@ function harness(init: { images?: Record<string, Uint8Array>; blocks?: Record<st
         throw new Error("expected a refusal");
     };
     const undoDepth = () => history.describe().find(entry => entry.scopeId === projectHistoryScope())?.undo ?? 0;
-    return { cast, history, run, call, refusal, undoDepth };
+    return { cast, history, run, call, refusal, undoDepth, follow: tool.follow as unknown as { describeCall: ReturnType<typeof vi.fn> } };
 }
 
 const MEI_SET = {
@@ -260,6 +261,25 @@ describe("cold switch", () => {
         h.history.undo(projectHistoryScope());
         await h.history.settled();
         expect(h.cast.getCharacter("mei-id")!.profile.appearance.getPoses().map(pose => pose.name)).toEqual(["normal"]);
+    });
+});
+
+describe("what the interface calls the character", () => {
+    it("names it by its name in the status bar and the Agent log when the call names it by id", async () => {
+        const id = "6f1c2b9e-0d3a-4c5b-9e7f-1a2b3c4d5e6f";
+        const h = harness({ preset: { id, name: "Mei", poses: ["normal"] } });
+        await h.refusal(characterLayeredSet, { ...MEI_SET, character: id });
+        expect(h.follow.describeCall).toHaveBeenCalledWith("call", "Mei");
+        expect(h.follow.describeCall.mock.calls.flat().join(" ")).not.toContain(id);
+        await h.refusal(characterLayersImport, { character: id, prefix: "nobody" });
+        expect(h.follow.describeCall).toHaveBeenLastCalledWith("call", "Mei");
+    });
+
+    it("never quotes an id for a character that does not exist, but does quote the name a new one will get", () => {
+        const h = harness();
+        const ctx = (h.cast as unknown as { getContext(): never }).getContext();
+        expect(characterLabel(ctx, "0d6e8c1a-2b3f-4a5d-8e9f-0a1b2c3d4e5f")).toBe("");
+        expect(characterLabel(ctx, "Aoi")).toBe("Aoi");
     });
 });
 

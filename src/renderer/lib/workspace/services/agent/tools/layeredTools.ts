@@ -39,6 +39,7 @@ import {
 } from "@shared/utils/psdLayerPlan";
 import type { BlendResolution } from "@shared/types/psdImport";
 import { getInterface } from "@/lib/app/bridge";
+import { authoredNameOrNull } from "@shared/utils/generatedId";
 import { AssetType, categoryOfAssetType } from "../../assets/assetTypes";
 import type { Asset, AssetSource } from "../../assets/types";
 import { Services, type WorkspaceContext } from "../../services";
@@ -309,6 +310,16 @@ function readWriteOptions(args: Record<string, unknown>) {
     };
 }
 
+/**
+ * What the status bar and the Agent log call the character a call names: its name. The argument may
+ * be an id, which the interface never shows; a character that does not exist yet is called what the
+ * call will name it, unless that is an id as well.
+ */
+export function characterLabel(ctx: WorkspaceContext, ref: string): string {
+    const character = findCharacter(ctx.services.get<CharacterService>(Services.Character), ref);
+    return character?.profile.getName() ?? authoredNameOrNull(ref) ?? "";
+}
+
 // ── character_layered_set ────────────────────────────────────────────────────────────────────────
 
 export const characterLayeredSet: AgentToolHandler = async (args, { ctx, request, follow }) => {
@@ -317,7 +328,7 @@ export const characterLayeredSet: AgentToolHandler = async (args, { ctx, request
     if ("errors" in read) {
         throw refuse("invalid_args", read.errors.join("\n"));
     }
-    follow.describeCall(request.callId, characterRef);
+    follow.describeCall(request.callId, characterLabel(ctx, characterRef));
     return writeLayered({ ctx, request, follow }, { characterRef, spec: read.spec, ...readWriteOptions(args) });
 };
 
@@ -365,7 +376,7 @@ export const characterLayersImport: AgentToolHandler = async (args, tool) => {
     if (psd && (folder || assets)) {
         throw refuse("invalid_args", "Give either `psd` or images (`assets` / `folder`), not both.");
     }
-    follow.describeCall(request.callId, characterRef);
+    follow.describeCall(request.callId, characterLabel(ctx, characterRef));
     if (psd) {
         return importFromPsd(tool, characterRef, psd, args);
     }
