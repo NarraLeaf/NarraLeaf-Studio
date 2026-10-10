@@ -154,6 +154,13 @@ import { anchorComponentId, anchorElementId } from "@shared/blueprint/ownerShape
 import type { UITemplateSurfacePlacement } from "@shared/types/uiTemplateRegistry";
 import { assertValidBlueprintDocument } from "./blueprint/documentValidation";
 import {
+    dropBlueprintOwners,
+    holdBlueprintOwners,
+    ownerPresenceChange,
+    putBlueprintOwners,
+    type HeldBlueprintOwners,
+} from "./reconciledBlueprintOwners";
+import {
     BLUEPRINT_GRAPH_IR_META_KIND,
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
     BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
@@ -1309,7 +1316,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
      * editor's own stack, as a snapshot of its slice, so Ctrl+Z inside its tab undoes it. Null - an
      * edit across several pages, or to a table the pages share - goes on the project's stack as a
      * command over the delta, diffed both ways, because no one editor's slice covers it (the shape
-     * {@link pushLibraryStep} uses for library operations).
+     * {@link pushLibraryStep} uses for library operations) - with the private blueprints the write's
+     * reconcile created or deleted, which a delta of interface records alone would leave behind (see
+     * `reconciledBlueprintOwners.ts`).
      *
      * Not for a live session: {@link applyLiveOp} is the path for somebody else's edit, and records
      * nothing. Agent writes are refused while a session runs, before they get here.
@@ -1325,6 +1334,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             return;
         }
         const before = cloneUIHistoryDocument(this.getDocument());
+        // Which private blueprints exist before the write, by reference: the reconcile that follows
+        // the write deletes those of the widgets it removed, and creates empty ones for the widgets it
+        // added. Shallow copies of the two maps - the records the reconcile deletes are not edited.
+        const graph = this.getGraphService();
+        const blueprintsBefore = graph?.getDocument().blueprintDocument;
+        const ownersBefore = blueprintsBefore ? { ...blueprintsBefore.ownerRecords } : {};
+        const blueprintMapBefore = blueprintsBefore ? { ...blueprintsBefore.blueprints } : {};
         this.mutateDocument(mutator, { history: false });
         const after = cloneUIHistoryDocument(this.getDocument());
         const forward = diffUIParts(before, after);
@@ -1332,13 +1348,42 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         if (forward === null || backward === null) {
             return;
         }
+        // The step carries the blueprints whose presence the write changed, so that taking the write
+        // back brings a deleted widget back with its own graph rather than the empty one the
+        // reconcile would give it (the page editor's own steps carry them in their snapshot).
+        const presence = graph
+            ? ownerPresenceChange(ownersBefore, graph.getDocument().blueprintDocument.ownerRecords)
+            : { added: [], removed: [] };
+        let removedOwners = holdBlueprintOwners(ownersBefore, blueprintMapBefore, presence.removed);
+        let addedOwners: HeldBlueprintOwners = {};
+        const blueprintsMoved = presence.added.length > 0 || presence.removed.length > 0;
         // Copied on every application: applying writes the records into the document, which then
-        // edits them in place, and the step has to be repeatable.
-        const apply = (parts: LiveUIParts) => {
+        // edits them in place, and the step has to be repeatable. Blueprints go first: the reconcile
+        // that follows the interface write must find each widget's own already in place.
+        const apply = (parts: LiveUIParts, blueprints?: (document: BlueprintDocument) => void) => {
+            if (graph && blueprints && blueprintsMoved) {
+                graph.applyGraphMutation(document => {
+                    blueprints(document.blueprintDocument);
+                    assertValidBlueprintDocument(document.blueprintDocument);
+                });
+            }
             const copy = JSON.parse(JSON.stringify(parts)) as LiveUIParts;
             this.mutateDocument(document => applyUIParts(document, copy), { history: false });
         };
-        this.pushLibraryStep(label, { undo: () => apply(backward), redo: () => apply(forward) });
+        this.pushLibraryStep(label, {
+            undo: () => apply(backward, document => {
+                // The added widgets' blueprints as they stand now - the author may have written a
+                // graph on one since - so a redo puts that back, not an empty one.
+                addedOwners = holdBlueprintOwners(document.ownerRecords, document.blueprints, presence.added);
+                dropBlueprintOwners(document, presence.added);
+                putBlueprintOwners(document, removedOwners);
+            }),
+            redo: () => apply(forward, document => {
+                removedOwners = holdBlueprintOwners(document.ownerRecords, document.blueprints, presence.removed);
+                dropBlueprintOwners(document, presence.removed);
+                putBlueprintOwners(document, addedOwners);
+            }),
+        });
     }
 
     /**

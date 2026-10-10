@@ -414,4 +414,45 @@ describe("UIDocumentService.applyAgentMutation", () => {
         expect(history.redo(projectHistoryScope())).toBe(true);
         expect(uidoc.getDocument().elements.otherText.props?.text).toBe("B");
     });
+
+    it("takes a cross-page edit back with the graph of a widget it deleted, not an empty one", () => {
+        const { uidoc, history, startBlueprint } = createBlueprintHarness();
+        uidoc.applyAgentMutation(null, LABEL, document => {
+            document.elements.root.childrenIds = document.elements.root.childrenIds.filter(id => id !== "start");
+            delete document.elements.start;
+            document.elements.otherText.props = { ...document.elements.otherText.props, text: "B" };
+        });
+        expect(startBlueprint()).toBeUndefined();
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(uidoc.getDocument().elements.start).toBeDefined();
+        expect(uidoc.getDocument().elements.otherText.props?.text).toBe("Other");
+        expect(startBlueprint()?.graphs.eventIds).toEqual(["click"]);
+
+        expect(history.redo(projectHistoryScope())).toBe(true);
+        expect(uidoc.getDocument().elements.start).toBeUndefined();
+        expect(startBlueprint()).toBeUndefined();
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(startBlueprint()?.graphs.eventIds).toEqual(["click"]);
+    });
+
+    it("gives a widget a cross-page edit added back the graph the author wrote on it, on redo", () => {
+        const { uidoc, history, local, graphDocument } = createBlueprintHarness();
+        uidoc.applyAgentMutation(null, LABEL, document => {
+            document.elements.extra = element("extra", "nl.button", "root", []);
+            document.elements.root.childrenIds = [...document.elements.root.childrenIds, "extra"];
+            document.elements.otherText.props = { ...document.elements.otherText.props, text: "B" };
+        });
+        const extraBlueprintId = local.getWidgetMainBlueprintId("page", "extra")!;
+        expect(extraBlueprintId).toBeTruthy();
+        local.ensureEventGraph(extraBlueprintId, "hover", "Written by hand");
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(uidoc.getDocument().elements.extra).toBeUndefined();
+        expect(graphDocument.blueprintDocument.blueprints[extraBlueprintId]).toBeUndefined();
+
+        expect(history.redo(projectHistoryScope())).toBe(true);
+        expect(uidoc.getDocument().elements.extra).toBeDefined();
+        expect(graphDocument.blueprintDocument.blueprints[extraBlueprintId]?.graphs.eventIds).toEqual(["hover"]);
+    });
 });
