@@ -215,3 +215,21 @@ export function decodeLegacyBlueprintOwnerKey(key: string): BlueprintOwnerRef | 
             return null;
     }
 }
+
+/**
+ * The owner slot a key typed by a person or an agent names: the escaped key this file writes, or the
+ * same key written the way its ids read - `widgetMain:narraleaf-studio:main-surface:<elementId>`.
+ *
+ * The second spelling is what anyone writes who copies a surface id and an element id and joins them
+ * with the separator, and what the agent tools' own descriptions taught for a while; refusing it gave
+ * `not_found` for the title page's buttons, whose surface id holds the separator. It is the old,
+ * unescaped form exactly, so it is read by {@link decodeLegacyBlueprintOwnerKey} - right to left,
+ * for the reason given there - rather than by a third decoder. Strict first, because a key this file
+ * wrote must never be reinterpreted.
+ *
+ * For input only. A key that is stored or compared is always {@link encodeBlueprintOwnerKey}'s.
+ */
+export function readTypedBlueprintOwnerKey(text: string): BlueprintOwnerRef | null {
+    const trimmed = text.trim();
+    return decodeBlueprintOwnerKey(trimmed) ?? decodeLegacyBlueprintOwnerKey(trimmed);
+}

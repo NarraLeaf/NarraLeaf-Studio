@@ -54,6 +54,8 @@ async function writePlugin(id: string, capabilities: PluginRuntimeCapability[]):
             network: [],
             widgetText: {},
             structs: [],
+            agentTools: [],
+            agentGuide: "",
             locales: [],
             runtimeCapabilities: capabilities,
             sidecars: [],

@@ -61,6 +61,8 @@ async function writePlugin(
             network: [],
             widgetText: {},
             structs: [],
+            agentTools: [],
+            agentGuide: "",
         },
         permissions: [],
     };

@@ -78,6 +78,10 @@ const SPAWN_SITES: Record<string, { kind: Classification; why: string }> = {
         kind: "not-project-scoped",
         why: "installs a certificate authority the author explicitly accepted, into the OS store",
     },
+    "app/application/managers/agent/agentStdioMain.ts": {
+        kind: "not-project-scoped",
+        why: "the --mcp-stdio bridge starting Studio itself when it is not running; no project, no project code",
+    },
     "app/application/managers/updateManager.ts": {
         kind: "not-project-scoped",
         why: "Studio's own downloaded installer, unpacking the next version beside this one; no project involved",

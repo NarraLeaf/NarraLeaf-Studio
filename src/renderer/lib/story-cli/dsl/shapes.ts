@@ -258,11 +258,17 @@ line and the row goes with it: a file describes the WHOLE scene.
 Escaping: a backslash before a leading marker, a ": " inside narration, an anchor bracket, or a
 space at either end. "story show" writes these for you.
 
-The header is three directives; the footer is the verbatim payloads the » lines stand for:
+The header is five directives; the footer is the verbatim payloads the » lines stand for:
 
   #nlstory ${STORY_FILE_FORMAT_VERSION}
   #story  Chapter one
   #scene  Classroom, after school  ⟦3d90de56-429e-497c-8cde-96c92b7ae11f⟧
+  #background classroom       the image the scene opens on, before its first row, or "none"
+  #music theme_day volume=0.8 the music it opens with ("none", or a clip with optional
+                              track=, volume=, loop=, fade= in milliseconds)
   ...
+
+#background and #music are the scene's own settings, not rows. "story show" always writes both;
+a file that leaves one out leaves that setting as it is. "#background none" clears it.
   #data
   {"7c1f4b02":{"kind":"action","payload":{...}}}`;

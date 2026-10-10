@@ -17,6 +17,7 @@ import {
     UIComponentId,
     UISlotDefinition,
     UILayout,
+    UIStyle,
     isUIFlowLayoutParentElement,
     uiElementTypeAcceptsChildren,
     uiElementTypeAcceptsUserChildren,
@@ -328,6 +329,19 @@ function createDefaultPageSurfaceSettings(settings?: UISurfaceSettings): UISurfa
 
 const DEFAULT_STAGE_SLOT_ID: UIStageSlotId = DEFAULT_UI_STAGE_SLOT_ID;
 const COMPONENT_LINKED_LAYOUT_KEYS = new Set<keyof UILayout>(["x", "y", "width", "height", "rotation"]);
+
+/** `style` with `patch` merged in and its `null` values removed; undefined when nothing is left. */
+function mergeUIStylePatch(style: UIStyle | undefined, patch: Record<string, unknown>): UIStyle | undefined {
+    const next: UIStyle = { ...(style ?? {}) };
+    for (const [key, value] of Object.entries(patch)) {
+        if (value === null) {
+            delete next[key];
+        } else {
+            next[key] = value;
+        }
+    }
+    return Object.keys(next).length > 0 ? next : undefined;
+}
 const DEFAULT_COMPONENT_SIZE: UISurfaceDesignSize = { width: 240, height: 120 };
 const DIALOG_SENTENCE_WIDGET_TYPE = "nl.dialog.sentence";
 const NOTIFICATION_LIST_WIDGET_TYPE = "nl.notification.list";
@@ -1193,7 +1207,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
     }
 
-    public runSurfaceHistoryTransaction(surfaceId: string, action: () => void): void {
+    /**
+     * Run several of this service's own edits as one undo step on `surfaceId`'s stack.
+     *
+     * `label` names the step in the Edit menu when it is something more particular than an edit to
+     * the surface - an agent's batch of edits says so, so the author can tell it from their own.
+     */
+    public runSurfaceHistoryTransaction(surfaceId: string, action: () => void, options: { label?: HistoryLabel } = {}): void {
         const historyService = this.getHistoryService();
         if (!historyService) {
             action();
@@ -1210,7 +1230,74 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             surfaceId,
             before: beforeHistory,
             after: historyService.captureSnapshot(surfaceId),
+            label: options.label,
         });
+    }
+
+    /**
+     * An edit made by an agent connected over MCP, written as one step of undo.
+     *
+     * Through the private mutator like every gesture, which is the whole point: the canvas redraws
+     * on `documentChanged`, auto-save picks the change up, the blueprint reconcile hook runs, and the
+     * author's Ctrl+Z takes it back - an agent's edit is an edit like any other.
+     *
+     * `scope` says which stack the step belongs on. One page or one component definition: that
+     * editor's own stack, as a snapshot of its slice, so Ctrl+Z inside its tab undoes it. Null - an
+     * edit across several pages, or to a table the pages share - goes on the project's stack as a
+     * command over the delta, diffed both ways, because no one editor's slice covers it (the shape
+     * {@link pushLibraryStep} uses for library operations).
+     *
+     * Not for a live session: {@link applyLiveOp} is the path for somebody else's edit, and records
+     * nothing. Agent writes are refused while a session runs, before they get here.
+     */
+    public applyAgentMutation(
+        scope: { surfaceId: string } | { componentId: string } | null,
+        label: HistoryLabel,
+        mutator: (document: UIDocument) => void,
+    ): void {
+        if (scope) {
+            const surfaceId = "surfaceId" in scope ? scope.surfaceId : buildUIComponentEditorSurfaceId(scope.componentId);
+            this.mutateDocument(mutator, { history: { surfaceId, label } });
+            return;
+        }
+        const before = cloneUIHistoryDocument(this.getDocument());
+        this.mutateDocument(mutator, { history: false });
+        const after = cloneUIHistoryDocument(this.getDocument());
+        const forward = diffUIParts(before, after);
+        const backward = diffUIParts(after, before);
+        if (forward === null || backward === null) {
+            return;
+        }
+        // Copied on every application: applying writes the records into the document, which then
+        // edits them in place, and the step has to be repeatable.
+        const apply = (parts: LiveUIParts) => {
+            const copy = JSON.parse(JSON.stringify(parts)) as LiveUIParts;
+            this.mutateDocument(document => applyUIParts(document, copy), { history: false });
+        };
+        this.pushLibraryStep(label, { undo: () => apply(backward), redo: () => apply(forward) });
+    }
+
+    /**
+     * Write a compiled `.ui` document's pages and definitions, as one step of undo.
+     *
+     * The compile and the write itself belong to the agent core, which hands its writer in as
+     * `mutate` so this service does not depend on it. What is decided here is only where the step is
+     * recorded: one page or one definition goes on that editor's stack, anything wider on the
+     * project's - see {@link applyAgentMutation}.
+     */
+    public applyCompiledUi(input: {
+        surfaceIds: readonly string[];
+        componentIds: readonly string[];
+        label: HistoryLabel;
+        mutate: (document: UIDocument) => void;
+    }): void {
+        const single =
+            input.surfaceIds.length === 1 && input.componentIds.length === 0
+                ? { surfaceId: input.surfaceIds[0] }
+                : input.surfaceIds.length === 0 && input.componentIds.length === 1
+                  ? { componentId: input.componentIds[0] }
+                  : null;
+        this.applyAgentMutation(single, input.label, input.mutate);
     }
 
     public isDirty(): boolean {
@@ -2112,6 +2199,36 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 ? {
                       surfaceId,
                       mergeKey: `extra:${elementId}:${Object.keys(extraPatch).sort().join(",")}`,
+                  }
+                : false,
+        });
+    }
+
+    /**
+     * Merge CSS overrides into an element's `style`; a `null` value removes that override.
+     *
+     * The renderer spreads `style` over the widget's own styles (`extractStyleOverrides`), so this is
+     * the bag a `.ui` file's `style.*` lines write. Nothing in the editor's panels writes it; the
+     * agent's `ui_patch` does, with the same refusal for a placed component that props have.
+     */
+    public updateElementStyle(elementId: string, stylePatch: Record<string, unknown>): void {
+        const surfaceId = this.getElementSurfaceId(elementId);
+        this.mutateDocument(document => {
+            const element = document.elements[elementId];
+            if (!element || isLinkedUIComponentElement(element)) {
+                return;
+            }
+            const style = mergeUIStylePatch(element.style, stylePatch);
+            if (style) {
+                element.style = style;
+            } else {
+                delete element.style;
+            }
+        }, {
+            history: surfaceId
+                ? {
+                      surfaceId,
+                      mergeKey: `style:${elementId}:${Object.keys(stylePatch).sort().join(",")}`,
                   }
                 : false,
         });
@@ -4760,6 +4877,30 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
+    /** The component-definition counterpart of {@link updateElementStyle}. */
+    public updateComponentElementStyle(
+        componentId: string,
+        elementId: string,
+        stylePatch: Record<string, unknown>,
+    ): void {
+        this.mutateDocument(document => {
+            const component = (document.components ?? []).find(item => item.id === componentId);
+            const element = component?.elements[elementId];
+            if (!component || !element) {
+                return;
+            }
+            const style = mergeUIStylePatch(element.style, stylePatch);
+            if (style) {
+                element.style = style;
+            } else {
+                delete element.style;
+            }
+            component.updatedAt = new Date().toISOString();
+        }, {
+            history: this.componentHistory(componentId, `style:${elementId}:${Object.keys(stylePatch).sort().join(",")}`),
+        });
+    }
+
     public renameComponentElement(componentId: string, elementId: string, name: string): void {
         const trimmed = name.trim();
         if (!trimmed) {
@@ -5023,18 +5164,39 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         return this.getComponent(componentId)?.rootElementId === wrapper.id ? wrapper.id : null;
     }
 
+    /**
+     * An element id a caller asked for, checked against every pool it could collide in - the
+     * project's elements and every component definition's - or null when none was asked for.
+     */
+    private claimElementId(requested: string | undefined): string | null {
+        const id = requested?.trim();
+        if (!id) {
+            return null;
+        }
+        const document = this.getDocument();
+        const taken = Boolean(document.elements[id])
+            || (document.components ?? []).some(component => Boolean(component.elements[id]));
+        if (taken) {
+            throw new RendererError(`Element id already in use: ${id}`);
+        }
+        return id;
+    }
+
     /** An element as an Edit menu step names it: its own name, or its widget's. */
     private describeElementForHistory(element: UIElement): string {
         return element.name?.trim() || widgetModuleRegistry.get(element.type)?.displayName || element.type;
     }
 
+    /** `options.id`: see {@link createElement}. */
     public createComponentElement(
         componentId: string,
         parentId: string,
         type: string,
         layoutPatch: Partial<UILayout> = {},
+        options: { id?: string } = {},
     ): UIElement | null {
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const explicitId = this.claimElementId(options.id);
         const definition = widgetModuleRegistry.get(type);
         if (!definition) {
             throw new RendererError(`Unknown element type: ${type}`);
@@ -5046,7 +5208,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             if (!component || !parent || !uiElementTypeAcceptsChildren(parent.type)) {
                 return;
             }
-            const elementId = uuidService.generate();
+            const elementId = explicitId ?? uuidService.generate();
             const defaults = definition.createDefaultElement(this.widgetDefaultWords());
             const element: UIElement = {
                 id: elementId,
@@ -5201,7 +5363,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         return { ok: true, newRootIds };
     }
 
-    public createComponentInstance(parentId: string, componentId: string, layoutPatch: Partial<UILayout> = {}): UIElement {
+    /** `options.id`: see {@link createElement}. */
+    public createComponentInstance(
+        parentId: string,
+        componentId: string,
+        layoutPatch: Partial<UILayout> = {},
+        options: { id?: string } = {},
+    ): UIElement {
         const surfaceId = this.getElementSurfaceId(parentId);
         const document = this.getDocument();
         const component = (document.components ?? []).find(item => item.id === componentId);
@@ -5223,7 +5391,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             throw new RendererError(`Parent type ${parent.type} cannot have child elements`);
         }
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
-        const elementId = uuidService.generate();
+        const elementId = this.claimElementId(options.id) ?? uuidService.generate();
         const element: UIElement = {
             id: elementId,
             type: root.type,
@@ -5373,7 +5541,16 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         return materializedIds;
     }
 
-    public createElement(parentId: string, type: string, layoutPatch: Partial<UILayout> = {}): UIElement {
+    /**
+     * `options.id` gives the new element an id of the caller's choosing - an agent naming an element
+     * so a blueprint it writes next can refer to it. Refused when the id is already in use.
+     */
+    public createElement(
+        parentId: string,
+        type: string,
+        layoutPatch: Partial<UILayout> = {},
+        options: { id?: string } = {},
+    ): UIElement {
         const surfaceId = this.getElementSurfaceId(parentId);
         const definition = widgetModuleRegistry.get(type);
         if (!definition) {
@@ -5391,7 +5568,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             throw new RendererError(`Parent type ${parent.type} cannot have child elements`);
         }
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
-        const elementId = uuidService.generate();
+        const elementId = this.claimElementId(options.id) ?? uuidService.generate();
 
         const defaultElement = definition.createDefaultElement(this.widgetDefaultWords());
         const baseLayout: UILayout = {

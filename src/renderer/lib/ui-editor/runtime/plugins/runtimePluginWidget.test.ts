@@ -81,6 +81,8 @@ async function writeWidgetPlugin(id: string): Promise<RuntimePluginDescriptor> {
             network: [],
             widgetText: {},
             structs: [],
+            agentTools: [],
+            agentGuide: "",
         },
         permissions: [],
     };

@@ -29,6 +29,7 @@ import { GalleryEditorTab } from "./GalleryEditorTab";
 import { GalleryPanel } from "./GalleryPanel";
 import { createGalleryTranslator, galleryTitle } from "./messages";
 import { createGalleryStore } from "./store";
+import { createGalleryAgentTools } from "./agentTools";
 import { galleryWords } from "./catalog";
 import {
     DYNAMIC_OPTIONS_SOURCE,
@@ -83,6 +84,17 @@ export default definePlugin({
         // reads the copy published with the game instead.
         app.services.blueprintNodes.registerMany(createGalleryBlueprintNodes(() => store.getData()));
 
+        // The EXTRA page for AI agents connected to Studio: the same store, behind six batch tools.
+        // Each write commits once, so the host turns each call into one step of undo. Offering them
+        // is an extra: if the host refuses (a manifest it read before this build declared them), the
+        // author keeps the Gallery and only agents go without.
+        let unregisterAgentTools: () => void | Promise<void> = () => undefined;
+        try {
+            unregisterAgentTools = app.services.agent.registerTools(createGalleryAgentTools(app, store));
+        } catch (error) {
+            console.warn("[plugin:narraleaf.gallery] agent tools were not offered:", error);
+        }
+
         const unregisterPanel = app.services.ui.panels.register({
             id: PANEL_ID,
             get title() {
@@ -102,6 +114,7 @@ export default definePlugin({
             unregisterArtworkOptions();
             unregisterVariantOptions();
             unregisterGroupOptions();
+            void unregisterAgentTools();
             // Object URLs outlive React unmounts by design (see components.tsx),
             // so unload is the one place they get released.
             disposeAssetUrls();

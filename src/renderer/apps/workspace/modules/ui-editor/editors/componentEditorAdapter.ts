@@ -11,6 +11,7 @@ import type { UIStructField } from "@shared/types/ui-editor/struct";
 import type { UIEditorClipboardPayload } from "@/lib/ui-editor/commands/uiEditorClipboard";
 import type { Service } from "@/lib/workspace/services/Service";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import type { HistoryLabel } from "@/lib/workspace/services/history/historyModel";
 import type { MoveUiElementsResult } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
 import { COMPONENT_EDITOR_VIRTUAL_ROOT_PREFIX } from "@/lib/ui-editor/componentEditorRoot";
 import {
@@ -125,6 +126,7 @@ type ProjectMember =
     | "updateComponentElementAnimation"
     | "updateComponentElementNavigation"
     | "updateComponentElementExtra"
+    | "updateComponentElementStyle"
     | "renameComponentElement"
     | "reorderComponentChildren"
     | "deleteComponentElements"
@@ -136,7 +138,10 @@ type ProjectMember =
     | "createComponentElement"
     | "pasteComponentClipboardPayload"
     | "setComponentListItemStructFields"
-    | "setComponentListItemStructShape";
+    | "setComponentListItemStructShape"
+    // An agent's edits name the page or definition they act on, so they mean the same thing from here.
+    | "applyAgentMutation"
+    | "applyCompiledUi";
 
 export class ComponentDocumentServiceAdapter implements UIDocumentServiceSurface {
     public readonly surfaceId: string;
@@ -165,6 +170,8 @@ export class ComponentDocumentServiceAdapter implements UIDocumentServiceSurface
     public readonly giveKeyedWidgetsTheirWords = this.project("giveKeyedWidgetsTheirWords");
     public readonly prepareTemplateDocumentForPreview = this.project("prepareTemplateDocumentForPreview");
     public readonly generateId = this.project("generateId");
+    public readonly applyAgentMutation = this.project("applyAgentMutation");
+    public readonly applyCompiledUi = this.project("applyCompiledUi");
     public readonly getComponentContentRevision = this.project("getComponentContentRevision");
     public readonly getComponentUsageCount = this.project("getComponentUsageCount");
     public readonly getInputActions = this.project("getInputActions");
@@ -201,6 +208,7 @@ export class ComponentDocumentServiceAdapter implements UIDocumentServiceSurface
     public readonly updateComponentElementAnimation = this.project("updateComponentElementAnimation");
     public readonly updateComponentElementNavigation = this.project("updateComponentElementNavigation");
     public readonly updateComponentElementExtra = this.project("updateComponentElementExtra");
+    public readonly updateComponentElementStyle = this.project("updateComponentElementStyle");
     public readonly renameComponentElement = this.project("renameComponentElement");
     public readonly reorderComponentChildren = this.project("reorderComponentChildren");
     public readonly deleteComponentElements = this.project("deleteComponentElements");
@@ -420,6 +428,13 @@ export class ComponentDocumentServiceAdapter implements UIDocumentServiceSurface
         this.base.updateComponentElementExtra(this.componentId, elementId, extraPatch);
     }
 
+    public updateElementStyle(elementId: string, stylePatch: Record<string, unknown>): void {
+        if (this.isVirtualRoot(elementId)) {
+            return;
+        }
+        this.base.updateComponentElementStyle(this.componentId, elementId, stylePatch);
+    }
+
     public updateElementAnimation(
         elementId: string,
         animation: UIPageAnimationSettings | null,
@@ -617,8 +632,8 @@ export class ComponentDocumentServiceAdapter implements UIDocumentServiceSurface
      * Everything `action` writes as one step in the definition's history: the drag commit (layouts
      * and image flips together), a widget inspector's compound edit.
      */
-    public runSurfaceHistoryTransaction(_surfaceId: string, action: () => void): void {
-        this.base.runSurfaceHistoryTransaction(this.surfaceId, action);
+    public runSurfaceHistoryTransaction(_surfaceId: string, action: () => void, options?: { label?: HistoryLabel }): void {
+        this.base.runSurfaceHistoryTransaction(this.surfaceId, action, options);
     }
 
     /**

@@ -37,6 +37,7 @@ import { buildLineBlock } from "./compile";
 import { conditionSource, type ConditionLookups } from "./condition";
 import { sameRowContent } from "./equal";
 import { proseLineOf, type ProseLookups } from "./prose";
+import { printSceneSettings } from "./sceneSettings";
 import {
     ANCHOR_CLOSE,
     ANCHOR_OPEN,
@@ -127,6 +128,8 @@ export function printStoryScene(input: PrintInput): PrintResult {
         `${DIRECTIVE_FORMAT} ${STORY_FILE_FORMAT_VERSION}`,
         `${DIRECTIVE_STORY} ${input.storyName}`,
         `${DIRECTIVE_SCENE} ${scene.name} ${ANCHOR_OPEN}${scene.id}${ANCHOR_CLOSE}`,
+        // What the scene opens on before its first row runs - not rows, so they live in the header.
+        ...printSceneSettings(scene, input.context),
     ];
     const footer = Object.keys(data).length > 0
         // One row per line rather than one blob: a diff of two exports should point at the row that

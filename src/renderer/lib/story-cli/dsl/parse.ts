@@ -32,6 +32,7 @@ import {
     splitIndent,
     STORY_FILE_FORMAT_VERSION,
 } from "./shapes";
+import { DIRECTIVE_BACKGROUND, DIRECTIVE_MUSIC } from "./sceneSettings";
 
 export type StoryFileParse = {
     ast: StoryFileAst;
@@ -45,6 +46,7 @@ export function parseStoryFile(source: string): StoryFileParse {
         storyName: null,
         sceneName: null,
         sceneId: null,
+        settings: {},
         lines: [],
         data: {},
     };
@@ -133,6 +135,15 @@ function readDirective(
         const { text, id } = stripAnchor(rest);
         ast.sceneName = text;
         ast.sceneId = id;
+        return false;
+    }
+    if (name === DIRECTIVE_BACKGROUND || name === DIRECTIVE_MUSIC) {
+        const key = name === DIRECTIVE_BACKGROUND ? "background" : "music";
+        if (ast.settings[key]) {
+            diagnostics.push(errorAt("file.duplicate_setting", `A second ${name} directive. A scene has one; keep the line you mean.`, lineNumber));
+            return false;
+        }
+        ast.settings[key] = { value: rest, line: lineNumber };
         return false;
     }
     // Every other `#` line is a comment. Deliberately silent: a file an agent has annotated should

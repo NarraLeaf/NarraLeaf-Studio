@@ -211,12 +211,23 @@ export const AppSettingCategories: SettingCategory[] = [
         order: 8,
     },
     {
+        // The MCP endpoint an author's own AI agent connects to. Its own category rather than a
+        // corner of Network: what it decides is who may change a project, not where Studio
+        // downloads from.
+        key: "agent",
+        label: "Agent access",
+        labelKey: "settings.categories.agent.label",
+        description: "Let AI agents connect to Studio over MCP and work on the open project.",
+        descriptionKey: "settings.categories.agent.description",
+        order: 9,
+    },
+    {
         key: "data",
         label: "Data",
         labelKey: "settings.categories.data.label",
         description: "Cached files, resetting preferences, and moving them between machines.",
         descriptionKey: "settings.categories.data.description",
-        order: 9,
+        order: 10,
     },
 ];
 
@@ -1004,6 +1015,21 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "Shown to collaborators beside your account. Leave empty to use the host name.",
         descriptionKey: "settings.items.teamMachineLabel.description",
         defaultValue: "",
+    },
+    {
+        // Rendered by `SETTING_PANELS.agentAccess`. Nothing is stored under this key: agent access
+        // lives in main (`<userData>/agent-mcp.json`, owner-only), because it holds the token and
+        // decides whether an outside program may change a project - and every renderer can write
+        // the settings store. The panel reads and writes it over a Settings-only channel.
+        key: "agent.access",
+        category: "agent",
+        scope: SettingScope.Global,
+        type: SettingValueType.Custom,
+        panel: "agentAccess",
+        label: "MCP endpoint",
+        labelKey: "settings.items.agentAccess.label",
+        description: "",
+        defaultValue: null,
     },
     {
         // Rendered by `SETTING_PANELS.projectTrust`. Nothing is stored under this key; the ledger

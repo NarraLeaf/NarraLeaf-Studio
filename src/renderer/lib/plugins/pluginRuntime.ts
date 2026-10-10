@@ -62,6 +62,10 @@ import { TEST_PROTOCOL_VERSION } from "@/lib/testing/types";
 import type { WorkspacePluginDescriptor } from "@shared/types/plugins";
 import { FsRejectErrorCode } from "@shared/types/os";
 import { pluginStoreNamespace } from "@shared/utils/pluginStorage";
+import type { HistoryService } from "@/lib/workspace/services/history/HistoryService";
+import { projectHistoryScope } from "@/lib/workspace/services/history/historyScopes";
+import { pluginAgentToolRegistry } from "@/lib/workspace/services/agent/pluginToolRegistry";
+import { createPluginAgentFacade } from "./pluginAgentTools";
 
 type PluginModule = {
     default?: unknown;
@@ -640,6 +644,55 @@ export function createPluginApp(
         }
     };
 
+    // The reloader the plugin registered, kept here as well as with the reload service: undoing an
+    // agent tool's edit puts the plugin's stores back and must then have the plugin re-read them,
+    // and only this plugin's reader - not the whole project's reload pass.
+    let pluginReloader: { reload: () => Promise<void> | void } | null = null;
+    const storeOf = (namespace: string) => pluginStoreNamespace(descriptor.plugin.id, namespace);
+    const pluginStoreReport = storeWrite("workspace.shell.save.stores.pluginData", "notRetried");
+    const agent = createPluginAgentFacade({
+        pluginId: descriptor.plugin.id,
+        pluginName: descriptor.manifest.name,
+        declared: descriptor.manifest.contributes.agentTools ?? [],
+        registry: pluginAgentToolRegistry(ctx),
+        track,
+        storage: {
+            read: async namespace => {
+                const result = await storage.readStore(storeOf(namespace));
+                if (result.ok) {
+                    return result.data;
+                }
+                if (result.error.code === FsRejectErrorCode.NOT_FOUND) {
+                    return null;
+                }
+                throw new Error(result.error.message);
+            },
+            write: async (namespace, data) => {
+                const result = await storage.writeStore(storeOf(namespace), data as Record<string, unknown>, pluginStoreReport);
+                if (!result.ok) {
+                    throw new Error(result.error.message);
+                }
+            },
+            remove: async namespace => {
+                const result = await storage.deleteStore(storeOf(namespace));
+                if (!result.ok) {
+                    throw new Error(result.error.message);
+                }
+            },
+        },
+        history: () => {
+            try {
+                const history = ctx.services.get<HistoryService>(Services.History);
+                return { pushCommand: request => void history.pushCommand(projectHistoryScope(), request) };
+            } catch {
+                return null;
+            }
+        },
+        reload: async () => {
+            await pluginReloader?.reload();
+        },
+    });
+
     const app: PluginApp = {
         plugin: descriptor.plugin,
         manifest: descriptor.manifest,
@@ -657,16 +710,16 @@ export function createPluginApp(
                     throw new Error(result.error.message);
                 },
                 writeJson: async (namespace, data) => {
+                    // Refused while one of this plugin's reading agent tools runs; captured for
+                    // undo while one of its writing tools does. See `pluginAgentTools`.
+                    const settle = await agent.beforeStorageWrite(namespace);
                     // Thrown to the plugin, which may or may not say anything; the save-status
                     // surface tells the author either way, without naming the store's file.
-                    const result = await storage.writeStore(
-                        pluginStoreNamespace(descriptor.plugin.id, namespace),
-                        data,
-                        storeWrite("workspace.shell.save.stores.pluginData", "notRetried"),
-                    );
+                    const result = await storage.writeStore(storeOf(namespace), data, pluginStoreReport);
                     if (!result.ok) {
                         throw new Error(result.error.message);
                     }
+                    settle?.(data);
                 },
             },
             assets: {
@@ -713,14 +766,24 @@ export function createPluginApp(
                 ),
                 // Keyed by plugin id, so a plugin that re-registers replaces its own reader rather
                 // than stacking a second one that reads into a store nobody owns any more.
-                registerReloader: reload => trackReturn(workspaceReload.registerReloader({
-                    id: `plugin:${descriptor.plugin.id}`,
-                    // A getter, read when a reload reports, for the same reason as the widget owner.
-                    get label() {
-                        return shownName();
-                    },
-                    reload,
-                })),
+                registerReloader: reload => {
+                    const entry = { reload };
+                    pluginReloader = entry;
+                    const unregister = workspaceReload.registerReloader({
+                        id: `plugin:${descriptor.plugin.id}`,
+                        // A getter, read when a reload reports, for the same reason as the widget owner.
+                        get label() {
+                            return shownName();
+                        },
+                        reload,
+                    });
+                    return trackReturn(() => {
+                        unregister();
+                        if (pluginReloader === entry) {
+                            pluginReloader = null;
+                        }
+                    });
+                },
             },
             i18n: {
                 get locale() {
@@ -742,6 +805,7 @@ export function createPluginApp(
                 formatList: (items, options) => i18nStore.getTranslator().formatList(items, options),
                 createTranslator: bundle => createPluginTranslator(bundle),
             },
+            agent: agent.service,
             tests: {
                 protocolVersion: TEST_PROTOCOL_VERSION,
                 register: definition => {

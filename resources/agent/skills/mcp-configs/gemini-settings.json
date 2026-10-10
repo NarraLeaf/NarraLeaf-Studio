@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "narraleaf": {
+      "httpUrl": "http://127.0.0.1:<PORT>/mcp",
+      "headers": {
+        "Authorization": "Bearer <TOKEN>"
+      }
+    }
+  },
+  "context": {
+    "fileName": ["AGENTS.md", "GEMINI.md"]
+  }
+}

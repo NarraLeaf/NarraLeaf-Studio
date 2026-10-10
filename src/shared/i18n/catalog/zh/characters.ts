@@ -36,6 +36,8 @@ export const characters = {
     history: {
         deleteCharacter: "删除角色 {name}",
         renameCharacter: "重命名角色 {name}",
+        createCharacter: "新建角色 {name}",
+        editCharacter: "编辑角色 {name}",
         deleteGroup: "删除分组 {name}",
     },
     create: {

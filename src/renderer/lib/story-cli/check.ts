@@ -15,6 +15,10 @@
  * widget scope against. A check that silently answers less than it appears to is worse than one that
  * says what it did not look at.
  *
+ * Pure: every function takes the project's documents (`ProjectData` and the story documents) rather
+ * than a directory, so Studio's agent bridge runs the same two layers over the live project. The
+ * command line reads the documents in `cli.ts` and hands them in.
+ *
  * Comments in English per project convention.
  */
 
@@ -26,7 +30,7 @@ import type { StoryFileDiagnostic } from "./dsl/ast";
 import { compileStoryFile } from "./dsl/compile";
 import { parseStoryFile } from "./dsl/parse";
 import { buildLookups } from "./lookups";
-import { buildContext, listStories, readProjectData, readStoryDocument, type ProjectData } from "./project";
+import { buildContext, type ProjectData, type StorySummary } from "./model";
 
 export type CheckResult = {
     /** Everything this run found, the file layer first. What `check` prints. */
@@ -43,6 +47,8 @@ export type CheckResult = {
     scene: StoryScene | null;
     /** Rule categories this run did not cover, so the caller can say so. */
     notRun: readonly string[];
+    /** Which scene settings the file's header states (`#background`, `#music`); absent with no file. */
+    settingsStated?: { background: boolean; music: boolean };
 };
 
 /**
@@ -66,20 +72,28 @@ export function hasErrors(diagnostics: readonly StoryFileDiagnostic[]): boolean 
     return diagnostics.some(diagnostic => diagnostic.severity === "error");
 }
 
+/** One story as the document layer reads it: its library entry and its (migrated) document. */
+export type StoryLintStory = StorySummary & { document: StoryDocument };
+
 /**
  * One `.story` file against the project it is meant for.
  *
  * The lint layer runs over the project with this file's scene SUBSTITUTED IN, not over the project
  * as it stands: the whole question is whether the edit is sound, and a jump written in the file to a
- * scene that does not exist has to be found before the file is applied rather than after.
+ * scene that does not exist has to be found before the file is applied rather than after. It reads
+ * only the story the file belongs to, which is `story`.
+ *
+ * `scene` is the scene to check against when the caller named one; otherwise the file's `#scene`
+ * directive picks it out of `story.document`.
  */
-export async function checkStoryFile(
+export async function checkStorySource(
     source: string,
-    input: { projectDir: string; storyId: string; scene: StoryScene | null },
+    input: { data: ProjectData; story: StoryLintStory; scene: StoryScene | null },
 ): Promise<CheckResult> {
     const parsed = parseStoryFile(source);
-    const data = readProjectData(input.projectDir);
-    const { document } = readStoryDocument(input.projectDir, input.storyId);
+    const settingsStated = { background: Boolean(parsed.ast.settings.background), music: Boolean(parsed.ast.settings.music) };
+    const { data, story } = input;
+    const document = story.document;
     const existing = input.scene ?? (parsed.ast.sceneId ? document.scenes?.[parsed.ast.sceneId] ?? null : null);
     if (!existing) {
         const diagnostics: StoryFileDiagnostic[] = [
@@ -93,7 +107,7 @@ export async function checkStoryFile(
                     : "The file's #scene directive carries no id, so there is nothing to check it against.",
             },
         ];
-        return { diagnostics, fileDiagnostics: diagnostics, projectFindings: [], scene: null, notRun: [] };
+        return { diagnostics, fileDiagnostics: diagnostics, projectFindings: [], scene: null, notRun: [], settingsStated };
     }
 
     const lookups = buildLookups(data, document, existing, buildContext(data, document, existing));
@@ -117,19 +131,21 @@ export async function checkStoryFile(
             projectFindings: [],
             scene: compiled.scene,
             notRun: notRunCategories(),
+            settingsStated,
         };
     }
     const withEdit: StoryDocument = {
         ...document,
         scenes: { ...document.scenes, [compiled.scene.id]: compiled.scene },
     };
-    const projectFindings = await lintProject(input.projectDir, data, { [input.storyId]: withEdit });
+    const projectFindings = await lintStories(data, [{ ...story, document: withEdit }]);
     return {
         diagnostics: [...fileDiagnostics, ...projectFindings.map(finding => finding.diagnostic)],
         fileDiagnostics,
         projectFindings,
         scene: compiled.scene,
         notRun: notRunCategories(),
+        settingsStated,
     };
 }
 
@@ -143,8 +159,8 @@ export async function checkStoryFile(
  * the list for the same reason they lead the report - "this story would not open at all" is the
  * first thing a reader needs.
  */
-export async function checkProject(projectDir: string): Promise<CheckResult> {
-    const findings = await lintStoredProject(projectDir);
+export async function checkStoredStories(project: StoredStories): Promise<CheckResult> {
+    const findings = await lintStoredStories(project);
     return {
         diagnostics: findings.map(finding => finding.diagnostic),
         fileDiagnostics: [],
@@ -154,6 +170,15 @@ export async function checkProject(projectDir: string): Promise<CheckResult> {
     };
 }
 
+/** The project as stored: its lists, every story that opened, and every one that did not. */
+export type StoredStories = {
+    data: ProjectData;
+    /** Every readable story, in library order. */
+    stories: readonly StoryLintStory[];
+    /** Stories the library lists whose document would not open, with what refused them. */
+    unreadable?: readonly { summary: StorySummary; error: unknown }[];
+};
+
 /**
  * The document layer over the stories exactly as they are stored.
  *
@@ -162,18 +187,9 @@ export async function checkProject(projectDir: string): Promise<CheckResult> {
  * in a scene nobody is editing - and a write that refused while any of them stood would mean one bad
  * row anywhere makes the whole project unwritable.
  */
-export async function lintStoredProject(projectDir: string): Promise<KeyedLintFinding[]> {
-    const data = readProjectData(projectDir);
-    const documents: Record<string, StoryDocument> = {};
-    const unreadable: KeyedLintFinding[] = [];
-    for (const story of listStories(projectDir)) {
-        try {
-            documents[story.id] = readStoryDocument(projectDir, story.id).document;
-        } catch (error) {
-            unreadable.push(toKeyedFinding(storyUnreadableFinding(story, error)));
-        }
-    }
-    return [...unreadable, ...(await lintProject(projectDir, data, documents))];
+export async function lintStoredStories(project: StoredStories): Promise<KeyedLintFinding[]> {
+    const unreadable = (project.unreadable ?? []).map(entry => toKeyedFinding(storyUnreadableFinding(entry.summary, entry.error)));
+    return [...unreadable, ...(await lintStories(project.data, project.stories))];
 }
 
 function notRunCategories(): string[] {
@@ -181,22 +197,15 @@ function notRunCategories(): string[] {
     return [...new Set(LINT_RULES.map(rule => rule.category))].filter(category => !covered.has(category)).sort();
 }
 
-/** The project linter over documents read from disk. */
-async function lintProject(
-    projectDir: string,
-    data: ProjectData,
-    documents: Record<string, StoryDocument>,
-): Promise<KeyedLintFinding[]> {
-    const stories = listStories(projectDir)
-        .filter(story => documents[story.id])
-        .map(story => ({
+/** The project linter over the given story documents. */
+async function lintStories(data: ProjectData, stories: readonly StoryLintStory[]): Promise<KeyedLintFinding[]> {
+    const context = buildProjectLintContext({
+        stories: stories.map(story => ({
             id: story.id,
             name: story.name,
-            document: documents[story.id],
+            document: story.document,
             ...(story.dlcId ? { dlcId: story.dlcId } : {}),
-        }));
-    const context = buildProjectLintContext({
-        stories,
+        })),
         blueprintDocument: data.blueprintDocument,
         uiDocument: null,
         characters: data.characters.map(character => ({

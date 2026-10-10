@@ -17,6 +17,10 @@
         "jsx": "react-jsx",
         "strict": true,
         "noEmit": true,
+        // Each run keeps what it learned in .cache/tsc (gitignored, one file per project and per
+        // checkout), so the next run rechecks only what changed. Delete the file for a cold check.
+        "incremental": true,
+        "tsBuildInfoFile": "../../.cache/tsc/builtin-plugins.tsbuildinfo",
         "skipLibCheck": true,
         "esModuleInterop": true,
         // No `baseUrl`: TypeScript 7 removed the option

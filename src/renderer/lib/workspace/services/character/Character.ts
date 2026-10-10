@@ -38,6 +38,18 @@ export class Character {
         this.profile.adopt(config.profile);
     }
 
+    /**
+     * Tell this character's own subscribers that it changed, after an {@link adopt} that told nobody.
+     *
+     * The service's change handler is deliberately left out: whoever adopted a record has already
+     * decided whether it is dirty and announced it to the cast. What is left is the editor holding
+     * this object, which re-renders only from these listeners - without this it would go on drawing
+     * the record from before an undo.
+     */
+    public notifySubscribers(): void {
+        this.listeners.forEach(listener => listener());
+    }
+
     public setOnChange(handler: (() => void) | null): void {
         this.onChange = handler;
     }

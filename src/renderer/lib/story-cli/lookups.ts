@@ -23,7 +23,7 @@ import type { StoryCommandLineLookups } from "@/apps/workspace/modules/story/sce
 import type { StoryCommandContext } from "@/apps/workspace/modules/story/scene-editor/storyCommandValues";
 import type { ConditionLookups } from "./dsl/condition";
 import type { ProseLookups } from "./dsl/prose";
-import type { ProjectData } from "./project";
+import type { ProjectData } from "./model";
 
 export type SceneLookups = {
     rowLookups: StoryCommandLineLookups;

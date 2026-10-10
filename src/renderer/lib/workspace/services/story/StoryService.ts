@@ -44,7 +44,7 @@ import { UuidService } from "../core/UuidService";
 import { EventEmitter } from "../ui/EventEmitter";
 import { HistoryService } from "../history/HistoryService";
 import type { HistoryLabel, HistoryScopeId } from "../history/historyModel";
-import { projectHistoryScope } from "../history/historyScopes";
+import { projectHistoryScope, storySceneHistoryScope } from "../history/historyScopes";
 import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
 import { translate } from "@/lib/i18n";
 import {
@@ -162,6 +162,14 @@ export class StoryService extends Service<StoryService> implements IStoryService
     private opSink: StoryOpSink | null = null;
     private dirty = false;
     private revision = 0;
+    /**
+     * Per-scene content counters, for {@link getSceneContentRevision}.
+     *
+     * `seenAt` is the document revision the signature was last compared at, so asking twice between
+     * edits costs nothing. Reset to -1 rather than dropped when the documents are re-read: a counter
+     * that started again from 1 would hand an agent holding an old 1 a match it never earned.
+     */
+    private readonly sceneContentRevisions = new Map<string, { seenAt: number; signature: string; content: number }>();
     /**
      * What this service still owes the disk, one entry per file rather than one flag for the lot.
      *
@@ -610,6 +618,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.documents.clear();
         this.animationAssets.clear();
         this.revision = 0;
+        this.invalidateSceneContentRevisions();
         this.discardPendingWrites();
 
         // Re-open what was open, one document at a time. One that cannot be read is left *not
@@ -685,6 +694,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         try {
             this.index = normalizeStoryLibraryIndex(result.data, new Date().toISOString());
             this.revision = 0;
+            this.invalidateSceneContentRevisions();
             this.discardPendingWrites();
             this.events.emit("libraryChanged", this.index);
             return this.index;
@@ -2047,6 +2057,74 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.mutateDocument(storyId, document => {
             this.getSceneOrThrow(document, sceneId);
             document.scenes[sceneId] = this.cloneScene({ ...scene, id: sceneId });
+        });
+        return true;
+    }
+
+    /**
+     * A counter for one scene, bumped only when that scene's own content changed.
+     *
+     * {@link getRevision} moves on every edit to any story, so it cannot tell an agent whether the
+     * scene it read is still the scene on screen. This compares the scene itself - by signature,
+     * not by asking every mutator to declare what it touched, which is the same choice the
+     * interface's per-surface counters make (`uiDocumentContentRevisions`). Zero for a scene that is
+     * not loaded or does not exist.
+     */
+    public getSceneContentRevision(storyId: StoryId, sceneId: StorySceneId): number {
+        const key = `${storyId}\u0000${sceneId}`;
+        const cached = this.sceneContentRevisions.get(key);
+        if (cached && cached.seenAt === this.revision) {
+            return cached.content;
+        }
+        const scene = this.documents.get(storyId)?.scenes[sceneId];
+        if (!scene) {
+            return cached?.content ?? 0;
+        }
+        const signature = JSON.stringify(scene);
+        if (cached && cached.signature === signature) {
+            cached.seenAt = this.revision;
+            return cached.content;
+        }
+        const content = (cached?.content ?? 0) + 1;
+        this.sceneContentRevisions.set(key, { seenAt: this.revision, signature, content });
+        return content;
+    }
+
+    private invalidateSceneContentRevisions(): void {
+        for (const entry of this.sceneContentRevisions.values()) {
+            entry.seenAt = -1;
+            entry.signature = "";
+        }
+    }
+
+    /**
+     * Put a whole scene in the document for an agent connected over MCP, as one step of undo on the
+     * scene's own stack.
+     *
+     * {@link replaceScene} records nothing - its two callers own their undo - and an agent's write
+     * has to be one Ctrl+Z in the scene editor like any edit the author makes there. A command over
+     * the two whole scenes, because both ends are known and the scene editor need not be open for
+     * the step to be taken back later. Refused, like `replaceScene`, while a session owns the story.
+     * False means nothing was written.
+     */
+    public applyAgentSceneReplacement(storyId: StoryId, sceneId: StorySceneId, scene: StoryScene, label: HistoryLabel): boolean {
+        const current = this.getStoryDocument(storyId).scenes[sceneId];
+        if (!current || this.opSink !== null) {
+            return false;
+        }
+        const before = this.cloneScene(current);
+        const after = this.cloneScene({ ...scene, id: sceneId });
+        if (!this.replaceScene(storyId, sceneId, after)) {
+            return false;
+        }
+        this.getHistoryService().pushCommand(storySceneHistoryScope(storyId, sceneId), {
+            label,
+            undo: () => {
+                this.replaceScene(storyId, sceneId, before);
+            },
+            redo: () => {
+                this.replaceScene(storyId, sceneId, after);
+            },
         });
         return true;
     }

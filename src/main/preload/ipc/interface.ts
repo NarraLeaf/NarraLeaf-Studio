@@ -3,6 +3,10 @@ import { Namespace } from "@shared/types/ipc";
 import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
+import type { AgentCallRequest, AgentCallResult, AgentFolderAccessRequest } from "@shared/agent/protocol";
+import type { AgentSettingsPatch, AgentSettingsSnapshot } from "@shared/agent/settings";
+import type { AgentCopyConfigKind, AgentMainActivity, AgentQuickState, AgentQuickTogglePatch } from "@shared/agent/workspaceAccess";
+import type { AgentPluginToolDescriptor } from "@shared/agent/pluginTools";
 import type { LibraryExchangeKind } from "@shared/story/libraryExchange";
 import type { AssetUrlDirectory, BlueprintPersistenceProjectRef, RendererErrorReport, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
@@ -18,6 +22,7 @@ import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalSta
 import type { MissingRecentProject, RecentProjectIcon } from "@shared/types/state/appStateTypes";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
 import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "@shared/types/devMode";
+import type { DevModeAgentAction, DevModeAgentResult } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
 import type { GameProcessMemoryReading } from "@shared/types/gameProcessMemory";
 import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "@shared/types/gameTest";
@@ -248,6 +253,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     // Workspace
     selectFolder: () => ipcClient.invoke(IPCEventType.workspaceSelectFolder, {}),
     openPsd: () => ipcClient.invoke(IPCEventType.psdOpen, {}),
+    readPsd: (filePath: string) => ipcClient.invoke(IPCEventType.psdRead, { filePath }),
     bakePsd: (request) => ipcClient.invoke(IPCEventType.psdBake, { request }),
     probeMedia: (path: string) => ipcClient.invoke(IPCEventType.mediaProbe, { path }),
     probeFontCoverage: (path: string) => ipcClient.invoke(IPCEventType.fontProbeCoverage, { path }),
@@ -297,6 +303,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onRequest(IPCEventType.workspaceConfirmClose, handler),
         onFlushPendingSaves: (handler: () => Promise<RequestStatus<{ flushed: boolean }>>) =>
             ipcClient.onRequest(IPCEventType.workspaceFlushPendingSaves, handler),
+        onAgentCall: (handler: (request: AgentCallRequest) => Promise<RequestStatus<AgentCallResult>>) =>
+            ipcClient.onRequest(IPCEventType.workspaceAgentCall, handler),
         onCloseProgress: (handler: (stage: WorkspaceCloseStage | null) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceCloseProgress, (data) => handler(data.stage)),
         onResolveAssetUrl: (handler: (payload: { assetId: string; assetType?: string }) => Promise<RequestStatus<{ url: string }>>) =>
@@ -326,6 +334,25 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
      * granting and revoking are the author changing their mind. None of it enforces anything -
      * the refusals live in main, beside the operations they refuse.
      */
+    agent: {
+        getSettings: () => ipcClient.invoke(IPCEventType.agentSettingsGet, {}),
+        updateSettings: (patch: AgentSettingsPatch) => ipcClient.invoke(IPCEventType.agentSettingsUpdate, patch),
+        regenerateToken: () => ipcClient.invoke(IPCEventType.agentSettingsRegenerateToken, {}),
+        addImportRoot: () => ipcClient.invoke(IPCEventType.agentSettingsAddImportRoot, {}),
+        getQuickState: () => ipcClient.invoke(IPCEventType.agentQuickState, {}),
+        quickToggle: (patch: AgentQuickTogglePatch) => ipcClient.invoke(IPCEventType.agentQuickToggle, patch),
+        onQuickStateChanged: (handler: (state: AgentQuickState) => void) =>
+            ipcClient.onMessage(IPCEventType.agentQuickStateChanged, handler),
+        copyConfig: (kind: AgentCopyConfigKind) => ipcClient.invoke(IPCEventType.agentCopyConfig, { kind }),
+        exportSkill: () => ipcClient.invoke(IPCEventType.agentExportSkill, {}),
+        revealExportedSkill: () => ipcClient.invoke(IPCEventType.agentRevealExportedSkill, {}),
+        onActivity: (handler: (activity: AgentMainActivity) => void) =>
+            ipcClient.onMessage(IPCEventType.workspaceAgentActivity, handler),
+        reportPluginTools: (tools: readonly AgentPluginToolDescriptor[]) =>
+            ipcClient.send(IPCEventType.agentReportPluginTools, { tools: [...tools] }),
+        requestFolderAccess: (request: AgentFolderAccessRequest) =>
+            ipcClient.invoke(IPCEventType.agentRequestFolderAccess, { callId: request.callId, paths: [...request.paths] }),
+    },
     projectTrust: {
         query: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.projectTrustQuery, { projectPath }),
@@ -471,6 +498,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.devModeScreenshotOpenFolder, { projectRef }) as Promise<RequestStatus<BlueprintOpenScreenshotsResult>>,
         onCloseRequested: (handler: () => Promise<RequestStatus<{ allow: boolean }>>) =>
             ipcClient.onRequest(IPCEventType.devModeWindowCloseRequested, handler),
+        agentControl: (projectPath: string, action: DevModeAgentAction) =>
+            ipcClient.invoke(IPCEventType.devModeAgentControl, { projectPath, action }) as Promise<RequestStatus<DevModeAgentResult>>,
+        onAgentDrive: (handler: (payload: { action: DevModeAgentAction }) => Promise<RequestStatus<DevModeAgentResult>>) =>
+            ipcClient.onRequest(IPCEventType.devModeAgentDrive, handler),
         onPayloadUpdate: (handler: (payload: { bundle: DevModeBundle }) => void) =>
             ipcClient.onMessage(IPCEventType.devModePayloadUpdate, handler),
         onControlReload: (handler: (payload: { revision: number }) => void) =>

@@ -30,37 +30,32 @@ import {
     writeUiGraphs,
 } from "../blueprint-cli/project";
 import { SCRIPTS_DIR, SCRIPTS_GENERATED_DIR, SCRIPTS_MODULES_DIR } from "@shared/project/scriptsDirectory";
+import { WIDGET_STAGE_SLOTS, WIDGET_SURFACE_KINDS } from "./catalog";
+import { emitCommandResult } from "../agent-core/commandResult";
 import {
-    describeWidget,
-    formatStructs,
-    formatWidgetDetail,
-    formatWidgetList,
-    listBuiltinStructs,
-    nearestWidgetTypes,
-    queryWidgets,
-    WIDGET_STAGE_SLOTS,
-    WIDGET_SURFACE_KINDS,
-} from "./catalog";
-import { applyCompiled, formatApplyResult } from "./apply";
-import { checkProjectDocument, checkUiSource, formatDiagnostics } from "./check";
-import { resolveEntrySurfaceId } from "@shared/types/ui-editor/entrySurface";
-import { getUIPageParams } from "@shared/types/ui-editor/pageParams";
-import { printUiDocument } from "./dsl/print";
+    DEFAULT_USAGE_LIMIT,
+    uiApplyCommand,
+    uiCheckProjectCommand,
+    uiCheckSourceCommand,
+    uiShowCommand,
+    uiStructsCommand,
+    uiSurfacesCommand,
+    uiUsageCommand,
+    uiWidgetCommand,
+    uiWidgetsCommand,
+} from "./core";
 import {
     assertWritableSchema,
-    collectTree,
-    elementPath,
-    findComponent,
-    findSurface,
     ProjectIoError,
     readBlueprintIndex,
+    readSkeletonDocument,
     readTextKeys,
     readUiDocument,
+    repoRoot,
     resolveProjectDir,
     resolveUiFile,
     scratchFileNameFor,
     writeUiDocument,
-    type BlueprintIndex,
 } from "./project";
 import { CliPluginError, loadCliPlugin } from "./plugins";
 import {
@@ -71,16 +66,12 @@ import {
     type ProjectTextFile,
 } from "./remove";
 import { didYouMean } from "./text";
-import { findUsages, formatPropValues, formatUsages, readSkeletonDocument, repoRoot } from "./usage";
 import { registerBuiltInPluginStructs } from "@/lib/blueprint-cli/builtinPluginNodes";
 
 export type CliIo = {
     out: (text: string) => void;
     err: (text: string) => void;
 };
-
-/** How many occurrences a bare `usage` prints before it says only how many more there are. */
-const DEFAULT_USAGE_LIMIT = 3;
 
 const USAGE = `ui - query the widget catalogue, read an interface, write one as text.
 
@@ -93,6 +84,8 @@ const USAGE = `ui - query the widget catalogue, read an interface, write one as 
   surfaces [search]           Surfaces, components and the owner= lines blueprint wants. Needs --project.
   show                        Print a project's interface in the text format. Needs --project.
                               --surface <name|id> --component <name|id> --out [file]
+                              --compact leaves out props at their widget's default (+defaults) and
+                              appearance groups that only repeat a prop; apply restores them.
   check [file.ui]             Check a text file, or the whole project when given no file.
   apply <file.ui>             Compile a text file into the project. Needs --project.
                               Writes nothing without --write.
@@ -149,7 +142,7 @@ const COMMANDS: Record<string, CommandSpec> = {
     },
     surfaces: { flags: { project: "string" }, run: commandSurfaces },
     show: {
-        flags: { project: "string", surface: "string", component: "string", out: "string" },
+        flags: { project: "string", surface: "string", component: "string", out: "string", compact: "boolean" },
         run: commandShow,
     },
     check: { flags: { project: "string" }, run: commandCheck },
@@ -212,18 +205,17 @@ function loadPlugins(args: Args, io: CliIo): void {
 // ---------------------------------------------------------------------------
 
 function commandWidgets(args: Args, io: CliIo): number {
-    // A slot only exists on a stage surface, so naming one says which kind of surface this is even
-    // when the caller did not spell it out.
     const stageSlot = enumFlag(args, "slot", WIDGET_STAGE_SLOTS);
-    const widgets = queryWidgets({
-        search: args.positional.join(" ") || undefined,
-        insertableOnly: args.flags.insertable === true,
-        surfaceKind:
-            enumFlag(args, "surface-kind", WIDGET_SURFACE_KINDS) ?? (stageSlot ? "stageSurface" : undefined),
-        stageSlot,
-    });
-    io.out(args.flags.json === true ? JSON.stringify(widgets, null, 2) : formatWidgetList(widgets));
-    return 0;
+    return emitCommandResult(
+        uiWidgetsCommand({
+            search: args.positional.join(" ") || undefined,
+            insertableOnly: args.flags.insertable === true,
+            surfaceKind: enumFlag(args, "surface-kind", WIDGET_SURFACE_KINDS),
+            stageSlot,
+            json: args.flags.json === true,
+        }),
+        io,
+    );
 }
 
 function commandWidget(args: Args, io: CliIo): number {
@@ -231,25 +223,13 @@ function commandWidget(args: Args, io: CliIo): number {
     if (!type) {
         throw new UsageError("Which widget type? `ui widget <type>`.");
     }
-    const detail = describeWidget(type);
-    if (!detail) {
-        io.err(`No widget type "${type}".`);
-        const near = nearestWidgetTypes(type);
-        io.err(near.length > 0 ? `Close by: ${near.join(", ")}` : "Run `ui widgets` for the catalogue.");
-        return 2;
-    }
-    io.out(args.flags.json === true ? JSON.stringify(detail, null, 2) : formatWidgetDetail(detail));
-    return 0;
+    return emitCommandResult(uiWidgetCommand(type, { json: args.flags.json === true }), io);
 }
 
 function commandStructs(args: Args, io: CliIo): number {
-    const structs = [...listBuiltinStructs()];
     const projectDir = optionalProject(args);
-    if (projectDir) {
-        structs.push(...Object.values(readUiDocument(projectDir).document.structs ?? {}));
-    }
-    io.out(args.flags.json === true ? JSON.stringify(structs, null, 2) : formatStructs(structs));
-    return 0;
+    const document = projectDir ? readUiDocument(projectDir).document : null;
+    return emitCommandResult(uiStructsCommand(document, { json: args.flags.json === true }), io);
 }
 
 function commandUsage(args: Args, io: CliIo): number {
@@ -265,28 +245,18 @@ function commandUsage(args: Args, io: CliIo): number {
                 + "template can be found.",
         );
     }
-    const sites = findUsages(document, type);
-    if (args.flags.json === true) {
-        io.out(
-            JSON.stringify(
-                sites.map(site => ({ owner: site.owner, path: site.path, element: site.element })),
-                null,
-                2,
-            ),
-        );
-        return 0;
-    }
+    const json = args.flags.json === true;
     const prop = stringFlag(args, "prop");
-    if (prop) {
-        io.out(formatPropValues(sites, prop));
-        return 0;
-    }
-    io.out(
-        formatUsages(sites, numberFlag(args, "limit") ?? DEFAULT_USAGE_LIMIT, {
-            withoutChildren: args.flags.shallow === true,
+    return emitCommandResult(
+        uiUsageCommand(document, type, {
+            json,
+            prop,
+            // Only read when it is used: `--json` and `--prop` print every occurrence.
+            limit: json || prop ? undefined : numberFlag(args, "limit") ?? DEFAULT_USAGE_LIMIT,
+            shallow: args.flags.shallow === true,
         }),
+        io,
     );
-    return 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -297,132 +267,33 @@ function commandSurfaces(args: Args, io: CliIo): number {
     const projectDir = requireProject(args);
     const { document } = readUiDocument(projectDir);
     const blueprints = readBlueprintIndex(projectDir);
-    const entrySurfaceId = resolveEntrySurfaceId(document);
-    if (args.flags.json === true) {
-        io.out(JSON.stringify({ surfaces: document.surfaces, components: document.components ?? [], entrySurfaceId }, null, 2));
-        return 0;
-    }
-    // A project of any size has hundreds of elements, and the one being looked for usually has a
-    // name already. The search word matches a surface, a component, an element path or a type.
-    const search = args.positional.join(" ").toLowerCase();
-    const matches = (...text: string[]): boolean =>
-        search.length === 0 || text.some(item => item.toLowerCase().includes(search));
-
-    const lines: string[] = [];
-    let hidden = 0;
-    for (const surface of document.surfaces) {
-        const mount = surface.kind === "stageSurface" ? ` slot=${surface.mount.slotId}` : "";
-        const answers = (surface.actions ?? []).map(action => action.actionId).join(", ");
-        // A page's parameters, as the nodes that open it name their inputs and `param` lines spell them.
-        const pageParams = getUIPageParams(surface)
-            .map(param => `${param.id}${param.type === "string" ? "" : `:${param.type}`}${param.struct ? `<${param.struct}>` : ""}`)
-            .join(" ");
-        const wholeSurface = matches(surface.name, surface.id);
-        const elements = collectTree(document.elements, surface.rootElementId)
-            .map(element => ({ element, path: elementPath(document.elements, element) }))
-            .filter(entry => wholeSurface || matches(entry.path, entry.element.type, entry.element.id));
-        if (elements.length === 0 && !wholeSurface) {
-            hidden += 1;
-            continue;
-        }
-        lines.push(
-            `${surface.name}  ${surface.kind}${mount}  ${surface.designSize.width}x${surface.designSize.height}`
-                + `${surface.id === entrySurfaceId ? "  entry" : ""}`
-                + `${answers ? `  answers ${answers}` : ""}`
-                + `${pageParams ? `  (params ${pageParams})` : ""}`,
-        );
-        lines.push(`    owner=surfaceMain surface=${surface.id}`);
-        for (const entry of elements) {
-            lines.push(
-                `    ${entry.path}  [${entry.element.type}]`
-                    + `  owner=widgetMain surface=${surface.id} element=${entry.element.id}`
-                    + describeAttached(blueprints, entry.element.id),
-            );
-        }
-        lines.push("");
-    }
-    for (const component of document.components ?? []) {
-        // A text parameter is marked, since it is the one a `bind ... = param` may show.
-        const params = (component.params ?? [])
-            .map(param => `${param.id}${param.type === "text" ? ":text" : ""}="${param.defaultValue}"`)
-            .join(" ");
-        const pool = component.elements ?? {};
-        const wholeComponent = matches(component.name, component.id);
-        const elements = collectTree(pool, component.rootElementId)
-            .map(element => ({ element, path: elementPath(pool, element) }))
-            .filter(entry => wholeComponent || matches(entry.path, entry.element.type, entry.element.id));
-        if (elements.length === 0 && !wholeComponent) {
-            hidden += 1;
-            continue;
-        }
-        lines.push(`${component.name}  component=${component.id}  (${params || "no params"})`);
-        for (const entry of elements) {
-            lines.push(
-                `    ${entry.path}  [${entry.element.type}]`
-                    + `  owner=componentWidgetMain component=${component.id} element=${entry.element.id}`
-                    + describeAttached(blueprints, entry.element.id),
-            );
-        }
-        lines.push("");
-    }
-    if (hidden > 0) {
-        lines.push(`${hidden} surface(s) and component definition(s) matched nothing and are not listed.`);
-    }
-    io.out(lines.join("\n").trimEnd() || "Nothing matched.");
-    return 0;
-}
-
-function describeAttached(blueprints: BlueprintIndex, elementId: string): string {
-    const attached = blueprints.byElement.get(elementId) ?? [];
-    return attached.length > 0 ? `  # ${attached.map(item => item.name).join(", ")}` : "";
+    return emitCommandResult(
+        uiSurfacesCommand({ document, blueprints }, { search: args.positional.join(" "), json: args.flags.json === true }),
+        io,
+    );
 }
 
 function commandShow(args: Args, io: CliIo): number {
     const projectDir = requireProject(args);
     const { document } = readUiDocument(projectDir);
     const blueprints = readBlueprintIndex(projectDir);
-    const surfaceName = stringFlag(args, "surface");
-    const componentName = stringFlag(args, "component");
-    let surfaceIds: string[] | undefined;
-    let componentIds: string[] | undefined;
-    let subject = document.name || "interface";
-    if (surfaceName) {
-        const surface = findSurface(document, surfaceName);
-        if (!surface) {
-            io.err(`No surface "${surfaceName}". Run \`ui surfaces --project ${projectDir}\`.`);
-            return 2;
-        }
-        surfaceIds = [surface.id];
-        componentIds = [];
-        subject = surface.name;
-    }
-    if (componentName) {
-        const component = findComponent(document, componentName);
-        if (!component) {
-            io.err(`No component "${componentName}". Run \`ui surfaces --project ${projectDir}\`.`);
-            return 2;
-        }
-        componentIds = [component.id];
-        surfaceIds = surfaceIds ?? [];
-        subject = component.name;
-    }
-    const text = printUiDocument(document, {
-        surfaceIds,
-        componentIds,
-        includeSharedTables: !surfaceName && !componentName,
-        blueprintsByElement: blueprints.byElement,
-        keyWords: readTextKeys(projectDir)?.keys,
-    });
-
+    const shown = uiShowCommand(
+        { document, blueprints, textKeys: readTextKeys(projectDir) },
+        {
+            surface: stringFlag(args, "surface"),
+            component: stringFlag(args, "component"),
+            compact: args.flags.compact === true,
+            projectHint: projectDir,
+        },
+    );
     const out = args.flags.out;
-    if (out === undefined) {
-        io.out(text.trimEnd());
-        return 0;
+    if (shown.text === undefined || out === undefined) {
+        return emitCommandResult(shown, io);
     }
-    const fileName = typeof out === "string" && out.length > 0 ? out : scratchFileNameFor(subject);
+    const fileName = typeof out === "string" && out.length > 0 ? out : scratchFileNameFor(shown.subject);
     const outPath = resolveUiFile(fileName, { forWriting: true });
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
-    fs.writeFileSync(outPath, text, "utf8");
+    fs.writeFileSync(outPath, shown.text, "utf8");
     io.out(`Wrote ${outPath}.\nEdit it, then: ui check ${path.basename(outPath)} --project <dir>`);
     return 0;
 }
@@ -433,9 +304,13 @@ function commandCheck(args: Args, io: CliIo): number {
         // No file means "check what is already there", which needs the project and nothing else.
         const projectDir = requireProject(args);
         const documentFile = readUiDocument(projectDir);
-        const diagnostics = checkProjectDocument(documentFile.document, readBlueprintIndex(projectDir));
-        io.out(formatDiagnostics(diagnostics, { fileName: documentFile.filePath }));
-        return diagnostics.some(item => item.severity === "error") ? 1 : 0;
+        return emitCommandResult(
+            uiCheckProjectCommand(
+                { document: documentFile.document, blueprints: readBlueprintIndex(projectDir) },
+                { fileName: documentFile.filePath },
+            ),
+            io,
+        );
     }
 
     const projectDir = optionalProject(args);
@@ -444,15 +319,14 @@ function commandCheck(args: Args, io: CliIo): number {
     const file = resolveUiFile(given, { forWriting: false });
     const source = readSource(file);
     const textKeys = projectDir ? readTextKeys(projectDir) : null;
-    const result = checkUiSource(source, { existing: documentFile?.document ?? null, blueprints, textKeys });
-    io.out(formatDiagnostics(result.diagnostics, { fileName: file, source }));
-    if (!projectDir) {
-        io.out(
-            "\nNo --project: bindings, components, Page widget targets and dropped elements were not checked, because none of them "
-                + "can be answered without the document this file is going into.",
-        );
-    }
-    return result.ok ? 0 : 1;
+    return emitCommandResult(
+        uiCheckSourceCommand(
+            source,
+            documentFile && blueprints ? { document: documentFile.document, blueprints, textKeys } : null,
+            { fileName: file },
+        ),
+        io,
+    );
 }
 
 function commandApply(args: Args, io: CliIo): number {
@@ -465,26 +339,33 @@ function commandApply(args: Args, io: CliIo): number {
     const blueprints = readBlueprintIndex(projectDir);
     const file = resolveUiFile(given, { forWriting: false });
     const source = readSource(file);
-    const result = checkUiSource(source, { existing: documentFile.document, blueprints, textKeys: readTextKeys(projectDir) });
-    io.out(formatDiagnostics(result.diagnostics, { fileName: file, source }));
-    if (!result.ok || !result.compiled) {
-        io.err("Nothing written.");
-        return 1;
-    }
-    assertWritableSchema(documentFile);
-    const applied = applyCompiled(documentFile.document, result.compiled);
-    if (args.flags.write === true) {
+    const write = args.flags.write === true;
+    const result = uiApplyCommand(
+        source,
+        { document: documentFile.document, blueprints, textKeys: readTextKeys(projectDir) },
+        {
+            fileName: file,
+            write,
+            beforeApply: () => {
+                try {
+                    assertWritableSchema(documentFile);
+                    return null;
+                } catch (error) {
+                    if (error instanceof ProjectIoError) {
+                        return error.message;
+                    }
+                    throw error;
+                }
+            },
+            writtenNote:
+                "Close the project in Studio before doing this: nothing reloads the file on its own, and a running "
+                + "Studio writes its own copy over yours on the next save.",
+        },
+    );
+    if (result.applied && write) {
         writeUiDocument(documentFile);
     }
-    io.out("");
-    io.out(formatApplyResult(applied, args.flags.write === true));
-    if (args.flags.write === true) {
-        io.out(
-            "Close the project in Studio before doing this: nothing reloads the file on its own, and a running "
-                + "Studio writes its own copy over yours on the next save.",
-        );
-    }
-    return 0;
+    return emitCommandResult(result, io);
 }
 
 function commandRemove(args: Args, io: CliIo): number {

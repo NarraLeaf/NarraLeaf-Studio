@@ -4,6 +4,8 @@
  * Printing is exact rather than tidy - every id, every prop, every layout key that is on the record
  * is written down - because the way to change something that already exists is to dump it, edit two
  * lines and apply it back, and anything the printer left out would be deleted by that round trip.
+ * The short form (`compact`) leaves out only what it marks for the compiler to put back exactly; see
+ * `compact.ts`.
  *
  * Comments in English per project convention.
  */
@@ -20,6 +22,8 @@ import { getUIPageParams } from "@shared/types/ui-editor/pageParams";
 import { uiTextSitesOf } from "@shared/types/ui-editor/textSource";
 import { printValue } from "../../blueprint-cli/dsl/values";
 import { PARAM_KEY_SUFFIX, propAssignmentKey } from "./parse";
+import { COMPACT_DEFAULTS_FLAG, COMPACT_WITHOUT_KEYWORD } from "./ast";
+import { planCompactElement } from "./compact";
 
 const INDENT = "    ";
 
@@ -39,6 +43,11 @@ export type PrintOptions = {
      * the widget holds none of its own, and the file would otherwise not say what it shows.
      */
     keyWords?: ReadonlyMap<string, string>;
+    /**
+     * The short form: props and layout keys at their widget's default, and appearance groups that only
+     * repeat a prop, are left out and marked so that compiling the text restores them (`compact.ts`).
+     */
+    compact?: boolean;
 };
 
 export function printUiDocument(document: UIDocument, options: PrintOptions = {}): string {
@@ -175,18 +184,23 @@ export function printElementTree(
     const pad = INDENT.repeat(depth);
     const inner = INDENT.repeat(depth + 1);
     const layout = element.layout ?? { x: 0, y: 0, width: 0, height: 0 };
+    const compact = options.compact ? planCompactElement(element) : null;
     const header = [
         element.name ? `${printValue(element.name)}: ${element.type}` : element.type,
         `id=${printValue(element.id)}`,
         `@${layout.x ?? 0},${layout.y ?? 0}`,
         `${layout.width ?? 0}x${layout.height ?? 0}`,
+        ...(compact?.defaults ? [COMPACT_DEFAULTS_FLAG] : []),
     ].join(" ");
     const attached = options.blueprintsByElement?.get(element.id) ?? [];
     const lines = [
         pad + header + (attached.length > 0 ? `  # blueprint: ${attached.map(item => item.name).join(", ")}` : ""),
     ];
+    if (compact?.defaults && compact.without.length > 0) {
+        lines.push(`${inner}${COMPACT_WITHOUT_KEYWORD} ${compact.without.join(" ")}`);
+    }
     for (const [key, value] of Object.entries(layout)) {
-        if (key === "x" || key === "y" || key === "width" || key === "height") {
+        if (key === "x" || key === "y" || key === "width" || key === "height" || compact?.omittedLayout.has(key)) {
             continue;
         }
         lines.push(`${inner}layout.${key} = ${printValue(value)}`);
@@ -196,7 +210,11 @@ export function printElementTree(
     }
     // Every prop that names a key: a plugin's widget can read several of its words from keys.
     const keyProps = new Set(uiTextSitesOf(element.type).map(site => site.keyProp).filter(Boolean));
-    for (const [key, value] of Object.entries(element.props ?? {})) {
+    for (const [key, stored] of Object.entries(element.props ?? {})) {
+        if (compact?.omittedProps.has(key)) {
+            continue;
+        }
+        const value = key === "appearance" && compact?.appearance !== undefined ? compact.appearance : stored;
         // The element's own `animation` record is written further down, and only the prefix keeps a
         // Page widget's `animation` prop - the same shape of record - from reading back as it.
         lines.push(`${inner}${propAssignmentKey(key)} = ${printValue(value)}`);
