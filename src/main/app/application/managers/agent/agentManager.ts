@@ -23,6 +23,7 @@ import {
 } from "@shared/agent/protocol";
 import { AGENT_TOOLS, AGENT_TOOLS_BY_NAME, type AgentGuideChapter, type AgentToolDescriptor } from "@shared/agent/tools";
 import {
+    checkReportedAgentPluginTool,
     isAgentPluginToolDescriptor,
     looksLikeAgentPluginToolName,
     readAgentPluginToolDescriptor,
@@ -69,6 +70,7 @@ import { agentCallTimeoutMs } from "./agentCallTimeout";
 import { activityProjectPath, copySkillTree, isNonEmptyDirectory, mainActivity } from "./agentWorkspaceAccess";
 import { AgentFolderAccess, type AgentFolderPrompt, type AgentFolderRules } from "./agentFolderAccess";
 import type { AgentAccessPromptProps } from "@shared/types/agentAccess";
+import type { PluginListItem } from "@shared/types/plugins";
 
 /**
  * Agent access, as the rest of Studio sees it: the author's switches, the MCP endpoint they control,
@@ -99,6 +101,8 @@ export class AgentManager implements AgentMainToolHost {
     /** The plugin tools each workspace last reported, already checked. */
     private readonly reportedPluginTools = new Map<AppWindow<WindowAppType.Workspace>, AgentPluginToolDescriptor[]>();
     private readonly pluginToolWindowsWatched = new WeakSet<AppWindow>();
+    /** Each window's latest report, numbered: a report checked after a newer one arrived is dropped. */
+    private readonly pluginToolReportSequence = new WeakMap<AppWindow, number>();
     /** What `tools/list` last answered, as a comparable string, so a report that changes nothing notifies nobody. */
     private advertisedPluginTools = "";
     /** Calls sent to a workspace and not answered yet, by call id: what a folder request is checked against. */
@@ -293,13 +297,21 @@ export class AgentManager implements AgentMainToolHost {
     // A workspace reports the agent tools its plugins registered, the whole set on every change;
     // `tools/list` is the built-in table plus the union of what the open workspaces reported, less
     // the plugins the author switched off. Reports are read as untrusted - a workspace runs plugin
-    // code - so each descriptor is checked, and a window's tools are forgotten when it closes.
+    // code - so each descriptor's shape is checked, then its claims against the installed plugins'
+    // manifests, and a window's tools are forgotten when it closes.
 
     /** A workspace's report. Called by the IPC handler; `tools` is whatever the window sent. */
-    public reportPluginTools(window: AppWindow<WindowAppType.Workspace>, tools: unknown): void {
-        const checked = Array.isArray(tools)
+    public async reportPluginTools(window: AppWindow<WindowAppType.Workspace>, tools: unknown): Promise<void> {
+        const sequence = (this.pluginToolReportSequence.get(window) ?? 0) + 1;
+        this.pluginToolReportSequence.set(window, sequence);
+        const shaped = Array.isArray(tools)
             ? tools.slice(0, 500).map(readAgentPluginToolDescriptor).filter((tool): tool is AgentPluginToolDescriptor => tool !== null)
             : [];
+        const checked = shaped.length > 0 ? await this.declaredPluginTools(shaped) : [];
+        if (this.pluginToolReportSequence.get(window) !== sequence || window.isClosed()) {
+            // A newer report is being checked, or there is no window left to hold these.
+            return;
+        }
         if (checked.length > 0) {
             this.reportedPluginTools.set(window, checked);
         } else {
@@ -315,6 +327,30 @@ export class AgentManager implements AgentMainToolHost {
             });
         }
         this.pluginToolsMaybeChanged();
+    }
+
+    /**
+     * The reported tools an installed, enabled plugin declares in `contributes.agentTools` with the
+     * same name and the same `write` - see `checkReportedAgentPluginTool`. A plugin list that cannot
+     * be read keeps none: a tool main cannot vouch for is not advertised.
+     */
+    private async declaredPluginTools(reported: readonly AgentPluginToolDescriptor[]): Promise<AgentPluginToolDescriptor[]> {
+        let plugins: PluginListItem[];
+        try {
+            plugins = await this.app.pluginManager.listPlugins();
+        } catch (error) {
+            this.app.logger.warn(`[Agent] Could not read the installed plugins to check reported agent tools: ${describe(error)}`);
+            return [];
+        }
+        const declared = reported
+            .map(tool => checkReportedAgentPluginTool(tool, plugins))
+            .filter((tool): tool is AgentPluginToolDescriptor => tool !== null);
+        if (declared.length < reported.length) {
+            const kept = new Set(declared.map(tool => tool.name));
+            const dropped = reported.filter(tool => !kept.has(tool.name)).map(tool => tool.name);
+            this.app.logger.warn(`[Agent] Ignored reported agent tools no installed, enabled plugin declares: ${dropped.join(", ")}`);
+        }
+        return declared;
     }
 
     /** The plugin tools `tools/list` offers: open workspaces' reports, first report wins a name, blocked plugins left out. */

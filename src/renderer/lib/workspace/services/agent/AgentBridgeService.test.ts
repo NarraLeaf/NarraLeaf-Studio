@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { AgentCallRequest, AgentCallResult, AgentSessionPolicy } from "@shared/agent/protocol";
 import { AGENT_INTERNAL_TOOL_STATE } from "@shared/agent/protocol";
 import { freezeProjectWrites, thawProjectWrites } from "@/lib/app/writeFreeze";
@@ -339,6 +339,25 @@ describe("AgentBridgeService", () => {
             expect(codeOf(missing)).toBe("unknown_tool");
             expect(missing.ok ? "" : missing.error.hint).toContain("not loaded in this project");
             expect(ran).toEqual([]);
+        });
+
+        /**
+         * A `__` name is an internal call (a build, a test); no plugin may hold one, so a plugin tool
+         * can never be carried out by the internal handler of the same name.
+         */
+        it("keeps plugin tools out of the internal calls' names, and finds no handler under an inherited key", async () => {
+            const harness = createHarness();
+            await harness.init();
+            const run = vi.fn();
+            expect(() => harness.bridge.pluginTools().register({
+                descriptor: { ...descriptor(false), pluginId: "", pluginToolName: ".test", name: "__test" },
+                run,
+            })).toThrow("Studio's own");
+            expect(harness.bridge.pluginTools().get("__test")).toBeUndefined();
+            for (const name of ["constructor", "__proto__", "toString", "hasOwnProperty"]) {
+                expect(codeOf(await harness.bridge.handle(call(name, {})))).toBe("unknown_tool");
+            }
+            expect(run).not.toHaveBeenCalled();
         });
     });
 });

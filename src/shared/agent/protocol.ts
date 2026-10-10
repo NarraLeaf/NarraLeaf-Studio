@@ -107,6 +107,18 @@ export function agentCallExpired(request: Pick<AgentCallRequest, "deadline">, no
 export const AGENT_INTERNAL_TOOL_STATE = "__state";
 
 /**
+ * What every internal call's name starts with - and what no tool an agent can name may start with,
+ * Studio's or a plugin's. A workspace tells an internal call from a tool by this alone, so a plugin
+ * tool advertised under such a name would be carried out by the internal handler of that name (a
+ * build, a test) instead of the plugin's, past every check main makes on the real tool.
+ */
+export const AGENT_INTERNAL_TOOL_PREFIX = "__";
+
+export function isAgentInternalToolName(name: string): boolean {
+    return name.startsWith(AGENT_INTERNAL_TOOL_PREFIX);
+}
+
+/**
  * Run one registered project test in a workspace that already has the project open.
  *
  * `test` is a main tool because a project nobody has open is tested headlessly, through the same

@@ -27,6 +27,7 @@ import {
     AGENT_INTERNAL_TOOL_STATE,
     agentCallExpired,
     agentRefusal,
+    isAgentInternalToolName,
     type AgentCallRequest,
     type AgentCallResult,
     type AgentErrorCode,
@@ -159,8 +160,16 @@ export class AgentBridgeService extends Service<AgentBridgeService> {
         const follow = this.follow ?? ctx.services.get<AgentFollowService>(Services.AgentFollow);
         const descriptor = AGENT_TOOLS_BY_NAME.get(request.tool);
         const tables = await this.loadHandlers();
-        const internal = tables.internal[request.tool];
-        const plugin = !internal && !descriptor ? this.pluginTools(ctx).get(request.tool) : undefined;
+        // Two namespaces that cannot meet: an internal call's name starts with `__` and nothing a
+        // plugin registers or main advertises may (`isAgentInternalToolName`). So an internal
+        // handler is looked up only for such a name - as the table's own key, never an inherited
+        // one - and the plugin registry only for any other, and a plugin tool can never be carried
+        // out by the internal handler of the same name.
+        const internalName = isAgentInternalToolName(request.tool);
+        const internal = internalName && Object.prototype.hasOwnProperty.call(tables.internal, request.tool)
+            ? tables.internal[request.tool]
+            : undefined;
+        const plugin = !internalName && !descriptor ? this.pluginTools(ctx).get(request.tool) : undefined;
         let handler: AgentToolHandler | undefined;
         let write: boolean;
         if (internal) {
