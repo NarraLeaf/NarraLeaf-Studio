@@ -45,6 +45,7 @@ import { AgentManager } from "./application/managers/agent/agentManager";
 import { SpellcheckManager } from "./application/managers/spellcheck/spellcheckManager";
 import { ProjectSessionLockManager } from "./application/managers/projectSessionLockManager";
 import { SPELLCHECK_LANGUAGE_KEY } from "@shared/types/spellcheck";
+import { STORE_SOURCE_KEY } from "@shared/constants/storeSource";
 import { resolveStartupProject } from "./application/startupProject";
 import { CommandLineBuildRun } from "./application/commandLineBuild";
 import { CommandLineCheckRun } from "./application/commandLineCheck";
@@ -270,6 +271,7 @@ export class App extends BaseApp {
         this.spellcheckManager = new SpellcheckManager({
             cacheRoot: () => this.getCacheRootDir(),
             readSetting: () => this.globalState.get(SPELLCHECK_LANGUAGE_KEY),
+            readStoreSource: () => this.globalState.get(STORE_SOURCE_KEY),
         });
 
         // Built as soon as there is an Electron app to attach it to, because from here on it is

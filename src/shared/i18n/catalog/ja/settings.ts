@@ -268,6 +268,16 @@ export const settings = {
             label: "このコンピュータのプロキシを使う",
             description: "Studio のダウンロードはこのコンピュータのプロキシを使います",
         },
+        storeSource: {
+            label: "ストアのダウンロード元",
+            description: "プラグインストア、テンプレートストア、スペル辞書のダウンロード元。自動では GitHub と GitCode に同時に接続し、先に応答した方を使う",
+            options: {
+                auto: "自動",
+                gitcode: "GitCode（中国本土）",
+                custom: "カスタム",
+            },
+            customOnly: "ストアのダウンロード元が「カスタム」のときに使う",
+        },
         pluginRegistryUrl: {
             label: "プラグインレジストリの URL",
             description: "プラグインストアが索引を取ってくる先",

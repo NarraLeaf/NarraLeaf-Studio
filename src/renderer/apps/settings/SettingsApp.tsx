@@ -118,8 +118,10 @@ export function SettingsApp() {
         return () => token?.cancel();
     }, []);
 
-    // Availability of workspace-bound actions, keyed by setting key. Evaluated on mount and
-    // whenever this window regains focus — the user may have opened or closed a workspace since.
+    // Availability of workspace-bound actions, keyed by setting key. Evaluated on mount, whenever
+    // this window regains focus — the user may have opened or closed a workspace since — and
+    // whenever a stored value changes, because a row may open or close with another row's value
+    // (the store's registry addresses are read only under the Custom store source).
     const [availability, setAvailability] = useState<Record<string, { enabled: boolean; reasonKey?: TranslationKey }>>({});
     useEffect(() => {
         let mounted = true;
@@ -146,7 +148,7 @@ export function SettingsApp() {
             mounted = false;
             window.removeEventListener("focus", handleFocus);
         };
-    }, []);
+    }, [values]);
 
     // The languages a dictionary is INSTALLED for. Read from the main process, which is the only
     // thing that knows: the list is whatever the author has downloaded, so it can be short or empty,

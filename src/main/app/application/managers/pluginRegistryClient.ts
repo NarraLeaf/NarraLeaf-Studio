@@ -12,10 +12,12 @@ import type {
     PluginRegistryEntry,
     PluginRegistryIndex,
 } from "@shared/types/pluginRegistry";
+import type { StoreSourceChoice } from "@shared/constants/storeSource";
 import { parseZipIndex, readEntryBytes } from "../../../buildWorker/mobile/zipModel";
 import { applyDownloadRewrite } from "./downloadRewrites";
 import { studioFetch } from "./downloadProxy";
 import { resolveDownloadSource } from "@shared/utils/downloadSource";
+import { fetchFromStore, readStoreCatalogue, storeChoiceKey, storeLinkOn, type StoreOrigin } from "./storeSource";
 
 /**
  * Read-only client for the plugin store.
@@ -122,33 +124,61 @@ function normalizeEntry(raw: unknown): PluginRegistryEntry | null {
     };
 }
 
+/** The store's catalogue, and the host it came from - which is where its packages and icons come from. */
+export type PluginCatalogue = { index: PluginRegistryIndex; origin: StoreOrigin };
+
 /**
- * Last index read per URL.
+ * Last catalogue read per store choice.
  *
- * Only {@link fetchRegistryIndex} with a `maxAgeMs` reads it, and nothing else
+ * Only {@link fetchPluginCatalogue} with a `maxAgeMs` reads it, and nothing else
  * in the store does — a Refresh must really go to the network. It exists so the
  * icon proxy can resolve "which URL belongs to this plugin id" without one
- * index round trip per row.
+ * index round trip per row. Keeping the origin with it also keeps the icons on
+ * the host the list came from.
  */
-const indexMemo = new Map<string, { at: number; index: PluginRegistryIndex }>();
+const catalogueMemo = new Map<string, { at: number; catalogue: PluginCatalogue }>();
 
-export async function fetchRegistryIndex(
-    url: string,
+/** Read the catalogue from where the store source setting says (see `storeSource.ts`). */
+export async function fetchPluginCatalogue(
+    choice: StoreSourceChoice,
     options: { maxAgeMs?: number } = {},
-): Promise<PluginRegistryIndex> {
+): Promise<PluginCatalogue> {
+    const key = storeChoiceKey(choice);
     const maxAgeMs = options.maxAgeMs ?? 0;
     if (maxAgeMs > 0) {
-        const cached = indexMemo.get(url);
+        const cached = catalogueMemo.get(key);
         if (cached && Date.now() - cached.at <= maxAgeMs) {
-            return cached.index;
+            return cached.catalogue;
         }
     }
-    const index = await readRegistryIndex(url);
-    indexMemo.set(url, { at: Date.now(), index });
-    return index;
+    const { value: index, origin } = await readStoreCatalogue({
+        choice,
+        officialUrl: DEFAULT_PLUGIN_REGISTRY_URL,
+        customUrl: resolveRegistryUrl(choice.customUrl),
+        read: fetchRegistryIndex,
+    });
+    const catalogue = { index, origin };
+    catalogueMemo.set(key, { at: Date.now(), catalogue });
+    return catalogue;
 }
 
-async function readRegistryIndex(url: string): Promise<PluginRegistryIndex> {
+/**
+ * The catalogue as the renderer is handed it: the same entries, with the release page on the host
+ * the catalogue came from, so "Open release page" opens where the author's network reaches. Every
+ * address the main process downloads stays as the catalogue wrote it.
+ */
+export function presentPluginCatalogue(catalogue: PluginCatalogue): PluginRegistryIndex {
+    return {
+        ...catalogue.index,
+        plugins: catalogue.index.plugins.map(plugin => ({
+            ...plugin,
+            release: { ...plugin.release, page: plugin.release.page && storeLinkOn(catalogue.origin, plugin.release.page) },
+        })),
+    };
+}
+
+/** Read and validate one registry index at `url`. */
+export async function fetchRegistryIndex(url: string): Promise<PluginRegistryIndex> {
     const response = await fetchWithTimeout(url);
     if (!response.ok) {
         throw new Error(`Registry request failed (${response.status} ${response.statusText})`);
@@ -232,10 +262,25 @@ export async function extractPluginZip(buffer: Buffer, destDir: string): Promise
     return manifestDir;
 }
 
-/** Download a registry entry's package and extract it, returning its manifest directory. */
-export async function downloadAndExtract(entry: PluginRegistryEntry, destDir: string): Promise<string> {
-    const buffer = await downloadPackage(entry.release.download);
-    return extractPluginZip(buffer, destDir);
+/**
+ * Download a registry entry's package from the catalogue's host and extract it, returning its
+ * manifest directory and the address it came from.
+ *
+ * The archive's directory is read before it counts as downloaded, so a host that answers with
+ * something other than a zip (a block page, a truncated body) hands over to the other host instead
+ * of failing the install.
+ */
+export async function downloadAndExtract(
+    entry: PluginRegistryEntry,
+    origin: StoreOrigin,
+    destDir: string,
+): Promise<{ manifestDir: string; url: string }> {
+    const { value: buffer, url } = await fetchFromStore(origin, entry.release.download, async address => {
+        const bytes = await downloadPackage(address);
+        parseZipIndex(bytes);
+        return bytes;
+    });
+    return { manifestDir: await extractPluginZip(buffer, destDir), url };
 }
 
 /**

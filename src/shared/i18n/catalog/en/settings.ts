@@ -274,6 +274,16 @@ export const settings = {
             label: "Use this computer's proxy",
             description: "Studio downloads follow the proxy this computer already uses.",
         },
+        storeSource: {
+            label: "Store download source",
+            description: "Where the plugin store, the template store and spelling dictionaries are downloaded from. Automatic connects to GitHub and GitCode at once and uses the first to respond.",
+            options: {
+                auto: "Automatic",
+                gitcode: "GitCode (mainland China)",
+                custom: "Custom",
+            },
+            customOnly: "Used when the store download source is Custom.",
+        },
         pluginRegistryUrl: {
             label: "Plugin registry URL",
             description: "Where the plugin store looks for its index.",
