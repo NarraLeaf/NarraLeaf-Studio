@@ -101,7 +101,7 @@ const STREAM_KEEP_ALIVE_MS = 25_000;
 
 export const AGENT_MCP_INSTRUCTIONS = [
     "This server is NarraLeaf Studio, a visual-novel editor, running on the author's machine with their project open.",
-    "Your edits land live in the editor the author is watching; each write is one undo step for them.",
+    "Your edits land live in the editor the author is watching; each write is one undo step for them, except project settings, the palette, renaming a scene or choosing the entry scene, and importing or generating assets, which have no undo in Studio's own editors either.",
     "Start by calling agent_status, then read the `workflow` chapter with agent_guide (also served as the resource narraleaf://guide/workflow) before you change anything.",
     "Read before you write: the show tools return a revision that every write must carry back.",
 ].join(" ");
