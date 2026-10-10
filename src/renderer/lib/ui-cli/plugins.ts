@@ -297,12 +297,6 @@ export function loadCliPlugin(dirArg: string): LoadedCliPlugin {
     return { id, name, dir, widgetTypes, notes };
 }
 
-/** Every widget a loaded plugin put in the registry, for the catalogue to list beside Studio's. */
-export function listCliPluginWidgetModules(): UIWidgetModule[] {
-    return widgetModuleRegistry.list().filter(module => widgetModuleRegistry.getOwner(module.type) !== undefined);
-}
-
-/** The plugin that owns a widget type in this run, for output that should say where it came from. */
-export function cliPluginOwnerOf(type: string): string | undefined {
-    return widgetModuleRegistry.getOwner(type);
-}
+// What a loaded plugin put in the registry is read back through `widgetSource.ts`, which the
+// renderer can import; re-exported here for the callers that already know this file.
+export { cliPluginOwnerOf, listCliPluginWidgetModules } from "./widgetSource";

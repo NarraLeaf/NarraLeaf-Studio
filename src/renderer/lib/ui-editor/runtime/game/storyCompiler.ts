@@ -169,6 +169,7 @@ import type {
     StageSnapshotDisplayable,
     StageSnapshotEffects,
     StageSnapshotMusic,
+    StageSnapshotRename,
     StageSnapshotSound,
     StageSnapshotSoundState,
     StoryStageSnapshot,
@@ -1783,6 +1784,9 @@ async function buildLaunchEntryScene(params: {
         const value = snapshot.sceneVariables[def.storageKey] ?? def.defaultValue ?? null;
         statements.push(launchScene.local.set(def.storageKey, value as any));
     }
+    // The names the walked path's `/rename` rows left, so the first line of the tail is spoken under
+    // the name a playthrough shows there rather than the one the cast gives.
+    statements.push(...compileSnapshotRenames(ctx, snapshot.renames));
 
     // One synchronous injection step: register the pre-posed elements and apply built-in-singleton props.
     const backgroundProps = snapshot.backgroundProps;
@@ -2104,6 +2108,8 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         const value = snapshot.sceneVariables[def.storageKey] ?? def.defaultValue ?? null;
         statements.push(previewScene.local.set(def.storageKey, value as any));
     }
+    // And the speaker names the path left, so a previewed line shows the name it is played under.
+    statements.push(...compileSnapshotRenames(ctx, snapshot.renames));
 
     // One synchronous injection step: register pre-posed elements into the render tree and apply
     // props accumulated against the built-in singletons (scene background / built-in layers).
@@ -4458,6 +4464,26 @@ function registerMusicHandle(ctx: SceneCompileContext, music: MusicHandle): void
     ctx.soundTrackIds.set(BGM_SOUND_NAME, music.trackId);
     ctx.soundAssetIds.set(BGM_SOUND_NAME, music.assetId);
     ctx.soundClips.set(BGM_SOUND_NAME, music.clip);
+}
+
+/**
+ * The speaker names the walked path's `/rename` rows left, replayed from those rows.
+ *
+ * Each is the row's own call - `Character.setName` with the row's words, on the character the row
+ * names - so the name a launch opens on is the one the row gives in a playthrough, and the words the
+ * game looks its translation up by are the row's words too. A record whose row is no longer a
+ * `/rename` (the document changed under a stored snapshot) replays nothing.
+ */
+function compileSnapshotRenames(ctx: SceneCompileContext, renames: readonly StageSnapshotRename[]): NlrStatement[] {
+    const statements: NlrStatement[] = [];
+    for (const rename of renames) {
+        const row = ctx.scene.blocks[rename.setBy];
+        if (row?.kind !== "action" || row.payload.action !== "character" || row.payload.operation !== "setName") {
+            continue;
+        }
+        statements.push(getCharacter(ctx, row.payload.characterId).setName(row.payload.displayName ?? ""));
+    }
+    return statements;
 }
 
 /**

@@ -107,6 +107,8 @@ Manifest 字段：
 | `buildConfig` | `PluginBuildConfigFieldContribution[]` | 构建前需要作者填写的值（如 Steam App ID）。**只能在 manifest 里静态声明，没有运行时注册 API**——构建过程中不执行任何插件代码。**不派生安装权限**：声明一个字段只是多一个待填的空格，插件不会因此获得任何能力。 |
 | `widgetText` | `Record<string, PluginWidgetTextContribution[]>` | 按 widget type 列出它哪些 prop 是玩家读的字。键必须在 `widgets` 里。宿主像对待内建文本与按钮一样对待这些 prop，见下面的 [控件里玩家读的字](#控件里玩家读的字widgettext)。**不派生安装权限**。 |
 | `structs` | `PluginStructContribution[]` | 插件节点交出的行的形状（id 必须以插件 ID 为前缀）。见下面的 [节点交出的行](#节点交出的行structs)。**不派生安装权限**。 |
+| `agentTools` | `{ name: string; write: boolean }[]` | 插件向接入 Studio 的 AI Agent 提供的工具（`name` 必须以插件 ID 为前缀，只能用 `[a-z0-9_.-]`）。注册未声明的工具会抛错，`write` 必须与注册时一致。**派生安装权限** `agentTools`：安装提示显示「向 AI Agent 提供 N 个工具（其中 M 个可修改工程）」，新增工具或把只读工具改成写入工具会重新询问。需要 studio 入口。见下面的 [给 AI Agent 的工具](#给-ai-agent-的工具appservicesagent)。 |
+| `agentGuide` | `string` | 给 Agent 读的一章 Markdown（包内相对路径，如 `agent/guide.md`），由 `agent_guide {chapter:"plugin:<插件 ID>"}` 和资源 `narraleaf://guide/plugin/<插件 ID>` 提供。 |
 
 `buildConfig` 每个字段：
 
@@ -564,6 +566,36 @@ export default definePlugin({
   才出现在编辑器状态条上。没装这类插件的 Studio 不会留下任何禁用控件——所以"预览按钮没出现"
   通常是 `extensions` 没匹配上，而不是 API 没做。
 - **冻结工作区时**：预览开关是"看"，照常可用；动作能改写文档，是"写"，会被禁用。
+
+## 给 AI Agent 的工具（`app.services.agent`）
+
+作者在 设置 ▸ Agent 接入 打开 MCP 端点后，Claude Code、Codex 等 Agent 就能调用 Studio 的工具。插件可以加上自己的：
+
+```js
+app.services.agent.registerTools([{
+    name: "acme.notes.add_note",          // 必须在 contributes.agentTools 里声明，write 也要一致
+    title: "Add a note",                  // ≤ 80 字符，显示在作者的 Agent 日志里
+    description: "Adds a note ...",       // ≤ 1200 字符，写给模型看：做什么、何时用、易犯的错
+    inputSchema: { type: "object", properties: { text: { type: "string" } }, required: ["text"], additionalProperties: false },
+    write: true,
+    async handler(args, { clientName }) {
+        const notes = (await app.services.storage.readJson("notes")) ?? { items: [] };
+        notes.items.push(args.text);
+        await app.services.storage.writeJson("notes", notes);
+        return { text: "Added.", data: { count: notes.items.length } };   // 或直接返回字符串；拒绝用 { error: { code, message, hint } }
+    },
+}]);
+```
+
+- 对外名字是插件 ID 和工具名各自把 `.`、`-` 换成 `_`，中间用 `__` 连接：`acme.notes.add_note` → `acme_notes__add_note`（最长 64 字符）。
+- `inputSchema` 只能用 `type / description / properties / required / items / enum / additionalProperties / minimum / maximum / default / oneOf`，参数在 handler 之前按它校验；`project` 由宿主添加并用于路由，handler 拿不到。
+- 宿主对插件工具与内建工具一视同仁地把关：`write: true` 的工具在作者未允许写入、暂停 Agent、工程冻结或 Live 会话时被拒绝，插件无法绕过。作者还可以在设置里关掉某个插件的工具。
+- `write: false` 的工具运行期间，`storage.writeJson` 会抛错——宿主对只读工具的约束仅此而已：它不受作者的写入开关把关，你的 `app` 能做的事它的 handler 都能做。只要工具会以任何方式修改项目，就必须声明为 `write: true`。
+- `write: true` 的工具运行期间，所有 `storage.writeJson` 被记录为**一步撤销**（「Agent：<标题>」）。撤销/重做会把各命名空间写回，然后调用你用 `workspace.registerReloader` 注册的重载函数——不注册的话，撤销改了文件却没改你内存里的数据。
+- 返回值上限：文本 60 000 字符（超出截断）、`data` 60 000 字符 JSON（超出丢弃）、最多一张 PNG/JPEG。
+- 工具随插件卸载而撤销；工具列表变化时，已连接的客户端会收到 `notifications/tools/list_changed`（打开了通知流的客户端），其余客户端下次 `tools/list` 时看到。
+
+内建的 Gallery（`src/builtin-plugins/gallery/agentTools.ts` 与 `agent/guide.md`）是完整的参考实现。
 
 ## runtime.js（runtime entry）
 

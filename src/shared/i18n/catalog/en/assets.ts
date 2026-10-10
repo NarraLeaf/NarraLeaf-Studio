@@ -747,11 +747,19 @@ export const assets = {
         zoomIn: "Zoom In",
         zoomOut: "Zoom Out",
         resetView: "Reset View",
+        // Shown in the keyboard settings table and the "?" cheat sheet, beside the audio and video
+        // previews' zoom keys, so each names what it zooms.
+        keybindings: {
+            zoomIn: "Zoom image in",
+            zoomOut: "Zoom image out",
+            resetView: "Reset image view",
+        },
     },
     shortcuts: {
         copy: "Copy selected assets",
         cut: "Cut selected assets",
         paste: "Paste assets",
+        delete: "Delete selected assets or groups",
         rename: "Rename selected asset or group",
     },
     previewEditor: {

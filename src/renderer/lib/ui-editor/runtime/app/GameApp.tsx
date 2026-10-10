@@ -290,6 +290,7 @@ import {
     markEndingReached,
     readReachedEndings,
 } from "./endingsRecord";
+import { buildGameTestState, readEngineDialog, type DialogPrompt, type GameTestState } from "./gameTestState";
 import { createGameBootReporter } from "./bootTiming";
 import { GameTimelineName, gameTimelineNow, recordGameSpan, timeGameSpan } from "./gameTimeline";
 import { withDeadline } from "./frameTiming";
@@ -436,7 +437,23 @@ export type GameAppTestControls = {
     startStory(request: { storyId: string; sceneId: string }): Promise<void>;
     advance(): Promise<void>;
     choose(index: number): Promise<void>;
+    /**
+     * The engine's picture of its stage - the scene and the Game UI on it - as a PNG data URL, or
+     * null before a game has been entered (a page such as the title is all there is). An agent's
+     * play-test looks through this; it is a capture of what is drawn, not an act on the game.
+     */
+    capture(): Promise<string | null>;
+    /** Where the game is, read without acting on it. See {@link GameAppTestState}. */
+    readState(): GameAppTestState;
 };
+
+/**
+ * What a driver can read of the game between two acts: whether a story is entered, the line on
+ * screen and whether it is shown in full, the choice menu, the endings reached and the page showing
+ * when no story is. Read from the engine's own dialog state and line announcements rather than from
+ * a Game UI box - see `gameTestState.ts` for why, and for each field.
+ */
+export type GameAppTestState = GameTestState;
 
 export type GameAppProps = {
     host: GameAppHost;
@@ -950,6 +967,15 @@ export function GameApp(props: GameAppProps): ReactNode {
     // The boot preload mounts the environment (fires gameReady) but does NOT enter — this stays false
     // until Start Game / Load Save.
     const gameEnteredRef = useRef(false);
+    /** Every time `gameEnteredRef` turns true; see `GameAppTestState.entries`. */
+    const gameEntriesRef = useRef(0);
+    /**
+     * The newest line the engine announced, and the endings reached - what a driver's `readState`
+     * reports (see `gameTestState.ts`). Held for the app's whole life: an `/ending` tears the session
+     * down on its way to the ending page, and the driver reads which ending it was from the far side.
+     */
+    const dialogPromptRef = useRef<DialogPrompt | null>(null);
+    const endingsReachedRef = useRef<{ count: number; last: string | null }>({ count: 0, last: null });
     // Resolves when the environment is initialised (gameReady dispatched), gating the surface system.
     const pendingEnvReadyRef = useRef(new Map<string, { resolve: () => void; reject: (error: Error) => void }>());
     // Resolves when the mounted session's first-scene assets are fetched and decoded (the stage
@@ -1624,6 +1650,13 @@ export function GameApp(props: GameAppProps): ReactNode {
 
     const activeEntry = navStack[navStack.length - 1] ?? null;
     const activeSurface = activeEntry ? findSurface(bundle, activeEntry.surfaceId) : null;
+    /**
+     * The name of the page on top, for a driver's `readState`. A ref because the read happens from a
+     * handle published by an effect, and on the way out of a story the page changes before that
+     * effect has run again.
+     */
+    const activePageNameRef = useRef<string | null>(null);
+    activePageNameRef.current = activeSurface?.name || null;
 
     const scale = activeSurface ? getScale(activeSurface) : 1;
 
@@ -3059,6 +3092,10 @@ export function GameApp(props: GameAppProps): ReactNode {
             });
         }
         pluginHost?.emitEndingReached({ endingId: ending.endingId, name: ending.name });
+        endingsReachedRef.current = {
+            count: endingsReachedRef.current.count + 1,
+            last: ending.name.trim() || null,
+        };
 
         // The row decides, then the build. `none` is a decision and stops here; absent means the row
         // did not decide, so the build's own ending page answers.
@@ -3640,6 +3677,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         // below, because both of them are the save being applied.
         playtime.seedRun(storedPlaytimeSeconds ?? 0);
         gameEnteredRef.current = true;
+        gameEntriesRef.current += 1;
         if (outcome.storyChanged) {
             // The launch that put the save's own story up has already entered and revealed its
             // session, so there is no reveal left to wait for - and the router being waited on
@@ -4944,6 +4982,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         // later with the reading it inherited; nothing else in the file resets it.
         playtime.seedRun(0);
         gameEnteredRef.current = true;
+        gameEntriesRef.current += 1;
         // A document imported before this point has been waiting for exactly this moment:
         // `newGame()` clears every namespace and rebuilds it from its defaults, so anything written
         // earlier is gone and anything written now stands. See `pendingImportedProgressRef`.
@@ -5053,9 +5092,34 @@ export function GameApp(props: GameAppProps): ReactNode {
             startStory: request => startStoryInGame({ storyId: request.storyId, sceneId: request.sceneId }),
             advance: async () => { await nextInGame(); },
             choose: async (index: number) => { await selectChoiceInGame(index); },
+            capture: async () => {
+                const liveGame = nlrLiveGameRef.current;
+                if (!liveGame || !gameEnteredRef.current || typeof liveGame.capturePng !== "function") {
+                    return null;
+                }
+                return liveGame.capturePng();
+            },
+            readState: () => {
+                const liveGame = nlrLiveGameRef.current;
+                const inGame = liveGame !== null && gameEnteredRef.current;
+                const menu = inGame ? choiceMenus.current() : null;
+                return buildGameTestState({
+                    inGame,
+                    entries: gameEntriesRef.current,
+                    dialog: inGame && liveGame ? readEngineDialog(DevTools, liveGame.getGameState()) : null,
+                    prompt: dialogPromptRef.current,
+                    choices: menu
+                        ? menu.items.map(item => ({ index: item.index, text: item.text, disabled: item.disabled }))
+                        : null,
+                    endings: endingsReachedRef.current.count,
+                    lastEnding: endingsReachedRef.current.last,
+                    // A page hidden under the running game is not the one showing.
+                    page: studioPageHiddenForGameRef.current ? null : activePageNameRef.current,
+                });
+            },
         });
         return () => onTestControlsChanged(null);
-    }, [activeSurface, core, nextInGame, nlrSession, onTestControlsChanged, selectChoiceInGame, startStoryInGame]);
+    }, [activeSurface, choiceMenus, core, nextInGame, nlrSession, onTestControlsChanged, selectChoiceInGame, startStoryInGame]);
 
     const buildHostAdapterBundle = useCallback((entry: AppSurfaceLayerNavEntry, surface: UISurface) => {
         if (!core || !gameHostCapabilities) {
@@ -6672,7 +6736,8 @@ export function GameApp(props: GameAppProps): ReactNode {
                     return;
                 }
                 nlrCharacterPromptTokenRef.current?.cancel();
-                nlrCharacterPromptTokenRef.current = liveGame.onCharacterPrompt(({ character, sentence }) => {
+                nlrCharacterPromptTokenRef.current = liveGame.onCharacterPrompt(prompt => {
+                    const { character, sentence } = prompt;
                     // The story's next voiced line ends a replay still speaking, as it ends the take
                     // before it - see `createVoiceReplayer`.
                     if (sentenceHasVoice(sentence)) {
@@ -6681,6 +6746,14 @@ export function GameApp(props: GameAppProps): ReactNode {
                     const sourceName = readNlrCharacterName(character);
                     const nametag = translateCharacterName(sourceName);
                     currentDialogNametagRef.current = nametag;
+                    // The line itself, for a driver's `readState`: the engine announces each line
+                    // once, just before it begins that line's dialog state (see `gameTestState.ts`).
+                    const promptText = (prompt as { text?: unknown }).text;
+                    dialogPromptRef.current = {
+                        serial: (dialogPromptRef.current?.serial ?? 0) + 1,
+                        speaker: sourceName ? nametag || sourceName : null,
+                        text: typeof promptText === "string" ? promptText : "",
+                    };
                     core.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, nametag);
                     // Staged, not consumed here: `DialogStateBridge` joins this against the mirrored
                     // character table on the dialog beat. Publishing the id rather than the derived

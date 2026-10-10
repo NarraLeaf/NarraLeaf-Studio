@@ -52,6 +52,8 @@ import { PuppetDescriptionService } from "./puppet/PuppetDescriptionService";
 import { MediaSupportService } from "./media/MediaSupportService";
 import { RecoveryService } from "./core/RecoveryService";
 import { WeatherPrebakeService } from "./weather/WeatherPrebakeService";
+import { AgentFollowService } from "./agent/AgentFollowService";
+import { AgentBridgeService } from "./agent/AgentBridgeService";
 
 export class ServiceRegistry {
     private services: Record<Services, Service> = {
@@ -107,6 +109,8 @@ export class ServiceRegistry {
         [Services.Live]: LiveSessionService.getInstance(),
         [Services.WorkspaceReload]: WorkspaceReloadService.getInstance(),
         [Services.Recovery]: RecoveryService.getInstance(),
+        [Services.AgentFollow]: AgentFollowService.getInstance(),
+        [Services.AgentBridge]: AgentBridgeService.getInstance(),
     };
 
     public get<T extends Service>(service: Services): T {

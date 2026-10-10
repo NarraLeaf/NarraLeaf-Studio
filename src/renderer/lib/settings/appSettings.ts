@@ -211,12 +211,23 @@ export const AppSettingCategories: SettingCategory[] = [
         order: 8,
     },
     {
+        // The MCP endpoint an author's own AI agent connects to. Its own category rather than a
+        // corner of Network: what it decides is who may change a project, not where Studio
+        // downloads from.
+        key: "agent",
+        label: "Agent access",
+        labelKey: "settings.categories.agent.label",
+        description: "Let AI agents connect to Studio over MCP and work on the open project.",
+        descriptionKey: "settings.categories.agent.description",
+        order: 9,
+    },
+    {
         key: "data",
         label: "Data",
         labelKey: "settings.categories.data.label",
         description: "Cached files, resetting preferences, and moving them between machines.",
         descriptionKey: "settings.categories.data.description",
-        order: 9,
+        order: 10,
     },
 ];
 
@@ -1006,6 +1017,21 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: "",
     },
     {
+        // Rendered by `SETTING_PANELS.agentAccess`. Nothing is stored under this key: agent access
+        // lives in main (`<userData>/agent-mcp.json`, owner-only), because it holds the token and
+        // decides whether an outside program may change a project - and every renderer can write
+        // the settings store. The panel reads and writes it over a Settings-only channel.
+        key: "agent.access",
+        category: "agent",
+        scope: SettingScope.Global,
+        type: SettingValueType.Custom,
+        panel: "agentAccess",
+        label: "MCP endpoint",
+        labelKey: "settings.items.agentAccess.label",
+        description: "",
+        defaultValue: null,
+    },
+    {
         // Rendered by `SETTING_PANELS.projectTrust`. Nothing is stored under this key; the ledger
         // lives in main, under `authorization/`, where no renderer can reach it.
         key: "data.projectTrust",
@@ -1237,15 +1263,15 @@ export const AppSettings: AppSettingDefinition[] = [
     },
     {
         // Read by the main process (downloadProxy) on every Studio download. Off is
-        // direct, as today. On, those downloads follow this computer's proxy. There is
-        // no address to type: the operating system already has one.
+        // direct, as today. On, those downloads follow the proxy set in the operating
+        // system. There is no address to type: the operating system already has one.
         key: USE_SYSTEM_PROXY_KEY,
         category: "network",
         scope: SettingScope.Global,
         type: SettingValueType.Boolean,
-        label: "Use this computer's proxy",
+        label: "Use system proxy settings",
         labelKey: "settings.items.useSystemProxy.label",
-        description: "Studio downloads follow the proxy this computer already uses.",
+        description: "Studio downloads connect through the proxy set in the operating system.",
         descriptionKey: "settings.items.useSystemProxy.description",
         defaultValue: false,
     },

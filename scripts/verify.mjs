@@ -88,6 +88,10 @@ function run(args, { env = {}, capture = true } = {}) {
     });
 }
 
+/** Heap a typecheck may grow to, and the memory one check is budgeted when deciding how many run at once. */
+const TSC_HEAP_MB = 6144;
+const CHECK_MEMORY_MB = 3072;
+
 const indent = text => text.replace(/^/gm, "    ");
 const seconds = value => `${value.toFixed(1)}s`;
 const toPosix = file => path.relative(ROOT, file).split(path.sep).join("/");
@@ -97,9 +101,11 @@ const toPosix = file => path.relative(ROOT, file).split(path.sep).join("/");
 async function runChecks() {
     // Built somewhere of its own: dist/runtime is what a running `yarn dev` previews games from.
     const runtimeOutDir = fs.mkdtempSync(path.join(os.tmpdir(), "nls-verify-runtime-"));
+    // The renderer-sized programs outgrow node's default heap on a machine with little memory and
+    // die with "Reached heap limit" after a minute or more, which looks like a hang.
     const typecheck = project => ({
         name: `Typecheck ${project}`,
-        args: [TOOLS.tsc, "--project", `src/${project}/tsconfig.json`],
+        args: [`--max-old-space-size=${TSC_HEAP_MB}`, TOOLS.tsc, "--project", `src/${project}/tsconfig.json`],
     });
     // Slowest first, so the last free slot is not the one left holding the longest check.
     const checks = [
@@ -134,7 +140,18 @@ async function runChecks() {
         { name: "Starter template translations", args: ["scripts/gen-skeleton-locale.mjs", "--check"] },
     ];
 
-    const lanes = Math.min(checks.length, os.availableParallelism?.() ?? os.cpus().length);
+    // Cores alone overcommit memory: the renderer, runtime and builtin-plugins programs and the
+    // plugin API build each hold most of the renderer tree, a few gigabytes apiece, and eight of
+    // them side by side on an 8 GB machine spend the run swapping. A CI runner (16 GB, 4 cores)
+    // is still limited by its cores. The budget is the memory free now, not the machine's total:
+    // on a workstation running several Studio instances and other runs, sizing by the total
+    // started ten typechecks on 31 GB with 7 GB free and exhausted it. NLS_VERIFY_LANES caps the
+    // count further for a caller that shares the machine with other runs.
+    const cores = os.availableParallelism?.() ?? os.cpus().length;
+    const byMemory = Math.max(1, Math.floor(os.freemem() / (CHECK_MEMORY_MB * 1024 * 1024)));
+    const requested = Number.parseInt(process.env.NLS_VERIFY_LANES ?? "", 10);
+    const byRequest = Number.isInteger(requested) && requested > 0 ? requested : Infinity;
+    const lanes = Math.min(checks.length, cores, byMemory, byRequest);
     console.log(`verify: ${checks.length} checks, ${lanes} at a time`);
     const failed = [];
     const started = performance.now();

@@ -5,6 +5,7 @@ import { StatusBarAlignment, type StatusBarItem } from "@/lib/workspace/services
 import {
     builtInStatusBarEntries,
     StatusEntry,
+    StatusBarAgentContext,
     StatusBarEntryIdContext,
     StatusBarExperimentalContext,
     StatusBarRunningContext,
@@ -13,6 +14,7 @@ import {
 import { isExperimentalMode } from "@/lib/experimental";
 import type { StatusBarEntryModule } from "../../modules/types";
 import { orderStatusBarEntries } from "./statusBarEntryOrder";
+import { useAgentActive } from "../../modules/agent/useAgentActive";
 import { useStatusBarContextMenu } from "./useStatusBarContextMenu";
 
 /** Fixed bar height; the dock solver subtracts this from the viewport it lays out into. */
@@ -55,6 +57,12 @@ export function StatusBar() {
     // launched without the flag.
     const experimental = isExperimentalMode();
     const running = runActive && !experimental;
+    // An agent at work washes the strip in the success colour, under the other two: a play-test the
+    // agent starts is still a run, and experimental mode is always on top. Green because each of the
+    // other semantic colours already means something on this strip or elsewhere (primary is the run,
+    // warning is experimental, danger is an error, binding is a blueprint binding). A paused agent is
+    // not at work, so it takes no wash; its own cell says it is paused.
+    const agent = useAgentActive() && !experimental && !running;
 
     // Built-ins first, then runtime registrations — so plugin entries pack closest to the centre.
     const entries: ResolvedEntry[] = useMemo(
@@ -131,25 +139,30 @@ export function StatusBar() {
     return (
         <StatusBarRunningContext.Provider value={running}>
             <StatusBarExperimentalContext.Provider value={experimental}>
-                <div
-                    data-status-bar
-                    data-status-bar-experimental={experimental ? "true" : undefined}
-                    className={`flex shrink-0 items-stretch justify-between overflow-hidden border-t transition-colors duration-300 ${
-                        experimental
-                            ? "border-warning/60 bg-warning/20"
-                            : running ? "border-primary bg-primary" : "nl-frame-surface border-edge bg-surface-sunken"
-                    }`}
-                    style={{
-                        height: STATUS_BAR_HEIGHT,
-                        paddingLeft: STATUS_BAR_EDGE_GAP,
-                        paddingRight: STATUS_BAR_EDGE_GAP,
-                    }}
-                    onContextMenu={event => openMenu(event)}
-                >
-                    <div className="flex min-w-0 items-stretch">{renderSide(StatusBarAlignment.Left)}</div>
-                    <div className="flex min-w-0 items-stretch">{renderSide(StatusBarAlignment.Right)}</div>
-                    {menu}
-                </div>
+                <StatusBarAgentContext.Provider value={agent}>
+                    <div
+                        data-status-bar
+                        data-status-bar-experimental={experimental ? "true" : undefined}
+                        data-status-bar-agent={agent ? "true" : undefined}
+                        className={`flex shrink-0 items-stretch justify-between overflow-hidden border-t transition-colors duration-300 ${
+                            experimental
+                                ? "border-warning/60 bg-warning/20"
+                                : running
+                                    ? "border-primary bg-primary"
+                                    : agent ? "border-success/70 bg-success/45" : "nl-frame-surface border-edge bg-surface-sunken"
+                        }`}
+                        style={{
+                            height: STATUS_BAR_HEIGHT,
+                            paddingLeft: STATUS_BAR_EDGE_GAP,
+                            paddingRight: STATUS_BAR_EDGE_GAP,
+                        }}
+                        onContextMenu={event => openMenu(event)}
+                    >
+                        <div className="flex min-w-0 items-stretch">{renderSide(StatusBarAlignment.Left)}</div>
+                        <div className="flex min-w-0 items-stretch">{renderSide(StatusBarAlignment.Right)}</div>
+                        {menu}
+                    </div>
+                </StatusBarAgentContext.Provider>
             </StatusBarExperimentalContext.Provider>
         </StatusBarRunningContext.Provider>
     );

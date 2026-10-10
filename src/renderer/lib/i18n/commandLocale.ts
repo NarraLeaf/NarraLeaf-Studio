@@ -53,6 +53,14 @@ export const commandI18nStore = {
         };
     },
     /**
+     * The `editor.localizedCommands` value as last stored, for a caller that pins the vocabulary for
+     * a moment (the agent bridge prints `.story` text in the canonical tokens) and has to put the
+     * author's own setting back afterwards.
+     */
+    getPreference(): unknown {
+        return preference;
+    },
+    /**
      * Store the `editor.localizedCommands` value and re-resolve. Wired in `bootstrap.ts` from the
      * persisted value and the main process's global-state broadcast, so a change made in the Settings
      * window reaches every open workspace with no reload.

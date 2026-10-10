@@ -17,6 +17,7 @@ import {
     UIComponentId,
     UISlotDefinition,
     UILayout,
+    UIStyle,
     isUIFlowLayoutParentElement,
     uiElementTypeAcceptsChildren,
     uiElementTypeAcceptsUserChildren,
@@ -152,6 +153,13 @@ import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBluep
 import { anchorComponentId, anchorElementId } from "@shared/blueprint/ownerShape";
 import type { UITemplateSurfacePlacement } from "@shared/types/uiTemplateRegistry";
 import { assertValidBlueprintDocument } from "./blueprint/documentValidation";
+import {
+    dropBlueprintOwners,
+    holdBlueprintOwners,
+    ownerPresenceChange,
+    putBlueprintOwners,
+    type HeldBlueprintOwners,
+} from "./reconciledBlueprintOwners";
 import {
     BLUEPRINT_GRAPH_IR_META_KIND,
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
@@ -328,6 +336,19 @@ function createDefaultPageSurfaceSettings(settings?: UISurfaceSettings): UISurfa
 
 const DEFAULT_STAGE_SLOT_ID: UIStageSlotId = DEFAULT_UI_STAGE_SLOT_ID;
 const COMPONENT_LINKED_LAYOUT_KEYS = new Set<keyof UILayout>(["x", "y", "width", "height", "rotation"]);
+
+/** `style` with `patch` merged in and its `null` values removed; undefined when nothing is left. */
+function mergeUIStylePatch(style: UIStyle | undefined, patch: Record<string, unknown>): UIStyle | undefined {
+    const next: UIStyle = { ...(style ?? {}) };
+    for (const [key, value] of Object.entries(patch)) {
+        if (value === null) {
+            delete next[key];
+        } else {
+            next[key] = value;
+        }
+    }
+    return Object.keys(next).length > 0 ? next : undefined;
+}
 const DEFAULT_COMPONENT_SIZE: UISurfaceDesignSize = { width: 240, height: 120 };
 const DIALOG_SENTENCE_WIDGET_TYPE = "nl.dialog.sentence";
 const NOTIFICATION_LIST_WIDGET_TYPE = "nl.notification.list";
@@ -975,6 +996,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     /** Where edits go instead of into the document, when something else owns them. See {@link UIOpSink}. */
     private opSink: UIOpSink | null = null;
     private historySuppressionDepth = 0;
+    /** How deep inside {@link runDetachedDraft} this is: edits then land on a private copy and nowhere else. */
+    private draftDepth = 0;
     private readonly contentRevisions = new UIDocumentContentRevisions();
     /** What the v13 step changed that an author can see, until the workspace has said so. */
     private textSourceMigrationChanges: UITextMigrationChange[] = [];
@@ -1193,7 +1216,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
     }
 
-    public runSurfaceHistoryTransaction(surfaceId: string, action: () => void): void {
+    /**
+     * Run several of this service's own edits as one undo step on `surfaceId`'s stack.
+     *
+     * `label` names the step in the Edit menu when it is something more particular than an edit to
+     * the surface - an agent's batch of edits says so, so the author can tell it from their own.
+     */
+    public runSurfaceHistoryTransaction(surfaceId: string, action: () => void, options: { label?: HistoryLabel } = {}): void {
         const historyService = this.getHistoryService();
         if (!historyService) {
             action();
@@ -1210,7 +1239,174 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             surfaceId,
             before: beforeHistory,
             after: historyService.captureSnapshot(surfaceId),
+            label: options.label,
         });
+    }
+
+    /**
+     * {@link runSurfaceHistoryTransaction}, all or nothing: when `action` throws, `surfaceId`'s slice
+     * of both documents - its elements and its widgets' blueprints - is put back exactly as the
+     * editor's own undo would put it, nothing is recorded, and the error is rethrown.
+     *
+     * Through the history snapshot rather than a copy of the interface document, because the edits
+     * inside have already run the blueprint reconcile: a deleted widget's graph is gone, and putting
+     * the element back alone would have the reconcile give it a fresh, empty graph under the same id.
+     */
+    public runAtomicSurfaceTransaction(surfaceId: string, action: () => void, options: { label?: HistoryLabel } = {}): void {
+        const historyService = this.getHistoryService();
+        if (!historyService) {
+            const before = cloneUIHistoryDocument(this.getDocument());
+            try {
+                action();
+            } catch (error) {
+                this.restoreDocumentFromHistory(before);
+                throw error;
+            }
+            return;
+        }
+        const beforeHistory = historyService.captureSnapshot(surfaceId);
+        this.historySuppressionDepth += 1;
+        try {
+            action();
+        } catch (error) {
+            historyService.restoreSnapshot(surfaceId, beforeHistory);
+            throw error;
+        } finally {
+            this.historySuppressionDepth -= 1;
+        }
+        historyService.record({
+            surfaceId,
+            before: beforeHistory,
+            after: historyService.captureSnapshot(surfaceId),
+            label: options.label,
+        });
+    }
+
+    /**
+     * Run this service's own edits against a private copy of the document, then throw the copy away.
+     *
+     * What a dry run needs: every check an edit makes runs exactly as it would for real, against the
+     * document as the earlier edits in the same run left it, and nothing outside this service hears of
+     * any of it - no `documentChanged`, no auto-save, no undo step, no live-session message and, above
+     * all, no blueprint reconcile. The reconcile is not undone by putting the document back: it deletes
+     * the graph of every widget the copy lost, and then gives the restored widget an empty one.
+     *
+     * The document's revision does not move, so nothing that reads it should be asked inside.
+     */
+    public runDetachedDraft<T>(action: () => T): T {
+        const original = this.getDocument();
+        this.document = cloneUIHistoryDocument(original);
+        this.draftDepth += 1;
+        try {
+            return action();
+        } finally {
+            this.draftDepth -= 1;
+            this.document = original;
+        }
+    }
+
+    /**
+     * An edit made by an agent connected over MCP, written as one step of undo.
+     *
+     * Through the private mutator like every gesture, which is the whole point: the canvas redraws
+     * on `documentChanged`, auto-save picks the change up, the blueprint reconcile hook runs, and the
+     * author's Ctrl+Z takes it back - an agent's edit is an edit like any other.
+     *
+     * `scope` says which stack the step belongs on. One page or one component definition: that
+     * editor's own stack, as a snapshot of its slice, so Ctrl+Z inside its tab undoes it. Null - an
+     * edit across several pages, or to a table the pages share - goes on the project's stack as a
+     * command over the delta, diffed both ways, because no one editor's slice covers it (the shape
+     * {@link pushLibraryStep} uses for library operations) - with the private blueprints the write's
+     * reconcile created or deleted, which a delta of interface records alone would leave behind (see
+     * `reconciledBlueprintOwners.ts`).
+     *
+     * Not for a live session: {@link applyLiveOp} is the path for somebody else's edit, and records
+     * nothing. Agent writes are refused while a session runs, before they get here.
+     */
+    public applyAgentMutation(
+        scope: { surfaceId: string } | { componentId: string } | null,
+        label: HistoryLabel,
+        mutator: (document: UIDocument) => void,
+    ): void {
+        if (scope) {
+            const surfaceId = "surfaceId" in scope ? scope.surfaceId : buildUIComponentEditorSurfaceId(scope.componentId);
+            this.mutateDocument(mutator, { history: { surfaceId, label } });
+            return;
+        }
+        const before = cloneUIHistoryDocument(this.getDocument());
+        // Which private blueprints exist before the write, by reference: the reconcile that follows
+        // the write deletes those of the widgets it removed, and creates empty ones for the widgets it
+        // added. Shallow copies of the two maps - the records the reconcile deletes are not edited.
+        const graph = this.getGraphService();
+        const blueprintsBefore = graph?.getDocument().blueprintDocument;
+        const ownersBefore = blueprintsBefore ? { ...blueprintsBefore.ownerRecords } : {};
+        const blueprintMapBefore = blueprintsBefore ? { ...blueprintsBefore.blueprints } : {};
+        this.mutateDocument(mutator, { history: false });
+        const after = cloneUIHistoryDocument(this.getDocument());
+        const forward = diffUIParts(before, after);
+        const backward = diffUIParts(after, before);
+        if (forward === null || backward === null) {
+            return;
+        }
+        // The step carries the blueprints whose presence the write changed, so that taking the write
+        // back brings a deleted widget back with its own graph rather than the empty one the
+        // reconcile would give it (the page editor's own steps carry them in their snapshot).
+        const presence = graph
+            ? ownerPresenceChange(ownersBefore, graph.getDocument().blueprintDocument.ownerRecords)
+            : { added: [], removed: [] };
+        let removedOwners = holdBlueprintOwners(ownersBefore, blueprintMapBefore, presence.removed);
+        let addedOwners: HeldBlueprintOwners = {};
+        const blueprintsMoved = presence.added.length > 0 || presence.removed.length > 0;
+        // Copied on every application: applying writes the records into the document, which then
+        // edits them in place, and the step has to be repeatable. Blueprints go first: the reconcile
+        // that follows the interface write must find each widget's own already in place.
+        const apply = (parts: LiveUIParts, blueprints?: (document: BlueprintDocument) => void) => {
+            if (graph && blueprints && blueprintsMoved) {
+                graph.applyGraphMutation(document => {
+                    blueprints(document.blueprintDocument);
+                    assertValidBlueprintDocument(document.blueprintDocument);
+                });
+            }
+            const copy = JSON.parse(JSON.stringify(parts)) as LiveUIParts;
+            this.mutateDocument(document => applyUIParts(document, copy), { history: false });
+        };
+        this.pushLibraryStep(label, {
+            undo: () => apply(backward, document => {
+                // The added widgets' blueprints as they stand now - the author may have written a
+                // graph on one since - so a redo puts that back, not an empty one.
+                addedOwners = holdBlueprintOwners(document.ownerRecords, document.blueprints, presence.added);
+                dropBlueprintOwners(document, presence.added);
+                putBlueprintOwners(document, removedOwners);
+            }),
+            redo: () => apply(forward, document => {
+                removedOwners = holdBlueprintOwners(document.ownerRecords, document.blueprints, presence.removed);
+                dropBlueprintOwners(document, presence.removed);
+                putBlueprintOwners(document, addedOwners);
+            }),
+        });
+    }
+
+    /**
+     * Write a compiled `.ui` document's pages and definitions, as one step of undo.
+     *
+     * The compile and the write itself belong to the agent core, which hands its writer in as
+     * `mutate` so this service does not depend on it. What is decided here is only where the step is
+     * recorded: one page or one definition goes on that editor's stack, anything wider on the
+     * project's - see {@link applyAgentMutation}.
+     */
+    public applyCompiledUi(input: {
+        surfaceIds: readonly string[];
+        componentIds: readonly string[];
+        label: HistoryLabel;
+        mutate: (document: UIDocument) => void;
+    }): void {
+        const single =
+            input.surfaceIds.length === 1 && input.componentIds.length === 0
+                ? { surfaceId: input.surfaceIds[0] }
+                : input.surfaceIds.length === 0 && input.componentIds.length === 1
+                  ? { componentId: input.componentIds[0] }
+                  : null;
+        this.applyAgentMutation(single, input.label, input.mutate);
     }
 
     public isDirty(): boolean {
@@ -2117,6 +2313,36 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
+    /**
+     * Merge CSS overrides into an element's `style`; a `null` value removes that override.
+     *
+     * The renderer spreads `style` over the widget's own styles (`extractStyleOverrides`), so this is
+     * the bag a `.ui` file's `style.*` lines write. Nothing in the editor's panels writes it; the
+     * agent's `ui_patch` does, with the same refusal for a placed component that props have.
+     */
+    public updateElementStyle(elementId: string, stylePatch: Record<string, unknown>): void {
+        const surfaceId = this.getElementSurfaceId(elementId);
+        this.mutateDocument(document => {
+            const element = document.elements[elementId];
+            if (!element || isLinkedUIComponentElement(element)) {
+                return;
+            }
+            const style = mergeUIStylePatch(element.style, stylePatch);
+            if (style) {
+                element.style = style;
+            } else {
+                delete element.style;
+            }
+        }, {
+            history: surfaceId
+                ? {
+                      surfaceId,
+                      mergeKey: `style:${elementId}:${Object.keys(stylePatch).sort().join(",")}`,
+                  }
+                : false,
+        });
+    }
+
     public reorderChildren(parentId: string, orderedChildIds: string[]): void {
         const surfaceId = this.getElementSurfaceId(parentId);
         this.mutateDocument(document => {
@@ -2323,6 +2549,11 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     }
 
     private mutateDocument(mutator: (document: UIDocument) => void, options: UIDocumentMutationOptions = {}): void {
+        if (this.draftDepth > 0) {
+            // A private copy (see {@link runDetachedDraft}): the edit lands there and nowhere else.
+            mutator(this.getDocument());
+            return;
+        }
         if (this.opSink && !options.live) {
             // Run the gesture against a copy and state what it did to the document, rather than
             // doing it. Nothing here reads the gesture: the comparison *is* the statement, which is
@@ -4760,6 +4991,30 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
+    /** The component-definition counterpart of {@link updateElementStyle}. */
+    public updateComponentElementStyle(
+        componentId: string,
+        elementId: string,
+        stylePatch: Record<string, unknown>,
+    ): void {
+        this.mutateDocument(document => {
+            const component = (document.components ?? []).find(item => item.id === componentId);
+            const element = component?.elements[elementId];
+            if (!component || !element) {
+                return;
+            }
+            const style = mergeUIStylePatch(element.style, stylePatch);
+            if (style) {
+                element.style = style;
+            } else {
+                delete element.style;
+            }
+            component.updatedAt = new Date().toISOString();
+        }, {
+            history: this.componentHistory(componentId, `style:${elementId}:${Object.keys(stylePatch).sort().join(",")}`),
+        });
+    }
+
     public renameComponentElement(componentId: string, elementId: string, name: string): void {
         const trimmed = name.trim();
         if (!trimmed) {
@@ -5023,18 +5278,39 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         return this.getComponent(componentId)?.rootElementId === wrapper.id ? wrapper.id : null;
     }
 
+    /**
+     * An element id a caller asked for, checked against every pool it could collide in - the
+     * project's elements and every component definition's - or null when none was asked for.
+     */
+    private claimElementId(requested: string | undefined): string | null {
+        const id = requested?.trim();
+        if (!id) {
+            return null;
+        }
+        const document = this.getDocument();
+        const taken = Boolean(document.elements[id])
+            || (document.components ?? []).some(component => Boolean(component.elements[id]));
+        if (taken) {
+            throw new RendererError(`Element id already in use: ${id}`);
+        }
+        return id;
+    }
+
     /** An element as an Edit menu step names it: its own name, or its widget's. */
     private describeElementForHistory(element: UIElement): string {
         return element.name?.trim() || widgetModuleRegistry.get(element.type)?.displayName || element.type;
     }
 
+    /** `options.id`: see {@link createElement}. */
     public createComponentElement(
         componentId: string,
         parentId: string,
         type: string,
         layoutPatch: Partial<UILayout> = {},
+        options: { id?: string } = {},
     ): UIElement | null {
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const explicitId = this.claimElementId(options.id);
         const definition = widgetModuleRegistry.get(type);
         if (!definition) {
             throw new RendererError(`Unknown element type: ${type}`);
@@ -5046,7 +5322,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             if (!component || !parent || !uiElementTypeAcceptsChildren(parent.type)) {
                 return;
             }
-            const elementId = uuidService.generate();
+            const elementId = explicitId ?? uuidService.generate();
             const defaults = definition.createDefaultElement(this.widgetDefaultWords());
             const element: UIElement = {
                 id: elementId,
@@ -5201,7 +5477,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         return { ok: true, newRootIds };
     }
 
-    public createComponentInstance(parentId: string, componentId: string, layoutPatch: Partial<UILayout> = {}): UIElement {
+    /** `options.id`: see {@link createElement}. */
+    public createComponentInstance(
+        parentId: string,
+        componentId: string,
+        layoutPatch: Partial<UILayout> = {},
+        options: { id?: string } = {},
+    ): UIElement {
         const surfaceId = this.getElementSurfaceId(parentId);
         const document = this.getDocument();
         const component = (document.components ?? []).find(item => item.id === componentId);
@@ -5223,7 +5505,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             throw new RendererError(`Parent type ${parent.type} cannot have child elements`);
         }
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
-        const elementId = uuidService.generate();
+        const elementId = this.claimElementId(options.id) ?? uuidService.generate();
         const element: UIElement = {
             id: elementId,
             type: root.type,
@@ -5373,7 +5655,16 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         return materializedIds;
     }
 
-    public createElement(parentId: string, type: string, layoutPatch: Partial<UILayout> = {}): UIElement {
+    /**
+     * `options.id` gives the new element an id of the caller's choosing - an agent naming an element
+     * so a blueprint it writes next can refer to it. Refused when the id is already in use.
+     */
+    public createElement(
+        parentId: string,
+        type: string,
+        layoutPatch: Partial<UILayout> = {},
+        options: { id?: string } = {},
+    ): UIElement {
         const surfaceId = this.getElementSurfaceId(parentId);
         const definition = widgetModuleRegistry.get(type);
         if (!definition) {
@@ -5391,7 +5682,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             throw new RendererError(`Parent type ${parent.type} cannot have child elements`);
         }
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
-        const elementId = uuidService.generate();
+        const elementId = this.claimElementId(options.id) ?? uuidService.generate();
 
         const defaultElement = definition.createDefaultElement(this.widgetDefaultWords());
         const baseLayout: UILayout = {

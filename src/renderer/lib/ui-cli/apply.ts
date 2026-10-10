@@ -23,7 +23,7 @@ import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/d
 import { collectReachableUIStructIds } from "@shared/types/ui-editor/structLibrary";
 import { normalizeFlowChildLayouts } from "@services/ui-editor/uiDocumentTreeMove";
 import type { UiCompileResult } from "./dsl/compile";
-import { collectTree } from "./project";
+import { collectTree } from "./model";
 
 export type ApplyResult = {
     surfacesAdded: string[];

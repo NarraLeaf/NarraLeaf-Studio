@@ -27,6 +27,8 @@ export const console = {
         buildDescription: "ビルド、パッケージ化、プレビューの処理が出す内容",
         storyDescription: "ストーリーシーンのプレビューの診断と警告",
         storageDescription: "プロジェクトファイルの書き込み：保存の失敗、再試行、復旧",
+        agent: "エージェント",
+        agentDescription: "Studio に接続した AI エージェントからの呼び出し",
     },
     sources: {
         blueprintLog: "ブループリントのログ",

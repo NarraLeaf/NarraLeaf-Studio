@@ -46,7 +46,8 @@ import { BlueprintDebuggerProvider } from "./debugger/BlueprintDebuggerContext";
 import { BlueprintDebuggerOverlay } from "./debugger/BlueprintDebuggerOverlay";
 import { BlueprintDebuggerPanel } from "./debugger/BlueprintDebuggerPanel";
 import type { DevModePanelChrome } from "./DevModePanelChrome";
-import { GameApp } from "@/lib/ui-editor/runtime/app/GameApp";
+import { GameApp, type GameAppTestControls } from "@/lib/ui-editor/runtime/app/GameApp";
+import { browserPlaytestClock, runAgentDriveAction } from "../agentPlaytestDrive";
 import type {
     GameAppBootAction,
     GameAppCompositeView,
@@ -1586,6 +1587,20 @@ export function DevModeContent(props: DevModeContentProps) {
         return () => token.cancel();
     }, []);
 
+    // An agent's play-test drives this game the way a test harness drives a standalone run: through
+    // the test controls GameApp publishes once a story could be started (`GameAppTestControls`), so
+    // every advance is the click a player makes. Registered on mount; what it does between the
+    // clicks - one step is one line, every wait bounded - is `agentPlaytestDrive`.
+    const testControlsRef = useRef<GameAppTestControls | null>(null);
+    const onTestControlsChanged = useCallback((controls: GameAppTestControls | null) => {
+        testControlsRef.current = controls;
+    }, []);
+    useEffect(() => {
+        const token = getInterface().devMode.onAgentDrive(({ action }) =>
+            runAgentDriveAction(() => testControlsRef.current, action, browserPlaytestClock));
+        return () => token.cancel();
+    }, []);
+
     const subscribeCloseRequested = useCallback((listener: () => Promise<boolean> | boolean): (() => void) => {
         const listeners = closeListenersRef.current;
         listeners.add(listener);
@@ -2220,6 +2235,7 @@ export function DevModeContent(props: DevModeContentProps) {
                     renderPlaceholder={renderPlaceholder}
                     renderOverlays={renderOverlays}
                     pluginHost={pluginHost}
+                    onTestControlsChanged={onTestControlsChanged}
                 />
                 {/* Over the stage and nothing else: the strip above stays readable, because a session
                     that fails while it warms has to be able to say so. The interface mounts under it

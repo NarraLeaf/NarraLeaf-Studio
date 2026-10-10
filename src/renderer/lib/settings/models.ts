@@ -14,7 +14,7 @@ export enum SettingScope {
  * so this module - which the workspace imports too - stays free of React: the Settings window
  * resolves the id against its own panel registry.
  */
-export type SettingPanelId = "keybindings" | "downloadSources" | "cacheInventory" | "settingsTransfer" | "softwareUpdate" | "servers" | "dictionaries" | "projectTrust";
+export type SettingPanelId = "keybindings" | "downloadSources" | "cacheInventory" | "settingsTransfer" | "softwareUpdate" | "servers" | "dictionaries" | "projectTrust" | "agentAccess";
 
 /**
  * Lightweight descriptor that the shared UI layer understands.
@@ -209,4 +209,5 @@ export type AppSettingCategoryKey =
     | "shortcuts"
     | "versionControl"
     | "network"
+    | "agent"
     | "data";

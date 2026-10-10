@@ -1,0 +1,13 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "narraleaf": {
+      "type": "remote",
+      "url": "http://127.0.0.1:<PORT>/mcp",
+      "enabled": true,
+      "headers": {
+        "Authorization": "Bearer <TOKEN>"
+      }
+    }
+  }
+}

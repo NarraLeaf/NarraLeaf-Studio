@@ -51,6 +51,13 @@ export type UiElementNode = {
     assignments: UiAssignment[];
     bindings: UiBindingLine[];
     componentLink?: UiComponentLinkLine;
+    /** The header carried `+defaults`: props and layout keys the text leaves out are the widget's defaults. */
+    fillDefaults?: boolean;
+    /**
+     * `without` lines under a `+defaults` element: defaults the element does not hold, which are not
+     * filled in. Props by key, layout keys as `layout.<key>`.
+     */
+    withoutDefaults?: { line: number; keys: string[] };
     children: UiElementNode[];
 };
 
@@ -121,3 +128,9 @@ export type UiStatement =
 export type UiFile = {
     statements: UiStatement[];
 };
+
+/** The header flag of an element whose defaults the text leaves out (see `compact.ts`). */
+export const COMPACT_DEFAULTS_FLAG = "+defaults";
+
+/** The body line of a `+defaults` element that names the defaults it does not hold. */
+export const COMPACT_WITHOUT_KEYWORD = "without";

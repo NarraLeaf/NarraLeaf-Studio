@@ -21,7 +21,7 @@ export const project = {
         },
         project: {
             title: "プロジェクト",
-            description: "配布キー、プロジェクトチェックの規則、ビルドを止めるもの",
+            description: "配布キー、プロジェクトの検査ルール、ビルドを止めるもの",
         },
         runtimes: {
             title: "ランタイム",
@@ -55,7 +55,7 @@ export const project = {
         brandControls: "コントロール",
         typography: "フォント",
         distribution: "配布キー",
-        linting: "プロジェクトチェック",
+        linting: "プロジェクトの検査",
         security: "セキュリティ",
         signing: "署名",
         imageCompression: "画像の圧縮",
@@ -182,7 +182,7 @@ export const project = {
         ending: {
             // 空の状態ではなく 1 つの選択。最後のフレームが画面に残る。このフィールドができる前は
             // どのビルドもそうしていた。
-            title: "ストーリーが終わったときに出すページ",
+            title: "ストーリー終了時に表示するページ",
             none: "何も出さない",
             unset: "未選択",
             missing: "削除されたページ",
@@ -398,7 +398,7 @@ export const project = {
         // 以後それぞれの形に応じた既定のバスへ解決される。どれになるかは何を鳴らすかで変わるので、
         // ここで 1 本のトラック名を挙げれば当て推量になる。
         deleteDetail: {
-            other: "{count} 件の参照が既定のトラックに落ちる",
+            other: "{count} 件の参照が既定のトラックに切り替わる",
         },
         // 下にあるトラックは削除されず繰り上がる。どこへ行くかを作者に伝える。
         deleteChildren: {

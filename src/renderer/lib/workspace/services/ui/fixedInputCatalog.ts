@@ -42,6 +42,13 @@ export interface FixedInputEntry {
     extends?: string;
     labelKey?: TranslationKey;
     categoryKey?: TranslationKey;
+    /**
+     * A keybinding of the same surface, for a group that spans several (Assets is the panel, the audio
+     * preview and the video preview). The cheat sheet lists a gesture among what works where focus is
+     * when its group is in focus; with this set, only when that binding is live, so the panel's
+     * gestures are not offered over a waveform.
+     */
+    liveWith?: string;
 }
 
 const CATEGORY = KEYBINDING_CATEGORY;
@@ -74,6 +81,16 @@ function existing(key: string): TranslationKey {
 function extend(id: string, bindingId: string, ...inputs: FixedInput[]): FixedInputEntry {
     return { id, inputs, extends: bindingId };
 }
+
+/** The entry, counted as working where focus is only while `bindingId` is live; see `liveWith`. */
+function on(bindingId: string, item: FixedInputEntry): FixedInputEntry {
+    return { ...item, liveWith: bindingId };
+}
+
+/** The assets panel's F2 is registered whether or not its clipboard keys are. */
+const ASSETS_PANEL = "assets.rename";
+const AUDIO_PREVIEW = "assets.audio.play-pause";
+const VIDEO_PREVIEW = "assets.video.play-pause";
 
 /*
  * Modifiers follow the handler they describe: `mod` where the code reads `ctrlKey || metaKey`, and a
@@ -154,6 +171,20 @@ export const FIXED_INPUT_CATALOG: readonly FixedInputEntry[] = [
     // --- Story motion editor ---------------------------------------------------
     entry("story-motion.no-snap", CATEGORY.storyMotion, label("storyMotion.noFrameSnap"), gesture("drag", "alt")),
     entry("story-motion.add-keyframe", CATEGORY.storyMotion, label("storyMotion.addKeyframe"), gesture("doubleClickTrack")),
+    entry("story-motion.move-keyframes", CATEGORY.storyMotion, label("storyMotion.moveKeyframes"), gesture("dragKeyframe")),
+    entry(
+        "story-motion.toggle-select",
+        CATEGORY.storyMotion,
+        label("toggleSelection"),
+        gesture("clickKeyframe", "shift"),
+        gesture("clickKeyframe", "mod"),
+    ),
+    entry("story-motion.box-select", CATEGORY.storyMotion, label("storyMotion.boxSelect"), gesture("dragAcrossTracks")),
+    entry("story-motion.library.open", CATEGORY.storyMotion, label("storyMotion.openMotion"), key("enter"), gesture("doubleClick")),
+    entry("story-motion.library.toggle-select", CATEGORY.storyMotion, label("toggleSelection"), gesture("clickMotion", "mod")),
+    entry("story-motion.library.range-select", CATEGORY.storyMotion, label("storyMotion.selectMotionRange"), gesture("clickMotion", "shift")),
+    entry("story-motion.library.select-all", CATEGORY.storyMotion, label("storyMotion.selectAllMotions"), key("mod+a")),
+    entry("story-motion.select-track", CATEGORY.storyMotion, label("storyMotion.selectTrack"), gesture("clickName")),
     entry("story-motion.pan-preview", CATEGORY.storyMotion, label("storyMotion.panPreview"), gesture("middleDrag")),
     entry("story-motion.zoom", CATEGORY.storyMotion, label("storyMotion.zoom"), gesture("scroll", "ctrl")),
     entry("story-motion.scroll-timeline", CATEGORY.storyMotion, label("storyMotion.scrollTimeline"), gesture("scroll", "shift")),
@@ -166,27 +197,27 @@ export const FIXED_INPUT_CATALOG: readonly FixedInputEntry[] = [
     ),
 
     // --- Assets ----------------------------------------------------------------
-    entry("assets.toggle-select", CATEGORY.assets, label("toggleSelection"), gesture("clickAsset", "mod")),
-    entry("assets.range-select", CATEGORY.assets, label("assets.selectAssetRange"), gesture("clickAsset", "shift")),
-    entry(
+    on(ASSETS_PANEL, entry("assets.toggle-select", CATEGORY.assets, label("toggleSelection"), gesture("clickAsset", "mod"))),
+    on(ASSETS_PANEL, entry("assets.range-select", CATEGORY.assets, label("assets.selectAssetRange"), gesture("clickAsset", "shift"))),
+    on(ASSETS_PANEL, entry(
         "assets.open",
         CATEGORY.assets,
         label("assets.open"),
         key("enter"),
         gesture("doubleClick"),
         gesture("dragToEditorArea"),
-    ),
-    entry("assets.up", CATEGORY.assets, existing("assets.backToParent"), key("backspace"), key("alt+arrowup")),
-    entry("assets.move-to-group", CATEGORY.assets, label("assets.moveToGroup"), gesture("dragOntoGroup")),
-    entry("assets.tile-size", CATEGORY.assets, label("assets.tileSize"), gesture("scroll", "ctrl")),
-    entry("assets.audio.scroll", CATEGORY.assets, label("assets.audioScroll"), gesture("scroll")),
-    entry("assets.audio.zoom-time", CATEGORY.assets, label("assets.audioZoomTime"), gesture("scroll", "mod")),
-    entry("assets.audio.zoom-amplitude", CATEGORY.assets, label("assets.audioZoomAmplitude"), gesture("scroll", "alt")),
-    entry("assets.audio.select-range", CATEGORY.assets, label("assets.selectAudioRange"), gesture("dragWaveform")),
+    )),
+    on(ASSETS_PANEL, entry("assets.up", CATEGORY.assets, existing("assets.backToParent"), key("backspace"), key("alt+arrowup"))),
+    on(ASSETS_PANEL, entry("assets.move-to-group", CATEGORY.assets, label("assets.moveToGroup"), gesture("dragOntoGroup"))),
+    on(ASSETS_PANEL, entry("assets.tile-size", CATEGORY.assets, label("assets.tileSize"), gesture("scroll", "ctrl"))),
+    on(AUDIO_PREVIEW, entry("assets.audio.scroll", CATEGORY.assets, label("assets.audioScroll"), gesture("scroll"))),
+    on(AUDIO_PREVIEW, entry("assets.audio.zoom-time", CATEGORY.assets, label("assets.audioZoomTime"), gesture("scroll", "mod"))),
+    on(AUDIO_PREVIEW, entry("assets.audio.zoom-amplitude", CATEGORY.assets, label("assets.audioZoomAmplitude"), gesture("scroll", "alt"))),
+    on(AUDIO_PREVIEW, entry("assets.audio.select-range", CATEGORY.assets, label("assets.selectAudioRange"), gesture("dragWaveform"))),
     extend("assets.audio.select-all", "assets.audio.select-all", gesture("doubleClickWaveform")),
-    entry("assets.audio.clear-point", CATEGORY.assets, label("assets.clearMarker"), gesture("doubleClickMarker")),
-    entry("assets.video.zoom", CATEGORY.assets, label("assets.videoZoom"), gesture("scroll", "mod")),
-    entry("assets.video.actual-size", CATEGORY.assets, label("assets.videoActualSize"), gesture("doubleClickPicture")),
+    on(AUDIO_PREVIEW, entry("assets.audio.clear-point", CATEGORY.assets, label("assets.clearMarker"), gesture("doubleClickMarker"))),
+    on(VIDEO_PREVIEW, entry("assets.video.zoom", CATEGORY.assets, label("assets.videoZoom"), gesture("scroll", "mod"))),
+    on(VIDEO_PREVIEW, entry("assets.video.actual-size", CATEGORY.assets, label("assets.videoActualSize"), gesture("doubleClickPicture"))),
     extend("assets.video.select-all", "assets.video.select-all", gesture("doubleClickTimeline")),
 ];
 

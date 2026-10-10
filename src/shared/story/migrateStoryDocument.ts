@@ -37,6 +37,40 @@ import {
     StoryScene,
     StorySceneId,
 } from "@shared/types/story";
+import { formatStorySecondsValue } from "@shared/utils/storyTime";
+
+/**
+ * How a migration writes a command line into a note: the words of the author's command language.
+ *
+ * Each method takes the canonical (English) word and returns the word the story editor would print
+ * for it - the same tables a committed row is printed from, so a note reads like the rows around
+ * it. The command language belongs to the renderer (`commandI18nStore`), so a caller there passes
+ * one; everything else - Dev Mode and builds reading a document off disk, the command line, the
+ * document spec - migrates with {@link CANONICAL_STORY_COMMAND_SPELLING}, which writes the
+ * canonical words. A note is text and is never parsed back, so the two never have to agree.
+ */
+export type StoryCommandSpelling = {
+    /** The verb of the command `commandId`, for a line written as `/token`. */
+    command(commandId: string, token: string): string;
+    /** The key one of the command's params is written with (`name`, `out`, `d`). */
+    param(commandId: string, param: string): string;
+    /** The word for one value of one of the command's enum params (`fade`). */
+    enumValue(commandId: string, param: string, value: string): string;
+    /** The word a number in this unit is suffixed with (`s`). */
+    unit(unit: string): string;
+};
+
+export const CANONICAL_STORY_COMMAND_SPELLING: StoryCommandSpelling = {
+    command: (_commandId, token) => token,
+    param: (_commandId, param) => param,
+    enumValue: (_commandId, _param, value) => value,
+    unit: unit => unit,
+};
+
+export type StoryMigrationOptions = {
+    /** The words a note quoting a row is written in; canonical when omitted. */
+    commandSpelling?: StoryCommandSpelling;
+};
 
 /**
  * The oldest document version this build can read.
@@ -129,7 +163,7 @@ function findInCauseChain<T>(error: unknown, matches: (candidate: unknown) => ca
     return null;
 }
 
-export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocument {
+export function migrateStoryDocumentToLatest(document: StoryDocument, options: StoryMigrationOptions = {}): StoryDocument {
     const version = typeof document.schemaVersion === "number" ? document.schemaVersion : 1;
     // Strictly newer is refused, never passed through: "at least current" used to be the test here,
     // and it let a document from a future Studio reach the compiler and the normalize pass as if it
@@ -149,7 +183,7 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
         migrated = migrateStoryDocumentV21toV22(migrated);
     }
     if (version < 27) {
-        migrated = migrateStoryDocumentV26toV27(migrated);
+        migrated = migrateStoryDocumentV26toV27(migrated, options.commandSpelling ?? CANONICAL_STORY_COMMAND_SPELLING);
     }
     // The stamp is unconditional, and has to be. Most bumps are additive - a document at the
     // version below is already valid at the new one, because it cannot contain a field that did not
@@ -225,10 +259,10 @@ function migrateStoryDocumentV21toV22(document: StoryDocument): StoryDocument {
  * The rows that address a clip afterwards are pointed at the play that now defines it, because the row
  * their reference was bound to may be one of the rows that went.
  */
-function migrateStoryDocumentV26toV27(document: StoryDocument): StoryDocument {
+function migrateStoryDocumentV26toV27(document: StoryDocument, spelling: StoryCommandSpelling): StoryDocument {
     const scenes: Record<StorySceneId, StoryScene> = {};
     for (const [sceneId, scene] of Object.entries(document.scenes ?? {})) {
-        scenes[sceneId] = migrateSceneClips(scene);
+        scenes[sceneId] = migrateSceneClips(scene, spelling);
     }
     return { ...document, scenes };
 }
@@ -267,7 +301,7 @@ function legacyDeclares(payload: LegacyVideoPayload): boolean {
     return (payload.operation === "show" || payload.operation === "play") && Boolean(payload.assetId?.trim());
 }
 
-function migrateSceneClips(scene: StoryScene): StoryScene {
+function migrateSceneClips(scene: StoryScene, spelling: StoryCommandSpelling): StoryScene {
     const ordered = listSceneBlocksInDocumentOrder(scene);
     if (!ordered.some(block => legacyVideoPayload(block))) {
         return scene;
@@ -318,7 +352,7 @@ function migrateSceneClips(scene: StoryScene): StoryScene {
             if (live) {
                 pending.set(key, [...(pending.get(key) ?? []), block.id]);
             } else {
-                blocks[block.id] = noteQuoting(block, payload);
+                blocks[block.id] = noteQuoting(block, payload, spelling);
             }
             continue;
         }
@@ -327,7 +361,7 @@ function migrateSceneClips(scene: StoryScene): StoryScene {
             // none to give it.
             const file = clip ?? (!live && ownFile ? { name: payload.objectName?.trim() || key, assetId: ownFile, muted: payload.muted } : undefined);
             if (!file) {
-                blocks[block.id] = noteQuoting(block, payload);
+                blocks[block.id] = noteQuoting(block, payload, spelling);
                 continue;
             }
             const { target: _target, assetId: _assetId, muted: _muted, ...rest } = payload;
@@ -352,7 +386,7 @@ function migrateSceneClips(scene: StoryScene): StoryScene {
         // `pause`, `resume`, `seek`, `stop`, `hide`: a row addressing a clip.
         const definingPlay = firstPlay.get(key);
         if (!definingPlay) {
-            blocks[block.id] = noteQuoting(block, payload);
+            blocks[block.id] = noteQuoting(block, payload, spelling);
             continue;
         }
         const name = legacyVideoPayload(blocks[definingPlay])?.objectName ?? key;
@@ -373,7 +407,7 @@ function migrateSceneClips(scene: StoryScene): StoryScene {
         for (const id of ids) {
             const payload = legacyVideoPayload(blocks[id]);
             if (payload) {
-                blocks[id] = noteQuoting(blocks[id], payload);
+                blocks[id] = noteQuoting(blocks[id], payload, spelling);
             }
         }
     }
@@ -395,33 +429,40 @@ function migrateSceneClips(scene: StoryScene): StoryScene {
 type StoryActionPayloadOf<A extends string> = Extract<Extract<StoryBlock, { kind: "action" }>["payload"], { action: A }>;
 
 /**
- * A note in the row's place, quoting what the row said in the command line's canonical spelling.
+ * A note in the row's place, quoting what the row said the way the story editor prints a row: in the
+ * command language `spelling` writes, and with the unit on every time, so `/seek clip 1s` keeps the
+ * second it meant rather than reading as a bare number.
  *
  * The file a row named is left out: the document holds its asset id, which is not a word an author
  * can read, and the asset library that would name it is not part of a story document.
  */
-function noteQuoting(block: StoryBlock, payload: LegacyVideoPayload): StoryBlock {
+function noteQuoting(block: StoryBlock, payload: LegacyVideoPayload, spelling: StoryCommandSpelling): StoryBlock {
     const word = (value: string | undefined): string => {
         const text = (value ?? "").trim();
         return /\s/.test(text) ? `'${text}'` : text;
     };
     const name = word(payload.target?.label || payload.objectName || payload.target?.name);
-    const seconds = (ms: number | undefined): string => `${Math.max(0, ms ?? 0) / 1000}`;
+    const verb = (commandId: string, token: string = commandId): string => `/${spelling.command(commandId, token)}`;
+    const key = (commandId: string, param: string): string => spelling.param(commandId, param);
+    const seconds = (ms: number | undefined): string =>
+        `${formatStorySecondsValue(Math.max(0, ms ?? 0))}${spelling.unit("s")}`;
     let line: string;
     switch (payload.operation) {
         case "create":
-            line = `/video name=${name}${payload.muted ? " muted" : ""}`;
+            // Typed as `/video`, which is an alias of `/play` now: canonically it keeps the word the
+            // author wrote, and in a command language it takes the verb `play` is spelled with.
+            line = `${verb("play", "video")} ${key("play", "name")}=${name}${payload.muted ? ` ${key("play", "muted")}` : ""}`;
             break;
         case "seek":
-            line = `/seek ${name} ${seconds(payload.timeMs)}`;
+            line = `${verb("seek")} ${name} ${seconds(payload.timeMs)}`;
             break;
         case "hide":
             line = typeof payload.durationMs === "number" && payload.durationMs > 0
-                ? `/hide ${name} out=fade d=${seconds(payload.durationMs)}`
-                : `/hide ${name}`;
+                ? `${verb("hide")} ${name} ${key("hide", "out")}=${spelling.enumValue("hide", "out", "fade")} ${key("hide", "d")}=${seconds(payload.durationMs)}`
+                : `${verb("hide")} ${name}`;
             break;
         default:
-            line = `/${payload.operation} ${name}`;
+            line = `${verb(payload.operation)} ${name}`;
             break;
     }
     return {

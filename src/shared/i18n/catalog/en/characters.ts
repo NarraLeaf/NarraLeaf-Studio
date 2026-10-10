@@ -40,6 +40,8 @@ export const characters = {
     history: {
         deleteCharacter: "delete character {name}",
         renameCharacter: "rename character {name}",
+        createCharacter: "create character {name}",
+        editCharacter: "edit character {name}",
         deleteGroup: "delete group {name}",
     },
     // The one dialog "New character" opens. Everything a character is created with is asked here,

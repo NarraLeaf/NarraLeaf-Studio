@@ -133,8 +133,11 @@ import type { AssetSet, AssetSetCandidate } from "@shared/types/assetSet";
 import { readAssetTag } from "@shared/types/assetSetLabels";
 import { useAssetSetNaming } from "../assets/state/useAssetSetNaming";
 import { StoryMotionKeyframeProperties } from "../story-motion/StoryMotionKeyframeProperties";
+import { StoryMotionAssetProperties } from "../story-motion/StoryMotionAssetProperties";
 import {
+    STORY_MOTION_ASSET_SELECTION_TYPE,
     STORY_MOTION_KEYFRAME_SELECTION_TYPE,
+    type StoryMotionAssetSelection,
     type StoryMotionKeyframeSelection,
 } from "../story-motion/storyMotionTypes";
 import { ActionInspector } from "../story/scene-editor/StorySceneActionInspector";
@@ -813,6 +816,8 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     const [uiSelection, setUISelection] = useState<UIElementSelection | null>(null);
     const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
     const [storyMotionSelection, setStoryMotionSelection] = useState<StoryMotionKeyframeSelection | null>(null);
+    const [storyMotionAsset, setStoryMotionAsset] = useState<StoryMotionAssetSelection | null>(null);
+    const [storyMotionAssetName, setStoryMotionAssetName] = useState<string | null>(null);
     const [storySelection, setStorySelection] = useState<StoryBlockSelection | null>(null);
     const [comparisonSelection, setComparisonSelection] = useState<ComparisonElementSelection | null>(null);
     const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
@@ -852,6 +857,24 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         if (!context || !isInitialized) return null;
         return context.services.get<StoryService>(Services.Story);
     }, [context, isInitialized]);
+
+    // The header names the motion, and follows a rename made anywhere.
+    const storyMotionAssetId = storyMotionAsset?.animationId ?? null;
+    useEffect(() => {
+        if (!storyService || !storyMotionAssetId) {
+            setStoryMotionAssetName(null);
+            return;
+        }
+        const read = () => {
+            try {
+                setStoryMotionAssetName(storyService.listAnimationAssets().find(entry => entry.id === storyMotionAssetId)?.name ?? null);
+            } catch {
+                setStoryMotionAssetName(null);
+            }
+        };
+        read();
+        return storyService.onAnimationsChanged(read);
+    }, [storyMotionAssetId, storyService]);
 
     const documentService = useMemo<UIDocumentService | null>(() => {
         if (!context || !isInitialized) return null;
@@ -976,6 +999,8 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         ? comparisonSelection.element.name || comparisonSelection.element.type
         : storyMotionSelection
         ? t("properties.panel.motionKeyframe")
+        : storyMotionAsset
+        ? storyMotionAssetName ?? t("properties.panel.storyMotion")
         : storyScene
         ? storyScene.name
         : activeComponentDefinition
@@ -991,7 +1016,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         : t("properties.panel.title");
     const panelSubtitle = comparisonSelection
         ? comparisonSelection.versionLabel
-        : storyMotionSelection
+        : storyMotionSelection || storyMotionAsset
         ? t("properties.panel.storyMotion")
         : storyScene
         ? t("properties.panel.scene")
@@ -1003,7 +1028,11 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         ? t("properties.panel.character")
         : activeSet
         ? t("assets.sets.itemType")
-        : activeAsset?.type;
+        // The kind of asset, named the way the rename dialog names it (Image, 图片, 画像) rather than
+        // by the enum value the library stores.
+        : activeAsset
+        ? t(`dialogs.noun.${activeAsset.type}`)
+        : undefined;
 
     /**
      * Both halves of what the set inspector draws.
@@ -1031,6 +1060,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
          */
         const setSelectionState = (selection: SelectionState) => {
             let motionSelection: StoryMotionKeyframeSelection | null = null;
+            let motionAsset: StoryMotionAssetSelection | null = null;
             // A story scene editor owns the rail: the row it has focused, or the scene itself when it
             // has none. The subject travels as an address; its content arrives through the per-tab
             // bridge read below, which republishes as the document changes.
@@ -1050,6 +1080,9 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                     break;
                 case STORY_MOTION_KEYFRAME_SELECTION_TYPE:
                     motionSelection = selection.data;
+                    break;
+                case STORY_MOTION_ASSET_SELECTION_TYPE:
+                    motionAsset = selection.data;
                     break;
                 case STORY_BLOCK_SELECTION_TYPE:
                     story = selection.data;
@@ -1077,6 +1110,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             }
 
             setStoryMotionSelection(motionSelection);
+            setStoryMotionAsset(motionAsset);
             setStorySelection(story);
             setActiveAsset(asset);
             setActiveSetId(setId);
@@ -1452,6 +1486,16 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                 />
             );
         }
+        if (storyMotionAsset && storyService && uiService) {
+            return (
+                <StoryMotionAssetProperties
+                    key={storyMotionAsset.animationId}
+                    selection={storyMotionAsset}
+                    storyService={storyService}
+                    uiService={uiService}
+                />
+            );
+        }
         if (storyContent) {
             return storyContent;
         }
@@ -1526,6 +1570,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
      */
     const isEmpty = !storyContent
         && !storyMotionSelection
+        && !storyMotionAsset
         && !comparisonInspectorContent
         && !uiInspectorContent
         && !activeComponentDefinition

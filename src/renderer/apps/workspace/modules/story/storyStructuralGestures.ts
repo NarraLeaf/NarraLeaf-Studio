@@ -1,4 +1,4 @@
-import { translate, translateN } from "@/lib/i18n";
+import { i18nStore, translate, translateN } from "@/lib/i18n";
 import { storySceneHistoryScope } from "@/lib/workspace/services/history/historyScopes";
 import {
     findSceneReferrersInBlueprints,
@@ -141,7 +141,7 @@ export async function mergeStoryScenes(params: {
         await uiService.showAlert(
             translate("story.structuralOps.mergeScenes.refused", { name: merged.name }),
             translate("story.structuralOps.mergeScenes.refusedDetail", {
-                referrers: planned.blockers.map(describeSceneReferrer).join(", "),
+                referrers: i18nStore.getTranslator().formatList(planned.blockers.map(describeSceneReferrer), { style: "narrow" }),
             }),
         );
         return null;

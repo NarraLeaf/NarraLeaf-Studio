@@ -3,6 +3,10 @@ import { Namespace } from "@shared/types/ipc";
 import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
+import type { AgentCallRequest, AgentCallResult, AgentFolderAccessRequest } from "@shared/agent/protocol";
+import type { AgentSettingsPatch, AgentSettingsSnapshot } from "@shared/agent/settings";
+import type { AgentCopyConfigKind, AgentMainActivity, AgentQuickState, AgentQuickTogglePatch } from "@shared/agent/workspaceAccess";
+import type { AgentPluginToolDescriptor } from "@shared/agent/pluginTools";
 import type { LibraryExchangeKind } from "@shared/story/libraryExchange";
 import type { AssetUrlDirectory, BlueprintPersistenceProjectRef, RendererErrorReport, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
@@ -18,6 +22,7 @@ import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalSta
 import type { MissingRecentProject, RecentProjectIcon } from "@shared/types/state/appStateTypes";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
 import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "@shared/types/devMode";
+import type { DevModeAgentAction, DevModeAgentResult } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
 import type { GameProcessMemoryReading } from "@shared/types/gameProcessMemory";
 import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "@shared/types/gameTest";
@@ -65,7 +70,12 @@ import type {
 } from "@shared/types/team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "@shared/types/teamTransfer";
 import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsProjectServerSession, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
-import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
+import type {
+    RendererAgentBridgeBootstrapInterface,
+    RendererAgentBridgeInterface,
+    RendererPrivilegedBootstrapInterface,
+    RendererPrivilegedInterface,
+} from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
 
@@ -179,6 +189,48 @@ const privilegedBootstrapBridge: RendererPrivilegedBootstrapInterface = {
     isHardened: () => privilegedBridgeHardened,
 };
 
+/**
+ * The workspace's half of agent access: answering the calls main routes to the window, reporting
+ * the plugin tools it has, and asking for folders mid-call.
+ *
+ * Handed out once, to Studio's own renderer bootstrap (`renderer/lib/app/bridge.ts`), which takes
+ * it before the page has loaded anything else and then hardens the bridge - before any plugin
+ * module is imported. Plugin code shares the page's realm, and on the global bridge these were
+ * plugin code's too: `onAgentCall` listens with `ipcRenderer.on`, so a second listener saw every
+ * agent call, arguments and all, and main took whichever reply came first; `reportPluginTools`
+ * let it advertise tools under any name; `requestFolderAccess` let it ask for folders on an agent's
+ * behalf. None of the three is on the global bridge any more, and the one copy of them lives in a
+ * module plugin code cannot import.
+ */
+let agentBridgeAcquired = false;
+let agentBridgeHardened = false;
+
+const agentBridge: RendererAgentBridgeInterface = {
+    onAgentCall: (handler: (request: AgentCallRequest) => Promise<RequestStatus<AgentCallResult>>) =>
+        ipcClient.onRequest(IPCEventType.workspaceAgentCall, handler),
+    reportPluginTools: (tools: readonly AgentPluginToolDescriptor[]) =>
+        ipcClient.send(IPCEventType.agentReportPluginTools, { tools: [...tools] }),
+    requestFolderAccess: (request: AgentFolderAccessRequest) =>
+        ipcClient.invoke(IPCEventType.agentRequestFolderAccess, { callId: request.callId, paths: [...request.paths] }),
+};
+
+const agentBridgeBootstrap: RendererAgentBridgeBootstrapInterface = {
+    acquire: () => {
+        if (agentBridgeHardened) {
+            throw new Error("The agent bridge has already been hardened");
+        }
+        if (agentBridgeAcquired) {
+            throw new Error("The agent bridge has already been acquired");
+        }
+        agentBridgeAcquired = true;
+        return agentBridge;
+    },
+    harden: () => {
+        agentBridgeHardened = true;
+    },
+    isHardened: () => agentBridgeHardened,
+};
+
 export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     getPlatform: () => ipcClient.invoke(IPCEventType.getPlatform, {}),
     getAppInfo: () => ipcClient.invoke(IPCEventType.appInfo, {}),
@@ -248,6 +300,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     // Workspace
     selectFolder: () => ipcClient.invoke(IPCEventType.workspaceSelectFolder, {}),
     openPsd: () => ipcClient.invoke(IPCEventType.psdOpen, {}),
+    readPsd: (filePath: string) => ipcClient.invoke(IPCEventType.psdRead, { filePath }),
     bakePsd: (request) => ipcClient.invoke(IPCEventType.psdBake, { request }),
     probeMedia: (path: string) => ipcClient.invoke(IPCEventType.mediaProbe, { path }),
     probeFontCoverage: (path: string) => ipcClient.invoke(IPCEventType.fontProbeCoverage, { path }),
@@ -326,6 +379,22 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
      * granting and revoking are the author changing their mind. None of it enforces anything -
      * the refusals live in main, beside the operations they refuse.
      */
+    agent: {
+        getSettings: () => ipcClient.invoke(IPCEventType.agentSettingsGet, {}),
+        updateSettings: (patch: AgentSettingsPatch) => ipcClient.invoke(IPCEventType.agentSettingsUpdate, patch),
+        regenerateToken: () => ipcClient.invoke(IPCEventType.agentSettingsRegenerateToken, {}),
+        addImportRoot: () => ipcClient.invoke(IPCEventType.agentSettingsAddImportRoot, {}),
+        getQuickState: () => ipcClient.invoke(IPCEventType.agentQuickState, {}),
+        quickToggle: (patch: AgentQuickTogglePatch) => ipcClient.invoke(IPCEventType.agentQuickToggle, patch),
+        onQuickStateChanged: (handler: (state: AgentQuickState) => void) =>
+            ipcClient.onMessage(IPCEventType.agentQuickStateChanged, handler),
+        copyConfig: (kind: AgentCopyConfigKind) => ipcClient.invoke(IPCEventType.agentCopyConfig, { kind }),
+        exportSkill: () => ipcClient.invoke(IPCEventType.agentExportSkill, {}),
+        revealExportedSkill: () => ipcClient.invoke(IPCEventType.agentRevealExportedSkill, {}),
+        onActivity: (handler: (activity: AgentMainActivity) => void) =>
+            ipcClient.onMessage(IPCEventType.workspaceAgentActivity, handler),
+    },
+    agentBridge: agentBridgeBootstrap,
     projectTrust: {
         query: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.projectTrustQuery, { projectPath }),
@@ -471,6 +540,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.devModeScreenshotOpenFolder, { projectRef }) as Promise<RequestStatus<BlueprintOpenScreenshotsResult>>,
         onCloseRequested: (handler: () => Promise<RequestStatus<{ allow: boolean }>>) =>
             ipcClient.onRequest(IPCEventType.devModeWindowCloseRequested, handler),
+        agentControl: (projectPath: string, action: DevModeAgentAction) =>
+            ipcClient.invoke(IPCEventType.devModeAgentControl, { projectPath, action }) as Promise<RequestStatus<DevModeAgentResult>>,
+        onAgentDrive: (handler: (payload: { action: DevModeAgentAction }) => Promise<RequestStatus<DevModeAgentResult>>) =>
+            ipcClient.onRequest(IPCEventType.devModeAgentDrive, handler),
         onPayloadUpdate: (handler: (payload: { bundle: DevModeBundle }) => void) =>
             ipcClient.onMessage(IPCEventType.devModePayloadUpdate, handler),
         onControlReload: (handler: (payload: { revision: number }) => void) =>

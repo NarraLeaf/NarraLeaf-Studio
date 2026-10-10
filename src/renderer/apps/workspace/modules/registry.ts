@@ -34,6 +34,7 @@ import { pluginsPanelModule } from "./plugins";
 import { testReportModule } from "./testing";
 import { buildReportModule } from "./build-report";
 import { problemsPanelModule } from "./lint";
+import { agentLogPanelModule } from "./agent";
 
 /**
  * Built-in panel modules
@@ -59,6 +60,7 @@ export const builtInPanels: PanelModule[] = [
     pluginsPanelModule,
     consoleModule,
     problemsPanelModule,
+    agentLogPanelModule,
 ];
 
 /**

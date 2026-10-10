@@ -371,7 +371,7 @@ export const build = {
             cancelled: "中止",
         },
         kind: {
-            build: "正式构建",
+            build: "生产构建",
             patch: "补丁导出",
         },
         summary: "概览",

@@ -2,6 +2,7 @@ import http from "http";
 import type { AddressInfo } from "net";
 import { WindowAppType } from "@shared/types/window";
 import { readWindowTag } from "@shared/utils/windowTag";
+import { STUDIO_DEBUG_DEFAULT_PORT } from "@shared/utils/ownLoopbackGuard";
 import type { BaseApp } from "../../baseApp";
 import type { AppWindow } from "../window/appWindow";
 import {
@@ -14,7 +15,7 @@ import {
  * Default port for the Studio debug server. Sits next to the CDP port (9222).
  * Override with the `NLS_DEBUG_PORT` env var.
  */
-export const DEFAULT_DEBUG_PORT = 9223;
+export const DEFAULT_DEBUG_PORT = STUDIO_DEBUG_DEFAULT_PORT;
 
 const DEBUG_HOST = "127.0.0.1";
 const CONSOLE_LEVELS: readonly DevtoolsConsoleLevel[] = ["debug", "info", "warning", "error"];
@@ -51,6 +52,8 @@ export class StudioDebugServer {
     private readonly taps = new Map<number, AttachedTap>();
     private server: http.Server | null = null;
     private readonly port: number;
+    /** The port actually listened on, once it is; what a request's `Host` must name. */
+    private boundPort: number | null = null;
 
     private readonly onWindowCreated = (window: AppWindow) => this.attachTap(window);
     private readonly onWindowClosed = (window: AppWindow) => this.detachTap(window);
@@ -82,9 +85,15 @@ export class StudioDebugServer {
         server.listen(this.port, DEBUG_HOST, () => {
             const address = server.address() as AddressInfo | null;
             const boundPort = address?.port ?? this.port;
+            this.boundPort = boundPort;
             this.app.logger.info(`[Debug] Debug server listening on http://${DEBUG_HOST}:${boundPort}`);
         });
         this.server = server;
+    }
+
+    /** The port this server is listening on, or null while it is not. */
+    public get listeningPort(): number | null {
+        return this.server ? this.boundPort : null;
     }
 
     public stop(): void {
@@ -159,6 +168,11 @@ export class StudioDebugServer {
     }
 
     private async handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+        const refusal = refuseForeignRequest(req.headers, this.boundPort ?? this.port);
+        if (refusal) {
+            this.sendJson(res, 403, { error: refusal });
+            return;
+        }
         if (req.method !== "GET") {
             this.sendJson(res, 405, { error: "Only GET is supported" });
             return;
@@ -322,6 +336,26 @@ export class StudioDebugServer {
         });
         res.end(payload);
     }
+}
+
+/**
+ * Why a request is refused before it is looked at, or null when it may proceed.
+ *
+ * Binding to 127.0.0.1 keeps other machines out, not web pages: any page the developer has open can
+ * send requests to localhost, and one that rebinds its own host name to 127.0.0.1 can read the
+ * answers. This server ends in `executeJavaScript` in the workspace window, so both doors are shut:
+ * a request carrying an `Origin` (which every browser request a page can make does, and no tool
+ * does) and a request whose `Host` names anything but this server.
+ */
+export function refuseForeignRequest(headers: http.IncomingHttpHeaders, port: number): string | null {
+    if (headers.origin !== undefined) {
+        return "Requests from web pages are not accepted.";
+    }
+    const host = String(headers.host ?? "").toLowerCase();
+    if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) {
+        return "Unexpected Host header.";
+    }
+    return null;
 }
 
 /**

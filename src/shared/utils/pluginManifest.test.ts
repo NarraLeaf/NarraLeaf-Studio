@@ -1218,6 +1218,57 @@ describe("validatePluginManifest localized", () => {
     });
 });
 
+describe("validatePluginManifest contributes.agentTools / agentGuide", () => {
+    const manifest = (contributes: Record<string, unknown>, entries: Record<string, string> = { studio: "main.js" }) => validatePluginManifest({
+        manifestVersion: 2,
+        id: "acme.notes",
+        name: "Notes",
+        version: "1.0.0",
+        entries,
+        contributes,
+    });
+
+    it("accepts declared tools and derives one permission naming them, the writing ones apart", () => {
+        const result = manifest({
+            agentTools: [{ name: "acme.notes.list", write: false }, { name: "acme.notes.add_note", write: true }],
+            agentGuide: "agent/guide.md",
+        });
+        expect(result).toMatchObject({
+            ok: true,
+            manifest: {
+                contributes: { agentGuide: "agent/guide.md", agentTools: [{ name: "acme.notes.list", write: false }, { name: "acme.notes.add_note", write: true }] },
+                permissions: [{ kind: "agentTools", tools: ["acme.notes.list", "acme.notes.add_note"], writeTools: ["acme.notes.add_note"] }],
+            },
+        });
+    });
+
+    it("defaults to no tools, no guide and no permission", () => {
+        const result = manifest({});
+        expect(result).toMatchObject({ ok: true, manifest: { contributes: { agentTools: [], agentGuide: "" }, permissions: [] } });
+    });
+
+    it("refuses an unprefixed or badly spelt name, a missing write flag, a duplicate, and tools without a studio entry", () => {
+        expect(manifest({ agentTools: [{ name: "other.list", write: false }] }).ok).toBe(false);
+        expect(manifest({ agentTools: [{ name: "acme.notes.List", write: false }] }).ok).toBe(false);
+        expect(manifest({ agentTools: [{ name: "acme.notes.list" }] }).ok).toBe(false);
+        expect(manifest({ agentTools: [{ name: "acme.notes.a-b", write: false }, { name: "acme.notes.a_b", write: true }] }).ok).toBe(false);
+        expect(manifest({ agentTools: [{ name: "acme.notes.list", write: false }] }, { runtime: "runtime.js" }).ok).toBe(false);
+    });
+
+    it("refuses a guide outside the package or not Markdown, and the permission written by hand", () => {
+        expect(manifest({ agentGuide: "../guide.md" }).ok).toBe(false);
+        expect(manifest({ agentGuide: "agent/guide.txt" }).ok).toBe(false);
+        expect(validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.notes",
+            name: "Notes",
+            version: "1.0.0",
+            entries: { studio: "main.js" },
+            permissions: [{ kind: "agentTools", tools: [], writeTools: [] }],
+        }).ok).toBe(false);
+    });
+});
+
 describe("built-in plugin manifests", () => {
     const BUILT_INS = ["gallery", "menu-bar", "quick-save"];
     /** Every language Studio ships besides the one the plain fields are written in. */

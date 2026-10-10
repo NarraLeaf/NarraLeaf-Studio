@@ -12,6 +12,7 @@
 import type { StoryBlock } from "@shared/types/story";
 import {
     errorAt,
+    warningAt,
     type StoryFileAst,
     type StoryFileDiagnostic,
     type StoryFileLine,
@@ -32,6 +33,7 @@ import {
     splitIndent,
     STORY_FILE_FORMAT_VERSION,
 } from "./shapes";
+import { DIRECTIVE_BACKGROUND, DIRECTIVE_MUSIC } from "./sceneSettings";
 
 export type StoryFileParse = {
     ast: StoryFileAst;
@@ -45,6 +47,7 @@ export function parseStoryFile(source: string): StoryFileParse {
         storyName: null,
         sceneName: null,
         sceneId: null,
+        settings: {},
         lines: [],
         data: {},
     };
@@ -74,7 +77,9 @@ export function parseStoryFile(source: string): StoryFileParse {
         }
         const { depth, body } = splitIndent(raw);
         if (body.startsWith("#")) {
-            sawFormat = readDirective(body, lineNumber, ast, diagnostics) || sawFormat;
+            // The header is what comes before the first row, each directive at the start of its line.
+            const inHeader = ast.lines.length === 0 && raw.startsWith("#");
+            sawFormat = readDirective(body, lineNumber, inHeader, ast, diagnostics) || sawFormat;
             continue;
         }
         ast.lines.push(readLine(body, depth, lineNumber, diagnostics));
@@ -99,6 +104,7 @@ export function parseStoryFile(source: string): StoryFileParse {
 function readDirective(
     body: string,
     lineNumber: number,
+    inHeader: boolean,
     ast: StoryFileAst,
     diagnostics: StoryFileDiagnostic[],
 ): boolean {
@@ -133,6 +139,30 @@ function readDirective(
         const { text, id } = stripAnchor(rest);
         ast.sceneName = text;
         ast.sceneId = id;
+        return false;
+    }
+    if (name === DIRECTIVE_BACKGROUND || name === DIRECTIVE_MUSIC) {
+        if (!inHeader) {
+            // Only the header sets a scene setting. Every `#` line further down was a comment before
+            // these directives existed, and has to stay one: a note reading "#music swells here"
+            // would otherwise fail the check, and one naming a real clip would quietly change the
+            // scene's music. Said, because a setting written in the wrong place does nothing.
+            diagnostics.push(
+                warningAt(
+                    "file.setting_outside_header",
+                    `${name} only counts in the header, at the start of a line before the first row, so this line `
+                        + "is a comment and changes nothing. Move it up to set the scene's own setting.",
+                    lineNumber,
+                ),
+            );
+            return false;
+        }
+        const key = name === DIRECTIVE_BACKGROUND ? "background" : "music";
+        if (ast.settings[key]) {
+            diagnostics.push(errorAt("file.duplicate_setting", `A second ${name} directive. A scene has one; keep the line you mean.`, lineNumber));
+            return false;
+        }
+        ast.settings[key] = { value: rest, line: lineNumber };
         return false;
     }
     // Every other `#` line is a comment. Deliberately silent: a file an agent has annotated should

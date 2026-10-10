@@ -183,7 +183,7 @@ export const devMode = {
         queued: "グループの順番待ち",
         takesClicks: "クリックを受け取る",
         takesNoClicks: "クリックを受け取らない",
-        takesNoInput: "クリックもキーも受け取らない",
+        takesNoInput: "クリックとキー入力を受け付けない",
         keyboard: "キーボード",
         modal: "モーダル",
         dismissible: "「戻る」で閉じる",

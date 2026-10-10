@@ -201,7 +201,7 @@ export const story = {
         },
         reason: {
             blueprintAction: "この行はブループリントが実行する。ブループリントにスクリプトの書き方は無い",
-            inputAction: "この行はプレイヤーの入力またはコントローラーの振動を扱う。スクリプトの書き方はまだ無い",
+            inputAction: "この行はプレイヤーの入力またはコントローラーの振動を扱う。スクリプトの書き方は無い",
             blueprintCondition: "この条件はブループリントが決める",
             blueprintInterpolation: "文の中の値をブループリントが計算する",
             inlineEvent: "文が、表示していく途中で発生するイベントを持っている",
@@ -931,7 +931,7 @@ export const story = {
         abbreviationCharacter: "引用符、=、/、@、# は使えない",
         abbreviationBuiltIn: "すでに「{command}」の綴りになっている",
         abbreviationTaken: "すでに「{command}」の略語になっている",
-        abbreviationShadowed: "この綴りは「{command}」のものになったため、この略語は効かない",
+        abbreviationShadowed: "この綴りは「{command}」のものになったため、この略語は無効",
         type: {
             image: "画像アセット",
             audio: "音声アセット",
@@ -1330,7 +1330,7 @@ export const story = {
         jump: { label: "ジャンプ", detail: "別のシーンへ移る。「戻り」がなければいまのシーンは解放される" },
         wait: { label: "待機", detail: "指定した秒数、またはクリックまで待つ" },
         nvl: { label: "NVL", detail: "積み上げ式のダイアログパネルを切り替える" },
-        show: { label: "表示", detail: "キャラクター、舞台のオブジェクト、アセットライブラリの画像を出す" },
+        show: { label: "表示", detail: "キャラクター、舞台のオブジェクト、アセットライブラリの画像を表示する" },
         hide: { label: "非表示", detail: "キャラクターや舞台のオブジェクトを隠す" },
         face: { label: "見た目", detail: "キャラクターのどの見た目を表示するかを切り替える" },
         motion: { label: "モーション", detail: "ランタイムが描くキャラクターに再生させるモーションを決める" },

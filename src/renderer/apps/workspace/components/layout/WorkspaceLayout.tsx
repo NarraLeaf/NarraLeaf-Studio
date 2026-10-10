@@ -36,6 +36,8 @@ import { NarralangCommands } from "../../modules/story/narralang/NarralangComman
 import { narralangUiEnabled } from "../../modules/story/narralang/narralangUi";
 import { StoryScenePreviewFloatHost } from "../../modules/story/scene-editor/preview/StoryScenePreviewFloatHost";
 import { StoryCommandManualDock } from "../../modules/story/scene-editor/StoryCommandManualDock";
+import { AgentWorkspaceHost } from "../../modules/agent/AgentWorkspaceHost";
+import { AgentMenu } from "../../modules/agent/AgentMenu";
 import { WorkspaceCommands } from "./WorkspaceCommands";
 import { KeybindingCheatSheet } from "./KeybindingCheatSheet";
 import { WorkspaceHelp } from "./WorkspaceHelp";
@@ -1057,6 +1059,10 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     recovery window has no story to preview. */}
                 {!recovery && <StoryScenePreviewFloatHost areaRef={contentAreaRef} />}
                 {!recovery && <StoryCommandManualDock />}
+                {/* An AI agent's offscreen screenshots and follow mode; see AgentWorkspaceHost. */}
+                {!recovery && <AgentWorkspaceHost />}
+                {/* The Agent menu on the menu bar; see AgentMenu. */}
+                {!recovery && <AgentMenu />}
 
                 {/* UI Overlays */}
                 <BackgroundImageDialog />

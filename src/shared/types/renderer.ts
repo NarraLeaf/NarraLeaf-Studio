@@ -1,4 +1,8 @@
 import type { ProjectTrustRecord } from "./projectTrust";
+import type { AgentCallRequest, AgentCallResult, AgentFolderAccessAnswer, AgentFolderAccessRequest } from "../agent/protocol";
+import type { AgentSettingsPatch, AgentSettingsSnapshot } from "../agent/settings";
+import type { AgentCopyConfigKind, AgentMainActivity, AgentQuickState, AgentQuickTogglePatch } from "../agent/workspaceAccess";
+import type { AgentPluginToolDescriptor } from "../agent/pluginTools";
 import type { ProjectSessionHolder, ProjectSessionLockOutcome } from "./projectSession";
 import type { ExternalScriptEditor, ScriptOpenTargetId } from "./scriptEditors";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
@@ -28,6 +32,7 @@ import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
 import type { MissingRecentProject, RecentProjectIcon } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
+import type { DevModeAgentAction, DevModeAgentResult } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameProcessMemoryReading } from "./gameProcessMemory";
 import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
@@ -155,6 +160,37 @@ export interface RendererPrivilegedBootstrapInterface extends RendererPrivileged
     isHardened(): boolean;
 }
 
+/**
+ * The agent calls a workspace answers, and the two requests it makes while answering one.
+ *
+ * Not on the global bridge: plugin code shares the workspace's page, so these are acquired once by
+ * Studio's renderer bootstrap before anything else loads (`RendererAgentBridgeBootstrapInterface`),
+ * and the bridge refuses every later acquisition. See `preload/ipc/interface.ts`.
+ */
+export interface RendererAgentBridgeInterface {
+    /**
+     * Answer the agent calls main routes to this window (`@shared/agent/protocol`). The handler
+     * must always resolve - a refusal is `success: true` around `{ ok: false }` - because a
+     * handler that throws never replies, and main then waits out its whole timeout.
+     */
+    onAgentCall(handler: (request: AgentCallRequest) => Promise<RequestStatus<AgentCallResult>>): AppEventToken;
+    /** The agent tools this workspace's plugins registered, the whole set. Main lists them in `tools/list`. */
+    reportPluginTools(tools: readonly AgentPluginToolDescriptor[]): void;
+    /**
+     * During an agent call: ask main to let this window read the folders holding `paths`. Main
+     * puts it to the author in Studio's agent access window (or grants at once under full access);
+     * folders still unanswered after about a minute come back `pending`.
+     */
+    requestFolderAccess(request: AgentFolderAccessRequest): Promise<RequestStatus<AgentFolderAccessAnswer>>;
+}
+
+export interface RendererAgentBridgeBootstrapInterface {
+    /** The agent bridge, once. Throws on a second call, and after {@link harden}. */
+    acquire(): RendererAgentBridgeInterface;
+    harden(): void;
+    isHardened(): boolean;
+}
+
 export interface RendererPreloadedInterface {
     // Basic Information
     getPlatform(): Promise<RequestStatus<PlatformInfo>>;
@@ -257,6 +293,8 @@ export interface RendererPreloadedInterface {
     selectFolder(): Promise<RequestStatus<{ path: string | null }>>;
     /** Pick a PSD through the native dialog and read its layer tree. */
     openPsd(): Promise<RequestStatus<{ filePath: string | null; document: PsdDocument | null }>>;
+    /** Read the layer tree of a PSD at a path this window may already read (no dialog). */
+    readPsd(filePath: string): Promise<RequestStatus<{ document: PsdDocument }>>;
     /** Bake the chosen layers to full-canvas PNGs. */
     bakePsd(request: PsdBakeRequest): Promise<RequestStatus<{ layers: PsdBakedLayer[] }>>;
     /**
@@ -426,6 +464,39 @@ export interface RendererPreloadedInterface {
      * refusals themselves are in main, beside the operations they refuse, because the code being
      * judged runs in a renderer and a renderer's belief is not a boundary.
      */
+    /**
+     * Agent access (the MCP endpoint). The settings calls are refused outside the Settings window:
+     * they decide whether an outside program may change a project, and they hand out its token. The
+     * `quick` calls below them are the workspace's Agent menu, and carry no secret.
+     */
+    agent: {
+        getSettings(): Promise<RequestStatus<AgentSettingsSnapshot>>;
+        updateSettings(patch: AgentSettingsPatch): Promise<RequestStatus<AgentSettingsSnapshot>>;
+        regenerateToken(): Promise<RequestStatus<AgentSettingsSnapshot>>;
+        /** Opens the native folder picker; a cancelled picker answers the unchanged settings. */
+        addImportRoot(): Promise<RequestStatus<AgentSettingsSnapshot>>;
+        /**
+         * The Agent menu's narrow view, for workspace windows: three booleans, never the token or the
+         * address. See `@shared/agent/workspaceAccess`.
+         */
+        getQuickState(): Promise<RequestStatus<AgentQuickState>>;
+        /**
+         * Turning agent access or write access on asks the author in Studio's agent access window; a
+         * declined question answers the unchanged state. Switching off is never asked.
+         */
+        quickToggle(patch: AgentQuickTogglePatch): Promise<RequestStatus<AgentQuickState>>;
+        onQuickStateChanged(handler: (state: AgentQuickState) => void): AppEventToken;
+        /** Main writes the configuration to the system clipboard; only the fact that it did comes back. */
+        copyConfig(kind: AgentCopyConfigKind): Promise<RequestStatus<{ copied: true }>>;
+        /** Native folder picker, then a copy of the bundled skill into `<folder>/NarraLeaf-Skills`. */
+        exportSkill(): Promise<RequestStatus<{ canceled: true } | { canceled: false; path: string }>>;
+        /** Reveal what the last `exportSkill` from this window wrote. */
+        revealExportedSkill(): Promise<RequestStatus<{ revealed: boolean }>>;
+        /** A call main answered itself, for the Agent log. */
+        onActivity(handler: (activity: AgentMainActivity) => void): AppEventToken;
+    };
+    /** Acquired once by Studio's renderer bootstrap; see {@link RendererAgentBridgeInterface}. */
+    agentBridge: RendererAgentBridgeBootstrapInterface;
     projectTrust: {
         query(projectPath: string): Promise<RequestStatus<{
             trusted: boolean;
@@ -686,6 +757,13 @@ export interface RendererPreloadedInterface {
             projectRef: DevModeSaveProjectRef,
         ): Promise<RequestStatus<BlueprintOpenScreenshotsResult>>;
         onCloseRequested(handler: () => Promise<RequestStatus<{ allow: boolean }>>): AppEventToken;
+        /**
+         * Workspace: ask the project's running Dev Mode game to capture itself or advance, for an
+         * agent's play-test. Refused when no Dev Mode window is open for the project.
+         */
+        agentControl(projectPath: string, action: DevModeAgentAction): Promise<RequestStatus<DevModeAgentResult>>;
+        /** Dev Mode window: answer the play-test actions main forwards to it. */
+        onAgentDrive(handler: (payload: { action: DevModeAgentAction }) => Promise<RequestStatus<DevModeAgentResult>>): AppEventToken;
         onPayloadUpdate(handler: (payload: { bundle: DevModeBundle }) => void): AppEventToken;
         onControlReload(handler: (payload: { revision: number }) => void): AppEventToken;
         /**

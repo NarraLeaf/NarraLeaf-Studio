@@ -58,6 +58,8 @@ async function writePlugin(id: string, externalLinks: string[]): Promise<Runtime
             network: [],
             widgetText: {},
             structs: [],
+            agentTools: [],
+            agentGuide: "",
             locales: [],
             runtimeCapabilities: [],
             sidecars: [],
