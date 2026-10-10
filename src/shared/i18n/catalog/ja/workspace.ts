@@ -572,7 +572,7 @@ export const workspace = {
             voice_link: "ボイスをリンク",
             voice_auto_link: "名前でボイスをリンク",
             voice_settings_set: "ボイス設定を変更",
-            lint: "プロジェクトをチェック",
+            lint: "プロジェクトを検査",
             test: "プロジェクトのテストを実行",
             playtest_start: "ゲームをプレイ",
             playtest_advance: "プレイを進める",
