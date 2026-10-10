@@ -679,6 +679,9 @@ describe("projectStoryCommandLine", () => {
             "/video intro name=cutscene muted",
             "/play clip",
             "/layer overlay z=10",
+            // A depth on the create row, and the background layer's own depth row under its reserved word.
+            "/layer hills z=-1 depth=far",
+            "/layer backgroundLayer depth=mid",
             "/vfx intro name=petals opacity=0.5",
             // A weather seed: the word IS the source, so the line has to print it.
             "/vfx snow",
@@ -748,6 +751,8 @@ describe("projectStoryCommandLine", () => {
             "/bg forest_day t=fade d=0.5",
             "/transform camera pan=left",
             "/bgm theme vol=0.6 loop",
+            "/layer hills depth=far",
+            "/layer backgroundLayer depth=farthest",
             "/local hp 100 desc='生命值 上限'",
             "/local inv \"[1, 2]\" type=json",
         ]) {

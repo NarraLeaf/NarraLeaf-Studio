@@ -267,7 +267,16 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 2 as const;
 // unconditional `return []`, so every waiting row would compile to nothing - a QTE the story runs
 // straight through, its result variable never written, and the branch after it always taking the
 // same arm. Refusing the document is the point.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 28 as const;
+// v29 lets a layer sit at a distance from the camera: `depth` on a `layer` row - on the `create`
+// row of a custom layer, or on a new `setDepth` row for the scene's built-in background layer, which
+// has no `create` row - and the camera's pans and zooms are shared out among the layers by it, so a
+// flat stage reads as deep (the engine's layer `parallax`, narraleaf-react 1.4.0).
+// No migration: a v28 document cannot carry the field or the op, and absent reads as `follow`, which
+// is how every layer has always moved. The bump is not optional, and the reason is what a v28 Studio
+// would *play*: it would ignore `depth` and move every layer with the camera, and treat a `setDepth`
+// row as an operation it does not know - the scene the author built in depth would play flat, with
+// nothing anywhere saying why. Refusing the document is the point.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 29 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -965,7 +974,12 @@ export type StoryActionPayload =
       }
     | {
           action: "layer";
-          operation: "create" | "setZIndex" | "show" | "hide" | "transform";
+          /**
+           * `setDepth` is the one op that is not a step in time: it says how far from the camera the
+           * scene's built-in background layer sits, for the whole scene, wherever the row is. That
+           * layer has no `create` row to carry a {@link depth} the way a custom layer does.
+           */
+          operation: "create" | "setZIndex" | "show" | "hide" | "transform" | "setDepth";
           objectName: string;
           /**
            * Which layer non-`create` ops act on - a built-in (`background`/`displayable`) or a custom
@@ -973,6 +987,12 @@ export type StoryActionPayload =
            */
           target?: StoryLayerRef;
           zIndex?: number;
+          /**
+           * How far from the camera the layer sits, on a `create` row (the layer it declares) or a
+           * `setDepth` row (the built-in background layer). Absent is `follow`: the layer moves with
+           * the camera, as every layer did before depth existed.
+           */
+          depth?: StoryLayerDepth;
           transform?: StoryTransformRef;
       }
     | {
@@ -1558,6 +1578,15 @@ export type StoryDisplayableTargetRef = {
 export type StoryLayerRef =
     | { kind: "default"; layer: "background" | "displayable" }
     | { kind: "custom"; sourceBlockId?: StoryBlockId; name?: string };
+
+/**
+ * How far from the camera a layer sits, which decides how much of a camera pan or zoom it follows:
+ * `farthest` not at all, `far` and `mid` less than the stage, `follow` exactly as the stage (the
+ * built-in displayable layer, where the characters are, always), `near` more. Words rather than a
+ * number on purpose - the shares behind them are Studio's to tune, not something an author can be
+ * expected to get right (see `layerDepth.ts`).
+ */
+export type StoryLayerDepth = "near" | "follow" | "mid" | "far" | "farthest";
 
 /** The three stage objects that are `Actionable`s rather than Displayables, and so cannot use {@link StoryDisplayableTargetRef}. */
 export type StoryActionableKind = "video" | "vfx" | "audio";

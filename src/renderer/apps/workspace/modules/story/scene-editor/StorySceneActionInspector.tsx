@@ -11,6 +11,7 @@ import type {
     StoryDisplayableTargetKind,
     StoryEndingPage,
     StoryGroupKind,
+    StoryLayerDepth,
     StoryLiteralValue,
     StoryRumblePresetId,
     StoryScene,
@@ -25,6 +26,7 @@ import type {
 } from "@shared/types/story";
 import {
     authoredCharacterStageName,
+    DEFAULT_STORY_LAYER_DEPTH,
     DEFAULT_VIDEO_LEAVE_FADE_MS,
     declarationDefaultForType,
     isStoryExpressionEvaluable,
@@ -42,6 +44,7 @@ import {
     storyGroupWaits,
     storyPersistentDefs,
     storyTransitionKindOf,
+    STORY_LAYER_DEPTHS,
     STORY_RUMBLE_DEFAULT_PRESET,
     STORY_RUMBLE_PRESET_IDS,
     videoLeaveFadeMs,
@@ -66,6 +69,7 @@ import {
     type WeatherSeedId,
 } from "@shared/weather/model";
 import { audioBusStatusLine } from "@/lib/story/audioBusStatus";
+import { storyLayerDepthLabel } from "@/lib/story/storyLayerLabel";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
 import { useProjectAppTags } from "@/lib/story/useProjectAppTags";
 import { useProjectSurfaces } from "@/lib/story/useProjectSurfaces";
@@ -522,9 +526,12 @@ const textOperationOptions = (t: TFunc): SelectOption[] => [
 // "Transform displayable" target list (which includes both built-in layers). The `layer` action
 // stays layer-lifecycle only. `transform` remains valid in the type + compiler so pre-existing
 // layer-transform blocks still compile; it is just no longer offered as a new choice here.
+const layerDepthOptions = (): SelectOption[] => STORY_LAYER_DEPTHS.map(depth => ({ value: depth, label: storyLayerDepthLabel(depth) }));
+
 const layerOperationOptions = (t: TFunc): SelectOption[] => [
     { value: "create", label: t("common.create") },
     { value: "setZIndex", label: t("storyInspector.layerOperation.setZIndex") },
+    { value: "setDepth", label: t("storyInspector.layerOperation.setDepth") },
     { value: "show", label: t("common.show") },
     { value: "hide", label: t("common.hide") },
 ];
@@ -1303,6 +1310,7 @@ function ActionPayloadFields(props: {
         // Non-create ops target an existing layer (built-in or custom) via the layer picker; `create`
         // names a new one. Z-index only applies to create / setZIndex; transform/show/hide animate.
         const showZIndex = isCreate || payload.operation === "setZIndex";
+        const setsDepth = payload.operation === "setDepth";
         const showTransform = payload.operation === "transform" || payload.operation === "show" || payload.operation === "hide";
         const layerRefValue = layerActionTargetRef(payload.target, payload.objectName);
         const layerName = isCreate
@@ -1315,9 +1323,25 @@ function ActionPayloadFields(props: {
                         label={t("storyInspector.field.operation")}
                         options={layerOperationOptions(t)}
                         value={payload.operation}
-                        onChange={operation => props.onChange({ ...payload, operation: operation as Extract<StoryActionPayload, { action: "layer" }>["operation"] })}
+                        onChange={operation => {
+                            const next = operation as Extract<StoryActionPayload, { action: "layer" }>["operation"];
+                            // A depth row is about the scene's own background layer and nothing else,
+                            // so choosing it points the row there rather than leaving a target that
+                            // the compiler would refuse.
+                            props.onChange(next === "setDepth"
+                                ? { ...payload, operation: next, target: { kind: "default", layer: "background" }, depth: payload.depth ?? "mid" }
+                                : { ...payload, operation: next });
+                        }}
                     />
-                    {isCreate ? (
+                    {setsDepth ? (
+                        // One choice, shown rather than hidden: the row is about this layer and no other.
+                        <SelectField
+                            label={t("storyInspector.field.layer")}
+                            options={[{ value: "background", label: t("story.layerField.backgroundName") }]}
+                            value="background"
+                            onChange={() => undefined}
+                        />
+                    ) : isCreate ? (
                         <TextField label={t("storyInspector.layer.layerName")} value={payload.objectName} onChange={objectName => props.onChange({ ...payload, objectName })} />
                     ) : (
                         <StoryLayerField
@@ -1333,7 +1357,17 @@ function ActionPayloadFields(props: {
                     {showZIndex ? (
                         <NumberField label={t("storyInspector.layer.zIndex")} value={payload.zIndex} onChange={zIndex => props.onChange({ ...payload, zIndex })} />
                     ) : null}
+                    {isCreate || setsDepth ? (
+                        <SelectField
+                            label={t("storyInspector.layer.depth")}
+                            options={layerDepthOptions()}
+                            value={payload.depth ?? DEFAULT_STORY_LAYER_DEPTH}
+                            // The default is the absent value, so a layer set back to it says nothing on its row.
+                            onChange={depth => props.onChange({ ...payload, depth: depth === DEFAULT_STORY_LAYER_DEPTH && isCreate ? undefined : depth as StoryLayerDepth })}
+                        />
+                    ) : null}
                 </div>
+                {setsDepth ? <div className="text-2xs text-fg-subtle">{t("storyInspector.layer.setDepthHint")}</div> : null}
                 {showTransform ? (
                     <TransformPresetEditor
                         value={payload.transform}

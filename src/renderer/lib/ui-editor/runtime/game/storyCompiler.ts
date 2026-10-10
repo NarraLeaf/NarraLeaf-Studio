@@ -100,7 +100,9 @@ import {
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
     revealCreates,
+    sceneLayerDepths,
     sceneVariableDefs,
+    storyLayerDepthParallax,
     soundStageObjectName,
     storyPersistentDefs,
     storyTransitionKindOf,
@@ -1658,7 +1660,8 @@ async function buildLaunchEntryScene(params: {
             // down, pause it or swap it for the one a `/bgm` row put on.
             ...(sceneMusic ? { backgroundMusicFade: sceneMusic.fadeMs } : {}),
             ...(voices ? { voices } : {}),
-        },
+            ...sceneBackgroundLayerConfig(scene),
+        } as any,
     ));
     const launchIdPrefix = launchSceneIdPrefix(scene.id, launch.targetBlockId ?? "");
     setSceneOwnElementIds(params.elementIdBindings, launchScene, `${launchIdPrefix}:scene`);
@@ -1993,9 +1996,10 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         })
         : snapshot.background?.color
             ?? await resolveSceneInitialBackground({ scene, resolveAssetUrl, assetUrlCache, diagnostics });
+    const previewSceneConfig = { ...(backgroundSrc ? { background: backgroundSrc } : {}), ...sceneBackgroundLayerConfig(scene) };
     const previewScene = new Scene(
         sceneRuntimeName(scene),
-        backgroundSrc ? { background: backgroundSrc } : undefined,
+        Object.keys(previewSceneConfig).length > 0 ? previewSceneConfig as any : undefined,
     );
 
     const previewPersistentView = collectPersistentView(input.document, input.persistentVariables);
@@ -2519,6 +2523,7 @@ async function createNlrScenes(input: {
             voices?: Record<string, string | Sound>;
             backgroundMusic?: Sound;
             backgroundMusicFade?: number;
+            backgroundLayerParallax?: number;
         } = {};
         if (background) {
             config.background = background;
@@ -2546,9 +2551,10 @@ async function createNlrScenes(input: {
             // whole story moved whenever another scene gained or lost music.
             setStableElementId(input.elementIdBindings, music.sound, sceneMusicElementId(`nl:scene:${scene.id}`));
         }
+        Object.assign(config, sceneBackgroundLayerConfig(scene));
         const built = new Scene(
             runtimeName,
-            Object.keys(config).length > 0 ? config : undefined,
+            Object.keys(config).length > 0 ? config as any : undefined,
         );
         setStableSceneElementIds(input.elementIdBindings, built, scene.id);
         scenes[scene.id] = built;
@@ -4806,6 +4812,17 @@ async function compileLayerAction(
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "layer" }>,
 ): Promise<NlrStatement[]> {
+    if (payload.operation === "setDepth") {
+        // Not a step in time: the scene was built with its background layer at this distance (see
+        // `sceneBackgroundLayerConfig`), so there is nothing for the row to do when the story gets to
+        // it. Only the background layer takes one - a custom layer's depth is on its own `create`
+        // row, and the displayable layer is where the characters stand, which is what the camera is
+        // aimed at by definition.
+        if (payload.target?.kind !== "default" || payload.target.layer !== "background") {
+            diagnostic(ctx, "warning", block.id, say("story.compile.layer.depthBackgroundOnly"));
+        }
+        return [];
+    }
     // `create` names a new custom layer; every other op resolves an existing layer - a built-in
     // (background / displayable) or a custom one - via the target ref (falling back to the default
     // displayable layer), so a transform can now target the background instead of only named layers.
@@ -5661,11 +5678,35 @@ function getLayer(ctx: SceneCompileContext, objectName: string, zIndex = 0, init
     if (existing) {
         return existing;
     }
-    const layer = new Layer(name, { zIndex, ...(initialProps ?? {}) } as any);
+    // A layer's distance from the camera is stated once for the whole scene (its `create` row), and
+    // every path that builds the layer - the row itself, a picture placed on it first, a launch's
+    // replay - builds it here, so they all build it at the same distance.
+    const parallax = storyLayerDepthParallax(sceneLayerDepthsOf(ctx.scene).custom.get(name));
+    const layer = new Layer(name, { zIndex, ...(parallax !== 1 ? { parallax } : {}), ...(initialProps ?? {}) } as any);
     setStableElementId(ctx.elementIdBindings, layer, sceneElementStaticId(ctx, "layer", name));
     ((ctx.nlrScene as unknown as { config: { layers: Layer[] } }).config.layers).push(layer);
     ctx.layers.set(name, layer);
     return layer;
+}
+
+/** Read once per scene: every layer the scene builds asks, and the answer cannot change mid-compile. */
+const sceneLayerDepthCache = new WeakMap<StoryScene, ReturnType<typeof sceneLayerDepths>>();
+function sceneLayerDepthsOf(scene: StoryScene): ReturnType<typeof sceneLayerDepths> {
+    let depths = sceneLayerDepthCache.get(scene);
+    if (!depths) {
+        depths = sceneLayerDepths(scene);
+        sceneLayerDepthCache.set(scene, depths);
+    }
+    return depths;
+}
+
+/**
+ * The scene config that puts the scene's own background layer at the distance its `setDepth` row
+ * names. Empty when the scene names none, so a scene without depth builds exactly as it always did.
+ */
+function sceneBackgroundLayerConfig(scene: StoryScene): { backgroundLayerParallax?: number } {
+    const parallax = storyLayerDepthParallax(sceneLayerDepthsOf(scene).background);
+    return parallax !== 1 ? { backgroundLayerParallax: parallax } : {};
 }
 
 /**

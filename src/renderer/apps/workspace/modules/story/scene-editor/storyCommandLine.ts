@@ -5,6 +5,7 @@ import type {
     StoryDeclarationPayload,
     StoryDisplayableTargetRef,
     StoryJumpPayload,
+    StoryLayerDepth,
     StoryLiteralValue,
     StoryTransformRef,
     StoryTransitionRef,
@@ -1268,10 +1269,24 @@ function layerSentence(
     const name = payload.operation === "create"
         ? payload.objectName?.trim() || undefined
         : resolved?.name || undefined;
+    // A depth the row does not state is `follow` and prints as nothing, so a row from before depth
+    // existed reads exactly as it did.
+    const depthArg = arg("depth", payload.depth, {
+        enum: true,
+        apply: next => ({ ...payload, depth: next as StoryLayerDepth }),
+    });
+    if (payload.operation === "setDepth") {
+        // The reserved word the command line takes for the scene's own background layer.
+        return { commandId, args: [positional("name", "backgroundLayer"), depthArg] };
+    }
     if (payload.operation === "create" || payload.operation === "setZIndex") {
         return {
             commandId,
-            args: [positional("name", name), arg("z", numberValue(payload.zIndex), { apply: next => ({ ...payload, zIndex: Number(next) }) })],
+            args: [
+                positional("name", name),
+                arg("z", numberValue(payload.zIndex), { apply: next => ({ ...payload, zIndex: Number(next) }) }),
+                ...(payload.operation === "create" ? [depthArg] : []),
+            ],
         };
     }
     // The declaring `/layer` row, on the same terms as every other stage object: the ref's anchor
