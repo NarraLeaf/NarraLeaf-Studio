@@ -399,11 +399,12 @@ export class App extends BaseApp {
         return this.teamManager;
     }
 
-    /** Everything Studio knows about newer versions of itself. See {@link UpdateManager}. */
+    /** Agent access: the author's switches, the MCP endpoint and the hop to a workspace. See {@link AgentManager}. */
     public getAgentManager(): AgentManager {
         return this.agentManager;
     }
 
+    /** Everything Studio knows about newer versions of itself. See {@link UpdateManager}. */
     public getUpdateManager(): UpdateManager {
         return this.updateManager;
     }
