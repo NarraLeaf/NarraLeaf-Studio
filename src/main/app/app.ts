@@ -1,6 +1,6 @@
 import { unpatchedFs as fs } from "../utils/unpatchedFs";
 import path from "path";
-import { screen, session } from "electron";
+import { app as electronApp, screen, session } from "electron";
 import {
     QUIT_CHECKPOINT_TIMEOUT_DEFAULT_SECONDS,
     QUIT_CHECKPOINT_TIMEOUT_KEY,
@@ -2626,7 +2626,11 @@ export class App extends BaseApp {
             preload: this.getPreloadScript(),
             windowControlPolicy: WindowControlPolicy.None,
             options: {
-                ...(parent ? { modal: true, parent: parent.win } : {}),
+                // Modal only when it takes the focus. On macOS a modal child is a sheet, and a
+                // sheet shown with showInactive() is never put on screen at all: the agent's
+                // folder prompt waited, invisible, for an answer nobody could give. A plain child
+                // still stays above the window that asked.
+                ...(parent ? { parent: parent.win, modal: activate } : {}),
                 resizable: false,
                 minimizable: false,
                 maximizable: false,
@@ -2651,6 +2655,13 @@ export class App extends BaseApp {
                 void window.show();
             } else {
                 window.win.showInactive();
+                // Shown without taking the foreground, so say so where the author will see it.
+                if (process.platform === "darwin") {
+                    electronApp.dock?.bounce("informational");
+                } else {
+                    window.win.flashFrame(true);
+                    window.win.once("focus", () => window.win.flashFrame(false));
+                }
             }
         });
 
