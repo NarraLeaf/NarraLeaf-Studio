@@ -800,9 +800,6 @@ export const workspace = {
             closeSplit: "分割を閉じる",
             reopenClosed: "閉じたタブを開き直す",
         },
-        toggleLeftSidebar: "左のサイドバーを切り替え",
-        toggleRightSidebar: "右のサイドバーを切り替え",
-        toggleBottomPanel: "下のパネルを切り替え",
         mainMenu: {
             label: "メインメニュー",
             modes: {
