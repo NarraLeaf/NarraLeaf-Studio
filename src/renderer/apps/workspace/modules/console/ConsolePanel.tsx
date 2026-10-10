@@ -291,7 +291,13 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                 <div className="flex h-full min-w-0 overflow-x-auto" role="tablist" aria-label={t("console.channelsAria")}>
                     {channels.map(channel => {
                         const active = activeChannel === channel.id;
-                        const count = entriesByChannel[channel.id]?.length ?? 0;
+                        // The lines the page would show under the level filter, not every line it
+                        // buffers: Verbose is hidden by default, and a count that included it read as
+                        // fifteen lines over the two the page actually lists.
+                        const count = (entriesByChannel[channel.id] ?? []).reduce(
+                            (total, entry) => total + (visibleLevels.has(entry.level) ? 1 : 0),
+                            0,
+                        );
                         return (
                             <button
                                 key={channel.id}
