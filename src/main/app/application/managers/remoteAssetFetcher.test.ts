@@ -168,3 +168,48 @@ describe("fetchRemoteAsset refusal codes", () => {
         expect(await codeOf(fetchRemoteAsset("https://example.test/huge.bin"))).toBe(RemoteAssetFetchErrorCode.TooLarge);
     });
 });
+
+/**
+ * The renderer names the address and gets the bytes back, so the IPC handler passes a check that
+ * keeps the request off the loopback services Studio itself serves. What is pinned here is where
+ * the fetcher asks it: before the request, and about where the redirects ended - an answer from a
+ * refused address is never handed back.
+ */
+describe("fetchRemoteAsset's destination check", () => {
+    const refuseStudio = vi.fn(async (url: string) => (url.includes(":9223") ? "Studio's own service" : null));
+
+    afterEach(() => {
+        refuseStudio.mockClear();
+    });
+
+    async function codeOf(promise: Promise<unknown>): Promise<unknown> {
+        try {
+            await promise;
+        } catch (error) {
+            expect(error).toBeInstanceOf(RemoteAssetFetchError);
+            return (error as RemoteAssetFetchError).code;
+        }
+        throw new Error("expected the fetch to be refused");
+    }
+
+    it("refuses a refused address before making the request", async () => {
+        const fetchMock = respondWith(new Uint8Array([1]));
+        expect(await codeOf(fetchRemoteAsset("http://127.0.0.1:9223/console", undefined, refuseStudio))).toBe(RemoteAssetFetchErrorCode.Refused);
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("discards an answer whose redirects ended at a refused address", async () => {
+        const answer = new Response(new Uint8Array([7, 7, 7]), { status: 200 });
+        Object.defineProperty(answer, "url", { value: "http://localhost:9223/console" });
+        globalThis.fetch = vi.fn(async () => answer) as unknown as typeof globalThis.fetch;
+
+        expect(await codeOf(fetchRemoteAsset("https://example.test/redirects.png", undefined, refuseStudio))).toBe(RemoteAssetFetchErrorCode.Refused);
+        expect(refuseStudio.mock.calls.map(([url]) => url)).toEqual(["https://example.test/redirects.png", "http://localhost:9223/console"]);
+    });
+
+    it("lets every other address through", async () => {
+        respondWith(new Uint8Array([1, 2]));
+        const result = await fetchRemoteAsset("http://localhost:3000/a.png", undefined, refuseStudio);
+        expect(result.kind).toBe("ok");
+    });
+});

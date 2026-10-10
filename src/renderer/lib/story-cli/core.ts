@@ -102,7 +102,8 @@ export function storyLinesCommand(options: { json?: boolean } = {}): CommandResu
 
 /**
  * `story stories [search]`. `documentOf` is asked only for the stories the search keeps, for their
- * scene counts; it may throw, which ends the command.
+ * scene counts, as each is listed; it may throw, which ends the command after the stories already
+ * listed (they travel with the error - see `guard` in `agent-core/commandResult.ts`).
  */
 export function storyStoriesCommand(
     stories: readonly StorySummary[],
@@ -124,7 +125,7 @@ export function storyStoriesCommand(
         if (search && !story.name.toLowerCase().includes(search)) {
             continue;
         }
-        const scenes = orderedScenes(documentOf(story.id)).length;
+        const scenes = orderedScenes(io.guard(() => documentOf(story.id))).length;
         const dlc = story.dlcId ? "  (ships with a DLC)" : "";
         io.out(`  ${story.name.padEnd(width)}${scenes} scene${scenes === 1 ? "" : "s"}${dlc}`);
     }
@@ -349,8 +350,10 @@ export async function storyApplyCommand(
     // The rename is reported and not applied, so the scene keeps the name the document gave it.
     const scene = { ...check.scene, name: existing.name };
     const next = applySceneToDocument(document, scene);
-    if (options.write === true && options.commit) {
-        const refusal = options.commit(next);
+    const commit = options.commit;
+    if (options.write === true && commit) {
+        // After the diagnostics: a commit that throws still leaves them said.
+        const refusal = io.guard(() => commit(next));
         if (refusal !== null) {
             io.err(refusal);
             return { ...io.finish(2), check };

@@ -54,8 +54,15 @@ export type AgentSettingsFile = {
     /**
      * Plugins whose agent tools the author switched off. A deny list rather than an allow list:
      * a plugin's tools are on unless the author says otherwise, because the install prompt already
-     * told them the plugin offers tools (`contributes.agentTools`), and every call still passes the
-     * switches above - nothing a plugin offers writes unless `allowWrites` is on.
+     * told them the plugin offers tools (`contributes.agentTools`, with how many change the project).
+     *
+     * What the switches above hold a plugin tool to is what the plugin declared about it. A tool
+     * declared `write: true` is refused unless `allowWrites` (or `fullAccess`) is on, and while the
+     * agent is paused, the project frozen or a live session running. A tool declared `write: false`
+     * is not gated by any of them: while it runs, the host refuses only the plugin's own storage
+     * writes (`services.storage.writeJson`). Anything else the plugin's `app` can do, its handler
+     * can do too, so how far a reading tool reaches is how far the plugin itself is trusted - which
+     * is the question the install prompt asked, not this switch.
      */
     blockedPluginTools: string[];
 };

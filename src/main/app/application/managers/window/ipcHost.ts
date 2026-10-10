@@ -8,6 +8,13 @@ export interface IPCWindow {
     isDestroyed(): boolean;
 }
 
+/**
+ * The `code` of an {@link IPCHost.invoke} rejection whose page went away while its window stayed:
+ * a reload, a navigation, or a renderer process that ended. Whatever the request was doing may be
+ * half done.
+ */
+export const IPC_PAGE_GONE = "IPC_PAGE_GONE";
+
 export class IPCHost extends IPC<IPCEvents, IPCType.Host> {
     public static readonly DefaultInvokeTimeoutMs = 10_000;
 
@@ -58,6 +65,8 @@ export class IPCHost extends IPC<IPCEvents, IPCType.Host> {
             const cleanup = () => {
                 ipcMain.removeListener(replyChannel, handler);
                 webContents.removeListener("destroyed", onDestroyed);
+                webContents.removeListener("did-navigate", onNavigated);
+                webContents.removeListener("render-process-gone", onProcessGone);
                 clearTimeout(timer);
             };
             const handler = (_event: Electron.IpcMainEvent, response: Exclude<IPCEvents[K]["response"], never>) => {
@@ -68,12 +77,26 @@ export class IPCHost extends IPC<IPCEvents, IPCType.Host> {
                 cleanup();
                 reject(new Error(`Window closed before replying to IPC request: ${channel}`));
             };
+            // The page that was asked is gone while the window stays: reloaded or navigated (the
+            // main frame committed another document), or its renderer process ended. Nothing will
+            // reply - the next page never saw the request - so fail now rather than at the timeout,
+            // which for an agent's build is twenty minutes. `did-navigate` rather than
+            // `did-start-navigation`: a navigation the guard cancels never commits, and the page
+            // that started it is still there to answer.
+            const pageGone = (what: string) => {
+                cleanup();
+                reject(Object.assign(new Error(`The page ${what} before replying to IPC request: ${channel}`), { code: IPC_PAGE_GONE }));
+            };
+            const onNavigated = () => pageGone("reloaded or navigated away");
+            const onProcessGone = () => pageGone("lost its renderer process");
             const timer = setTimeout(() => {
                 cleanup();
                 reject(new Error(`IPC invoke timed out after ${timeoutMs}ms: ${channel}`));
             }, timeoutMs);
             ipcMain.once(replyChannel, handler);
             webContents.once("destroyed", onDestroyed);
+            webContents.once("did-navigate", onNavigated);
+            webContents.once("render-process-gone", onProcessGone);
         });
     }
 

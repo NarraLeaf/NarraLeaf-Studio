@@ -49,7 +49,11 @@ export type AgentErrorCode =
     | "check_failed"
     /** A surface, scene, element, asset or character the call names does not exist. */
     | "not_found"
-    /** A file path outside the directories the author allowed agents to read. */
+    /**
+     * A file path outside the directories the author allowed agents to read, or a folder agents are
+     * never handed at all - to read from or to write into (Studio's own folders, the home folder
+     * itself, a file-system root).
+     */
     | "path_not_allowed"
     /** The project is not trusted, so its code may not run (play-test, build). */
     | "untrusted"
@@ -84,7 +88,20 @@ export type AgentCallRequest = {
     clientName: string | null;
     /** The author's switches as they are at the moment of the call. */
     policy: AgentSessionPolicy;
+    /**
+     * When main stops waiting for the answer, in milliseconds since the epoch (`Date.now()`; both
+     * processes read the same clock). The workspace runs calls one at a time, so a call can wait in
+     * its queue behind a long one; once this has passed main has already told the agent the call
+     * timed out, and the agent may be sending it again. A call not started by then is therefore
+     * never started - see {@link agentCallExpired}.
+     */
+    deadline: number;
 };
+
+/** Whether a call's deadline has passed: main has given up on it, so it must not start now. */
+export function agentCallExpired(request: Pick<AgentCallRequest, "deadline">, now: number): boolean {
+    return typeof request.deadline === "number" && now >= request.deadline;
+}
 
 /**
  * Calls main makes to a workspace that are not tools an agent can name. They travel on the same
@@ -92,6 +109,18 @@ export type AgentCallRequest = {
  * the tool table could ever use.
  */
 export const AGENT_INTERNAL_TOOL_STATE = "__state";
+
+/**
+ * What every internal call's name starts with - and what no tool an agent can name may start with,
+ * Studio's or a plugin's. A workspace tells an internal call from a tool by this alone, so a plugin
+ * tool advertised under such a name would be carried out by the internal handler of that name (a
+ * build, a test) instead of the plugin's, past every check main makes on the real tool.
+ */
+export const AGENT_INTERNAL_TOOL_PREFIX = "__";
+
+export function isAgentInternalToolName(name: string): boolean {
+    return name.startsWith(AGENT_INTERNAL_TOOL_PREFIX);
+}
 
 /**
  * Run one registered project test in a workspace that already has the project open.
@@ -138,6 +167,14 @@ export type AgentSessionPolicy = {
      * refuses their calls; the workspace refuses them again, so the list holds on both hops.
      */
     blockedPluginIds?: string[];
+    /**
+     * Whether the project of the window this call went to is trusted. Set by main on every call it
+     * sends a workspace; an untrusted project may be read but not changed, and is given no folders
+     * outside it. Main refuses those calls before they are sent; the workspace refuses them again
+     * when this is `false`, so the rule holds on both hops. Absent in a policy built before it
+     * existed, which the workspace reads as nothing to add.
+     */
+    projectTrusted?: boolean;
 };
 
 /**
@@ -145,7 +182,7 @@ export type AgentSessionPolicy = {
  * and the allowed folders. Main asks the author in Studio's agent access window (or, under full access, grants
  * at once) and answers which folders the window may now read.
  *
- * Only `callId` and the paths cross: the client's name, the tool and how long the call may still
+ * Only `callId` and the paths cross: the window, the client's name and how long the call may still
  * take are read from main's own record of the call it sent, so a plugin in the workspace cannot
  * put words in the author's dialog or ask outside a real agent call.
  */
@@ -166,6 +203,8 @@ export type AgentFolderRefusalReason =
     | "studio"
     /** More folders than one dialog asks about; ask again for these. */
     | "tooMany"
+    /** The project the call is for is not trusted, and an untrusted project is given no folders. */
+    | "untrusted"
     /** Not an absolute path. */
     | "relative";
 

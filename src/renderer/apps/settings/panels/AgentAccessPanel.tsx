@@ -17,16 +17,17 @@ import {
 } from "@shared/agent/settings";
 import { SETTING_CONTROL_WIDTH } from "../components/settingControlWidth";
 
+/** The copy buttons, in the order and with the names the Agent menu's copy submenu uses (`AGENT_MENU_COPY_KINDS`). */
 const CONFIG_KINDS: {
     kind: AgentClientConfigKind;
     labelKey: "settings.agent.copyClaudeCode" | "settings.agent.copyJson" | "settings.agent.copyOpencode" | "settings.agent.copyStdio";
     tipKey?: "settings.agent.copyStdioHint";
 }[] = [
     { kind: "claudeCode", labelKey: "settings.agent.copyClaudeCode" },
-    { kind: "json", labelKey: "settings.agent.copyJson" },
-    { kind: "opencode", labelKey: "settings.agent.copyOpencode" },
     // For clients that only launch local programs: Studio's own executable as a stdio bridge.
     { kind: "stdio", labelKey: "settings.agent.copyStdio", tipKey: "settings.agent.copyStdioHint" },
+    { kind: "opencode", labelKey: "settings.agent.copyOpencode" },
+    { kind: "json", labelKey: "settings.agent.copyJson" },
 ];
 
 /**
@@ -51,6 +52,11 @@ export function AgentAccessPanel() {
     const [confirmRegenerate, setConfirmRegenerate] = useState(false);
     const [copied, setCopied] = useState<AgentClientConfigKind | null>(null);
     const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Each step of regenerating replaces the focused button, so focus is handed on explicitly: the
+    // confirm step's Cancel takes it, and once the step closes the Regenerate button gets it back
+    // (after a regeneration, once it is enabled again).
+    const regenerateButton = useRef<HTMLButtonElement | null>(null);
+    const refocusRegenerate = useRef(false);
 
     const adopt = useCallback((result: Awaited<ReturnType<ReturnType<typeof getInterface>["agent"]["getSettings"]>>) => {
         if (result.success) {
@@ -87,6 +93,18 @@ export function AgentAccessPanel() {
     }, [adopt]);
 
     const update = useCallback((patch: AgentSettingsPatch) => run(() => getInterface().agent.updateSettings(patch)), [run]);
+
+    const closeRegenerateConfirm = useCallback(() => {
+        refocusRegenerate.current = true;
+        setConfirmRegenerate(false);
+    }, []);
+
+    useEffect(() => {
+        if (!confirmRegenerate && !busy && refocusRegenerate.current) {
+            refocusRegenerate.current = false;
+            regenerateButton.current?.focus();
+        }
+    }, [confirmRegenerate, busy]);
 
     const portValue = Number(portDraft);
     const portValid = portDraft.trim() !== "" && isUsableAgentPort(portValue);
@@ -195,7 +213,7 @@ export function AgentAccessPanel() {
             <Row label={t("settings.agent.regenerate")} description={t("settings.agent.regenerateHint")}>
                 {confirmRegenerate ? (
                     <div className="flex items-center gap-2">
-                        <Button size="sm" variant="ghost" onClick={() => setConfirmRegenerate(false)}>
+                        <Button size="sm" variant="ghost" autoFocus onClick={closeRegenerateConfirm}>
                             {t("common.cancel")}
                         </Button>
                         <Button
@@ -203,15 +221,15 @@ export function AgentAccessPanel() {
                             variant="danger"
                             disabled={busy}
                             onClick={() => {
-                                setConfirmRegenerate(false);
+                                closeRegenerateConfirm();
                                 void run(() => getInterface().agent.regenerateToken());
                             }}
                         >
-                            {t("settings.agent.regenerateConfirm")}
+                            {t("settings.agent.regenerateAction")}
                         </Button>
                     </div>
                 ) : (
-                    <Button size="sm" variant="secondary" disabled={busy} onClick={() => setConfirmRegenerate(true)}>
+                    <Button ref={regenerateButton} size="sm" variant="secondary" disabled={busy} onClick={() => setConfirmRegenerate(true)}>
                         {t("settings.agent.regenerateAction")}
                     </Button>
                 )}
@@ -271,8 +289,10 @@ export function AgentAccessPanel() {
             </div>
             {/*
               * Plugins that offer agent tools, each with its own switch. On unless the author turns
-              * one off: the install prompt already said the plugin offers them, and nothing they do
-              * writes unless "Allow agents to make changes" is on as well.
+              * one off: the install prompt already said the plugin offers them. A tool the plugin
+              * declares as changing the project is refused unless "Allow agents to change projects" is
+              * on as well; one it declares as reading is held only to not writing the plugin's own
+              * storage - see `blockedPluginTools` in `@shared/agent/settings`.
               */}
             <div className="rounded-md px-2 py-2">
                 <div className="flex min-w-0 flex-col gap-1">
@@ -288,7 +308,7 @@ export function AgentAccessPanel() {
                             return (
                                 <div key={plugin.pluginId} className="flex h-11 items-center gap-3 rounded-md px-2 hover:bg-fill">
                                     <div className="flex min-w-0 flex-1 flex-col">
-                                        <span className="truncate text-sm text-fg" data-tip={plugin.pluginId}>{name}</span>
+                                        <span className="truncate text-sm text-fg" data-tip={name}>{name}</span>
                                         <span className="truncate text-xs text-fg-subtle">
                                             {t("settings.agent.pluginToolsCount", { tools: plugin.tools, writes: plugin.writeTools })}
                                         </span>

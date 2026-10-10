@@ -1,3 +1,4 @@
+import dns from "dns";
 import fsSync from "fs";
 import fs from "fs/promises";
 import os from "os";
@@ -58,6 +59,7 @@ import {
     type BlueprintOpenExternalResult,
 } from "@shared/types/blueprint/externalLink";
 import { executeBlueprintNetworkFetch } from "@shared/utils/blueprintNetworkFetch";
+import { refuseOwnLoopbackService, STUDIO_DEFAULT_LOOPBACK_PORTS } from "@shared/utils/ownLoopbackGuard";
 import type { BlueprintPointerMoveRequest } from "@shared/types/blueprint/pointer";
 import { executeBlueprintPointerMove } from "@shared/utils/blueprintPointerMove";
 import { packNetworkAllowlist, type NetworkAllowlist } from "@shared/types/networkAllowlist";
@@ -2180,12 +2182,20 @@ function registerRuntimeIpc(): void {
     //
     // `redirects: "check"` because this process can: it follows the chain itself and decides every
     // hop, so the allowlist governs where the bytes came from rather than only what was typed.
+    //
+    // `refuseDestination` keeps the game off the loopback ports a NarraLeaf Studio on the same
+    // machine serves by default (the agent MCP endpoint above all): this request carries no origin,
+    // which is the one thing that endpoint turns web pages away by. A game cannot ask a Studio where
+    // it moved them, so the defaults are what is refused; every other loopback port - a game's own
+    // local companion service - is unaffected.
     ipcMain.handle("runtime:network:fetch", async (_event, request: BlueprintNetworkFetchRequest) => {
         const pack = await readPack();
         return executeBlueprintNetworkFetch(request, {
             allowHttp: pack.network?.allowHttp === true,
             allowlist: packNetworkAllowlist(pack),
             redirects: "check",
+            refuseDestination: url => refuseOwnLoopbackService(url, STUDIO_DEFAULT_LOOPBACK_PORTS, async hostname =>
+                (await dns.promises.lookup(hostname, { all: true, verbatim: true })).map(answer => answer.address)),
         });
     });
 

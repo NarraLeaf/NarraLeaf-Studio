@@ -752,6 +752,7 @@ export const assets = {
         copy: "Copy selected assets",
         cut: "Cut selected assets",
         paste: "Paste assets",
+        delete: "Delete selected assets or groups",
         rename: "Rename selected asset or group",
     },
     previewEditor: {

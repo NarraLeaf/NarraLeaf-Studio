@@ -660,6 +660,7 @@ export const assets = {
         copy: "選んだアセットをコピー",
         cut: "選んだアセットを切り取り",
         paste: "アセットを貼り付け",
+        delete: "選んだアセットまたはグループを削除",
         rename: "選んだアセットまたはグループの名前を変更",
     },
     previewEditor: {

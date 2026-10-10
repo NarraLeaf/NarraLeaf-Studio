@@ -2,6 +2,7 @@ import http from "http";
 import type { AddressInfo } from "net";
 import { WindowAppType } from "@shared/types/window";
 import { readWindowTag } from "@shared/utils/windowTag";
+import { STUDIO_DEBUG_DEFAULT_PORT } from "@shared/utils/ownLoopbackGuard";
 import type { BaseApp } from "../../baseApp";
 import type { AppWindow } from "../window/appWindow";
 import {
@@ -14,7 +15,7 @@ import {
  * Default port for the Studio debug server. Sits next to the CDP port (9222).
  * Override with the `NLS_DEBUG_PORT` env var.
  */
-export const DEFAULT_DEBUG_PORT = 9223;
+export const DEFAULT_DEBUG_PORT = STUDIO_DEBUG_DEFAULT_PORT;
 
 const DEBUG_HOST = "127.0.0.1";
 const CONSOLE_LEVELS: readonly DevtoolsConsoleLevel[] = ["debug", "info", "warning", "error"];
@@ -88,6 +89,11 @@ export class StudioDebugServer {
             this.app.logger.info(`[Debug] Debug server listening on http://${DEBUG_HOST}:${boundPort}`);
         });
         this.server = server;
+    }
+
+    /** The port this server is listening on, or null while it is not. */
+    public get listeningPort(): number | null {
+        return this.server ? this.boundPort : null;
     }
 
     public stop(): void {
