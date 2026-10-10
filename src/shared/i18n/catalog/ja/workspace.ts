@@ -1620,6 +1620,9 @@ export const workspace = {
                     zoomIn: "タイムラインを拡大",
                     zoomOut: "タイムラインを縮小",
                     zoomFit: "モーション全体を表示",
+                    libraryRename: "モーションの名前を変更",
+                    libraryDuplicate: "選択したモーションを複製",
+                    libraryDelete: "選択したモーションを削除",
                 },
             },
             // マウス操作。早見表とヘルプでラベルの横にキーの形で表示する。動詞と対象を組み立てず一文で書く。
@@ -1657,6 +1660,7 @@ export const workspace = {
                 clickKeyframe: "キーフレームをクリック",
                 dragAcrossTracks: "トラックの上をドラッグ",
                 clickAsset: "アセットをクリック",
+                clickMotion: "モーションをクリック",
                 doubleClick: "ダブルクリック",
                 dragToEditorArea: "エディター領域へドラッグ",
                 dragOntoGroup: "グループへドラッグ",
@@ -1713,6 +1717,9 @@ export const workspace = {
                     panPreview: "プレビューを動かす",
                     zoom: "プレビューかタイムラインをズーム",
                     scrollTimeline: "タイムラインを横にスクロール",
+                    openMotion: "モーションを開く",
+                    selectMotionRange: "連続したモーションを選択",
+                    selectAllMotions: "すべてのモーションを選択",
                 },
                 assets: {
                     selectAssetRange: "連続したアセットを選択",

@@ -1875,6 +1875,9 @@ export const workspace = {
                     zoomIn: "Zoom Timeline In",
                     zoomOut: "Zoom Timeline Out",
                     zoomFit: "Fit Motion in Timeline",
+                    libraryRename: "Rename Motion",
+                    libraryDuplicate: "Duplicate Selected Motions",
+                    libraryDelete: "Delete Selected Motions",
                 },
             },
             // Mouse gestures, drawn as chips beside a label in the cheat sheet and in help topics. Whole
@@ -1913,6 +1916,7 @@ export const workspace = {
                 clickKeyframe: "Click a keyframe",
                 dragAcrossTracks: "Drag across the tracks",
                 clickAsset: "Click an asset",
+                clickMotion: "Click a motion",
                 doubleClick: "Double-click",
                 dragToEditorArea: "Drag into the editor area",
                 dragOntoGroup: "Drag onto a group",
@@ -1970,6 +1974,9 @@ export const workspace = {
                     panPreview: "Pan the Preview",
                     zoom: "Zoom the Preview or Timeline",
                     scrollTimeline: "Scroll the Timeline Sideways",
+                    openMotion: "Open a Motion",
+                    selectMotionRange: "Select a Range of Motions",
+                    selectAllMotions: "Select All Motions",
                 },
                 assets: {
                     selectAssetRange: "Select a Range of Assets",

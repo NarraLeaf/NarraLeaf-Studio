@@ -24,6 +24,8 @@ const UI_INTERACTION = `${R}/lib/ui-editor/interaction`;
 const BLUEPRINT_FLOW = `${WORKSPACE}/modules/blueprint-lite/flow`;
 const MOTION = `${WORKSPACE}/modules/story-motion/StoryMotionEditorTab.tsx`;
 const MOTION_TIMELINE = `${WORKSPACE}/modules/story-motion/StoryMotionTimelineView.tsx`;
+const MOTION_LIBRARY = `${WORKSPACE}/modules/story-motion/StoryMotionPanel.tsx`;
+const MOTION_TILE = `${WORKSPACE}/modules/story-motion/StoryMotionLibraryTile.tsx`;
 const EASING = `${WORKSPACE}/components/ui/EasingCurveEditor.tsx`;
 const ASSETS = `${WORKSPACE}/modules/assets`;
 
@@ -205,6 +207,15 @@ const ANCHORS: Record<string, Anchor[]> = {
     ],
     "story-motion.box-select": [
         { file: MOTION_TIMELINE, present: ["onPointerDown={startLanePointer}", "setMarquee(box);"] },
+    ],
+    "story-motion.library.open": [
+        { file: MOTION_LIBRARY, present: ["if (event.key === \"Enter\" && single) {"] },
+        { file: MOTION_TILE, present: ["onDoubleClick={() => props.onOpen(entry.id)}"] },
+    ],
+    "story-motion.library.toggle-select": [{ file: MOTION_LIBRARY, present: ["if (event.ctrlKey || event.metaKey) {"] }],
+    "story-motion.library.range-select": [{ file: MOTION_LIBRARY, present: ["if (event.shiftKey && rangeAnchorRef.current"] }],
+    "story-motion.library.select-all": [
+        { file: MOTION_LIBRARY, present: ["} else if (mod && event.key.toLowerCase() === \"a\") {", "select(visibleIds);"] },
     ],
     "story-motion.select-track": [
         { file: MOTION_TIMELINE, present: ["onClick={event => props.onSelect(track, event.shiftKey || event.ctrlKey || event.metaKey)}"] },
