@@ -22,7 +22,7 @@ NarraLeaf-Skills/
 ## 1. Switch on agent access in Studio
 
 1. Open NarraLeaf Studio.
-2. **Settings -> Agent access** (also in the menu bar's *Agent* menu, *智能体* in Chinese Studio): switch on agent access.
+2. **Settings -> Agent access** (also in the menu bar's *Agent* menu): switch on agent access.
 3. Switch on **Allow agents to change projects** when you want the agent to edit (it can read without).
 4. Optional: under **Folders agents may import from**, add the folder that holds your art and audio.
    You can skip this - when the agent needs a folder outside the project, Studio asks you in a dialog

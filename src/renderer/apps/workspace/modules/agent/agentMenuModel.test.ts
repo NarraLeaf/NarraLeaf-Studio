@@ -6,6 +6,7 @@ import {
     AGENT_MENU_ACTIONS,
     AGENT_MENU_COPY_KINDS,
     AGENT_MENU_GROUP_ID,
+    AGENT_MENU_MNEMONIC,
     agentMenuStateKind,
     agentMenuStatusLine,
     buildAgentMenuItems,
@@ -54,8 +55,14 @@ describe("the Agent menu's status line", () => {
         expect(agentMenuStatusLine(zh, "Claude Code", "working")).toBe("Agent：Claude Code · 工作中");
         expect(agentMenuStatusLine(zh, "opencode", "idle")).toBe("Agent：opencode · 空闲");
         expect(agentMenuStatusLine(zh, "Claude Code", "paused")).toBe("Agent：Claude Code · 已暂停");
-        expect(agentMenuStatusLine(zh, null, "off")).toBe("Agent：未连接 · 未开启");
         expect(agentMenuStatusLine(en, null, "idle")).toBe("Agent: Not connected · Idle");
+    });
+
+    it("names no agent while access is off, not even the last one that called", () => {
+        expect(agentMenuStatusLine(zh, "Claude Code (drive)", "off")).toBe("Agent 接入：未开启");
+        expect(agentMenuStatusLine(zh, null, "off")).toBe("Agent 接入：未开启");
+        expect(agentMenuStatusLine(en, "Claude Code", "off")).toBe("Agent access: Off");
+        expect(agentMenuStatusLine(createTranslator("ja").t, "Claude Code", "off")).toBe("エージェント連携：無効");
     });
 
     it("puts access being off before everything, then pause, then work", () => {
@@ -66,6 +73,15 @@ describe("the Agent menu's status line", () => {
         expect(agentMenuStateKind(on, { paused: false, busy: false })).toBe("idle");
         // Before main has answered, nothing is claimed about access.
         expect(agentMenuStateKind(null, { paused: false, busy: false })).toBe("idle");
+    });
+});
+
+describe("the Agent menu's access key", () => {
+    it("is a letter no other Studio menu on the bar claims, and one its name carries in English and Chinese", () => {
+        // File (F) and Help (H) in `modules/actions`, Edit (E) in `WorkspaceHistoryMenu`.
+        expect(["F", "E", "H"]).not.toContain(AGENT_MENU_MNEMONIC);
+        expect(en("workspace.agent.appMenu.title").toUpperCase()).toContain(AGENT_MENU_MNEMONIC);
+        expect(zh("workspace.agent.appMenu.title").toUpperCase()).toContain(AGENT_MENU_MNEMONIC);
     });
 });
 
@@ -108,6 +124,18 @@ describe("the Agent menu's rows", () => {
         expect(byId.get(AGENT_MENU_ACTIONS.pause)?.label).toBe("暂停 Agent");
         expect(buildAgentMenuItems(input({ paused: true })).filter(isActionMenuAction).find(item => item.id === AGENT_MENU_ACTIONS.pause)?.label)
             .toBe("恢复 Agent");
+    });
+
+    it("names the follow row as the Settings row it switches, in every language, and switches it", () => {
+        // One setting with two ways in: the menu row and the Settings row must read as the same switch.
+        for (const t of [en, zh, createTranslator("ja").t]) {
+            expect(t("workspace.agent.menu.follow")).toBe(t("settings.items.agentFollow.label"));
+        }
+        const model = input();
+        const row = buildAgentMenuItems(model).filter(isActionMenuAction).find(item => item.id === AGENT_MENU_ACTIONS.follow);
+        expect(row).toMatchObject({ checked: true, label: "跟随 Agent 的修改" });
+        row?.onClick(undefined as never);
+        expect(model.run.toggleFollow).toHaveBeenCalled();
     });
 
     it("holds the access switches until main has answered", () => {
@@ -159,6 +187,7 @@ describe("the Agent menu's rows", () => {
             "---",
             AGENT_MENU_ACTIONS.settings,
         ]);
+        expect(items.filter(isActionMenuAction).find(item => item.id === AGENT_MENU_ACTIONS.status)).toMatchObject({ label: "Agent 接入：未开启", disabled: true });
         const enable = items.filter(isActionMenuAction).find(item => item.id === AGENT_MENU_ACTIONS.enable);
         expect(enable).toMatchObject({ checked: false, label: "启用 Agent 接入" });
         expect(enable?.disabled).toBeFalsy();

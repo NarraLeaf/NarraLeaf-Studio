@@ -35,6 +35,7 @@ import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformPr
 import { getStoryCameraLookPreset } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import { getQuickParams, quickParamText, type QuickParam } from "./storyQuickParamsModel";
 import { storyVerbLabelKey } from "./storyVerbVocabulary";
+import { storyLayerDepthLabel, storyLayerLabel } from "./storyLayerLabel";
 // Two pure tables that happen to live under the story editor: the command taxonomy (the colour unit)
 // and the rich-run model (the one description of what an inline chip reads as). Both are data /
 // pure functions — nothing in this module renders, mounts or touches a workspace service.
@@ -912,8 +913,13 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
         if (payload.action === "layer") {
             const layerName = payload.operation === "create"
                 ? (payload.objectName || translate("story.describe.unnamed"))
-                : (resolveStoryLayerRef(scene, layerActionTargetRef(payload.target, payload.objectName)).name || translate("story.describe.unnamed"));
-            return translate("story.describe.layer", { operation: verbWord(payload, payload.operation), name: layerName });
+                : storyLayerLabel(resolveStoryLayerRef(scene, layerActionTargetRef(payload.target, payload.objectName)));
+            const described = translate("story.describe.layer", { operation: verbWord(payload, payload.operation), name: layerName });
+            // The rows that state a depth say it; a layer that moves with the camera, as every layer
+            // used to, reads as it always has.
+            return (payload.operation === "create" || payload.operation === "setDepth") && payload.depth
+                ? `${described} · ${translate("story.layerPanel.depth")} ${storyLayerDepthLabel(payload.depth)}`
+                : described;
         }
         if (payload.action === "video") return translate("story.describe.video", { operation: verbWord(payload, payload.operation), name: actionableSubjectWord(scene, payload.target, "video", payload.objectName) || translate("story.describe.unnamed") });
         if (payload.action === "vfx") return translate("story.describe.vfx", { operation: verbWord(payload, payload.operation), name: actionableSubjectWord(scene, payload.target, "vfx", payload.objectName) || translate("story.describe.unnamed") });

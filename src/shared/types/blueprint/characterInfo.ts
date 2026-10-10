@@ -63,35 +63,54 @@ export function toBlueprintCharacterColor(value: unknown): BlueprintRGBAColor | 
 }
 
 /**
- * What a non-nullable `RGBAColor` pin yields for a character with no colour.
- *
- * Opaque white, which is `normalizeBlueprintRGBAColor`'s own default and therefore what every other
- * colour pin in the system falls back to. A nullable colour would need a new pin type; the round
- * that added these nodes deliberately did not add one.
+ * The palette entry a character with no colour of their own is painted in. It is the colour a
+ * nametag is authored in when nobody has said otherwise - the skeleton's, and every theme drawn from
+ * the seeded palette - so anything that tints itself from a character keeps that look for them
+ * instead of turning white.
  */
-export function blueprintCharacterColorOrDefault(color: BlueprintRGBAColor | null | undefined): BlueprintRGBAColor {
-    return color ?? normalizeBlueprintRGBAColor(undefined);
+const CHARACTER_FALLBACK_COLOR = "nlbrand:primary";
+
+/**
+ * A character's colour as a blueprint paints it: their own, else the palette's primary. Null only
+ * when the palette has no primary.
+ *
+ * The one place that decides the fallback. Both colour readers below go through it, so
+ * `Get Character` and `Get Speaker Color` cannot paint the same colourless character two different
+ * ways. It decides for the palette rather than white because the value exists to paint a name, and a
+ * name painted white because its character was made without a colour reads as a broken theme.
+ * Resolved on every read, so a palette edited in Dev Mode is followed from the next read.
+ */
+function paintedCharacterColor(color: BlueprintRGBAColor | null | undefined): BlueprintRGBAColor | null {
+    return color ?? toBlueprintCharacterColor(CHARACTER_FALLBACK_COLOR);
 }
 
 /**
- * The palette entry a speaking character with no colour of their own is painted in. It is the colour
- * a nametag is authored in when nobody has said otherwise - the skeleton's, and every theme drawn
- * from the seeded palette - so a nametag that tints itself from the speaker keeps that look for
- * them instead of turning white.
+ * What `Get Character`'s non-nullable `Color` pin yields.
+ *
+ * A character with no colour of their own reads the palette's primary, as `Get Speaker Color` paints
+ * them. A character that is not there - nothing picked, or the picked one deleted - reads opaque
+ * white, `normalizeBlueprintRGBAColor`'s own default: `Found` is what tells that case apart, and
+ * painting a dangling reference in the theme's accent would only hide it. White too when the palette
+ * has no primary. A nullable colour would need a new pin type; the round that added these nodes
+ * deliberately did not add one.
  */
-const SPEAKER_FALLBACK_COLOR = "nlbrand:primary";
+export function blueprintCharacterColorOrDefault(character: BlueprintCharacterInfo | null | undefined): BlueprintRGBAColor {
+    const white = normalizeBlueprintRGBAColor(undefined);
+    if (!character) {
+        return white;
+    }
+    return paintedCharacterColor(character.color) ?? white;
+}
 
 /**
  * The colour a dialogue line's speaker is painted in, as `Get Speaker Color` reads it: the
- * character's own, else the palette's primary, and null on a narration line.
+ * character's own, else the palette's primary (see {@link paintedCharacterColor}), and null on a
+ * narration line.
  *
- * This is the one caller that decides the colour pin's fallback (see
- * {@link blueprintCharacterColorOrDefault}), and it decides for the palette rather than white: the
- * value exists to paint a name, and a name painted white because its character was made without a
- * colour reads as a broken theme. A named line whose speaker is not in the character table is
- * painted the same way. Narration stays null - there is no name to paint, and whatever else tints
- * itself from the speaker can still tell narration apart. Resolved per line, so a palette edited in
- * Dev Mode is followed from the next line; a palette with no primary answers null, as narration does.
+ * A named line whose speaker is not in the character table is painted the same way. Narration stays
+ * null - there is no name to paint, and whatever else tints itself from the speaker can still tell
+ * narration apart. Resolved per line, so a palette edited in Dev Mode is followed from the next line;
+ * a palette with no primary answers null, as narration does.
  */
 export function blueprintSpeakerColor(
     speaker: BlueprintCharacterInfo | null,
@@ -100,7 +119,7 @@ export function blueprintSpeakerColor(
     if (isNarrator) {
         return null;
     }
-    return speaker?.color ?? toBlueprintCharacterColor(SPEAKER_FALLBACK_COLOR);
+    return paintedCharacterColor(speaker?.color);
 }
 
 /** Defensive read of one mirrored table entry. Returns null for anything that is not a usable record. */

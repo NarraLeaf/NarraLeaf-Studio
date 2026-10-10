@@ -460,6 +460,33 @@ export const story = {
         notOnStageTitle: "この名前のレイヤーはこのシーンの前の行で宣言されていない。すでにあるレイヤーを選ぶ",
         hint: "レイヤー",
         createNew: "レイヤーを新規作成",
+        backgroundName: "背景のレイヤー",
+        displayableHint: "キャラクターがいるレイヤー",
+        backgroundHint: "ほかのすべてのレイヤーの奥",
+        manage: "レイヤーを管理…",
+    },
+    layerDepth: {
+        near: "近景",
+        follow: "カメラと同じ",
+        mid: "中景",
+        far: "遠景",
+        farthest: "最遠",
+    },
+    layerPanel: {
+        sceneBackground: "シーンの背景",
+        title: "レイヤー",
+        resetNote: "このシーンを離れると元に戻る",
+        frontToBack: "手前から奥へ",
+        depth: "奥行き",
+        contents: "レイヤー上の要素",
+        empty: "なし",
+        camera: "カメラ",
+        fixed: "固定",
+        builtin: "組み込み",
+        conflict: "「{front}」は「{back}」より手前に描かれるが、より奥にある",
+        open: "レイヤー",
+        unnamed: "名前のないレイヤー",
+        depthHint: "レイヤーを別のレーンへドラッグすると奥行きが変わる",
     },
     appearance: {
         noPoses: "このキャラクターにはまだポーズがない",
@@ -651,6 +678,7 @@ export const story = {
         opacity: "不透明度",
         size: "文字サイズ",
         z: "重ね順",
+        depth: "奥行き",
         // 変形プロパティの語彙（`commands/transformVocabulary.ts`）。バッグの 1 チャンネルに 1 キー。
         zoom: "ズーム",
         scale: "スケール",
@@ -803,6 +831,11 @@ export const story = {
         blink: "まばたき",
         slowBlink: "ゆっくりまばたき",
         vignettePulse: "ビネットの脈動",
+        near: "近景",
+        follow: "カメラと同じ",
+        mid: "中景",
+        far: "遠景",
+        farthest: "最遠",
     },
 
     /**
@@ -1200,6 +1233,9 @@ export const story = {
             noTransform: "このカメラの行には変形がない",
             unknownLens: "カメラのレンズ「{preset}」は既知の効果ではない",
             unknownLook: "カメラのルック「{preset}」は既知のルックではない",
+        },
+        layer: {
+            depthBackgroundOnly: "この行で決められるのは背景レイヤーの奥行きだけ。カスタムレイヤーの奥行きはそれを作る行で決める",
         },
         transform: {
             loopNoReveal: "ループする変形は現れ方の効果を持てない。効果は無視した",
