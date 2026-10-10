@@ -18,8 +18,9 @@ const PANEL_ATTRIBUTE = "data-story-layer-panel";
 
 /** The side view's own coordinates: the camera at the left edge, the lanes running away from it. */
 const SIDE_WIDTH = 456;
-const SIDE_HEIGHT = 112;
-const SIDE_MID = 56;
+const SIDE_HEIGHT = 128;
+/** Low enough that a lane's names fit above its tallest plane. */
+const SIDE_MID = 72;
 const LANE_X: Record<StoryLayerDepth, number> = { near: 92, follow: 176, mid: 262, far: 346, farthest: 426 };
 
 /** A plane drawn a little taller the farther it is, which is how the side view reads as depth. */
@@ -27,10 +28,10 @@ function planeHalfHeight(x: number): number {
     return 18 + (x / SIDE_WIDTH) * 26;
 }
 
-/** A name short enough to sit beside its plane without running into the next lane. */
-function sideViewName(name: string): string {
-    const characters = Array.from(name);
-    return characters.length > 6 ? `${characters.slice(0, 5).join("")}…` : name;
+/** A lane's names, short enough to sit over the lane without running into the next one. */
+function laneCaption(names: readonly string[]): string {
+    const characters = Array.from(names.join("、"));
+    return characters.length > 8 ? `${characters.slice(0, 7).join("")}…` : characters.join("");
 }
 
 function nearestLane(x: number): StoryLayerDepth {
@@ -89,7 +90,10 @@ export function StoryLayerPanel(props: {
         return () => doc.removeEventListener("mousedown", onDown, true);
     }, [doc, props]);
 
-    const model = useMemo(() => buildStoryLayerPanel(props.scene, props.characterName), [props.scene, props.characterName]);
+    // Read afresh on every render rather than memoised on the scene: the story service edits a scene in
+    // place, so the object an edit leaves behind is the one it found, and a memo keyed on it would keep
+    // showing the layers as they were before the author changed them. The walk is one pass over rows.
+    const model = buildStoryLayerPanel(props.scene, props.characterName);
     const layerLabel = (entry: StoryLayerPanelEntry) => entry.kind === "background"
         ? t("story.layerField.backgroundName")
         : entry.kind === "displayable"
@@ -134,14 +138,19 @@ export function StoryLayerPanel(props: {
     };
 
     // Planes sharing a lane sit side by side, nearest-drawn on the left, so none hides another.
-    const planes = useMemo(() => {
-        const slots = new Map<StoryLayerDepth, number>();
-        return model.entries.map(entry => {
-            const slot = slots.get(entry.depth) ?? 0;
-            slots.set(entry.depth, slot + 1);
-            return { entry, slot };
-        });
-    }, [model.entries]);
+    // Planes sharing a lane stand side by side, nearest-drawn first, so none hides another; the lane's
+    // names go once above it. The plane being dragged leaves its lane and carries its own name.
+    const slots = new Map<StoryLayerDepth, number>();
+    const lanes = new Map<StoryLayerDepth, string[]>();
+    const planes = model.entries.map(entry => {
+        if (drag?.key === entry.key) {
+            return { entry, slot: 0 };
+        }
+        const slot = slots.get(entry.depth) ?? 0;
+        slots.set(entry.depth, slot + 1);
+        lanes.set(entry.depth, [...(lanes.get(entry.depth) ?? []), layerLabel(entry)]);
+        return { entry, slot };
+    });
 
     const view = doc.defaultView ?? window;
     const left = Math.max(VIEWPORT_MARGIN, Math.min(props.anchor.right - PANEL_WIDTH, view.innerWidth - PANEL_WIDTH - VIEWPORT_MARGIN));
@@ -195,6 +204,19 @@ export function StoryLayerPanel(props: {
                                 );
                             })}
                         </g>
+                        {[...lanes].map(([depth, names]) => (
+                            <text
+                                key={`caption-${depth}`}
+                                x={LANE_X[depth] + (names.length - 1) * 6}
+                                y={SIDE_MID - planeHalfHeight(LANE_X[depth]) - 7}
+                                textAnchor="middle"
+                                fontSize={11}
+                                className="text-fg"
+                                fill="currentColor"
+                            >
+                                {laneCaption(names)}
+                            </text>
+                        ))}
                         {planes.map(({ entry, slot }) => {
                             const dragging = drag?.key === entry.key;
                             const x = dragging ? drag.x : LANE_X[entry.depth] + slot * 12;
@@ -210,15 +232,12 @@ export function StoryLayerPanel(props: {
                                     <rect x={x - 3} y={SIDE_MID - half} width={6} height={half * 2} rx={2} fill="currentColor" />
                                     {/* A wider, invisible hit area: a 6-unit bar is a hard thing to catch. */}
                                     <rect x={x - 10} y={SIDE_MID - half - 4} width={20} height={half * 2 + 8} fill="transparent" />
-                                    <text
-                                        x={x + 7}
-                                        y={SIDE_MID - half + 9 + slot * 13}
-                                        fontSize={11}
-                                        className={dragging ? undefined : "text-fg"}
-                                        fill="currentColor"
-                                    >
-                                        {sideViewName(layerLabel(entry))}
-                                    </text>
+                                    <title>{layerLabel(entry)}</title>
+                                    {dragging ? (
+                                        <text x={x} y={SIDE_MID - half - 7} textAnchor="middle" fontSize={11} fill="currentColor">
+                                            {laneCaption([layerLabel(entry)])}
+                                        </text>
+                                    ) : null}
                                 </g>
                             );
                         })}

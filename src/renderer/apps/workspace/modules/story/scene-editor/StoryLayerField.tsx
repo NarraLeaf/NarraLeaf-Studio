@@ -62,7 +62,8 @@ export function StoryLayerField(props: {
     const scene = props.document.scenes[props.sceneId];
     const resolved = resolveStoryLayerRef(scene, props.value);
     // Each layer's depth beside its name, so picking a layer is also seeing how it moves with the camera.
-    const depths = useMemo(() => sceneLayerDepths(scene), [scene]);
+    // Not memoised on the scene: it is edited in place, so the same object comes back after a change.
+    const depths = sceneLayerDepths(scene);
     const depthHint = (depth: Parameters<typeof storyLayerDepthLabel>[0]) => `${t("story.layerPanel.depth")} ${storyLayerDepthLabel(depth)}`;
     const selectedCustomId = resolved.kind === "custom" ? resolved.sourceBlockId : undefined;
     const selectedDefault = resolved.kind === "default" ? resolved.layer : undefined;
