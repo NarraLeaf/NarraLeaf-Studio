@@ -86,7 +86,7 @@ function PreviewToolbar({
         <div className="flex items-center justify-between px-4 py-2 border-b border-edge bg-surface-raised">
             <div className="flex items-center gap-4">
                 <span className="text-sm text-fg-muted">
-                    {size.width} x {size.height}
+                    {size.width} × {size.height}
                 </span>
                 <span className="text-sm text-fg-muted">
                     {imageData.metadata.format.toUpperCase()}
