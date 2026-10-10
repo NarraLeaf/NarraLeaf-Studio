@@ -92,7 +92,7 @@ describe("buildAgentClientConfig", () => {
 
     it("gives Claude Code a command line", () => {
         expect(buildAgentClientConfig("claudeCode", url, token)).toBe(
-            `claude mcp add --transport http narraleaf ${url} --header "Authorization: Bearer abc"`,
+            `claude mcp add --scope user --transport http narraleaf ${url} --header "Authorization: Bearer abc"`,
         );
     });
 

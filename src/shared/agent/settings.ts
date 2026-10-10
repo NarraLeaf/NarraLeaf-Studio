@@ -123,7 +123,9 @@ export function buildAgentClientConfig(kind: AgentClientConfigKind, url: string,
             }
             return JSON.stringify({ mcpServers: { [AGENT_CLIENT_SERVER_KEY]: { command: stdio.command, args: stdio.args } } }, null, 2);
         case "claudeCode":
-            return `claude mcp add --transport http ${AGENT_CLIENT_SERVER_KEY} ${url} --header "Authorization: Bearer ${token}"`;
+            // `--scope user`: an author asks for a game from whatever folder their terminal is in, and
+            // without it the server is registered for the one folder the command happened to run in.
+            return `claude mcp add --scope user --transport http ${AGENT_CLIENT_SERVER_KEY} ${url} --header "Authorization: Bearer ${token}"`;
         case "json":
             return JSON.stringify({ mcpServers: { [AGENT_CLIENT_SERVER_KEY]: { type: "http", url, headers } } }, null, 2);
         case "opencode":

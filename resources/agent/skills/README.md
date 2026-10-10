@@ -45,8 +45,21 @@ hold the same settings.
 claude mcp add --scope user --transport http narraleaf http://127.0.0.1:<PORT>/mcp --header "Authorization: Bearer <TOKEN>"
 ```
 
-Or put `mcp-configs/claude-code.mcp.json` into your working folder as `.mcp.json`. Check with
-`claude mcp list`, or `/mcp` inside Claude Code.
+`--scope user` makes the tools available in every folder, so you can ask for a game from wherever
+your terminal happens to be. (Without it, or with `mcp-configs/claude-code.mcp.json` saved as
+`.mcp.json` in a folder, they exist in that one folder only.) Check with `claude mcp list`, or `/mcp`
+inside Claude Code.
+
+Making a game takes a hundred or more tool calls, and Claude Code asks before each one by default.
+Answer the first prompt with *Yes, and don't ask again* for the narraleaf tools, or allow them all
+up front in `~/.claude/settings.json`:
+
+```json
+{ "permissions": { "allow": ["mcp__narraleaf"] } }
+```
+
+You can still pause the agent from Studio at any moment, and Studio's own switch decides whether it
+may change anything at all.
 
 ### Claude Desktop
 
