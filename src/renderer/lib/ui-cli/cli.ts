@@ -31,7 +31,7 @@ import {
 } from "../blueprint-cli/project";
 import { SCRIPTS_DIR, SCRIPTS_GENERATED_DIR, SCRIPTS_MODULES_DIR } from "@shared/project/scriptsDirectory";
 import { WIDGET_STAGE_SLOTS, WIDGET_SURFACE_KINDS } from "./catalog";
-import { emitCommandResult } from "../agent-core/commandResult";
+import { emitCommandResult, emitPartialOutput } from "../agent-core/commandResult";
 import {
     DEFAULT_USAGE_LIMIT,
     uiApplyCommand,
@@ -170,6 +170,8 @@ export function runCli(argv: readonly string[], io: CliIo): number {
         loadPlugins(args, io);
         return spec.run(args, io);
     } catch (error) {
+        // What the command had said before it was stopped comes first, as when it printed as it went.
+        emitPartialOutput(error, io);
         if (
             error instanceof ProjectIoError
             || error instanceof BlueprintProjectIoError
@@ -357,14 +359,16 @@ function commandApply(args: Args, io: CliIo): number {
                     throw error;
                 }
             },
+            // Before the summary, so it never says "Written." for a file that was not.
+            commit: () => {
+                writeUiDocument(documentFile);
+                return null;
+            },
             writtenNote:
                 "Close the project in Studio before doing this: nothing reloads the file on its own, and a running "
                 + "Studio writes its own copy over yours on the next save.",
         },
     );
-    if (result.applied && write) {
-        writeUiDocument(documentFile);
-    }
     return emitCommandResult(result, io);
 }
 

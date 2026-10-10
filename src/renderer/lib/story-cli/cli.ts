@@ -33,7 +33,7 @@ import * as path from "node:path";
 import { commandI18nStore } from "@/lib/i18n/commandLocale";
 import { SCRATCH_DIR_NAME } from "../blueprint-cli/project";
 import { didYouMean } from "../ui-cli/text";
-import { emitCommandResult } from "../agent-core/commandResult";
+import { emitCommandResult, emitPartialOutput } from "../agent-core/commandResult";
 import { COMMAND_CATEGORIES } from "./catalog";
 import type { StoredStories } from "./check";
 import {
@@ -163,6 +163,8 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
         validateFlags(args, spec);
         return await spec.run(args, io);
     } catch (error) {
+        // What the command had said before it was stopped comes first, as when it printed as it went.
+        emitPartialOutput(error, io);
         if (error instanceof ProjectIoError || error instanceof UsageError) {
             io.err(error.message);
             return 2;
