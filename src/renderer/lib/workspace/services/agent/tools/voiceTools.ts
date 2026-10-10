@@ -40,6 +40,7 @@ import {
     type AgentToolHandler,
 } from "../agentCall";
 import { AGENT_HISTORY_LABEL, assetsService, stripExtension } from "../agentLookups";
+import { assertAgentMayStillWrite } from "../agentCommitGate";
 import {
     collectAgentVoiceLines,
     compactListText,
@@ -290,6 +291,8 @@ function commitTakes(
     if (after.size === 0) {
         return;
     }
+    // Measuring the clips can take a while; the author may have paused or frozen meanwhile.
+    assertAgentMayStillWrite(tool);
     const service = voiceService(ctx);
     const current = service.getDocumentIfLoaded(language.code) ?? language.document;
     const before = [...after.keys()].map(unitId => {
@@ -704,7 +707,7 @@ export function planVoiceLanguages(
     return { add, remove };
 }
 
-export const voiceSettingsSet: AgentToolHandler = async (args, { ctx, log }) => {
+export const voiceSettingsSet: AgentToolHandler = async (args, { ctx, request, follow, log }) => {
     const languages = readOptionalStringArray(args, "languages")?.map(code => code.trim());
     const removeLanguages = (readOptionalStringArray(args, "removeLanguages") ?? []).map(code => code.trim());
     const namingPattern = readOptionalString(args, "namingPattern");
@@ -732,6 +735,7 @@ export const voiceSettingsSet: AgentToolHandler = async (args, { ctx, log }) => 
         }
     }
 
+    assertAgentMayStillWrite({ ctx, request, follow });
     for (const code of plan.add) {
         await service.addLocale({ code, displayName: localeAutonym(code) });
     }

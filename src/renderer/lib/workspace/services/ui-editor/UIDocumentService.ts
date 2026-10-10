@@ -154,6 +154,13 @@ import { anchorComponentId, anchorElementId } from "@shared/blueprint/ownerShape
 import type { UITemplateSurfacePlacement } from "@shared/types/uiTemplateRegistry";
 import { assertValidBlueprintDocument } from "./blueprint/documentValidation";
 import {
+    dropBlueprintOwners,
+    holdBlueprintOwners,
+    ownerPresenceChange,
+    putBlueprintOwners,
+    type HeldBlueprintOwners,
+} from "./reconciledBlueprintOwners";
+import {
     BLUEPRINT_GRAPH_IR_META_KIND,
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
     BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
@@ -989,6 +996,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     /** Where edits go instead of into the document, when something else owns them. See {@link UIOpSink}. */
     private opSink: UIOpSink | null = null;
     private historySuppressionDepth = 0;
+    /** How deep inside {@link runDetachedDraft} this is: edits then land on a private copy and nowhere else. */
+    private draftDepth = 0;
     private readonly contentRevisions = new UIDocumentContentRevisions();
     /** What the v13 step changed that an author can see, until the workspace has said so. */
     private textSourceMigrationChanges: UITextMigrationChange[] = [];
@@ -1235,6 +1244,68 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     }
 
     /**
+     * {@link runSurfaceHistoryTransaction}, all or nothing: when `action` throws, `surfaceId`'s slice
+     * of both documents - its elements and its widgets' blueprints - is put back exactly as the
+     * editor's own undo would put it, nothing is recorded, and the error is rethrown.
+     *
+     * Through the history snapshot rather than a copy of the interface document, because the edits
+     * inside have already run the blueprint reconcile: a deleted widget's graph is gone, and putting
+     * the element back alone would have the reconcile give it a fresh, empty graph under the same id.
+     */
+    public runAtomicSurfaceTransaction(surfaceId: string, action: () => void, options: { label?: HistoryLabel } = {}): void {
+        const historyService = this.getHistoryService();
+        if (!historyService) {
+            const before = cloneUIHistoryDocument(this.getDocument());
+            try {
+                action();
+            } catch (error) {
+                this.restoreDocumentFromHistory(before);
+                throw error;
+            }
+            return;
+        }
+        const beforeHistory = historyService.captureSnapshot(surfaceId);
+        this.historySuppressionDepth += 1;
+        try {
+            action();
+        } catch (error) {
+            historyService.restoreSnapshot(surfaceId, beforeHistory);
+            throw error;
+        } finally {
+            this.historySuppressionDepth -= 1;
+        }
+        historyService.record({
+            surfaceId,
+            before: beforeHistory,
+            after: historyService.captureSnapshot(surfaceId),
+            label: options.label,
+        });
+    }
+
+    /**
+     * Run this service's own edits against a private copy of the document, then throw the copy away.
+     *
+     * What a dry run needs: every check an edit makes runs exactly as it would for real, against the
+     * document as the earlier edits in the same run left it, and nothing outside this service hears of
+     * any of it - no `documentChanged`, no auto-save, no undo step, no live-session message and, above
+     * all, no blueprint reconcile. The reconcile is not undone by putting the document back: it deletes
+     * the graph of every widget the copy lost, and then gives the restored widget an empty one.
+     *
+     * The document's revision does not move, so nothing that reads it should be asked inside.
+     */
+    public runDetachedDraft<T>(action: () => T): T {
+        const original = this.getDocument();
+        this.document = cloneUIHistoryDocument(original);
+        this.draftDepth += 1;
+        try {
+            return action();
+        } finally {
+            this.draftDepth -= 1;
+            this.document = original;
+        }
+    }
+
+    /**
      * An edit made by an agent connected over MCP, written as one step of undo.
      *
      * Through the private mutator like every gesture, which is the whole point: the canvas redraws
@@ -1245,7 +1316,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
      * editor's own stack, as a snapshot of its slice, so Ctrl+Z inside its tab undoes it. Null - an
      * edit across several pages, or to a table the pages share - goes on the project's stack as a
      * command over the delta, diffed both ways, because no one editor's slice covers it (the shape
-     * {@link pushLibraryStep} uses for library operations).
+     * {@link pushLibraryStep} uses for library operations) - with the private blueprints the write's
+     * reconcile created or deleted, which a delta of interface records alone would leave behind (see
+     * `reconciledBlueprintOwners.ts`).
      *
      * Not for a live session: {@link applyLiveOp} is the path for somebody else's edit, and records
      * nothing. Agent writes are refused while a session runs, before they get here.
@@ -1261,6 +1334,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             return;
         }
         const before = cloneUIHistoryDocument(this.getDocument());
+        // Which private blueprints exist before the write, by reference: the reconcile that follows
+        // the write deletes those of the widgets it removed, and creates empty ones for the widgets it
+        // added. Shallow copies of the two maps - the records the reconcile deletes are not edited.
+        const graph = this.getGraphService();
+        const blueprintsBefore = graph?.getDocument().blueprintDocument;
+        const ownersBefore = blueprintsBefore ? { ...blueprintsBefore.ownerRecords } : {};
+        const blueprintMapBefore = blueprintsBefore ? { ...blueprintsBefore.blueprints } : {};
         this.mutateDocument(mutator, { history: false });
         const after = cloneUIHistoryDocument(this.getDocument());
         const forward = diffUIParts(before, after);
@@ -1268,13 +1348,42 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         if (forward === null || backward === null) {
             return;
         }
+        // The step carries the blueprints whose presence the write changed, so that taking the write
+        // back brings a deleted widget back with its own graph rather than the empty one the
+        // reconcile would give it (the page editor's own steps carry them in their snapshot).
+        const presence = graph
+            ? ownerPresenceChange(ownersBefore, graph.getDocument().blueprintDocument.ownerRecords)
+            : { added: [], removed: [] };
+        let removedOwners = holdBlueprintOwners(ownersBefore, blueprintMapBefore, presence.removed);
+        let addedOwners: HeldBlueprintOwners = {};
+        const blueprintsMoved = presence.added.length > 0 || presence.removed.length > 0;
         // Copied on every application: applying writes the records into the document, which then
-        // edits them in place, and the step has to be repeatable.
-        const apply = (parts: LiveUIParts) => {
+        // edits them in place, and the step has to be repeatable. Blueprints go first: the reconcile
+        // that follows the interface write must find each widget's own already in place.
+        const apply = (parts: LiveUIParts, blueprints?: (document: BlueprintDocument) => void) => {
+            if (graph && blueprints && blueprintsMoved) {
+                graph.applyGraphMutation(document => {
+                    blueprints(document.blueprintDocument);
+                    assertValidBlueprintDocument(document.blueprintDocument);
+                });
+            }
             const copy = JSON.parse(JSON.stringify(parts)) as LiveUIParts;
             this.mutateDocument(document => applyUIParts(document, copy), { history: false });
         };
-        this.pushLibraryStep(label, { undo: () => apply(backward), redo: () => apply(forward) });
+        this.pushLibraryStep(label, {
+            undo: () => apply(backward, document => {
+                // The added widgets' blueprints as they stand now - the author may have written a
+                // graph on one since - so a redo puts that back, not an empty one.
+                addedOwners = holdBlueprintOwners(document.ownerRecords, document.blueprints, presence.added);
+                dropBlueprintOwners(document, presence.added);
+                putBlueprintOwners(document, removedOwners);
+            }),
+            redo: () => apply(forward, document => {
+                removedOwners = holdBlueprintOwners(document.ownerRecords, document.blueprints, presence.removed);
+                dropBlueprintOwners(document, presence.removed);
+                putBlueprintOwners(document, addedOwners);
+            }),
+        });
     }
 
     /**
@@ -2440,6 +2549,11 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     }
 
     private mutateDocument(mutator: (document: UIDocument) => void, options: UIDocumentMutationOptions = {}): void {
+        if (this.draftDepth > 0) {
+            // A private copy (see {@link runDetachedDraft}): the edit lands there and nowhere else.
+            mutator(this.getDocument());
+            return;
+        }
         if (this.opSink && !options.live) {
             // Run the gesture against a copy and state what it did to the document, rather than
             // doing it. Nothing here reads the gesture: the comparison *is* the statement, which is

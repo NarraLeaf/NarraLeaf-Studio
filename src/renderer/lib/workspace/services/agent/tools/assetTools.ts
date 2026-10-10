@@ -41,6 +41,7 @@ import {
 import { describeBlockedDelete } from "../../assets/assetDeleteGuard";
 import { AGENT_ASSET_TYPES, assetsService, listAssets, stripExtension } from "../agentLookups";
 import { ensureAgentMayReadPaths } from "../agentFolderRequest";
+import { agentWriteBlocked, assertAgentMayStillWrite } from "../agentCommitGate";
 import { opaqueImageWarning } from "../imageAlpha";
 import { readImageFacts } from "./castTools";
 
@@ -195,9 +196,25 @@ export const assetsImport: AgentToolHandler = async (args, { ctx, request, follo
     const duplicates: { path: string; existing: ReturnType<typeof describeAsset> }[] = [];
     const failed: { path: string; reason: string }[] = [];
     const warnings: string[] = [];
+    let stopped: { code: string; message: string } | null = null;
 
     for (let index = 0; index < paths.length; index += 1) {
         const path = paths[index];
+        // Asked before every file: the folder prompt and a long batch both leave time for the author
+        // to pause, freeze the project or start a live session, and each import is a write.
+        const blocked = agentWriteBlocked(
+            { ctx, request, follow },
+            imported.length === 0
+                ? "Nothing was imported."
+                : `Stopped after importing ${imported.length} of ${paths.length} file(s); the rest were not imported.`,
+        );
+        if (blocked) {
+            if (imported.length === 0) {
+                throw blocked;
+            }
+            stopped = { code: blocked.code, message: blocked.message };
+            break;
+        }
         follow.describeCall(request.callId, basename(path));
         const type = forcedType ?? assetTypeForPath(path);
         if (!type) {
@@ -236,8 +253,9 @@ export const assetsImport: AgentToolHandler = async (args, { ctx, request, follo
         duplicates.length > 0 ? `${duplicates.length} already in the project under another name (not imported again).` : "",
         failed.length > 0 ? `${failed.length} failed.` : "",
         warnings.length > 0 ? `${warnings.length} warning(s).` : "",
+        stopped ? `Stopped: ${stopped.message}` : "",
     ].filter(Boolean).join(" ");
-    return answerJson({ imported, duplicates, failed, ...(warnings.length > 0 ? { warnings } : {}) }, lead);
+    return answerJson({ imported, duplicates, failed, ...(warnings.length > 0 ? { warnings } : {}), ...(stopped ? { stopped } : {}) }, lead);
 };
 
 const PLACEHOLDER_MAX_EDGE = 8192;
@@ -321,6 +339,7 @@ export const assetsPlaceholder: AgentToolHandler = async (args, { ctx, request, 
     }
     follow.describeCall(request.callId, name);
     const bytes = await renderPlaceholderPng(width, height, color, caption);
+    assertAgentMayStillWrite({ ctx, request, follow });
     const service = assetsService(ctx);
     const created = await service.createLocalAssetFromBytes(AssetType.Image, `${name}.png`, bytes);
     if (!created.success || !created.data) {
@@ -394,6 +413,7 @@ export const assetDelete: AgentToolHandler = async (args, { ctx, request, follow
                 + "ui_patch or blueprint_apply for pages - then delete it. Nothing was deleted.",
         );
     }
+    assertAgentMayStillWrite({ ctx, request, follow }, "Nothing was deleted.");
     const result = await service.deleteAsset(asset);
     if (!result.success) {
         throw refuse("unavailable", `${asset.type} "${asset.name}" could not be deleted: ${result.error ?? "unknown reason"}.`);
