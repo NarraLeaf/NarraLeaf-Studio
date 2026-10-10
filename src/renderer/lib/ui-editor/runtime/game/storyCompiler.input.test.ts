@@ -162,5 +162,6 @@ function fakeGameState(writes: Map<string, unknown>) {
     return {
         game: { getLiveGame: () => ({ getStorable: () => storable, storable }) },
         logger: { warn: () => undefined },
+        events: { on: () => ({ cancel: () => undefined }) },
     };
 }

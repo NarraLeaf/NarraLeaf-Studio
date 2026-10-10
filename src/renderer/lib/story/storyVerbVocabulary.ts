@@ -68,6 +68,8 @@ const LAYER: Record<OperationOf<"layer">, CommandId> = {
     create: "layer",
     // `z=` is a param of `/layer`, not a verb of its own.
     setZIndex: "layer",
+    // So is `depth=` - a background layer's depth row reads back as `/layer backgroundLayer depth=…`.
+    setDepth: "layer",
     show: "show",
     hide: "hide",
     transform: "transform",

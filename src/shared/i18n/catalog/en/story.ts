@@ -544,6 +544,33 @@ export const story = {
         notOnStageTitle: "No layer with this name is declared earlier in this scene. Pick an existing layer",
         hint: "Layer",
         createNew: "Create new layer",
+        backgroundName: "Background layer",
+        displayableHint: "Where the characters are",
+        backgroundHint: "Behind every other layer",
+        manage: "Manage layers…",
+    },
+    layerDepth: {
+        near: "Near",
+        follow: "With the camera",
+        mid: "Middle",
+        far: "Far",
+        farthest: "Farthest",
+    },
+    layerPanel: {
+        sceneBackground: "Scene background",
+        title: "Layers",
+        resetNote: "Reset when the story leaves this scene",
+        frontToBack: "Front to back",
+        depth: "Depth",
+        contents: "On this layer",
+        empty: "Empty",
+        camera: "Camera",
+        fixed: "Fixed",
+        builtin: "Built-in",
+        conflict: "“{front}” is drawn in front of “{back}” but is farther away",
+        open: "Layers",
+        unnamed: "Unnamed layer",
+        depthHint: "Drag a layer onto another lane to change its depth",
     },
     appearance: {
         noPoses: "This character has no poses yet.",
@@ -742,6 +769,7 @@ export const story = {
         opacity: "Opacity",
         size: "Font Size",
         z: "Z-Index",
+        depth: "Depth",
         // The prop vocabulary (`commands/transformVocabulary.ts`) — one key per channel of the bag.
         zoom: "Zoom",
         scale: "Scale",
@@ -905,6 +933,11 @@ export const story = {
         blink: "blink",
         slowBlink: "slowBlink",
         vignettePulse: "vignettePulse",
+        near: "near",
+        follow: "follow",
+        mid: "mid",
+        far: "far",
+        farthest: "farthest",
     },
 
     /**
@@ -1334,6 +1367,9 @@ export const story = {
             noTransform: "This camera row has no transform.",
             unknownLens: "Camera lens “{preset}” is not a known effect.",
             unknownLook: "Camera look “{preset}” is not a known grade.",
+        },
+        layer: {
+            depthBackgroundOnly: "This row sets only the background layer's depth. A custom layer's depth is set on the row that creates it.",
         },
         transform: {
             loopNoReveal: "A looping transform cannot carry a clip reveal; the reveal is ignored.",

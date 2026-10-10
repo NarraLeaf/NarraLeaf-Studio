@@ -175,6 +175,7 @@ async function runRow(action: unknown, saveFile: ReturnType<typeof storable>): P
     const gameState = {
         game: { getLiveGame: () => ({ getStorable: () => saveFile }) },
         logger: { warn: () => undefined },
+        events: { on: () => ({ cancel: () => undefined }) },
     };
     const [engineAction] = (action as { getActions(): Array<{ executeAction(...args: unknown[]): unknown }> }).getActions();
     const awaitable = engineAction.executeAction(gameState, {}) as EngineAwaitable;

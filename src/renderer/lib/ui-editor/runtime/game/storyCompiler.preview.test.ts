@@ -127,6 +127,29 @@ describe("compileStagePreviewToNlr", () => {
         expect(boundBlockIds).not.toContain("after");
     });
 
+    it("poses the camera where the rows before the target left it, so the still shows the shot", async () => {
+        const blocks: Record<string, StoryBlock> = {
+            pan: block("pan", "action", {
+                action: "camera",
+                operation: "transform",
+                transform: { mode: "props", to: { position: { xalign: 0.5, yalign: 0.5, xoffset: 160 }, zoom: 1.2 }, durationMs: 1600 },
+            }),
+            target: say("target", "After the pan."),
+        };
+        const compiled = await compilePreview(baseDocument(blocks, ["pan", "target"]), "target");
+        const injection = statementActions(((compiled.scene as unknown as { actions: unknown[] }).actions)[0])
+            .find((action: any) => action?.type === "script:action");
+        expect(injection).toBeDefined();
+        // Run the injection the way the engine would, against a game state that has the elements
+        // already: what is left for it to do is pose them.
+        const gameState = { findElementByDisplayable: () => ({}), getExposedState: () => null, flush: () => undefined };
+        (injection as any).contentNode.getContent().handler({ gameState });
+        expect(DevTools.getDisplayableTransformProps(compiled.story.camera as any)).toEqual(expect.objectContaining({
+            zoom: 1.2,
+            position: expect.objectContaining({ xoffset: 160 }),
+        }));
+    });
+
     it("orders statements as seeds, injection script, markers, and target", async () => {
         const blocks: Record<string, StoryBlock> = {
             enter: block("enter", "action", { action: "character", operation: "enter", characterId: "char-alice", assetId: "asset-alice" }),

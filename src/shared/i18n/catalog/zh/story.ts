@@ -427,6 +427,33 @@ export const story = {
         notOnStageTitle: "未在此场景中提前声明同名图层。选择已有图层",
         hint: "图层",
         createNew: "新建图层",
+        backgroundName: "背景图层",
+        displayableHint: "角色所在的图层",
+        backgroundHint: "位于所有图层之后",
+        manage: "管理图层…",
+    },
+    layerDepth: {
+        near: "近",
+        follow: "跟随镜头",
+        mid: "中",
+        far: "远",
+        farthest: "最远",
+    },
+    layerPanel: {
+        sceneBackground: "场景背景",
+        title: "图层",
+        resetNote: "离开本场景时复位",
+        frontToBack: "从前到后",
+        depth: "纵深",
+        contents: "层上的内容",
+        empty: "空",
+        camera: "镜头",
+        fixed: "固定",
+        builtin: "内置",
+        conflict: "「{front}」画在「{back}」前面，但它更远",
+        open: "图层",
+        unnamed: "未命名图层",
+        depthHint: "把图层拖到另一条道上即可改变纵深",
     },
     appearance: {
         noPoses: "该角色还没有姿态",
@@ -613,6 +640,7 @@ export const story = {
         opacity: "不透明度",
         size: "字号",
         z: "层级",
+        depth: "纵深",
         // 变换属性词表（`commands/transformVocabulary.ts`），一个通道一个键。
         zoom: "缩放",
         scale: "比例",
@@ -766,6 +794,11 @@ export const story = {
         blink: "眨眼",
         slowBlink: "慢眨眼",
         vignettePulse: "暗角脉冲",
+        near: "近",
+        follow: "跟随镜头",
+        mid: "中",
+        far: "远",
+        farthest: "最远",
     },
 
     /**
@@ -1152,6 +1185,9 @@ export const story = {
             noTransform: "该镜头行没有变换",
             unknownLens: "镜头效果“{preset}”不是已知的效果",
             unknownLook: "镜头色调“{preset}”不是已知的色调",
+        },
+        layer: {
+            depthBackgroundOnly: "该行只能设置背景图层的纵深。自定义图层的纵深在创建它的行上设置",
         },
         transform: {
             loopNoReveal: "循环变换无法附带揭示效果，已忽略该揭示",

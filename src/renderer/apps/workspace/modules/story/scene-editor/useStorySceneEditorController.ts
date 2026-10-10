@@ -3746,7 +3746,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         pasteWizard, pasteMemory, cancelPasteWizard, confirmPasteWizard, savePasteSeparator, forgetPasteSeparator,
         deleteRows, deleteSelection, replaceRowWithBlankLine, startInsertAfter, startInsertBefore, startJumpDraft, selectRow, beginDragSelection, selectRowFromClick,
         selectionRootIds, toggleDisableSelection,
-        extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateBlockPayloads, updateSceneMetadata,
+        extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateBlockPayloads, updateSceneMetadata, insertBlock,
         setDialogueSpeaker, setDialogueGroupPosition, createCharacterFromSpeaker, commitTextEdit, handleInsertValueChange, updateTextDraft,
         unresolvedSpeakerRowIds, bindSpeakerForRows, setSpeakerForRows,
         cutSelectionToClipboard: handleCut, moveSelectionToScene, splitSceneAtRow,
