@@ -358,10 +358,28 @@ export function EditorGroup({ group }: EditorGroupProps) {
         hasSplit,
     ]);
 
+    // The tab this strip itself made current last, so the effect below can tell a click here from a
+    // tab brought forward by anything else (an asset opened from its panel, a search hit, Ctrl+Tab).
+    const stripActivatedTabIdRef = useRef<string | null>(null);
+
     const activateTabFromStrip = useCallback((tabId: string) => {
+        stripActivatedTabIdRef.current = tabId;
         setActiveEditorTab(tabId, group.id);
         focusTabStrip();
     }, [focusTabStrip, group.id, setActiveEditorTab]);
+
+    // A selection made on the strip belongs to the tab that was current when it was made. Once some
+    // other tab is brought forward from outside the strip, the selection is dropped: left in place,
+    // a plain click's one-tab selection kept painting that tab as selected beside the new current
+    // one, and the strip's close shortcut would have closed the old tab instead of the one in view.
+    useEffect(() => {
+        if (!group.focus || group.focus === stripActivatedTabIdRef.current) {
+            return;
+        }
+        stripActivatedTabIdRef.current = null;
+        rangeAnchorTabIdRef.current = group.focus;
+        setSelectedTabIds(prev => (prev.size === 0 ? prev : new Set()));
+    }, [group.focus]);
 
     const handleTabClick = (tabId: string, e: React.MouseEvent) => {
         e.stopPropagation();
