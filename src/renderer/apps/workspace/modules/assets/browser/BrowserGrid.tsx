@@ -21,7 +21,7 @@ import {
     type AssetBrowserMeasures,
 } from "./assetBrowserModel";
 import { formatByteSize } from "../../asset-overview/assetOverviewModel";
-import { useBrowserDropTarget, useBrowserItemGestures } from "./useBrowserItemGestures";
+import { useBrowserDropTarget, useBrowserItemGestures, useStepReveal } from "./useBrowserItemGestures";
 
 /** The `gap-2` between tiles, in pixels. Read here because the column count is worked out by hand. */
 const TILE_GAP_PX = 8;
@@ -41,6 +41,10 @@ export interface BrowserGridProps {
     onEnterGroup: (category: AssetCategory, group: AssetGroup) => void;
     onEnterSet: (entry: ResolvedAssetSet) => void;
     onDropOnGroup: (event: React.DragEvent, kind: "move" | "files", category: AssetCategory, group: AssetGroup) => void;
+    /** The item a key just moved the selection to, scrolled into view. */
+    stepReveal?: { key: string; nonce: number } | null;
+    /** Told how many tiles a row holds, which is how far the up and down keys step. */
+    onColumnsChange?: (columns: number) => void;
 }
 
 /**
@@ -50,7 +54,17 @@ export interface BrowserGridProps {
  * formula `repeat(auto-fill, minmax(size, 1fr))` would use: it is the one number that decides how
  * many rows there are, and a grid that wraps by itself cannot say.
  */
-export function BrowserGrid({ items, tileSize, measures, insideSet, onEnterGroup, onEnterSet, onDropOnGroup }: BrowserGridProps) {
+export function BrowserGrid({
+    items,
+    tileSize,
+    measures,
+    insideSet,
+    onEnterGroup,
+    onEnterSet,
+    onDropOnGroup,
+    stepReveal,
+    onColumnsChange,
+}: BrowserGridProps) {
     const { assetSetReveal } = useAssetsPanelContext();
     const gestures = useBrowserItemGestures({ insideSet, onEnterGroup, onEnterSet });
     const listRef = useRef<HTMLDivElement | null>(null);
@@ -94,6 +108,12 @@ export function BrowserGrid({ items, tileSize, measures, insideSet, onEnterGroup
     useLayoutEffect(() => {
         virtualizer.measure();
     }, [columns, tileSize, virtualizer]);
+
+    useEffect(() => {
+        onColumnsChange?.(columns);
+    }, [columns, onColumnsChange]);
+
+    useStepReveal(stepReveal, items, scrollElement, index => virtualizer.scrollToIndex(Math.floor(index / columns)));
 
     // A jump landing on a set or a file: its row may not be mounted, and the tile marks itself once it is.
     const revealNonce = assetSetReveal?.nonce ?? null;
