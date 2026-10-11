@@ -10,10 +10,11 @@ import { getShellLocale } from "./shellLocale";
  * desktop shells never reach this: their main process raises the window that is already open
  * rather than starting a second copy.
  *
- * Drawn like the crash screen and for the same reasons: the shell's own voice, in the machine's
- * language rather than the game's (the game has not booted, so it has no language yet), scoped to
- * this element so the document's own remains the game's. It scrolls and only centres while there is
- * room to, which is what a 480x320 window needs.
+ * Drawn like the crash screen and for the same reasons: the shell's own voice, scoped to this element
+ * so the document's own remains the game's. The game has not booted in this tab, so the language is
+ * the one the tab holding the session recorded for this game - the language the player is reading it
+ * in there - or the machine's when nothing has been recorded (`shellLocale`). It scrolls and only
+ * centres while there is room to, which is what a 480x320 window needs.
  */
 export function RuntimeSessionTakenScreen(): ReactNode {
     const { t } = useTranslation();

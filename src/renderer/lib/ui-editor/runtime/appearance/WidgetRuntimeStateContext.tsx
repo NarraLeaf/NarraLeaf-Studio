@@ -37,6 +37,7 @@ const STATIC_WIDGET_RUNTIME_ELEMENT_STATE = Object.freeze({
     variantOverrideId: null,
     signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS,
     displayableMotion: null,
+    holdsFocus: false,
 });
 
 export type WidgetRuntimeStateProviderProps = {
@@ -91,6 +92,25 @@ export function WidgetRuntimeInstanceProvider(props: {
     const value = useMemo(() => ({ key, selected }), [key, selected]);
     return (
         <WidgetRuntimeInstanceContext.Provider value={value}>{props.children}</WidgetRuntimeInstanceContext.Provider>
+    );
+}
+
+/**
+ * Whether this subtree is where the keyboard or pad focus is: an element that holds it, or the row
+ * of a list that does. (Its ancestors take it too, through `WidgetRuntimeStateStore.setFocusWithin`:
+ * the focus on a save slot's hit area is on the slot as well.)
+ *
+ * The focus is drawn with the `focused` state the author gave the appearance, the way a pointer is
+ * drawn with `hovered`: a list row holding it lights its label, and a button's label lights with
+ * the button. So the whole subtree reads as focused (`useWidgetRuntimeElementState`); a control with
+ * no focused look anywhere falls back to the platform's ring (`focusNavigation`).
+ */
+const NavigationFocusContext = createContext(false);
+
+export function NavigationFocusProvider(props: { focused: boolean; children: React.ReactNode }): React.ReactElement {
+    const inherited = useContext(NavigationFocusContext);
+    return (
+        <NavigationFocusContext.Provider value={inherited || props.focused}>{props.children}</NavigationFocusContext.Provider>
     );
 }
 
@@ -154,6 +174,12 @@ export type WidgetRuntimeElementState = {
     variantOverrideId: string | null;
     signals: SystemInteractionSignals;
     displayableMotion: UIDisplayableMotionOverride | null;
+    /**
+     * Whether the focus is on this element itself, rather than inside it or around it - what its
+     * subtree is told (`NavigationFocusProvider`). `signals.focused` is the wider answer its look is
+     * drawn by, and handing that down would light a focused control's siblings too.
+     */
+    holdsFocus: boolean;
 };
 
 function buildElementSignature(
@@ -174,6 +200,7 @@ function buildElementSignature(
         signals.active ? "1" : "0",
         signals.focused ? "1" : "0",
         signals.disabled ? "1" : "0",
+        store.isFocusWithin(elementId) ? "1" : "0",
     ].join("|");
 }
 
@@ -189,6 +216,7 @@ export function useWidgetRuntimeElementState(
     const runtimeElementKey = useWidgetRuntimeElementKey(elementId);
     const instance = useContext(WidgetRuntimeInstanceContext);
     const runtimeScopeId = useContext(WidgetRuntimeScopeContext);
+    const insideFocus = useContext(NavigationFocusContext);
     /**
      * The key a writer that knows nothing about rows would have used.
      *
@@ -210,7 +238,10 @@ export function useWidgetRuntimeElementState(
         if (!store) {
             return STATIC_WIDGET_RUNTIME_ELEMENT_STATE;
         }
-        const signals = store.getSignalsForElement(runtimeElementKey, interactionDisabled);
+        const own = store.getSignalsForElement(runtimeElementKey, interactionDisabled);
+        // On it, inside it, or around it: see `NavigationFocusContext`.
+        const focusLit = own.focused || insideFocus || store.isFocusWithin(runtimeElementKey);
+        const signals = focusLit && !own.focused ? { ...own, focused: true } : own;
         return {
             variantOverrideId:
                 store.getVariantOverride(runtimeElementKey)
@@ -220,6 +251,7 @@ export function useWidgetRuntimeElementState(
             displayableMotion:
                 store.getDisplayableMotion(runtimeElementKey)
                 ?? (templateKey ? store.getDisplayableMotion(templateKey) : null),
+            holdsFocus: own.focused,
         };
-    }, [instance?.selected, interactionDisabled, runtimeElementKey, signature, store, templateKey]);
+    }, [insideFocus, instance?.selected, interactionDisabled, runtimeElementKey, signature, store, templateKey]);
 }

@@ -14,20 +14,41 @@
  * Comments in English per project convention.
  */
 
-import { normalizeUIStructLibrary } from "@shared/types/ui-editor/structLibrary";
-import type { UIStructDef } from "@shared/types/ui-editor/struct";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Blueprint, BlueprintDocument, BlueprintPrivateOwnerRecord } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
-import { listSaveSchemaFields, migrateSaveSchemaToLatest } from "@shared/saves/saveSchemaModel";
-import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
-import { setActiveUIPageParams } from "@shared/types/ui-editor/pageParams";
-import type { VariableRegistryEntry } from "@shared/types/variables/registry";
-import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
-import type { UIDocument } from "@shared/types/ui-editor/document";
-import { extractStoryVariableWrites, type StoryVariableWrite } from "@services/references/assetNameGaps";
+import type { StoryDocument } from "@shared/types/story";
 import { listStories, readStoryDocument, readUiDocument } from "@/lib/story-cli/project";
+import {
+    applyBlueprintsToDocument,
+    assetNameContextOf,
+    ProjectIoError,
+    projectVariablesOf,
+    publishPageParams,
+    publishSaveSchema,
+    readableBlueprintDocument,
+    uiDocumentTargetsOf,
+    type ApplyResult,
+    type AssetNameContext,
+    type ProjectVariables,
+    type UiDocumentTargets,
+} from "./model";
+
+// Everything that is a function of the documents rather than of the directory lives in `model.ts`,
+// where the renderer can reach it; re-exported so the command line and its tests keep one import.
+export {
+    elementTypeResolver,
+    ProjectIoError,
+    widgetElementResolver,
+    widgetElementTypeResolver,
+    type ApplyResult,
+    type ComponentTarget,
+    type ElementTarget,
+    type ProjectVariables,
+    type SurfaceTarget,
+    type UiDocumentTargets,
+} from "./model";
 
 export const UI_GRAPHS_RELATIVE_PATH = path.join("editor", "ui", "uigraphs.json");
 export const UI_DOCUMENT_RELATIVE_PATH = path.join("editor", "ui", "uidoc.json");
@@ -39,8 +60,6 @@ export type UiGraphsFile = {
     raw: Record<string, unknown>;
     blueprintDocument: BlueprintDocument;
 };
-
-export class ProjectIoError extends Error {}
 
 export function resolveProjectDir(input: string): string {
     const resolved = path.resolve(input);
@@ -68,22 +87,13 @@ export function readUiGraphs(projectDir: string): UiGraphsFile {
     // are looking at one shape, and an older project is something this can work on rather than
     // something it refuses. A document below the floor still throws, from the migration itself,
     // which is the one case nothing here can convert.
-    let document: BlueprintDocument;
+    let blueprintDocument: BlueprintDocument;
     try {
-        document = migrateBlueprintDocumentToLatest(stored);
+        blueprintDocument = readableBlueprintDocument(stored);
     } catch (error) {
         throw new ProjectIoError(`${filePath}: ${(error as Error).message}`);
     }
-    return {
-        filePath,
-        raw,
-        blueprintDocument: {
-            schemaVersion: document.schemaVersion,
-            blueprints: document.blueprints ?? {},
-            ownerRecords: document.ownerRecords ?? {},
-            meta: document.meta,
-        },
-    };
+    return { filePath, raw, blueprintDocument };
 }
 
 /**
@@ -108,31 +118,13 @@ export function assertWritableSchema(file: UiGraphsFile): void {
     );
 }
 
-export type ApplyResult = {
-    added: string[];
-    replaced: string[];
-};
-
 /** Put compiled blueprints into the document, replacing whatever occupied the same owner. */
 export function applyBlueprints(
     file: UiGraphsFile,
     blueprints: readonly Blueprint[],
     ownerRecords: Record<string, BlueprintPrivateOwnerRecord>,
 ): ApplyResult {
-    const document = file.blueprintDocument;
-    const result: ApplyResult = { added: [], replaced: [] };
-    for (const blueprint of blueprints) {
-        if (document.blueprints[blueprint.id]) {
-            result.replaced.push(blueprint.name);
-        } else {
-            result.added.push(blueprint.name);
-        }
-        document.blueprints[blueprint.id] = blueprint;
-    }
-    for (const [ownerKey, record] of Object.entries(ownerRecords)) {
-        document.ownerRecords[ownerKey] = { blueprintId: record.blueprintId };
-    }
-    return result;
+    return applyBlueprintsToDocument(file.blueprintDocument, blueprints, ownerRecords);
 }
 
 export function writeUiGraphs(file: UiGraphsFile): void {
@@ -149,262 +141,55 @@ export function writeUiGraphs(file: UiGraphsFile): void {
 // The interface document, read only to answer "what surfaces and elements exist"
 // ---------------------------------------------------------------------------
 
-export type SurfaceTarget = {
-    id: string;
-    name: string;
-    kind?: string;
-    host?: string;
-    rootElementId?: string;
-    /** The page's declared parameters as stored; read through `getUIPageParams`. */
-    params?: unknown;
-};
-
-/** A component definition, which owns an element tree of its own. */
-export type ComponentTarget = {
-    id: string;
-    name: string;
-    rootElementId?: string;
-    /** The params each instance supplies, which a `Get Component Param` node picks from. */
-    params: { id: string; name: string; defaultValue: string }[];
-};
-
-export type ElementTarget = {
-    id: string;
-    type: string;
-    name: string;
-    /** The surface this element sits on; null when it belongs to a component definition. */
-    surfaceId: string | null;
-    /** The component definition this element belongs to; null when it sits on a surface. */
-    componentId: string | null;
-    /** Ancestor names from the tree's root down, for telling two "Button" apart. */
-    path: string;
-};
-
-type UiDocumentElement = {
-    id: string;
-    type: string;
-    name?: string;
-    parentId?: string | null;
-    childrenIds?: string[];
-};
-
-type UiDocumentComponent = {
-    id: string;
-    name?: string;
-    rootElementId?: string;
-    elements?: Record<string, UiDocumentElement>;
-    params?: { id?: string; name?: string; defaultValue?: string }[];
-};
-
-export type UiDocumentTargets = {
-    surfaces: SurfaceTarget[];
-    components: ComponentTarget[];
-    /** Every element in the document, whether a surface or a component definition owns it. */
-    elements: ElementTarget[];
-    /** The raw element records, which the graph validator wants whole. */
-    raw: Record<string, UiDocumentElement>;
-    /** The document's list shapes, by id - what a field reader in a list row reads. */
-    structs: Record<string, UIStructDef>;
-};
-
-/**
- * The surfaces, the component definitions, and every element either of them owns.
- *
- * Component elements are read from the component's **own** element table rather than from the
- * document's, because that is where they live: a definition is a tree apart, instantiated wherever
- * somebody places it. Leaving them out is not a smaller answer but a wrong one - a
- * `componentWidgetMain` blueprint would have no element type to check its event heads against, and
- * every head on it would be refused as out of scope for a widget nobody could identify.
- */
+/** The surfaces, the component definitions, and every element either of them owns (see `uiDocumentTargetsOf`). */
 export function readUiDocumentTargets(projectDir: string): UiDocumentTargets {
     const filePath = path.join(projectDir, UI_DOCUMENT_RELATIVE_PATH);
     if (!fs.existsSync(filePath)) {
-        return { surfaces: [], components: [], elements: [], raw: {}, structs: {} };
+        return uiDocumentTargetsOf(null);
     }
-    let raw: {
-        surfaces?: SurfaceTarget[];
-        components?: UiDocumentComponent[];
-        elements?: Record<string, UiDocumentElement>;
-        structs?: unknown;
-    };
+    let raw: Parameters<typeof uiDocumentTargetsOf>[0];
     try {
         raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
     } catch (error) {
         throw new ProjectIoError(`Cannot read ${filePath}: ${(error as Error).message}`);
     }
-    const surfaces = raw.surfaces ?? [];
-    const elements = raw.elements ?? {};
-    const out: ElementTarget[] = [];
-    for (const surface of surfaces) {
-        if (!surface.rootElementId) {
-            continue;
-        }
-        walkElements(surface.rootElementId, { surfaceId: surface.id, componentId: null }, [], elements, out);
-    }
-    const components: ComponentTarget[] = [];
-    // One flat pool, so a resolver can answer about any element by id alone. Ids are unique across
-    // the document - the editor mints them the same way for both tables - so the merge cannot hide
-    // a surface element behind a component one.
-    const pool: Record<string, UiDocumentElement> = { ...elements };
-    for (const component of raw.components ?? []) {
-        if (!component?.id) {
-            continue;
-        }
-        components.push({
-            id: component.id,
-            name: component.name ?? component.id,
-            rootElementId: component.rootElementId,
-            params: (component.params ?? []).map(param => ({
-                id: String(param?.id ?? ""),
-                name: String(param?.name ?? ""),
-                defaultValue: String(param?.defaultValue ?? ""),
-            })).filter(param => param.id),
-        });
-        const own = component.elements ?? {};
-        Object.assign(pool, own);
-        if (component.rootElementId) {
-            walkElements(component.rootElementId, { surfaceId: null, componentId: component.id }, [], own, out);
-        }
-    }
-    return { surfaces, components, elements: out, raw: pool, structs: normalizeUIStructLibrary(raw.structs) };
-}
-
-function walkElements(
-    elementId: string,
-    owner: { surfaceId: string | null; componentId: string | null },
-    ancestors: string[],
-    pool: Record<string, UiDocumentElement>,
-    out: ElementTarget[],
-    depth = 0,
-): void {
-    const element = pool[elementId];
-    if (!element || depth > 64) {
-        return;
-    }
-    const name = element.name ?? element.type;
-    out.push({
-        id: element.id,
-        type: element.type,
-        name,
-        surfaceId: owner.surfaceId,
-        componentId: owner.componentId,
-        path: [...ancestors, name].join(" / "),
-    });
-    for (const childId of element.childrenIds ?? []) {
-        walkElements(childId, owner, [...ancestors, name], pool, out, depth + 1);
-    }
+    return uiDocumentTargetsOf(raw);
 }
 
 // ---------------------------------------------------------------------------
 // Page parameters
 // ---------------------------------------------------------------------------
 
-/**
- * Publish the parameters the project's pages declare before any pin is resolved.
- *
- * `Go Page` and the other nodes that open a page grow an input per parameter the picked page
- * declares, and `Get Page Param` reads one by id - both through the module-level table the editor
- * fills (`setActiveUIPageParams`). Without this a graph that gives a page its parameters looks to the
- * checker like one wiring inputs that do not exist.
- */
+/** Publish the parameters the project's pages declare (see `publishPageParams`). */
 export function loadPageParams(projectDir: string): void {
     const filePath = path.join(projectDir, UI_DOCUMENT_RELATIVE_PATH);
+    let raw: { surfaces?: unknown } | null = null;
     try {
-        const raw = fs.existsSync(filePath)
-            ? (JSON.parse(fs.readFileSync(filePath, "utf8")) as { surfaces?: SurfaceTarget[] })
-            : {};
-        setActiveUIPageParams(
-            (raw.surfaces ?? []).filter(surface => typeof surface?.id === "string").map(surface => ({
-                id: surface.id,
-                kind: surface.kind === "stageSurface" ? "stageSurface" : "appSurface",
-                params: surface.params,
-            })),
-        );
+        raw = fs.existsSync(filePath) ? (JSON.parse(fs.readFileSync(filePath, "utf8")) as { surfaces?: unknown }) : {};
     } catch {
-        setActiveUIPageParams([]);
+        raw = null;
     }
+    publishPageParams(raw as Parameters<typeof publishPageParams>[0]);
 }
 
 // ---------------------------------------------------------------------------
 // Save schema
 // ---------------------------------------------------------------------------
 
-/**
- * Publish the project's save fields before any pin is resolved.
- *
- * `Save Game` and `Get Save Metadata` grow one pin per declared field, and they read them from a
- * module-level registry rather than from anything threaded through. Without this, a graph that
- * wires a save field looks to the checker like a graph wiring a pin that does not exist.
- */
+/** Publish the project's save fields (see `publishSaveSchema`). Returns how many it declares. */
 export function loadSaveSchema(projectDir: string): number {
     const filePath = path.join(projectDir, SAVE_SCHEMA_RELATIVE_PATH);
     if (!fs.existsSync(filePath)) {
-        setActiveSaveSchemaFields([]);
-        return 0;
+        return publishSaveSchema(null);
     }
+    let raw: unknown;
     try {
-        const schema = migrateSaveSchemaToLatest(JSON.parse(fs.readFileSync(filePath, "utf8")));
-        const fields = listSaveSchemaFields(schema);
-        setActiveSaveSchemaFields(fields);
-        return fields.length;
+        raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
     } catch {
-        setActiveSaveSchemaFields([]);
-        return 0;
+        // Unreadable is published as no fields, the same answer an unmigratable one gets.
+        return publishSaveSchema(null);
     }
-}
-
-/**
- * What kind of element a `widgetMain` / `componentWidgetMain` blueprint hangs off.
- *
- * Which event heads a widget blueprint may carry depends on it - `Item Click` belongs to a list,
- * `Mouse Click` to a button - so the scope check is only real when the interface document is at
- * hand to answer this.
- */
-export function widgetElementTypeResolver(
-    targets: UiDocumentTargets,
-): (owner: { kind: string; elementId?: string }) => string | undefined {
-    const byId = new Map(targets.elements.map(element => [element.id, element.type]));
-    return owner => (owner.elementId ? byId.get(owner.elementId) : undefined);
-}
-
-/**
- * The whole element record and the surface it sits on, which is what the graph validator needs to
- * judge a widget blueprint: which event heads that widget carries, and which of its UI slots point
- * at the layer being validated.
- */
-/** The type of any element in the document, by id, for filling in element references. */
-export function elementTypeResolver(targets: UiDocumentTargets): (elementId: string) => string | undefined {
-    const byId = new Map(targets.elements.map(element => [element.id, element.type]));
-    return elementId => byId.get(elementId);
-}
-
-/**
- * The element record behind a widget owner, and the surface it sits on when it sits on one.
- *
- * A `componentWidgetMain` owner answers with the element and **no surface**, which is the honest
- * answer rather than a missing one: a definition is instantiated wherever somebody places it, so
- * there is no single surface its elements are on. The validator uses the element for the scope
- * check and the surface id only for the checks that are about a surface - which are exactly the
- * ones that cannot be asked here.
- */
-export function widgetElementResolver(
-    targets: UiDocumentTargets,
-): (owner: { kind: string; surfaceId?: string; elementId?: string }) =>
-    { element: unknown; surfaceId?: string } | undefined {
-    return owner => {
-        if (!owner.elementId) {
-            return undefined;
-        }
-        if (owner.kind === "componentWidgetMain") {
-            const element = targets.raw[owner.elementId];
-            return element ? { element } : undefined;
-        }
-        if (owner.kind !== "widgetMain" || !owner.surfaceId) {
-            return undefined;
-        }
-        const element = targets.raw[owner.elementId];
-        return element ? { element, surfaceId: owner.surfaceId } : undefined;
-    };
+    return publishSaveSchema(raw);
 }
 
 // ---------------------------------------------------------------------------
@@ -413,35 +198,16 @@ export function widgetElementResolver(
 
 export const VARIABLE_REGISTRY_RELATIVE_PATH = path.join("editor", "variables.json");
 
-export type ProjectVariables = {
-    persistent: VariableRegistryEntry[];
-    saved: VariableRegistryEntry[];
-};
-
-/**
- * The project-level variable registry, which is what a `Get Persistent` / `Get Saved` node's id is
- * checked against.
- *
- * Only the registry: the same two scopes can also be declared by a `/save` or `/global` row inside a
- * story document, and reading those means parsing (and migrating) every story in the project. A node
- * pointing at one of those is reported as an unresolved variable here - a warning, never a refusal.
- */
+/** The project-level variable registry (see `projectVariablesOf`). Unreadable reads as empty. */
 export function readVariableRegistry(projectDir: string): ProjectVariables {
     const filePath = path.join(projectDir, VARIABLE_REGISTRY_RELATIVE_PATH);
     if (!fs.existsSync(filePath)) {
-        return { persistent: [], saved: [] };
+        return projectVariablesOf(null);
     }
     try {
-        const raw = JSON.parse(fs.readFileSync(filePath, "utf8")) as {
-            entries?: Record<string, VariableRegistryEntry>;
-        };
-        const entries = Object.values(raw.entries ?? {});
-        return {
-            persistent: entries.filter(entry => entry.scope === "persistent"),
-            saved: entries.filter(entry => entry.scope === "saved"),
-        };
+        return projectVariablesOf(JSON.parse(fs.readFileSync(filePath, "utf8")));
     } catch {
-        return { persistent: [], saved: [] };
+        return projectVariablesOf(null);
     }
 }
 
@@ -524,24 +290,17 @@ export function scratchFileNameFor(name: string): string {
 }
 
 /**
- * What the asset-name judgement needs from the project besides its graphs: the interface, and every
- * variable a story row writes.
- *
- * Read the way the story tool reads them, so the two tools look at one shape of each. A story that
- * will not read is left out rather than stopping the check - `story check` is the tool that says so,
- * and a blueprint check that refused to run over it would say nothing about the graphs instead.
+ * What the asset-name judgement needs from the project besides its graphs (see `assetNameContextOf`),
+ * read the way the story tool reads it. A story that will not read is left out.
  */
-export function readAssetNameContext(projectDir: string): {
-    uiDocument: UIDocument | null;
-    storyWrites: StoryVariableWrite[];
-} {
-    const storyWrites: StoryVariableWrite[] = [];
+export function readAssetNameContext(projectDir: string): AssetNameContext {
+    const stories: { name: string; document: StoryDocument }[] = [];
     for (const story of listStories(projectDir)) {
         try {
-            storyWrites.push(...extractStoryVariableWrites(readStoryDocument(projectDir, story.id).document, story.name));
+            stories.push({ name: story.name, document: readStoryDocument(projectDir, story.id).document });
         } catch {
-            // See above: reported by the story tool, not here.
+            // Reported by the story tool, not here.
         }
     }
-    return { uiDocument: readUiDocument(projectDir), storyWrites };
+    return assetNameContextOf(readUiDocument(projectDir), stories);
 }

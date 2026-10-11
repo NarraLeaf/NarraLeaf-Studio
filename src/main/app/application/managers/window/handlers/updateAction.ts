@@ -39,6 +39,16 @@ export class AppUpdateDownloadHandler extends IPCHandler<IPCEventType.appUpdateD
     }
 }
 
+/** Stop the download or the preparing in progress. */
+export class AppUpdateCancelHandler extends IPCHandler<IPCEventType.appUpdateCancel> {
+    readonly name = IPCEventType.appUpdateCancel;
+    readonly type = IPCMessageType.request;
+
+    public handle(window: AppWindow): RequestStatus<{ state: UpdateState }> {
+        return this.success({ state: window.getApp().getUpdateManager().cancel() });
+    }
+}
+
 /**
  * Quit and apply the downloaded installer.
  *

@@ -14,6 +14,8 @@ import {
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { useWidgetEventDispatch } from "@/lib/ui-editor/widget-modules/shared/useWidgetEventDispatch";
 import { getSliderProps } from "./helpers";
+import { NAVIGATE_EVENT, type NavigateEventDetail } from "@/lib/ui-editor/runtime/navigation/focusNavigation";
+import { useGameNavigationEnabled } from "@/lib/ui-editor/runtime/navigation/gameNavigationContext";
 
 function axisSize(layout: UILayout, orientation: UISliderOrientation): number {
     return Math.max(1, Math.abs(orientation === "horizontal" ? layout.width : layout.height));
@@ -130,6 +132,10 @@ export function SliderRenderer(props: WidgetRendererProps) {
     const normalizedValue = sliderValueToNormalized(sliderProps.value, sliderProps);
     const blueprintRuntime = hostAdapter.blueprintRuntime;
     const canRunSliderInteraction = Boolean(blueprintRuntime && runtimeStore);
+    // A slider is a stop for the keys only where something moves it with them: navigation's
+    // directions. A game without navigation keeps it what it always was, a thing to drag.
+    const navigationEnabled = useGameNavigationEnabled();
+    const reachableByKeys = canRunSliderInteraction && navigationEnabled;
 
     useEffect(() => () => {
         if (flushFrameRef.current !== null) {
@@ -332,6 +338,31 @@ export function SliderRenderer(props: WidgetRendererProps) {
         ],
     );
 
+    // Reachable by keys and a pad like any control, and nudged by the directions along its track
+    // while it has the focus; the others move the focus on (see `NAVIGATE_EVENT`). One press is one
+    // step, or a twentieth of the range when the steps are too fine to walk.
+    useEffect(() => {
+        const root = rootRef.current;
+        if (!root || !canRunSliderInteraction) {
+            return undefined;
+        }
+        const onNavigate = (event: Event) => {
+            const { direction } = (event as CustomEvent<NavigateEventDetail>).detail;
+            const sign = sliderProps.orientation === "horizontal"
+                ? direction === "right" ? 1 : direction === "left" ? -1 : 0
+                : direction === "up" ? 1 : direction === "down" ? -1 : 0;
+            if (sign === 0) {
+                return;
+            }
+            event.preventDefault();
+            const range = sliderProps.max - sliderProps.min;
+            const unit = sliderProps.step > 0 && range / sliderProps.step <= 50 ? sliderProps.step : range / 20;
+            void setRuntimeValue(valueRef.current + sign * unit, true);
+        };
+        root.addEventListener(NAVIGATE_EVENT, onNavigate);
+        return () => root.removeEventListener(NAVIGATE_EVENT, onNavigate);
+    }, [canRunSliderInteraction, setRuntimeValue, sliderProps.max, sliderProps.min, sliderProps.orientation, sliderProps.step]);
+
     const handleOverride =
         trackElement && handleElement
             ? {
@@ -416,7 +447,17 @@ export function SliderRenderer(props: WidgetRendererProps) {
     // drawn once per slider, and a key minted here named a drawing that no graph addressing the part
     // could name back, so a write to the handle landed nowhere.
     return (
-        <div ref={rootRef} style={hostStyle} onPointerDown={handlePointerDown}>
+        <div
+            ref={rootRef}
+            style={hostStyle}
+            onPointerDown={handlePointerDown}
+            role={reachableByKeys ? "slider" : undefined}
+            tabIndex={reachableByKeys ? 0 : undefined}
+            aria-valuemin={reachableByKeys ? sliderProps.min : undefined}
+            aria-valuemax={reachableByKeys ? sliderProps.max : undefined}
+            aria-valuenow={reachableByKeys ? sliderProps.value : undefined}
+            aria-orientation={reachableByKeys ? sliderProps.orientation : undefined}
+        >
             {trackElement && renderChildren
                 ? renderChildren({
                       childrenIds: [trackElement.id],

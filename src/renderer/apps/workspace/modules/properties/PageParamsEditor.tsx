@@ -21,22 +21,12 @@ import {
     nextUIPageParamId,
     uiPageParamDefaultValue,
 } from "@shared/types/ui-editor/pageParams";
-import type { TranslationKey } from "@shared/i18n";
 import { listEngineUIStructIds } from "@shared/types/ui-editor/builtinStructs";
-import { blueprintStructName } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
+import { blueprintStructName, formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
 import { DraftInput } from "./ComponentParamsEditor";
 import type { CustomFieldProps } from "./framework/types";
 import type { SceneEditorContext } from "./schemas/sceneSchema";
 import { interfaceDocumentFreezeScope } from "../ui-editor/uiLiveSession";
-
-const TYPE_LABEL_KEYS: Record<UIPageParamType, TranslationKey> = {
-    string: "properties.pageParams.typeString",
-    text: "properties.pageParams.typeText",
-    number: "properties.pageParams.typeNumber",
-    boolean: "properties.pageParams.typeBoolean",
-    list: "properties.pageParams.typeList",
-    json: "properties.pageParams.typeJson",
-};
 
 /** The row-shape option that declares none. */
 const ANY_ROW_SHAPE = "";
@@ -168,7 +158,7 @@ export function SurfacePageParamsField({ data }: CustomFieldProps<SceneEditorCon
         patchParam(param.id, struct ? { ...rest, struct } : rest);
     };
 
-    const typeOptions = UI_PAGE_PARAM_TYPES.map(type => ({ value: type, label: t(TYPE_LABEL_KEYS[type]) }));
+    const typeOptions = UI_PAGE_PARAM_TYPES.map(type => ({ value: type, label: formatBlueprintValueTypeLabel(type, t, "option") }));
     // The shapes the engine and loaded plugins declare - the ones a node hands rows of out. A list's
     // own shape has no name to offer it by.
     const shapeOptions = [

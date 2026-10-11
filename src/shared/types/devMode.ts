@@ -83,6 +83,118 @@ export type DevModeStatus =
     | "error"
     | "stopping";
 
+/**
+ * What an agent's play-test asks of a running Dev Mode game (`playtest_advance`, `playtest_screenshot`).
+ *
+ * Carried workspace → main → the Dev Mode window, which acts through the same test controls a
+ * driven standalone run uses (`GameAppTestControls`): an advance is the click a player makes, a
+ * choice goes through the choice runtime, and a capture is the engine's own picture of its stage.
+ */
+export type DevModeAgentAction =
+    | { kind: "capture" }
+    /**
+     * Where the game is, without acting on it. With `settle`, first wait (bounded) for a line or a
+     * menu to come up, and let a line still typing finish - clicking once to complete it when it
+     * takes longer than a reader would wait - so what the agent looks at next is a whole line.
+     */
+    | { kind: "state"; settle?: boolean }
+    /**
+     * Read on `steps` lines. One step is one line: the click on a line shown in full that moves
+     * the game on, then a wait for the game to come to rest - on the next line, finished typing
+     * (one more click completes it when it runs long), a menu, or out of the story. A click that
+     * would only have completed a line never counts as one, and neither does a row with no line.
+     *
+     * `choice` is 1-based and counts the options as the player sees them - an option hidden by its
+     * condition is not counted. When given, it is picked first and counts as one step.
+     */
+    | { kind: "advance"; steps: number; choice?: number };
+
+/** The line on the game's dialogue box, as an agent is told it. */
+export type DevModeAgentLine = {
+    /** Who says it, by the name the box shows; null for narration. */
+    speaker: string | null;
+    /** The whole line, whatever the typewriter has revealed of it so far. */
+    text: string;
+    /** Whether the line is shown in full (the typewriter has finished). */
+    complete: boolean;
+};
+
+/**
+ * Where a Dev Mode game is, as far as an agent's play-test can read it.
+ *
+ * The line comes from the engine's own dialog state and line announcements, so it reads the same
+ * whichever box draws it; `line: null` in a story means no line is on screen (between two lines).
+ */
+export type DevModeAgentGameState = {
+    /** The game can be driven. False while the window is still starting. */
+    ready: boolean;
+    /** A story has been entered. False while a page such as the title is all there is. */
+    inGame: boolean;
+    /**
+     * How many times a story has been entered in this window. Rises with every start, restart and
+     * load, which is how a launch tells the game it asked for from the one it replaced.
+     */
+    entries: number;
+    line: DevModeAgentLine | null;
+    /** The choice menu on the stage, options in screen order (1-based for `choice`), or null. */
+    choices: { text: string; disabled: boolean }[] | null;
+    /** The page showing by name (the title, an ending page) when no story is; null in a story. */
+    page: string | null;
+};
+
+export type DevModeAgentResult =
+    | {
+          kind: "capture";
+          /** A PNG data URL. */
+          png: string;
+          /**
+           * `engine` is the engine's stage capture: the scene and the Game UI on it. `window` is the
+           * window's own pixels, taken by main when the engine had nothing to capture (a page such as
+           * the title is showing).
+           */
+          source: "engine" | "window";
+      }
+    | { kind: "state"; state: DevModeAgentGameState }
+    | {
+          kind: "advance";
+          advanced: number;
+          error?: string;
+          /** An `/ending` row ran during the advance: its display name, or null for an unnamed one. */
+          ending?: { name: string | null };
+          state?: DevModeAgentGameState;
+      };
+
+/**
+ * How long the Dev Mode window has to carry out each play-test action, in milliseconds. The
+ * window enforces these itself and answers with the reason; main waits
+ * {@link DEV_MODE_AGENT_ANSWER_GRACE_MS} longer, so a window that answers nothing at all is told
+ * apart from one that answered "this took too long".
+ *
+ * All of them well inside the 180 s an agent's `playtest_*` call is given end to end.
+ */
+export const DEV_MODE_AGENT_BUDGET_MS = {
+    capture: 10_000,
+    state: 12_000,
+    advance: 120_000,
+} as const satisfies Record<DevModeAgentAction["kind"], number>;
+
+export const DEV_MODE_AGENT_ANSWER_GRACE_MS = 5_000;
+
+/**
+ * The `code` a refused play-test action carries (`RequestStatus.code`), so the agent tool can say
+ * what to do about it without matching on prose.
+ */
+export const DevModeAgentErrorCode = {
+    /** No Dev Mode session for this project, or its window has closed. */
+    notRunning: "devmode_not_running",
+    /** The window exists but the game in it cannot be driven yet. */
+    starting: "devmode_starting",
+    /** The window is open and did not answer at all within its budget. */
+    noAnswer: "devmode_no_answer",
+    /** The engine's stage capture did not finish within its budget. */
+    captureTimeout: "devmode_capture_timeout",
+} as const;
+
 export type DevModeConsoleLogLevel = "verbose" | "info" | "success" | "warning" | "error";
 
 export type DevModeConsoleLogPayload = {

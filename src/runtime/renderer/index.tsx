@@ -13,6 +13,8 @@ import { installRuntimeErrorHooks } from "./runtimeErrorHooks";
 import { installScrollbarAutoHide } from "@/styles/scrollbarAutoHide";
 import { getActiveProjectLocale, subscribeActiveProjectLocale } from "@shared/typography/projectFonts";
 import { installDocumentLanguage } from "./documentLanguage";
+import { followGameShellLocale } from "./shellLocale";
+import { runningGamePlayerWordsLocale } from "@/lib/ui-editor/runtime/localization/playerWords";
 import { publishGameLaunch } from "@/lib/ui-editor/runtime/app/gameTimeline";
 
 // First of all: the scripts ran. The game's process asks once the page has loaded, and a page that
@@ -50,6 +52,14 @@ installDocumentLanguage({
     apply: language => {
         document.documentElement.lang = language;
     },
+});
+
+// The shell's own words - the crash screen, the loading state's label, a refused second tab - follow
+// the same publish: each language the game is read in, resolved to a catalogue the way the game's other
+// Studio words are, and recorded for the pages that come after this one. See `shellLocale`.
+followGameShellLocale({
+    read: runningGamePlayerWordsLocale,
+    subscribe: subscribeActiveProjectLocale,
 });
 
 const root = document.getElementById("root");

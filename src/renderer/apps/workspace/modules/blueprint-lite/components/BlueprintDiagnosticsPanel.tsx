@@ -42,7 +42,7 @@ export function BlueprintDiagnosticsPanel({ diagnostics, onPick, problems = [], 
 
     if (diagnostics.length === 0 && checks.length === 0) {
         return (
-            <div className="shrink-0 border-t border-edge bg-surface-sunken px-3 py-1.5 text-2xs text-fg-subtle">
+            <div className="nl-frame-surface shrink-0 border-t border-edge bg-surface-sunken px-3 py-1.5 text-2xs text-fg-subtle">
                 {t("blueprint.diagnostics.empty")}
             </div>
         );
@@ -100,7 +100,7 @@ export function BlueprintDiagnosticsPanel({ diagnostics, onPick, problems = [], 
     };
 
     return (
-        <div className="max-h-32 shrink-0 overflow-y-auto border-t border-edge bg-surface-sunken px-2 py-1.5">
+        <div className="nl-frame-surface max-h-32 shrink-0 overflow-y-auto border-t border-edge bg-surface-sunken px-2 py-1.5">
             <p className="mb-1 px-1 text-2xs tracking-wide text-fg-subtle">
                 {t("lint.report.counts", {
                     errors: tn("common.count.errors", count("error")),

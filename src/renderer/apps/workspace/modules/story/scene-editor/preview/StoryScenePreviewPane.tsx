@@ -1,12 +1,20 @@
-import { Loader2, MonitorPlay, PanelRight, PictureInPicture2, X } from "lucide-react";
+import { Loader2, MonitorPlay, PanelRight, PictureInPicture2, X, Zap } from "lucide-react";
 import { useRef, type PointerEvent as ReactPointerEvent } from "react";
 import { NlrStageLayer } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
 import { GAME_STAGE_BASE_CLASS_NAME } from "@/lib/ui-editor/runtime/app/gameStageBase";
+import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { useTranslation } from "@/lib/i18n";
+import { cn } from "@/lib/utils/cn";
 import type { StoryScenePreviewController } from "./useStoryScenePreviewController";
 import type { StoryScenePreviewPaneMode } from "./storyScenePreviewSessionStore";
 
 const NOOP = () => undefined;
+
+/** An option that is on, in the accent: `ToolbarButton`'s own `active` is too close to its hover. */
+const ACTIVE_TOGGLE_CLASS = "bg-primary/15 text-primary";
+
+/** Keeps a press on a header control from starting a window drag. */
+const stopPointerDown = (event: ReactPointerEvent) => event.stopPropagation();
 
 /**
  * How far a press on the stage may travel and still be a click. Windows' own `SM_CXDRAG`, the number
@@ -47,9 +55,12 @@ export function StoryScenePreviewPane(props: {
      * the stage gives up height (letterboxing the game) only when the pane is held shorter than that.
      */
     stageAspectRatio?: number;
+    /** Lines appear in full rather than typed out; shared by the docked pane and the window. */
+    skipTyping?: boolean;
+    onToggleSkipTyping?: () => void;
 }) {
     const { t } = useTranslation();
-    const { controller, onClose, mode = "dock", onToggleFloat, onHeaderPointerDown, sceneName, stageAspectRatio } = props;
+    const { controller, onClose, mode = "dock", onToggleFloat, onHeaderPointerDown, sceneName, stageAspectRatio, skipTyping = false, onToggleSkipTyping } = props;
     const busy = controller.phase === "compiling" || controller.phase === "mounting" || controller.phase === "starting";
     /** Where the primary press on the stage went down, until it comes up. */
     const pressRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
@@ -95,29 +106,42 @@ export function StoryScenePreviewPane(props: {
                 {/* Refreshes keep the previous frame visible; the spinner is the only indicator. */}
                 {busy ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-fg-subtle" /> : null}
                 <div className="flex-1" />
+                {onToggleSkipTyping ? (
+                    <ToolbarButton
+                        size="xs"
+                        className={cn("shrink-0", skipTyping && ACTIVE_TOGGLE_CLASS)}
+                        onPointerDown={stopPointerDown}
+                        onClick={onToggleSkipTyping}
+                        active={skipTyping}
+                        aria-pressed={skipTyping}
+                        data-tip={t("story.preview.skipTyping")} aria-label={t("story.preview.skipTyping")}
+                        data-story-preview-skip-typing=""
+                    >
+                        <Zap className="h-3.5 w-3.5" />
+                    </ToolbarButton>
+                ) : null}
                 {onToggleFloat ? (
-                    <button
-                        type="button"
-                        className="rounded-md p-1 text-fg-muted hover:bg-fill hover:text-fg"
-                        // Keep header clicks on controls from starting a window drag.
-                        onPointerDown={event => event.stopPropagation()}
+                    <ToolbarButton
+                        size="xs"
+                        className="shrink-0"
+                        onPointerDown={stopPointerDown}
                         onClick={onToggleFloat}
                         data-tip={mode === "float" ? t("story.preview.dock") : t("story.preview.pip")} aria-label={mode === "float" ? t("story.preview.dock") : t("story.preview.pip")}
                     >
                         {mode === "float"
                             ? <PanelRight className="h-3.5 w-3.5" />
                             : <PictureInPicture2 className="h-3.5 w-3.5" />}
-                    </button>
+                    </ToolbarButton>
                 ) : null}
-                <button
-                    type="button"
-                    className="rounded-md p-1 text-fg-muted hover:bg-fill hover:text-fg"
-                    onPointerDown={event => event.stopPropagation()}
+                <ToolbarButton
+                    size="xs"
+                    className="shrink-0"
+                    onPointerDown={stopPointerDown}
                     onClick={onClose}
                     data-tip={t("story.preview.closePreview")} aria-label={t("story.preview.closePreview")}
                 >
                     <X className="h-3.5 w-3.5" />
-                </button>
+                </ToolbarButton>
             </div>
 
             {/* The stage inherits what a shipped game's does, never Studio's theme. */}

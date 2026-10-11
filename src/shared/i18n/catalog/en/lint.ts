@@ -442,6 +442,31 @@ export const lint = {
                 + "- Choose a page in the row's Page shown afterwards field.\n"
                 + "- To end the story with an ending recorded, use an /ending row instead.",
         },
+        storyInputActionMissing: {
+            title: "Wait for a missing input action",
+            description: "A /waitinput, /hold or /mash row naming an input action the project no longer has",
+            message: "The input action this row waits for is no longer in the project, so the story stops here for good",
+            timed: "The input action this row waits for is no longer in the project, so the row always fails when its time limit ends",
+            help:
+                "A /waitinput, /hold or /mash row names an input action that has been deleted from the project's input settings.\n"
+                + "\n"
+                + "No input can perform the action. With no time limit the story stops at this row. With a time limit the row always fails.\n"
+                + "\n"
+                + "- Choose an existing action in the row's Input action field.\n"
+                + "- Clear the field to accept any input action.",
+        },
+        storyInputLockedDialogue: {
+            title: "Line inside a locked passage",
+            description: "A line or /wait click after /input lock with no /input unlock before it",
+            message: "Player input is locked here, so this row cannot be advanced. Add /input unlock before it",
+            help:
+                "/input lock stops clicking to advance, the advance key, auto-forward and skipping until an /input unlock row runs. Choices can still be picked.\n"
+                + "\n"
+                + "A dialogue line or a /wait click inside a locked passage waits for an advance the player cannot give, and the story stops there.\n"
+                + "\n"
+                + "- Add an /input unlock row before the line.\n"
+                + "- Branches are not checked one at a time: a lock or unlock inside one branch also counts for the rows written after it. A passage that locks or unlocks inside a branch can be reported when it is fine, or missed.",
+        },
         storyEndingNameDuplicate: {
             title: "Two endings with one name",
             description: "More than one ending sharing a display name",

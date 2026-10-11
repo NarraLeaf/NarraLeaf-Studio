@@ -1,12 +1,4 @@
 export const struct = {
-    type: {
-        string: "文字列",
-        number: "数値",
-        boolean: "真偽値",
-        image: "画像",
-        color: "色",
-        json: "JSON",
-    },
     field: {
         name: "名前",
         type: "型",

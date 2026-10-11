@@ -30,7 +30,7 @@ import { entrySurfacePointerMisses, resolveEntrySurface } from "@shared/types/ui
 import { applyCompiled, findEntryTarget } from "./apply";
 import { compileUiFile, type UiCompileResult } from "./dsl/compile";
 import { parseUiFile, UiParseError } from "./dsl/parse";
-import { collectTree, elementPath, type BlueprintIndex, type TextKeys } from "./project";
+import { collectTree, elementPath, type BlueprintIndex, type TextKeys } from "./model";
 
 export { formatDiagnostics } from "../blueprint-cli/check";
 

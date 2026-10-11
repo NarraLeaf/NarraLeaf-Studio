@@ -416,6 +416,7 @@ export const storyInspector = {
 
     layerOperation: {
         setZIndex: "Set z-index",
+        setDepth: "Set depth",
     },
 
     videoOperation: {
@@ -509,6 +510,8 @@ export const storyInspector = {
     layer: {
         layerName: "Layer name",
         zIndex: "Z-index",
+        depth: "Depth",
+        setDepthHint: "Sets the depth of the background layer for the whole scene",
     },
 
     video: {
@@ -519,6 +522,22 @@ export const storyInspector = {
         leave: "Exit",
         waitForEnd: "Wait for the video",
         skipHint: "The player can end the video early by clicking or pressing the skip key.",
+    },
+
+    /** `/rumble`, `/input`, `/waitinput`, `/hold`, `/mash` - the player's-hands rows. */
+    input: {
+        shape: "Shape",
+        leftMotor: "Left motor (0-1)",
+        rightMotor: "Right motor (0-1)",
+        waitForRumble: "Wait for the rumble to end",
+        state: "State",
+        action: "Input action",
+        anyAction: "Any input action",
+        holdSeconds: "Hold (s)",
+        pressCount: "Presses",
+        timeout: "Time limit (s)",
+        result: "Result variable",
+        noResult: "None",
     },
 
     nvl: {

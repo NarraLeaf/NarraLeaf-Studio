@@ -8,6 +8,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { useTranslation } from "@/lib/i18n";
+import { formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
 import { StoryActionBlueprintPreviewCard } from "./StoryActionBlueprintPreviewCard";
 import type { BlueprintOpenOptions } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { rememberInterpolationKind, type StoryVariableOption } from "./storyInterpolation";
@@ -115,7 +116,11 @@ export function InterpolationPopover(props: {
     };
 
     const variableOptions: SelectOption[] = allVariables.length
-        ? allVariables.map(option => ({ value: option.key, label: option.name, secondaryLabel: option.valueType }))
+        ? allVariables.map(option => ({
+            value: option.key,
+            label: option.name,
+            secondaryLabel: formatBlueprintValueTypeLabel(option.valueType, t),
+        }))
         : [{ value: "", label: t("story.interpolation.noVariables") }];
 
     const view = doc.defaultView ?? window;

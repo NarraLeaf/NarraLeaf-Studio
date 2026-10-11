@@ -1,69 +1,94 @@
-import { autoUpdater } from "electron-updater";
+import { spawn, type ChildProcess } from "child_process";
+import os from "os";
+import { session } from "electron";
+import { autoUpdater, CancellationToken } from "electron-updater";
 import { IPCEventType } from "@shared/types/ipcEvents";
 import {
     UPDATE_AUTO_CHECK_DELAY_MS,
     UPDATE_AUTO_CHECK_KEY,
+    UPDATE_AUTO_DOWNLOAD_KEY,
+    UPDATE_RECHECK_INTERVAL_MS,
     UPDATE_RELEASES_URL,
+    UPDATE_SOURCE_KEY,
+    readUpdateSourcePreference,
     type UpdateState,
     type UpdateStatus,
 } from "@shared/constants/update";
 import { applyDownloadRewrite } from "./downloadRewrites";
 import { studioFetch } from "./downloadProxy";
+import { compareVersions } from "./updateVersions";
+import {
+    UPDATE_WAIT_PID_ENV,
+    cleanUpAfterUpdate,
+    installLayout,
+    readPrepareProgress,
+    readPreparedVersion,
+    removeStagedCopy,
+    updaterCacheDir,
+    type InstallLayout,
+} from "./updateStaging";
+import { classifyDifferentialFailure, DifferentialRetry, summarizeDifferentialFailure } from "./updateDifferentialRetry";
+import { askGitCode, chooseUpdateSource, type UpdateFetch, type UpdateOffer, type UpdateSourceId } from "./updateSource";
+import { releaseDirectoryFeed } from "./releaseDirectoryProvider";
+import { getMainTranslator } from "../i18n";
 import type { BaseApp } from "../baseApp";
+
+export { compareVersions } from "./updateVersions";
 
 /** Where the check-only path reads the newest published release from. */
 const GITHUB_LATEST_RELEASE_API = "https://api.github.com/repos/NarraLeaf/NarraLeaf-Studio/releases/latest";
 
+/**
+ * The feed the package was built with (`publish:` in electron-builder.yml). Used when no source
+ * answered, so a check that cannot reach anything fails the way it always has rather than reading a
+ * release directory an earlier check settled on.
+ */
+const PACKAGED_FEED = { provider: "github", owner: "NarraLeaf", repo: "NarraLeaf-Studio" } as const;
+
+/**
+ * The partition electron-updater downloads through (its `NET_SESSION_NAME`). Sources are timed on
+ * it, so the proxy the measurement goes through is the one the download will.
+ */
+const UPDATER_SESSION = "electron-updater";
+
+/**
+ * When a failed download is tried again on its own, one entry per attempt. Short enough that a
+ * network that dropped for a minute is not left waiting for the six-hourly recheck, few enough that
+ * a source that is down is not asked over and over; after the last, the recheck takes over.
+ */
+export const UPDATE_RETRY_DELAYS_MS: readonly number[] = [2 * 60_000, 10 * 60_000, 30 * 60_000];
+
 /** A check that hangs is worse than one that fails: the panel would spin forever. */
 const CHECK_TIMEOUT_MS = 15_000;
 
+/** How often the unpacking progress the installer writes is read back while preparing. */
+const PREPARE_POLL_MS = 500;
+
 /**
- * Compare two `X.Y.Z` versions, ignoring any pre-release suffix beyond ordering it below the
- * release it belongs to. Returns >0 when `a` is newer.
- *
- * Hand-rolled rather than pulled from `semver`, which is only in the tree as somebody else's
- * transitive dependency - importing it here would make an update check depend on a package this
- * app never declared, and it would keep working right up until a fresh install hoisted it
- * somewhere else. The comparison Studio needs is the whole of what its own tags use.
+ * How long after launch the leftovers of the last update are tidied. Late, so it never competes with
+ * opening a project, and so the installer that started this Studio has finished deleting the old
+ * version itself.
  */
-export function compareVersions(a: string, b: string): number {
-    const parse = (value: string) => {
-        const [core, prerelease] = value.replace(/^v/i, "").split("-", 2);
-        const parts = core.split(".").map(part => Number.parseInt(part, 10) || 0);
-        return { parts, prerelease: prerelease ?? "" };
-    };
-    const left = parse(a);
-    const right = parse(b);
-    for (let index = 0; index < 3; index += 1) {
-        const diff = (left.parts[index] ?? 0) - (right.parts[index] ?? 0);
-        if (diff !== 0) {
-            return diff > 0 ? 1 : -1;
-        }
-    }
-    // 1.0.0 beats 1.0.0-rc1; two pre-releases of the same version compare lexically, which is
-    // enough to stop Studio offering someone the build they are already running.
-    if (left.prerelease === right.prerelease) {
-        return 0;
-    }
-    if (!left.prerelease) {
-        return 1;
-    }
-    if (!right.prerelease) {
-        return -1;
-    }
-    return left.prerelease > right.prerelease ? 1 : -1;
-}
+const CLEAN_UP_DELAY_MS = 2 * 60_000;
+
+/** The states in which a check would describe something other than what the process is doing. */
+const BUSY_STATUSES: ReadonlySet<UpdateStatus> = new Set(["checking", "downloading", "preparing", "ready"]);
 
 /**
  * Everything Studio knows about newer versions of itself.
  *
  * Two very different paths, chosen by {@link canSelfUpdate}:
  *
- * - **Windows, packaged** - electron-updater against the GitHub release the `v*` tag published.
- *   `autoDownload` is off: the installer is ~270 MB and downloading that behind someone's back on
- *   a metered connection is not a decision this app gets to make. So a check only ever produces
- *   an offer, and the download starts when the user presses the button in Settings.
- * - **Everything else** - one GitHub API request and a version comparison, reported as `manual`.
+ * - **Windows, packaged** - electron-updater against the release the `v*` tag published, on GitHub
+ *   or on its GitCode copy, whichever is faster (`updateSource.ts`), in three steps that all run
+ *   while the author works: check, download, prepare. Preparing runs the
+ *   downloaded installer with `--nl-prepare`, which unpacks the new version into the installation
+ *   beside the running one (see `updateStaging.ts` for the layout). Applying it is then a swap of
+ *   folders, so the restart the author asks for takes as long as any other restart instead of the
+ *   minutes a full install keeps Studio closed. A version found by a check is downloaded and
+ *   prepared without asking unless the author turned that off (`UPDATE_AUTO_DOWNLOAD_KEY`).
+ * - **Everything else** - one request for the newest release and a version comparison, reported as
+ *   `manual`.
  *   macOS cannot self-update at all until Studio is code-signed (Squirrel.Mac refuses an unsigned
  *   app, and the updater's mac channel wants a `zip` target we do not build); Linux is not
  *   published by `release.yml` at all; and an unpackaged development build has no
@@ -71,13 +96,60 @@ export function compareVersions(a: string, b: string): number {
  *   a disabled button on the one host a feature was written for is a mistake this codebase has
  *   made before.
  *
- * State is pushed, never polled. The Settings panel draws exactly what the downloader reports,
- * so a progress bar moving means bytes arrived.
+ * Every step that has not finished can be cancelled, and any step that fails leaves the update in
+ * the state the step before it reached: a prepare that does not finish still leaves an installer
+ * that the restart runs in full, exactly as every update ran before preparing existed.
+ *
+ * State is pushed, never polled. Every surface draws exactly what the downloader and the installer
+ * report, so a progress ring moving means bytes arrived or files were unpacked.
  */
 export class UpdateManager {
     private state: UpdateState;
     private wired = false;
     private autoCheckTimer: ReturnType<typeof setTimeout> | null = null;
+    private recheckTimer: ReturnType<typeof setInterval> | null = null;
+    private cleanUpTimer: ReturnType<typeof setTimeout> | null = null;
+    /** The download in flight, so it can be cancelled. */
+    private downloadToken: CancellationToken | null = null;
+    /** Whether the download in flight was started by the author pressing Download. */
+    private downloadByRequest = false;
+    /** The installer for the version on offer, once it is on disk. */
+    private downloaded: { file: string; version: string } | null = null;
+    /** The installer unpacking the new version, while it runs. */
+    private prepareProcess: ChildProcess | null = null;
+    private preparePoll: ReturnType<typeof setInterval> | null = null;
+    /**
+     * A version the author cancelled in this session. Studio does not fetch it again on its own
+     * initiative until the next launch; pressing Download still does.
+     */
+    private declinedVersion: string | null = null;
+    /**
+     * The source the last check settled on, and for which version. A recheck finding the same
+     * version uses it again rather than timing both sources a second time.
+     */
+    private sourceChoice: { version: string; source: UpdateSourceId } | null = null;
+    /** What the source the updater is pointed at offers; its page is where "Release notes" goes. */
+    private offer: UpdateOffer | null = null;
+    /**
+     * The source a download of a version failed from. The next attempt at that version passes it
+     * over while the other source has the version too, so a retry is not a repeat of the failure.
+     */
+    private failedSource: { version: string; source: UpdateSourceId } | null = null;
+    /** The automatic retry waiting to run after a failed download, and when it will. */
+    private retryTimer: ReturnType<typeof setTimeout> | null = null;
+    private retryAt: number | null = null;
+    /** How many automatic retries the version on offer has had; see {@link UPDATE_RETRY_DELAYS_MS}. */
+    private retryCount = 0;
+    /**
+     * Set while a retry's check is in flight. The version it finds is downloaded whatever the
+     * automatic-download setting says - someone asked for this download, or Studio started it
+     * itself - and `byRequest` carries which, for the quit guard.
+     */
+    private pendingRetry: { byRequest: boolean } | null = null;
+    private readonly differentialRetry = new DifferentialRetry({
+        log: message => this.app.logger.info("[Update]", message),
+        networkError: summary => new Error(getMainTranslator(this.app).t("update.errors.connection", { reason: summary })),
+    });
 
     constructor(private readonly app: BaseApp) {
         this.state = {
@@ -101,21 +173,30 @@ export class UpdateManager {
         return this.state;
     }
 
-    /** True while an installer is coming down. The quit guard's only question. */
-    public isDownloading(): boolean {
-        return this.state.status === "downloading";
+    /**
+     * Whether quitting now would abandon a download the author asked for. The quit guard's only
+     * question.
+     *
+     * A download Studio started on its own is not asked about: it resumes from the start on the next
+     * launch, and a prompt standing between someone and quitting, about work they never requested,
+     * is a prompt they did not need.
+     */
+    public isDownloadingOnRequest(): boolean {
+        return this.state.status === "downloading" && this.downloadByRequest;
     }
 
     /**
-     * Wire the updater and, if the author has not turned it off, schedule the launch check.
+     * Wire the updater and, if the author has not turned it off, schedule the checks.
      *
-     * Called once the app is ready. The delay exists so the check never competes with opening a
-     * project: it is the least urgent thing Studio does at start-up.
+     * Called once the app is ready. The first check waits a few seconds so it never competes with
+     * opening a project: it is the least urgent thing Studio does at start-up. Later checks follow
+     * every {@link UPDATE_RECHECK_INTERVAL_MS}, because a Studio left in the notification area can
+     * run for days.
      *
-     * The launch check is the half a command-line run does not get: `--build`, `--test` and `--lint`
+     * The checks are the half a command-line run does not get: `--build`, `--test` and `--lint`
      * answer one question and ask nothing of the network on the way. See `startupExtras.ts`. The
      * wiring above it still happens, so anything that reads this state in a run reads a true one -
-     * only the request is missing.
+     * only the requests are missing.
      */
     public initialize(): void {
         this.state = { ...this.state, currentVersion: this.app.getAppInfo().version };
@@ -128,7 +209,23 @@ export class UpdateManager {
             this.app.logger.info("[Update] No launch check: this is a command-line run.");
             return;
         }
-        if (this.app.globalState.get(UPDATE_AUTO_CHECK_KEY) === false) {
+
+        if (this.canSelfUpdate()) {
+            this.cleanUpTimer = setTimeout(() => {
+                this.cleanUpTimer = null;
+                void this.cleanUp();
+            }, CLEAN_UP_DELAY_MS);
+        }
+
+        // Read at every tick rather than once, so turning the setting on or off takes effect without
+        // a restart.
+        this.recheckTimer = setInterval(() => {
+            if (this.autoCheckEnabled()) {
+                void this.check().catch(() => undefined);
+            }
+        }, UPDATE_RECHECK_INTERVAL_MS);
+
+        if (!this.autoCheckEnabled()) {
             this.app.logger.info("[Update] Launch check is off.");
             return;
         }
@@ -139,10 +236,31 @@ export class UpdateManager {
     }
 
     public dispose(): void {
-        if (this.autoCheckTimer) {
-            clearTimeout(this.autoCheckTimer);
-            this.autoCheckTimer = null;
+        this.clearRetryTimer();
+        for (const timer of [this.autoCheckTimer, this.cleanUpTimer]) {
+            if (timer) {
+                clearTimeout(timer);
+            }
         }
+        this.autoCheckTimer = null;
+        this.cleanUpTimer = null;
+        if (this.recheckTimer) {
+            clearInterval(this.recheckTimer);
+            this.recheckTimer = null;
+        }
+        this.stopPreparing();
+    }
+
+    private autoCheckEnabled(): boolean {
+        return this.app.globalState.get(UPDATE_AUTO_CHECK_KEY) !== false;
+    }
+
+    private autoDownloadEnabled(): boolean {
+        return this.app.globalState.get(UPDATE_AUTO_DOWNLOAD_KEY) !== false;
+    }
+
+    private layout(): InstallLayout {
+        return installLayout(process.execPath);
     }
 
     private wireAutoUpdater(): void {
@@ -151,36 +269,60 @@ export class UpdateManager {
         }
         this.wired = true;
 
-        // Never behind the user's back: see the class header.
+        // Studio decides when to download (see `takesOnItsOwn`), so the updater never starts one itself.
         autoUpdater.autoDownload = false;
-        // Once an installer *is* on disk, applying it on the way out is the whole point - the
-        // alternative is asking a second time about work the user already agreed to.
+        // Left on for the whole session, because the updater registers its quit handler only if
+        // this is on at the moment a download completes. Whether a quit actually applies the update
+        // is decided on the way out (`beforeQuit`), when the state that decides it is known.
         autoUpdater.autoInstallOnAppQuit = true;
         // Read by quitAndInstall when the run is not silent; it is what puts --force-run on the
-        // installer's command line, and so what brings Studio back after "install now".
+        // installer's command line, and so what brings Studio back after "restart to update".
         autoUpdater.autoRunAppAfterInstall = true;
         autoUpdater.logger = {
             info: (message: unknown) => this.app.logger.info("[Update]", message),
             warn: (message: unknown) => this.app.logger.warn("[Update]", message),
-            error: (message: unknown) => this.app.logger.error("[Update]", message),
+            error: (message: unknown) => {
+                this.differentialRetry.observe(message);
+                this.app.logger.error("[Update]", message);
+            },
             debug: (message: unknown) => this.app.logger.debug("[Update]", message),
         };
+        // A dropped request retries the ~15 MB incremental download instead of starting the
+        // ~330 MB full one. See updateDifferentialRetry.ts.
+        if (!this.differentialRetry.install(autoUpdater)) {
+            this.app.logger.warn("[Update] electron-updater has no differentialDownloadInstaller; incremental downloads are not retried.");
+        }
 
         autoUpdater.on("checking-for-update", () => {
             this.setState({ status: "checking", error: undefined });
         });
         autoUpdater.on("update-available", info => {
+            const retry = this.pendingRetry;
+            this.pendingRetry = null;
+            if (retry || this.takesOnItsOwn(info.version)) {
+                // Straight to downloading, without passing through "available": every surface that
+                // announces an offer would otherwise announce one that is already being acted on.
+                this.state = { ...this.state, availableVersion: info.version, releaseUrl: this.releaseUrlFor(info.version), error: undefined };
+                void this.beginDownload(retry?.byRequest ?? false);
+                return;
+            }
             this.setState({
                 status: "available",
                 availableVersion: info.version,
-                releaseUrl: UPDATE_RELEASES_URL,
+                releaseUrl: this.releaseUrlFor(info.version),
                 error: undefined,
             });
         });
         autoUpdater.on("update-not-available", () => {
+            this.pendingRetry = null;
+            this.forgetFailures();
             this.setState({ status: "idle", availableVersion: undefined, error: undefined });
         });
         autoUpdater.on("download-progress", progress => {
+            // A cancelled download can still report the chunk that was in flight.
+            if (this.downloadToken === null || this.downloadToken.cancelled) {
+                return;
+            }
             this.setState({
                 status: "downloading",
                 transferredBytes: progress.transferred,
@@ -189,55 +331,107 @@ export class UpdateManager {
             });
         });
         autoUpdater.on("update-downloaded", info => {
-            this.setState({
-                status: "ready",
-                availableVersion: info.version,
-                transferredBytes: undefined,
-                totalBytes: undefined,
-                bytesPerSecond: undefined,
-            });
+            this.downloadToken = null;
+            this.downloadByRequest = false;
+            this.forgetFailures();
+            this.downloaded = info.downloadedFile ? { file: info.downloadedFile, version: info.version } : null;
+            void this.prepare(info.version);
         });
+        // A cancelled download never arrives here: the updater does not report cancellation as an
+        // error, and `cancel` has already said what happened.
         autoUpdater.on("error", error => {
-            this.setState({ status: "error", error: describeError(error) });
+            this.fail(error);
         });
+
+        this.app.electronApp?.on("will-quit", () => this.beforeQuit());
+    }
+
+    /**
+     * Whether a version a check has just found is downloaded straight away: yes, unless the author
+     * turned that off or cancelled this very version earlier in the session.
+     */
+    private takesOnItsOwn(version: string): boolean {
+        return this.autoDownloadEnabled() && this.declinedVersion !== version;
     }
 
     /**
      * Ask whether there is a newer version.
      *
-     * Refuses to start a second check, and refuses to interrupt a download - both would leave the
-     * panel showing a state that is no longer what the process is doing.
+     * Refuses while anything is in flight or an update is waiting to be applied - each would leave
+     * the surfaces showing a state that is no longer what the process is doing. A newer release
+     * published in the meantime is found by the first check after the restart.
      */
     public async check(): Promise<UpdateState> {
-        if (this.state.status === "checking" || this.state.status === "downloading") {
+        if (BUSY_STATUSES.has(this.state.status)) {
             return this.state;
         }
 
         if (this.canSelfUpdate()) {
+            this.setState({ status: "checking", error: undefined, retryAt: undefined });
+            await this.pointAtSource();
             try {
                 await autoUpdater.checkForUpdates();
             } catch (error) {
-                // The listener above has usually already reported this; setting it again is
+                // The listener above has usually already reported this; reporting it again is
                 // harmless and covers a rejection that never reached the 'error' event.
-                this.setState({ status: "error", error: describeError(error) });
+                this.fail(error);
             }
             return this.state;
         }
 
-        return this.checkViaGitHub();
+        return this.checkManually();
     }
 
     /**
-     * The check-only path: one request to the releases API, one comparison.
+     * Point the updater at the release directory of the source to download from.
      *
-     * Goes through `applyDownloadRewrite` so an author behind a mirror can reach it. The
-     * *download* is not rewritten - electron-updater resolves its own URLs from `app-update.yml`,
-     * and pointing it at a mirror means a `generic` feed whose layout has to match GitHub's
-     * release URLs exactly. That is a separate piece of work, not a line here; until it exists an
-     * author on a mirror can still see that an update exists and fetch it from the page.
+     * Asked before every check rather than once, because which source is faster is a property of
+     * the network the author is on today. The choice is remembered per version, so the six-hourly
+     * recheck of a version already found does not time the sources again.
      */
-    private async checkViaGitHub(): Promise<UpdateState> {
+    private async pointAtSource(): Promise<void> {
+        const preference = readUpdateSourcePreference(this.app.globalState.get(UPDATE_SOURCE_KEY));
+        let offer: UpdateOffer | null = null;
+        try {
+            offer = await chooseUpdateSource({
+                fetch: updaterSessionFetch(),
+                currentVersion: this.state.currentVersion,
+                preference,
+                remembered: this.sourceChoice,
+                avoid: this.failedSource,
+                log: message => this.app.logger.info("[Update]", message),
+            });
+        } catch (error) {
+            this.app.logger.warn(`[Update] Choosing where to update from failed: ${describeError(error)}`);
+        }
+        this.offer = offer;
+        if (!offer) {
+            this.app.logger.info(`[Update] No update source answered (${preference}); asking the packaged feed.`);
+            autoUpdater.setFeedURL(PACKAGED_FEED);
+            return;
+        }
+        this.sourceChoice = { version: offer.version, source: offer.source };
+        autoUpdater.setFeedURL(releaseDirectoryFeed(offer.feedUrl));
+    }
+
+    /** The page of the release a check found, on the host it was found on. */
+    private releaseUrlFor(version: string): string {
+        return this.offer?.version === version ? this.offer.releaseUrl : UPDATE_RELEASES_URL;
+    }
+
+    /**
+     * The check-only path: one request for the newest release, one comparison.
+     *
+     * GitHub's releases API, through `applyDownloadRewrite` so an author behind a mirror can reach
+     * it; GitCode's when the author chose it or GitHub did not answer. The page linked is then
+     * GitCode's copy of the release, which is the one such an author can open.
+     */
+    private async checkManually(): Promise<UpdateState> {
         this.setState({ status: "checking", error: undefined });
+        const preference = readUpdateSourcePreference(this.app.globalState.get(UPDATE_SOURCE_KEY));
+        if (preference === "gitcode") {
+            return this.checkManuallyOnGitCode(null, preference);
+        }
         try {
             const url = applyDownloadRewrite(GITHUB_LATEST_RELEASE_API, message => this.app.logger.info("[Update]", message));
             const response = await studioFetch(url, {
@@ -245,8 +439,7 @@ export class UpdateManager {
                 signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
             });
             if (!response.ok) {
-                this.setState({ status: "error", error: `GitHub answered ${response.status}` });
-                return this.state;
+                return this.checkManuallyOnGitCode(`GitHub answered ${response.status}`, preference);
             }
             const payload = await response.json() as { tag_name?: unknown; html_url?: unknown };
             const tag = typeof payload.tag_name === "string" ? payload.tag_name : "";
@@ -266,58 +459,421 @@ export class UpdateManager {
                 releaseUrl: typeof payload.html_url === "string" ? payload.html_url : UPDATE_RELEASES_URL,
             });
         } catch (error) {
-            this.setState({ status: "error", error: describeError(error) });
+            return this.checkManuallyOnGitCode(describeError(error), preference);
         }
         return this.state;
     }
 
     /**
-     * Start downloading the offered update.
-     *
-     * Only ever reached from a press in Settings - the notification's action opens the panel, it
-     * does not start a download. That is deliberate: the offer and the ~270 MB commitment are two
-     * different decisions, and a toast is not where the second one belongs.
+     * The check-only path on GitCode. `githubFailure` is why GitHub was passed over, and is what gets
+     * reported if GitCode does not answer either; null when GitCode was the author's choice.
+     */
+    private async checkManuallyOnGitCode(githubFailure: string | null, preference: string): Promise<UpdateState> {
+        if (preference === "github") {
+            this.setState({ status: "error", error: githubFailure ?? "GitHub did not answer." });
+            return this.state;
+        }
+        let offer: UpdateOffer | null = null;
+        try {
+            offer = await askGitCode(studioFetch as UpdateFetch);
+        } catch (error) {
+            this.app.logger.info(`[Update] GitCode did not answer: ${describeError(error)}`);
+        }
+        if (!offer) {
+            this.setState({ status: "error", error: githubFailure ?? "GitCode did not answer." });
+            return this.state;
+        }
+        if (compareVersions(offer.version, this.state.currentVersion) <= 0) {
+            this.setState({ status: "idle", availableVersion: undefined });
+            return this.state;
+        }
+        this.setState({ status: "manual", availableVersion: offer.version, releaseUrl: offer.releaseUrl });
+        return this.state;
+    }
+
+    /**
+     * Start downloading the offered update, because the author pressed Download - or Try Again, after
+     * a download failed, which checks first so the source can change (see {@link retry}).
      */
     public async download(): Promise<UpdateState> {
+        if (this.canSelfUpdate() && this.state.status === "error" && this.state.availableVersion) {
+            return this.retry(true, true);
+        }
+        return this.startDownload(true);
+    }
+
+    /**
+     * Try a failed download again.
+     *
+     * Through a check rather than straight into the updater's download: the updater downloads from
+     * the source the last check pointed it at, and the one that just failed should be passed over
+     * while the other has the version. `pressed` is the author asking, which starts the automatic
+     * retries over and takes back a decline.
+     */
+    private async retry(byRequest: boolean, pressed: boolean): Promise<UpdateState> {
+        if (BUSY_STATUSES.has(this.state.status)) {
+            return this.state;
+        }
+        this.clearRetryTimer();
+        if (pressed) {
+            this.retryCount = 0;
+            this.declinedVersion = null;
+        }
+        this.pendingRetry = { byRequest };
+        await this.check();
+        // A check that found nothing new to download (or failed in a way the listener did not see)
+        // must not leave the flag for a later, unrelated offer.
+        this.pendingRetry = null;
+        return this.state;
+    }
+
+    /**
+     * After a download failed: try again in a while, unless every automatic attempt has been made,
+     * or Studio is not to download on its own and this download was not asked for.
+     */
+    private scheduleRetry(byRequest: boolean): void {
+        this.clearRetryTimer();
+        if (!byRequest && !this.autoDownloadEnabled()) {
+            return;
+        }
+        const delay = UPDATE_RETRY_DELAYS_MS[this.retryCount];
+        if (delay === undefined) {
+            this.app.logger.info("[Update] No automatic retries left; the next check tries again.");
+            return;
+        }
+        this.retryCount += 1;
+        this.retryAt = Date.now() + delay;
+        this.app.logger.info(`[Update] Trying the download again in ${Math.round(delay / 1000)} s (attempt ${this.retryCount}/${UPDATE_RETRY_DELAYS_MS.length}).`);
+        this.retryTimer = setTimeout(() => {
+            this.retryTimer = null;
+            this.retryAt = null;
+            void this.retry(byRequest, false);
+        }, delay);
+    }
+
+    private clearRetryTimer(): void {
+        if (this.retryTimer) {
+            clearTimeout(this.retryTimer);
+        }
+        this.retryTimer = null;
+        this.retryAt = null;
+    }
+
+    /** A download finished, or the version is gone: nothing about earlier failures applies any more. */
+    private forgetFailures(): void {
+        this.clearRetryTimer();
+        this.retryCount = 0;
+        this.failedSource = null;
+    }
+
+    private async startDownload(byRequest: boolean): Promise<UpdateState> {
         if (!this.canSelfUpdate()) {
             return this.state;
         }
         if (this.state.status !== "available" && this.state.status !== "error") {
             return this.state;
         }
-        this.setState({ status: "downloading", transferredBytes: 0, totalBytes: undefined, error: undefined });
+        if (byRequest) {
+            this.declinedVersion = null;
+        }
+        return this.beginDownload(byRequest);
+    }
+
+    private async beginDownload(byRequest: boolean): Promise<UpdateState> {
+        this.clearRetryTimer();
+        const token = new CancellationToken();
+        this.downloadToken = token;
+        this.downloadByRequest = byRequest;
+        this.setState({ status: "downloading", transferredBytes: 0, totalBytes: undefined, bytesPerSecond: undefined, error: undefined });
         try {
-            await autoUpdater.downloadUpdate();
+            await autoUpdater.downloadUpdate(token);
         } catch (error) {
-            this.setState({ status: "error", error: describeError(error) });
+            // A cancelled download rejects too; `cancel` has already put the state back.
+            if (!token.cancelled) {
+                this.fail(error);
+            }
+        } finally {
+            if (this.downloadToken === token) {
+                this.downloadToken = null;
+            }
         }
         return this.state;
     }
 
     /**
-     * Quit and apply the downloaded installer.
+     * Stop the update in progress: the download, or the unpacking that follows it.
      *
-     * Not silent: a silent run has no window, and between Studio closing and coming back - over a
-     * minute for a full install - there was nothing on screen at all. The installer recognises the
-     * `--updated` the updater passes and turns its wizard into a window that only says Studio is
-     * being updated and how far it has got: no page asks anything, the folder is the one Studio
-     * is already in (NSIS reads `InstallLocation` from the registry), and it closes itself once
-     * the new Studio has a window (project/installer/installer.nsh, "the update").
+     * The version is remembered as declined for the rest of the session, so the next automatic
+     * check does not start it again behind the author's back; Download still does. What has been
+     * downloaded is kept by the updater, so taking the update later does not download it twice.
+     */
+    public cancel(): UpdateState {
+        const version = this.state.availableVersion ?? null;
+        this.clearRetryTimer();
+        this.pendingRetry = null;
+        if (this.state.status === "downloading" && this.downloadToken) {
+            const token = this.downloadToken;
+            this.downloadToken = null;
+            this.downloadByRequest = false;
+            this.declinedVersion = version;
+            token.cancel();
+            this.app.logger.info(`[Update] Download of ${version ?? "the update"} cancelled.`);
+            this.offerAgain();
+        } else if (this.state.status === "preparing") {
+            this.declinedVersion = version;
+            this.stopPreparing();
+            this.app.logger.info(`[Update] Preparing ${version ?? "the update"} cancelled.`);
+            this.offerAgain();
+            // The half-unpacked copy is no use to anyone; the next prepare would delete it anyway.
+            void removeStagedCopy(this.layout());
+        }
+        return this.state;
+    }
+
+    /** Back to "a newer version exists", which is what remains true after a cancel. */
+    private offerAgain(): void {
+        this.setState({
+            status: "available",
+            transferredBytes: undefined,
+            totalBytes: undefined,
+            bytesPerSecond: undefined,
+            prepareProgress: undefined,
+            fastRestart: undefined,
+            error: undefined,
+        });
+    }
+
+    /**
+     * Unpack the downloaded version beside the running one.
+     *
+     * A copy an earlier session already prepared for this same version is used as it is - the
+     * download is still on disk from that session, and so is the copy. Otherwise the installer runs
+     * with `--nl-prepare`, silently and below normal priority, and reports how far it has got in a
+     * file this polls. The copy is only trusted once the installer has written the version into it,
+     * which it does last; any other ending leaves the update ready for a full install instead.
+     */
+    private async prepare(version: string): Promise<void> {
+        const installer = this.downloaded;
+        if (!installer || installer.version !== version) {
+            this.becomeReady(version, false);
+            return;
+        }
+        const layout = this.layout();
+        if (await readPreparedVersion(layout) === version) {
+            this.app.logger.info(`[Update] ${version} is already prepared.`);
+            this.becomeReady(version, true);
+            return;
+        }
+
+        this.setState({
+            status: "preparing",
+            availableVersion: version,
+            prepareProgress: 0,
+            transferredBytes: undefined,
+            totalBytes: undefined,
+            bytesPerSecond: undefined,
+            error: undefined,
+        });
+
+        let child: ChildProcess;
+        try {
+            child = spawn(installer.file, ["--nl-prepare", "/S"], { windowsHide: true, stdio: "ignore" });
+        } catch (error) {
+            this.app.logger.warn(`[Update] Could not start preparing ${version}: ${describeError(error)}`);
+            this.becomeReady(version, false);
+            return;
+        }
+        this.prepareProcess = child;
+        this.app.logger.info(`[Update] Preparing ${version} in ${layout.stagedDir}.`);
+        if (child.pid !== undefined) {
+            try {
+                os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL);
+            } catch {
+                // Normal priority is slower for the author, not wrong.
+            }
+        }
+
+        this.preparePoll = setInterval(() => {
+            void readPrepareProgress(layout).then(progress => {
+                if (progress === null || this.prepareProcess !== child || this.state.status !== "preparing") {
+                    return;
+                }
+                // Pushed only when it moves: every push reaches each window and rebuilds the tray menu.
+                if (progress !== this.state.prepareProgress) {
+                    this.setState({ status: "preparing", prepareProgress: progress });
+                }
+            });
+        }, PREPARE_POLL_MS);
+
+        child.once("error", error => {
+            this.app.logger.warn(`[Update] Preparing ${version} failed to run: ${describeError(error)}`);
+            void this.finishPreparing(child, version, null);
+        });
+        child.once("exit", code => {
+            void this.finishPreparing(child, version, code);
+        });
+    }
+
+    private async finishPreparing(child: ChildProcess, version: string, code: number | null): Promise<void> {
+        // Cancelled, or superseded: whoever stopped it has already said what happens next.
+        if (this.prepareProcess !== child) {
+            return;
+        }
+        this.stopPreparing();
+        const prepared = await readPreparedVersion(this.layout());
+        if (prepared === version) {
+            this.app.logger.info(`[Update] ${version} is prepared.`);
+            this.becomeReady(version, true);
+            return;
+        }
+        this.app.logger.warn(`[Update] Preparing ${version} did not finish (exit code ${code ?? "none"}); the restart will run the full install.`);
+        this.becomeReady(version, false);
+    }
+
+    /** Stop the installer that is unpacking, if one is. */
+    private stopPreparing(): void {
+        if (this.preparePoll) {
+            clearInterval(this.preparePoll);
+            this.preparePoll = null;
+        }
+        const child = this.prepareProcess;
+        this.prepareProcess = null;
+        if (child && child.exitCode === null && !child.killed) {
+            try {
+                child.kill();
+            } catch {
+                // Already gone.
+            }
+        }
+    }
+
+    private becomeReady(version: string, fastRestart: boolean): void {
+        this.setState({
+            status: "ready",
+            availableVersion: version,
+            fastRestart,
+            prepareProgress: undefined,
+            transferredBytes: undefined,
+            totalBytes: undefined,
+            bytesPerSecond: undefined,
+            error: undefined,
+        });
+    }
+
+    /**
+     * Quit and apply the update.
+     *
+     * Not silent. When the new version is prepared, the installer swaps the folders and starts the
+     * new Studio before it has drawn anything, so there is nothing to see; when it is not, the
+     * installer recognises the `--updated` the updater passes and shows a window that only says
+     * Studio is being updated and how far it has got, until the new Studio has a window
+     * (project/installer/installer.nsh, "the update").
      *
      * `--force-run` is what tells the installer to start Studio again, so `autoRunAppAfterInstall`
      * is pinned on in `wireAutoUpdater`: for a run that is not silent, electron-updater takes the
      * force-run flag from that setting rather than from the second argument here.
      *
-     * Quitting with an update downloaded, rather than pressing this, still applies it silently
-     * (`autoInstallOnAppQuit`): the user asked Studio to go away, so nothing appears and nothing
-     * starts afterwards.
+     * Quitting with an update ready, rather than pressing this, still applies it silently: the user
+     * asked Studio to go away, so nothing appears and nothing starts afterwards. See `beforeQuit`.
      */
     public installNow(): void {
         if (this.state.status !== "ready") {
             return;
         }
-        this.app.logger.info("[Update] Quitting to install.");
+        this.app.logger.info(`[Update] Quitting to install${this.state.fastRestart ? " the prepared update" : ""}.`);
+        process.env[UPDATE_WAIT_PID_ENV] = String(process.pid);
         autoUpdater.quitAndInstall(false, true);
+    }
+
+    /**
+     * The quit is certain: decide whether it applies the update.
+     *
+     * Only an update that is ready is applied on the way out. One that is still preparing is stopped
+     * where it is and resumes on the next launch, where the download is found already on disk; one
+     * the author cancelled is not applied at all.
+     *
+     * The installer is told which process to wait for before it moves anything, because it is
+     * started while this one is still exiting.
+     */
+    private beforeQuit(): void {
+        this.stopPreparing();
+        const apply = this.state.status === "ready";
+        autoUpdater.autoInstallOnAppQuit = apply;
+        if (apply) {
+            process.env[UPDATE_WAIT_PID_ENV] = String(process.pid);
+        }
+    }
+
+    /** See {@link cleanUpAfterUpdate}. */
+    private async cleanUp(): Promise<void> {
+        try {
+            const cache = await updaterCacheDir(process.resourcesPath, process.env.LOCALAPPDATA);
+            const result = await cleanUpAfterUpdate({
+                layout: this.layout(),
+                currentVersion: this.state.currentVersion,
+                updaterCache: cache,
+                log: message => this.app.logger.warn("[Update]", message),
+            });
+            if (result.removed.length > 0) {
+                this.app.logger.info(`[Update] Removed what the last update left behind: ${result.removed.join(", ")}`);
+            }
+        } catch (error) {
+            this.app.logger.warn(`[Update] Tidying up after the last update failed: ${describeError(error)}`);
+        }
+    }
+
+    /**
+     * Report a failure. One that happened while checking says nothing about any version, so the one
+     * on offer is dropped with it - unless the check was a retry's, of a version found before. One
+     * that happened while downloading keeps it, because that version is still there to retry, and
+     * schedules the retry.
+     *
+     * The updater reports the same failure twice (its `error` event, then the rejected promise),
+     * hence the early return for a message already showing.
+     */
+    private fail(error: unknown): void {
+        const message = this.describeFailure(error);
+        if (this.state.status === "error" && this.state.error === message) {
+            return;
+        }
+        const duringCheck = this.state.status === "checking";
+        const duringDownload = this.state.status === "downloading";
+        const retry = this.pendingRetry;
+        this.pendingRetry = null;
+
+        if (duringDownload && this.offer && this.offer.version === this.state.availableVersion) {
+            this.failedSource = { version: this.offer.version, source: this.offer.source };
+        }
+        if (duringDownload) {
+            this.scheduleRetry(this.downloadByRequest);
+        } else if (duringCheck && retry && this.state.availableVersion) {
+            this.scheduleRetry(retry.byRequest);
+        }
+        const keepsVersion = !duringCheck || (retry !== null && Boolean(this.state.availableVersion));
+        this.setState({
+            status: "error",
+            error: message,
+            ...(keepsVersion ? {} : { availableVersion: undefined }),
+            retryAt: this.retryTimer ? this.retryAt ?? undefined : undefined,
+            transferredBytes: undefined,
+            totalBytes: undefined,
+            bytesPerSecond: undefined,
+            prepareProgress: undefined,
+        });
+    }
+
+    /**
+     * What a failure is called on screen. A dropped connection by the few words that name it - the
+     * updater's own message carries a stack and a signed URL several hundred characters long -
+     * and anything else by its first line. The whole of it is in the log either way.
+     */
+    private describeFailure(error: unknown): string {
+        const raw = describeError(error);
+        if (classifyDifferentialFailure(raw) === "network") {
+            return getMainTranslator(this.app).t("update.errors.connection", { reason: summarizeDifferentialFailure(raw) });
+        }
+        const firstLine = raw.split("\n", 1)[0].trim();
+        return firstLine.length > 200 ? `${firstLine.slice(0, 199)}…` : firstLine;
     }
 
     private setState(patch: Partial<UpdateState> & { status: UpdateStatus }): void {
@@ -339,6 +895,12 @@ export class UpdateManager {
             }
         }
     }
+}
+
+/** Fetch through the session electron-updater downloads through. */
+function updaterSessionFetch(): UpdateFetch {
+    const updaterSession = session.fromPartition(UPDATER_SESSION, { cache: false });
+    return (url, init) => updaterSession.fetch(url, init);
 }
 
 /** Updater failures arrive as Errors, strings, and occasionally objects. All of them get read. */

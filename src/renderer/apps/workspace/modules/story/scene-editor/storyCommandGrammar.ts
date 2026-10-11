@@ -162,6 +162,14 @@ export type StoryCommandParamType =
      */
     | { kind: "appTag" }
     | { kind: "surface" }
+    /**
+     * One of the project's input actions, by name: the `Confirm` in `/waitinput Confirm`.
+     *
+     * A closed set resolved the way {@link surface} is - the candidates are the actions the project
+     * declares, a name matching none of them is an error, and the row stores the action's id so a
+     * rename never reaches it.
+     */
+    | { kind: "inputAction" }
     | { kind: "variable" }
     /**
      * The subject of a generic verb (`/show poster`, `/hide Alice`, `/vol piano`): a character or a
@@ -481,6 +489,8 @@ export function allowsFreeValue(type: StoryCommandParamType): boolean {
         // A page that is not in the project is not a page anything can be shown, so there is no
         // name here that free text could stand for either.
         case "surface":
+        // An input action the project does not declare is one no player can perform.
+        case "inputAction":
         case "appTag":
         case "characterForm":
         // Content is typed by its target: an image target's content is an asset that must resolve.

@@ -26,6 +26,7 @@ import {
     storyGroupKindOfMode,
     storyGroupWaits,
     storyVariableRefKey,
+    STORY_RUMBLE_DEFAULT_PRESET,
 } from "@shared/types/story";
 import { formatStorySecondsLabel, storyMsToSeconds } from "@shared/utils/storyTime";
 import { parseSceneTranslationUnitId } from "@shared/types/localization";
@@ -33,7 +34,8 @@ import { translate, translateCommand } from "@/lib/i18n";
 import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformProps";
 import { getStoryCameraLookPreset } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import { getQuickParams, quickParamText, type QuickParam } from "./storyQuickParamsModel";
-import { storyVerbLabelKey } from "./storyVerbVocabulary";
+import { storyVerbCommandId, storyVerbLabelKey } from "./storyVerbVocabulary";
+import { storyLayerDepthLabel, storyLayerLabel } from "./storyLayerLabel";
 // Two pure tables that happen to live under the story editor: the command taxonomy (the colour unit)
 // and the rich-run model (the one description of what an inline chip reads as). Both are data /
 // pure functions — nothing in this module renders, mounts or touches a workspace service.
@@ -146,6 +148,11 @@ export type StoryRowLookups = {
      * Read by the `/quit` row, whose whole content is the page it hands the screen to.
      */
     surfaceName?: (surfaceId: string) => string | null;
+    /**
+     * The author-facing name of one of the project's input actions, or `null` when the id names
+     * nothing it declares. Read by `/waitinput`, `/hold` and `/mash`, whose subject is that action.
+     */
+    inputActionName?: (actionId: string) => string | null;
     /**
      * The name a `/blueprint` row's blueprint goes by - the one its author gave it, or what it does
      * (`storyBlueprintName`) - or `null` when it has neither. Omit it and the row names only its kind,
@@ -427,7 +434,7 @@ export type StoryBlockBadgeId =
     | "narration" | "dialogue" | "choice" | "choiceOption"
     | "background" | "character" | "audio" | "variable" | "wait" | "image"
     | "transform" | "displayable" | "text" | "layer" | "video" | "vfx" | "nvl"
-    | "blueprint" | "camera" | "effect" | "plugin"
+    | "blueprint" | "camera" | "effect" | "plugin" | "rumble" | "input"
     | "label" | "goto" | "break" | "cut" | "ending" | "quit" | "control" | "jump" | "invalid" | "declaration" | "note" | "empty";
 
 export type StoryBlockBadge = {
@@ -483,6 +490,14 @@ export function storyBlockBadge(block: StoryBlock): StoryBlockBadge {
         // line to something outside the scene's own vocabulary. It needs to be tellable apart at a
         // glance precisely because it is the one row whose behaviour is not in the document.
         if (block.payload.action === "plugin") return badge("plugin", "story.badge.plugin", "utils");
+        // Two badges for one payload arm, split the way the commands are filed: a rumble is
+        // feedback about the moment on screen (场景), a lock or a wait decides when the story moves
+        // on (流程).
+        if (block.payload.action === "input") {
+            return block.payload.operation === "rumble" || block.payload.operation === "stopRumble"
+                ? badge("rumble", "story.badge.rumble", "scene")
+                : badge("input", "story.badge.input", "flow");
+        }
         // Defensive rather than reachable: the arms above are exhaustive over the union, and a
         // document from a newer schema can still carry an action this build has no badge for.
         return badge("effect", "story.badge.effect", "scene");
@@ -790,6 +805,44 @@ function verbWord(payload: StoryActionPayload, whenUnowned: string): string {
     return key === null ? whenUnowned : translateCommand(key);
 }
 
+/**
+ * A player's-hands row in words. The action a wait names IS the row, as a page is a quit's: three
+ * rows reading only "Wait for input" would leave the author opening each one to find which gesture.
+ */
+function describeInput(payload: Extract<StoryActionPayload, { action: "input" }>, lookups: StoryRowLookups): string {
+    switch (payload.operation) {
+        case "rumble":
+            return translate("story.describe.rumble", {
+                shape: translate(`story.enumValue.${payload.preset ?? STORY_RUMBLE_DEFAULT_PRESET}` as TranslationKey),
+            });
+        case "stopRumble":
+            return translate("story.describe.rumbleStop");
+        case "lock":
+            return translate("story.describe.inputLock");
+        case "unlock":
+            return translate("story.describe.inputUnlock");
+        case "wait":
+        case "hold":
+        case "mash": {
+            // Three readings, never two: a named action, "any action" for a row that names none, and a
+            // neutral word for one this surface cannot name - which must not read as "any".
+            const name = payload.actionId ? lookups.inputActionName?.(payload.actionId) ?? null : null;
+            const action = name
+                ? translate("story.describe.inputActionNamed", { name })
+                : payload.actionId
+                    ? translate("story.describe.inputActionUnknown")
+                    : translate("story.describe.inputAnyAction");
+            if (payload.operation === "hold") {
+                return translate("story.describe.inputHold", { action, seconds: storyMsToSeconds(payload.holdMs) });
+            }
+            if (payload.operation === "mash") {
+                return translate("story.describe.inputMash", { action, count: payload.count });
+            }
+            return translate("story.describe.inputWait", { action });
+        }
+    }
+}
+
 export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups): string {
     const { scene, scenes } = lookups;
     if (block.kind === "nodeAction") {
@@ -860,8 +913,17 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
         if (payload.action === "layer") {
             const layerName = payload.operation === "create"
                 ? (payload.objectName || translate("story.describe.unnamed"))
-                : (resolveStoryLayerRef(scene, layerActionTargetRef(payload.target, payload.objectName)).name || translate("story.describe.unnamed"));
-            return translate("story.describe.layer", { operation: verbWord(payload, payload.operation), name: layerName });
+                : storyLayerLabel(resolveStoryLayerRef(scene, layerActionTargetRef(payload.target, payload.objectName)));
+            const operation = verbWord(payload, payload.operation);
+            // `/layer`'s own rows (create, `z=`, `depth=`) already say "layer" in their verb.
+            const described = storyVerbCommandId(payload) === "layer"
+                ? `${operation} ${layerName}`
+                : translate("story.describe.layer", { operation, name: layerName });
+            // The rows that state a depth say it; a layer that moves with the camera, as every layer
+            // used to, reads as it always has.
+            return (payload.operation === "create" || payload.operation === "setDepth") && payload.depth
+                ? `${described} · ${translate("story.layerPanel.depth")} ${storyLayerDepthLabel(payload.depth)}`
+                : described;
         }
         if (payload.action === "video") return translate("story.describe.video", { operation: verbWord(payload, payload.operation), name: actionableSubjectWord(scene, payload.target, "video", payload.objectName) || translate("story.describe.unnamed") });
         if (payload.action === "vfx") return translate("story.describe.vfx", { operation: verbWord(payload, payload.operation), name: actionableSubjectWord(scene, payload.target, "vfx", payload.objectName) || translate("story.describe.unnamed") });
@@ -877,6 +939,7 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
             return lookups.pluginActionLabel?.(payload.pluginId, payload.actionId, payload.params)
                 ?? translate("story.describe.pluginAction");
         }
+        if (payload.action === "input") return describeInput(payload, lookups);
         return translate("story.badge.effect");
     }
     if (block.kind === "control") {
@@ -1060,7 +1123,9 @@ export function storyRowSpeaker(block: StoryBlock, lookups: StoryRowLookups): St
  * already reads there.
  */
 export function storyRowSentence(block: StoryBlock, lookups: StoryRowLookups, options: StoryRowOptions = {}): string {
-    const sceneName = (id: string | undefined) => (id ? lookups.scenes?.[id]?.name || id : "—");
+    // The token names its scene the way the editor's own token does (`storyQuickParams`): a target
+    // that no longer resolves reads as the unknown-scene word, never as the id it stores.
+    const sceneName = (id: string | undefined) => (id ? getStorySceneName(lookups.scenes, id) : "—");
     return storyRowFragments(block, lookups, defaultRowLabel, options)
         .map(fragment => (fragment.kind === "text" ? fragment.text : quickParamText(fragment.param, sceneName)))
         .filter(text => text.length > 0)

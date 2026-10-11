@@ -119,6 +119,50 @@ export const blueprint = {
         language: "Language",
         voiceLanguage: "Voice language",
     },
+    /**
+     * What a value type is called: on a pin, in a type picker, on a variable, in a message. Keyed by
+     * type id across every place an author picks or meets a type - a pin's and a variable's, a list
+     * field's, a page or component param's, a story variable's - and read only through
+     * `formatBlueprintValueTypeLabel`, so a type has one word wherever it appears.
+     *
+     * English shows these words where it already did (the type pickers that list `String`, `Integer`,
+     * `Text`...); the words beside a pin, on a variable's chip and in a message stay the type ids, see
+     * `inline`.
+     */
+    valueType: {
+        /**
+         * How a type reads beside a pin's name, on a variable's chip and in a message. `{id}` is the
+         * type id - the spelling the node reference, the command line and the files use - and
+         * `{name}` the word below.
+         */
+        inline: "{id}",
+        string: "String",
+        integer: "Integer",
+        float: "Float",
+        number: "Number",
+        boolean: "Boolean",
+        json: "JSON",
+        array: "Array",
+        list: "List",
+        any: "Any",
+        text: "Text",
+        audioTrack: "Audio track",
+        image: "Image",
+        imageAsset: "ImageAsset",
+        imageAssetOrNull: "ImageAsset|null",
+        color: "Color",
+        rgbaColor: "RGBAColor",
+        vector2D: "Vector2D",
+        rect: "Rect",
+        timer: "Timer",
+        animationToken: "AnimationToken",
+        soundHandle: "SoundHandle",
+        responseBody: "ResponseBody",
+        saveSlot: "SaveSlot",
+        element: "Element",
+        /** An element of one kind of widget, by the name the insert palette gives the widget. */
+        elementOf: "{widget} element",
+    },
     diagnostics: {
         empty: "No diagnostics.",
         summary: "Messages · {errors}E · {warnings}W · {infos}I",
@@ -470,6 +514,11 @@ export const blueprint = {
         rawJson: "Raw JSON",
         root: "Root",
         edit: "Edit JSON",
+        /** An array's size in a JSON value's one-line summary: `[2 items]`. Read with `tn`. */
+        itemCount: {
+            one: "{count} item",
+            other: "{count} items",
+        },
     },
     audio: {
         select: "Select audio",

@@ -5,6 +5,7 @@ import type {
     StoryDeclarationPayload,
     StoryDisplayableTargetRef,
     StoryJumpPayload,
+    StoryLayerDepth,
     StoryLiteralValue,
     StoryTransformRef,
     StoryTransitionRef,
@@ -1268,10 +1269,24 @@ function layerSentence(
     const name = payload.operation === "create"
         ? payload.objectName?.trim() || undefined
         : resolved?.name || undefined;
+    // A depth the row does not state is `follow` and prints as nothing, so a row from before depth
+    // existed reads exactly as it did.
+    const depthArg = arg("depth", payload.depth, {
+        enum: true,
+        apply: next => ({ ...payload, depth: next as StoryLayerDepth }),
+    });
+    if (payload.operation === "setDepth") {
+        // The reserved word the command line takes for the scene's own background layer.
+        return { commandId, args: [positional("name", "backgroundLayer"), depthArg] };
+    }
     if (payload.operation === "create" || payload.operation === "setZIndex") {
         return {
             commandId,
-            args: [positional("name", name), arg("z", numberValue(payload.zIndex), { apply: next => ({ ...payload, zIndex: Number(next) }) })],
+            args: [
+                positional("name", name),
+                arg("z", numberValue(payload.zIndex), { apply: next => ({ ...payload, zIndex: Number(next) }) }),
+                ...(payload.operation === "create" ? [depthArg] : []),
+            ],
         };
     }
     // The declaring `/layer` row, on the same terms as every other stage object: the ref's anchor
@@ -1754,6 +1769,8 @@ function actionSentence(
                     }),
                 ],
             };
+        case "input":
+            return inputSentence(payload, lookups, commandId);
         case "blueprint":
             // `/blueprint` takes no arguments, so the line would say strictly less than the row's own
             // sentence (which names the bound blueprint). The prose stands.
@@ -1767,6 +1784,97 @@ function actionSentence(
             // error rather than a row that silently renders as nothing.
             return null;
     }
+}
+
+/**
+ * The player's-hands rows: `/rumble`, `/input`, `/waitinput`, `/hold`, `/mash`.
+ *
+ * The action is printed by its name and never its id, exactly as `/quit` prints its page. Unlike that
+ * page it is NOT printed blank when no action answers to the id any more: the action slot may be left
+ * out, so a blank one reads - and re-parses - as a wait for ANY action, and retyping the line would
+ * quietly turn the row into one. It prints the unknown-action word instead, the way a jump prints
+ * "unknown scene": the row says something is missing, and a retyped line stops at a name it cannot
+ * resolve rather than becoming a different row.
+ *
+ * A motor strength edited on the line is clamped to 0-1, as the inspector clamps it.
+ */
+function inputSentence(
+    payload: Extract<StoryActionPayload, { action: "input" }>,
+    lookups: StoryCommandLineLookups,
+    commandId: string,
+): Sentence {
+    switch (payload.operation) {
+        case "rumble":
+            return {
+                commandId,
+                args: [
+                    positional("preset", payload.preset, {
+                        enum: true,
+                        apply: next => ({ ...payload, preset: next as typeof payload.preset }),
+                    }),
+                    arg("left", payload.strongMagnitude === undefined ? undefined : String(payload.strongMagnitude), {
+                        apply: next => ({ ...payload, strongMagnitude: motorStrength(next) }),
+                    }),
+                    arg("right", payload.weakMagnitude === undefined ? undefined : String(payload.weakMagnitude), {
+                        apply: next => ({ ...payload, weakMagnitude: motorStrength(next) }),
+                    }),
+                    arg("d", seconds(payload.durationMs), { apply: next => ({ ...payload, durationMs: msOf(next) }) }),
+                    arg("wait", payload.wait ? "true" : undefined, {
+                        apply: next => ({ ...payload, wait: next === "true" ? true : undefined }),
+                    }),
+                ],
+            };
+        case "stopRumble":
+            return { commandId, args: [positional("preset", "stop", { enum: true })] };
+        case "lock":
+        case "unlock":
+            return {
+                commandId,
+                args: [positional("state", payload.operation, {
+                    enum: true,
+                    apply: next => ({ action: "input", operation: next === "unlock" ? "unlock" : "lock" }),
+                })],
+            };
+        case "wait":
+        case "hold":
+        case "mash": {
+            const actions = lookups.commandContext?.inputActions ?? [];
+            const name = payload.actionId
+                ? actions.find(action => action.id === payload.actionId)?.name ?? translate("story.describe.inputActionNotFound")
+                : "";
+            const head: (Arg | null)[] = [
+                positional("action", name, actions.length === 0 ? {} : {
+                    choices: actions.map(action => ({ value: action.id, label: action.name })),
+                    ...(payload.actionId ? { editValue: payload.actionId } : {}),
+                    apply: next => ({ ...payload, actionId: next }),
+                }),
+            ];
+            if (payload.operation === "hold") {
+                head.push(positional("seconds", seconds(payload.holdMs), {
+                    apply: next => ({ ...payload, holdMs: msOf(next) }),
+                }));
+            }
+            if (payload.operation === "mash") {
+                head.push(positional("count", String(payload.count), {
+                    apply: next => ({ ...payload, count: Math.max(1, Math.round(Number(next))) }),
+                }));
+            }
+            return {
+                commandId,
+                args: [
+                    ...head,
+                    arg("timeout", seconds(payload.timeoutMs), { apply: next => ({ ...payload, timeoutMs: msOf(next) }) }),
+                    arg("into", payload.resultTarget ? variableRefShortLabel(payload.resultTarget, lookups) : undefined),
+                ],
+            };
+        }
+    }
+}
+
+/** A rumble motor's strength from an inline edit: 0-1, as the inspector stores it; not a number clears it. */
+function motorStrength(next: string): number | undefined {
+    const value = Number(next);
+    return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : undefined;
 }
 
 function blockSentence(block: StoryBlock, lookups: StoryCommandLineLookups): Sentence | null {

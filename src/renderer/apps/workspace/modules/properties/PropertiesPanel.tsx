@@ -121,6 +121,7 @@ import {
 } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 import { ElementStateBar } from "@/lib/ui-editor/widget-modules/shared/appearance/ElementStateBar";
+import { createElementNavigationField } from "./fields/elementNavigationFields";
 import { ElementAnimationField } from "@/lib/ui-editor/widget-modules/shared/page-animation/ElementAnimationField";
 import { InteractionSoundField } from "@/lib/ui-editor/widget-modules/shared/sound/InteractionSoundField";
 import { hasUIInteractionSounds, uiElementTypeTakesInteractionSounds } from "@shared/types/ui-editor/interactionSounds";
@@ -132,8 +133,11 @@ import type { AssetSet, AssetSetCandidate } from "@shared/types/assetSet";
 import { readAssetTag } from "@shared/types/assetSetLabels";
 import { useAssetSetNaming } from "../assets/state/useAssetSetNaming";
 import { StoryMotionKeyframeProperties } from "../story-motion/StoryMotionKeyframeProperties";
+import { StoryMotionAssetProperties } from "../story-motion/StoryMotionAssetProperties";
 import {
+    STORY_MOTION_ASSET_SELECTION_TYPE,
     STORY_MOTION_KEYFRAME_SELECTION_TYPE,
+    type StoryMotionAssetSelection,
     type StoryMotionKeyframeSelection,
 } from "../story-motion/storyMotionTypes";
 import { ActionInspector } from "../story/scene-editor/StorySceneActionInspector";
@@ -697,8 +701,10 @@ function mergeInspectorWithLayoutSchema(
     const layoutFields = layoutSchema.fields ?? [];
     const stateField = createElementStateField(element);
     const soundField = createElementInteractionSoundField(element, t);
+    const navigationField = createElementNavigationField(element, t);
     const animationField = createElementAnimationField(element, t);
-    const closingFields = soundField ? [soundField, animationField] : [animationField];
+    const closingFields = [soundField, navigationField, animationField]
+        .filter((field): field is FieldDefinition<UIInspectorData> => field !== null);
     const baseTitle = inspectorSchema.title ?? element.name ?? t("properties.layout.uiElement");
     const baseId = `ui-element:${element.id}`;
 
@@ -755,7 +761,9 @@ function createLinkedComponentInspectorSchema(
         fields: [
             ...(layoutSchema.fields ?? []),
             // An instance may animate even though its props come from the definition: how it arrives
-            // belongs to where it was placed, the same way its position does.
+            // belongs to where it was placed, the same way its position does. So does how the player
+            // reaches it.
+            ...[createElementNavigationField(element, t)].filter((field): field is FieldDefinition<UIInspectorData> => field !== null),
             createElementAnimationField(element, t),
             defineField<UIInspectorData, any>({
                 id: "component.params",
@@ -808,6 +816,8 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     const [uiSelection, setUISelection] = useState<UIElementSelection | null>(null);
     const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
     const [storyMotionSelection, setStoryMotionSelection] = useState<StoryMotionKeyframeSelection | null>(null);
+    const [storyMotionAsset, setStoryMotionAsset] = useState<StoryMotionAssetSelection | null>(null);
+    const [storyMotionAssetName, setStoryMotionAssetName] = useState<string | null>(null);
     const [storySelection, setStorySelection] = useState<StoryBlockSelection | null>(null);
     const [comparisonSelection, setComparisonSelection] = useState<ComparisonElementSelection | null>(null);
     const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
@@ -847,6 +857,24 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         if (!context || !isInitialized) return null;
         return context.services.get<StoryService>(Services.Story);
     }, [context, isInitialized]);
+
+    // The header names the motion, and follows a rename made anywhere.
+    const storyMotionAssetId = storyMotionAsset?.animationId ?? null;
+    useEffect(() => {
+        if (!storyService || !storyMotionAssetId) {
+            setStoryMotionAssetName(null);
+            return;
+        }
+        const read = () => {
+            try {
+                setStoryMotionAssetName(storyService.listAnimationAssets().find(entry => entry.id === storyMotionAssetId)?.name ?? null);
+            } catch {
+                setStoryMotionAssetName(null);
+            }
+        };
+        read();
+        return storyService.onAnimationsChanged(read);
+    }, [storyMotionAssetId, storyService]);
 
     const documentService = useMemo<UIDocumentService | null>(() => {
         if (!context || !isInitialized) return null;
@@ -971,6 +999,8 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         ? comparisonSelection.element.name || comparisonSelection.element.type
         : storyMotionSelection
         ? t("properties.panel.motionKeyframe")
+        : storyMotionAsset
+        ? storyMotionAssetName ?? t("properties.panel.storyMotion")
         : storyScene
         ? storyScene.name
         : activeComponentDefinition
@@ -986,7 +1016,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         : t("properties.panel.title");
     const panelSubtitle = comparisonSelection
         ? comparisonSelection.versionLabel
-        : storyMotionSelection
+        : storyMotionSelection || storyMotionAsset
         ? t("properties.panel.storyMotion")
         : storyScene
         ? t("properties.panel.scene")
@@ -998,7 +1028,11 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         ? t("properties.panel.character")
         : activeSet
         ? t("assets.sets.itemType")
-        : activeAsset?.type;
+        // The kind of asset, named the way the rename dialog names it (Image, 图片, 画像) rather than
+        // by the enum value the library stores.
+        : activeAsset
+        ? t(`dialogs.noun.${activeAsset.type}`)
+        : undefined;
 
     /**
      * Both halves of what the set inspector draws.
@@ -1026,6 +1060,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
          */
         const setSelectionState = (selection: SelectionState) => {
             let motionSelection: StoryMotionKeyframeSelection | null = null;
+            let motionAsset: StoryMotionAssetSelection | null = null;
             // A story scene editor owns the rail: the row it has focused, or the scene itself when it
             // has none. The subject travels as an address; its content arrives through the per-tab
             // bridge read below, which republishes as the document changes.
@@ -1045,6 +1080,9 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                     break;
                 case STORY_MOTION_KEYFRAME_SELECTION_TYPE:
                     motionSelection = selection.data;
+                    break;
+                case STORY_MOTION_ASSET_SELECTION_TYPE:
+                    motionAsset = selection.data;
                     break;
                 case STORY_BLOCK_SELECTION_TYPE:
                     story = selection.data;
@@ -1072,6 +1110,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             }
 
             setStoryMotionSelection(motionSelection);
+            setStoryMotionAsset(motionAsset);
             setStorySelection(story);
             setActiveAsset(asset);
             setActiveSetId(setId);
@@ -1447,6 +1486,16 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                 />
             );
         }
+        if (storyMotionAsset && storyService && uiService) {
+            return (
+                <StoryMotionAssetProperties
+                    key={storyMotionAsset.animationId}
+                    selection={storyMotionAsset}
+                    storyService={storyService}
+                    uiService={uiService}
+                />
+            );
+        }
         if (storyContent) {
             return storyContent;
         }
@@ -1521,6 +1570,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
      */
     const isEmpty = !storyContent
         && !storyMotionSelection
+        && !storyMotionAsset
         && !comparisonInspectorContent
         && !uiInspectorContent
         && !activeComponentDefinition
@@ -1553,7 +1603,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     return (
         <div className="nl-editor-surface h-full flex flex-col">
             {/* Header */}
-            <div className="flex items-center justify-between px-3 py-2 border-b border-edge">
+            <div className="nl-frame-surface flex items-center justify-between px-3 py-2 border-b border-edge bg-surface-sunken">
             <div className="flex items-center gap-2">
                 <span className="text-xs text-fg-muted">{panelTitle}</span>
             </div>
@@ -1804,7 +1854,7 @@ export function ComparisonElementInspector({
         <ReadOnlyInspection>
             <div
                 data-comparison-strip
-                className="shrink-0 border-b border-edge bg-surface-canvas/60 px-3 py-2 text-2xs text-fg-subtle"
+                className="nl-frame-surface shrink-0 border-b border-edge bg-surface-canvas/60 px-3 py-2 text-2xs text-fg-subtle"
             >
                 <span className="font-medium text-fg-muted">
                     {t("documentDiff.inspector.version", { version: selection.versionLabel })}

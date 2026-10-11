@@ -36,10 +36,11 @@ describe("collectTextIds", () => {
 });
 
 describe("isSceneIndependentUnitId", () => {
-    it("recognises the three namespaces no scene owns", () => {
+    it("recognises the namespaces no scene owns", () => {
         expect(isSceneIndependentUnitId("ui:panel.title")).toBe(true);
         expect(isSceneIndependentUnitId("char:alice")).toBe(true);
         expect(isSceneIndependentUnitId("key:menu.start")).toBe(true);
+        expect(isSceneIndependentUnitId("plugin:narraleaf.menu-bar/file.save")).toBe(true);
         expect(isSceneIndependentUnitId("t1")).toBe(false);
     });
 });
@@ -49,7 +50,14 @@ describe("restrictLocalizationToTextIds", () => {
         sourceLocale: "en",
         locales: [{ code: "en", displayName: "English" }, { code: "zh-CN", displayName: "中文" }],
         tables: {
-            "zh-CN": { kept: "留下", dropped: "拿走", "ui:a.text": "界面", "char:c": "角色", "key:k": "键" },
+            "zh-CN": {
+                kept: "留下",
+                dropped: "拿走",
+                "ui:a.text": "界面",
+                "char:c": "角色",
+                "key:k": "键",
+                "plugin:narraleaf.gallery/entry.cg1": "画廊条目",
+            },
         },
         keys: { k: "source" },
     };
@@ -61,6 +69,8 @@ describe("restrictLocalizationToTextIds", () => {
             "ui:a.text": "界面",
             "char:c": "角色",
             "key:k": "键",
+            // A plugin's words (a menu row's label, a gallery entry's name) belong to no scene.
+            "plugin:narraleaf.gallery/entry.cg1": "画廊条目",
         });
         expect(result.removedUnitCount).toBe(1);
     });
@@ -106,6 +116,30 @@ describe("restrictLocalizationToTextIds", () => {
         const result = restrictLocalizationToTextIds(withEndings, new Set(["kept"]));
         expect(result.bundle.tables.en).toEqual({ kept: "kept", "ending:alive": "True End" });
         expect(result.removedUnitCount).toBe(1);
+    });
+
+    /**
+     * A `rename:` unit belongs to a `/rename` row the same way - and the name a character is revealed
+     * under in a scene a demo cut is as much a spoiler as the ending.
+     */
+    it("keeps a /rename row's words whose row ships and drops those whose row does not", () => {
+        const withRenames: GameLocalizationBundle = {
+            ...bundle,
+            tables: { en: { kept: "kept", "rename:veil": "Mysterious girl", "rename:reveal": "Aoi, the heir" } },
+            renames: { veil: "神秘少女" },
+        };
+        const result = restrictLocalizationToTextIds(withRenames, new Set(["kept"]));
+        expect(result.bundle.tables.en).toEqual({ kept: "kept", "rename:veil": "Mysterious girl" });
+        expect(result.removedUnitCount).toBe(1);
+    });
+
+    it("keeps every /rename row's words when nothing assembled a rename table to check against", () => {
+        const result = restrictLocalizationToTextIds(
+            { ...bundle, tables: { en: { "rename:veil": "Mysterious girl" } } },
+            new Set(),
+        );
+        expect(result.bundle.tables.en).toEqual({ "rename:veil": "Mysterious girl" });
+        expect(result.removedUnitCount).toBe(0);
     });
 
     it("keeps every ending name when nothing assembled an ending table to check against", () => {

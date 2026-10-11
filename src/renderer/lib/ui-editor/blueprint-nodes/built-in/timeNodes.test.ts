@@ -14,7 +14,7 @@
  * Comments in English per project convention.
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
@@ -45,6 +45,10 @@ import { isBlueprintNodeAllowedInBlueprintValueGraph } from "../BlueprintNodeReg
 import { registerCoreBlueprintNodes } from "../registerCoreBlueprintNodes";
 import { resolveDataPinValue, type DataPinGraph } from "./graphParamResolvers";
 import { timeBlueprintNodes } from "./timeNodes";
+import { listUnwiredRequiredInputPins } from "../requiredInputPins";
+import { GAME_LOCALE_STATE_KEY } from "../../blueprint-runtime/blueprintStateWrites";
+import { setRuntimeLocaleSource } from "@/lib/ui-editor/runtime/localization/runtimeLocale";
+import { setActiveProjectLocale } from "@shared/typography/projectFonts";
 
 registerCoreBlueprintNodes();
 
@@ -361,5 +365,71 @@ describe("Get Save Time", () => {
             blueprintLocals: locals,
         });
         expect(locals).toMatchObject({ savedAt: 0, createdAt: 0, exists: false });
+    });
+});
+
+describe("an empty Locale", () => {
+    const FULL_DATE = { [BLUEPRINT_TIME_PARAM_DATE_STYLE]: "full", [BLUEPRINT_TIME_PARAM_TIME_STYLE]: "none" };
+    const wednesday = localTime(2026, 10, 7);
+    let uninstall: (() => void) | null = null;
+    let current = "ja";
+
+    function playing(): void {
+        uninstall = setRuntimeLocaleSource({ getLocale: () => current, sourceLocale: "zh" });
+    }
+
+    afterEach(() => {
+        uninstall?.();
+        uninstall = null;
+        current = "ja";
+        setActiveProjectLocale("");
+    });
+
+    it("words the date in the language the game is being played in, and follows a switch", () => {
+        playing();
+        expect(readPin(BLUEPRINT_NODE_TYPE_TIME_FORMAT_LOCALIZED, "result", { timestamp: wednesday, ...FULL_DATE }))
+            .toBe("2026年10月7日水曜日");
+        current = "zh";
+        expect(readPin(BLUEPRINT_NODE_TYPE_TIME_FORMAT_LOCALIZED, "result", { timestamp: wednesday, locale: "", ...FULL_DATE }))
+            .toBe("2026年10月7日星期三");
+        current = "en";
+        expect(readPin(BLUEPRINT_NODE_TYPE_TIME_FORMAT_LOCALIZED, "result", { timestamp: wednesday, locale: "  ", ...FULL_DATE }))
+            .toBe("Wednesday, October 7, 2026");
+        expect(readPin(BLUEPRINT_NODE_TYPE_TIME_FORMAT_RELATIVE, "result", { from: wednesday, to: wednesday - 86_400_000 }))
+            .toBe("yesterday");
+    });
+
+    it("gives way to a Locale the author wrote", () => {
+        playing();
+        expect(readPin(BLUEPRINT_NODE_TYPE_TIME_FORMAT_LOCALIZED, "result", { timestamp: wednesday, locale: "en-US", ...FULL_DATE }))
+            .toBe("Wednesday, October 7, 2026");
+    });
+
+    it("is the language the window draws the project in where no game is running", () => {
+        // The editor and the story preview: the workspace publishes the project's source language.
+        setActiveProjectLocale("zh");
+        expect(readPin(BLUEPRINT_NODE_TYPE_TIME_FORMAT_RELATIVE, "result", { from: wednesday, to: wednesday - 86_400_000 }))
+            .toBe("昨天");
+    });
+
+    it("records the language it read, so a Blueprint Value showing the date runs again on a switch", () => {
+        playing();
+        const read = (params: Record<string, unknown>) => {
+            const states: string[] = [];
+            const graph: DataPinGraph = { id: "time", nodes: { node: { type: BLUEPRINT_NODE_TYPE_TIME_FORMAT_LOCALIZED, params } }, edges: [] };
+            resolveDataPinValue(graph, "node", "result", params, {}, 0, {
+                valueExecution: { returnValue: () => undefined, trackState: key => states.push(key) },
+            });
+            return states;
+        };
+        expect(read({ timestamp: wednesday, ...FULL_DATE })).toEqual([GAME_LOCALE_STATE_KEY]);
+        // A written Locale does not depend on the game's language, so a switch leaves it alone.
+        expect(read({ timestamp: wednesday, locale: "en-US", ...FULL_DATE })).toEqual([]);
+    });
+
+    it("is not reported as an unwired input", () => {
+        const missing = listUnwiredRequiredInputPins(BLUEPRINT_NODE_TYPE_TIME_FORMAT_LOCALIZED, { timestamp: wednesday }, () => false)
+            .concat(listUnwiredRequiredInputPins(BLUEPRINT_NODE_TYPE_TIME_FORMAT_RELATIVE, { from: 0, to: 0 }, () => false));
+        expect(missing).toEqual([]);
     });
 });

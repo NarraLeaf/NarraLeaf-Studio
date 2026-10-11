@@ -1,6 +1,6 @@
 import { placementWordFor } from "./commands/transitions";
 import { Aperture, Blocks,
-    AppWindow, Bookmark, Clock, CornerUpLeft, Eye, FileText, FlagTriangleRight, GitBranch, Image, Layers, LogOut, MessageSquare, Minus, Move, Music, Puzzle, Route, SeparatorHorizontal, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video, Wind } from "lucide-react";
+    AppWindow, Bookmark, Clock, CornerUpLeft, Eye, FileText, FlagTriangleRight, Gamepad2, GitBranch, Image, Layers, LogOut, MessageSquare, Minus, Move, Music, Puzzle, Route, SeparatorHorizontal, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Vibrate, Video, Wind } from "lucide-react";
 import { resolveBrandColorValue } from "@shared/brand/brandRegistry";
 import type { StoryBlock, StoryBlockId, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment } from "@shared/types/story";
 import { resolveStoryGroupRunMode, storyGroupKindOfMode, storyVariableRefKey } from "@shared/types/story";
@@ -549,6 +549,8 @@ const BADGE_ICONS: Record<StoryBlockBadgeId, typeof FileText> = {
     cut: SeparatorHorizontal,
     ending: FlagTriangleRight,
     quit: AppWindow,
+    rumble: Vibrate,
+    input: Gamepad2,
     control: Settings2,
     jump: Route,
     invalid: TriangleAlert,
@@ -717,6 +719,8 @@ export function describeBlockSubject(
     resolveMotionName?: (animationId: string) => string | null,
     projectVariableName?: StoryRowLookups["projectVariableName"],
     blueprintName?: StoryRowLookups["blueprintName"],
+    /** The project-level names a row may point at: the page a `/quit` lands on, the action a wait waits for. */
+    projectNames?: Pick<StoryRowLookups, "surfaceName" | "inputActionName">,
 ): string {
     return describeStoryBlock(block, {
         character: characterRowLookup(characters),
@@ -726,6 +730,7 @@ export function describeBlockSubject(
         motionName: resolveMotionName,
         projectVariableName,
         blueprintName,
+        ...projectNames,
     });
 }
 

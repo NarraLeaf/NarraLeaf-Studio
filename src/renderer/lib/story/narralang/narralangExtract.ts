@@ -89,6 +89,11 @@ import type {
 export type NarralangIssueReason =
     /** A Story Action Blueprint row. Its meaning lives in a graph document, not in any script. */
     | "blueprintAction"
+    /**
+     * A row addressing the player's hands (`/rumble`, `/input`, `/waitinput`, `/hold`, `/mash`). The
+     * dialect has no sentence for one yet, and dropping it would play a QTE scene straight through.
+     */
+    | "inputAction"
     /** A condition computed by a blueprint (`/if` backed by a graph). */
     | "blueprintCondition"
     /** An inline value computed by a blueprint. */
@@ -1197,6 +1202,9 @@ function actionShape(ctx: NarralangExtractContext, block: StoryBlock, payload: S
             };
         case "blueprint":
             ctx.report(block.id, "blueprintAction");
+            return { form: "silent" };
+        case "input":
+            ctx.report(block.id, "inputAction");
             return { form: "silent" };
         default:
             ctx.report(block.id, "unknownPayload");

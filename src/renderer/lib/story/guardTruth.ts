@@ -1,4 +1,4 @@
-import type { StoryExpr } from "@shared/types/story";
+import type { StoryConditionRef, StoryExpr, StoryExprBinaryOp } from "@shared/types/story";
 import { storyVariableRefKey } from "@shared/types/story";
 import type { SceneFlowRange } from "@/apps/workspace/modules/story-flow/sceneFlowVariables";
 
@@ -140,4 +140,59 @@ export function guardTruth(expr: StoryExpr, rangeOf: (variableKey: string) => Sc
         return range?.kind === "known" ? compareRange(range, MIRRORED[op], leftLiteral) : "unknown";
     }
     return "unknown";
+}
+
+/**
+ * The comparison each picked operator makes, as the expression operator that makes the same one.
+ *
+ * Only the six that compare against a value. The compiler answers the four ordered ones through
+ * `compareStoryCondition`, which is `compareStoryValues` - the rule `<`, `<=`, `>` and `>=` follow in
+ * an expression - and the picked "equals" is the strict equality an expression's `==` is.
+ */
+const PICKED_COMPARISONS: Partial<Record<Extract<StoryConditionRef, { kind: "variable" }>["operator"], StoryExprBinaryOp>> = {
+    equals: "==",
+    notEquals: "!=",
+    greaterThan: ">",
+    greaterOrEqual: ">=",
+    lessThan: "<",
+    lessOrEqual: "<=",
+};
+
+/**
+ * The tree {@link guardTruth} reads for a stored condition, whichever editor wrote it, or null when
+ * there is nothing for it to read.
+ *
+ * A condition is stored in one of three shapes, and the one the condition editor's dropdowns write -
+ * a variable, an operator, a value - is the shape most conditions in a real project have. Judging
+ * only typed expressions would leave nearly every guard an author builds unread, so a picked
+ * comparison is rewritten as the tree the same comparison typed as an expression parses to:
+ * `好感度 大于或等于 20` picked and `好感度 >= 20` typed are one test, and with one tree there is one
+ * evaluator and the two cannot get different verdicts.
+ *
+ * Null - so the guard is taken - for:
+ *
+ *  - a graph condition, whose answer is computed inside a blueprint;
+ *  - "is true", "is false" and "is set", which ask about a flag rather than a number. The first two
+ *    test the stored boolean itself where an expression's `met` / `!met` test truthiness, so writing
+ *    them as one would claim an equivalence that does not hold, and nothing numeric could settle them;
+ *  - a comparison whose value has not been filled in, which is an unfinished row, not a route.
+ */
+export function conditionGuardExpr(condition: StoryConditionRef): StoryExpr | null {
+    if (condition.kind === "expression") {
+        return condition.expression.ast;
+    }
+    if (condition.kind !== "variable") {
+        return null;
+    }
+    const op = PICKED_COMPARISONS[condition.operator];
+    if (!op || condition.value === undefined) {
+        return null;
+    }
+    return {
+        kind: "binary",
+        op,
+        // The name is display-only on a `var` node and nothing on this path displays the tree.
+        left: { kind: "var", target: condition.target, name: "" },
+        right: { kind: "literal", value: condition.value },
+    };
 }

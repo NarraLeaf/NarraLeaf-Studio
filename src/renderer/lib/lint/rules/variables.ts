@@ -8,6 +8,7 @@ import {
     savedVariableDefs,
     sceneVariableDefs,
     storyPersistentDefs,
+    storyRowAssignedVariable,
     storyVariableRefKey,
     type StoryBlock,
     type StoryBlockId,
@@ -38,7 +39,7 @@ import {
     guardVariableRefs,
     hasUnreadableWriter,
 } from "./storyGuards";
-import { guardTruth } from "@/lib/story/guardTruth";
+import { conditionGuardExpr, guardTruth } from "@/lib/story/guardTruth";
 
 /**
  * `variables` - the story's state: declared, used, and unambiguous.
@@ -294,6 +295,13 @@ function collectVariableUses(scene: StoryScene, blocks: readonly StoryBlock[]): 
                     push(block.payload.target, block.id);
                     if (block.payload.expression) {
                         pushExpression(block.payload.expression.ast, block.id);
+                    }
+                } else {
+                    // A wait's `into=` variable is written like a `/set` target, so deleting it is
+                    // the same `undeclared` error and naming it is the same `unused` reprieve.
+                    const target = storyRowAssignedVariable(block);
+                    if (target) {
+                        push(target, block.id);
                     }
                 }
                 break;
@@ -967,7 +975,10 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
                     }
                     for (const guard of collectStoryGuards(scene)) {
                         const condition = guard.condition;
-                        if (condition.kind !== "expression") {
+                        // A comparison picked from the condition editor's dropdowns is judged as the
+                        // expression it spells, so one guard gets one verdict whichever way it was built.
+                        const expr = conditionGuardExpr(condition);
+                        if (!expr) {
                             continue;
                         }
                         // Which variable the report names, and the bound that settled it - recorded on
@@ -975,7 +986,7 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
                         // The name is null when no declaration is left to name it by.
                         let culpritName: string | null = null;
                         let culpritBound: string | null = null;
-                        const truth = guardTruth(condition.expression.ast, key => {
+                        const truth = guardTruth(expr, key => {
                             if (!writtenAnywhere.has(key) || !mine.has(key) || writtenElsewhere(key)) {
                                 return null;
                             }

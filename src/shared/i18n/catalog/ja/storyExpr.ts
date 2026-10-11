@@ -58,6 +58,7 @@ export const storyExpr = {
         unknownLabel: "このシーンに \"{value}\" というラベルはない",
         unknownAppTag: "\"{value}\" というビルドバリアントはない",
         unknownSurface: "\"{value}\" というページはない",
+        unknownInputAction: "\"{value}\" という入力アクションはない",
         unknownVariable: "\"{value}\" という変数がない",
         unknownForm: "{characterName} に \"{value}\" という表情はない",
         notPuppetCharacter: "{value} はランタイムが描くものではないので、設定できるモーションもスキンもない",
@@ -67,7 +68,7 @@ export const storyExpr = {
         expressionError: "{message}",
         expressionNotBoolean: "条件は gold >= 100 のような真偽の判定にする",
         // `{variable}` は必ず代入先で、式の側ではない。宣言された型を持つのは `/set` の左辺だけ。
-        expressionTypeMismatch: "\"{variable}\" が持つのは {expected} なので、{received} は入れられない",
+        expressionTypeMismatch: "\"{variable}\" の型は{expected}で、{received}は代入できない",
         duplicateVariable: "\"{value}\" はすでにある。別の名前にするか、/set で値を変える",
         reservedVariableName: "\"{value}\" は式の中でビルドバリアントを指す。別の名前にする",
         unknownTarget: "\"{value}\" という名前のものは舞台に出ていない",

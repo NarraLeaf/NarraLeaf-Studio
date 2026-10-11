@@ -6,6 +6,8 @@ export type StoryPreviewRebuildInput = {
     targetId: string | null;
     /** The Game UI the stage draws (`StoryPreviewGameUiHost.gameUi`), compared by identity. */
     gameUi: object | null;
+    /** Whether lines are shown in full rather than typed out; the line is compiled for it. */
+    skipTyping: boolean;
 };
 
 /** An edit to the story itself, which may come in bursts as the author types. */
@@ -17,6 +19,8 @@ export const ROW_SWITCH_DEBOUNCE_MS = 150;
  * built (`GAME_UI_REFRESH_DEBOUNCE_MS`), so waiting again would only add a second pause to it.
  */
 export const GAME_UI_REFRESH_DELAY_MS = 0;
+/** Skipping the typing turned on or off: one press, never a burst. */
+export const SKIP_TYPING_TOGGLE_DELAY_MS = 0;
 
 /** How long to wait before rebuilding the preview for this change of input. */
 export function storyPreviewRebuildDelay(previous: StoryPreviewRebuildInput | null, next: StoryPreviewRebuildInput): number {
@@ -25,6 +29,9 @@ export function storyPreviewRebuildDelay(previous: StoryPreviewRebuildInput | nu
     }
     if (previous.targetId !== next.targetId) {
         return ROW_SWITCH_DEBOUNCE_MS;
+    }
+    if (previous.skipTyping !== next.skipTyping) {
+        return SKIP_TYPING_TOGGLE_DELAY_MS;
     }
     if (previous.gameUi !== next.gameUi) {
         return GAME_UI_REFRESH_DELAY_MS;

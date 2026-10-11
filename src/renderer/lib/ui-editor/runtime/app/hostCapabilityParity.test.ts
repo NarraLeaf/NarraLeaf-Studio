@@ -172,6 +172,11 @@ const RUNTIME_ONLY: Readonly<Record<string, string>> = {
     subscribeMenuCommand:
         "The other half of the menu bar. Both or neither: a bar nobody hears from is a row of words "
         + "that do nothing.",
+    stageCrashed:
+        "Take the game to the shell's crash screen when the engine has replaced the stage with its "
+        + "own fallback. Dev Mode keeps that failure in its Problems panel, on the row that raised it, "
+        + "with the window's debugging tools still on screen - a crash screen would take both away. "
+        + "No graph can reach it.",
 };
 
 /**

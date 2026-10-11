@@ -367,6 +367,7 @@ export const storyInspector = {
     },
     layerOperation: {
         setZIndex: "设置层级",
+        setDepth: "设置纵深",
     },
     videoOperation: {
         play: "播放",
@@ -445,6 +446,8 @@ export const storyInspector = {
     layer: {
         layerName: "图层名称",
         zIndex: "层级",
+        depth: "纵深",
+        setDepthHint: "为整个场景设置背景图层的纵深",
     },
     video: {
         videoName: "视频名称",
@@ -455,6 +458,22 @@ export const storyInspector = {
         waitForEnd: "等待播放结束",
         skipHint: "玩家可点击或按跳过键提前结束视频",
     },
+    /** `/rumble`, `/input`, `/waitinput`, `/hold`, `/mash` - the player's-hands rows. */
+    input: {
+        shape: "振动样式",
+        leftMotor: "左马达（0-1）",
+        rightMotor: "右马达（0-1）",
+        waitForRumble: "等待振动结束",
+        state: "状态",
+        action: "输入动作",
+        anyAction: "任意输入动作",
+        holdSeconds: "按住时长（秒）",
+        pressCount: "按键次数",
+        timeout: "时限（秒）",
+        result: "结果变量",
+        noResult: "无",
+    },
+
     nvl: {
         hint: "子行在 NVL 模式下运行；下方的变换在 NVL 图层进入时播放",
         motionLabel: "NVL 进入动画",

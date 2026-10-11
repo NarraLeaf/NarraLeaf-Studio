@@ -23,6 +23,10 @@ name: Release
 # This is about where *Studio* runs. Games built with Studio still target Intel
 # Macs — see GAME_BUILD_ARCHS_BY_PLATFORM in src/shared/types/gameBuild.ts.
 #
+# Once published, the release's files are copied to GitCode (the `gitcode` job below), which is
+# where mainland China downloads Studio from. A failed copy leaves the GitHub release as it is; run
+# "Mirror to GitCode" by hand for the tag once whatever stopped it is fixed.
+#
 # Nothing here is code-signed, so every installer is unsigned and the OS will
 # quarantine it on first launch — the same caveat as the nightly builds.
 #
@@ -199,6 +203,17 @@ jobs:
               --generate-notes \
               --verify-tag
           fi
+
+  # Copy the release to GitCode. After `release` so the copy is of what GitHub actually serves, and
+  # beside `plugin-types` rather than before it: GitCode being slow or down must not hold anything
+  # else back. See mirror-gitcode.yml.
+  gitcode:
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/mirror-gitcode.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets: inherit
 
   # Publish the plugin API's types package, `narraleaf-studio`, under the same version as the
   # Studio just released. The two versions are the same number on purpose: a plugin author reads

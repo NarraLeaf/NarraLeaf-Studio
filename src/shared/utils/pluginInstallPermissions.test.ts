@@ -139,4 +139,11 @@ describe("process memory", () => {
         expect(isPermissionSubset([runtime("diagnostics"), runtime("process.memory")], [runtime("diagnostics")])).toBe(false);
         expect(isPermissionSubset([runtime("process.memory")], [runtime("process.memory")])).toBe(true);
     });
+
+    it("asks again for a new agent tool, or one that now changes the project, but not for one dropped", () => {
+        const tools = (names: string[], writes: string[] = []) => ({ kind: "agentTools", tools: names, writeTools: writes }) as const;
+        expect(isPermissionSubset([tools(["a.b.list"])], [tools(["a.b.list", "a.b.add"], ["a.b.add"])])).toBe(true);
+        expect(isPermissionSubset([tools(["a.b.list", "a.b.add"])], [tools(["a.b.list"])])).toBe(false);
+        expect(isPermissionSubset([tools(["a.b.list"], ["a.b.list"])], [tools(["a.b.list"])])).toBe(false);
+    });
 });

@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 3,
+  "colors": [
+    { "id": "primary", "value": "#40A8C4", "builtin": true },
+    { "id": "secondary", "value": "#2E6E80", "builtin": true },
+    { "id": "background", "value": "#101317", "builtin": true },
+    { "id": "foreground", "value": "#F2F4F7", "builtin": true },
+
+    { "id": "button.primary", "value": "nlbrand:primary", "builtin": true },
+    { "id": "button.secondary", "value": "nlbrand:secondary", "builtin": true },
+    { "id": "button.border", "value": "nlbrand:secondary/0.5", "builtin": true },
+    { "id": "button.text", "value": "nlbrand:foreground", "builtin": true },
+    { "id": "button.shadow", "value": "rgba(0, 0, 0, 0.35)", "builtin": true },
+
+    { "id": "container.background", "value": "nlbrand:background", "builtin": true },
+    { "id": "container.border", "value": "nlbrand:secondary/0.5", "builtin": true },
+    { "id": "container.shadow", "value": "rgba(0, 0, 0, 0.35)", "builtin": true },
+
+    { "id": "text.primary", "value": "nlbrand:foreground", "builtin": true },
+    { "id": "text.muted", "value": "#9AA3AE", "builtin": true },
+
+    { "id": "textInput.background", "value": "nlbrand:background", "builtin": true },
+    { "id": "textInput.border", "value": "nlbrand:secondary/0.5", "builtin": true },
+    { "id": "textInput.text", "value": "nlbrand:foreground", "builtin": true },
+
+    { "id": "pageBackground", "name": "页面背景", "value": "#0A090D" },
+    { "id": "panel", "name": "面板", "value": "#15171D" },
+    { "id": "raisedFill", "name": "上层填充", "value": "#222630" },
+    { "id": "subtleText", "name": "弱化文字", "value": "#6E7681" },
+    { "id": "hoverBorder", "name": "悬停边框", "value": "nlbrand:primary/0.7" },
+    { "id": "selectedFill", "name": "选中填充", "value": "#1D414D" }
+  ],
+  "fonts": []
+}

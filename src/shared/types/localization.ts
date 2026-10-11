@@ -374,6 +374,45 @@ export function parseEndingTranslationUnitId(unitId: string): string | null {
     return endingId ? endingId : null;
 }
 
+/** Prefix of the `/rename` unit space. Exported so id parsing has one spelling. */
+export const RENAME_UNIT_PREFIX = "rename:";
+
+/**
+ * Translation-unit id of the words a `/rename` row gives a character: `rename:<renameId>`, the rename
+ * id being the row's block id (`@shared/types/story/renames`).
+ *
+ * Keyed by the row, as an ending's name is: the words are the part being translated, and an author
+ * who rewrites them keeps every translation of them.
+ */
+export function renameTranslationUnitId(renameId: string): string {
+    return `${RENAME_UNIT_PREFIX}${renameId}`;
+}
+
+/** The rename id inside a `rename:<id>` unit, or null when the string is not one. */
+export function parseRenameTranslationUnitId(unitId: string): string | null {
+    if (!unitId.startsWith(RENAME_UNIT_PREFIX)) {
+        return null;
+    }
+    const renameId = unitId.slice(RENAME_UNIT_PREFIX.length);
+    return renameId ? renameId : null;
+}
+
+/**
+ * Whether a `/rename` row's words are a translation unit of their own.
+ *
+ * Not when they are blank - a row may hide the name again, and there is nothing to translate - and
+ * not when they are a character's name: a speaker recorded under a character's name is read as that
+ * character's name in every language (`resolveLocalizedSpeakerName`), so a unit for the same words
+ * would be a second translation of one name that nothing ever shows. A `/rename` back to the
+ * character's own name is the common case of this.
+ */
+export function isTranslatableRenameName(
+    name: string,
+    characters: readonly { name: string }[] | undefined,
+): boolean {
+    return name.trim().length > 0 && !characters?.some(entry => entry.name === name);
+}
+
 export type LocalizationKeyDefinition = {
     /** Source-language text (what renders when no translation applies). */
     sourceText: string;
@@ -445,6 +484,17 @@ export type GameLocalizationBundle = {
      * Assembled from the story documents the bundle carries.
      */
     endings?: Record<string, string>;
+    /**
+     * `/rename` source words (rename id → the words the row gives its character), for the `/rename`
+     * rows this build ships, in story order.
+     *
+     * Two jobs. The engine records a speaker by the words it was given and nothing else, so this is
+     * what turns a recorded "神秘少女" back into the `rename:` units that translate it. And, as
+     * `endings` does, it is the set of rows the build still has, which decides whether a `rename:`
+     * unit ships with a variant that dropped scenes. Assembled from the story documents the bundle
+     * carries.
+     */
+    renames?: Record<string, string>;
 };
 
 /**
@@ -551,22 +601,73 @@ export function resolveLocalizedCharacterName(
  * The name to show for a speaker the engine recorded by name, in `locale`.
  *
  * The engine knows a character only by the name it was given - the nametag, a backlog line, the
- * speaker a save was left on all carry that string and nothing else - so the name is matched back to
- * the character written with it, and that character's `char:` unit is what the player reads.
+ * speaker a save was left on all carry that string and nothing else - so the name is read back
+ * through whatever the project translates those words as:
  *
- * A recorded name no character is written with is shown as recorded. That is a `/rename` row's own
- * words ("？？？"), a one-off speaker, or a save written before the character was renamed: the
- * project has no translation of any of them. A `/rename` back to a character's name is that
- * character's name again, so it translates like any other line that character speaks.
+ * - A character's name is that character's: its `char:` unit. A `/rename` back to a character's name
+ *   is that character's name again, so it translates like any other line that character speaks.
+ * - The words a `/rename` row gives ("神秘少女", "？？？") are that row's: its `rename:` unit. Rows
+ *   that give the same words read the first translation found along the language chain, taking the
+ *   rows in story order at each language - a recorded name cannot say which of them gave it.
+ * - Anything else - a one-off speaker, words no `/rename` row gives any more - is shown as recorded.
+ *
+ * Each falls back along the language chain to the recorded words, as a line does. The engine records
+ * the words the story is written with whatever language the game is read in, so a save made in one
+ * language names its speaker in the language it is loaded in.
  */
 export function resolveLocalizedSpeakerName(
-    bundle: Pick<GameLocalizationBundle, "sourceLocale" | "locales" | "tables">,
+    bundle: Pick<GameLocalizationBundle, "sourceLocale" | "locales" | "tables" | "renames">,
     locale: LocaleCode,
     characters: readonly { id: string; name: string }[] | undefined,
     recordedName: string,
 ): string {
     const character = characters?.find(entry => entry.name === recordedName);
-    return character ? resolveLocalizedCharacterName(bundle, locale, character.id, recordedName) : recordedName;
+    if (character) {
+        return resolveLocalizedCharacterName(bundle, locale, character.id, recordedName);
+    }
+    const renameIds = renameIdsByWords(bundle.renames).get(recordedName);
+    if (renameIds) {
+        for (const code of resolveLocaleChain(bundle, locale)) {
+            const table = bundle.tables[code];
+            for (const renameId of renameIds) {
+                const target = table?.[renameTranslationUnitId(renameId)];
+                if (target) {
+                    return target;
+                }
+            }
+        }
+    }
+    return recordedName;
+}
+
+const NO_RENAMES: ReadonlyMap<string, readonly string[]> = new Map();
+const renameIdsByWordsCache = new WeakMap<Record<string, string>, ReadonlyMap<string, readonly string[]>>();
+
+/**
+ * The `/rename` rows a bundle ships, by the words they give, each list in story order.
+ *
+ * Built once per bundle: a speaker's name is resolved for every backlog row and on every line, and
+ * the table it is built from never changes for the bundle's lifetime.
+ */
+function renameIdsByWords(renames: Record<string, string> | undefined): ReadonlyMap<string, readonly string[]> {
+    if (!renames) {
+        return NO_RENAMES;
+    }
+    const cached = renameIdsByWordsCache.get(renames);
+    if (cached) {
+        return cached;
+    }
+    const index = new Map<string, string[]>();
+    for (const [renameId, words] of Object.entries(renames)) {
+        const ids = index.get(words);
+        if (ids) {
+            ids.push(renameId);
+        } else {
+            index.set(words, [renameId]);
+        }
+    }
+    renameIdsByWordsCache.set(renames, index);
+    return index;
 }
 
 /**

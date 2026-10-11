@@ -23,6 +23,8 @@ import {
     isUIListScrolledToEnd,
     resolveUIListScrollMetrics,
 } from "@shared/types/ui-editor/list";
+import { focusNavigationTarget } from "@/lib/ui-editor/runtime/navigation/focusNavigation";
+import { useGameNavigationEnabled } from "@/lib/ui-editor/runtime/navigation/gameNavigationContext";
 import { resolvePageAnimationMotion } from "@/lib/ui-editor/runtime/pageAnimation";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import type { UIStructDef } from "@shared/types/ui-editor/struct";
@@ -36,6 +38,7 @@ import {
     useWidgetRuntimeElementKey,
     useWidgetRuntimeSnapshot,
     useWidgetRuntimeStateStore,
+    NavigationFocusProvider,
     WidgetRuntimeInstanceProvider,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { composeListHostEffectStyle } from "@/lib/ui-editor/widget-modules/shared/effects/effectStyleComposer";
@@ -567,9 +570,13 @@ export function ListRenderer(props: WidgetRendererProps) {
      * The row the keyboard enters this list on: the one it last left, else the selected one, else the
      * first. The list is one stop on Tab however many rows it has - the rest are reached with the
      * arrows - so a menu of four options or a backlog of two hundred lines costs the same one press
-     * to pass. See `listRowKeyboardMove` for the keys.
+     * to pass. In a game with navigation the arrows are navigation's, which moves between rows like
+     * any other controls; without it they are the list's. See `listRowKeyboardMove`.
      */
     const [keyboardRowIndex, setKeyboardRowIndex] = useState<number | null>(null);
+    const navigationEnabled = useGameNavigationEnabled();
+    /** The row that has the focus right now, drawn as focused (`NavigationFocusProvider`). */
+    const [focusedRowIndex, setFocusedRowIndex] = useState<number | null>(null);
     const tabStopRowIndex = count > 0
         ? Math.min(count - 1, Math.max(0, keyboardRowIndex ?? (selectedIndex >= 0 && selectedIndex < count ? selectedIndex : 0)))
         : -1;
@@ -588,7 +595,7 @@ export function ListRenderer(props: WidgetRendererProps) {
                 }
                 return;
             }
-            const next = listRowKeyboardMove(event.key, scope.index, scope.count);
+            const next = listRowKeyboardMove(event.key, scope.index, scope.count, !navigationEnabled);
             if (next === null) {
                 return;
             }
@@ -596,10 +603,14 @@ export function ListRenderer(props: WidgetRendererProps) {
             const row = Array.from(event.currentTarget.parentElement?.children ?? [])
                 .find(sibling => sibling.getAttribute("data-ui-list-item-index") === String(next));
             if (row instanceof HTMLElement) {
-                row.focus();
+                if (navigationEnabled) {
+                    focusNavigationTarget(row);
+                } else {
+                    row.focus();
+                }
             }
         },
-        [handleListItemClick],
+        [handleListItemClick, navigationEnabled],
     );
     // Resolved once for the whole list rather than per row: every row gets the same motion, and only
     // the delay differs. `initial={false}` on the presence below is what keeps a list that is simply
@@ -638,10 +649,22 @@ export function ListRenderer(props: WidgetRendererProps) {
             // In a running game a row is a control the keyboard reaches, as a button is: Enter and
             // Space raise Item Click exactly as a click does. On the canvas it is only a drawing.
             tabIndex: isRuntime ? (i === tabStopRowIndex ? 0 : -1) : undefined,
+            // The row holding the focus is drawn the way the pointer resting on it would draw it,
+            // and says so the way the pointer does - Item Hover - so a hover look a graph paints
+            // follows the D-pad too.
             onFocus: isRuntime
                 ? (event: FocusEvent<HTMLDivElement>) => {
                       if (event.target === event.currentTarget) {
                           setKeyboardRowIndex(i);
+                          setFocusedRowIndex(i);
+                          handleListItemHover(scope);
+                      }
+                  }
+                : undefined,
+            onBlur: isRuntime
+                ? (event: FocusEvent<HTMLDivElement>) => {
+                      if (event.target === event.currentTarget) {
+                          setFocusedRowIndex(current => (current === i ? null : current));
                       }
                   }
                 : undefined,
@@ -658,11 +681,13 @@ export function ListRenderer(props: WidgetRendererProps) {
                     instanceKey={instanceKey}
                 />
                 <WidgetRuntimeInstanceProvider instance={{ key: instanceKey, selected }}>
-                    {renderChildren?.({
-                        childrenIds: itemTemplateIds,
-                        listItemScope: scope,
-                        instanceKey,
-                    })}
+                    <NavigationFocusProvider focused={isRuntime && i === focusedRowIndex}>
+                        {renderChildren?.({
+                            childrenIds: itemTemplateIds,
+                            listItemScope: scope,
+                            instanceKey,
+                        })}
+                    </NavigationFocusProvider>
                 </WidgetRuntimeInstanceProvider>
             </>
         );

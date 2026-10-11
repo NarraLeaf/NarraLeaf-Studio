@@ -397,6 +397,7 @@ export const storyInspector = {
 
     layerOperation: {
         setZIndex: "重ね順を決める",
+        setDepth: "奥行きを決める",
     },
 
     videoOperation: {
@@ -490,6 +491,8 @@ export const storyInspector = {
     layer: {
         layerName: "レイヤーの名前",
         zIndex: "重ね順",
+        depth: "奥行き",
+        setDepthHint: "シーン全体の背景レイヤーの奥行きを決める",
     },
 
     video: {
@@ -500,6 +503,22 @@ export const storyInspector = {
         leave: "退場",
         waitForEnd: "再生の終了を待つ",
         skipHint: "プレイヤーはクリックかスキップキーで動画を途中で終えられる",
+    },
+
+    /** `/rumble`, `/input`, `/waitinput`, `/hold`, `/mash` - the player's-hands rows. */
+    input: {
+        shape: "振動パターン",
+        leftMotor: "左モーター (0-1)",
+        rightMotor: "右モーター (0-1)",
+        waitForRumble: "振動の終了を待つ",
+        state: "状態",
+        action: "入力アクション",
+        anyAction: "任意の入力アクション",
+        holdSeconds: "長押し (秒)",
+        pressCount: "押下回数",
+        timeout: "制限時間 (秒)",
+        result: "結果変数",
+        noResult: "なし",
     },
 
     nvl: {

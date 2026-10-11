@@ -1003,7 +1003,9 @@ function validateStoryConditionReturnType(
             out.push({
                 severity: "error",
                 code: "condition.return_not_boolean",
-                message: translate("blueprint.diagnostics.condition.returnNotBoolean", { type: valueType }),
+                message: translate("blueprint.diagnostics.condition.returnNotBoolean", {
+                    type: formatBlueprintValueTypeLabel(valueType, translate),
+                }),
                 target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId },
             });
         }

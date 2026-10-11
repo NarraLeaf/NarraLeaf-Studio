@@ -206,6 +206,17 @@ describe("compiling a .ui file", () => {
         });
     });
 
+    it("reads the navigation slot an action fills, and refuses one that is not a slot", () => {
+        const result = compile('action back "Back"\n    key Escape\n    navigation cancel\n');
+        expect(result.actions.back).toEqual({
+            id: "back",
+            name: "Back",
+            bindings: [{ kind: "key", key: "Escape" }],
+            navigationSlot: "cancel",
+        });
+        expect(() => compile('action back "Back"\n    navigation sideways\n')).toThrow(/navigation/);
+    });
+
     it("mounts a stage surface into the slot it names", () => {
         const result = compile('surface "Lines" id=st slot=dialog size=8x6\n    Root: nl.root @0,0 8x6\n');
         const surface = result.surfaces[0].surface;

@@ -8,6 +8,7 @@ import type { TranslationKey } from "@shared/i18n";
 import { Service } from "../Service";
 import { HistoryService } from "../history/HistoryService";
 import { projectHistoryScope } from "../history/historyScopes";
+import type { HistoryLabel } from "../history/historyModel";
 import { ICharacterService, Services, WorkspaceContext } from "../services";
 import { Character } from "../character/Character";
 import { CharacterProfile } from "../character/CharacterProfile";
@@ -186,6 +187,94 @@ export class CharacterService extends Service<CharacterService> implements IChar
         this.markDirty();
         this.emitChange();
         return character;
+    }
+
+    /**
+     * A new character's record, built but not added to the cast.
+     *
+     * For a caller that wants to shape a character completely - name, colour, appearance - and then
+     * land it as one gesture through {@link commitCharacterRecord}, instead of creating it and then
+     * editing the live object, which is one save and no undo per setter.
+     */
+    public draftCharacter(name: string, kind: CharacterAppearanceKind = "preset"): Character {
+        const profile = CharacterProfile.create(this.getUuidService().generate(), name, kind);
+        return Character.fromJSON({ profile: profile.toJSON() });
+    }
+
+    /**
+     * Put one character's whole record in place - a new member of the cast, or a replacement for the
+     * one under the same id - as ONE step of undo on the project stack.
+     *
+     * The character panels edit through dozens of setters on the live object, none of which records
+     * history; a caller that changes many fields at once (an agent laying out a layered stack, say)
+     * would otherwise leave the author nothing to take back. This takes the record before and after
+     * and restores either wholesale, which is exact because the record is the whole character: the
+     * store holds nothing else about it. Undoing a creation removes the character again; its baked
+     * avatar, if one appeared meanwhile, is left on disk rather than deleted, because redo brings
+     * the same record - and therefore the same avatar key - straight back.
+     *
+     * The live object is adopted in place, never replaced, so every panel holding it keeps its
+     * subscription. Returns false when the record is unchanged (no step is pushed).
+     *
+     * Inside a live session the record is handed to the sink as the corresponding operation and no
+     * entry is pushed, for the reason {@link deleteCharacter} gives.
+     */
+    public commitCharacterRecord(record: StoredCharacter, label: HistoryLabel): boolean {
+        const id = record.profile.id;
+        const existing = this.characters[id];
+        // Normalised through the model's own clone, so the comparison below and the record put in
+        // place are the shape `toJSON` would produce - not whatever the caller happened to build.
+        const after = Character.fromJSON(structuredClone(record) as StoredCharacter).toJSON() as StoredCharacter;
+        if (!existing) {
+            if (this.handedToSink({ op: "create-character", character: after })) {
+                return true;
+            }
+            const index = this.characterOrder.length;
+            this.registerCharacter(Character.fromJSON(after));
+            this.markDirty();
+            this.emitChange();
+            this.getHistoryService().pushCommand(projectHistoryScope(), {
+                label,
+                undo: () => {
+                    const current = this.characters[id];
+                    if (current) {
+                        this.removeCharacter(id, current, undefined);
+                    }
+                },
+                redo: () => {
+                    if (!this.characters[id]) {
+                        this.registerCharacter(Character.fromJSON(after), index);
+                        this.markDirty();
+                        this.emitChange();
+                    }
+                },
+            });
+            return true;
+        }
+        const before = existing.toJSON() as StoredCharacter;
+        if (JSON.stringify(before) === JSON.stringify(after)) {
+            return false;
+        }
+        if (this.handedToSink({ op: "update-character", characterId: id, character: after })) {
+            return true;
+        }
+        const adopt = (next: StoredCharacter) => {
+            const current = this.characters[id];
+            if (!current) {
+                return;
+            }
+            current.adopt(next);
+            this.markDirty();
+            this.emitChange();
+            current.notifySubscribers();
+        };
+        adopt(after);
+        this.getHistoryService().pushCommand(projectHistoryScope(), {
+            label,
+            undo: () => adopt(before),
+            redo: () => adopt(after),
+        });
+        return true;
     }
 
     /**

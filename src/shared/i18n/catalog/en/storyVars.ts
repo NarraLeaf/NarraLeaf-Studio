@@ -13,12 +13,6 @@
  * static modules', not here.
  */
 export const storyVars = {
-    valueType: {
-        boolean: "Boolean",
-        number: "Number",
-        string: "String",
-        json: "JSON",
-    },
     // A boolean default reads as a value, in the words the snapshot panel uses for the same values.
     value: {
         true: "True",

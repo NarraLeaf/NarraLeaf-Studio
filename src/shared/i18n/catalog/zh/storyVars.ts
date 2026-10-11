@@ -1,12 +1,6 @@
 import type { LocaleNamespace } from "../types";
 
 export const storyVars = {
-    valueType: {
-        boolean: "布尔值",
-        number: "数字",
-        string: "字符串",
-        json: "JSON",
-    },
     value: {
         true: "真",
         false: "假",

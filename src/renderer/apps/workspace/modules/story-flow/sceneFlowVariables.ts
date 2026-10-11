@@ -58,6 +58,7 @@ import {
     savedVariableDefs,
     sceneVariableDefs,
     storyPersistentDefs,
+    storyRowAssignedVariable,
     storyVariableRefKey,
 } from "@shared/types/story";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
@@ -281,7 +282,10 @@ export function collectBlueprintVariableWrites(
     return { byBlueprintId, ambient };
 }
 
-/** One write site, placed in the scene's fork structure. A `setVariable` row, or a row running a graph. */
+/**
+ * One write site, placed in the scene's fork structure. A `setVariable` row, a row running a graph, or
+ * a wait writing its outcome.
+ */
 type SceneFlowWrite = {
     blockId: StoryBlockId;
     variableKey: string;
@@ -360,6 +364,23 @@ function collectSceneWrites(scene: StoryScene, blueprintWrites: SceneFlowBluepri
             const ancestry = readAncestry(scene, block);
             for (const variableKey of keys) {
                 writes.push({ blockId: block.id, variableKey, delta: { op: "unknown" }, armChain: ancestry.armChain });
+            }
+            continue;
+        }
+        if (block.payload.action === "input") {
+            // A wait naming a result variable (`into=`) writes `true` or `false` into it, and which
+            // one is the player's doing - so the honest delta is `unknown`, on this row's arm, like a
+            // graph's. The row writes a boolean, which no range here is about; the write is still
+            // recorded so a variable later re-declared as a number does not keep a range this row
+            // contradicts, and so the call absorption below sees the key as written.
+            const target = storyRowAssignedVariable(block);
+            if (target) {
+                writes.push({
+                    blockId: block.id,
+                    variableKey: storyVariableRefKey(target),
+                    delta: { op: "unknown" },
+                    armChain: readAncestry(scene, block).armChain,
+                });
             }
             continue;
         }

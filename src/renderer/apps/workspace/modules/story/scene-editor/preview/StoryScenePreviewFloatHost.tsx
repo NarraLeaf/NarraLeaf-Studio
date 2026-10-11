@@ -117,6 +117,7 @@ export function StoryScenePreviewFloatHost(props: { areaRef: RefObject<HTMLEleme
         open: floating,
         onStepTo: stepTo,
         isRowShown,
+        skipTyping: layout?.skipTyping === true,
     });
 
     // The rect as stored, read in the workspace's frame. A rect an older build measured against the
@@ -148,6 +149,7 @@ export function StoryScenePreviewFloatHost(props: { areaRef: RefObject<HTMLEleme
     }, [hub, legacyRect]);
 
     const close = useCallback(() => hub?.patchLayout({ open: false }), [hub]);
+    const toggleSkipTyping = useCallback(() => hub?.patchLayout({ skipTyping: !hub.getLayout().skipTyping }), [hub]);
     const commit = useCallback((next: StoryScenePreviewFloatRect) => hub?.patchLayout({ float: next }), [hub]);
     // Docking puts the preview back into the scene editor it is showing, and brings that editor forward.
     const dock = useCallback(() => {
@@ -178,6 +180,8 @@ export function StoryScenePreviewFloatHost(props: { areaRef: RefObject<HTMLEleme
                 onClose={close}
                 onDock={dock}
                 onCommit={commit}
+                skipTyping={layout?.skipTyping === true}
+                onToggleSkipTyping={toggleSkipTyping}
             />
         </div>
     );

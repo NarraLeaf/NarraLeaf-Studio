@@ -30,6 +30,10 @@ const EXPECTED_RECORDING_SITES: Record<string, readonly string[]> = {
     // project on a renderer's word, which is why the handler checks the window, the grant and
     // the folder before it records.
     "app/application/managers/window/handlers/projectWizardCreatedAction.ts": ["created"],
+    // An agent's `project_create`: main itself wrote the project from a template Studio ships, so
+    // there is no renderer's word to doubt, and the call only reaches here when the author has
+    // switched on both agent access and agent writes.
+    "app/application/managers/agent/agentManager.ts": ["created"],
 };
 
 function walk(dir: string, out: string[] = []): string[] {

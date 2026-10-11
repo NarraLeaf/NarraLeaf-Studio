@@ -1,6 +1,10 @@
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import type { ProjectTrustRecord } from "./projectTrust";
+import type { AgentCallRequest, AgentCallResult, AgentFolderAccessAnswer, AgentFolderAccessRequest } from "../agent/protocol";
+import type { AgentSettingsPatch, AgentSettingsSnapshot } from "../agent/settings";
+import type { AgentCopyConfigKind, AgentMainActivity, AgentQuickState, AgentQuickTogglePatch } from "../agent/workspaceAccess";
+import type { AgentPluginToolDescriptor } from "../agent/pluginTools";
 import type { ProjectSessionHolder, ProjectSessionLockOutcome } from "./projectSession";
 import { IPCMessageType, IPCType } from "./ipc";
 import { FsRequestResult, PlatformInfo } from "./os";
@@ -9,6 +13,7 @@ import type { FsTextEncoding } from "./textEncoding";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults, WorkspaceViewRequest } from "./window";
 import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
 import type { MissingRecentProject, RecentProjectIcon } from "./state/appStateTypes";
+import type { DevModeAgentAction, DevModeAgentResult } from "./devMode";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
@@ -210,6 +215,7 @@ export enum IPCEventType {
     appUpdateCheck = "app.update.check",
     appUpdateDownload = "app.update.download",
     appUpdateInstall = "app.update.install",
+    appUpdateCancel = "app.update.cancel",
     appUpdateStateChanged = "app.update.stateChanged",
 
     fsStat = "fs.stat",
@@ -253,6 +259,7 @@ export enum IPCEventType {
     workspaceClose = "workspace.close",
     workspaceReturnToLauncher = "workspace.returnToLauncher",
     psdOpen = "psd.open",
+    psdRead = "psd.read",
     psdBake = "psd.bake",
     mediaProbe = "media.probe",
     fontProbeCoverage = "font.probeCoverage",
@@ -279,6 +286,20 @@ export enum IPCEventType {
     workspaceConfirmClose = "workspace.confirmClose",
     workspaceCloseProgress = "workspace.closeProgress",
     workspaceFlushPendingSaves = "workspace.flushPendingSaves",
+    workspaceAgentCall = "workspace.agentCall",
+    agentSettingsGet = "agent.settings.get",
+    agentSettingsUpdate = "agent.settings.update",
+    agentSettingsRegenerateToken = "agent.settings.regenerateToken",
+    agentSettingsAddImportRoot = "agent.settings.addImportRoot",
+    agentQuickState = "agent.quick.state",
+    agentQuickToggle = "agent.quick.toggle",
+    agentQuickStateChanged = "agent.quick.stateChanged",
+    agentCopyConfig = "agent.quick.copyConfig",
+    agentExportSkill = "agent.quick.exportSkill",
+    agentRevealExportedSkill = "agent.quick.revealExportedSkill",
+    workspaceAgentActivity = "workspace.agentActivity",
+    agentReportPluginTools = "agent.reportPluginTools",
+    agentRequestFolderAccess = "agent.requestFolderAccess",
     workspaceResolveAssetUrl = "workspace.resolveAssetUrl",
     workspaceResolveAllAssetUrls = "workspace.resolveAllAssetUrls",
     workspaceResolveImageAssetUrl = "workspace.resolveImageAssetUrl",
@@ -322,6 +343,8 @@ export enum IPCEventType {
     devModeScreenshotSave = "devMode.screenshot.save",
     devModeScreenshotOpenFolder = "devMode.screenshot.openFolder",
     devModeWindowCloseRequested = "devMode.window.closeRequested",
+    devModeAgentControl = "devMode.agent.control",
+    devModeAgentDrive = "devMode.agent.drive",
 
     previewLaunch = "preview.launch",
     previewStop = "preview.stop",
@@ -1218,12 +1241,10 @@ export type IPCEvents = {
         response: { state: UpdateState };
     };
     /**
-     * Start downloading the offered installer.
+     * Start downloading the offered installer, because the author pressed Download.
      *
-     * Separate from the check because they are separate decisions: the check is free, the
-     * download is a few hundred megabytes. Only the Settings panel calls this - the notification
-     * that announces an update opens the panel instead, so nobody commits to the transfer from a
-     * toast they were half-reading.
+     * Only needed when automatic downloads are off, or after a cancel: otherwise main starts the
+     * download itself as soon as a check finds a version (`UPDATE_AUTO_DOWNLOAD_KEY`).
      */
     [IPCEventType.appUpdateDownload]: {
         type: IPCMessageType.request,
@@ -1231,12 +1252,19 @@ export type IPCEvents = {
         data: Record<string, never>;
         response: { state: UpdateState };
     };
-    /** Quit and apply the downloaded installer. Silent, so the wizard is not walked again. */
+    /** Quit and apply the update, then start Studio again. */
     [IPCEventType.appUpdateInstall]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: Record<string, never>;
         response: void;
+    };
+    /** Stop the download or the preparing in progress. The version stays on offer. */
+    [IPCEventType.appUpdateCancel]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: { state: UpdateState };
     };
     /** Write a settings document to a file the user picks. See `@shared/utils/settingsDocument`. */
     [IPCEventType.appExportSettings]: {
@@ -2223,6 +2251,21 @@ export type IPCWorkspaceEvents = {
             document: PsdDocument | null;
         };
     };
+    /**
+     * Read the layer tree of a PSD the window may already read - the path is checked against the
+     * window's file-system grants, never trusted. The non-dialog half of `psdOpen`, for an agent
+     * that names a file inside the project or a directory the author allowed.
+     */
+    [IPCEventType.psdRead]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            filePath: string;
+        };
+        response: {
+            document: PsdDocument;
+        };
+    };
     [IPCEventType.psdBake]: {
         type: IPCMessageType.request;
         consumer: IPCType.Host;
@@ -2640,6 +2683,134 @@ export type IPCWorkspaceEvents = {
         data: {};
         response: RequestStatus<{ flushed: boolean }>;
     };
+    /**
+     * Carry out one agent tool call, or one of main's internal calls (`__state`, `__test`,
+     * `__build`), in this workspace. See `@shared/agent/protocol`.
+     *
+     * The answer is always a `success: true` envelope around an `AgentCallResult`, refusals
+     * included: a refusal is something the agent reads and acts on, and `success: false` is kept
+     * for a workspace that could not run the call at all.
+     */
+    [IPCEventType.workspaceAgentCall]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Client,
+        data: AgentCallRequest;
+        response: RequestStatus<AgentCallResult>;
+    };
+    /** Agent access as the Settings window shows it. Settings window only. */
+    [IPCEventType.agentSettingsGet]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: AgentSettingsSnapshot;
+    };
+    /** Change agent access; the endpoint starts, stops or moves at once. Settings window only. */
+    [IPCEventType.agentSettingsUpdate]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: AgentSettingsPatch;
+        response: AgentSettingsSnapshot;
+    };
+    /** Replace the bearer token; every client configured with the old one stops being let in. */
+    [IPCEventType.agentSettingsRegenerateToken]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: AgentSettingsSnapshot;
+    };
+    /** Ask for a folder with the native picker and allow agents to import from it. */
+    [IPCEventType.agentSettingsAddImportRoot]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: AgentSettingsSnapshot;
+    };
+    /**
+     * The workspace's Agent menu: whether agent access is on, writes are allowed and the endpoint is
+     * listening. Never the token or the address - see `@shared/agent/workspaceAccess`. Workspace and
+     * Settings windows only.
+     */
+    [IPCEventType.agentQuickState]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: AgentQuickState;
+    };
+    /**
+     * Flip agent access or write access from the Agent menu. Turning write access ON asks the author
+     * in a native dialog first, because a workspace runs plugin code; turning anything off does not.
+     * Answers the state as it is afterwards, unchanged when the author declined.
+     */
+    [IPCEventType.agentQuickToggle]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: AgentQuickTogglePatch;
+        response: AgentQuickState;
+    };
+    /** Agent access changed (from Settings, from a menu, or the endpoint started or stopped). Sent to every workspace. */
+    [IPCEventType.agentQuickStateChanged]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: AgentQuickState;
+        response: never;
+    };
+    /** Main writes one client configuration to the system clipboard; the configuration never crosses to the renderer. */
+    [IPCEventType.agentCopyConfig]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { kind: AgentCopyConfigKind };
+        response: { copied: true };
+    };
+    /**
+     * Copy the bundled agent skill into `<picked folder>/NarraLeaf-Skills`, through a native folder
+     * picker parented to the calling window. An existing non-empty folder is only written into after
+     * a native confirmation.
+     */
+    [IPCEventType.agentExportSkill]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: { canceled: true } | { canceled: false; path: string };
+    };
+    /** Show the folder the last skill export from this window wrote, in the system file manager. */
+    [IPCEventType.agentRevealExportedSkill]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: { revealed: boolean };
+    };
+    /** One agent call main answered itself, for the workspace's Agent log. Fire-and-forget. */
+    [IPCEventType.workspaceAgentActivity]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: AgentMainActivity;
+        response: never;
+    };
+    /**
+     * The agent tools this workspace's plugins have registered, the whole set, sent on every change.
+     * Main lists them in `tools/list` and routes calls to them here; a window's tools go when it
+     * closes. Read as untrusted (a workspace runs plugin code): main checks every descriptor and
+     * keeps only the ones that fit `readAgentPluginToolDescriptor`.
+     */
+    [IPCEventType.agentReportPluginTools]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: { tools: AgentPluginToolDescriptor[] };
+        response: never;
+    };
+    /**
+     * An agent call this workspace is carrying out needs files outside the project and the allowed
+     * folders. Main asks the author in a native dialog parented to this window (or grants at once
+     * under full access) and answers which folders the window may now read. Refused unless
+     * `callId` names a call main sent to this window and is still waiting on; the client name shown
+     * in the dialog is main's record of that call. See `@shared/agent/protocol`.
+     */
+    [IPCEventType.agentRequestFolderAccess]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: AgentFolderAccessRequest;
+        response: AgentFolderAccessAnswer;
+    };
     [IPCEventType.workspaceResolveAssetUrl]: {
         type: IPCMessageType.request,
         consumer: IPCType.Client,
@@ -2925,6 +3096,27 @@ export type IPCDevModeEvents = {
         consumer: IPCType.Client,
         data: {};
         response: RequestStatus<{ allow: boolean }>;
+    };
+    /**
+     * An agent's play-test, from the workspace: capture the running game, or advance it. Main finds
+     * the project's Dev Mode window and asks it ({@link IPCEventType.devModeAgentDrive}); a capture
+     * the game cannot answer falls back to the window's pixels.
+     */
+    [IPCEventType.devModeAgentControl]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; action: DevModeAgentAction };
+        response: DevModeAgentResult;
+    };
+    /**
+     * Main → the Dev Mode window: carry out one play-test action through the game's test controls.
+     * A capture answers `png: ""` when the engine has no stage to photograph.
+     */
+    [IPCEventType.devModeAgentDrive]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Client,
+        data: { action: DevModeAgentAction };
+        response: RequestStatus<DevModeAgentResult>;
     };
     [IPCEventType.devModeControlReload]: {
         type: IPCMessageType.message,

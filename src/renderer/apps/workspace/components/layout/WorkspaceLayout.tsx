@@ -15,6 +15,7 @@ import { useMenuBarModeContextMenu } from "./useMenuBarModeContextMenu";
 import { MENU_BAR_MODE_DEFAULT, MENU_BAR_MODE_KEY, MenuBarMode, resolveMenuBarMode } from "@/lib/settings/menuBarOptions";
 import { ProjectSwitcher } from "./ProjectSwitcher";
 import { ControlBar } from "./ControlBar";
+import { UpdateIndicator } from "./UpdateIndicator";
 import { LiveSessionPresence, TeamProjectProvider } from "../../modules/team";
 import { NotificationContainer } from "../ui/NotificationContainer";
 import { DialogContainer } from "../ui/DialogContainer";
@@ -35,6 +36,8 @@ import { NarralangCommands } from "../../modules/story/narralang/NarralangComman
 import { narralangUiEnabled } from "../../modules/story/narralang/narralangUi";
 import { StoryScenePreviewFloatHost } from "../../modules/story/scene-editor/preview/StoryScenePreviewFloatHost";
 import { StoryCommandManualDock } from "../../modules/story/scene-editor/StoryCommandManualDock";
+import { AgentWorkspaceHost } from "../../modules/agent/AgentWorkspaceHost";
+import { AgentMenu } from "../../modules/agent/AgentMenu";
 import { WorkspaceCommands } from "./WorkspaceCommands";
 import { KeybindingCheatSheet } from "./KeybindingCheatSheet";
 import { WorkspaceHelp } from "./WorkspaceHelp";
@@ -848,10 +851,12 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     // no bright bleed through the gaps; and text, icons, borders, raised/overlay surfaces and content
     // images all keep their own opaque paints, so real content never reads as see-through.
     //
-    // Two plates are the author's to set in the dialog: the editor's reading surfaces
-    // (`.nl-editor-surface`) and the docks (`.nl-sidebar-surface`). Each switch and opacity becomes
-    // an alpha published here, on the same element as the class, so it applies exactly where the
-    // wallpaper does.
+    // Three plates are the author's to set in the dialog: the editor's reading surfaces
+    // (`.nl-editor-surface`), the docks (`.nl-sidebar-surface`) and the window's frame
+    // (`.nl-frame-surface`: this title bar, the tab strips, the rails, the status bar, the panel
+    // headers). Each
+    // switch and opacity becomes an alpha published here, on the same element as the class, so it
+    // applies exactly where the wallpaper does.
     const { settings: backgroundSettings, url: backgroundUrl } = useWorkspaceBackgroundImage();
     const rootStyle = backgroundUrl ? (backgroundPlateStyle(backgroundSettings) as React.CSSProperties) : undefined;
 
@@ -878,6 +883,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 )}
                 {/* Title Bar with Action Bar and Control Bar */}
                 <TitleBar
+                    className="nl-frame-surface"
                     title=""
                     iconSrc={iconSrc}
                     center={titleBarSearchVisible ? <TitleBarSearchBox /> : undefined}
@@ -919,6 +925,9 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                                 the only always-visible statement that a live session is running, and a
                                 session outlives every tab. */}
                             <LiveSessionPresence />
+                            {/* The software update, directly left of the dock toggles, while there
+                                is one to show. */}
+                            <UpdateIndicator />
                             <ControlBar
                                 leftSidebarVisible={leftDockOpen}
                                 rightSidebarVisible={rightDockOpen}
@@ -1050,6 +1059,10 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     recovery window has no story to preview. */}
                 {!recovery && <StoryScenePreviewFloatHost areaRef={contentAreaRef} />}
                 {!recovery && <StoryCommandManualDock />}
+                {/* An AI agent's offscreen screenshots and follow mode; see AgentWorkspaceHost. */}
+                {!recovery && <AgentWorkspaceHost />}
+                {/* The Agent menu on the menu bar; see AgentMenu. */}
+                {!recovery && <AgentMenu />}
 
                 {/* UI Overlays */}
                 <BackgroundImageDialog />

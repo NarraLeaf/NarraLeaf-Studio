@@ -23,7 +23,7 @@ import type { StoryCommandLineLookups } from "@/apps/workspace/modules/story/sce
 import type { StoryCommandContext } from "@/apps/workspace/modules/story/scene-editor/storyCommandValues";
 import type { ConditionLookups } from "./dsl/condition";
 import type { ProseLookups } from "./dsl/prose";
-import type { ProjectData } from "./project";
+import type { ProjectData } from "./model";
 
 export type SceneLookups = {
     rowLookups: StoryCommandLineLookups;
@@ -72,6 +72,7 @@ export function buildLookups(
             (scope === "saved" ? savedById.get(variableId) : persistentByKey.get(variableId)) ?? null,
         appTagName: appTagId => data.appTags.find(tag => tag.id === appTagId)?.name ?? null,
         surfaceName: surfaceId => data.surfaces.find(surface => surface.id === surfaceId)?.name ?? null,
+        inputActionName: actionId => data.inputActions.find(action => action.id === actionId)?.name ?? null,
         audioTrackName: trackId => data.audioTracks.find(track => track.id === trackId)?.name ?? null,
         ...(scene ? { scene } : {}),
         ...(document ? { scenes: document.scenes, document } : {}),

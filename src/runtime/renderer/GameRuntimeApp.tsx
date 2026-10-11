@@ -32,6 +32,8 @@ import { StageLetterbox } from "@/lib/ui-editor/runtime/app/StageLetterbox";
 import { loadRuntimePlugins } from "@/lib/ui-editor/runtime/plugins/loadRuntimePlugins";
 import { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
 import { RuntimeCrashScreen } from "./RuntimeCrashScreen";
+import { carryRendererFailure } from "./RuntimeCrashBoundary";
+import { readStoryPosition } from "@/lib/ui-editor/runtime/app/lastStoryPosition";
 import { RuntimeSessionTakenScreen } from "./RuntimeSessionTakenScreen";
 import { clearAutomaticRestarts, setRuntimeCrashPolicy } from "./crashPolicy";
 import { RuntimeSidecarBackend } from "./runtimeSidecarBackend";
@@ -634,6 +636,21 @@ function GameRuntimeSession() {
     }, [bridge]);
 
     /**
+     * The stage stopped drawing and the engine put its own fallback in its place - a white box with an
+     * English sentence and nothing to press. Thrown on from this component's next render, so the
+     * boundary around the game takes it like any other failure: the crash screen in the player's
+     * language, the policy, the log line and the restart. Where the story was is taken now, while the
+     * engine's scene is still mounted, and travels with the failure (see `carryRendererFailure`).
+     */
+    const [stageFailure, setStageFailure] = useState<Error | null>(null);
+    const stageCrashed = useCallback<NonNullable<GameAppHost["stageCrashed"]>>((failure, componentStack) => {
+        setStageFailure(current => current ?? carryRendererFailure(failure, {
+            story: readStoryPosition(),
+            componentStack,
+        }));
+    }, []);
+
+    /**
      * A picture a widget could not get, as one line of the player's log.
      *
      * A shipped game has no issue list and must not grow one in front of a player, but a blank
@@ -959,6 +976,7 @@ function GameRuntimeSession() {
             onDebugEvent,
             disposeMessage: "Preview runtime disposed",
             log,
+            stageCrashed,
             reportAssetResolution,
             resolveStoryAssetUrl,
             resolveWeatherClip,
@@ -1001,6 +1019,7 @@ function GameRuntimeSession() {
         getFullscreen,
         listPuppetBackendModules,
         log,
+        stageCrashed,
         onDebugEvent,
         pack,
         reportAssetResolution,
@@ -1088,6 +1107,10 @@ function GameRuntimeSession() {
         () => <RuntimeBootBackdrop background={bootColors.background} />,
         [bootColors.background],
     );
+
+    if (stageFailure) {
+        throw stageFailure;
+    }
 
     if (error) {
         return <RuntimeErrorScreen message={error} />;

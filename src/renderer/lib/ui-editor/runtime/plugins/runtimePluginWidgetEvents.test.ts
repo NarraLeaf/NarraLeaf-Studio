@@ -90,6 +90,8 @@ async function writeRatingPlugin(id: string, options: { declareLogic: boolean })
             network: [],
             widgetText: {},
             structs: [],
+            agentTools: [],
+            agentGuide: "",
         },
         permissions: [],
     };

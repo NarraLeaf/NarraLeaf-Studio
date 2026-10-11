@@ -714,6 +714,34 @@ function buildVariant(locale) {
         emit(path, document.value, document.trailingNewline);
     }
 
+    // --- The palette: the template's own colours are listed by name on Project ▸ Design and in
+    // every colour picker.
+    //
+    // Names only. An id is what every link in the interface holds (`nlbrand:<id>`), and the seeded
+    // colours carry no name at all - Studio names those in the interface language itself. The file is
+    // laid out by hand, one colour to a line, so each name is replaced in place in its text; a colour
+    // not laid out that way gets the file written out the way Studio writes it instead.
+    const brandPath = "editor/brand.json";
+    const brandRaw = readFileSync(join(contentDir, brandPath), "utf-8");
+    const brand = JSON.parse(brandRaw);
+    let brandText = brandRaw;
+    for (const color of brand.colors ?? []) {
+        if (typeof color.name !== "string" || color.name === "") {
+            continue;
+        }
+        const line = name => `"id": ${JSON.stringify(color.id)}, "name": ${JSON.stringify(name)}`;
+        const english = line(color.name);
+        color.name = say(color.name);
+        brandText = brandText !== null && brandText.split(english).length === 2
+            ? brandText.replace(english, () => line(color.name))
+            : null;
+    }
+    if (brandText !== null && JSON.stringify(JSON.parse(brandText)) === JSON.stringify(brand)) {
+        files.push({ path: brandPath, content: brandText });
+    } else {
+        emit(brandPath, brand, brandRaw.endsWith("\n"));
+    }
+
     // --- The asset library: the folders an author files things into.
     //
     // Group names only. An asset's own name is what a story line names it by (`@background
@@ -875,7 +903,9 @@ function listFiles(dir, prefix = "") {
 // out of the shipped variants and fails where the word is still the English one.
 if (process.argv.includes("--graph-text")) {
     const { graphText } = buildVariant(TABLES[0]);
-    process.stdout.write(JSON.stringify({ file: "editor/ui/uigraphs.json", slots: graphText }) + "\n");
+    // Exit only once the write has drained: a pipe is asynchronous on macOS, and exiting straight
+    // after `write` cut the listing off at the first 8 KiB there, which the test reads as bad JSON.
+    await new Promise(resolve => process.stdout.write(JSON.stringify({ file: "editor/ui/uigraphs.json", slots: graphText }) + "\n", resolve));
     process.exit(0);
 }
 

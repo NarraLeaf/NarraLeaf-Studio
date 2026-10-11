@@ -1,4 +1,5 @@
 import type { StoryExpression } from "./expression";
+import type { StoryInputActionPayload } from "./input";
 import { resolveAssetVariantMember, type AssetVariantMap } from "../assetSet";
 import type { WeatherSeedRef } from "../../weather/model";
 
@@ -256,7 +257,26 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 2 as const;
 // reason is what a v26 Studio would *play*: a `play` that no longer has a `create` above it, and does
 // not carry `hideOnEnd`, would be read as the bare transport verb and leave its last frame over every
 // scene after it, and a non-waiting play would hold the story for the length of the clip.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 27 as const;
+// v28 adds the `input` action payload: the rows that address the player's hands rather than the
+// stage - `/rumble` shakes the pad, `/input lock` takes the story out of the player's hands for a
+// passage, and `/waitinput`, `/hold` and `/mash` wait for one gesture (optionally against a deadline,
+// writing whether the player made it into a boolean variable). None of it could be written before:
+// the closest a story came was `/wait click`, which takes any click and cannot fail.
+// No migration. A v27 document cannot contain one, so the ladder gets no new step. The bump is not
+// optional, and the reason is what a v27 Studio would *play*: `compileStoryAction` ends in an
+// unconditional `return []`, so every waiting row would compile to nothing - a QTE the story runs
+// straight through, its result variable never written, and the branch after it always taking the
+// same arm. Refusing the document is the point.
+// v29 lets a layer sit at a distance from the camera: `depth` on a `layer` row - on the `create`
+// row of a custom layer, or on a new `setDepth` row for the scene's built-in background layer, which
+// has no `create` row - and the camera's pans and zooms are shared out among the layers by it, so a
+// flat stage reads as deep (the engine's layer `parallax`, narraleaf-react 1.4.0).
+// No migration: a v28 document cannot carry the field or the op, and absent reads as `follow`, which
+// is how every layer has always moved. The bump is not optional, and the reason is what a v28 Studio
+// would *play*: it would ignore `depth` and move every layer with the camera, and treat a `setDepth`
+// row as an operation it does not know - the scene the author built in depth would play flat, with
+// nothing anywhere saying why. Refusing the document is the point.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 29 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -836,7 +856,8 @@ export type StoryActionPayload =
           value: StoryLiteralValue;
           /**
            * A computed right-hand side (`/set gold gold + 1`). **When present it wins**, and `value`
-           * is only the last literal the row held - never read by the compiler.
+           * is never read by the compiler. A row written with an expression stores `null` there;
+           * older rows may hold the `true` a new assignment block starts with.
            *
            * Why not fold the literal case in here too: `/set gold 100` is the overwhelmingly common
            * row, `value` is what the inspector's literal editor binds to, and every document written
@@ -954,7 +975,12 @@ export type StoryActionPayload =
       }
     | {
           action: "layer";
-          operation: "create" | "setZIndex" | "show" | "hide" | "transform";
+          /**
+           * `setDepth` is the one op that is not a step in time: it says how far from the camera the
+           * scene's built-in background layer sits, for the whole scene, wherever the row is. That
+           * layer has no `create` row to carry a {@link depth} the way a custom layer does.
+           */
+          operation: "create" | "setZIndex" | "show" | "hide" | "transform" | "setDepth";
           objectName: string;
           /**
            * Which layer non-`create` ops act on - a built-in (`background`/`displayable`) or a custom
@@ -962,6 +988,12 @@ export type StoryActionPayload =
            */
           target?: StoryLayerRef;
           zIndex?: number;
+          /**
+           * How far from the camera the layer sits, on a `create` row (the layer it declares) or a
+           * `setDepth` row (the built-in background layer). Absent is `follow`: the layer moves with
+           * the camera, as every layer did before depth existed.
+           */
+          depth?: StoryLayerDepth;
           transform?: StoryTransformRef;
       }
     | {
@@ -1187,7 +1219,9 @@ export type StoryActionPayload =
            * JSON, which is what makes the row survive a round trip through the project file.
            */
           params: Record<string, StoryPluginActionParamValue>;
-      };
+      }
+    /** The player's hands: a pad that shakes, a locked passage, a row that waits for a gesture. */
+    | StoryInputActionPayload;
 
 /** A JSON-serializable parameter value carried by a `{action:"plugin"}` block. */
 export type StoryPluginActionParamValue =
@@ -1545,6 +1579,15 @@ export type StoryDisplayableTargetRef = {
 export type StoryLayerRef =
     | { kind: "default"; layer: "background" | "displayable" }
     | { kind: "custom"; sourceBlockId?: StoryBlockId; name?: string };
+
+/**
+ * How far from the camera a layer sits, which decides how much of a camera pan or zoom it follows:
+ * `farthest` not at all, `far` and `mid` less than the stage, `follow` exactly as the stage (the
+ * built-in displayable layer, where the characters are, always), `near` more. Words rather than a
+ * number on purpose - the shares behind them are Studio's to tune, not something an author can be
+ * expected to get right (see `layerDepth.ts`).
+ */
+export type StoryLayerDepth = "near" | "follow" | "mid" | "far" | "farthest";
 
 /** The three stage objects that are `Actionable`s rather than Displayables, and so cannot use {@link StoryDisplayableTargetRef}. */
 export type StoryActionableKind = "video" | "vfx" | "audio";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
-import type { StoryBlock, StoryDocument, StoryExpr, StoryScene } from "@shared/types/story";
+import type { StoryBlock, StoryConditionRef, StoryDocument, StoryExpr, StoryScene } from "@shared/types/story";
 import { computeSceneFlowCoverage } from "./sceneFlowCoverage";
 
 /**
@@ -411,5 +411,101 @@ describe("what the walk refuses to over-report", () => {
         ]);
 
         expect(coverageOf(doc).reachableSceneIds.has("b")).toBe(true);
+    });
+});
+
+describe("a condition picked from the condition editor's dropdowns", () => {
+    /** `affection <operator> <value>` as the condition editor stores it: a variable, an operator, a value. */
+    const picked = (
+        operator: Extract<StoryConditionRef, { kind: "variable" }>["operator"],
+        value?: number,
+    ): StoryConditionRef => ({
+        kind: "variable",
+        target: { scope: "saved", variableId: AFFECTION },
+        operator,
+        ...(value === undefined ? {} : { value }),
+    });
+
+    /** The same `/if` group as {@link ifGroup}, with the arm's condition stored as picked. */
+    function pickedIfGroup(id: string, armId: string, condition: StoryConditionRef, childrenIds: string[]): StoryBlock[] {
+        return [
+            { id, kind: "control", parentId: null, childrenIds: [armId], payload: { control: "condition" } } as StoryBlock,
+            {
+                id: armId,
+                kind: "control",
+                parentId: id,
+                childrenIds,
+                payload: { control: "conditionBranch", branch: "if", condition },
+            } as StoryBlock,
+        ];
+    }
+
+    it("finds the arm no route can satisfy, as it does for the typed form", () => {
+        // Nothing raises affection, so `affection >= 20` cannot hold - whichever editor wrote it.
+        const pickedDoc = document([
+            scene("a", "Start", [declaration(0), ...pickedIfGroup("if1", "arm1", picked("greaterOrEqual", 20), ["j1"]), jump("j1", "b")]),
+            scene("b", "B", []),
+        ]);
+        const typedDoc = document([
+            scene("a", "Start", [declaration(0), ...ifGroup("if1", "arm1", compare(">=", 20), ["j1"]), jump("j1", "b")]),
+            scene("b", "B", []),
+        ]);
+
+        for (const doc of [pickedDoc, typedDoc]) {
+            const coverage = coverageOf(doc);
+            expect(coverage.structuralBranchIds.has("scene-flow:branch:arm1")).toBe(true);
+            expect(coverage.takenBranchIds.has("scene-flow:branch:arm1")).toBe(false);
+            expect(coverage.reachableSceneIds.has("b")).toBe(false);
+        }
+    });
+
+    it("takes the arm once a row above it raises the counter far enough", () => {
+        const doc = document([
+            scene("a", "Start", [declaration(0), incBy("w1", 30), ...pickedIfGroup("if1", "arm1", picked("greaterOrEqual", 20), ["j1"]), jump("j1", "b")]),
+            scene("b", "B", []),
+        ]);
+
+        const coverage = coverageOf(doc);
+        expect(coverage.takenBranchIds.has("scene-flow:branch:arm1")).toBe(true);
+        expect(coverage.reachableSceneIds.has("b")).toBe(true);
+    });
+
+    it("closes an option a picked hidden-when always hides", () => {
+        // The mirror of an `if`: `hiddenWhen` closes the arm when it HOLDS, picked or typed.
+        const doc = document([
+            scene("a", "Crossroads", [
+                declaration(0),
+                choice("c1", ["o1", "o2"]),
+                option("o1", ["j1"], "always here"),
+                {
+                    ...option("o2", ["j2"], "never here"),
+                    payload: {
+                        action: "choiceOption",
+                        text: { textId: "o2-t", value: "never here", role: "choiceText" },
+                        hiddenWhen: picked("lessOrEqual", 0),
+                    },
+                } as StoryBlock,
+                jump("j1", "b"),
+                jump("j2", "c"),
+            ]),
+            scene("b", "B", []),
+            scene("c", "C", []),
+        ]);
+
+        const coverage = coverageOf(doc);
+        expect(coverage.takenBranchIds.has("scene-flow:branch:o1")).toBe(true);
+        expect(coverage.takenBranchIds.has("scene-flow:branch:o2")).toBe(false);
+        expect(coverage.reachableSceneIds.has("c")).toBe(false);
+    });
+
+    it("takes the arm when the picked test is not a comparison against a value", () => {
+        // "Is set" and an unfinished comparison say nothing a number can settle.
+        for (const condition of [picked("exists"), picked("greaterOrEqual")]) {
+            const doc = document([
+                scene("a", "Start", [declaration(0), ...pickedIfGroup("if1", "arm1", condition, ["j1"]), jump("j1", "b")]),
+                scene("b", "B", []),
+            ]);
+            expect(coverageOf(doc).takenBranchIds.has("scene-flow:branch:arm1")).toBe(true);
+        }
     });
 });

@@ -7,6 +7,7 @@ import {
     GAME_UI_REFRESH_DELAY_MS,
     RECOMPILE_DEBOUNCE_MS,
     ROW_SWITCH_DEBOUNCE_MS,
+    SKIP_TYPING_TOGGLE_DELAY_MS,
     storyPreviewRebuildDelay,
     type StoryPreviewRebuildInput,
 } from "./storyPreviewRebuildSchedule";
@@ -145,10 +146,15 @@ describe("Game UI edits refresh the live preview", () => {
 describe("preview rebuild schedule", () => {
     const document = {};
     const gameUi = {};
-    const base: StoryPreviewRebuildInput = { document, sceneId: "clubroom", targetId: "row-5", gameUi };
+    const base: StoryPreviewRebuildInput = { document, sceneId: "clubroom", targetId: "row-5", gameUi, skipTyping: false };
 
     it("rebuilds at once for a newer Game UI alone", () => {
         expect(storyPreviewRebuildDelay(base, { ...base, gameUi: {} })).toBe(GAME_UI_REFRESH_DELAY_MS);
+    });
+
+    it("rebuilds at once when skipping the typing is turned on or off", () => {
+        expect(storyPreviewRebuildDelay(base, { ...base, skipTyping: true })).toBe(SKIP_TYPING_TOGGLE_DELAY_MS);
+        expect(storyPreviewRebuildDelay(base, { ...base, skipTyping: true, targetId: "row-6" })).toBe(ROW_SWITCH_DEBOUNCE_MS);
     });
 
     it("keeps the row-switch and edit pauses for everything else", () => {

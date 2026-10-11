@@ -19,8 +19,12 @@ import { CACHE_ROOT_DIR_NAME, CacheNamespace } from "@shared/types/constants";
  *
  * Nothing here decides *what* is cached. The rule for that is unchanged and lives on
  * {@link CacheNamespace}: deleting it must cost time, never work. It is what makes the fallback
- * safe to differ from the primary, and what makes a root that moves between launches - a Windows
- * update reinstalls into a fresh directory - a slow launch rather than a lost one.
+ * safe to differ from the primary, and what makes a root that is lost between launches a slow
+ * launch rather than a lost one.
+ *
+ * A Windows update keeps the root. The swap that applies a prepared update leaves `nl-cache` where
+ * it is, and a full install moves it beside the installation and back again
+ * ({@link adoptInstallerCacheStash} is the last resort for an install that stopped in between).
  */
 
 /** Why the root is where it is. Surfaced in the log and in the cache inventory. */
@@ -49,6 +53,8 @@ export type CacheRootInput = {
     appImage?: string | undefined;
     /** Defaults to {@link probeWritable}. */
     isWritable?: (dir: string) => boolean;
+    /** Defaults to {@link adoptInstallerCacheStash}. */
+    adoptStash?: (appDirectoryRoot: string) => void;
 };
 
 /**
@@ -125,6 +131,38 @@ export function legacyCacheRoot(userDataDir: string): string {
     return path.join(userDataDir, "cache");
 }
 
+/**
+ * Where the installer keeps the application directory's cache root while it replaces the files
+ * around it: beside the installation, named after it. See `updateStaging.ts` for the full layout;
+ * the suffix is spelled the same in the installer script.
+ */
+export function installerCacheStash(appDirectoryRoot: string): string {
+    return `${path.dirname(appDirectoryRoot)}.nl-cache`;
+}
+
+/**
+ * Put back a cache root the installer moved aside and did not get to restore.
+ *
+ * A full install deletes everything in the installation, so the installer moves the cache root out
+ * first and back in once the new files are there - which is what keeps a few hundred megabytes of
+ * toolchains from being downloaded again after every update. An install that stopped in between
+ * leaves the stash where it is, and this is the next chance to use it: before anything has created a
+ * fresh, empty root in its place. A rename, so it costs nothing; when it fails the stash is only
+ * disk, and the launch tidy-up removes it once a root exists.
+ */
+export function adoptInstallerCacheStash(appDirectoryRoot: string): boolean {
+    const stash = installerCacheStash(appDirectoryRoot);
+    try {
+        if (fs.existsSync(appDirectoryRoot) || !fs.existsSync(stash)) {
+            return false;
+        }
+        fs.renameSync(stash, appDirectoryRoot);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 export function resolveCacheRoot(input: CacheRootInput): CacheRootResolution {
     const candidate = appDirectoryCacheCandidate(input);
     if (candidate === null) {
@@ -133,6 +171,7 @@ export function resolveCacheRoot(input: CacheRootInput): CacheRootResolution {
             reason: input.packaged ? "app-directory-unsupported" : "development",
         };
     }
+    (input.adoptStash ?? adoptInstallerCacheStash)(candidate);
     if ((input.isWritable ?? probeWritable)(candidate)) {
         return { root: candidate, reason: "app-directory" };
     }

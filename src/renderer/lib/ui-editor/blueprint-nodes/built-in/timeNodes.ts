@@ -27,10 +27,12 @@
  *
  * ## The locale seam
  *
- * `Format Time Localized` and `Format Relative Time` take a locale as an *input pin* instead of
- * reading the game's language, because reading it is an async host call that a pure node cannot
- * make. Leaving it empty uses the player's system locale; wiring `Get Current Language` into it
- * makes the date follow the in-game language switch, and the wire is what says which was meant.
+ * `Format Time Localized` and `Format Relative Time` word a moment in the game's language: left empty,
+ * their Locale pin is the language the game's text is in right now, read synchronously from the
+ * running game (`readTimeWordingLocale` in `graphParamResolvers`), so a date reads in the same language
+ * as the words around it and follows an in-game language switch. A tag written or wired into the pin
+ * wins - a game that wants every date in one convention says which. Outside a running game, the editor
+ * and the story preview, empty is the language that window draws the project in: its source language.
  *
  * Comments in English per project convention.
  */
@@ -101,6 +103,11 @@ const stringIn = (id: string, label: string): BlueprintNodePinDef => ({
     label,
     allowInlineLiteral: true,
 });
+/**
+ * The language a date is worded in. Optional: left empty it is the game's language (see "The locale
+ * seam" above), which is an answer rather than a missing input, so nothing reports it as unwired.
+ */
+const localeIn: BlueprintNodePinDef = { ...stringIn("locale", "Locale"), optional: true };
 const out = (id: string, label: string, valueType: string): BlueprintNodePinDef => ({
     id,
     kind: "output",
@@ -257,7 +264,7 @@ export const timeBlueprintNodes: BlueprintNodeDef[] = [
         keywords: ["time", "date", "format", "locale", "language", "localized", "intl", "display"],
         pins: [
             timestampIn("timestamp", "Timestamp"),
-            stringIn("locale", "Locale"),
+            localeIn,
             out("result", "Result", "string"),
         ],
         inspectorParams: [
@@ -283,7 +290,7 @@ export const timeBlueprintNodes: BlueprintNodeDef[] = [
         pins: [
             timestampIn("from", "From"),
             timestampIn("to", "To"),
-            stringIn("locale", "Locale"),
+            localeIn,
             out("result", "Result", "string"),
         ],
         inspectorParams: [

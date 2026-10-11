@@ -27,6 +27,7 @@ import { useFlowAriaLabels } from "@/lib/ui-editor/hooks/useFlowAriaLabels";
 import { cn } from "@/lib/utils/cn";
 import type { BlueprintInspectorParamDef } from "@/lib/ui-editor/blueprint-nodes/types";
 import { resolveBlueprintLabel, resolveBlueprintNodeTitle } from "../blueprintNodeI18n";
+import { formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
 
 type PreviewPin = { id: string; label: string; exec: boolean; value?: string };
 
@@ -116,7 +117,12 @@ function displayValue(value: unknown, param: BlueprintInspectorParamDef | undefi
     }
     if (param?.kind === "select") {
         const option = param.options?.find(candidate => candidate.value === String(value));
-        return option ? resolveBlueprintLabel(option.label, t) : undefined;
+        if (!option) {
+            return undefined;
+        }
+        return param.optionsAreValueTypes
+            ? formatBlueprintValueTypeLabel(option.value, t, "option")
+            : resolveBlueprintLabel(option.label, t);
     }
     if (param && !["string", "number", "color", "keyboardBinding", "literal"].includes(param.kind)) {
         return undefined;

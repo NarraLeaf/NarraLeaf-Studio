@@ -231,16 +231,16 @@ describe("BrandService mutations", () => {
         const own = service.createColor({ name: "Accent", value: "#00FF00" });
 
         const added = service.adoptColors([
-            { id: "surface.sunken", name: "Page background", value: "#0A090D" },
+            { id: "pageBackground", name: "Page background", value: "#0A090D" },
             { id: own.id, name: "Theirs", value: "#FF0000" },
             { id: "primary", value: "#FF0000" },
         ]);
 
         expect(added).toBe(1);
-        expect(service.getColor("surface.sunken")).toEqual({ id: "surface.sunken", name: "Page background", value: "#0A090D" });
+        expect(service.getColor("pageBackground")).toEqual({ id: "pageBackground", name: "Page background", value: "#0A090D" });
         expect(service.getColor(own.id)).toMatchObject({ name: "Accent", value: "#00FF00" });
         expect(service.getColor("primary")?.value).not.toBe("#FF0000");
-        expect(service.getPalette().resolveCss("surface.sunken")).not.toBeNull();
+        expect(service.getPalette().resolveCss("pageBackground")).not.toBeNull();
     });
 
     it("reorders colours, seeded slots included", async () => {

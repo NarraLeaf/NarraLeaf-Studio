@@ -106,9 +106,10 @@ ${t("game.crash.logAt", { path: logPath })}` : details);
 
     return (
         /* `lang` is set here and nowhere higher: it decides which Han forms the browser draws, and
-           the document belongs to the game, whose language is the author's and the player's, not
-           this screen's. Scoping it to the screen keeps the shell in the machine's language without
-           touching a single glyph of the game.
+           the document's own attribute belongs to the game, which keeps it on the exact language the
+           player is reading. This screen is in the shell's language - the game's, resolved to one of
+           Studio's catalogues, or the machine's before a game language is known (`shellLocale`) - and
+           scoping the attribute to the screen says so without touching a glyph of the game.
 
            Scrolls, and only centres while there is room to.
            A game window may be 480x320, and this screen has to work there: with the details open

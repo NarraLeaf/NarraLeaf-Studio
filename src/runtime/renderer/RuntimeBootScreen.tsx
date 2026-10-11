@@ -1,7 +1,7 @@
 import { useSyncExternalStore, type ReactNode } from "react";
 import { BootScreenView } from "@/lib/ui-editor/runtime/app/BootScreenView";
 import { getRuntimeBootProgress, subscribeRuntimeBootProgress } from "./bootProgress";
-import { getShellLocale } from "./shellLocale";
+import { getShellLocale, subscribeShellLocale } from "./shellLocale";
 
 /**
  * What a game shows before it can show itself.
@@ -34,6 +34,9 @@ export function RuntimeBootScreen({ background, accent }: {
     accent: string;
 }): ReactNode {
     const progress = useSyncExternalStore(subscribeRuntimeBootProgress, getRuntimeBootProgress);
+    // The label's language can arrive while this is up: the game publishes its language as it boots,
+    // and a first launch starts in the machine's.
+    const lang = useSyncExternalStore(subscribeShellLocale, getShellLocale);
     if (progress.phase === "firstFrame") {
         return null;
     }
@@ -41,7 +44,7 @@ export function RuntimeBootScreen({ background, accent }: {
         <BootScreenView
             background={background}
             accent={accent}
-            lang={getShellLocale()}
+            lang={lang}
             progress={{ loaded: progress.loaded, total: progress.total }}
             placement="window"
         />

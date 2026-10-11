@@ -100,7 +100,9 @@ import {
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
     revealCreates,
+    sceneLayerDepths,
     sceneVariableDefs,
+    storyLayerDepthParallax,
     soundStageObjectName,
     storyPersistentDefs,
     storyTransitionKindOf,
@@ -134,6 +136,8 @@ import {
 } from "@shared/types/audioTrack";
 import { parseTranslatedRuns } from "@shared/utils/localizationText";
 import { resolveStoryAssetVariant, resolveStoryGroupRunMode, type StoryAssetVariants } from "@shared/types/story";
+import { isStoryInputWaitPayload, resolveStoryRumble, type StoryInputActionPayload } from "@shared/types/story";
+import type { StoryInputHost } from "@/lib/ui-editor/runtime/input/storyInputHost";
 import {
     composeStoryFilter,
     isEmptyStoryTransformProps,
@@ -165,6 +169,7 @@ import type {
     StageSnapshotDisplayable,
     StageSnapshotEffects,
     StageSnapshotMusic,
+    StageSnapshotRename,
     StageSnapshotSound,
     StageSnapshotSoundState,
     StoryStageSnapshot,
@@ -204,8 +209,8 @@ import {
     type StoryVisitedContent,
 } from "./storyVisited";
 // Every diagnostic is worded here, in the language of the window the compile runs in: Studio's own
-// language in Dev Mode and the scene preview, the machine's in a packaged game (the runtime bundle
-// aliases this module to its shim). An author reads these in the Issues panel, so they are never the
+// language in Dev Mode and the scene preview, the shell's in a packaged game (the runtime bundle
+// aliases this module to its shim, which speaks the game's language). An author reads these in the Issues panel, so they are never the
 // compiler's own English and never carry an id.
 import { translate } from "@/lib/i18n";
 import type { InterpolationParams, LocaleCode, TranslationKey } from "@shared/i18n";
@@ -877,6 +882,12 @@ export type StagePreviewCompileInput = {
      */
     onChoiceTaken?: (optionBlockId: StoryBlockId) => void;
     /**
+     * Compile lines without their pauses, for a host that shows each line in full as soon as it
+     * starts (the story preview with typing skipped). The words are the same; only the timing of
+     * their reveal is left out.
+     */
+    skipTyping?: boolean;
+    /**
      * Continuous playback ("play from here"). Instead of playing the target's own action and
      * holding on the resulting frame, compile the whole execution tail from the target onwards —
      * the rest of its branch, then everything after it in the scene (see collectStoryPlaybackPlan).
@@ -897,6 +908,8 @@ type SceneCompileContext = {
     previewSingleScene?: boolean;
     /** First jump met while compiling a preview tail, so the pane can name where playback stopped. */
     previewEncounteredJump?: { blockId: StoryBlockId; targetSceneId: StorySceneId };
+    /** Leave a line's pauses out of its sentence; see {@link StagePreviewCompileInput.skipTyping}. */
+    dropTextPauses?: boolean;
     characters: Map<string, Character>;
     characterSummaries: Map<string, DevModeCharacterSummary>;
     /** Dialog-avatar lookups resolved to URLs, per character. Built on first portrait binding. */
@@ -943,6 +956,8 @@ type SceneCompileContext = {
     onEndingReached?: (ending: StoryEndingReach) => void;
     /** Host hook for a `/quit` row; see {@link CompileInput.onQuitToPage}. */
     onQuitToPage?: (surfaceId: string) => void;
+    /** The player's hands, for the `input` rows; see {@link CompileInput.storyInput}. */
+    storyInput?: StoryInputHost;
     /** Blueprint document for compiling story-action blueprints referenced by this scene. */
     blueprintDocument?: BlueprintDocument;
     /** Game localization resolver; absent when the project has no localization or the host passes none. */
@@ -1199,6 +1214,15 @@ type CompileInput = {
      * compile to nothing.
      */
     onQuitToPage?: (surfaceId: string) => void;
+    /**
+     * What an `input` row asks of the running game: shaking the pad, locking the player out, and
+     * listening for an action (`/rumble`, `/input`, `/waitinput`, `/hold`, `/mash`).
+     *
+     * Absent for the same callers `onEndingReached` is absent for, and their input rows compile to
+     * nothing: a build sweep has no pad to shake, and a scene preview that stopped at a wait would be a
+     * preview that never settles.
+     */
+    storyInput?: StoryInputHost;
     /** Game localization (bundle payload + current-locale getter); see {@link StoryLocalizationRuntime}. */
     localization?: StoryLocalizationRuntime;
     /** Game voice (bundle payload + current voice-language getter); see {@link StoryVoiceRuntime}. */
@@ -1409,6 +1433,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             devtools: input.devtools,
             onEndingReached: input.onEndingReached,
             onQuitToPage: input.onQuitToPage,
+            storyInput: input.storyInput,
             blueprintDocument: input.blueprintDocument,
             localization,
             voicedUnitIds,
@@ -1636,7 +1661,8 @@ async function buildLaunchEntryScene(params: {
             // down, pause it or swap it for the one a `/bgm` row put on.
             ...(sceneMusic ? { backgroundMusicFade: sceneMusic.fadeMs } : {}),
             ...(voices ? { voices } : {}),
-        },
+            ...sceneBackgroundLayerConfig(scene),
+        } as any,
     ));
     const launchIdPrefix = launchSceneIdPrefix(scene.id, launch.targetBlockId ?? "");
     setSceneOwnElementIds(params.elementIdBindings, launchScene, `${launchIdPrefix}:scene`);
@@ -1662,6 +1688,7 @@ async function buildLaunchEntryScene(params: {
         devtools: input.devtools,
         onEndingReached: input.onEndingReached,
         onQuitToPage: input.onQuitToPage,
+        storyInput: input.storyInput,
         blueprintDocument: input.blueprintDocument,
         localization: params.localization,
         voicedUnitIds: params.voicedUnitIds,
@@ -1757,6 +1784,9 @@ async function buildLaunchEntryScene(params: {
         const value = snapshot.sceneVariables[def.storageKey] ?? def.defaultValue ?? null;
         statements.push(launchScene.local.set(def.storageKey, value as any));
     }
+    // The names the walked path's `/rename` rows left, so the first line of the tail is spoken under
+    // the name a playthrough shows there rather than the one the cast gives.
+    statements.push(...compileSnapshotRenames(ctx, snapshot.renames));
 
     // One synchronous injection step: register the pre-posed elements and apply built-in-singleton props.
     const backgroundProps = snapshot.backgroundProps;
@@ -1970,9 +2000,10 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         })
         : snapshot.background?.color
             ?? await resolveSceneInitialBackground({ scene, resolveAssetUrl, assetUrlCache, diagnostics });
+    const previewSceneConfig = { ...(backgroundSrc ? { background: backgroundSrc } : {}), ...sceneBackgroundLayerConfig(scene) };
     const previewScene = new Scene(
         sceneRuntimeName(scene),
-        backgroundSrc ? { background: backgroundSrc } : undefined,
+        Object.keys(previewSceneConfig).length > 0 ? previewSceneConfig as any : undefined,
     );
 
     const previewPersistentView = collectPersistentView(input.document, input.persistentVariables);
@@ -1984,6 +2015,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         nlrScene: previewScene,
         allScenes: { [scene.id]: previewScene },
         previewSingleScene: true,
+        dropTextPauses: input.skipTyping === true,
         characters: new Map(),
         characterSummaries,
         avatarAssetIdByUrl: new Map(),
@@ -2076,14 +2108,22 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         const value = snapshot.sceneVariables[def.storageKey] ?? def.defaultValue ?? null;
         statements.push(previewScene.local.set(def.storageKey, value as any));
     }
+    // And the speaker names the path left, so a previewed line shows the name it is played under.
+    statements.push(...compileSnapshotRenames(ctx, snapshot.renames));
 
     // One synchronous injection step: register pre-posed elements into the render tree and apply
     // props accumulated against the built-in singletons (scene background / built-in layers).
     const backgroundProps = snapshot.backgroundProps;
     const builtinLayerProps = snapshot.builtinLayerProps;
+    // The camera too, as a launch poses it: a still of a row after a pan is a still of the panned
+    // shot - and of the layers at their distances inside it - not of a camera that never moved.
+    const cameraProps = snapshot.camera?.props ?? {};
     statements.push(Script.execute(((scriptCtx: ScriptCtx) => {
         for (const registration of registrations) {
             DevTools.registerDisplayable(scriptCtx.gameState, registration.element as any, previewScene, registration.layer ?? null);
+        }
+        if (Object.keys(cameraProps).length > 0) {
+            DevTools.setDisplayableTransformProps(scriptCtx.gameState, nlrStory.camera as any, cameraProps);
         }
         if (Object.keys(backgroundProps).length > 0) {
             DevTools.setDisplayableTransformProps(scriptCtx.gameState, previewScene.background as any, backgroundProps);
@@ -2108,6 +2148,9 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         }
     }
     statements.push(...await compileSnapshotEffects(ctx, previewScene.background, snapshot.backgroundEffects));
+    if (snapshot.camera) {
+        statements.push(...await compileSnapshotEffects(ctx, nlrStory.camera, snapshot.camera.effects));
+    }
 
     // The stage is now a faithful still of the snapshot; hold here until the host reveals the
     // buffer so the target's own action plays entirely on a visible stage.
@@ -2495,6 +2538,7 @@ async function createNlrScenes(input: {
             voices?: Record<string, string | Sound>;
             backgroundMusic?: Sound;
             backgroundMusicFade?: number;
+            backgroundLayerParallax?: number;
         } = {};
         if (background) {
             config.background = background;
@@ -2522,9 +2566,10 @@ async function createNlrScenes(input: {
             // whole story moved whenever another scene gained or lost music.
             setStableElementId(input.elementIdBindings, music.sound, sceneMusicElementId(`nl:scene:${scene.id}`));
         }
+        Object.assign(config, sceneBackgroundLayerConfig(scene));
         const built = new Scene(
             runtimeName,
-            Object.keys(config).length > 0 ? config : undefined,
+            Object.keys(config).length > 0 ? config as any : undefined,
         );
         setStableSceneElementIds(input.elementIdBindings, built, scene.id);
         scenes[scene.id] = built;
@@ -3230,7 +3275,9 @@ function buildSentenceParts(
     const interpolationWords: unknown[] = [];
     for (const run of segment.rich) {
         if ("pause" in run) {
-            prompt.push(run.pause === true ? new Pause() : Pause.wait(run.pause));
+            if (!ctx.dropTextPauses) {
+                prompt.push(run.pause === true ? new Pause() : Pause.wait(run.pause));
+            }
             continue;
         }
         if ("event" in run) {
@@ -3300,7 +3347,10 @@ function buildLocalizedSentencePrompt(ctx: SceneCompileContext, segment: StoryTe
     for (let index = 0; index < sourceRuns.length; index += 1) {
         const run = sourceRuns[index];
         if ("pause" in run) {
-            tokensByRun.set(index, run.pause === true ? new Pause() : Pause.wait(run.pause));
+            // A dropped pause has no token, and a translation placing it places nothing.
+            if (!ctx.dropTextPauses) {
+                tokensByRun.set(index, run.pause === true ? new Pause() : Pause.wait(run.pause));
+            }
         } else if ("event" in run) {
             const event = eventMap?.get(run);
             if (event) {
@@ -3692,8 +3742,97 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
         return await compileCameraAction(ctx, block, payload);
     }
 
+    if (payload.action === "input") {
+        return compileInputAction(ctx, block, payload);
+    }
+
     return [];
 }
+
+/**
+ * An `input` row: the player's hands rather than the stage.
+ *
+ * Every operation is a call into {@link CompileInput.storyInput}, because none of them is something
+ * the engine does: the engine has no pad, and the lock is the host's suspension of the engine's own
+ * advance. With no host the row compiles to nothing - see the field for which compiles that is.
+ *
+ *  - **`rumble`** that does not wait is a `Script`, so it starts and the story moves on in the same
+ *    step. Its cleaner stops the pad, so rolling back past the row does not leave it shaking. One that
+ *    waits is an awaited action, so the story holds for the rumble's length and a rollback or a load
+ *    cuts it off.
+ *  - **`lock` / `unlock`** are `Script`s whose cleaners do the opposite, so rolling back past a lock
+ *    gives the player the story back and rolling back past an unlock takes it away again.
+ *  - **`wait` / `hold` / `mash`** are awaited actions: the story waits on the row exactly as it waits
+ *    on a line of dialogue, a save taken meanwhile replays the row, and a skip stops at it. The
+ *    outcome goes into the row's boolean variable, if it names one, only when the row was not
+ *    abandoned - a rollback mid-wait must not leave behind an answer the player never gave.
+ */
+function compileInputAction(
+    ctx: SceneCompileContext,
+    block: Extract<StoryBlock, { kind: "action" }>,
+    payload: StoryInputActionPayload,
+): NlrStatement[] {
+    const host = ctx.storyInput;
+    if (!host) {
+        return [];
+    }
+    if (payload.operation === "rumble") {
+        const shape = resolveStoryRumble(payload);
+        if (payload.wait) {
+            return [recordStatement(ctx, createStoryAwaitedAction({
+                run: async (_scriptCtx, signal) => {
+                    await host.rumble(shape, { wait: true, signal });
+                },
+            }), block)];
+        }
+        return [recordStatement(ctx, Script.execute(() => {
+            void host.rumble(shape, { wait: false });
+            return () => host.stopRumble();
+        }), block)];
+    }
+    if (payload.operation === "stopRumble") {
+        return [recordStatement(ctx, Script.execute(() => {
+            host.stopRumble();
+        }), block)];
+    }
+    if (payload.operation === "lock" || payload.operation === "unlock") {
+        const locked = payload.operation === "lock";
+        return [recordStatement(ctx, Script.execute(() => {
+            host.setAdvanceLocked(locked);
+            return () => host.setAdvanceLocked(!locked);
+        }), block)];
+    }
+    if (!isStoryInputWaitPayload(payload)) {
+        return [];
+    }
+    // Resolved now, so a deleted variable is the diagnostic every other write reports. Only the write
+    // goes with it: the wait is still the row's point, and dropping the row would let the player walk
+    // straight past a gesture the scene was built around - the assignment is what "skipped" means in
+    // that diagnostic, exactly as it is for a `/set`.
+    const slot = payload.resultTarget ? resolveVariableSlot(ctx, payload.resultTarget, block.id) : null;
+    const persistence = ctx.persistence;
+    const request = {
+        operation: payload.operation,
+        ...(payload.actionId ? { actionId: payload.actionId } : {}),
+        ...(payload.operation === "hold" ? { holdMs: payload.holdMs } : {}),
+        ...(payload.operation === "mash" ? { count: payload.count } : {}),
+        ...(typeof payload.timeoutMs === "number" ? { timeoutMs: payload.timeoutMs } : {}),
+    };
+    return [recordStatement(ctx, createStoryAwaitedAction({
+        run: async (scriptCtx, signal) => {
+            const passed = await host.waitForInput(request, signal);
+            if (signal.aborted || !slot) {
+                return;
+            }
+            if (slot.kind === "host") {
+                void persistence?.set(slot.key, passed);
+                return;
+            }
+            scriptCtx.storable.getNamespace(slot.namespace).set(slot.key, passed as any);
+        },
+    }), block)];
+}
+
 
 /**
  * Restart one looping transform on a pre-posed element - the launch scene's half of
@@ -4328,6 +4467,26 @@ function registerMusicHandle(ctx: SceneCompileContext, music: MusicHandle): void
 }
 
 /**
+ * The speaker names the walked path's `/rename` rows left, replayed from those rows.
+ *
+ * Each is the row's own call - `Character.setName` with the row's words, on the character the row
+ * names - so the name a launch opens on is the one the row gives in a playthrough, and the words the
+ * game looks its translation up by are the row's words too. A record whose row is no longer a
+ * `/rename` (the document changed under a stored snapshot) replays nothing.
+ */
+function compileSnapshotRenames(ctx: SceneCompileContext, renames: readonly StageSnapshotRename[]): NlrStatement[] {
+    const statements: NlrStatement[] = [];
+    for (const rename of renames) {
+        const row = ctx.scene.blocks[rename.setBy];
+        if (row?.kind !== "action" || row.payload.action !== "character" || row.payload.operation !== "setName") {
+            continue;
+        }
+        statements.push(getCharacter(ctx, row.payload.characterId).setName(row.payload.displayName ?? ""));
+    }
+    return statements;
+}
+
+/**
  * The music a row-precise launch opens with: the track on the channel at the target row, registered
  * so the tail's rows find it, and started the way the walk left it.
  *
@@ -4688,6 +4847,17 @@ async function compileLayerAction(
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "layer" }>,
 ): Promise<NlrStatement[]> {
+    if (payload.operation === "setDepth") {
+        // Not a step in time: the scene was built with its background layer at this distance (see
+        // `sceneBackgroundLayerConfig`), so there is nothing for the row to do when the story gets to
+        // it. Only the background layer takes one - a custom layer's depth is on its own `create`
+        // row, and the displayable layer is where the characters stand, which is what the camera is
+        // aimed at by definition.
+        if (payload.target?.kind !== "default" || payload.target.layer !== "background") {
+            diagnostic(ctx, "warning", block.id, say("story.compile.layer.depthBackgroundOnly"));
+        }
+        return [];
+    }
     // `create` names a new custom layer; every other op resolves an existing layer - a built-in
     // (background / displayable) or a custom one - via the target ref (falling back to the default
     // displayable layer), so a transform can now target the background instead of only named layers.
@@ -5543,11 +5713,26 @@ function getLayer(ctx: SceneCompileContext, objectName: string, zIndex = 0, init
     if (existing) {
         return existing;
     }
-    const layer = new Layer(name, { zIndex, ...(initialProps ?? {}) } as any);
+    // A layer's distance from the camera is stated once for the whole scene (its `create` row), and
+    // every path that builds the layer - the row itself, a picture placed on it first, a launch's
+    // replay - builds it here, so they all build it at the same distance.
+    // Read fresh each time, never cached on the scene: the story service edits a scene in place, so a
+    // cache keyed on it would keep the first compile's depths and the preview would ignore every edit.
+    const parallax = storyLayerDepthParallax(sceneLayerDepths(ctx.scene).custom.get(name));
+    const layer = new Layer(name, { zIndex, ...(parallax !== 1 ? { parallax } : {}), ...(initialProps ?? {}) } as any);
     setStableElementId(ctx.elementIdBindings, layer, sceneElementStaticId(ctx, "layer", name));
     ((ctx.nlrScene as unknown as { config: { layers: Layer[] } }).config.layers).push(layer);
     ctx.layers.set(name, layer);
     return layer;
+}
+
+/**
+ * The scene config that puts the scene's own background layer at the distance its `setDepth` row
+ * names. Empty when the scene names none, so a scene without depth builds exactly as it always did.
+ */
+function sceneBackgroundLayerConfig(scene: StoryScene): { backgroundLayerParallax?: number } {
+    const parallax = storyLayerDepthParallax(sceneLayerDepths(scene).background);
+    return parallax !== 1 ? { backgroundLayerParallax: parallax } : {};
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DevTools } from "narraleaf-react";
+import { DevTools, Pause } from "narraleaf-react";
 import type { StoryBlock, StoryDocument } from "@shared/types/story";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { compileStagePreviewToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
@@ -127,6 +127,29 @@ describe("compileStagePreviewToNlr", () => {
         expect(boundBlockIds).not.toContain("after");
     });
 
+    it("poses the camera where the rows before the target left it, so the still shows the shot", async () => {
+        const blocks: Record<string, StoryBlock> = {
+            pan: block("pan", "action", {
+                action: "camera",
+                operation: "transform",
+                transform: { mode: "props", to: { position: { xalign: 0.5, yalign: 0.5, xoffset: 160 }, zoom: 1.2 }, durationMs: 1600 },
+            }),
+            target: say("target", "After the pan."),
+        };
+        const compiled = await compilePreview(baseDocument(blocks, ["pan", "target"]), "target");
+        const injection = statementActions(((compiled.scene as unknown as { actions: unknown[] }).actions)[0])
+            .find((action: any) => action?.type === "script:action");
+        expect(injection).toBeDefined();
+        // Run the injection the way the engine would, against a game state that has the elements
+        // already: what is left for it to do is pose them.
+        const gameState = { findElementByDisplayable: () => ({}), getExposedState: () => null, flush: () => undefined };
+        (injection as any).contentNode.getContent().handler({ gameState });
+        expect(DevTools.getDisplayableTransformProps(compiled.story.camera as any)).toEqual(expect.objectContaining({
+            zoom: 1.2,
+            position: expect.objectContaining({ xoffset: 160 }),
+        }));
+    });
+
     it("orders statements as seeds, injection script, markers, and target", async () => {
         const blocks: Record<string, StoryBlock> = {
             enter: block("enter", "action", { action: "character", operation: "enter", characterId: "char-alice", assetId: "asset-alice" }),
@@ -192,6 +215,42 @@ describe("compileStagePreviewToNlr", () => {
         expect(compiled.diagnostics).toEqual([
             { level: "warning", blockId: "jump", message: "The preview stops before this jump instead of leaving the scene." },
         ]);
+    });
+
+    it("leaves a line's pauses out, and only those, when typing is skipped", async () => {
+        const line = block("line", "nodeAction", {
+            action: "narration",
+            text: {
+                textId: "line-text",
+                value: "Wait for it.",
+                role: "narration",
+                rich: [{ text: "Wait" }, { pause: true }, { text: " for" }, { pause: 400 }, { text: " it." }],
+            },
+        });
+        const document = baseDocument({ line }, ["line"]);
+        const words = async (skipTyping: boolean): Promise<unknown[]> => {
+            const compiled = await compileStagePreviewToNlr({
+                document,
+                sceneId: "scene-1",
+                snapshot: computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId: "line" }),
+                targetBlockId: "line",
+                resolveAssetUrl: assetId => `nlr://${assetId}`,
+                onBeforeTarget: () => {},
+                onAfterTarget: () => {},
+                skipTyping,
+            });
+            const binding = compiled.actionIdBindings.find(entry => entry.blockId === "line");
+            const content = (binding?.action as any)?.contentNode?.getContent?.();
+            const sentence = Array.isArray(content) ? content.find((item: any) => item?.text) : content;
+            return (sentence.text as Array<{ text: unknown }>).map(word => word.text);
+        };
+
+        const typed = await words(false);
+        expect(typed.filter(part => part instanceof Pause)).toHaveLength(2);
+
+        const shown = await words(true);
+        expect(shown.some(part => part instanceof Pause)).toBe(false);
+        expect(shown.join("")).toBe("Wait for it.");
     });
 
     it("keeps the full menu when the target is a choice block", async () => {

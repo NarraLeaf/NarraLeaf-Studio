@@ -41,6 +41,7 @@ export const DEFAULT_INSERT_PALETTE_CONFIG = [
     { type: "nl.puppet", placement: "overflow" },
     { type: "nl.slider", placement: "overflow" },
     { type: "nl.list", placement: "overflow" },
+    { type: "nl.inputHints", placement: "overflow" },
     { type: "nl.frame", placement: "overflow", surfaceKinds: ["appSurface"] },
 ] as const satisfies readonly InsertPaletteConfigEntry[];
 

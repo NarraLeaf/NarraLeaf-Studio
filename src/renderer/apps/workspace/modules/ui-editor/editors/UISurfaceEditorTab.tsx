@@ -82,7 +82,7 @@ import {
     type GameUiReferenceLayer,
     type GameUiReferencePlan,
 } from "@/lib/ui-editor/preview/gameUiReferenceLayers";
-import { SurfaceOffPageVeil } from "@/apps/workspace/modules/ui-editor/editors/SurfaceOffPageVeil";
+import { SurfaceOffPageVeil, SurfaceStageBacking } from "@/apps/workspace/modules/ui-editor/editors/SurfaceOffPageVeil";
 import { getEditorSurfaceStyle } from "@/apps/workspace/modules/ui-editor/editors/editorSurfaceStyle";
 import {
     readProjectMobileOrientation,
@@ -820,9 +820,11 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
             data-help-topic={isComponentEdit ? "uiComponents" : "uiSurfaces"}
         >
             <WidgetRuntimeStateProvider key={surface.id}>
+                {/* `nl-canvas-surface`: under a wallpaper the canvas around the page is the wallpaper,
+                    as the blueprint canvas is; the page keeps the stage colour (`SurfaceStageBacking`). */}
                 <div
                     ref={editorRootRef}
-                    className="relative flex-1 bg-surface-canvas"
+                    className="nl-canvas-surface relative flex-1 bg-surface-canvas"
                     style={{
                         [EDITOR_SIDEBAR_INSET_PROPERTY]: zoom.outlineCollapsed
                             ? "0px"
@@ -982,6 +984,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             </div>
                         ) : null}
                         <div ref={canvasRef} className="relative h-full w-full" style={transformStyle}>
+                            {surfaceContent ? <SurfaceStageBacking designSize={surface.designSize} /> : null}
                             {/* Other Game UI, in the order the game stacks it: what it draws under this
                                 surface goes first, what it draws over it after. */}
                             {renderReferenceLayers(referencePlan.below)}

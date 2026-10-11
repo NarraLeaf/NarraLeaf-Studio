@@ -3,7 +3,7 @@ import { RequestStatus } from "@shared/types/ipcEvents";
 import { WindowAppType } from "@shared/types/window";
 import type { CommandLineRunJob } from "@shared/types/commandLineRun";
 import { throwException } from "@shared/utils/error";
-import { getInterface } from "@/lib/app/bridge";
+import { getAgentBridgeInterface, getInterface } from "@/lib/app/bridge";
 import { setCrashRecoveryFlush } from "@/lib/app/errorHandling/crashRecovery";
 import { freezeProjectWrites, getProjectWriteFreeze, isTakenOver } from "@/lib/app/writeFreeze";
 import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
@@ -22,6 +22,8 @@ import { Service } from "@/lib/workspace/services/Service";
 import { ensureWorkspaceProjectCanStart } from "@/lib/workspace/startup/workspaceProjectPreflight";
 import { watchForSessionTakeover } from "@/lib/workspace/startup/sessionTakeover";
 import { flushPendingSaves } from "@/lib/workspace/services/autosave/flushPendingSaves";
+import { agentRefusal } from "@shared/agent/protocol";
+import type { AgentBridgeService } from "@/lib/workspace/services/agent/AgentBridgeService";
 import type { WorkspaceStartupStage } from "../components/WorkspaceOpeningOverlay";
 
 interface WorkspaceProviderProps {
@@ -414,6 +416,30 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
             return { success: true, data: { flushed: result.flushed } };
         });
 
+        // An AI agent's call over Studio's MCP endpoint, routed here by main because this window has
+        // the project open. On mount for the reason the two handlers above are: main waits for the
+        // answer, and a call that lands while the workspace is still starting must be told so rather
+        // than left to time out. Always answers `success: true` - a refusal is an answer the agent
+        // reads (see `@shared/agent/protocol`).
+        // Through the agent bridge Studio acquired at boot, which plugin code cannot reach: on the
+        // global bridge any listener heard every call and main took the first reply.
+        const agentToken = getAgentBridgeInterface().onAgentCall(async request => {
+            const currentContext = contextRef.current;
+            if (!currentContext) {
+                return { success: true, data: agentRefusal("unavailable", "The project is still opening in Studio.", "Try again in a few seconds.") };
+            }
+            let bridge: AgentBridgeService;
+            try {
+                bridge = currentContext.services.get<AgentBridgeService>(Services.AgentBridge);
+            } catch {
+                return { success: true, data: agentRefusal("unavailable", "Agent calls are not available in this window.") };
+            }
+            if (!bridge.isInitialized(currentContext)) {
+                return { success: true, data: agentRefusal("unavailable", "The project is open in recovery mode, which takes no agent calls.") };
+            }
+            return { success: true, data: await bridge.handle(request) };
+        });
+
         // Another NarraLeaf Studio has taken this window's project over. On mount rather than
         // with the context, like the two handlers above, because a takeover can land while the
         // workspace is still starting - see `watchForSessionTakeover`.
@@ -424,6 +450,7 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
         return () => {
             token.cancel();
             flushToken.cancel();
+            agentToken.cancel();
             takenOverToken.cancel();
         };
     }, []);

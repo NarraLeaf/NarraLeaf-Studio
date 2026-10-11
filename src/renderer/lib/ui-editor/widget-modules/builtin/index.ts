@@ -16,6 +16,7 @@ import { NotificationListWidgetModule } from "./notificationList";
 import { ChoiceListWidgetModule } from "./choiceList";
 import { NvlListWidgetModule } from "./nvlList";
 import { NvlTextsWidgetModule } from "./nvl";
+import { InputHintsWidgetModule } from "./inputHints";
 
 /**
  * All built-in widget modules registered at startup (includes internal `nl.root`).
@@ -39,6 +40,7 @@ export const BuiltinWidgetModules: UIWidgetModule[] = [
     ChoiceListWidgetModule,
     NvlListWidgetModule,
     NvlTextsWidgetModule,
+    InputHintsWidgetModule,
 ];
 
 /** Runs optional `registerBlueprintNodes` on each built-in module (idempotent per module). */

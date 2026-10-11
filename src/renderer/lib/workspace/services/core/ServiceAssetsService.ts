@@ -74,6 +74,27 @@ export class ServiceAssetsService extends Service<ServiceAssetsService> implemen
         };
     }
 
+    /**
+     * Remove a store, for an undo that takes a store back to not having existed (an agent tool's
+     * first write to a plugin namespace). A store that is already gone is not an error. Listeners
+     * hear it as they hear a write: the namespace's content changed.
+     */
+    public async deleteStore(namespace: string): Promise<FsRequestResult<void>> {
+        this.ensureReady();
+        const result = await this.getFileSystem().deleteFile(this.resolveStoreFile(namespace));
+        if (!result.ok && result.error.code !== FsRejectErrorCode.NOT_FOUND) {
+            return result;
+        }
+        for (const listener of this.storeWriteListeners) {
+            try {
+                listener(namespace);
+            } catch (error) {
+                console.error(`[ServiceAssets] a listener failed after "${namespace}" was removed`, error);
+            }
+        }
+        return { ok: true, data: undefined };
+    }
+
     public async readStore<T extends Record<string, any>>(namespace: string): Promise<FsRequestResult<T>> {
         this.ensureReady();
         return this.getFileSystem().readJSON<T>(this.resolveStoreFile(namespace));

@@ -376,6 +376,30 @@ function toBlueprintHistoryEntries(
 }
 
 /**
+ * Whether the line the game is on is a choice menu.
+ *
+ * Read off the backlog, whose newest entry is the line the play head is on: the engine records a
+ * menu there when it shows one, keeps it there after the pick until the next line is said, and moves
+ * it with the play head on a step back, a jump to a backlog line and a load. That is the one record
+ * that knows a menu is up, since a menu leaves the engine's last-dialog record - and the speaker in
+ * it - untouched.
+ */
+function isPlayHeadOnMenu(liveGame: LiveGame | null): boolean {
+    let history: unknown;
+    try {
+        history = liveGame?.getHistory?.();
+    } catch {
+        // A game with no state yet throws rather than answering; it is on no line at all.
+        return false;
+    }
+    if (!Array.isArray(history) || history.length === 0) {
+        return false;
+    }
+    const entry = history[history.length - 1] as { element?: { type?: unknown } } | null | undefined;
+    return entry?.element?.type === "menu";
+}
+
+/**
  * Fast-forward the running game to the next menu, preserving full history.
  *
  * Prefers the engine's `LiveGame.fastForward` primitive (feature-detected, per the same
@@ -425,9 +449,16 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
 
     return {
         onGetNametag: (): string | null => {
+            const liveGame = getLiveGame();
+            // A choice menu's prompt is said by nobody, and the engine records no speaker for it: both
+            // records below still name whoever spoke the line before the menu. While the play head is
+            // on a menu, no one is speaking.
+            if (isPlayHeadOnMenu(liveGame)) {
+                return null;
+            }
             // The engine's last line names its speaker by the name it was given, so it is shown the
             // way the prompt below is: in the game's language. The prompt's copy is already shown so.
-            const liveGameSpeaker = readNlrLastDialogSpeaker(getLiveGame());
+            const liveGameSpeaker = readNlrLastDialogSpeaker(liveGame);
             if (liveGameSpeaker !== null) {
                 return displaySpeakerName?.(liveGameSpeaker) ?? liveGameSpeaker;
             }

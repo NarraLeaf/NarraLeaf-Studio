@@ -239,6 +239,7 @@ export const story = {
         },
         reason: {
             blueprintAction: "A blueprint runs this row, and a blueprint has no script form.",
+            inputAction: "This row waits for or responds to the player's controls, and has no script form yet.",
             blueprintCondition: "A blueprint decides this condition.",
             blueprintInterpolation: "A blueprint computes a value inside this text.",
             inlineEvent: "The text carries an event that fires while it is being typed out.",
@@ -543,6 +544,33 @@ export const story = {
         notOnStageTitle: "No layer with this name is declared earlier in this scene. Pick an existing layer",
         hint: "Layer",
         createNew: "Create new layer",
+        backgroundName: "Background layer",
+        displayableHint: "Where the characters are",
+        backgroundHint: "Behind every other layer",
+        manage: "Manage layers…",
+    },
+    layerDepth: {
+        near: "Near",
+        follow: "With the camera",
+        mid: "Middle",
+        far: "Far",
+        farthest: "Farthest",
+    },
+    layerPanel: {
+        sceneBackground: "Scene background",
+        title: "Layers",
+        resetNote: "Reset when the story leaves this scene",
+        frontToBack: "Front to back",
+        depth: "Depth",
+        contents: "On this layer",
+        empty: "Empty",
+        camera: "Camera",
+        fixed: "Fixed",
+        builtin: "Built-in",
+        conflict: "“{front}” is drawn in front of “{back}” but is farther away",
+        open: "Layers",
+        unnamed: "Unnamed layer",
+        depthHint: "Drag a layer onto another lane to change its depth",
     },
     appearance: {
         noPoses: "This character has no poses yet.",
@@ -698,6 +726,16 @@ export const story = {
         labelName: "Label",
         endingName: "Ending",
         quitPage: "Page",
+        rumblePreset: "Shape",
+        rumbleLeft: "Left Motor",
+        rumbleRight: "Right Motor",
+        rumbleWait: "Wait for the rumble",
+        inputLock: "Lock / Unlock",
+        inputAction: "Input Action",
+        inputTimeout: "Time Limit",
+        inputResult: "Result Variable",
+        holdDuration: "Hold Seconds",
+        mashCount: "Presses",
         scene: "Scene",
         track: "Audio Track",
         appTag: "Build Variant",
@@ -731,6 +769,7 @@ export const story = {
         opacity: "Opacity",
         size: "Font Size",
         z: "Z-Index",
+        depth: "Depth",
         // The prop vocabulary (`commands/transformVocabulary.ts`) — one key per channel of the bag.
         zoom: "Zoom",
         scale: "Scale",
@@ -786,6 +825,15 @@ export const story = {
      * that merely echoes a canonical value, so these entries change nothing on their own.
      */
     enumValue: {
+        tap: "tap",
+        pulse: "pulse",
+        impact: "impact",
+        quake: "quake",
+        alert: "alert",
+        custom: "custom",
+        stop: "stop",
+        lock: "lock",
+        unlock: "unlock",
         // How each repeat runs (`repeatType=`).
         loop: "loop",
         reverse: "reverse",
@@ -885,6 +933,11 @@ export const story = {
         blink: "blink",
         slowBlink: "slowBlink",
         vignettePulse: "vignettePulse",
+        near: "near",
+        follow: "follow",
+        mid: "mid",
+        far: "far",
+        farthest: "farthest",
     },
 
     /**
@@ -1003,6 +1056,7 @@ export const story = {
             label: "Label in this scene",
             appTag: "Build variant",
             surface: "Page",
+            inputAction: "Input action",
             variable: "Variable",
             content: "New content, typed by the target",
             color: "Color",
@@ -1049,17 +1103,13 @@ export const story = {
             one: "Drag {count} row",
             other: "Drag {count} rows",
         },
-        // Two strings per row button, and the difference is load-bearing: `insert`/`delete` are the
-        // ACCESSIBLE NAMES and `insertTitle`/`deleteTitle` the tooltips, which add the keybinding. They
-        // read the same because a screen reader and a pointer deserve the same sentence — these used to
-        // be the bare words "Insert" and "Delete", left over from when the buttons had visible text, so
-        // the only thing announced was a verb with no object. The shortcut stays out of the name (it
-        // belongs to the tooltip and the cheat sheet, not to what the control IS), and the bracket
-        // convention lives in the catalogue because zh wants full-width ones.
+        // The accessible name and the tooltip of each row button. They are one sentence because a
+        // screen reader and a pointer deserve the same one - these used to be the bare words "Insert"
+        // and "Delete", left over from when the buttons had visible text, so the only thing announced
+        // was a verb with no object. The key is not part of it: the tooltip prints it after the
+        // sentence (`data-tip-shortcut`), as it does on every button with a key.
         insert: "Insert a blank row after this one",
         delete: "Delete this row",
-        insertTitle: "Insert a blank row after this one ({keys})",
-        deleteTitle: "Delete this row ({keys})",
         playFromRow: "Play from this row",
         playBranch: "Play this branch",
         insertPlaceholder: "Type narration, {trigger} for actions, # for characters…",
@@ -1136,6 +1186,7 @@ export const story = {
         title: "Live Preview",
         dock: "Dock in the scene editor",
         pip: "Picture-in-picture",
+        skipTyping: "Skip typing animation",
         selectRow: "Select a story row to preview its stage state.",
         failed: "Preview failed",
         settleTimeout: "The stage did not finish setting up in time.",
@@ -1317,6 +1368,9 @@ export const story = {
             unknownLens: "Camera lens “{preset}” is not a known effect.",
             unknownLook: "Camera look “{preset}” is not a known grade.",
         },
+        layer: {
+            depthBackgroundOnly: "This row sets only the background layer's depth. A custom layer's depth is set on the row that creates it.",
+        },
         transform: {
             loopNoReveal: "A looping transform cannot carry a clip reveal; the reveal is ignored.",
             loopNotInterpolable: "A looping transform can only animate channels that interpolate; the rest of this row does not change.",
@@ -1463,6 +1517,11 @@ export const story = {
         // Named for what the player sees, not for the act: "Quit" alone reads as leaving the game.
         // The detail carries the half the name cannot - the run ends without an ending being recorded.
         quit: { label: "Quit to page", detail: "End this playthrough at this line and show a page. No ending is recorded" },
+        rumble: { label: "Rumble", detail: "Vibrate the player's controller. Pick a preset, or set each motor" },
+        input: { label: "Input lock", detail: "Lock or unlock player input. While locked, clicking to advance, the advance key, auto-forward and skipping do nothing; choices can still be picked. Unlock before the next line of dialogue" },
+        waitInput: { label: "Wait for input", detail: "Wait until the player performs an input action, optionally within a time limit" },
+        hold: { label: "Hold", detail: "Wait until the player holds an input action down for a number of seconds" },
+        mash: { label: "Mash", detail: "Wait until the player presses an input action a number of times" },
         blueprint: { label: "Blueprint", detail: "Run a Story Action Blueprint" },
         // The detail line is where "kept across scenes" belongs — every command has one, and it is the
         // first thing an author reads about the camera in the slash menu and the command reference.
@@ -1520,6 +1579,8 @@ export const story = {
         cut: "Cut point",
         ending: "Ending",
         quit: "Quit to page",
+        rumble: "Rumble",
+        input: "Input",
         jump: "Jump",
         note: "Note",
         invalid: "Invalid",
@@ -1598,6 +1659,18 @@ export const story = {
         cutUnknown: "Cut point",
         ending: "Ending {name}",
         quit: "Quit to {page}",
+        rumble: "Rumble: {shape}",
+        rumbleStop: "Stop rumble",
+        inputLock: "Lock player input",
+        inputUnlock: "Unlock player input",
+        inputActionNamed: "\"{name}\"",
+        inputAnyAction: "any input",
+        inputActionUnknown: "an input action",
+        /** A command line naming an action no longer in the project, as `sceneUnknown` names a scene. */
+        inputActionNotFound: "unknown input action",
+        inputWait: "Wait for {action}",
+        inputHold: "Hold {action} for {seconds}s",
+        inputMash: "Press {action} {count} times",
         quitUnset: "Quit to page",
         jump: "Jump {scene}",
         note: "Note",

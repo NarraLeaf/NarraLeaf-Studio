@@ -13,12 +13,14 @@ import type {
     StoryScene,
     StoryTextSegment,
 } from "@shared/types/story";
-import { listScenesInDocumentOrder, listStoryEndings } from "@shared/types/story";
+import { listScenesInDocumentOrder, listStoryEndings, listStoryRenames } from "@shared/types/story";
 import type { LocalizationDocument, LocalizationKeysDocument, LocalizationUnit } from "@shared/types/localization";
 import {
     characterTranslationUnitId,
     endingTranslationUnitId,
+    isTranslatableRenameName,
     localizationKeyUnitId,
+    renameTranslationUnitId,
     sceneTranslationUnitId,
 } from "@shared/types/localization";
 import type { TranslationExchangeRow } from "@shared/utils/localizationExchange";
@@ -238,6 +240,45 @@ export function extractEndingTranslationRows(document: StoryDocument): EndingTra
             sceneId: ending.sceneId,
             sceneName: ending.sceneName,
             sourceText: ending.name,
+        }));
+}
+
+/** The words one `/rename` row gives a character, as a translation row (unit id `rename:<renameId>`). */
+export type RenameTranslationRow = {
+    unitId: string;
+    renameId: string;
+    storyId: string;
+    sceneId: string;
+    /** The scene the `/rename` row is in, for the translator's context. */
+    sceneName: string;
+    /** The character the row renames, when it names one. */
+    characterId?: string;
+    /** The words the row gives - what the name plate shows from that row on. */
+    sourceText: string;
+};
+
+/**
+ * The words `/rename` rows give, as translation rows, in story order.
+ *
+ * The same scan the build ships from (`listStoryRenames`), narrowed to the rows whose words are a
+ * unit of their own (`isTranslatableRenameName`): blank words have nothing to translate, and words
+ * that are a character's name are read as that character's name, translated where the character is.
+ * `characters` is the project's cast, which is what that second test reads.
+ */
+export function extractRenameTranslationRows(
+    document: StoryDocument,
+    characters: readonly { id: string; name: string }[],
+): RenameTranslationRow[] {
+    return listStoryRenames(document)
+        .filter(rename => isTranslatableRenameName(rename.name, characters))
+        .map(rename => ({
+            unitId: renameTranslationUnitId(rename.renameId),
+            renameId: rename.renameId,
+            storyId: document.id,
+            sceneId: rename.sceneId,
+            sceneName: rename.sceneName,
+            ...(rename.characterId ? { characterId: rename.characterId } : {}),
+            sourceText: rename.name,
         }));
 }
 

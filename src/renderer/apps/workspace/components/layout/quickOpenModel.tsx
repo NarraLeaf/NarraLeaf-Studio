@@ -16,6 +16,7 @@ import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalB
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { parseBlueprintOwnerKey } from "@/lib/workspace/services/search/blueprintOwnerKey";
+import { resolveBlueprintOwnerLabel } from "@/lib/workspace/services/search/sources/blueprintSource";
 import { createStorySceneEditorTab } from "../../modules/story/scene-editor/openStorySceneEditorTab";
 import { createBlueprintEntryEditorTab } from "../../modules/blueprint-lite/openBlueprintEditorTab";
 import { blueprintOwnerOpenTarget } from "../../modules/search/blueprintJumpTarget";
@@ -170,6 +171,10 @@ export function collectQuickOpenEntries(ctx: WorkspaceContext): QuickOpenEntry[]
                 key: `blueprint:${blueprint.id}`,
                 kind: "blueprint",
                 title: blueprintDisplayName(blueprint, translate, whatItDoes(blueprint)),
+                // Whose blueprint it is - the page, component or control it hangs on - named as the
+                // search panel names it. Blueprints take their owner's name, so without this every
+                // page's Config button read as one more identical "Config" row.
+                detail: resolveBlueprintOwnerLabel(ctx, ownerKey),
                 icon: <Workflow className="h-4 w-4" />,
                 // Addressed and named as the interface panel and the inspector open it, so picking a
                 // blueprint whose editor is already open focuses that tab instead of adding another.

@@ -32,9 +32,14 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
         }
     }, [currentTags, isSaving]);
 
-    // Refocus input after adding a tag
+    // Refocus input after adding a tag: the field is disabled while the tag saves, which drops focus.
+    // Only after an add. The field also starts out empty, and focusing it on mount pulled the caret
+    // out of whatever the author had just clicked - selecting an asset put it in here, and the asset
+    // panel's and the preview's keys stopped answering.
+    const refocusAfterAddRef = useRef(false);
     useEffect(() => {
-        if (newTag === "") {
+        if (newTag === "" && refocusAfterAddRef.current) {
+            refocusAfterAddRef.current = false;
             const timer = setTimeout(() => {
                 inputRef.current?.focus();
             }, 10);
@@ -45,6 +50,7 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
     const handleAddTag = useCallback(async () => {
         const trimmed = newTag.trim();
         if (!trimmed) return;
+        refocusAfterAddRef.current = true;
 
         // Check for duplicates (case-insensitive)
         const existingLower = localTags.map((t) => t.toLowerCase());

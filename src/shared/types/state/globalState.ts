@@ -13,6 +13,7 @@ import {
 import { ZOOM_PERCENT_DEFAULT } from "@shared/constants/zoom";
 import { WINDOW_ICON_DEFAULT } from "@shared/constants/windowIcon";
 import { DownloadRewriteRule, USE_SYSTEM_PROXY_KEY } from "@shared/types/downloadSource";
+import { AGENT_FOLLOW_DEFAULT, AGENT_FOLLOW_KEY } from "@shared/agent/follow";
 import { SPELLCHECK_LANGUAGE_DEFAULT } from "@shared/types/spellcheck";
 import { PersistentState } from "@shared/utils/persistentState";
 import type { VcsServerSession, VcsSessionUse } from "@shared/types/vcs";
@@ -56,6 +57,15 @@ export interface GlobalStateType extends Record<string, any> {
      * the author's answer on the next launch. See `@shared/constants/update`.
      */
     "app.updateCheckOnLaunch": boolean;
+    /**
+     * Whether a version a check finds is downloaded and prepared without being asked. See
+     * `UPDATE_AUTO_DOWNLOAD_KEY` in `@shared/constants/update`.
+     */
+    "app.updateAutoDownload": boolean;
+    /**
+     * Where updates are downloaded from. See `UPDATE_SOURCE_KEY` in `@shared/constants/update`.
+     */
+    "app.updateSource": "auto" | "github" | "gitcode";
     /**
      * Whether ⌘Q has to be pressed twice before it quits, instead of quitting on the first press.
      *
@@ -179,6 +189,13 @@ export interface GlobalStateType extends Record<string, any> {
     "ui.backgroundSidebarFill": boolean;
     /** Opacity of the dock plate while it is on, as a percentage; clamped to 10–100 when read. */
     "ui.backgroundSidebarOpacity": number;
+    /**
+     * Whether the window's frame (title bar, tab strips, rails, status bar, panel headers) keeps its
+     * paint over the wallpaper; absent means off. Meaningless without `ui.backgroundImage`.
+     */
+    "ui.backgroundFrameFill": boolean;
+    /** Opacity of the frame plate while it is on, as a percentage; clamped to 10–100 when read. */
+    "ui.backgroundFrameOpacity": number;
     /**
      * User keybinding rebinds as one `catalogId -> chord` map. One key rather than one key per
      * binding because catalog ids contain dots, which the dotted-path settings store would split
@@ -529,6 +546,12 @@ export interface GlobalStateType extends Record<string, any> {
      * workspace opening on it must not start a room around an author who came back tomorrow.
      */
     "team.hostedLiveSessions": Record<string, { story: string; at: number }>;
+    /**
+     * Follow mode: each write an agent makes opens the tab it landed in, brings it to the front and
+     * outlines the change. Studio-wide rather than per project, and on by default - see
+     * `@shared/agent/follow`. Not in main's `agent-mcp.json`: it grants nothing.
+     */
+    "agent.follow": boolean;
 }
 
 export type GlobalStateKeys = string;
@@ -546,6 +569,8 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     // languages to decide its own default.
     "app.developerMode": false,
     "app.updateCheckOnLaunch": true,
+    "app.updateAutoDownload": true,
+    "app.updateSource": "auto",
     "app.confirmQuit": CONFIRM_QUIT_DEFAULT,
     [SCREEN_EFFECT_QUALITY_KEY]: SCREEN_EFFECT_QUALITY_DEFAULT,
     [SCREEN_EFFECT_THREADS_KEY]: SCREEN_EFFECT_THREADS_DEFAULT,
@@ -603,6 +628,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     // be calling itself the same thing.
     "team.machineLabel": "",
     "team.hostedLiveSessions": {},
+    [AGENT_FOLLOW_KEY]: AGENT_FOLLOW_DEFAULT,
 };
 
 /**

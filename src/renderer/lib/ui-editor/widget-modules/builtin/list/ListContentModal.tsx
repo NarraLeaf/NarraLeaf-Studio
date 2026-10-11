@@ -10,7 +10,7 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { isBuiltinUIStructId, isPluginUIStructId, listEngineUIStructIds } from "@shared/types/ui-editor/builtinStructs";
-import { blueprintStructName } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
+import { blueprintStructName, formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
 import {
     UI_STRUCT_FIELD_TYPES,
     coerceItemToStruct,
@@ -59,7 +59,7 @@ export function ListContentModal(props: {
         () =>
             UI_STRUCT_FIELD_TYPES.map(value => ({
                 value,
-                label: t(`struct.type.${value}` as Parameters<typeof t>[0]),
+                label: formatBlueprintValueTypeLabel(value, t, "option"),
             })),
         [t],
     );

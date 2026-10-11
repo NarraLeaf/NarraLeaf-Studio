@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "narraleaf": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "http://127.0.0.1:<PORT>/mcp",
+        "--header",
+        "Authorization:${NARRALEAF_AUTH}"
+      ],
+      "env": {
+        "NARRALEAF_AUTH": "Bearer <TOKEN>"
+      }
+    }
+  }
+}

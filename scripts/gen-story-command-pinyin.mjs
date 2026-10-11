@@ -39,6 +39,9 @@ const PINYIN = {
     // 「对白」、「截断」and「置顶」— the first two were still missing syllables, so this generator threw
     // before it could reach any label at all.
     白: "bai", 截: "jie", 断: "duan", 顶: "ding",
+    // 「外观」「结局」「退出到页面」, and the player's-hands commands (「振动」「输入锁定」「长按」「连按」).
+    外: "wai", 观: "guan", 结: "jie", 退: "tui", 页: "ye", 面: "mian",
+    振: "zhen", 输: "shu", 入: "ru", 锁: "suo", 定: "ding", 长: "chang", 按: "an", 连: "lian",
 };
 
 /**

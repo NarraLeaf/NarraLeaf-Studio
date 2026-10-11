@@ -13,7 +13,8 @@
  *
  * Only when no language in that chain has a catalogue - or the game has no language at all, because
  * the project sets none - do the words fall back to `translate`: the editor's interface language in
- * Studio and in Dev Mode, the machine's language in a shipped game.
+ * Studio and in Dev Mode, the shell's language in a shipped game - which is this same answer when
+ * there is one, so there it is the machine's language.
  *
  * Three readers, matching the three the game's own text has: the React hook beside
  * `useLocalizedWidgetText` (`usePlayerWords`), the story compiler's resolver, and
@@ -70,6 +71,20 @@ export function translatePlayerWords(
 }
 
 /**
+ * The catalogue language {@link playerWordsLocale} chooses for the game running in this window right
+ * now, or null outside a running game or when it chooses none.
+ *
+ * The one answer both readers outside React take: {@link translateForPlayer}, and the shipped game's
+ * shell, which speaks the same language as these words (`src/runtime/renderer/shellLocale.ts`).
+ */
+export function runningGamePlayerWordsLocale(): LocaleCode | null {
+    const { locale, sourceLocale, locales } = readRuntimeLocale();
+    return sourceLocale === undefined
+        ? null
+        : playerWordsLocale({ sourceLocale, locales: [...(locales ?? [])] }, locale);
+}
+
+/**
  * `key` in the running game's language, for code that is neither a component nor the story compiler.
  *
  * Read at the moment of the call, so a caller that keeps the words should ask again rather than hold
@@ -77,9 +92,5 @@ export function translatePlayerWords(
  * `translate`.
  */
 export function translateForPlayer(key: TranslationKey, params?: InterpolationParams): string {
-    const { locale, sourceLocale, locales } = readRuntimeLocale();
-    const wordsLocale = sourceLocale === undefined
-        ? null
-        : playerWordsLocale({ sourceLocale, locales: [...(locales ?? [])] }, locale);
-    return translatePlayerWords(wordsLocale, key, params);
+    return translatePlayerWords(runningGamePlayerWordsLocale(), key, params);
 }

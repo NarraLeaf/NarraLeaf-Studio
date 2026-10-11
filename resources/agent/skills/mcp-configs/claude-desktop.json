@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "narraleaf": {
+      "command": "<STUDIO_EXECUTABLE>",
+      "args": [
+        "--mcp-stdio"
+      ]
+    }
+  }
+}

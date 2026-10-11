@@ -4,6 +4,7 @@ import type { PluginPermissionPromptProps, PluginPermissionPromptResult } from "
 import type { ServerTrustPromptProps, ServerTrustPromptResult } from "./serverTrust";
 import type { ProjectTrustPromptProps, ProjectTrustPromptResult } from "./projectTrust";
 import type { ServerSessionPromptProps, ServerSessionPromptResult } from "./serverSession";
+import type { AgentAccessPromptProps, AgentAccessPromptResult } from "./agentAccess";
 
 export enum WindowAppType {
     Launcher = "launcher",
@@ -15,6 +16,7 @@ export enum WindowAppType {
     ServerTrustPrompt = "server-trust",
     ProjectTrustPrompt = "project-trust",
     ServerSessionPrompt = "server-session",
+    AgentAccessPrompt = "agent-access",
     Raw = "raw",
 }
 
@@ -148,6 +150,7 @@ export type WindowProps = {
     [WindowAppType.ServerTrustPrompt]: ServerTrustPromptProps,
     [WindowAppType.ProjectTrustPrompt]: ProjectTrustPromptProps,
     [WindowAppType.ServerSessionPrompt]: ServerSessionPromptProps,
+    [WindowAppType.AgentAccessPrompt]: AgentAccessPromptProps,
     [WindowAppType.Raw]: {
     },
 }
@@ -261,5 +264,6 @@ export type WindowCloseResults = {
     [WindowAppType.ServerTrustPrompt]: ServerTrustPromptResult;
     [WindowAppType.ProjectTrustPrompt]: ProjectTrustPromptResult;
     [WindowAppType.ServerSessionPrompt]: ServerSessionPromptResult;
+    [WindowAppType.AgentAccessPrompt]: AgentAccessPromptResult;
     [WindowAppType.Raw]: null;
 };

@@ -207,3 +207,15 @@ describe("WidgetRuntimeStateStore", () => {
         expect(store.getDisplayableBaseTransform("scope\0image")).toBe(DEFAULT_DISPLAYABLE_BASE_TRANSFORM);
     });
 });
+
+describe("the pointer while the player moves by keys or a pad", () => {
+    it("draws nothing hovered until the game says the pointer is pointing again", () => {
+        const store = new WidgetRuntimeStateStore();
+        store.setHoverTarget("start");
+        expect(store.getSignalsForElement("start", false).hovered).toBe(true);
+        store.setPointerHoverSuppressed(true);
+        expect(store.getSignalsForElement("start", false).hovered).toBe(false);
+        store.setPointerHoverSuppressed(false);
+        expect(store.getSignalsForElement("start", false).hovered).toBe(true);
+    });
+});

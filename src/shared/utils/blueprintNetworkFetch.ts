@@ -47,6 +47,7 @@ import {
     networkAllowlistRefusalMessage,
     type NetworkAllowlist,
 } from "@shared/types/networkAllowlist";
+import { withoutHostHeader } from "./ownLoopbackGuard";
 
 export type BlueprintNetworkFetchOptions = {
     /** The project's Allow HTTP setting. False refuses every request before it is made. */
@@ -71,6 +72,14 @@ export type BlueprintNetworkFetchOptions = {
      * every hop.
      */
     redirects: "check" | "delegate";
+    /**
+     * A last say over each address the request is about to go to - the one written and, in the
+     * `check` shell, every hop a redirect points at - answering why it must not be requested, or
+     * null. A main process passes `refuseOwnLoopbackService` here, so the node cannot reach the
+     * loopback services Studio itself is serving (`./ownLoopbackGuard` says why that matters). The
+     * web export has no main process and nothing of Studio's to protect, and passes none.
+     */
+    refuseDestination?: (url: string) => Promise<string | null>;
 };
 
 function networkError(message: string): BlueprintNetworkFetchResult {
@@ -173,6 +182,21 @@ function methodAfterRedirect(
 }
 
 /**
+ * What `refuseDestination` says about an address. A check that fails is a refusal rather than a
+ * pass: it is a guard, and this function promises never to throw.
+ */
+async function refusalOf(url: string, options: BlueprintNetworkFetchOptions): Promise<string | null> {
+    if (!options.refuseDestination) {
+        return null;
+    }
+    try {
+        return await options.refuseDestination(url);
+    } catch (error) {
+        return `The address could not be checked: ${error instanceof Error ? error.message : String(error)}`;
+    }
+}
+
+/**
  * Execute one Fetch node request.
  *
  * Never throws: every failure is one of the four outcomes, because the node's four execution pins
@@ -197,6 +221,12 @@ export async function executeBlueprintNetworkFetch(
     if (!isNetworkAddressAllowed(url, options.allowlist)) {
         return networkError(networkAllowlistRefusalMessage(url));
     }
+    const refusedAtFirst = await refusalOf(url, options);
+    if (refusedAtFirst) {
+        return networkError(refusedAtFirst);
+    }
+    // Every hop carries the same headers, less any `Host` the graph set - see `withoutHostHeader`.
+    const headers = withoutHostHeader(request.headers);
 
     const timeoutMs = normalizeBlueprintNetworkTimeout(request.timeoutMs);
     const controller = new AbortController();
@@ -214,7 +244,7 @@ export async function executeBlueprintNetworkFetch(
         for (let hop = 0; ; hop++) {
             const response = await fetch(target, {
                 method,
-                headers: request.headers ?? undefined,
+                headers,
                 body: sendBody ? request.body ?? undefined : undefined,
                 signal: controller.signal,
                 // The game holds no session with anyone; sending ambient cookies would be a surprise
@@ -264,6 +294,10 @@ export async function executeBlueprintNetworkFetch(
             }
             if (!isNetworkAddressAllowed(next, options.allowlist)) {
                 return networkError(networkAllowlistRefusalMessage(next));
+            }
+            const refusedHop = await refusalOf(next, options);
+            if (refusedHop) {
+                return networkError(refusedHop);
             }
 
             const after = methodAfterRedirect(response.status, method);

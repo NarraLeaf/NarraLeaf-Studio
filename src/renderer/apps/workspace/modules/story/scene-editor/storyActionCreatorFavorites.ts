@@ -81,6 +81,7 @@ export const LEGACY_FAVORITE_TO_SPEC_ID: Readonly<
     textFont: "font",
     layerCreate: "layer",
     layerZIndex: "layer",
+    layerDepth: "layer",
     videoCreate: "play",
     videoShow: "play",
     video: "play",

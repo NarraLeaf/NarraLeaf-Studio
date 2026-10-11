@@ -11,7 +11,9 @@ import type {
     StoryDisplayableTargetKind,
     StoryEndingPage,
     StoryGroupKind,
+    StoryLayerDepth,
     StoryLiteralValue,
+    StoryRumblePresetId,
     StoryScene,
     StorySceneId,
     StoryTransitionRef,
@@ -24,6 +26,7 @@ import type {
 } from "@shared/types/story";
 import {
     authoredCharacterStageName,
+    DEFAULT_STORY_LAYER_DEPTH,
     DEFAULT_VIDEO_LEAVE_FADE_MS,
     declarationDefaultForType,
     isStoryExpressionEvaluable,
@@ -41,6 +44,9 @@ import {
     storyGroupWaits,
     storyPersistentDefs,
     storyTransitionKindOf,
+    STORY_LAYER_DEPTHS,
+    STORY_RUMBLE_DEFAULT_PRESET,
+    STORY_RUMBLE_PRESET_IDS,
     videoLeaveFadeMs,
     videoPlayHidesOnEnd,
     videoPlayWaits,
@@ -63,12 +69,15 @@ import {
     type WeatherSeedId,
 } from "@shared/weather/model";
 import { audioBusStatusLine } from "@/lib/story/audioBusStatus";
+import { storyLayerDepthLabel } from "@/lib/story/storyLayerLabel";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
 import { useProjectAppTags } from "@/lib/story/useProjectAppTags";
 import { useProjectSurfaces } from "@/lib/story/useProjectSurfaces";
+import { useProjectInputActions } from "@/lib/story/useProjectInputActions";
 import { BGM_OBJECT_NAME } from "./storyCommandValues";
 import { useTranslation } from "@/lib/i18n";
 import type { Translator, TranslationKey } from "@shared/i18n";
+import { formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight, Copy, ExternalLink, Image as ImageIcon, Mic, Palette, Play, RefreshCw, Square, Trash2, Video } from "lucide-react";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
@@ -517,9 +526,12 @@ const textOperationOptions = (t: TFunc): SelectOption[] => [
 // "Transform displayable" target list (which includes both built-in layers). The `layer` action
 // stays layer-lifecycle only. `transform` remains valid in the type + compiler so pre-existing
 // layer-transform blocks still compile; it is just no longer offered as a new choice here.
+const layerDepthOptions = (): SelectOption[] => STORY_LAYER_DEPTHS.map(depth => ({ value: depth, label: storyLayerDepthLabel(depth) }));
+
 const layerOperationOptions = (t: TFunc): SelectOption[] => [
     { value: "create", label: t("common.create") },
     { value: "setZIndex", label: t("storyInspector.layerOperation.setZIndex") },
+    { value: "setDepth", label: t("storyInspector.layerOperation.setDepth") },
     { value: "show", label: t("common.show") },
     { value: "hide", label: t("common.hide") },
 ];
@@ -589,6 +601,8 @@ export function ActionInspector(props: {
     const resolveMotionName = useStoryMotionNames();
     const blueprintName = useStoryBlueprintNames();
     const variableOptions = useStoryVariableOptions(props.document, props.sceneId);
+    const projectSurfaces = useProjectSurfaces();
+    const projectInputActions = useProjectInputActions();
     const subject = describeBlockSubject(
         block,
         props.characters,
@@ -598,6 +612,10 @@ export function ActionInspector(props: {
         resolveMotionName,
         projectVariableNameOf(variableOptions),
         blueprintName,
+        {
+            surfaceName: surfaceId => projectSurfaces.find(page => page.id === surfaceId)?.name ?? null,
+            inputActionName: actionId => projectInputActions.find(action => action.id === actionId)?.name ?? null,
+        },
     );
     /**
      * The read-only clamp for a frozen workspace, and why it is a `<fieldset>` rather than a
@@ -823,12 +841,11 @@ function InspectorFields(props: {
     return null;
 }
 
-const declarationTypeOptions = (t: TFunc): SelectOption[] => [
-    { value: "boolean", label: t("storyVars.valueType.boolean") },
-    { value: "number", label: t("storyVars.valueType.number") },
-    { value: "string", label: t("storyVars.valueType.string") },
-    { value: "json", label: t("storyVars.valueType.json") },
-];
+const declarationTypeOptions = (t: TFunc): SelectOption[] =>
+    (["boolean", "number", "string", "json"] as const).map(type => ({
+        value: type,
+        label: formatBlueprintValueTypeLabel(type, t, "option"),
+    }));
 
 /** Editor for a `declaration` row - the row IS the variable, so this edits the declaration itself. */
 function DeclarationPayloadFields(props: {
@@ -888,6 +905,138 @@ function SetVariableEditor(props: {
                 value={props.payload.value}
                 onChange={value => props.onChange({ ...props.payload, value })}
             />
+        </div>
+    );
+}
+
+type InputPayload = Extract<StoryActionPayload, { action: "input" }>;
+
+/** The rumble shapes the picker offers, `stop` last - the one that ends a rumble rather than starting one. */
+const RUMBLE_PICKER_VALUES = [...STORY_RUMBLE_PRESET_IDS, "stop"] as const;
+
+/**
+ * The inspector for `/rumble`, `/input`, `/waitinput`, `/hold` and `/mash`.
+ *
+ * One editor for the one payload arm, switching on the operation the way the row's own line does.
+ * The result variable offers boolean variables only: the row writes `true` or `false`, so a number
+ * would be a choice the command line refuses and the compiler cannot honour.
+ */
+function InputActionEditor(props: {
+    document: StoryDocument;
+    sceneId: StorySceneId;
+    payload: InputPayload;
+    onChange: (payload: StoryBlock["payload"]) => void;
+}) {
+    const { t } = useTranslation();
+    const { payload, onChange } = props;
+    const actions = useProjectInputActions();
+    const variables = useStoryVariableOptions(props.document, props.sceneId);
+
+    if (payload.operation === "rumble" || payload.operation === "stopRumble") {
+        const shape = payload.operation === "stopRumble" ? "stop" : payload.preset ?? STORY_RUMBLE_DEFAULT_PRESET;
+        const shapeOptions: SelectOption[] = RUMBLE_PICKER_VALUES.map(value => ({
+            value,
+            label: t(`story.enumValue.${value}` as TranslationKey),
+        }));
+        const setShape = (next: string) => {
+            if (next === "stop") {
+                onChange({ action: "input", operation: "stopRumble" });
+                return;
+            }
+            const base = payload.operation === "rumble" ? payload : { action: "input" as const, operation: "rumble" as const };
+            onChange({ ...base, preset: next as StoryRumblePresetId });
+        };
+        return (
+            <div className="grid grid-cols-1 gap-3">
+                <SelectField label={t("storyInspector.input.shape")} options={shapeOptions} value={shape} onChange={next => setShape(String(next))} />
+                {payload.operation === "rumble" && (
+                    <>
+                        <FieldGrid cols={2}>
+                            <NumberField
+                                label={t("storyInspector.input.leftMotor")}
+                                value={payload.strongMagnitude}
+                                onChange={value => onChange({ ...payload, strongMagnitude: value === undefined ? undefined : Math.min(1, Math.max(0, value)) })}
+                            />
+                            <NumberField
+                                label={t("storyInspector.input.rightMotor")}
+                                value={payload.weakMagnitude}
+                                onChange={value => onChange({ ...payload, weakMagnitude: value === undefined ? undefined : Math.min(1, Math.max(0, value)) })}
+                            />
+                        </FieldGrid>
+                        <SecondsField label={t("storyInspector.field.duration")} value={payload.durationMs} onChange={durationMs => onChange({ ...payload, durationMs })} />
+                        <ToggleField
+                            label={t("storyInspector.input.waitForRumble")}
+                            checked={payload.wait === true}
+                            onChange={checked => onChange({ ...payload, wait: checked ? true : undefined })}
+                        />
+                    </>
+                )}
+            </div>
+        );
+    }
+
+    if (payload.operation === "lock" || payload.operation === "unlock") {
+        return (
+            <SelectField
+                label={t("storyInspector.input.state")}
+                options={[
+                    { value: "lock", label: t("story.enumValue.lock") },
+                    { value: "unlock", label: t("story.enumValue.unlock") },
+                ]}
+                value={payload.operation}
+                onChange={next => onChange({ action: "input", operation: next === "unlock" ? "unlock" : "lock" })}
+            />
+        );
+    }
+
+    const actionOptions: SelectOption[] = [
+        { value: "", label: t("storyInspector.input.anyAction") },
+        ...actions.map(action => ({ value: action.id, label: action.name })),
+    ];
+    // Keyed by scope and id together: two scopes may hold the same id-shaped word.
+    const resultOptions: SelectOption[] = [
+        { value: "", label: t("storyInspector.input.noResult") },
+        ...(["scene", "saved", "persistent"] as const).flatMap(scope => variables[scope]
+            .filter(option => option.valueType === "boolean")
+            .map(option => ({ value: `${scope}:${option.id}`, label: option.name }))),
+    ];
+    const resultValue = payload.resultTarget ? `${payload.resultTarget.scope}:${payload.resultTarget.variableId}` : "";
+    const setResult = (next: string) => {
+        const split = next.indexOf(":");
+        if (split < 0) {
+            onChange({ ...payload, resultTarget: undefined });
+            return;
+        }
+        onChange({ ...payload, resultTarget: makeVariableRef(next.slice(0, split) as StoryVariableScope, next.slice(split + 1)) });
+    };
+    return (
+        <div className="grid grid-cols-1 gap-3">
+            <SelectField
+                label={t("storyInspector.input.action")}
+                options={actionOptions}
+                value={payload.actionId ?? ""}
+                onChange={next => onChange({ ...payload, actionId: next ? String(next) : undefined })}
+            />
+            {payload.operation === "hold" && (
+                <SecondsField
+                    label={t("storyInspector.input.holdSeconds")}
+                    value={payload.holdMs}
+                    onChange={holdMs => onChange({ ...payload, holdMs: holdMs ?? 1000 })}
+                />
+            )}
+            {payload.operation === "mash" && (
+                <NumberField
+                    label={t("storyInspector.input.pressCount")}
+                    value={payload.count}
+                    onChange={count => onChange({ ...payload, count: Math.max(1, Math.round(count ?? 1)) })}
+                />
+            )}
+            <SecondsField
+                label={t("storyInspector.input.timeout")}
+                value={payload.timeoutMs}
+                onChange={timeoutMs => onChange({ ...payload, timeoutMs })}
+            />
+            <SelectField label={t("storyInspector.input.result")} options={resultOptions} value={resultValue} onChange={next => setResult(String(next))} />
         </div>
     );
 }
@@ -1006,6 +1155,9 @@ function ActionPayloadFields(props: {
     }
     if (payload.action === "blueprint") {
         return <StoryActionBlueprintEditor payload={payload} onChange={props.onChange} />;
+    }
+    if (payload.action === "input") {
+        return <InputActionEditor document={props.document} sceneId={props.sceneId} payload={payload} onChange={props.onChange} />;
     }
     if (payload.action === "wait") {
         return (
@@ -1158,6 +1310,7 @@ function ActionPayloadFields(props: {
         // Non-create ops target an existing layer (built-in or custom) via the layer picker; `create`
         // names a new one. Z-index only applies to create / setZIndex; transform/show/hide animate.
         const showZIndex = isCreate || payload.operation === "setZIndex";
+        const setsDepth = payload.operation === "setDepth";
         const showTransform = payload.operation === "transform" || payload.operation === "show" || payload.operation === "hide";
         const layerRefValue = layerActionTargetRef(payload.target, payload.objectName);
         const layerName = isCreate
@@ -1170,9 +1323,25 @@ function ActionPayloadFields(props: {
                         label={t("storyInspector.field.operation")}
                         options={layerOperationOptions(t)}
                         value={payload.operation}
-                        onChange={operation => props.onChange({ ...payload, operation: operation as Extract<StoryActionPayload, { action: "layer" }>["operation"] })}
+                        onChange={operation => {
+                            const next = operation as Extract<StoryActionPayload, { action: "layer" }>["operation"];
+                            // A depth row is about the scene's own background layer and nothing else,
+                            // so choosing it points the row there rather than leaving a target that
+                            // the compiler would refuse.
+                            props.onChange(next === "setDepth"
+                                ? { ...payload, operation: next, target: { kind: "default", layer: "background" }, depth: payload.depth ?? "mid" }
+                                : { ...payload, operation: next });
+                        }}
                     />
-                    {isCreate ? (
+                    {setsDepth ? (
+                        // One choice, shown rather than hidden: the row is about this layer and no other.
+                        <SelectField
+                            label={t("storyInspector.field.layer")}
+                            options={[{ value: "background", label: t("story.layerField.backgroundName") }]}
+                            value="background"
+                            onChange={() => undefined}
+                        />
+                    ) : isCreate ? (
                         <TextField label={t("storyInspector.layer.layerName")} value={payload.objectName} onChange={objectName => props.onChange({ ...payload, objectName })} />
                     ) : (
                         <StoryLayerField
@@ -1188,7 +1357,17 @@ function ActionPayloadFields(props: {
                     {showZIndex ? (
                         <NumberField label={t("storyInspector.layer.zIndex")} value={payload.zIndex} onChange={zIndex => props.onChange({ ...payload, zIndex })} />
                     ) : null}
+                    {isCreate || setsDepth ? (
+                        <SelectField
+                            label={t("storyInspector.layer.depth")}
+                            options={layerDepthOptions()}
+                            value={payload.depth ?? DEFAULT_STORY_LAYER_DEPTH}
+                            // The default is the absent value, so a layer set back to it says nothing on its row.
+                            onChange={depth => props.onChange({ ...payload, depth: depth === DEFAULT_STORY_LAYER_DEPTH && isCreate ? undefined : depth as StoryLayerDepth })}
+                        />
+                    ) : null}
                 </div>
+                {setsDepth ? <div className="text-2xs text-fg-subtle">{t("storyInspector.layer.setDepthHint")}</div> : null}
                 {showTransform ? (
                     <TransformPresetEditor
                         value={payload.transform}

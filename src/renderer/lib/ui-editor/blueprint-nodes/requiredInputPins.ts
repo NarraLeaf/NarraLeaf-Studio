@@ -27,7 +27,7 @@ export type BlueprintUnwiredRequiredPin = {
  *
  * Shared as a key rather than as a rendered string because two of the four callers are not allowed
  * to render one: a lint rule may not build prose (the locale belongs to whoever renders the report),
- * and the shipped runtime speaks the machine's language rather than the author's. The lint rule
+ * and the shipped runtime speaks the game's language rather than the author's. The lint rule
  * therefore keeps its own key with the same wording; the other three interpolate this one.
  */
 export const BLUEPRINT_INPUT_MISSING_MESSAGE_KEY = "blueprint.diagnostics.node.inputMissing" as TranslationKey;

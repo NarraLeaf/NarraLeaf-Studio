@@ -17,19 +17,25 @@
 
 import {
     parseEndingTranslationUnitId,
+    parseRenameTranslationUnitId,
     parseSceneTranslationUnitId,
+    PLUGIN_WORDS_UNIT_PREFIX,
     type GameLocalizationBundle,
 } from "@shared/types/localization";
 import type { GameVoiceBundle } from "@shared/types/voice";
 
 /**
  * Unit id prefixes that name something no scene owns: a UI element's text, a character's display
- * name, an author-named key. A scene drop cannot take any of them away, so they ship whole.
+ * name, an author-named key, and a plugin's words (a menu row's label, a gallery entry's name). A
+ * scene drop cannot take any of them away, so they ship whole - a plugin's words live in the plugin's
+ * own data, which a scene drop does not narrow either, so dropping their translations would only
+ * show a player the source language where the full game shows theirs.
  * Everything without one of these prefixes is a story `textId`, which belongs to exactly one row -
- * except `scene:`, which belongs to a whole scene and is narrowed by {@link isShippedSceneUnit}, and
- * `ending:`, which belongs to an `/ending` row and is narrowed by {@link isShippedEndingUnit}.
+ * except `scene:`, which belongs to a whole scene and is narrowed by {@link isShippedSceneUnit},
+ * `ending:`, which belongs to an `/ending` row and is narrowed by {@link isShippedEndingUnit}, and
+ * `rename:`, which belongs to a `/rename` row and is narrowed by {@link isShippedRenameUnit}.
  */
-const SCENE_INDEPENDENT_UNIT_PREFIXES = ["ui:", "char:", "key:"] as const;
+const SCENE_INDEPENDENT_UNIT_PREFIXES = ["ui:", "char:", "key:", PLUGIN_WORDS_UNIT_PREFIX] as const;
 
 /**
  * Canonical id shape - assets and characters both. Matched anywhere in a string, so an id embedded
@@ -102,7 +108,23 @@ function isShippedEndingUnit(bundle: GameLocalizationBundle, unitId: string): bo
     return bundle.endings ? endingId in bundle.endings : true;
 }
 
-/** Drop translation units whose story row - or whole scene, or ending - is no longer in the build. */
+/**
+ * Whether a `rename:` unit translates a `/rename` row this build still has, or null when the id is not
+ * one.
+ *
+ * The rename-word table is assembled from the documents the bundle carries, so it answers "did this
+ * row survive the drop" as the ending table does - and the name a character is revealed under is as
+ * much a spoiler as an ending. A bundle with no table cannot answer, and keeps the unit.
+ */
+function isShippedRenameUnit(bundle: GameLocalizationBundle, unitId: string): boolean | null {
+    const renameId = parseRenameTranslationUnitId(unitId);
+    if (renameId === null) {
+        return null;
+    }
+    return bundle.renames ? renameId in bundle.renames : true;
+}
+
+/** Drop translation units whose story row - or whole scene, ending or `/rename` row - is no longer in the build. */
 export function restrictLocalizationToTextIds(
     bundle: GameLocalizationBundle,
     textIds: ReadonlySet<string>,
@@ -112,8 +134,11 @@ export function restrictLocalizationToTextIds(
     for (const [locale, table] of Object.entries(bundle.tables)) {
         const kept: Record<string, string> = {};
         for (const [unitId, target] of Object.entries(table)) {
-            // A scene's or an ending's name ships with the scene or the ending it names.
-            const shippedOwner = isShippedSceneUnit(bundle, unitId) ?? isShippedEndingUnit(bundle, unitId);
+            // A scene's or an ending's name ships with the scene or the ending it names, and a
+            // `/rename` row's words with the row.
+            const shippedOwner = isShippedSceneUnit(bundle, unitId)
+                ?? isShippedEndingUnit(bundle, unitId)
+                ?? isShippedRenameUnit(bundle, unitId);
             if (shippedOwner !== null) {
                 if (shippedOwner) {
                     kept[unitId] = target;

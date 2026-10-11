@@ -223,7 +223,7 @@ export function ChoiceSlotSurface(props: {
 
     return (
         <GameMenu className="h-full w-full">
-            <StageSlotSurfaceBody options={scopedOptions} surface={surface} runtime={runtime} />
+            <StageSlotSurfaceBody options={scopedOptions} surface={surface} runtime={runtime} navigable />
         </GameMenu>
     );
 }

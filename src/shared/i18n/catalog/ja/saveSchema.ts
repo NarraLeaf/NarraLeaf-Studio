@@ -1,14 +1,6 @@
 export const saveSchema = {
     title: "セーブ項目",
     open: "セーブ項目",
-    type: {
-        string: "文字列",
-        integer: "整数",
-        float: "浮動小数点数",
-        boolean: "真偽値",
-        json: "JSON",
-        array: "配列",
-    },
     field: {
         name: "名前",
         type: "型",

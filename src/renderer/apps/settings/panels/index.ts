@@ -8,6 +8,7 @@ import { SoftwareUpdatePanel } from "./SoftwareUpdatePanel";
 import { ServersPanel } from "./ServersPanel";
 import { DictionariesPanel } from "./DictionariesPanel";
 import { ProjectTrustPanel } from "./ProjectTrustPanel";
+import { AgentAccessPanel } from "./AgentAccessPanel";
 
 /**
  * Resolves the `panel` id on a `SettingValueType.Custom` entry to the component that renders it.
@@ -22,6 +23,7 @@ export const SETTING_PANELS: Record<SettingPanelId, ComponentType> = {
     servers: ServersPanel,
     dictionaries: DictionariesPanel,
     projectTrust: ProjectTrustPanel,
+    agentAccess: AgentAccessPanel,
 };
 
 export { KeybindingsPanel } from "./KeybindingsPanel";
@@ -43,3 +45,4 @@ export type {
 } from "./AddServerModal";
 export { DictionariesPanel } from "./DictionariesPanel";
 export { ProjectTrustPanel } from "./ProjectTrustPanel";
+export { AgentAccessPanel } from "./AgentAccessPanel";

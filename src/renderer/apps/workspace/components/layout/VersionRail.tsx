@@ -337,7 +337,7 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
             // "what is this" has a different answer while a past version is on screen - which is
             // also the state the author is most likely to be asking from.
             data-help-topic={onRevision ? "versionViewing" : "versionControl"}
-            className="flex shrink-0 flex-col border-r border-edge bg-surface-sunken"
+            className="nl-frame-surface flex shrink-0 flex-col border-r border-edge bg-surface-sunken"
             style={{ width: VERSION_RAIL_EXPANDED_WIDTH }}
         >
             <div className="group/help flex h-12 shrink-0 items-center border-b border-edge px-3">
@@ -1018,6 +1018,9 @@ interface HeldProjects {
     problem: TranslationKey | null;
 }
 
+const NOTHING_HELD: HeldProjects = { reading: false, projects: null, problem: null };
+const STILL_READING: HeldProjects = { reading: true, projects: null, problem: null };
+
 /**
  * What one server already holds, asked once per server the author opens.
  *
@@ -1033,7 +1036,9 @@ interface HeldProjects {
  * name the way it always did rather than refusing to connect at all.
  */
 function useServerProjects(remoteOrigin: string | null): HeldProjects {
-    const [held, setHeld] = useState<HeldProjects>({ reading: false, projects: null, problem: null });
+    /** What is held, and the server it was asked of. */
+    const [held, setHeld] = useState<{ origin: string | null; value: HeldProjects }>(
+        { origin: null, value: NOTHING_HELD });
     /**
      * The read that is out, and which server it is for.
      *
@@ -1046,11 +1051,11 @@ function useServerProjects(remoteOrigin: string | null): HeldProjects {
 
     useEffect(() => {
         if (remoteOrigin === null) {
-            setHeld({ reading: false, projects: null, problem: null });
+            setHeld({ origin: null, value: NOTHING_HELD });
             return;
         }
         let live = true;
-        setHeld({ reading: true, projects: null, problem: null });
+        setHeld({ origin: remoteOrigin, value: STILL_READING });
 
         const answer = outstanding.current?.key === remoteOrigin
             ? outstanding.current.answer
@@ -1062,19 +1067,27 @@ function useServerProjects(remoteOrigin: string | null): HeldProjects {
             const read = result as Awaited<ReturnType<typeof listProjects>>;
             if (!read.ok) {
                 setHeld({
-                    reading: false,
-                    projects: null,
-                    problem: SERVER_PROBLEM_KEYS[serverProblemFromTeam(read.problem).kind],
+                    origin: remoteOrigin,
+                    value: {
+                        reading: false,
+                        projects: null,
+                        problem: SERVER_PROBLEM_KEYS[serverProblemFromTeam(read.problem).kind],
+                    },
                 });
                 return;
             }
-            setHeld({ reading: false, projects: read.value.projects, problem: null });
+            setHeld({ origin: remoteOrigin, value: { reading: false, projects: read.value.projects, problem: null } });
         });
 
         return () => { live = false; };
     }, [remoteOrigin]);
 
-    return held;
+    // The render that first sees a server comes before the effect that asks it, and what is held
+    // then is the last server's answer or nobody's. Said as still reading from that render on:
+    // otherwise the name field and Create were drawn for a frame before the list was asked for,
+    // pressable, with a name the server already holds not yet refused.
+    if (held.origin !== remoteOrigin) return remoteOrigin === null ? NOTHING_HELD : STILL_READING;
+    return held.value;
 }
 
 /**
@@ -1745,7 +1758,7 @@ function HistoryList({ surface, rows: allRows }: { surface: VersionSurface; rows
                 reachable while the list is scrolled: the collapse, the filter, and the way to drop a
                 comparison base. Each of the three can leave the list looking empty, so each of them
                 has to be visible from wherever the author ended up. */}
-            <div className="sticky top-0 z-10 bg-surface-sunken px-3 pb-1 pt-2">
+            <div className="nl-frame-sticky sticky top-0 z-10 bg-surface-sunken px-3 pb-1 pt-2">
                 <div className="flex items-center justify-between gap-2">
                     <span className="text-2xs tracking-wide text-fg-subtle">
                         {t("workspace.shell.versionControl.history")}
@@ -1862,7 +1875,7 @@ function HistoryList({ surface, rows: allRows }: { surface: VersionSurface; rows
                         the thing the eye lands on. Sticky under the header so the day the author is
                         reading stays named while they scroll through it. */}
                     {day && (
-                        <div className="sticky top-7 z-[5] bg-surface-sunken px-3 pb-0.5 pt-1.5 text-2xs text-fg-subtle">
+                        <div className="nl-frame-sticky sticky top-7 z-[5] bg-surface-sunken px-3 pb-0.5 pt-1.5 text-2xs text-fg-subtle">
                             {day}
                         </div>
                     )}
@@ -1948,7 +1961,7 @@ function HistoryList({ surface, rows: allRows }: { surface: VersionSurface; rows
                                 // exactly the colour of the row being hovered: the text disappears
                                 // and the chip itself does not appear. Same trick, same reason, as
                                 // the sticky header these rows scroll under.
-                                "absolute right-2 top-1 z-10 rounded-md bg-surface-sunken",
+                                "nl-frame-sticky absolute right-2 top-1 z-10 rounded-md bg-surface-sunken",
                                 "opacity-0 transition-opacity",
                                 "pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100",
                                 "focus-within:pointer-events-auto focus-within:opacity-100",

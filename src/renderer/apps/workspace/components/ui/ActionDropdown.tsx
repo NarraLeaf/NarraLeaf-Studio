@@ -15,7 +15,7 @@ import {
     isRowOnOpenPath,
 } from "./actionMenuModel";
 import { applyFreezeToActionMenuItems, isFreezeExemptActionGroup } from "./freezeActionPolicy";
-import { MnemonicLabel, useMnemonicReveal, useTitleBarMenu } from "./titleBarMenus";
+import { MnemonicLabel, mnemonicsInBrackets, useMnemonicReveal, useTitleBarMenu } from "./titleBarMenus";
 import { MenuShortcut } from "@/lib/components/elements/MenuShortcut";
 import { useWorkspaceFreezeReason } from "../../hooks/useWorkspaceFrozen";
 import { useFreezeUnavailableReason } from "./freezeGuard";
@@ -54,7 +54,7 @@ interface ActionDropdownProps {
  * one is open.
  */
 export function ActionDropdown({ group, iconOnly = false, preFrozen = false }: ActionDropdownProps) {
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
     const { workspace, context } = useWorkspace();
     const freeze = useWorkspaceFreezeReason();
     const frozenReason = useFreezeUnavailableReason();
@@ -311,6 +311,7 @@ export function ActionDropdown({ group, iconOnly = false, preFrozen = false }: A
                                 label={String(groupLabel)}
                                 mnemonic={group.mnemonic}
                                 reveal={revealMnemonic}
+                                bracketed={mnemonicsInBrackets(locale)}
                             />
                         </span>
                         <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? "rotate-180" : ""}`} />
@@ -336,7 +337,7 @@ export function ActionDropdown({ group, iconOnly = false, preFrozen = false }: A
                         focus below, so the reading order follows what is on screen. */}
                     <div
                         ref={rootMenuRef}
-                        className="absolute top-full left-0 mt-1 z-20 min-w-64 bg-surface-overlay border border-edge-strong rounded-md shadow-lg py-1"
+                        className="absolute top-full left-0 mt-1 z-20 min-w-64 max-w-md bg-surface-overlay border border-edge-strong rounded-md shadow-lg py-1"
                         role="menu"
                         aria-label={groupLabel}
                         tabIndex={0}
@@ -528,7 +529,7 @@ function SubmenuPanel({ children }: { children: React.ReactNode }) {
         <div
             ref={panelRef}
             className={cn(
-                "absolute top-0 z-20 min-w-56 bg-surface-overlay border border-edge-strong rounded-md shadow-lg py-1",
+                "absolute top-0 z-20 min-w-56 max-w-md bg-surface-overlay border border-edge-strong rounded-md shadow-lg py-1",
                 placement.toLeft ? "right-full mr-1" : "left-full ml-1",
             )}
             style={placement.shiftY === 0 ? undefined : { transform: `translateY(${placement.shiftY}px)` }}
@@ -552,7 +553,7 @@ function SubmenuPanel({ children }: { children: React.ReactNode }) {
 const HOVER_CLOSE_DELAY_MS = 400;
 
 function MenuLevel(props: MenuLevelProps) {
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
     const revealMnemonic = useMnemonicReveal();
     const { path, items, openPath, focusPath, setOpenPath, setFocusPath, onActionClick, hoverOpenTimerRef, hoverCloseTimerRef, focusContext, shortcuts, disabledTitle } = props;
     const parentPath = path;
@@ -621,7 +622,10 @@ function MenuLevel(props: MenuLevelProps) {
                         <div key={item.id}
                             // `relative`, so the submenu below anchors to THIS row rather than to
                             // the panel around it - a menu opens beside the row it belongs to.
-                            className={`relative w-full px-3 py-2 text-sm flex items-center justify-between cursor-default ${
+                            // `gap-6` keeps the label clear of its shortcut. A label stays on one
+                            // line: the panel widens to fit it up to `max-w-md`, and past that the
+                            // label is cut with an ellipsis rather than wrapped into the shortcut.
+                            className={`relative w-full px-3 py-2 text-sm flex items-center justify-between gap-6 cursor-default ${
                                 isDisabled ? "text-fg-subtle cursor-not-allowed" : isFocused ? "bg-fill text-fg" : "text-fg-muted hover:bg-fill hover:text-fg"
                             }`}
                             role="menuitem"
@@ -646,7 +650,7 @@ function MenuLevel(props: MenuLevelProps) {
                                 }
                             }}
                         >
-                            <span className="flex items-center gap-2">
+                            <span className="flex min-w-0 items-center gap-2">
                                 {isActionMenuAction(item) ? null : (item.icon ? <span className="w-4 h-4">{item.icon}</span> : null)}
                                 {/* A toggle keeps its checkmark column even while unchecked, so
                                     the labels in a group of toggles stay on one line. */}
@@ -658,16 +662,17 @@ function MenuLevel(props: MenuLevelProps) {
                                 {/* A row that is itself a menu can carry the accelerator that menu
                                     had as a button on the bar - the hamburger's rows do. The hint
                                     belongs on the row because that is where the menu now is. */}
-                                <span>
+                                <span className="min-w-0 truncate">
                                     <MnemonicLabel
                                         label={String(item.labelKey ? t(item.labelKey) : item.label)}
                                         mnemonic={isActionMenuSubmenu(item) ? item.mnemonic : undefined}
                                         reveal={revealMnemonic}
+                                        bracketed={mnemonicsInBrackets(locale)}
                                     />
                                 </span>
                             </span>
                             {/* Right side: shortcut + badge/chevron */}
-                            <span className="flex items-center gap-2">
+                            <span className="flex flex-none items-center gap-2">
                                 <MenuShortcut of={shortcut} />
                                 {isActionMenuAction(item) ? (
                                     item.badge ? (

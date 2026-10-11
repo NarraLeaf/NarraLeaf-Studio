@@ -289,6 +289,10 @@ enum Services {
     WorkspaceReload = "workspaceReload",
     /** Recovery mode's own state: which subsystems have been tried, and what they said */
     Recovery = "recovery",
+    /** What the author sees of a connected AI agent, and the pause and follow switches over it */
+    AgentFollow = "agentFollow",
+    /** Carries out the calls an AI agent makes over Studio's MCP endpoint; see `agent/AgentBridgeService` */
+    AgentBridge = "agentBridge",
     // Plugin = "plugin",
 }
 

@@ -264,7 +264,7 @@ function JsonTreeRow({
     onRemove?: () => void;
     arrayActions?: ReactNode;
 }) {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     const kindOptions = useMemo<SelectOption[]>(
         () => [
             { value: "object", label: t("blueprint.json.object") },
@@ -398,7 +398,7 @@ function JsonTreeRow({
                     )}
                     {expandable ? (
                         <span className="min-w-0 flex-1 truncate font-mono text-2xs text-fg-subtle">
-                            {summarizeJsonValue(value)}
+                            {summarizeJsonValue(value, count => tn("blueprint.json.itemCount", count))}
                         </span>
                     ) : (
                         <PrimitiveValueEditor value={value} onChange={next => commitAtPath(path, next)} />
@@ -617,7 +617,7 @@ function JsonEditorPortal({
     onChange: (next: JsonValue) => void;
     onClose: () => void;
 }) {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     const hostWindow = useHostWindow();
     const panelRef = useRef<HTMLDivElement | null>(null);
     const [expanded, setExpanded] = useState<Set<string>>(() => new Set(["$"]));
@@ -712,7 +712,7 @@ function JsonEditorPortal({
                     <div className="min-w-0 flex-1">
                         <div className="text-2xs tracking-wide text-fg-subtle">{t("blueprint.json.label")}</div>
                         <div className="truncate font-mono text-2xs text-fg-muted">
-                            {summarizeJsonValue(root)}
+                            {summarizeJsonValue(root, count => tn("blueprint.json.itemCount", count))}
                         </div>
                     </div>
                     <Button
@@ -775,11 +775,12 @@ function JsonEditorPortal({
 }
 
 export function BlueprintJsonValueControl({ value, onChange, schema }: Props) {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     const root = useMemo(() => coerceJsonValueToSchema(value, schema), [schema, value]);
     const [open, setOpen] = useState(false);
     const triggerRef = useRef<HTMLDivElement | null>(null);
     const kind = getJsonValueKind(root);
+    const summary = summarizeJsonValue(root, count => tn("blueprint.json.itemCount", count));
 
     return (
         <div
@@ -789,9 +790,9 @@ export function BlueprintJsonValueControl({ value, onChange, schema }: Props) {
             onPointerDownCapture={stopFlowNodePointerBubble}
         >
             <div className="min-w-0 flex-1 rounded-md border border-edge bg-surface px-1.5 py-1">
-                <div className="text-2xs capitalize tracking-wide text-fg-subtle">{kind}</div>
-                <div className="truncate font-mono text-2xs text-fg-muted" data-tip={summarizeJsonValue(root)}>
-                    {summarizeJsonValue(root)}
+                <div className="text-2xs capitalize tracking-wide text-fg-subtle">{t(`blueprint.json.${kind}`)}</div>
+                <div className="truncate font-mono text-2xs text-fg-muted" data-tip={summary}>
+                    {summary}
                 </div>
             </div>
             <Button

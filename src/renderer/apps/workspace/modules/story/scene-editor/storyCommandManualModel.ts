@@ -95,6 +95,8 @@ function describeType(type: StoryCommandParamType, t: ManualTranslate): string {
             return t("story.manual.type.appTag");
         case "surface":
             return t("story.manual.type.surface");
+        case "inputAction":
+            return t("story.manual.type.inputAction");
         case "variable":
             return t("story.manual.type.variable");
         case "target":

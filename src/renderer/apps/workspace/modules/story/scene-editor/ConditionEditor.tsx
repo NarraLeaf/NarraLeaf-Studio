@@ -34,6 +34,7 @@ import { createStoryExpressionScope, parseStoryExpression } from "@shared/utils/
 import { Input, Select, Switch, type SelectOption } from "@/lib/components/elements";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useTranslation } from "@/lib/i18n";
+import { formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
 import { Services } from "@/lib/workspace/services/services";
 import { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
@@ -141,13 +142,6 @@ export function initialConditionOperator(valueType: StoryVariableValueType): Con
     return operatorsForType(valueType)[0];
 }
 
-/** The type names the variables panel uses, so a variable is the same kind of thing in both places. */
-const VALUE_TYPE_LABEL_KEYS: Record<StoryVariableValueType, TranslationKey> = {
-    boolean: "storyVars.valueType.boolean",
-    number: "storyVars.valueType.number",
-    string: "storyVars.valueType.string",
-    json: "storyVars.valueType.json",
-};
 
 const DEFAULT_VARIABLE_CONDITION: VariableCondition = {
     kind: "variable",
@@ -406,8 +400,10 @@ export function ConditionEditor(props: {
         ? allVariables.map(option => ({
             value: option.key,
             label: option.name,
-            // A registry entry is read from disk, so its type is only as good as the file.
-            secondaryLabel: VALUE_TYPE_LABEL_KEYS[option.valueType] ? t(VALUE_TYPE_LABEL_KEYS[option.valueType]) : option.valueType,
+            // The type names the variables panel uses, so a variable is the same kind of thing in both
+            // places. A registry entry is read from disk, so its type is only as good as the file: one
+            // no catalogue names is shown as it is spelled.
+            secondaryLabel: formatBlueprintValueTypeLabel(option.valueType, t, "option"),
         }))
         : [{ value: "", label: t("story.interpolation.noVariables") }];
 

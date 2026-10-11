@@ -68,6 +68,8 @@ const LAYER: Record<OperationOf<"layer">, CommandId> = {
     create: "layer",
     // `z=` is a param of `/layer`, not a verb of its own.
     setZIndex: "layer",
+    // So is `depth=` - a background layer's depth row reads back as `/layer backgroundLayer depth=…`.
+    setDepth: "layer",
     show: "show",
     hide: "hide",
     transform: "transform",
@@ -123,6 +125,20 @@ const DISPLAYABLE: Record<OperationOf<"displayable">, CommandId> = {
     stopLoop: "transform",
 };
 
+/**
+ * The player's-hands rows. `stopRumble` reads back as `/rumble` because that is the verb that writes
+ * it (`/rumble stop`), and `unlock` as `/input` for the same reason.
+ */
+const INPUT: Record<OperationOf<"input">, CommandId> = {
+    rumble: "rumble",
+    stopRumble: "rumble",
+    lock: "input",
+    unlock: "input",
+    wait: "waitInput",
+    hold: "hold",
+    mash: "mash",
+};
+
 /** The command id whose label names this payload's verb, or `null` when no command owns it. */
 export function storyVerbCommandId(payload: StoryActionPayload): CommandId | null {
     switch (payload.action) {
@@ -150,6 +166,7 @@ export function storyVerbCommandId(payload: StoryActionPayload): CommandId | nul
         // facts meet - one payload, the word an author would type for it.
         case "camera": return payload.operation === "reset" ? "reset" : "transform";
         case "setVariable": return storyAssignmentShorthand(payload)?.commandId ?? "set";
+        case "input": return INPUT[payload.operation] ?? null;
         default: return null;
     }
 }

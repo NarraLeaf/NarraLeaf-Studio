@@ -108,9 +108,10 @@ export const help = {
             title: "Keyboard and Mouse",
             body:
                 "Shortcuts and Mouse Actions lists every shortcut and mouse action in Studio, grouped by editor, "
-                + "including those that apply only while a particular editor is open. Opened from an editor, it "
-                + "starts at that editor's group.\n"
+                + "including those that apply only while a particular editor is open. What works in the focused "
+                + "editor or panel is listed first.\n"
                 + "\n"
+                + "- The search box filters the list by name, key or group.\n"
                 + "- Every shortcut can be changed in Settings, under Shortcuts. Mouse actions, and the few keys "
                 + "that Settings does not list, are fixed.\n"
                 + "- A changed shortcut is updated in the sheet, the menus and the command palette.",
@@ -177,6 +178,8 @@ export const help = {
                 + "- Rows can be moved, duplicated, indented and deleted from the keyboard.\n"
                 + "- The live preview shows the stage at the selected row. Clicking it selects the next row the "
                 + "game waits at: a line or a menu. On a menu, clicking an option selects the first line of that option.\n"
+                + "- A click on a line the live preview is still typing shows the whole line first. With Skip typing "
+                + "animation turned on at the top of the live preview, every line appears in full at once.\n"
                 + "- In picture-in-picture, the live preview stays on screen over the other editors and shows the scene "
                 + "of the scene editor used last.\n"
                 + "- Edits to the Game UI appear in the live preview as they are made.\n"
@@ -314,6 +317,10 @@ export const help = {
                 + "- The library groups ready-made motions by purpose. Choosing one copies it into the project, "
                 + "and the copy can be edited.\n"
                 + "- A motion describes how something moves, not what moves. The row names the target.\n"
+                + "- Each motion is made for one kind of object (character, image, text, layer or camera) and "
+                + "is offered only on rows that move that kind.\n"
+                + "- In the bottom panel, double-click a motion to open its editor. Its name, repeats and "
+                + "preview pictures are set in the inspector.\n"
                 + "- The preview is drawn at the size the game draws, so its timing matches playback.",
         },
         assets: {

@@ -111,6 +111,12 @@ describe("storyRowSentence — the sentence the editor shows", () => {
             .toBe("Motion");
     });
 
+    it("says \"layer\" once on the rows the layer command writes", () => {
+        expect(describeStoryBlock(action({ action: "layer", operation: "create", objectName: "Fog" }), bare)).toBe("Layer Fog");
+        i18nStore.setLocale("zh");
+        expect(describeStoryBlock(action({ action: "layer", operation: "create", objectName: "Fog", depth: "far" }), bare)).toBe("图层 Fog · 纵深 远");
+    });
+
     it("names a blueprint row by its blueprint, and only by its kind when there is nothing to say", () => {
         const row = (blueprintId: string) => action({ action: "blueprint", blueprintId });
         const lookups: StoryRowLookups = { ...bare, blueprintName: id => ({ a: "Confirm sound", b: "Back sound" } as Record<string, string>)[id] ?? null };
@@ -475,5 +481,27 @@ describe("an assignment that stores a scene", () => {
 
     it("leaves a plain string alone", () => {
         expect(storyRowSentence(assign("scenery"), { ...bare, scenes: { [corridor.id]: corridor } })).toContain("scenery");
+    });
+});
+
+/**
+ * A jump whose target scene was deleted. The editor's token reads the unknown-scene word; the shared
+ * sentence used to fall back to the stored id, so Dev Mode's issue list quoted the row as
+ * `Jump to c083e0f3-…` while the editor named the same row `Jump to unknown scene`.
+ */
+describe("a jump to a scene that is gone", () => {
+    const clubroom: StoryScene = { id: "5143dcd8-bebc-4468-b4e2-00f6d5781af6", name: "The clubroom", runtimeName: "clubroom", rootBlockIds: [], blocks: {} };
+    const goneId = "c083e0f3-8665-451a-800a-6d2cd5650d33";
+    const jump = (targetSceneId: string): StoryBlock => ({ id: "j", kind: "jump", parentId: null, childrenIds: [], payload: { targetSceneId } });
+
+    it("names a scene that is there", () => {
+        expect(storyRowSentence(jump(clubroom.id), { ...bare, scenes: { [clubroom.id]: clubroom } })).toContain("The clubroom");
+    });
+
+    it("reads as an unknown scene, never as the stored id", () => {
+        const sentence = storyRowSentence(jump(goneId), { ...bare, scenes: { [clubroom.id]: clubroom } });
+
+        expect(sentence).not.toContain(goneId);
+        expect(sentence).toContain("unknown scene");
     });
 });

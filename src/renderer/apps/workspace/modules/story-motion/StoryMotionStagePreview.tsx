@@ -6,6 +6,10 @@ import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import type { StoryMotionPreviewState } from "./storyMotionTimeline";
 import type { StoryMotionPreviewTarget } from "./storyMotionPreviewTarget";
 import { SampleStage, SampleSubject } from "@/lib/story/previewSubject";
+import { cn } from "@/lib/utils/cn";
+
+/** A transform handle: a small square on the frame's edge, drawn at one screen size at any zoom. */
+const HANDLE_CLASS = "absolute h-2.5 w-2.5 rounded-sm border border-primary bg-surface-overlay";
 
 export type StoryMotionPreviewDragMode = "position" | "zoom" | "rotation" | "scaleX" | "scaleY";
 
@@ -120,26 +124,32 @@ export function StoryMotionStagePreview(props: {
                 </div>
                 {interactive ? (
                     <>
+                        {/* The frame's outline, a screen pixel wide at any zoom: what the handles
+                            belong to, so they read as one transform box rather than loose marks. */}
                         <div
-                            className="absolute -right-2 -bottom-2 h-4 w-4 cursor-nwse-resize rounded-md border border-white/70 bg-primary"
+                            className="pointer-events-none absolute inset-0 outline outline-primary/60"
+                            style={{ outlineWidth: Math.max(handleInvX, handleInvY) }}
+                        />
+                        <div
+                            className={cn(HANDLE_CLASS, "-bottom-1 -right-1 cursor-nwse-resize")}
                             style={{ transform: `scale(${handleInvX}, ${handleInvY})`, transformOrigin: "center" }}
                             onPointerDown={event => props.onPointerDrag(event, "zoom")}
                             data-tip={t("motion.preview.dragZoom")}
                         />
                         <div
-                            className="absolute -right-2 top-1/2 h-4 w-2.5 cursor-ew-resize rounded-sm border border-white/70 bg-[#1b1d22]"
+                            className={cn(HANDLE_CLASS, "-right-1 top-1/2 cursor-ew-resize")}
                             style={{ transform: `translateY(-50%) scale(${handleInvX}, ${handleInvY})`, transformOrigin: "center" }}
                             onPointerDown={event => props.onPointerDrag(event, "scaleX")}
                             data-tip={t("motion.preview.dragScaleX")}
                         />
                         <div
-                            className="absolute -bottom-2 left-1/2 h-2.5 w-4 cursor-ns-resize rounded-sm border border-white/70 bg-[#1b1d22]"
+                            className={cn(HANDLE_CLASS, "-bottom-1 left-1/2 cursor-ns-resize")}
                             style={{ transform: `translateX(-50%) scale(${handleInvX}, ${handleInvY})`, transformOrigin: "center" }}
                             onPointerDown={event => props.onPointerDrag(event, "scaleY")}
                             data-tip={t("motion.preview.dragScaleY")}
                         />
                         <div
-                            className="absolute -top-7 left-1/2 grid h-5 w-5 cursor-ew-resize place-items-center rounded-full border border-white/50 bg-[#1b1d22] text-white"
+                            className="absolute -top-7 left-1/2 grid h-5 w-5 cursor-ew-resize place-items-center rounded-full border border-primary bg-surface-overlay text-fg"
                             style={{ transform: `translateX(-50%) scale(${handleInvX}, ${handleInvY})`, transformOrigin: "center" }}
                             onPointerDown={event => props.onPointerDrag(event, "rotation")}
                             data-tip={t("motion.preview.dragRotate")}

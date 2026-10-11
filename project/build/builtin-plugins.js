@@ -125,6 +125,19 @@ async function buildBuiltInPlugin(pluginDir, options = {}) {
         fs.mkdirSync(path.dirname(target), { recursive: true });
         fs.copyFileSync(source, target);
     }
+    // The agent guide is read from the installed package by main (agent_guide `plugin:<id>`), so it
+    // has to travel with it for the same reason the icon does.
+    const agentGuide = manifest.contributes && manifest.contributes.agentGuide;
+    if (typeof agentGuide === 'string' && agentGuide.trim()) {
+        const relative = agentGuide.trim().split(/[\\/]+/);
+        const source = path.join(pluginDir, ...relative);
+        if (!fs.existsSync(source)) {
+            throw new Error(`Built-in plugin ${manifest.id || pluginName} declares a missing agent guide: ${agentGuide}`);
+        }
+        const target = path.join(outDir, ...relative);
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.copyFileSync(source, target);
+    }
     return {
         id: manifest.id || pluginName,
         sourceDir: pluginDir,

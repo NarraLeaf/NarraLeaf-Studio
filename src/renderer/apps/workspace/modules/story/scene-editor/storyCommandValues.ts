@@ -239,6 +239,11 @@ export type StoryCommandContext = {
      * product calls them (`Go Page`, the Page picker, `Open Page`); `surface` is the document word.
      */
     surfaces: readonly StoryCommandNamedRef[];
+    /**
+     * The project's input actions (`UIDocument.actions`), by the name the author gave them - what
+     * `/waitinput`, `/hold` and `/mash` wait for.
+     */
+    inputActions: readonly StoryCommandNamedRef[];
     variables: readonly StoryCommandVariableEntry[];
     /** Per character: its poses (preset) or every tag across its axes (layered). */
     appearanceByCharacterId: Readonly<Record<string, readonly StoryCommandAppearanceRef[]>>;
@@ -320,7 +325,7 @@ export type StoryPuppetParamSpec = {
 
 export const EMPTY_STORY_COMMAND_CONTEXT: StoryCommandContext = {
     images: [], audio: [], videos: [], assetSets: [], characters: [], tempSpeakers: [], scenes: [], choiceOptions: [], valueBlueprints: [],
-    audioTracks: [], labels: [], appTags: [], surfaces: [], variables: [], appearanceByCharacterId: {},
+    audioTracks: [], labels: [], appTags: [], surfaces: [], inputActions: [], variables: [], appearanceByCharacterId: {},
     puppetCharacterIds: [],
     puppetByCharacterId: {},
     stageObjects: EMPTY_STORY_COMMAND_STAGE_OBJECTS,
@@ -442,6 +447,8 @@ export type StoryCommandValue =
      * something that resolves.
      */
     | { kind: "surface"; surfaceId: string }
+    /** An input action, resolved from its name to the id the payload stores - same bargain as a page. */
+    | { kind: "inputAction"; actionId: string }
     /** `name` is the author-facing name as declared - the compound-assignment sugar re-emits it into the desugared source. */
     | { kind: "variable"; ref: StoryVariableRef; valueType: StoryVariableValueType; name: string; defaultValue?: StoryLiteralValue }
     | { kind: "enum"; value: string }
@@ -477,6 +484,7 @@ export type StoryCommandResolutionIssue =
     /** A build variant the project does not have. Naming one would decide nothing at build time. */
     | { code: "unknownAppTag"; span: StoryCommandSpan; value: string }
     | { code: "unknownSurface"; span: StoryCommandSpan; value: string }
+    | { code: "unknownInputAction"; span: StoryCommandSpan; value: string }
     | { code: "unknownVariable"; span: StoryCommandSpan; value: string }
     | { code: "unknownForm"; span: StoryCommandSpan; value: string; characterName: string }
     /** `/motion Alice run` - Alice is drawn by Studio, so she has no runtime state to request. */

@@ -107,6 +107,10 @@ const STORY_ROW_FACET_BY_BADGE: Record<StoryBlockBadgeId, StoryRowFacetId> = {
     // somewhere else. Where a jump goes to another scene, this one goes to a page.
     quit: "scene",
     ending: "flow",
+    // Filed the way the badges are: a rumble beside the other things the moment on screen does, a
+    // lock or a wait beside the other rows that decide when the story moves on.
+    rumble: "scene",
+    input: "flow",
     variable: "data",
     declaration: "data",
     blueprint: "utils",

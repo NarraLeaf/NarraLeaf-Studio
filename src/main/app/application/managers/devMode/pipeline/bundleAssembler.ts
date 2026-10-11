@@ -123,6 +123,7 @@ import { LOCALIZATION_DOCUMENT_SCHEMA_VERSION, LOCALIZATION_KEYS_SCHEMA_VERSION 
 import { SAVE_SCHEMA_VERSION } from "@shared/types/saveSchema";
 import {
     listStoryEndings,
+    listStoryRenames,
     STORY_ANIMATION_SCHEMA_VERSION,
     STORY_DOCUMENT_SCHEMA_VERSION,
     STORY_LIBRARY_INDEX_SCHEMA_VERSION,
@@ -262,11 +263,14 @@ async function assembleBundle(context: DevModeBundleLoadContext): Promise<DevMod
     const shippedTextIds = sceneDrop ? collectTextIds(storyLibrary?.documents ?? {}) : null;
     const localization = withoutUITextSampleUnits(
         restrictLocalization(
-            // The scene- and ending-name tables are attached before the narrowing, not after: they are
-            // read as the scenes and endings this build still has, which is exactly what decides
-            // whether a `scene:` or an `ending:` unit ships.
-            withEndingNames(
-                withSceneNames(gameLocalizationFrom(textSources.files), storyLibrary?.documents),
+            // The scene-, ending- and rename-word tables are attached before the narrowing, not after:
+            // they are read as the scenes, endings and `/rename` rows this build still has, which is
+            // exactly what decides whether a `scene:`, an `ending:` or a `rename:` unit ships.
+            withRenameNames(
+                withEndingNames(
+                    withSceneNames(gameLocalizationFrom(textSources.files), storyLibrary?.documents),
+                    storyLibrary?.documents,
+                ),
                 storyLibrary?.documents,
             ),
             shippedTextIds,
@@ -1653,6 +1657,32 @@ function withEndingNames(
         }
     }
     return { ...bundle, endings };
+}
+
+/**
+ * Attach the words every `/rename` row the build carries gives its character, in story order.
+ *
+ * Read through the one scan of those rows (`listStoryRenames`), so a disabled row - which the build
+ * does not produce - has no entry, and neither does a row whose scene a variant dropped. The running
+ * game reads a speaker's recorded name back through this table to the row's `rename:` unit
+ * (`resolveLocalizedSpeakerName`), so a row whose words are blank is left out: it names no one.
+ */
+function withRenameNames(
+    bundle: GameLocalizationBundle | undefined,
+    documents: Record<string, StoryDocument> | undefined,
+): GameLocalizationBundle | undefined {
+    if (!bundle) {
+        return bundle;
+    }
+    const renames: Record<string, string> = {};
+    for (const document of Object.values(documents ?? {})) {
+        for (const rename of listStoryRenames(document)) {
+            if (rename.name.trim()) {
+                renames[rename.renameId] = rename.name;
+            }
+        }
+    }
+    return { ...bundle, renames };
 }
 
 function restrictLocalization(

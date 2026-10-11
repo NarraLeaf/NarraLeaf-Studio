@@ -51,6 +51,7 @@ export type StoryCandidateMark =
     | { kind: "label" }
     | { kind: "appTag" }
     | { kind: "surface" }
+    | { kind: "inputAction" }
     | { kind: "variable"; valueType?: StoryVariableValueType }
     | { kind: "blueprint" }
     | { kind: "function" }
@@ -329,6 +330,8 @@ function candidatesForType(
             );
         case "surface":
             return refCandidates(context.surfaces, query, () => ({ kind: "surface" }));
+        case "inputAction":
+            return refCandidates(context.inputActions, query, () => ({ kind: "inputAction" }));
         case "variable":
             return context.variables
                 .filter(entry => !query || containsFold(entry.name, query))
@@ -459,6 +462,8 @@ function paramNameMark(param: StoryCommandParam): StoryCandidateMark | undefined
             return { kind: "appTag" };
         case "surface":
             return { kind: "surface" };
+        case "inputAction":
+            return { kind: "inputAction" };
         case "variable":
             return { kind: "variable" };
         case "target":

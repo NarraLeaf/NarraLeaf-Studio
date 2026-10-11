@@ -21,6 +21,7 @@ const CONTEXT: StoryCommandContext = {
     labels: ["intro", "retry"],
     appTags: [{ id: "release", name: "main" }, { id: "demo", name: "Demo" }],
     surfaces: [],
+    inputActions: [],
     variables: [{ name: "gold", ref: { scope: "scene", variableId: "v1" }, valueType: "number" }],
     appearanceByCharacterId: { c1: [{ id: "t1", name: "smile" }, { id: "t2", name: "angry" }] },
     puppetCharacterIds: ["c3", "c4"],

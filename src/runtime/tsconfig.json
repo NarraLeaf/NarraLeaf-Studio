@@ -8,6 +8,10 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "noEmit": true,
+    // Each run keeps what it learned in .cache/tsc (gitignored, one file per project and per
+    // checkout), so the next run rechecks only what changed. Delete the file for a cold check.
+    "incremental": true,
+    "tsBuildInfoFile": "../../.cache/tsc/runtime.tsbuildinfo",
     // No `baseUrl`: TypeScript 7 removed the option
     // (oxc-project/tsgolint#351) and every mapping below is already relative to
     // this file, which is all `baseUrl: "."` meant here.

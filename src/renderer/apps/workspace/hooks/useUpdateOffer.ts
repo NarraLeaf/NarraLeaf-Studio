@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { translate } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
+import { revealUpdatePanel } from "@/lib/app/updatePresentation";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { NotificationType } from "@/lib/workspace/services/ui/types";
@@ -8,18 +9,20 @@ import { UPDATE_PANEL_SETTING_KEY } from "@shared/constants/update";
 import { useWorkspace } from "../context";
 
 /**
- * Tell the author a new version exists, once, and hand them to the place that can act on it.
+ * The two moments an update is worth a notification, once each per window and version.
  *
- * The action opens Settings on the update panel. It deliberately does **not** start the download:
- * the offer and the few-hundred-megabyte transfer are two different decisions, and a toast that
- * is about to auto-dismiss is not where the second one belongs. So the flow is announce here,
- * decide there - two presses, each with what it needs in front of it.
+ * - **A version is on offer and nothing is happening about it**: automatic downloads are off, the
+ *   author cancelled, or this platform cannot install it (macOS). The action opens the title bar's
+ *   update panel, where Download (or the download page) is. When Studio downloads on its own this is
+ *   never raised: the state goes straight to downloading, and the title bar shows that.
+ * - **An update is ready**: the action restarts Studio to apply it, which is the one thing left to
+ *   do. Quitting applies it too, which the panel says.
  *
- * Sticky, because a five-second toast is not an offer. Once per window, latched at module level
- * for the same reason `useRecoveryOffer` does it: the notification store is a singleton that
- * outlives any remount, so a ref would stack one identical toast per mount.
+ * Sticky, because a five-second toast is not an offer. Latched at module level for the same reason
+ * `useRecoveryOffer` does it: the notification store is a singleton that outlives any remount, so a
+ * ref would stack one identical toast per mount.
  */
-let offered = false;
+const announced = new Set<string>();
 
 export function useUpdateOffer() {
     const { context, recovery } = useWorkspace();
@@ -32,34 +35,68 @@ export function useUpdateOffer() {
         }
 
         const ui = context.services.get<UIService>(Services.UI);
+        let previous: string | null = null;
         const token = getInterface().app.update.onStateChanged(state => {
-            if (offered) {
+            const before = previous;
+            previous = state.status;
+            const version = state.availableVersion;
+            if (!version) {
                 return;
             }
-            // "ready" is not announced here: an installer already on disk got there because the
-            // author pressed Download, so they have seen the panel and do not need telling.
-            if (state.status !== "available" && state.status !== "manual") {
-                return;
-            }
-            if (!state.availableVersion) {
-                return;
-            }
-            offered = true;
 
-            ui.notifications.showSticky({
-                type: NotificationType.Info,
-                message: translate("update.notification.message", { version: state.availableVersion }),
-                detail: translate("update.notification.detail", { current: state.currentVersion }),
-                actions: [
-                    {
-                        label: translate("update.notification.action"),
-                        primary: true,
-                        onClick: () => {
-                            void getInterface().app.launchSettings({ highlight: UPDATE_PANEL_SETTING_KEY });
+            if (state.status === "available" || state.status === "manual") {
+                const key = `offer:${version}`;
+                // Back to "available" from a download or a prepare is the author's own cancel, made
+                // in the panel they are looking at; telling them about it would be an echo.
+                if (before === "downloading" || before === "preparing") {
+                    announced.add(key);
+                }
+                if (announced.has(key)) {
+                    return;
+                }
+                announced.add(key);
+                ui.notifications.showSticky({
+                    type: NotificationType.Info,
+                    message: translate("update.notification.message", { version }),
+                    detail: translate("update.notification.detail", { current: state.currentVersion }),
+                    coalesceKey: "app-update",
+                    actions: [
+                        {
+                            label: translate("update.notification.action"),
+                            primary: true,
+                            onClick: () => {
+                                if (!revealUpdatePanel()) {
+                                    void getInterface().app.launchSettings({ highlight: UPDATE_PANEL_SETTING_KEY });
+                                }
+                            },
                         },
-                    },
-                ],
-            });
+                    ],
+                });
+                return;
+            }
+
+            if (state.status === "ready") {
+                const key = `ready:${version}`;
+                if (announced.has(key)) {
+                    return;
+                }
+                announced.add(key);
+                ui.notifications.showSticky({
+                    type: NotificationType.Info,
+                    message: translate("update.notification.readyMessage", { version }),
+                    detail: translate("update.notification.readyDetail"),
+                    coalesceKey: "app-update",
+                    actions: [
+                        {
+                            label: translate(state.fastRestart ? "update.actions.restart" : "update.actions.install"),
+                            primary: true,
+                            onClick: () => {
+                                void getInterface().app.update.install();
+                            },
+                        },
+                    ],
+                });
+            }
         });
 
         return () => {

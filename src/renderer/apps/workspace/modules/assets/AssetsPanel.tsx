@@ -76,6 +76,8 @@ const ASSET_MENU_SHORTCUTS: Readonly<Record<string, string>> = {
     cut: "assets.cut",
     "cut-selected": "assets.cut",
     paste: "assets.paste",
+    delete: "assets.delete",
+    "delete-selected": "assets.delete",
     rename: "assets.rename",
 };
 
@@ -1164,17 +1166,24 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
 
     // F2 opens the rename dialog, which writes the new name straight to the asset record. Nothing
     // renders for the key, so the refusal goes on the handler; memoised so the binding is not
-    // re-registered on every render.
+    // re-registered on every render. Paste and Delete write to the library too and are refused the
+    // same way: the Edit menu greys their rows, but a key never consults a row. Copy and cut only
+    // fill the clipboard.
     const renameShortcut = useMemo(() => libraryFreeze.run(handleRename), [libraryFreeze, handleRename]);
+    const pasteShortcut = useMemo(() => libraryFreeze.run(() => handlePasteRef.current()), [libraryFreeze]);
+    const deleteShortcut = useMemo(() => libraryFreeze.run(() => handleDeleteRef.current()), [libraryFreeze]);
+    const copyShortcut = useCallback(() => handleCopyRef.current(), []);
+    const cutShortcut = useCallback(() => handleCutRef.current(), []);
 
     useKeyboardShortcuts({
         isInitialized,
         panelId,
-        onCopy: () => handleCopyRef.current(),
-        onCut: () => handleCutRef.current(),
-        onPaste: () => handlePasteRef.current(),
+        focusArea,
+        onCopy: copyShortcut,
+        onCut: cutShortcut,
+        onPaste: pasteShortcut,
+        onDelete: deleteShortcut,
         onRename: renameShortcut,
-        registerClipboardShortcuts: false, // already provided by action shortcuts
     });
 
     /**
@@ -1260,13 +1269,15 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
             // macOS menu bar, and in the title bar, which folds this slot the same way
             // (`foldActionGroupsByMenuSlot`).
             menuSlot: "edit",
+            // Each row prints its chord through `shortcutId` and registers none: the keys are the
+            // catalog's `assets.*` bindings in `useKeyboardShortcuts`, so a rebind reaches both.
             actions: [
                 {
                     id: `${groupId}-copy`,
                     label: t("common.copy"),
                     icon: <Copy className="w-4 h-4" />,
                     tooltip: t("assets.actions.copyTooltip"),
-                    shortcut: "mod+c",
+                    shortcutId: "assets.copy",
                     menuRole: "copy",
                     onClick: (_workspace) => handleCopyRef.current(),
                     disabled: !hasSelection || actionLoading,
@@ -1278,7 +1289,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     label: t("common.cut"),
                     icon: <Scissors className="w-4 h-4" />,
                     tooltip: t("assets.actions.cutTooltip"),
-                    shortcut: "mod+x",
+                    shortcutId: "assets.cut",
                     menuRole: "cut",
                     onClick: (_workspace) => handleCutRef.current(),
                     disabled: !hasSelection || actionLoading,
@@ -1290,13 +1301,13 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     label: t("common.paste"),
                     icon: <Clipboard className="w-4 h-4" />,
                     tooltip: t("assets.actions.pasteTooltip"),
-                    shortcut: "mod+v",
+                    shortcutId: "assets.paste",
                     menuRole: "paste",
                     // Paste copies assets into the library, so a frozen project refuses it. The
-                    // refusal sits on the handler rather than on `disabled`: the menu row is greyed
-                    // by the freeze policy already, but `mod+v` runs the action straight from the
-                    // keybinding, and on a frozen project it created assets that never landed.
-                    // Copy and cut above only fill the clipboard, so they are left alone.
+                    // refusal sits on the handler rather than on `disabled`, as it does on the key
+                    // (`pasteShortcut`): a row the freeze policy greys is still run by whatever
+                    // reaches the handler without reading it. Copy and cut above only fill the
+                    // clipboard, so they are left alone.
                     onClick: libraryFreeze.run((_workspace) => handlePasteRef.current()),
                     disabled: !hasClipboardContent || actionLoading,
                     when,
@@ -1307,10 +1318,9 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     label: t("common.delete"),
                     icon: <Trash className="w-4 h-4" />,
                     tooltip: t("assets.actions.deleteTooltip"),
-                    shortcut: "delete",
+                    shortcutId: "assets.delete",
                     menuRole: "delete",
-                    // Same for Delete, which reaches the files themselves: the key runs the action
-                    // without ever consulting the greyed row.
+                    // Same for Delete, which reaches the files themselves.
                     onClick: libraryFreeze.run((_workspace) => handleDeleteRef.current()),
                     disabled: !hasSelection || actionLoading,
                     when,

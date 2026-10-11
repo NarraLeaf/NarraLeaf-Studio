@@ -1,10 +1,13 @@
 import {
     useCallback,
     useEffect,
+    useLayoutEffect,
     useMemo,
     useRef,
     useState,
     useSyncExternalStore,
+    type FocusEvent as ReactFocusEvent,
+    type PointerEvent as ReactPointerEvent,
     type ReactNode,
     type SyntheticEvent,
 } from "react";
@@ -198,7 +201,8 @@ import {
     resumeAfterLocaleRestart,
 } from "./localeRestart";
 import { createDisplayAwakeController, DISPLAY_AWAKE_RECHECK_MS } from "./displayAwake";
-import { createSkipRunController } from "./skipRunController";
+import { createSkipRunController, type SkipRunController } from "./skipRunController";
+import { createGameStoryInputHost, type GameStoryInputHost } from "@/lib/ui-editor/runtime/input/storyInputHost";
 import { createSessionGate } from "./sessionGate";
 import {
     createStoryStartGate,
@@ -224,6 +228,20 @@ import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { resolveKeyboardDispatchScope } from "@/lib/ui-editor/runtime/input/keyboardDispatchScope";
 import { keepPointerPressOffKeyboardFocus } from "@/lib/ui-editor/runtime/input/pointerKeyboardFocus";
+import { provideInputHints, resolveInputHints } from "@/lib/ui-editor/runtime/input/inputHints";
+import { readCurrentInputDevice } from "@/lib/ui-editor/runtime/input/inputDeviceState";
+import { readGamepadSnapshot } from "@/lib/ui-editor/runtime/input/gamepadState";
+import { detectUIInputHintControllerFamily } from "@shared/types/ui-editor/inputHints";
+import { hasUINavigationSlots } from "@shared/types/ui-editor/navigation";
+import { GameNavigationContext } from "@/lib/ui-editor/runtime/navigation/gameNavigationContext";
+import {
+    describeNavigationState,
+    NAV_ENABLED_ATTRIBUTE,
+    NAV_MODALITY_ATTRIBUTE,
+    noteFocusInGame,
+    notePointerOverGame,
+    notePointerPressOnGame,
+} from "@/lib/ui-editor/runtime/navigation/focusNavigation";
 import { GAME_ROOT_ATTRIBUTE } from "@/lib/ui-editor/runtime/input/keyboardFocusHandover";
 import {
     listenForGameKeys,
@@ -232,6 +250,7 @@ import {
     type KeyboardOwner,
 } from "./keyboardOwner";
 import { listenForGamepads } from "./gamepadInput";
+import { ownerCanGoBack, type NavigationBack } from "./navigationDefaults";
 import {
     createDialogueAdvanceRecord,
     projectDrawsNvlPage,
@@ -271,6 +290,7 @@ import {
     markEndingReached,
     readReachedEndings,
 } from "./endingsRecord";
+import { buildGameTestState, readEngineDialog, type DialogPrompt, type GameTestState } from "./gameTestState";
 import { createGameBootReporter } from "./bootTiming";
 import { GameTimelineName, gameTimelineNow, recordGameSpan, timeGameSpan } from "./gameTimeline";
 import { withDeadline } from "./frameTiming";
@@ -417,7 +437,23 @@ export type GameAppTestControls = {
     startStory(request: { storyId: string; sceneId: string }): Promise<void>;
     advance(): Promise<void>;
     choose(index: number): Promise<void>;
+    /**
+     * The engine's picture of its stage - the scene and the Game UI on it - as a PNG data URL, or
+     * null before a game has been entered (a page such as the title is all there is). An agent's
+     * play-test looks through this; it is a capture of what is drawn, not an act on the game.
+     */
+    capture(): Promise<string | null>;
+    /** Where the game is, read without acting on it. See {@link GameAppTestState}. */
+    readState(): GameAppTestState;
 };
+
+/**
+ * What a driver can read of the game between two acts: whether a story is entered, the line on
+ * screen and whether it is shown in full, the choice menu, the endings reached and the page showing
+ * when no story is. Read from the engine's own dialog state and line announcements rather than from
+ * a Game UI box - see `gameTestState.ts` for why, and for each field.
+ */
+export type GameAppTestState = GameTestState;
 
 export type GameAppProps = {
     host: GameAppHost;
@@ -645,6 +681,24 @@ export function GameApp(props: GameAppProps): ReactNode {
         });
     }, [gameLocalizationRuntime]);
     /**
+     * Whether this app is being taken down, which the language publish below must not answer.
+     *
+     * Taking the runtime core down empties its persistent store and tells every subscriber, and the
+     * language read from an empty store is the source language - which is not the language the player
+     * was reading. Published, it would put the shipped game's crash screen in that language (the
+     * shell speaks the language published here) along with the document's `lang`, at the one moment
+     * the game is unmounting because it crashed. A layout effect's cleanup runs before any passive
+     * one when the tree is removed, so this is set before the store is emptied. Cleared on every mount
+     * so a StrictMode remount in a development build leaves it as it found it.
+     */
+    const leavingRef = useRef(false);
+    useLayoutEffect(() => {
+        leavingRef.current = false;
+        return () => {
+            leavingRef.current = true;
+        };
+    }, []);
+    /**
      * The language the project's default font stack resolves in.
      *
      * A rung of that stack may be restricted to some languages (see `@shared/types/typography`), so
@@ -669,7 +723,12 @@ export function GameApp(props: GameAppProps): ReactNode {
             setActiveProjectLocale("");
             return;
         }
-        const publish = (): void => setActiveProjectLocale(gameLocalizationRuntime.getLocale());
+        const publish = (): void => {
+            // Not on the way out: see `leavingRef`.
+            if (!leavingRef.current) {
+                setActiveProjectLocale(gameLocalizationRuntime.getLocale());
+            }
+        };
         publish();
         return gameLocalizationRuntime.subscribe(publish);
     }, [gameLocalizationRuntime]);
@@ -908,6 +967,15 @@ export function GameApp(props: GameAppProps): ReactNode {
     // The boot preload mounts the environment (fires gameReady) but does NOT enter — this stays false
     // until Start Game / Load Save.
     const gameEnteredRef = useRef(false);
+    /** Every time `gameEnteredRef` turns true; see `GameAppTestState.entries`. */
+    const gameEntriesRef = useRef(0);
+    /**
+     * The newest line the engine announced, and the endings reached - what a driver's `readState`
+     * reports (see `gameTestState.ts`). Held for the app's whole life: an `/ending` tears the session
+     * down on its way to the ending page, and the driver reads which ending it was from the far side.
+     */
+    const dialogPromptRef = useRef<DialogPrompt | null>(null);
+    const endingsReachedRef = useRef<{ count: number; last: string | null }>({ count: 0, last: null });
     // Resolves when the environment is initialised (gameReady dispatched), gating the surface system.
     const pendingEnvReadyRef = useRef(new Map<string, { resolve: () => void; reject: (error: Error) => void }>());
     // Resolves when the mounted session's first-scene assets are fetched and decoded (the stage
@@ -1582,6 +1650,13 @@ export function GameApp(props: GameAppProps): ReactNode {
 
     const activeEntry = navStack[navStack.length - 1] ?? null;
     const activeSurface = activeEntry ? findSurface(bundle, activeEntry.surfaceId) : null;
+    /**
+     * The name of the page on top, for a driver's `readState`. A ref because the read happens from a
+     * handle published by an effect, and on the way out of a story the page changes before that
+     * effect has run again.
+     */
+    const activePageNameRef = useRef<string | null>(null);
+    activePageNameRef.current = activeSurface?.name || null;
 
     const scale = activeSurface ? getScale(activeSurface) : 1;
 
@@ -1809,6 +1884,44 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
         return goBackPage();
     }, [goBackPage, layerStack]);
+
+    /**
+     * Back as the focus system's Back slot means it: a step back from what holds the keys, and nothing
+     * when there is no step to take (`navigationDefaults`).
+     *
+     * Narrower than `goBack` in two places. A modal layer on top holds the keys, and one that refuses
+     * dismissal is the end of it - Back does not fall through and close the page under the dialog the
+     * player was looking at. And a page is only left for one under it that is a different page: the
+     * page the stack started on is where Back ends, however the game came back to it - a Title button
+     * on a menu that opened the Title again rather than closing the menu leaves a stack of Title,
+     * Config, Title, and backing out of that Title into Config is not a step back anywhere a player
+     * recognises. The splash a game starts on replaces itself with the Title, so the Title is where
+     * the stack starts.
+     */
+    const navigationBack = useMemo<NavigationBack>(() => {
+        const topModalLayer = () => {
+            const layers = layerStack.getState();
+            const top = layers[layers.length - 1];
+            return top?.modal ? top : null;
+        };
+        return {
+            canGoBack: () => {
+                const layer = topModalLayer();
+                if (layer) {
+                    return layer.dismissible;
+                }
+                const stack = navigation.getState().navStack;
+                return stack.length > 1 && stack[stack.length - 1]!.surfaceId !== stack[0]!.surfaceId;
+            },
+            goBack: () => {
+                if (topModalLayer()) {
+                    layerStack.dismissTop();
+                    return;
+                }
+                void goBackPage().catch(() => undefined);
+            },
+        };
+    }, [goBackPage, layerStack, navigation]);
 
     /**
      * `Show Layer`. The owner is whichever surface asked, which is what makes the layer die with it.
@@ -2979,6 +3092,10 @@ export function GameApp(props: GameAppProps): ReactNode {
             });
         }
         pluginHost?.emitEndingReached({ endingId: ending.endingId, name: ending.name });
+        endingsReachedRef.current = {
+            count: endingsReachedRef.current.count + 1,
+            last: ending.name.trim() || null,
+        };
 
         // The row decides, then the build. `none` is a decision and stops here; absent means the row
         // did not decide, so the build's own ending page answers.
@@ -3020,6 +3137,66 @@ export function GameApp(props: GameAppProps): ReactNode {
     const quitToPageRef = useRef<(surfaceId: string) => void>(() => undefined);
     const stableEndingReached = useCallback((ending: StoryEndingReach) => endingReachedRef.current(ending), []);
     const stableQuitToPage = useCallback((surfaceId: string) => quitToPageRef.current(surfaceId), []);
+
+    /**
+     * The skip loop, while one is installed - read by the story input host to keep a skipped-through
+     * `/rumble` off the player's hands.
+     */
+    const skipControllerRef = useRef<SkipRunController | null>(null);
+    /**
+     * What the `input` rows ask of the game (`/rumble`, `/input lock`, `/waitinput`, `/hold`, `/mash`).
+     *
+     * One for the life of the app, for the reason the two hooks above are stable: a compiled story is
+     * kept and replayed, so whatever it was handed must still reach the running game three
+     * playthroughs later. Everything it touches is read through refs when a row runs.
+     *
+     * The lock is the same engine suspension a page drawn over the stage takes (`holdStageAdvance`),
+     * taken on the game that is live when the row runs, so releasing it wakes auto-forward the same
+     * way. It belongs to the playthrough and is not saved: entering a game, loading a save and losing
+     * the session all hand the player the story back (see the `reset` calls).
+     *
+     * A waiting row asks whether the stage is covered, so a press on a page or a modal layer drawn over
+     * it does not answer the story and the row's time stands still under it. The instant reading
+     * (`isStageCoveredNow`) is the one the global blueprint's `Is Game Overlay` gives, read through a
+     * ref because the host outlives the render that built it.
+     */
+    const isStageCoveredNowRef = useRef(isStageCoveredNow);
+    isStageCoveredNowRef.current = isStageCoveredNow;
+    const [storyInputHost] = useState<GameStoryInputHost>(() => createGameStoryInputHost({
+        isStageCovered: () => isStageCoveredNowRef.current(),
+        isSkipping: () => {
+            const controller = skipControllerRef.current;
+            return controller ? controller.isRunning() || controller.isSkipping() : false;
+        },
+        readActions: () => currentBundleRef.current.ui.uidoc.actions,
+        holdAdvance: () => {
+            const heldLiveGame = nlrLiveGameRef.current;
+            const preference = (heldLiveGame?.game as {
+                preference?: {
+                    getPreference?: (key: string) => unknown;
+                    setPreference?: (key: string, value: unknown) => void;
+                };
+            } | undefined)?.preference;
+            const hold = holdStageAdvance({
+                suspendAdvance: () => heldLiveGame?.getGameState()?.suspendAdvance() ?? null,
+                isSessionCurrent: () => nlrLiveGameRef.current === heldLiveGame,
+                isAutoForwardOn: () => preference?.getPreference?.("autoForward") === true,
+                rearmAutoForward: () => {
+                    engineNudgeDepthRef.current += 1;
+                    try {
+                        preference?.setPreference?.("autoForward", true);
+                    } catch {
+                        // A session torn down between the check and the write; nothing left to wake.
+                    } finally {
+                        engineNudgeDepthRef.current -= 1;
+                    }
+                },
+            });
+            return hold.held ? hold : null;
+        },
+    }));
+    // A session going away takes its lock and its rumble with it.
+    useEffect(() => () => storyInputHost.reset(), [nlrSession, storyInputHost]);
 
     const handleQuitToPage = useCallback((surfaceId: string) => {
         void quitGame(surfaceId).catch(error => {
@@ -3309,6 +3486,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                 apply: savedGame => {
                     const game = activeLiveGame();
                     game.game.router.clear().cleanHistory();
+                    // The lock a row took belongs to the run being replaced; the loaded one starts
+                    // in the player's hands, wherever its save was taken.
+                    storyInputHost.reset();
                     // A loaded save is a playthrough of its own: the box opens the author's way,
                     // not the way the game it replaced last left it.
                     startPlaythroughPreferences(
@@ -3497,6 +3677,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         // below, because both of them are the save being applied.
         playtime.seedRun(storedPlaytimeSeconds ?? 0);
         gameEnteredRef.current = true;
+        gameEntriesRef.current += 1;
         if (outcome.storyChanged) {
             // The launch that put the save's own story up has already entered and revealed its
             // session, so there is no reveal left to wait for - and the router being waited on
@@ -4200,6 +4381,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             savedVariables: bundle.ui.savedVariables,
             onEndingReached: stableEndingReached,
             onQuitToPage: stableQuitToPage,
+            storyInput: storyInputHost,
             persistence: storyPersistence?.port,
             // A story row's `Log` node, and a story script's `ctx.devtools`, write to the stream a
             // Surface blueprint's host API already writes to - so one Output panel carries both, and
@@ -4794,11 +4976,13 @@ export function GameApp(props: GameAppProps): ReactNode {
             (liveGame.game as { preference?: PreferenceStoreLike }).preference,
             currentBundleRef.current.preferences,
         );
+        storyInputHost.reset();
         liveGame.newGame();
         // A fresh playthrough starts the stopwatch from nothing. A load overwrites this moments
         // later with the reading it inherited; nothing else in the file resets it.
         playtime.seedRun(0);
         gameEnteredRef.current = true;
+        gameEntriesRef.current += 1;
         // A document imported before this point has been waiting for exactly this moment:
         // `newGame()` clears every namespace and rebuilds it from its defaults, so anything written
         // earlier is gone and anything written now stands. See `pendingImportedProgressRef`.
@@ -4908,9 +5092,34 @@ export function GameApp(props: GameAppProps): ReactNode {
             startStory: request => startStoryInGame({ storyId: request.storyId, sceneId: request.sceneId }),
             advance: async () => { await nextInGame(); },
             choose: async (index: number) => { await selectChoiceInGame(index); },
+            capture: async () => {
+                const liveGame = nlrLiveGameRef.current;
+                if (!liveGame || !gameEnteredRef.current || typeof liveGame.capturePng !== "function") {
+                    return null;
+                }
+                return liveGame.capturePng();
+            },
+            readState: () => {
+                const liveGame = nlrLiveGameRef.current;
+                const inGame = liveGame !== null && gameEnteredRef.current;
+                const menu = inGame ? choiceMenus.current() : null;
+                return buildGameTestState({
+                    inGame,
+                    entries: gameEntriesRef.current,
+                    dialog: inGame && liveGame ? readEngineDialog(DevTools, liveGame.getGameState()) : null,
+                    prompt: dialogPromptRef.current,
+                    choices: menu
+                        ? menu.items.map(item => ({ index: item.index, text: item.text, disabled: item.disabled }))
+                        : null,
+                    endings: endingsReachedRef.current.count,
+                    lastEnding: endingsReachedRef.current.last,
+                    // A page hidden under the running game is not the one showing.
+                    page: studioPageHiddenForGameRef.current ? null : activePageNameRef.current,
+                });
+            },
         });
         return () => onTestControlsChanged(null);
-    }, [activeSurface, core, nextInGame, nlrSession, onTestControlsChanged, selectChoiceInGame, startStoryInGame]);
+    }, [activeSurface, choiceMenus, core, nextInGame, nlrSession, onTestControlsChanged, selectChoiceInGame, startStoryInGame]);
 
     const buildHostAdapterBundle = useCallback((entry: AppSurfaceLayerNavEntry, surface: UISurface) => {
         if (!core || !gameHostCapabilities) {
@@ -5842,6 +6051,14 @@ export function GameApp(props: GameAppProps): ReactNode {
     );
     const drawsOwnNvlPage = useMemo(() => projectDrawsNvlPage(bundle.ui.uidoc), [bundle.ui.uidoc]);
 
+    // The element the game draws into, for the key and pad listeners below to find the controls
+    // navigation moves between. Read per press: the root is set after this effect first runs.
+    const gameRootRef = useRef<HTMLDivElement | null>(null);
+    // The project's actions, the navigation slots among them: what a running game routes by.
+    const runtimeVocabulary = useMemo(() => bundle.ui.uidoc.actions ?? {}, [bundle.ui.uidoc.actions]);
+    // Whether the project has keyboard and pad navigation at all: some intent fills a slot.
+    const navigationEnabled = useMemo(() => hasUINavigationSlots(runtimeVocabulary), [runtimeVocabulary]);
+
     useEffect(() => {
         const scope = resolveKeyboardDispatchScope({
             gameReady: Boolean(host.ready && core && globalHostAdapterBundle),
@@ -5858,7 +6075,9 @@ export function GameApp(props: GameAppProps): ReactNode {
         const dispatch = {
             blueprintDocument: bundle.ui.localBlueprints,
             persistentVariables: bundle.ui.persistentVariables,
-            vocabulary: bundle.ui.uidoc.actions,
+            vocabulary: runtimeVocabulary,
+            readGameRoot: () => gameRootRef.current,
+            back: navigationBack,
             core,
             globalHost: globalHostAdapterBundle,
             // An entry when one owns the keyboard; otherwise the stage, when the story is what the
@@ -5882,15 +6101,48 @@ export function GameApp(props: GameAppProps): ReactNode {
                         advance: nextInGame,
                     }),
                     dialogueAdvance: dialogueAdvances,
+                    // A Confirm nothing on the stage answered reads on, as a click on the stage does -
+                    // so a project that never bound its dialogue box to a key or a pad is still
+                    // playable with one (`navigationDefaults`).
+                    storyAdvance: {
+                        actionIds: dialogueAdvances.actionIds(dialogueAdvanceActionIds),
+                        advance: nextInGame,
+                    },
                 };
             },
             onError: (err: unknown) => host.log("error", normalizeError(err)),
         };
         const stopKeys = listenForGameKeys(window, dispatch);
         const stopPads = listenForGamepads(dispatch);
+        // What the buttons do right now, for any input hint bar on screen - read by the rules the
+        // presses above are routed by (`inputHints`).
+        const stopHints = provideInputHints(() => {
+            const gameRoot = gameRootRef.current;
+            if (!gameRoot) {
+                return null;
+            }
+            const owner = dispatch.readKeyboardOwner();
+            const device = readCurrentInputDevice();
+            const surfaces = !owner ? [] : "stage" in owner ? owner.stage.map(target => target.surface) : [owner.surface];
+            const answered = [...new Set(surfaces.flatMap(surface => (surface.actions ?? []).map(entry => entry.actionId)))];
+            return {
+                device,
+                controller: detectUIInputHintControllerFamily(readGamepadSnapshot().controllerId),
+                hints: resolveInputHints({
+                    device: device === "gamepad" ? "gamepad" : "key",
+                    vocabulary: runtimeVocabulary,
+                    lane: !owner ? null : "stage" in owner ? "stage" : "page",
+                    answered,
+                    navigation: describeNavigationState(gameRoot),
+                    canGoBack: ownerCanGoBack(owner, dispatch.back),
+                    storyAdvances: Boolean(owner && "stage" in owner && owner.storyAdvance),
+                }),
+            };
+        });
         return () => {
             stopKeys();
             stopPads();
+            stopHints();
         };
     }, [
         bundle,
@@ -5902,7 +6154,9 @@ export function GameApp(props: GameAppProps): ReactNode {
         host,
         isNvlModeInGame,
         isStoryOnScreen,
+        navigationBack,
         nextInGame,
+        runtimeVocabulary,
         stageKeyboardSurfaces,
     ]);
 
@@ -5948,6 +6202,42 @@ export function GameApp(props: GameAppProps): ReactNode {
      * root exists, which is not on the first render.
      */
     const [gameRoot, setGameRoot] = useState<HTMLDivElement | null>(null);
+    useLayoutEffect(() => {
+        gameRootRef.current = gameRoot;
+    }, [gameRoot]);
+    // The pointer resting on a control is where the next arrow starts, and pointing hides the ring
+    // the keys drew (`focusNavigation`).
+    // Only with navigation on: a game without it leaves the ring to the browser's `:focus-visible`,
+    // as it always did, and has no modality for the pointer to set.
+    const notePointerMoveForNavigation = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+        if (navigationEnabled) {
+            notePointerOverGame(event.currentTarget, event);
+        }
+    }, [navigationEnabled]);
+    const notePointerDownForNavigation = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+        if (navigationEnabled) {
+            notePointerPressOnGame(event.currentTarget);
+        }
+    }, [navigationEnabled]);
+    // A focused control is drawn with its own hover look when it has one, the ring otherwise.
+    const noteFocusForNavigation = useCallback((event: ReactFocusEvent<HTMLDivElement>) => {
+        noteFocusInGame(event.target);
+    }, []);
+    // While the player moves by keys or a pad, a mouse resting on a control does not draw it hovered
+    // as well: one control is selected at a time (`setPointerHoverSuppressed`).
+    useEffect(() => {
+        if (!gameRoot || typeof MutationObserver === "undefined") {
+            return undefined;
+        }
+        const sync = () => widgetRuntimeStore.setPointerHoverSuppressed(gameRoot.getAttribute(NAV_MODALITY_ATTRIBUTE) === "keys");
+        sync();
+        const observer = new MutationObserver(sync);
+        observer.observe(gameRoot, { attributes: true, attributeFilter: [NAV_MODALITY_ATTRIBUTE] });
+        return () => {
+            observer.disconnect();
+            widgetRuntimeStore.setPointerHoverSuppressed(false);
+        };
+    }, [gameRoot, widgetRuntimeStore]);
     const offerPointerInputToGlobal = useCallback((event: Event) => {
         if (!gameRoot || !globalBlueprintDispatchRef.current) {
             return;
@@ -6014,7 +6304,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             // `skip` is the author's permission to skip at all, and `isStoryOnScreen` is what keeps
             // a held key on a title screen - or a mode left on under a settings screen - from
             // advancing the story behind it.
-            canSkip: () => isStoryOnScreen() && readPreference("skip") !== false,
+            // A passage a story row has locked is not the player's to skip either.
+            canSkip: () => isStoryOnScreen() && readPreference("skip") !== false && !storyInputHost.isAdvanceLocked(),
             isBlocked: () => {
                 // A session that went away mid-hold ends the run rather than ticking into nothing.
                 if (!nlrLiveGameRef.current?.getGameState()) {
@@ -6038,6 +6329,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 }
             },
         });
+        skipControllerRef.current = controller;
         const onKeyDown = (event: KeyboardEvent) => controller.handleKeyDown(event);
         const onKeyUp = (event: KeyboardEvent) => controller.handleKeyUp(event);
         // A window that loses focus mid-hold never delivers the keyup, and the run would go on
@@ -6055,12 +6347,15 @@ export function GameApp(props: GameAppProps): ReactNode {
         window.addEventListener("blur", onBlur);
         return () => {
             controller.stop();
+            if (skipControllerRef.current === controller) {
+                skipControllerRef.current = null;
+            }
             unsubscribePreferences();
             window.removeEventListener("keydown", onKeyDown);
             window.removeEventListener("keyup", onKeyUp);
             window.removeEventListener("blur", onBlur);
         };
-    }, [isStoryOnScreen, nlrSession, subscribeGamePreferences]);
+    }, [isStoryOnScreen, nlrSession, storyInputHost, subscribeGamePreferences]);
 
     /**
      * Keep the display awake while the story advances on its own.
@@ -6441,7 +6736,8 @@ export function GameApp(props: GameAppProps): ReactNode {
                     return;
                 }
                 nlrCharacterPromptTokenRef.current?.cancel();
-                nlrCharacterPromptTokenRef.current = liveGame.onCharacterPrompt(({ character, sentence }) => {
+                nlrCharacterPromptTokenRef.current = liveGame.onCharacterPrompt(prompt => {
+                    const { character, sentence } = prompt;
                     // The story's next voiced line ends a replay still speaking, as it ends the take
                     // before it - see `createVoiceReplayer`.
                     if (sentenceHasVoice(sentence)) {
@@ -6450,6 +6746,14 @@ export function GameApp(props: GameAppProps): ReactNode {
                     const sourceName = readNlrCharacterName(character);
                     const nametag = translateCharacterName(sourceName);
                     currentDialogNametagRef.current = nametag;
+                    // The line itself, for a driver's `readState`: the engine announces each line
+                    // once, just before it begins that line's dialog state (see `gameTestState.ts`).
+                    const promptText = (prompt as { text?: unknown }).text;
+                    dialogPromptRef.current = {
+                        serial: (dialogPromptRef.current?.serial ?? 0) + 1,
+                        speaker: sourceName ? nametag || sourceName : null,
+                        text: typeof promptText === "string" ? promptText : "",
+                    };
                     core.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, nametag);
                     // Staged, not consumed here: `DialogStateBridge` joins this against the mirrored
                     // character table on the dialog beat. Publishing the id rather than the derived
@@ -6621,6 +6925,14 @@ export function GameApp(props: GameAppProps): ReactNode {
                 // play head.
                 reportFailure(err);
             }}
+            onPlayerCrash={(err, crashSessionId, componentStack) => {
+                // Reported above through `onError`. What is left is the stage, which the engine has
+                // replaced with its own fallback - the shell decides whether that stays on screen.
+                if (nlrSession?.id !== crashSessionId) {
+                    return;
+                }
+                host.stageCrashed?.(err, componentStack);
+            }}
         />
     );
 
@@ -6632,15 +6944,21 @@ export function GameApp(props: GameAppProps): ReactNode {
     const content = (
         <GlobalInputActionContext.Provider value={globalInputActionAnswerer}>
         <MotionConfig reducedMotion="never">
+        <GameNavigationContext.Provider value={navigationEnabled}>
             <div
                 ref={setGameRoot}
                 className="nl-motion-keep relative h-full w-full overflow-hidden"
                 // Where this game's keyboard focus may be moved about: a focus outside it is the
                 // window's, and stays where it is (see `keyboardFocusHandover`).
                 {...{ [GAME_ROOT_ATTRIBUTE]: "" }}
+                // Whether the keys and the pad move a focus here at all (`focusNavigation`).
+                {...(navigationEnabled ? { [NAV_ENABLED_ATTRIBUTE]: "" } : {})}
                 // The keyboard focus is the keyboard's: a click on a control answers the click and
                 // leaves the next key to the game, see `pointerKeyboardFocus`.
                 onMouseDownCapture={keepPointerPressOffKeyboardFocus}
+                onPointerMoveCapture={notePointerMoveForNavigation}
+                onPointerDownCapture={notePointerDownForNavigation}
+                onFocusCapture={noteFocusForNavigation}
                 onClick={offerSyntheticPointerInputToGlobal}
                 onDoubleClick={offerSyntheticPointerInputToGlobal}
                 onAuxClick={offerSyntheticPointerInputToGlobal}
@@ -6753,6 +7071,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     </AnimatePresence>
                 </SurfaceStackBox>
             </div>
+        </GameNavigationContext.Provider>
         </MotionConfig>
         </GlobalInputActionContext.Provider>
     );

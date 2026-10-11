@@ -1,0 +1,10 @@
+# Codex CLI - add to ~/.codex/config.toml. Replace <PORT> and <TOKEN> with the values from
+# NarraLeaf Studio: Settings -> Agent access -> Copy configuration.
+
+[mcp_servers.narraleaf]
+url = "http://127.0.0.1:<PORT>/mcp"
+http_headers = { "Authorization" = "Bearer <TOKEN>" }
+
+# Alternatively, keep the token out of the file: export NARRALEAF_TOKEN=<TOKEN> in your shell and use
+#   bearer_token_env_var = "NARRALEAF_TOKEN"
+# instead of http_headers.

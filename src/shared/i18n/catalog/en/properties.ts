@@ -23,6 +23,17 @@ export const properties = {
         backgroundImage: "Background Image",
         animation: "Animation",
         logic: "Logic",
+        navigation: {
+            title: "Navigation",
+            defaultFocus: "Starting focus",
+            defaultFocusAuto: "Automatic",
+            autoFocus: "Focus on open",
+            autoFocusTip: "Whether a control takes the focus when this interface opens. By default only when the player last used a keyboard or a gamepad.",
+            autoFocusDevice: "Keyboard or gamepad",
+            autoFocusAlways: "Always",
+            autoFocusNever: "Never",
+            wrap: "Loop at edges",
+        },
         // What this interface does with a click or a keystroke that reaches it, and which of the
         // project's named actions it answers. The vocabulary itself is edited in the Input Actions
         // library beside the interface list.
@@ -64,6 +75,29 @@ export const properties = {
         uiElement: "UI Element",
         linkedComponent: "Linked Component",
     },
+    // How the player reaches an element with a keyboard or a gamepad.
+    navigation: {
+        title: "Navigation",
+        focusable: "Focusable",
+        focusableTip: "Whether keyboard and gamepad navigation can move onto this element. Controls can by default. Never also excludes every element inside it.",
+        focusableAuto: "Automatic",
+        focusableAlways: "Always",
+        focusableNever: "Never",
+        preferredOnEntry: "Use as starting focus",
+        preferredOnEntryTip: "The focus starts on this element when the interface opens, unless the interface's Starting focus names another.",
+        region: "Navigation group",
+        regionTip: "Navigation stays inside this element while a control inside lies in the pressed direction.",
+        wrap: "Loop at edges",
+        rememberLast: "Remember last focus",
+        up: "Up",
+        down: "Down",
+        left: "Left",
+        right: "Right",
+        byLayout: "By layout",
+        neighborsTip: "Where each direction goes when the focus leaves this element. By layout picks the nearest control in that direction.",
+        // Two targets that would read the same in one list: "Button 2". `{index}` is the position among those.
+        numbered: "{name} {index}",
+    },
     // The sounds an element plays when it is pointed at and when it is clicked.
     interactionSound: {
         title: "Sound",
@@ -94,9 +128,6 @@ export const properties = {
         namePlaceholder: "Name",
         defaultPlaceholder: "Default",
         type: "Type",
-        typeString: "String",
-        typeText: "Text",
-        typeAudioTrack: "Audio track",
         trackMissing: "Missing track",
         trackNone: "No track",
         bindLabel: "Parameter",
@@ -117,12 +148,6 @@ export const properties = {
         namePlaceholder: "Name",
         default: "Default",
         type: "Type",
-        typeString: "String",
-        typeText: "Text",
-        typeNumber: "Number",
-        typeBoolean: "Boolean",
-        typeList: "List",
-        typeJson: "JSON",
     },
     binding: {
         notReady: "Blueprint not ready for this control.",

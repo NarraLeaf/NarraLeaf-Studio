@@ -126,7 +126,7 @@ function PresetCard(props: {
                     {/* A repeat count is part of what the preset IS — an idle motion that runs once is
                         a different move — so it is on the card, not only in the editor afterwards. */}
                     {repeat ? (
-                        <span className="flex shrink-0 items-center gap-0.5 text-2xs text-fg-subtle" data-tip={t("motion.panel.repeat")}>
+                        <span className="flex shrink-0 items-center gap-0.5 text-2xs text-fg-subtle" data-tip={t("motion.inspector.repeat")}>
                             <Repeat className="h-2.5 w-2.5" />
                             {repeat}
                         </span>

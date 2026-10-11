@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n/useTranslation";
+import { formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
 import { Button, IconButton, Input, Modal, ModalBody, Select } from "@/lib/components/elements";
 import type { LiteralValue } from "@shared/types/blueprint/document";
 import { SAVE_SCHEMA_FIELD_TYPES, type SaveSchemaField, type SaveSchemaFieldType } from "@shared/types/saveSchema";
@@ -39,7 +40,7 @@ export function SaveSchemaFieldsModal({ isOpen, onClose }: { isOpen: boolean; on
 
     const typeOptions = SAVE_SCHEMA_FIELD_TYPES.map(value => ({
         value,
-        label: t(`saveSchema.type.${value}` as Parameters<typeof t>[0]),
+        label: formatBlueprintValueTypeLabel(value, t, "option"),
     }));
 
     const renameField = useCallback((id: string, name: string) => {

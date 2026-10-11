@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
 
 // The vitest alias maps `@` at the Studio renderer, so `@/lib/i18n` would resolve to the editor's
-// live store rather than the fixed-locale shim the runtime bundle is built with.
+// live store rather than the shell-language shim the runtime bundle is built with.
 vi.mock("@/lib/i18n", () => ({
     translate: (key: string) => key,
 }));

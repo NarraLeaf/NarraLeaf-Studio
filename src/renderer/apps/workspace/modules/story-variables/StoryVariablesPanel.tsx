@@ -64,7 +64,7 @@ import {
     sceneVariableDefs,
     storyPersistentDefs,
 } from "@shared/types/story";
-import type { TranslationKey } from "@shared/i18n";
+import { formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { buildMergedVariableView, type MergedPersistentEntry } from "@shared/variables/mergedPersistentView";
 import { jumpToSearchTarget } from "../search/searchJump";
@@ -118,21 +118,20 @@ function parseDefault(text: string, valueType: StoryVariableValueType): StoryLit
 
 type VariableRow = { id: string; name: string; valueType: StoryVariableValueType; defaultValue?: StoryLiteralValue };
 
-/** One table of type labels, so the read-only rows name a type exactly as the editable rows' dropdown does. */
-const VALUE_TYPE_KEYS: Record<StoryVariableValueType, TranslationKey> = {
-    boolean: "storyVars.valueType.boolean",
-    number: "storyVars.valueType.number",
-    string: "storyVars.valueType.string",
-    json: "storyVars.valueType.json",
-};
+/**
+ * The types a variable can be declared with, in the order the dropdown lists them. Both the read-only
+ * rows and the dropdown name a type through `formatBlueprintValueTypeLabel`, the words a blueprint pin
+ * reading the same variable uses.
+ */
+const VALUE_TYPES: readonly StoryVariableValueType[] = ["boolean", "number", "string", "json"];
 
 function useValueTypeOptions(): SelectOption[] {
     const { t } = useTranslation();
     return useMemo(
         () =>
-            (Object.keys(VALUE_TYPE_KEYS) as StoryVariableValueType[]).map(valueType => ({
+            VALUE_TYPES.map(valueType => ({
                 value: valueType,
-                label: t(VALUE_TYPE_KEYS[valueType]),
+                label: formatBlueprintValueTypeLabel(valueType, t, "option"),
             })),
         [t],
     );
@@ -282,7 +281,7 @@ export function VariableJumpRow(props: { name: string; valueType: StoryVariableV
             )}
         >
             <span className="truncate">{props.name}</span>
-            <span className="shrink-0 text-2xs text-fg-subtle">{t(VALUE_TYPE_KEYS[props.valueType])}</span>
+            <span className="shrink-0 text-2xs text-fg-subtle">{formatBlueprintValueTypeLabel(props.valueType, t, "option")}</span>
         </button>
     );
 }

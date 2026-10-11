@@ -58,16 +58,23 @@ import {
     QUIT_CHECKPOINT_TIMEOUT_MIN_SECONDS,
     QUIT_CHECKPOINT_TIMEOUT_STEP_SECONDS,
 } from "@shared/constants/quit";
-import { isMacPlatform } from "@/lib/app/platform";
+import { isMacPlatform, isWindowsPlatform } from "@/lib/app/platform";
 import { LOCALE_META, SUPPORTED_LOCALES } from "@shared/i18n";
 import { deviceDefaultLocale } from "@/lib/i18n/deviceLocale";
 import { clearAllProjectStats } from "@/lib/stats/clearAllProjectStats";
 import { resetAllPreferences, resetWorkspaceLayout } from "@/lib/settings/resetSettings";
 import { DASHBOARD_OPEN_DEFAULT_KEY } from "@shared/constants/dashboard";
 import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
-import { UPDATE_AUTO_CHECK_KEY, UPDATE_PANEL_SETTING_KEY } from "@shared/constants/update";
+import {
+    UPDATE_AUTO_CHECK_KEY,
+    UPDATE_AUTO_DOWNLOAD_KEY,
+    UPDATE_PANEL_SETTING_KEY,
+    UPDATE_SOURCE_KEY,
+    UPDATE_SOURCE_PREFERENCES,
+} from "@shared/constants/update";
 import { KEYBINDING_OVERRIDES_SETTINGS_KEY } from "@/lib/workspace/services/ui/KeybindingService";
 import { DOWNLOAD_REWRITES_KEY, USE_SYSTEM_PROXY_KEY } from "@shared/types/downloadSource";
+import { AGENT_FOLLOW_DEFAULT, AGENT_FOLLOW_KEY } from "@shared/agent/follow";
 import { OFFICIAL_SOURCE_VALUE } from "@/lib/settings/sourceSelection";
 import { MIRROR_PLUGIN_REGISTRY_URL } from "@shared/constants/pluginRegistry";
 import {
@@ -205,12 +212,23 @@ export const AppSettingCategories: SettingCategory[] = [
         order: 8,
     },
     {
+        // The MCP endpoint an author's own AI agent connects to. Its own category rather than a
+        // corner of Network: what it decides is who may change a project, not where Studio
+        // downloads from.
+        key: "agent",
+        label: "Agent access",
+        labelKey: "settings.categories.agent.label",
+        description: "Let AI agents connect to Studio over MCP and work on the open project.",
+        descriptionKey: "settings.categories.agent.description",
+        order: 9,
+    },
+    {
         key: "data",
         label: "Data",
         labelKey: "settings.categories.data.label",
         description: "Cached files, resetting preferences, and moving them between machines.",
         descriptionKey: "settings.categories.data.description",
-        order: 9,
+        order: 10,
     },
 ];
 
@@ -348,19 +366,58 @@ export const AppSettings: AppSettingDefinition[] = [
         visible: () => isMacPlatform(),
     },
     {
-        // Read by the main process's UpdateManager when it decides whether to schedule the launch
-        // check. Off means Studio never asks on its own; the Check button in the panel below and
-        // the tray's Check for Updates row still work, so this turns off the *asking*, not the
-        // feature.
+        // Read by the main process's UpdateManager at launch and at every periodic check. Off means
+        // Studio never asks on its own; the Check button in the panel below and the tray's Check
+        // for Updates row still work, so this turns off the *asking*, not the feature.
         key: UPDATE_AUTO_CHECK_KEY,
         category: "general",
         scope: SettingScope.Global,
         type: SettingValueType.Boolean,
-        label: "Check for updates at launch",
+        label: "Check for updates automatically",
         labelKey: "update.setting.checkOnLaunch.label",
-        description: "Asks GitHub once, shortly after Studio starts. Downloads never begin on their own.",
+        description: "Asks for a newer version shortly after Studio starts, and every few hours while it runs.",
         descriptionKey: "update.setting.checkOnLaunch.description",
         defaultValue: true,
+    },
+    {
+        // Read by the main process's UpdateManager whenever a check finds a version. Off brings back
+        // the two presses: the check announces the version, Download in the panel starts it.
+        key: UPDATE_AUTO_DOWNLOAD_KEY,
+        category: "general",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Download updates automatically",
+        labelKey: "update.setting.autoDownload.label",
+        description: "A new version is downloaded and prepared in the background. Restarting Studio applies it.",
+        descriptionKey: "update.setting.autoDownload.description",
+        defaultValue: true,
+        // Only Windows installs its own updates; elsewhere there is nothing for this to download.
+        visible: () => isWindowsPlatform(),
+    },
+    {
+        // Read by the main process's UpdateManager at every check (`updateSource.ts`). Automatic asks
+        // GitHub and GitCode, which hold the same files, and downloads from whichever is faster
+        // right now; naming one asks only that one. Shown everywhere: on macOS it still decides
+        // where Studio looks for a newer version and which release page it links to.
+        key: UPDATE_SOURCE_KEY,
+        category: "general",
+        scope: SettingScope.Global,
+        type: SettingValueType.Enum,
+        label: "Update download source",
+        labelKey: "update.setting.source.label",
+        description: "Where new versions are downloaded from. Automatic compares GitHub and GitCode and uses the faster one.",
+        descriptionKey: "update.setting.source.description",
+        defaultValue: "auto",
+        options: [...UPDATE_SOURCE_PREFERENCES],
+        optionLabels: {
+            auto: "Automatic",
+            github: "GitHub",
+            gitcode: "GitCode (mainland China)",
+        },
+        optionLabelKeys: {
+            auto: "update.setting.source.options.auto",
+            gitcode: "update.setting.source.options.gitcode",
+        },
     },
     {
         // Rendered by `SETTING_PANELS.softwareUpdate`. Nothing is stored under this key: the state
@@ -961,6 +1018,36 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: "",
     },
     {
+        // Rendered by `SETTING_PANELS.agentAccess`. Nothing is stored under this key: agent access
+        // lives in main (`<userData>/agent-mcp.json`, owner-only), because it holds the token and
+        // decides whether an outside program may change a project - and every renderer can write
+        // the settings store. The panel reads and writes it over a Settings-only channel.
+        key: "agent.access",
+        category: "agent",
+        scope: SettingScope.Global,
+        type: SettingValueType.Custom,
+        panel: "agentAccess",
+        label: "MCP endpoint",
+        labelKey: "settings.items.agentAccess.label",
+        description: "",
+        defaultValue: null,
+    },
+    {
+        // Follow mode, read by each workspace's `AgentFollowService` and switched from there by the
+        // Agent menu and the status bar cell - one value for every project and window. An ordinary
+        // preference in the settings store, unlike the endpoint above: it grants an agent nothing,
+        // it only decides whether the author is taken to what the agent changed.
+        key: AGENT_FOLLOW_KEY,
+        category: "agent",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Follow the agent's edits",
+        labelKey: "settings.items.agentFollow.label",
+        description: "Open each page, scene or blueprint an agent changes, bring it to the front and outline the change.",
+        descriptionKey: "settings.items.agentFollow.description",
+        defaultValue: AGENT_FOLLOW_DEFAULT,
+    },
+    {
         // Rendered by `SETTING_PANELS.projectTrust`. Nothing is stored under this key; the ledger
         // lives in main, under `authorization/`, where no renderer can reach it.
         key: "data.projectTrust",
@@ -1192,15 +1279,15 @@ export const AppSettings: AppSettingDefinition[] = [
     },
     {
         // Read by the main process (downloadProxy) on every Studio download. Off is
-        // direct, as today. On, those downloads follow this computer's proxy. There is
-        // no address to type: the operating system already has one.
+        // direct, as today. On, those downloads follow the proxy set in the operating
+        // system. There is no address to type: the operating system already has one.
         key: USE_SYSTEM_PROXY_KEY,
         category: "network",
         scope: SettingScope.Global,
         type: SettingValueType.Boolean,
-        label: "Use this computer's proxy",
+        label: "Use system proxy settings",
         labelKey: "settings.items.useSystemProxy.label",
-        description: "Studio downloads follow the proxy this computer already uses.",
+        description: "Studio downloads connect through the proxy set in the operating system.",
         descriptionKey: "settings.items.useSystemProxy.description",
         defaultValue: false,
     },

@@ -373,6 +373,31 @@ export const lint = {
                 + "- 在该行的「结束后显示的页面」中选择一个页面\n"
                 + "- 需要结束故事并记录结局时，改用 /ending 行",
         },
+        storyInputActionMissing: {
+            title: "等待已删除的输入动作",
+            description: "指定的输入动作已不在项目中的 /waitinput、/hold 或 /mash 行",
+            message: "该行等待的输入动作已不在项目中，剧情将永久停在此行",
+            timed: "该行等待的输入动作已不在项目中，时限结束时该行总是判定为失败",
+            help:
+                "/waitinput、/hold 或 /mash 行指定的输入动作已从项目的输入设置中删除\n"
+                + "\n"
+                + "任何输入都无法触发该动作。未设置时限时剧情停在此行；设置了时限时该行总是判定为失败\n"
+                + "\n"
+                + "- 在该行的「输入动作」中选择一个现有动作\n"
+                + "- 清空该字段以接受任意输入动作",
+        },
+        storyInputLockedDialogue: {
+            title: "锁定段落中的对白",
+            description: "/input lock 之后、/input unlock 之前出现的对白或 /wait click",
+            message: "此处玩家输入已锁定，该行无法推进；请在其前方添加 /input unlock",
+            help:
+                "/input lock 会使点击推进、推进键、自动播放与快进全部失效，直到执行 /input unlock 行；选项仍可正常选择\n"
+                + "\n"
+                + "锁定段落中的对白或 /wait click 需要玩家推进，而玩家无法推进，剧情会停在该处\n"
+                + "\n"
+                + "- 在该行之前添加 /input unlock 行\n"
+                + "- 检查不会逐个分支分析：某个分支内的锁定或解锁也会作用于其后书写的行。在分支内锁定或解锁的段落可能被误报，也可能被漏报",
+        },
         storyEndingNameDuplicate: {
             title: "同名的两个结局",
             description: "多个结局使用了同一个显示名称",
@@ -1347,7 +1372,7 @@ export const lint = {
     },
     settings: {
         runOnBuild: "构建前检查",
-        runOnBuildHint: "将项目检查纳入正式构建",
+        runOnBuildHint: "将项目检查纳入生产构建",
         failBuildOn: "中止构建的级别",
         failBuildOnError: "错误",
         failBuildOnWarning: "警告及错误",

@@ -372,10 +372,10 @@ export function formatBlueprintDuration(milliseconds: number, style: BlueprintTi
 /**
  * A moment in the reader's own conventions, via `Intl.DateTimeFormat`.
  *
- * `locale` is a BCP 47 tag; empty means the runtime's own, which in a shipped game is the player's
- * system setting. It is an input rather than something read from the game because the game's
- * language is an async host call that a pure node cannot make - an author wanting the two to agree
- * wires `Get Current Language` into it, and that wire is the only honest way to say so.
+ * `locale` is a BCP 47 tag; empty means `Intl`'s own default, the machine's language. A node with an
+ * empty Locale never gets that far while a game has a language: its resolver hands this the language
+ * the game's text is in (`graphParamResolvers`), so a date reads in the same language as the words
+ * around it. Blank reaches here only where nothing has a language to give.
  *
  * Both halves set to `none` would ask `Intl` to print nothing, which it answers with a date anyway;
  * an empty string is the more truthful answer to "show me neither".
@@ -442,7 +442,7 @@ export function formatBlueprintRelativeTime(input: {
     }
 }
 
-/** An empty or blank tag means "the runtime's own locale", which `Intl` spells as `undefined`. */
+/** An empty or blank tag means `Intl`'s default locale, which it spells as `undefined`. */
 function normalizeLocale(locale: string): string | undefined {
     const trimmed = locale.trim();
     return trimmed.length > 0 ? trimmed : undefined;

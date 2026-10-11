@@ -204,6 +204,70 @@ describe("narraleaf-studio:route-coverage", () => {
         });
     });
 
+    it("judges a condition picked from the dropdowns, and names it as its row reads", async () => {
+        // `Affection` is declared only in the project registry, as every project variable is, and
+        // nothing raises it from 30. The first `if` asks for 100 and can never hold; the second asks
+        // for 10 and always does. Both are stored the way the condition editor's dropdowns store them.
+        const affection: VariableRegistryEntry = {
+            id: "affection",
+            name: "Affection",
+            scope: "saved",
+            storageKey: "affection",
+            valueType: "number",
+            defaultValue: 30,
+        };
+        const fork = (id: string, value: number) => ({
+            [id]: { id, kind: "control", parentId: null, childrenIds: [`${id}-arm`], payload: { control: "condition" } },
+            [`${id}-arm`]: {
+                id: `${id}-arm`,
+                kind: "control",
+                parentId: id,
+                childrenIds: [`${id}-jump`],
+                payload: {
+                    control: "conditionBranch",
+                    branch: "if",
+                    condition: {
+                        kind: "variable",
+                        target: { scope: "saved", variableId: "affection" },
+                        operator: "greaterOrEqual",
+                        value,
+                    },
+                },
+            },
+            [`${id}-jump`]: { id: `${id}-jump`, kind: "jump", parentId: `${id}-arm`, childrenIds: [], payload: { targetSceneId: "close" } },
+        });
+        const document = story();
+        document.scenes.opening = {
+            ...document.scenes.opening,
+            rootBlockIds: ["never", "always", "j"],
+            blocks: {
+                ...document.scenes.opening.blocks,
+                ...fork("never", 100),
+                ...fork("always", 10),
+            } as StoryDocument["scenes"][string]["blocks"],
+        };
+
+        const { verdict, findings } = await run(host(recollection(), [], { document, registry: [affection] }));
+
+        expect(findings).toEqual([expect.objectContaining({
+            severity: "warning",
+            message: {
+                key: "test.builtin.routeCoverage.finding.conditionUnreachable",
+                // The chip's words for the row the finding opens: the registry's name, never an id
+                // and never the word for an unnamed variable.
+                params: { condition: "Affection is at least 100" },
+            },
+            target: expect.objectContaining({ blockId: "never-arm" }),
+        })]);
+        expect(verdict).toEqual({
+            status: "failed",
+            summary: {
+                key: "test.builtin.routeCoverage.summary.failed",
+                params: { scenes: 0, options: 0, conditions: 1, endings: 0 },
+            },
+        });
+    });
+
     it("declines, naming the node, when the scene is put together while the game runs", async () => {
         const { verdict, findings } = await run(host(
             recollection(["join", "result"], [{ id: "join", type: "blueprint.string.concat", params: { a: "chapter-", b: "3" } }]),
