@@ -1319,7 +1319,7 @@
           "layout": {
             "x": 16,
             "y": 300,
-            "width": 110,
+            "width": 200,
             "height": 24,
             "visible": true,
             "opacity": 1
@@ -1505,9 +1505,9 @@
           "parentId": "5107c0a1-0000-4000-8000-000000000001",
           "childrenIds": [],
           "layout": {
-            "x": 132,
+            "x": 222,
             "y": 300,
-            "width": 204,
+            "width": 136,
             "height": 24,
             "visible": true,
             "opacity": 1
@@ -2255,9 +2255,9 @@
           "parentId": "5107c0a1-0000-4000-8000-000000000001",
           "childrenIds": [],
           "layout": {
-            "x": 340,
+            "x": 364,
             "y": 300,
-            "width": 100,
+            "width": 76,
             "height": 24,
             "visible": true,
             "opacity": 1
@@ -50913,7 +50913,7 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-10-11T00:40:41.484Z"
+    "updatedAt": "2026-10-11T01:02:35.591Z"
   },
   "structs": {},
   "entrySurfaceId": "5107c0a1-0000-4000-8000-000000000500"
