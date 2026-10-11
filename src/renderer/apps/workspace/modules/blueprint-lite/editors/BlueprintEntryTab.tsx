@@ -101,6 +101,7 @@ import {
     type BlueprintMinimapPreference,
 } from "../flow/blueprintMinimapPreference";
 import { useBlueprintDiagnostics } from "../hooks/useBlueprintDiagnostics";
+import { useBlueprintNodeCatalogRevision } from "../hooks/useBlueprintNodeCatalogRevision";
 import { useAssetNameGaps } from "../hooks/useAssetNameGaps";
 import { useBlueprintDragConnectSettings } from "../hooks/useBlueprintDragConnectSettings";
 import { useBlueprintEditorState, type BlueprintEditorGraphView } from "../state/useBlueprintEditorState";
@@ -626,6 +627,8 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const historyService = context.services.get<HistoryService>(Services.History);
     const panelStateService = context.services.get<PanelStateService>(Services.PanelState);
     const nodeCatalog = context.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
+    // A plugin's nodes are registered when it loads, which can be after this tab has drawn them.
+    const nodeCatalogRevision = useBlueprintNodeCatalogRevision(nodeCatalog);
     const runtimeBridge = context.services.get<UIRuntimeBridgeService>(Services.RuntimeBridge);
     const storyService = context.services.get<StoryService>(Services.Story);
     const characterService = context.services.get<CharacterService>(Services.Character);
@@ -812,7 +815,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         nodeId: editor.selectedNodeIds.length === 1 ? editor.selectedNodeIds[0] : null,
     });
     const assetNameGaps = useAssetNameGaps(context);
-    const diagnostics = useBlueprintDiagnostics(doc, payload.blueprintId, revision + registryRevision, {
+    const diagnostics = useBlueprintDiagnostics(doc, payload.blueprintId, revision + registryRevision + nodeCatalogRevision, {
         assetNameGaps,
         widgetElement,
         // The same document the palette walks, so the two agree about which element a list draws.
@@ -2460,6 +2463,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 <div className="min-h-0 flex-1">
                     <BlueprintFlowCanvas
                         nodeCatalog={nodeCatalog}
+                        nodeCatalogRevision={nodeCatalogRevision}
                         graphKey={graphKey}
                         ir={ir}
                         revision={revision}

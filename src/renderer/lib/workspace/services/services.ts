@@ -1058,6 +1058,10 @@ interface IBlueprintNodeCatalogService extends IService {
     ensureBuiltinsRegistered(): void;
     register(def: BlueprintNodeDef, options?: { ownerPluginId?: string; replaceExisting?: boolean }): void;
     registerMany(defs: BlueprintNodeDef[], options?: { ownerPluginId?: string; replaceExisting?: boolean }): void;
+    /** Goes up with every registration; see {@link onCatalogChanged}. */
+    getCatalogRevision(): number;
+    /** Called after node types are registered - a plugin's arrive after the editors have drawn. */
+    onCatalogChanged(handler: () => void): () => void;
     registerDynamicSelectOptionsSource(
         sourceId: string,
         provider: () => BlueprintInspectorParamSelectOption[],

@@ -430,6 +430,11 @@ export function removeBlueprintNodeFromIr(ir: BlueprintGraphIr, nodeId: string):
 
 type BlueprintFlowCanvasInnerProps = {
     nodeCatalog: IBlueprintNodeCatalogService;
+    /**
+     * The catalogue's revision (`getCatalogRevision`). A change redraws every card: node types a
+     * plugin registers after this canvas drew them stop being unknown nodes.
+     */
+    nodeCatalogRevision?: number;
     graphKey: string;
     ir: BlueprintGraphIr;
     revision: number;
@@ -615,6 +620,7 @@ function syncSameGraphFnCallSnapshots(ir: BlueprintGraphIr, currentBlueprintId: 
 
 function BlueprintFlowCanvasInner({
     nodeCatalog,
+    nodeCatalogRevision = 0,
     graphKey,
     ir,
     revision,
@@ -1049,7 +1055,7 @@ function BlueprintFlowCanvasInner({
         /** The translator the wires were named with; a new one is a language switch. */
         t: typeof t;
     } | null>(null);
-    const lastNodeCatalogRef = useRef(nodeCatalog);
+    const lastNodeCatalogRef = useRef({ catalog: nodeCatalog, revision: nodeCatalogRevision });
 
     /**
      * The creation menu holds its own open/closed state and is reached through this handle.
@@ -1198,8 +1204,9 @@ function BlueprintFlowCanvasInner({
         syncedGraphKeyRef.current = graphKey;
 
         const prevStruct = lastStructuralRef.current;
-        const catalogChanged = lastNodeCatalogRef.current !== nodeCatalog;
-        lastNodeCatalogRef.current = nodeCatalog;
+        const catalogChanged =
+            lastNodeCatalogRef.current.catalog !== nodeCatalog || lastNodeCatalogRef.current.revision !== nodeCatalogRevision;
+        lastNodeCatalogRef.current = { catalog: nodeCatalog, revision: nodeCatalogRevision };
         const structural =
             catalogChanged ||
             !prevStruct ||
@@ -1317,6 +1324,7 @@ function BlueprintFlowCanvasInner({
         structTypeContext,
         graphKey,
         nodeCatalog,
+        nodeCatalogRevision,
         revision,
         blueprintSelectedNodesDependencyKey(selectedNodeIds),
         pendingPlacementEntry,
