@@ -139,17 +139,42 @@ Claude Desktop example.
 
 ### 3. Give your agent the skill
 
-The skill is the folder `narraleaf-make-game/`. Copy the whole folder (not just `SKILL.md`) to where
-your agent looks for skills (do the same with `narraleaf-port-renpy/` if you are porting a Ren'Py
-game - it relies on `narraleaf-make-game`, so install both):
+The skill is the folder `narraleaf-make-game/`. `narraleaf-port-renpy/` is the Ren'Py porting skill; it
+relies on `narraleaf-make-game`, so install both if you are porting a Ren'Py game.
+
+#### With npx
+
+With Node.js installed, the [`skills`](https://github.com/vercel-labs/skills) command (a third-party
+tool by Vercel Labs) copies the skills into the folders your agents read:
+
+```sh
+npx skills add NarraLeaf/Skills -g
+```
+
+It asks which skills to install and for which agents. To answer up front:
+
+```sh
+npx skills add NarraLeaf/Skills -g --skill narraleaf-make-game -a claude-code -a codex
+```
+
+`-a codex` writes to `~/.agents/skills/`, which opencode, Cursor and Gemini CLI read as well, so the
+two cover all five agents. `-g` installs for your user, so the skill is there in every folder; without
+it the skill goes into the project you run the command in. `npx skills update` fetches a newer version
+later.
+
+#### By hand
+
+Copy the whole folder (not just `SKILL.md`) to where your agent looks for skills:
 
 | Agent | Personal (every folder) | One project |
 |---|---|---|
 | Claude Code | `~/.claude/skills/narraleaf-make-game/` | `.claude/skills/narraleaf-make-game/` |
-| opencode | `~/.config/opencode/skill/narraleaf-make-game/` | `.opencode/skill/narraleaf-make-game/` |
-| Codex CLI | `~/.codex/skills/narraleaf-make-game/` | - |
+| Codex, opencode, Cursor, Gemini CLI | `~/.agents/skills/narraleaf-make-game/` | `.agents/skills/narraleaf-make-game/` |
 | Claude Desktop / claude.ai | zip the folder and upload it under *Settings -> Capabilities -> Skills* | - |
-| Cursor, Gemini CLI, others | no skill folder needed - see below | |
+
+`~/.agents/skills/` is the one folder all four of those agents read; some also have a folder of their
+own (`~/.config/opencode/skills/`, `~/.cursor/skills/`, `~/.gemini/skills/`). Cursor and opencode read
+`~/.claude/skills/` too, so with the skill in both places they may list it twice. Either copy works.
 
 **The simplest way for every agent:** start your agent *inside this folder* (`NarraLeaf-Skills`).
 Agents that read `AGENTS.md` (opencode, Codex, Cursor, Gemini CLI with the setting above, and many

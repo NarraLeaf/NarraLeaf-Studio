@@ -79,7 +79,7 @@ export const onboarding = {
         skillUpload: "保存为 zip 文件，在 Claude 的 设置 > 功能 > Skills 中上传",
         skillSave: "保存 zip 文件…",
         skillSaved: "已保存到 {path}",
-        skillServed: "该应用通过 Studio 的 MCP 服务读取同一份指南，无需安装",
+        skillServed: "其他应用通过 Studio 的 MCP 服务读取同一份指南。支持 Skill 的应用可在终端中运行以下命令安装",
     },
     import: {
         action: "导入设置文件…",

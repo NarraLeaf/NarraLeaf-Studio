@@ -135,7 +135,7 @@ export const onboarding = {
         skillUpload: "Saved as a zip file to upload in Claude under Settings > Capabilities > Skills.",
         skillSave: "Save zip file…",
         skillSaved: "Saved to {path}.",
-        skillServed: "This application reads the same guide from Studio's MCP server. Nothing to install.",
+        skillServed: "Other applications read the same guide from Studio's MCP server. One that supports skills can install them with this command.",
     },
     /**
      * The way past every question at once, on the first screen. See `WelcomeStep` for why it is

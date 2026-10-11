@@ -200,7 +200,7 @@ describe("first-run setup's hold on agent access", () => {
             data: { canceled: false, path: "/Users/author/.claude/skills" },
         });
         expect(manager.installSkill).toHaveBeenCalledWith(window, "claudeCode");
-        for (const client of ["cursor", "other", "everything"]) {
+        for (const client of ["other", "everything"]) {
             expect((await new AgentInstallSkillHandler().handle(window, { client: client as never })).success).toBe(false);
         }
         expect(manager.installSkill).toHaveBeenCalledTimes(1);

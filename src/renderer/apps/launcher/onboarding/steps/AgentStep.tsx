@@ -7,12 +7,14 @@ import { cn } from "@/lib/utils/cn";
 import {
     AGENT_CLIENTS,
     AGENT_MASKED_TOKEN,
+    AGENT_SKILL_NPX_COMMAND,
     findAgentClient,
     type AgentClientDescriptor,
     type AgentClientId,
     type AgentClientSetupInfo,
 } from "@shared/agent/clients";
 import { buildAgentClientConfig } from "@shared/agent/settings";
+import { copyTextToClipboard } from "@shared/utils/copyText";
 import type { AgentQuickState } from "@shared/agent/workspaceAccess";
 import { OptionList } from "./OptionList";
 
@@ -160,22 +162,12 @@ export function AgentStep({ client: clientId, onClientChange }: AgentStepProps) 
                 <p className="mb-1.5 text-xs text-fg-subtle">
                     {enabled ? connectionHint(t, client) : t("onboarding.agent.offHint")}
                 </p>
-                <div className="relative rounded-md border border-edge bg-fill-subtle">
-                    <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap break-all py-2 pl-2.5 pr-10 font-mono text-2xs leading-relaxed text-fg-muted">
-                        {info ? <WrapAtSpaces text={buildAgentClientConfig(client.configKind, info.url, AGENT_MASKED_TOKEN, info.stdio)} /> : " "}
-                    </pre>
-                    <IconButton
-                        size="sm"
-                        variant="ghost"
-                        className="absolute right-1 top-1"
-                        disabled={!enabled || !info}
-                        aria-label={copied ? t("settings.agent.copied") : t("common.copy")}
-                        data-tip={copied ? t("settings.agent.copied") : t("common.copy")}
-                        onClick={() => void copy()}
-                    >
-                        {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
-                    </IconButton>
-                </div>
+                <CodeBox
+                    text={info ? buildAgentClientConfig(client.configKind, info.url, AGENT_MASKED_TOKEN, info.stdio) : " "}
+                    copied={copied}
+                    disabled={!enabled || !info}
+                    onCopy={() => void copy()}
+                />
             </div>
 
             <div>
@@ -190,6 +182,29 @@ export function AgentStep({ client: clientId, onClientChange }: AgentStepProps) 
             </div>
 
             {error && <p className="text-xs text-danger">{error}</p>}
+        </div>
+    );
+}
+
+/** A command or configuration to paste somewhere else, with the button that copies it. */
+function CodeBox({ text, copied, disabled, onCopy }: { text: string; copied: boolean; disabled: boolean; onCopy: () => void }) {
+    const { t } = useTranslation();
+    return (
+        <div className="relative rounded-md border border-edge bg-fill-subtle">
+            <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap break-all py-2 pl-2.5 pr-10 font-mono text-2xs leading-relaxed text-fg-muted">
+                <WrapAtSpaces text={text} />
+            </pre>
+            <IconButton
+                size="sm"
+                variant="ghost"
+                className="absolute right-1 top-1"
+                disabled={disabled}
+                aria-label={copied ? t("settings.agent.copied") : t("common.copy")}
+                data-tip={copied ? t("settings.agent.copied") : t("common.copy")}
+                onClick={onCopy}
+            >
+                {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+            </IconButton>
         </div>
     );
 }
@@ -238,9 +253,30 @@ function SkillSection({
     onInstall: () => void;
 }) {
     const { t } = useTranslation();
+    const [npxCopied, setNpxCopied] = useState(false);
+    const npxTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(() => () => {
+        if (npxTimer.current) {
+            clearTimeout(npxTimer.current);
+        }
+    }, []);
+    // Nothing secret in it, so it is copied here rather than by main.
+    const copyNpx = useCallback(async () => {
+        await copyTextToClipboard(AGENT_SKILL_NPX_COMMAND);
+        setNpxCopied(true);
+        if (npxTimer.current) {
+            clearTimeout(npxTimer.current);
+        }
+        npxTimer.current = setTimeout(() => setNpxCopied(false), COPIED_FLASH_MS);
+    }, []);
 
     if (client.skill === "served") {
-        return <p className="text-xs text-fg-subtle">{t("onboarding.agent.skillServed")}</p>;
+        return (
+            <div>
+                <p className="mb-1.5 text-xs text-fg-subtle">{t("onboarding.agent.skillServed")}</p>
+                <CodeBox text={AGENT_SKILL_NPX_COMMAND} copied={npxCopied} disabled={false} onCopy={() => void copyNpx()} />
+            </div>
+        );
     }
 
     if (client.skill === "upload") {

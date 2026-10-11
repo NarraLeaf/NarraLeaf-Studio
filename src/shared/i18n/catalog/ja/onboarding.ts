@@ -79,7 +79,7 @@ export const onboarding = {
         skillUpload: "zip として保存し、Claude の 設定 > 機能 > スキル でアップロード",
         skillSave: "zip を保存…",
         skillSaved: "{path} に保存済み",
-        skillServed: "このアプリは Studio の MCP サーバーから同じガイドを読む。インストールは不要",
+        skillServed: "ほかのアプリは Studio の MCP サーバーから同じガイドを読む。スキルに対応したアプリは次のコマンドでインストールできる",
     },
     import: {
         action: "設定ファイルを読み込む…",

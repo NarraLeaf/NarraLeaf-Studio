@@ -20,8 +20,8 @@ export type AgentClientId = "claudeCode" | "codex" | "opencode" | "claudeDesktop
  * - `folder`: it reads skill folders from a directory in the home folder, and Studio copies the
  *   bundled skills there.
  * - `upload`: it takes a skill as a zip uploaded in its own settings, and Studio writes that zip.
- * - `served`: it has no skill folder Studio can rely on, and reads the same guide from Studio's MCP
- *   server instead (the `make_game` prompt, `agent_guide`, `narraleaf://guide/*`).
+ * - `served`: Studio does not know where it keeps skills (the catch-all row), and it reads the same
+ *   guide from Studio's MCP server instead (the `make_game` prompt, `agent_guide`, `narraleaf://guide/*`).
  */
 export type AgentSkillMode = "folder" | "upload" | "served";
 
@@ -52,12 +52,19 @@ export type AgentClientDescriptor = {
  */
 export const AGENT_INSTALLED_SKILLS = ["narraleaf-make-game", "narraleaf-port-renpy"] as const;
 
+/**
+ * Installing the skills from the published repository with the `skills` command (Vercel Labs),
+ * which knows the skill folders of many more agents than this table. Offered for the catch-all row.
+ */
+export const AGENT_SKILL_NPX_COMMAND = "npx skills add NarraLeaf/Skills -g";
+
 /** The file name of the zip written for clients that take an uploaded skill. */
 export const AGENT_SKILL_ZIP_NAME = "narraleaf-make-game.zip";
 
 /**
- * In the order setup lists them. Codex and opencode share `~/.agents/skills`, which both read; an
- * opencode that also finds the same skill under `~/.claude/skills` reads one copy of the same text.
+ * In the order setup lists them. Codex, opencode, Cursor and Gemini CLI all read `~/.agents/skills`,
+ * so the four share it; Cursor and opencode also read `~/.claude/skills`, and may list a skill twice
+ * when it is in both - one copy of the same text either way.
  */
 export const AGENT_CLIENTS: readonly AgentClientDescriptor[] = [
     {
@@ -101,7 +108,8 @@ export const AGENT_CLIENTS: readonly AgentClientDescriptor[] = [
         configKind: "json",
         configIsCommand: false,
         configFile: "~/.cursor/mcp.json",
-        skill: "served",
+        skill: "folder",
+        skillDir: [".agents", "skills"],
     },
     {
         id: "geminiCli",
@@ -109,7 +117,8 @@ export const AGENT_CLIENTS: readonly AgentClientDescriptor[] = [
         configKind: "gemini",
         configIsCommand: false,
         configFile: "~/.gemini/settings.json",
-        skill: "served",
+        skill: "folder",
+        skillDir: [".agents", "skills"],
     },
     {
         id: "other",

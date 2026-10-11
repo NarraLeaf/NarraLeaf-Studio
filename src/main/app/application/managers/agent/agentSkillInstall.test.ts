@@ -33,6 +33,8 @@ describe("where each client's skill goes", () => {
         expect(agentSkillDir(home, findAgentClient("claudeCode")!)).toBe(path.join(home, ".claude", "skills"));
         expect(agentSkillDir(home, findAgentClient("codex")!)).toBe(path.join(home, ".agents", "skills"));
         expect(agentSkillDir(home, findAgentClient("opencode")!)).toBe(path.join(home, ".agents", "skills"));
+        expect(agentSkillDir(home, findAgentClient("cursor")!)).toBe(path.join(home, ".agents", "skills"));
+        expect(agentSkillDir(home, findAgentClient("geminiCli")!)).toBe(path.join(home, ".agents", "skills"));
         for (const client of AGENT_CLIENTS.filter(entry => entry.skill !== "folder")) {
             expect(agentSkillDir(home, client)).toBeNull();
         }
