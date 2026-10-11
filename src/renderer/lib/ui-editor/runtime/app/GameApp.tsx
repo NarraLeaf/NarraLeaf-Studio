@@ -967,6 +967,14 @@ export function GameApp(props: GameAppProps): ReactNode {
     // The boot preload mounts the environment (fires gameReady) but does NOT enter — this stays false
     // until Start Game / Load Save.
     const gameEnteredRef = useRef(false);
+    /**
+     * Whether an `/ending` row has already answered how this run ends.
+     *
+     * The row is usually the last one, so the engine reports the story's own end right behind it -
+     * and that end lands on the build's ending page. The row's answer stands instead: its own page,
+     * the build's, or none at all. Reset whenever a run is entered.
+     */
+    const endingAnsweredRef = useRef(false);
     /** Every time `gameEnteredRef` turns true; see `GameAppTestState.entries`. */
     const gameEntriesRef = useRef(0);
     /**
@@ -3064,10 +3072,15 @@ export function GameApp(props: GameAppProps): ReactNode {
      * behaviour every build had before the ending page existed: the last frame stays on screen. A
      * default screen here would be one nobody authored, shown to players of projects that never
      * asked for it.
+     *
+     * Nor when a row has already ended the run. An `/ending` or a `/quit` row is usually the last
+     * one, so the engine reports the story's end right behind it; the row has already put its own
+     * page up (which turned `gameEnteredRef` off) or decided to show none (`endingAnsweredRef`), and
+     * opening the build's page as well put that page over the one the row chose.
      */
     const endingSurfaceId = host.endingSurfaceId?.trim() ?? "";
     const handleStoryEnd = useCallback(() => {
-        if (!endingSurfaceId) {
+        if (!endingSurfaceId || !gameEnteredRef.current || endingAnsweredRef.current) {
             return;
         }
         void quitGame(endingSurfaceId).catch(error => {
@@ -3098,6 +3111,9 @@ export function GameApp(props: GameAppProps): ReactNode {
      * shape - an ending as the last row of a branch - there is nothing left to play either way.
      */
     const handleEndingReached = useCallback((ending: StoryEndingReach) => {
+        // The row's answer is the run's answer, page or no page: the story's own end, reported
+        // right behind this row, must not open the build's page over it (see `handleStoryEnd`).
+        endingAnsweredRef.current = true;
         const persistence = endingsPersistence();
         const recorded = persistence
             ? markEndingReached(persistence, ending.endingId).catch(error => {
@@ -3693,6 +3709,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         // below, because both of them are the save being applied.
         playtime.seedRun(storedPlaytimeSeconds ?? 0);
         gameEnteredRef.current = true;
+        endingAnsweredRef.current = false;
         gameEntriesRef.current += 1;
         if (outcome.storyChanged) {
             // The launch that put the save's own story up has already entered and revealed its
@@ -4998,6 +5015,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         // later with the reading it inherited; nothing else in the file resets it.
         playtime.seedRun(0);
         gameEnteredRef.current = true;
+        endingAnsweredRef.current = false;
         gameEntriesRef.current += 1;
         // A document imported before this point has been waiting for exactly this moment:
         // `newGame()` clears every namespace and rebuilds it from its defaults, so anything written
