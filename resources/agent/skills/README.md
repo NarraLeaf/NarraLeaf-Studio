@@ -68,7 +68,8 @@ at once, and **Ctrl+Z** (Cmd+Z) undoes its last edit like any of yours.
 ### 2. Connect your agent
 
 Replace `<PORT>` and `<TOKEN>` with the values from *Copy configuration*. The files in `mcp-configs/`
-hold the same settings.
+hold the same settings. Fill them in a copy outside this folder, or name the copy `*.local.json`
+(`.local.toml`, `.local.sh`) so git ignores it - never commit a real token.
 
 #### Claude Code
 
@@ -197,3 +198,7 @@ voice recordings to the lines they belong to:
   import from*.
 - **The agent edits the wrong project.** With several projects open, the agent must name the project
   folder; or close the others.
+
+## License
+
+MIT, in [LICENSE](LICENSE).

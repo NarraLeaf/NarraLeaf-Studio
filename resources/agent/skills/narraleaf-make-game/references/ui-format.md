@@ -117,7 +117,7 @@ One call edits one page (or component) and is one undo step:
   "surface": "Title",
   "baseRevision": 14,
   "ops": [
-    {"op": "set", "element": "c6d9dc8d-9524-4102-985e-5612b971a776", "props": {"text": "Winter Echo", "fontSize": 96}},
+    {"op": "set", "element": "c6d9dc8d-9524-4102-985e-5612b971a776", "props": {"text": "Night Train", "fontSize": 96}},
     {"op": "set", "element": "a4d2552e-a1db-4226-b224-e88d072f57b0", "props": {"imageFill.assetId": "<key art asset id>", "fillOpacity": 1}},
     {"op": "layout", "element": "1e01e9cf-1ef0-44bf-9cbf-c04422dce551", "x": 1460, "y": 640, "width": 320, "height": 60}
   ]
