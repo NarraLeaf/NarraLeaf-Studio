@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { WINDOW_ICON_DEFAULT, WINDOW_ICON_IDS, WINDOW_ICON_KEY } from "@shared/constants/windowIcon";
-import { getSettingByKey, shownSettingValue } from "./registry";
+import { AGENT_FOLLOW_KEY } from "@shared/agent/follow";
+import { GLOBAL_STATE_DEFAULTS } from "@shared/types/state/globalState";
+import { getSettingByKey, getSettingsByCategory, shownSettingValue } from "./registry";
+import { SettingValueType } from "./types";
 
 describe("shownSettingValue", () => {
     const windowIcon = getSettingByKey(WINDOW_ICON_KEY)!;
@@ -28,6 +31,17 @@ describe("shownSettingValue", () => {
         expect(theme.resolveStoredValue).toBeUndefined();
         expect(shownSettingValue(theme, "dark")).toBe("dark");
         expect(shownSettingValue(theme, undefined)).toBe(theme.defaultValue);
+    });
+});
+
+describe("the follow row", () => {
+    it("is an ordinary on/off preference in Agent access, on by default in the row and in the store", () => {
+        const follow = getSettingByKey(AGENT_FOLLOW_KEY)!;
+        expect(follow).toMatchObject({ category: "agent", type: SettingValueType.Boolean, defaultValue: true });
+        // The Settings row reads its own default and the store writes the schema's; they must agree.
+        expect(GLOBAL_STATE_DEFAULTS[AGENT_FOLLOW_KEY]).toBe(true);
+        expect(shownSettingValue(follow, undefined)).toBe(true);
+        expect(getSettingsByCategory("agent").map(setting => setting.key)).toEqual(["agent.access", AGENT_FOLLOW_KEY]);
     });
 });
 

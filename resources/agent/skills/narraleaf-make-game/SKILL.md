@@ -73,7 +73,7 @@ paused, and the directories you may import files from.
   on, every folder but Studio's own is readable without asking.
 - **No project open** - fine for a new game (step 2). For an existing one, ask for its folder.
 
-The same switches are in Studio's menu bar, under *Agent* (Chinese Studio: *智能体*).
+The same switches are in Studio's menu bar, under *Agent*.
 
 Checkpoint: you know whether you can write, which project is open, and where assets may come from.
 
