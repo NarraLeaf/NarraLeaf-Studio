@@ -162,9 +162,7 @@ import {
 } from "@/lib/workspace/services/ui-editor/blueprint/graphStructTypeInference";
 import { interfaceDocumentFreezeScope } from "../../ui-editor/uiLiveSession";
 import { BLUEPRINT_EXEC_EDGE_COLOR } from "@/lib/ui-editor/blueprint-graph-edge-style";
-import { measureEditorSidebarInset } from "@/lib/components/layout/editorSidebarInset";
 import { useHostVisible } from "@/lib/components/layout/hostVisibility";
-import { computeBlueprintRevealViewport } from "./blueprintZoom";
 import {
     blueprintWireEnds,
     describeBlueprintWireEnd,
@@ -2133,23 +2131,10 @@ function BlueprintFlowCanvasInner({
      */
     const revealWireEnd = useCallback(
         (end: BlueprintWireEnd, color: string) => {
-            const internal = getInternalNode(end.nodeId);
-            if (!internal) {
+            if (!getInternalNode(end.nodeId)) {
                 return;
             }
-            const state = store.getState();
-            const viewport = computeBlueprintRevealViewport({
-                node: {
-                    x: internal.internals.positionAbsolute.x,
-                    y: internal.internals.positionAbsolute.y,
-                    width: internal.measured.width ?? 0,
-                    height: internal.measured.height ?? 0,
-                },
-                current: getViewport(),
-                container: { width: state.width, height: state.height },
-                range: { min: state.minZoom, max: state.maxZoom },
-                inset: measureEditorSidebarInset(state.domNode),
-            });
+            const viewport = frameBlueprintNode(store.getState(), end.nodeId, getViewport());
             if (viewport) {
                 void setViewport(viewport, { duration: 220 });
             }
