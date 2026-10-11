@@ -14,14 +14,28 @@ inside a frame inside a window with `gui.*` offsets). Run the game instead:
    consent). Any 8.x SDK runs 7.4+/8.x games.
 2. Copy the game folder to your working folder, without `game/saves` and `game/cache`. Never add
    files to the original.
-3. Put `assets/zz_capture.rpy` (in this skill) into the copy's `game/`. Set `CAP_DIR`, adjust
-   `SCREENS` to the screens the game defines and `SAY_LINES` to the game's character variables (one
-   line per distinct dialogue look: each speaker style, the narrator, caption modes).
-4. Run `<sdk>/renpy.sh <copy>` (`renpy.exe` / `renpy.app` elsewhere). It shows each screen, saves a
-   PNG at the game's resolution, optionally hovers a point for a second shot, and quits. If it stops,
-   read `traceback.txt` in the copy. A window opens on the author's screen; keep runs short.
-5. For story moments (a sprite pose, a CG, a caption mode, a menu), set `STORY_LABEL` to a label and
-   capture its first lines with auto-forward on.
+3. Write a small capture script into the copy's `game/` (never the original). What works:
+   - Replace the splash screen with your own label: `config.label_overrides["splashscreen"] = "<label>"`,
+     and point `config.save_directory` somewhere new so the player's saves are never touched.
+   - Mute the mixers and set `preferences.text_cps = 0` so captures are quick and identical.
+   - For each screen: `renpy.show_screen(name, **args)`, then `renpy.call_screen` a tiny screen of
+     your own with `timer 1.2 action Function(save_png)` and `timer 2.0 action Return()`, so the
+     screen has been drawn before you capture. Save with
+     `renpy.screenshot_to_bytes((config.screen_width, config.screen_height))` written to a file.
+   - The choice screen needs `items`: objects with `caption`, `action` (`NullAction()`), `chosen`,
+     `args` and `kwargs`.
+   - Dialogue: the say screen shown on its own lacks the speaker's styles. Use a real line instead -
+     `renpy.say(character, text, interact=False)` and then the same timed screen. (A screenshot
+     taken from a `show_done` character callback on the first line is the frame *before* it.)
+   - Hover states: move the pointer (`renpy.set_mouse_pos`) and post a mouse-motion event, then
+     capture again; or take the hover images straight from the game's files.
+   - End with `renpy.quit()`.
+4. Run `<sdk>/renpy.sh <copy>` (`renpy.exe` / `renpy.app` elsewhere). A window opens on the author's
+   screen; keep runs short. If it stops, read `traceback.txt` in the copy. Check every PNG is at the
+   game's resolution.
+5. For story moments (a sprite pose, a CG, a caption mode, a menu), jump to a label with
+   auto-forward on (`preferences.afm_enable = True`, a short `afm_time`) and capture from a character
+   callback on `show_done`, comparing each shot with its line.
 
 Use the game's own images (`gui/`, button `idle`/`hover` files) for hover states the capture cannot
 force, and measure rectangles from the captures with a small script (bounding boxes of non-background

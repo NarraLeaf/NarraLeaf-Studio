@@ -14,7 +14,8 @@ NarraLeaf Studio MCP tools are available (`agent_status`, `story_apply`, `ui_pat
 
 When the user wants to bring an existing Ren'Py game (a `game/` folder with `.rpy` scripts) into
 NarraLeaf Studio, read `narraleaf-port-renpy/SKILL.md` as well and follow it; it builds on the steps
-of `narraleaf-make-game`.
+of `narraleaf-make-game`. Ren'Py porting is still being tested: tell the user it is not stable yet,
+and report the differences you could not resolve.
 
 The user watches every edit live in Studio. Write one scene or one page pass per call, announce big
 steps first, and never overwrite after a `stale_revision` refusal without reading again.

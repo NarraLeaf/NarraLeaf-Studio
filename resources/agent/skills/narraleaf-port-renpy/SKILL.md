@@ -5,6 +5,9 @@ description: Port a finished Ren'Py visual novel, with its source, into NarraLea
 
 # Port a Ren'Py game to NarraLeaf Studio
 
+> **Experimental.** Ren'Py porting is still being tested and is not stable yet. Tell the author so at
+> the start, and list every difference from the original game you could not resolve in the hand-over.
+
 You are moving a finished Ren'Py game into NarraLeaf Studio. Studio is open on the author's machine
 and you drive it through its MCP server; every write lands live and is one undo step. This skill is
 the porting method. It sits on top of **`narraleaf-make-game`**, which explains the tools, the text
@@ -17,7 +20,6 @@ formats and the order of work for any game - read its `SKILL.md` first (or `agen
 | Positions and ATL | placing anything on the stage | `references/positions-and-atl.md` |
 | Assets and media | importing | `references/assets-and-media.md` |
 | Interface | rebuilding any screen | `references/interface.md` |
-| Capture script | taking reference screenshots | `assets/zz_capture.rpy` |
 
 ## What "done" means
 
@@ -144,7 +146,7 @@ that nothing came back as an opaque `»` row you did not expect. Then:
 
 Working the layout out from `screens.rpy` alone is unreliable (nested boxes, style inheritance,
 `gui.*` indirection). **Run the Ren'Py game and screenshot every screen**, then rebuild each one in
-Studio against the picture. The full method, the capture script and the Ren'Py layout rules for the
+Studio against the picture. The full method, how to write the capture script and the Ren'Py layout rules for the
 parts you still compute are in `references/interface.md`. Per screen:
 
 1. Capture it in Ren'Py at the project's resolution.

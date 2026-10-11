@@ -8,11 +8,14 @@ Two pieces:
 
 - **NarraLeaf Studio's MCP server** - built into Studio. It gives the agent tools to create projects,
   import assets, write scenes, restyle the interface, playtest and build. Studio must be open.
-- **The `narraleaf-port-renpy` skill** (optional) - for moving an existing Ren'Py game, with its
-  source, into Studio: a converter-based method, Ren'Py-to-Studio mappings, and tracing the interface
-  from screenshots of the running Ren'Py game. It builds on `narraleaf-make-game`.
 - **The `narraleaf-make-game` skill** - the guide the agent follows: the order of work, the text
   formats it writes, interface design rules and the traps to avoid.
+- **The `narraleaf-port-renpy` skill** (optional, **experimental**) - for moving an existing Ren'Py
+  game, with its source, into Studio: a converter-based method, Ren'Py-to-Studio mappings, and tracing
+  the interface from screenshots of the running Ren'Py game. It builds on `narraleaf-make-game`.
+
+> **Ren'Py porting is still being tested and is not stable yet.** Expect gaps and differences from the
+> original game, and check the result yourself before you rely on it.
 
 ```
 NarraLeaf-Skills/
@@ -20,7 +23,7 @@ NarraLeaf-Skills/
   AGENTS.md                  pointer for agents that read AGENTS.md
   mcp-configs/               ready-made connection settings per agent
   narraleaf-make-game/       the skill (SKILL.md + references/ + assets/)
-  narraleaf-port-renpy/      the Ren'Py porting skill (needs narraleaf-make-game too)
+  narraleaf-port-renpy/      the Ren'Py porting skill - experimental (needs narraleaf-make-game too)
 ```
 
 ## 1. Switch on agent access in Studio
