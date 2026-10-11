@@ -162,7 +162,7 @@ export function AgentStep({ client: clientId, onClientChange }: AgentStepProps) 
                 </p>
                 <div className="relative rounded-md border border-edge bg-fill-subtle">
                     <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap break-all py-2 pl-2.5 pr-10 font-mono text-2xs leading-relaxed text-fg-muted">
-                        {info ? buildAgentClientConfig(client.configKind, info.url, AGENT_MASKED_TOKEN, info.stdio) : " "}
+                        {info ? <WrapAtSpaces text={buildAgentClientConfig(client.configKind, info.url, AGENT_MASKED_TOKEN, info.stdio)} /> : " "}
                     </pre>
                     <IconButton
                         size="sm"
@@ -191,6 +191,22 @@ export function AgentStep({ client: clientId, onClientChange }: AgentStepProps) 
 
             {error && <p className="text-xs text-danger">{error}</p>}
         </div>
+    );
+}
+
+/**
+ * A configuration broken only where it has spaces. Left to itself the browser also breaks after a
+ * hyphen, which split `--header` across two lines and read as two words. Each run between spaces
+ * holds together; one longer than the box (a path to Studio's executable) still breaks, through the
+ * `break-all` on the box, rather than running out of it.
+ */
+function WrapAtSpaces({ text }: { text: string }) {
+    return (
+        <>
+            {text.split(/(\s+)/).map((part, index) => (
+                /\s/.test(part) || part === "" ? part : <span key={index} className="inline-block max-w-full whitespace-pre-wrap">{part}</span>
+            ))}
+        </>
     );
 }
 
