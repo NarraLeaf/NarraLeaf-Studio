@@ -65,7 +65,9 @@ export function agentMenuStatusLine(t: Translator["t"], clientName: string | nul
 /** The configurations the copy submenu offers, in its order, with the row label each takes. */
 export const AGENT_MENU_COPY_KINDS: readonly { kind: AgentCopyConfigKind; label: string | null; labelKey?: TranslationKey }[] = [
     { kind: "claudeCode", label: "Claude Code" },
+    { kind: "codex", label: "Codex" },
     { kind: "opencode", label: "opencode" },
+    { kind: "gemini", label: "Gemini CLI" },
     { kind: "json", label: "JSON" },
     { kind: "stdio", label: null, labelKey: "workspace.agent.appMenu.copyStdio" },
 ];

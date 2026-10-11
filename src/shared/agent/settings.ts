@@ -140,14 +140,15 @@ export function agentEndpointUrl(port: number): string {
 /** The name a client registers the server under. Short, because some clients prefix tool names with it. */
 export const AGENT_CLIENT_SERVER_KEY = "narraleaf";
 
-export type AgentClientConfigKind = "claudeCode" | "json" | "opencode" | "stdio";
+export type AgentClientConfigKind = "claudeCode" | "json" | "opencode" | "stdio" | "codex" | "gemini";
 
 /**
  * Ready-to-paste configuration for one kind of client.
  *
  * Built in one place so the shapes cannot drift apart: Claude Code takes a command line, most
  * clients (Cursor, Gemini CLI, Claude Desktop through mcp-remote) read the `mcpServers` JSON shape,
- * opencode has its own `mcp` block with `type: "remote"`, and a client that only launches local
+ * opencode has its own `mcp` block with `type: "remote"`, Codex reads a TOML table, Gemini CLI names
+ * the address `httpUrl` (its `url` means the older SSE transport), and a client that only launches local
  * programs gets the same `mcpServers` shape naming Studio's own executable with
  * {@link AGENT_MCP_STDIO_FLAG}. That last one needs `stdio`, which only main can fill in.
  */
@@ -167,6 +168,15 @@ export function buildAgentClientConfig(kind: AgentClientConfigKind, url: string,
             return JSON.stringify({ mcpServers: { [AGENT_CLIENT_SERVER_KEY]: { type: "http", url, headers } } }, null, 2);
         case "opencode":
             return JSON.stringify({ mcp: { [AGENT_CLIENT_SERVER_KEY]: { type: "remote", url, headers } } }, null, 2);
+        case "codex":
+            // JSON.stringify writes a valid TOML basic string for anything a URL or a token holds.
+            return [
+                `[mcp_servers.${AGENT_CLIENT_SERVER_KEY}]`,
+                `url = ${JSON.stringify(url)}`,
+                `http_headers = { "Authorization" = ${JSON.stringify(headers.Authorization)} }`,
+            ].join("\n");
+        case "gemini":
+            return JSON.stringify({ mcpServers: { [AGENT_CLIENT_SERVER_KEY]: { httpUrl: url, headers } } }, null, 2);
     }
 }
 

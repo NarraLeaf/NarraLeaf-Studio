@@ -6,11 +6,13 @@ import { AppLayout } from "@/lib/components/layout";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { APP_DISPLAY_NAME } from "@shared/constants/app";
+import type { AgentClientId } from "@shared/agent/clients";
 import type { TranslationKey } from "@shared/i18n";
 import { WindowControlPolicy } from "@shared/types/window";
 import { OnboardingPreferencesProvider } from "./onboardingPreferences";
 import { OnboardingServersProvider } from "./onboardingServers";
 import { StudioPreview, type PreviewSurfaceId } from "./preview/StudioPreview";
+import { AgentStep } from "./steps/AgentStep";
 import { AppearanceStep } from "./steps/AppearanceStep";
 import { DoneStep } from "./steps/DoneStep";
 import { IdentityStep } from "./steps/IdentityStep";
@@ -20,14 +22,14 @@ import { TeamStep } from "./steps/TeamStep";
 import { WelcomeStep } from "./steps/WelcomeStep";
 import { ZoomStep } from "./steps/ZoomStep";
 
-const STEPS = ["welcome", "language", "appearance", "zoom", "identity", "team", "story", "done"] as const;
+const STEPS = ["welcome", "language", "appearance", "zoom", "identity", "team", "story", "agent", "done"] as const;
 
 /**
  * What the count counts: screens behind you, not the screen you are on.
  *
  * The welcome screen is the way in rather than a question, so it reads 0 - nothing has been
- * answered yet, and a run that says "1 of 8" before asking anything overstates itself. The last
- * screen reads 7 of 7, which is the one place a progress count should be full.
+ * answered yet, and a run that says "1 of 9" before asking anything overstates itself. The last
+ * screen reads 8 of 8, which is the one place a progress count should be full.
  */
 const PROGRESS_TOTAL = STEPS.length - 1;
 
@@ -123,6 +125,13 @@ const SCREENS: Record<OnboardingStep, {
         expectation: "onboarding.story.expectation",
         surface: "story",
     },
+    agent: {
+        rail: "onboarding.steps.agent",
+        title: "onboarding.agent.title",
+        expectation: "onboarding.agent.expectation",
+        // What a connected agent edits, live, while the author watches: a scene.
+        surface: "story",
+    },
     done: {
         rail: "onboarding.steps.done",
         title: "onboarding.done.title",
@@ -144,7 +153,7 @@ export interface OnboardingFlowProps {
 }
 
 /**
- * First-run setup: eight screens inside the launcher window - a way in, six questions and a closing
+ * First-run setup: nine screens inside the launcher window - a way in, seven questions and a closing
  * screen.
  *
  * **The question on the left, what it does on the right.** Everything setup sets applies the moment
@@ -187,6 +196,8 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
      * says.
      */
     const [zoomSurface, setZoomSurface] = useState<PreviewSurfaceId>("dashboard");
+    /** Which agent application the agent access screen is showing, kept across walking past it. */
+    const [agentClient, setAgentClient] = useState<AgentClientId>("claudeCode");
     /**
      * Whether Skip has been pressed and not yet answered.
      *
@@ -315,6 +326,7 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
                                             {step === "identity" && <IdentityStep />}
                                             {step === "team" && <TeamStep />}
                                             {step === "story" && <StoryStep />}
+                                            {step === "agent" && <AgentStep client={agentClient} onClientChange={setAgentClient} />}
                                             {step === "done" && <DoneStep />}
                                         </div>
                                     </motion.div>

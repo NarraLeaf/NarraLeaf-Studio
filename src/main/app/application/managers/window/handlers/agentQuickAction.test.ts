@@ -3,7 +3,9 @@ import { WindowAppType } from "@shared/types/window";
 import type { AgentSettingsSnapshot } from "@shared/agent/settings";
 import type { AppWindow } from "../appWindow";
 import {
+    AgentClientSetupHandler,
     AgentCopyConfigHandler,
+    AgentInstallSkillHandler,
     AgentExportSkillHandler,
     AgentQuickStateHandler,
     AgentQuickToggleHandler,
@@ -38,7 +40,7 @@ const SNAPSHOT: AgentSettingsSnapshot = {
     pluginTools: [],
 };
 
-function makeWindow(windowType: WindowAppType = WindowAppType.Workspace) {
+function makeWindow(windowType: WindowAppType = WindowAppType.Workspace, { inSetup = false }: { inSetup?: boolean } = {}) {
     const manager = {
         snapshot: vi.fn(async () => SNAPSHOT),
         quickToggle: vi.fn(async () => ({ ...SNAPSHOT, allowWrites: true })),
@@ -46,11 +48,13 @@ function makeWindow(windowType: WindowAppType = WindowAppType.Workspace) {
         exportSkill: vi.fn(async () => ({ canceled: false as const, path: "/Users/author/Desktop/NarraLeaf-Skills" })),
         revealExportedSkill: vi.fn(() => true),
         requestFolderAccessForCall: vi.fn(async () => ({ granted: ["/Users/author/kit"], denied: [], pending: [], refused: [] })),
+        clientSetup: vi.fn(async () => ({ url: SNAPSHOT.url, stdio: SNAPSHOT.stdio, skillTargets: {} })),
+        installSkill: vi.fn(async () => ({ canceled: false as const, path: "/Users/author/.claude/skills" })),
     };
     const window = {
         getWindowType: () => windowType,
         app: { logger: { warn: vi.fn() } },
-        getApp: () => ({ getAgentManager: () => manager }),
+        getApp: () => ({ getAgentManager: () => manager, isFirstRunSetupOpen: () => inSetup }),
     } as unknown as AppWindow;
     return { window, manager };
 }
@@ -146,5 +150,59 @@ describe("the Agent menu's narrow handlers", () => {
             expect((await new AgentRequestFolderAccessHandler().handle(other.window, { callId: "call-1", paths: [] })).success).toBe(false);
             expect(other.manager.requestFolderAccessForCall).not.toHaveBeenCalled();
         }
+    });
+});
+
+describe("first-run setup's hold on agent access", () => {
+    it("lets the launcher through the menu's handlers only while setup is open", async () => {
+        const setup = makeWindow(WindowAppType.Launcher, { inSetup: true });
+        const state = await new AgentQuickStateHandler().handle(setup.window);
+        expect(state.success).toBe(true);
+        expectNoSecret(state);
+        expect((await new AgentQuickToggleHandler().handle(setup.window, { enabled: true })).success).toBe(true);
+        const copied = await new AgentCopyConfigHandler().handle(setup.window, { kind: "codex" });
+        expect(copied).toEqual({ success: true, data: { copied: true } });
+        expectNoSecret(copied);
+
+        const home = makeWindow(WindowAppType.Launcher, { inSetup: false });
+        expect((await new AgentQuickToggleHandler().handle(home.window, { enabled: true })).success).toBe(false);
+        expect((await new AgentCopyConfigHandler().handle(home.window, { kind: "codex" })).success).toBe(false);
+        expect(home.manager.quickToggle).not.toHaveBeenCalled();
+    });
+
+    it("answer the endpoint without the token, to Settings and setup only", async () => {
+        for (const { windowType, inSetup } of [
+            { windowType: WindowAppType.Launcher, inSetup: true },
+            { windowType: WindowAppType.Settings, inSetup: false },
+        ]) {
+            const { window } = makeWindow(windowType, { inSetup });
+            const result = await new AgentClientSetupHandler().handle(window);
+            expect(result.success).toBe(true);
+            expect(JSON.stringify(result)).not.toContain(TOKEN);
+        }
+        for (const { windowType, inSetup } of [
+            { windowType: WindowAppType.Workspace, inSetup: true },
+            { windowType: WindowAppType.Launcher, inSetup: false },
+            { windowType: WindowAppType.DevMode, inSetup: true },
+        ]) {
+            const { window, manager } = makeWindow(windowType, { inSetup });
+            expect((await new AgentClientSetupHandler().handle(window)).success).toBe(false);
+            expect((await new AgentInstallSkillHandler().handle(window, { client: "claudeCode" })).success).toBe(false);
+            expect(manager.clientSetup).not.toHaveBeenCalled();
+            expect(manager.installSkill).not.toHaveBeenCalled();
+        }
+    });
+
+    it("install only for a client that has a skill to install", async () => {
+        const { window, manager } = makeWindow(WindowAppType.Launcher, { inSetup: true });
+        expect(await new AgentInstallSkillHandler().handle(window, { client: "claudeCode" })).toEqual({
+            success: true,
+            data: { canceled: false, path: "/Users/author/.claude/skills" },
+        });
+        expect(manager.installSkill).toHaveBeenCalledWith(window, "claudeCode");
+        for (const client of ["cursor", "other", "everything"]) {
+            expect((await new AgentInstallSkillHandler().handle(window, { client: client as never })).success).toBe(false);
+        }
+        expect(manager.installSkill).toHaveBeenCalledTimes(1);
     });
 });

@@ -2,6 +2,7 @@ import type { ProjectTrustRecord } from "./projectTrust";
 import type { AgentCallRequest, AgentCallResult, AgentFolderAccessAnswer, AgentFolderAccessRequest } from "../agent/protocol";
 import type { AgentSettingsPatch, AgentSettingsSnapshot } from "../agent/settings";
 import type { AgentCopyConfigKind, AgentMainActivity, AgentQuickState, AgentQuickTogglePatch } from "../agent/workspaceAccess";
+import type { AgentClientId, AgentClientSetupInfo, AgentSkillInstallResult } from "../agent/clients";
 import type { AgentPluginToolDescriptor } from "../agent/pluginTools";
 import type { ProjectSessionHolder, ProjectSessionLockOutcome } from "./projectSession";
 import type { ExternalScriptEditor, ScriptOpenTargetId } from "./scriptEditors";
@@ -464,6 +465,10 @@ export interface RendererPreloadedInterface {
         exportSkill(): Promise<RequestStatus<{ canceled: true } | { canceled: false; path: string }>>;
         /** Reveal what the last `exportSkill` from this window wrote. */
         revealExportedSkill(): Promise<RequestStatus<{ revealed: boolean }>>;
+        /** First-run setup's view: the endpoint, the stdio command and each client's skill folder. Never the token. */
+        clientSetup(): Promise<RequestStatus<AgentClientSetupInfo>>;
+        /** Install the bundled skill for one agent application. */
+        installSkill(client: AgentClientId): Promise<RequestStatus<AgentSkillInstallResult>>;
         /** A call main answered itself, for the Agent log. */
         onActivity(handler: (activity: AgentMainActivity) => void): AppEventToken;
         /** The agent tools this workspace's plugins registered, the whole set. Main lists them in `tools/list`. */

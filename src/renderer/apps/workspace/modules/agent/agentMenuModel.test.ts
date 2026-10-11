@@ -117,11 +117,11 @@ describe("the Agent menu's rows", () => {
         expect(model.run.toggleFullAccess).toHaveBeenCalled();
     });
 
-    it("offers the four configurations and copies the one picked", () => {
+    it("offers every configuration and copies the one picked", () => {
         const model = input();
         const copy = buildAgentMenuItems(model).find(item => !isActionMenuSeparator(item) && item.id === AGENT_MENU_ACTIONS.copyConfig) as ActionSubmenu;
-        expect(copy.items.map(item => (item as ActionDefinition).label)).toEqual(["Claude Code", "opencode", "JSON", "stdio（Claude Desktop）"]);
-        (copy.items[3] as ActionDefinition).onClick(undefined as never);
+        expect(copy.items.map(item => (item as ActionDefinition).label)).toEqual(["Claude Code", "Codex", "opencode", "Gemini CLI", "JSON", "stdio（Claude Desktop）"]);
+        (copy.items[5] as ActionDefinition).onClick(undefined as never);
         expect(model.run.copyConfig).toHaveBeenCalledWith("stdio");
     });
 
