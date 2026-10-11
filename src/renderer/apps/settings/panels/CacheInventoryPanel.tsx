@@ -45,6 +45,11 @@ const BUCKET_LABELS: Array<{ id: CacheBucketId; labelKey: TranslationKey; descri
         descriptionKey: "settings.data.cache.buckets.psdImports.description",
     },
     {
+        id: "payloadReaders",
+        labelKey: "settings.data.cache.buckets.payloadReaders.label",
+        descriptionKey: "settings.data.cache.buckets.payloadReaders.description",
+    },
+    {
         id: "logs",
         labelKey: "settings.data.cache.buckets.logs.label",
         descriptionKey: "settings.data.cache.buckets.logs.description",

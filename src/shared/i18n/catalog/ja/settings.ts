@@ -570,6 +570,10 @@ export const settings = {
                     label: "PSD 読み込みの作業ファイル",
                     description: "PSD を読み込むときに書き出したレイヤーの画像",
                 },
+                payloadReaders: {
+                    label: "保護されたビルドの読み取りモジュール",
+                    description: "パッチや DLC を書き出すため、アセットの保護を有効にしたビルドから複製した読み取りモジュール。次に書き出すとき再び複製される",
+                },
                 logs: {
                     label: "ログ",
                     description: "診断ファイルの書き出し元となるログ",

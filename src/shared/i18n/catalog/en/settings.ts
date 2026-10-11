@@ -614,6 +614,10 @@ export const settings = {
                     label: "PSD import working files",
                     description: "Layer images written while importing a PSD.",
                 },
+                payloadReaders: {
+                    label: "Protected build readers",
+                    description: "Readers copied from builds with asset protection to export a patch or DLC. Copied again the next time one is exported.",
+                },
                 logs: {
                     label: "Logs",
                     description: "The logs an exported diagnostics file is built from.",

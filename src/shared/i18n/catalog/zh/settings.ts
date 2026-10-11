@@ -551,6 +551,10 @@ export const settings = {
                     label: "PSD 导入残留",
                     description: "导入 PSD 时写下的分层图片",
                 },
+                payloadReaders: {
+                    label: "受保护构建的读取器",
+                    description: "导出补丁或 DLC 时从启用资产保护的构建中复制的读取器，下次导出时会重新复制",
+                },
                 logs: {
                     label: "日志",
                     description: "导出诊断文件时使用的日志",
