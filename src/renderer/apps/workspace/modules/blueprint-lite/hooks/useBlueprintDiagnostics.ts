@@ -35,6 +35,7 @@ export function useBlueprintDiagnostics(
             options?.widgetBlueprintEvents,
             options?.isComponentDefinitionGraph,
             options?.assetNameGaps,
+            options?.sceneVariables,
         ],
     );
 }

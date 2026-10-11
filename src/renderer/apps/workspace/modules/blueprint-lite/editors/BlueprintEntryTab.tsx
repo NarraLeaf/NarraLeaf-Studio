@@ -54,7 +54,7 @@ import {
 } from "@shared/types/ui-editor/pageParams";
 import { BLUEPRINT_PAGE_PARAM_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/frameNodes";
 import { BLUEPRINT_SCENE_VARIABLE_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/storyVariableNodes";
-import { buildSceneVariableOptions } from "./sceneVariableOptions";
+import { buildSceneVariableOptions, sceneVariablesRunningBlueprint } from "./sceneVariableOptions";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
 import { blueprintDisplayName, isFactoryStoryBlueprintName, ownerLabelKey } from "@shared/types/ui-editor/ownerLabels";
 import { workspaceStoryBlueprintSummary } from "@/lib/story/storyBlueprintSummary";
@@ -768,6 +768,25 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         anchorElementId(bp.owner) !== null && payload.elementId
             ? uiDocument.elements[payload.elementId]
             : undefined;
+    // The scene variables a story blueprint can reach - those of the scenes whose rows run it - with
+    // their declared types, which type Get / Set Scene Var's `Value` pin. Kept as one array for as
+    // long as no variable is added, removed or retyped, so editing a story line does not retype the
+    // graph's pins.
+    const reachableSceneVariables = useMemo(
+        () =>
+            bp.owner.kind === "storyAction"
+                ? sceneVariablesRunningBlueprint(
+                      storyService.listStories().map(story => ({ id: story.id, document: storyDocumentsById[story.id] })),
+                      payload.blueprintId,
+                  )
+                : [],
+        // `storyLibraryRevision` stands in for the story list read through the service.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [bp.owner.kind, payload.blueprintId, storyDocumentsById, storyLibraryRevision, storyService],
+    );
+    const sceneVariablesKey = reachableSceneVariables.map(variable => `${variable.id}:${variable.valueType}`).join("|");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const sceneVariables = useMemo(() => reachableSceneVariables, [sceneVariablesKey]);
     /** The shapes this graph's pins are typed with: the document's lists, and the row in scope. */
     const structTypeContext = useMemo(
         () =>
@@ -777,12 +796,13 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 owner: bp.owner,
                 isComponentDefinitionGraph,
                 savedVariables: localBp.listSavedVariables(),
+                sceneVariables,
             }),
         // `uiDocumentRevision` stands in for the document read through the service, `registryRevision`
         // for the variable table read through the blueprint service, and `pageParamsRevision` for the
         // pages' parameters, read through their shared table.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [blueprintDocumentService, bp.owner, isComponentDefinitionGraph, uiDocumentRevision, registryRevision, pageParamsRevision, widgetElement],
+        [blueprintDocumentService, bp.owner, isComponentDefinitionGraph, uiDocumentRevision, registryRevision, pageParamsRevision, widgetElement, sceneVariables],
     );
     const widgetLogicEvents = useMemo(() => {
         const t = widgetElement?.type;
@@ -835,6 +855,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         // Same reasoning, other scope: a saved id is resolved against the `saved` half of the registry,
         // so the picker's options and the diagnostic's accepted set have to be the one same list.
         savedVariables: localBp.listSavedVariables(),
+        sceneVariables,
     });
     const openBlueprint = useOpenBlueprintTarget();
     const dragConnectCreate = useBlueprintDragConnectSettings();
