@@ -668,7 +668,8 @@ input[data-floating-item]:focus-visible {
 
 /*
  * The window's frame under a wallpaper: the title bar, the editor tab strips, the activity rails, the
- * version panel, the status bar, and the header strips of the docks and of the panels inside editors.
+ * version panel (whose lists read on the dock plate, see `.nl-frame-body` below), the status bar, and
+ * the header strips of the docks and of the panels inside editors.
  * Each keeps its own fill for the window without a wallpaper and adds this, which repaints it as the
  * sunken fill at the frame plate's alpha (`--nl-frame-surface-alpha`, published like the other two).
  * Clear by default, so the picture reaches every edge of the window; the fallback matches, for a
@@ -696,12 +697,30 @@ input[data-floating-item]:focus-visible {
  * panel's sticky headers and its rows' hover chip. A clear plate cannot occlude, so under a
  * wallpaper they keep at least most of the sunken paint and blur what passes beneath, which keeps
  * their text legible over the rows at any plate setting without standing as solid bars when the
- * plate is clear.
+ * plate is clear. Inside `.nl-frame-body` they follow that body's plate instead (below).
  */
 .nl-has-workspace-bg .nl-frame-surface .nl-frame-sticky {
     background-color: rgb(var(--nl-surface-sunken) / max(var(--nl-frame-surface-alpha, 0), 0.6));
     -webkit-backdrop-filter: blur(12px);
     backdrop-filter: blur(12px);
+}
+
+/*
+ * The version panel below its header. A column of the window's frame by position, but what it holds
+ * is what the docks hold - commit messages, the change list and the history in `text-2xs` - and a
+ * clear frame plate left that text on the photograph. So under a wallpaper it takes the dock plate's
+ * alpha (`--nl-sidebar-surface-alpha`), painted in its own sunken tone: with the dock plate solid it
+ * looks exactly as it does with no wallpaper. The sticky headers and the rows' hover chip inside it
+ * follow that plate instead of the frame's, so over a solid plate they are solid again - the chip
+ * composites to the hovered row's colour, as it does without a wallpaper, instead of standing out as
+ * a blurred grey block - and over a thinned one they keep the frame rule's floor and blur.
+ */
+.nl-has-workspace-bg .nl-frame-body {
+    background-color: rgb(var(--nl-surface-sunken) / var(--nl-sidebar-surface-alpha, 1));
+}
+
+.nl-has-workspace-bg .nl-frame-body .nl-frame-sticky {
+    background-color: rgb(var(--nl-surface-sunken) / max(var(--nl-sidebar-surface-alpha, 1), 0.6));
 }
 
 /*
