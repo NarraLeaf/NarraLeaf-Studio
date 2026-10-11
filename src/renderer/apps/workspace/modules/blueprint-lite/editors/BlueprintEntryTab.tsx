@@ -40,7 +40,7 @@ import { BLUEPRINT_COMPONENT_PARAM_OPTIONS_SOURCE } from "@/lib/ui-editor/bluepr
 import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
-import type { BlueprintEntryTabPayload } from "../blueprintEntryTabId";
+import { blueprintTargetKeepingLayer, type BlueprintEntryTabPayload } from "../blueprintEntryTabId";
 import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import type { StoryDocument } from "@shared/types/story";
 import { AUDIO_TRACK_ID_SOUND, audioTrackDisplayName, resolveAudioTrack } from "@shared/types/audioTrack";
@@ -1153,21 +1153,15 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             return;
         }
         // The same route a right click on any blueprint entry takes, so the window this editor
-        // moves into is named, keyed and restored exactly like one opened from outside.
-        detachBlueprint({
-            blueprintId: payload.blueprintId,
-            ownerKind: payload.ownerKind,
-            surfaceId: payload.surfaceId,
-            componentId: payload.componentId,
-            elementId: payload.elementId,
-            propPath: payload.propPath,
+        // moves into is named, keyed and restored exactly like one opened from outside. It opens on
+        // the layer this tab had open.
+        detachBlueprint(blueprintTargetKeepingLayer(
+            payload,
             // Carried across so closing the window puts back the tab that was here, name included -
             // this editor is opened under several names (the blueprint's own, the widget it belongs
             // to), and re-deriving one would rename it on the way back.
-            title:
-                findEditorTabTitle(uiService.getStore().getEditorLayout(), tabId)
-                ?? t("blueprint.tab.title"),
-        });
+            findEditorTabTitle(uiService.getStore().getEditorLayout(), tabId) ?? t("blueprint.tab.title"),
+        ));
     }, [detachBlueprint, isDetachedHost, payload, t, tabId, uiService]);
 
     /**
