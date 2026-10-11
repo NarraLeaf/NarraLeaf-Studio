@@ -7,54 +7,69 @@ import { formatBytes } from "@shared/utils/formatBytes";
 import type { CacheBucketId, CacheInventoryReport } from "@shared/types/cacheInventory";
 import type { TranslationKey } from "@shared/i18n";
 
-/** Label and one-line explanation per bucket. Order here is the order on screen. */
-const BUCKET_LABELS: Array<{ id: CacheBucketId; labelKey: TranslationKey; descriptionKey: TranslationKey }> = [
-    {
-        id: "electronBuilder",
+/**
+ * The row text of every bucket, in the order the rows are shown.
+ *
+ * Keyed by every bucket there is, so a bucket main measures cannot be left out of the list: "Clear
+ * all" clears whatever the report holds, and a bucket with no row was cleared without ever having
+ * been shown.
+ */
+const BUCKET_TEXT: Record<CacheBucketId, { labelKey: TranslationKey; descriptionKey: TranslationKey }> = {
+    electronBuilder: {
         labelKey: "settings.data.cache.buckets.electronBuilder.label",
         descriptionKey: "settings.data.cache.buckets.electronBuilder.description",
     },
-    {
-        id: "toolchains",
+    toolchains: {
         labelKey: "settings.data.cache.buckets.toolchains.label",
         descriptionKey: "settings.data.cache.buckets.toolchains.description",
     },
-    {
-        id: "buildDependencies",
+    buildDependencies: {
         labelKey: "settings.data.cache.buckets.buildDependencies.label",
         descriptionKey: "settings.data.cache.buckets.buildDependencies.description",
     },
-    {
-        id: "puppetRuntimes",
+    puppetRuntimes: {
         labelKey: "settings.data.cache.buckets.puppetRuntimes.label",
         descriptionKey: "settings.data.cache.buckets.puppetRuntimes.description",
     },
-    {
-        id: "browser",
+    optimizedImages: {
+        labelKey: "settings.data.cache.buckets.optimizedImages.label",
+        descriptionKey: "settings.data.cache.buckets.optimizedImages.description",
+    },
+    compressedMedia: {
+        labelKey: "settings.data.cache.buckets.compressedMedia.label",
+        descriptionKey: "settings.data.cache.buckets.compressedMedia.description",
+    },
+    browser: {
         labelKey: "settings.data.cache.buckets.browser.label",
         descriptionKey: "settings.data.cache.buckets.browser.description",
     },
-    {
-        id: "pluginIcons",
+    pluginIcons: {
         labelKey: "settings.data.cache.buckets.pluginIcons.label",
         descriptionKey: "settings.data.cache.buckets.pluginIcons.description",
     },
-    {
-        id: "psdImports",
+    uiTemplatePosters: {
+        labelKey: "settings.data.cache.buckets.uiTemplatePosters.label",
+        descriptionKey: "settings.data.cache.buckets.uiTemplatePosters.description",
+    },
+    spellcheckDictionaries: {
+        labelKey: "settings.data.cache.buckets.spellcheckDictionaries.label",
+        descriptionKey: "settings.data.cache.buckets.spellcheckDictionaries.description",
+    },
+    psdImports: {
         labelKey: "settings.data.cache.buckets.psdImports.label",
         descriptionKey: "settings.data.cache.buckets.psdImports.description",
     },
-    {
-        id: "payloadReaders",
+    payloadReaders: {
         labelKey: "settings.data.cache.buckets.payloadReaders.label",
         descriptionKey: "settings.data.cache.buckets.payloadReaders.description",
     },
-    {
-        id: "logs",
+    logs: {
         labelKey: "settings.data.cache.buckets.logs.label",
         descriptionKey: "settings.data.cache.buckets.logs.description",
     },
-];
+};
+
+const BUCKET_LABELS = (Object.keys(BUCKET_TEXT) as CacheBucketId[]).map(id => ({ id, ...BUCKET_TEXT[id] }));
 
 /**
  * What Studio has left on disk, per bucket, with a way to throw each away.
