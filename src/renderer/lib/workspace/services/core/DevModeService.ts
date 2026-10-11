@@ -14,10 +14,14 @@ export class DevModeService extends Service<DevModeService> {
     private status: DevModeStatus = "idle";
     private timer: ReturnType<typeof setInterval> | null = null;
     private refreshInFlight = false;
+    // Set when a read is asked for while one is already on its way: the answer that read brings may
+    // predate whatever prompted the second ask, so one more read follows it.
+    private refreshAgain = false;
     // True from the click until the launch IPC resolves. While set, the status poll is suppressed so
     // it cannot momentarily revert the optimistic "starting" back to "idle" before the main process
     // has registered the launch.
     private launchInFlight = false;
+    private consoleLogToken: { cancel: () => void } | null = null;
     private readonly events = new EventEmitter<DevModeServiceEvents>();
 
     protected async init(_ctx: WorkspaceContext): Promise<void> {
@@ -26,10 +30,22 @@ export class DevModeService extends Service<DevModeService> {
 
     public override activate(_ctx: WorkspaceContext): void {
         void this.refreshStatus();
+        // The session reports every step of its pipeline to this window's console, a status change
+        // included, and nothing else is pushed: a hot reload that is over well inside one poll
+        // interval would otherwise never reach the run cell. A line from Dev Mode while a session is
+        // up is the cue to read the status again; it is read, never parsed out of the line.
+        this.consoleLogToken?.cancel();
+        this.consoleLogToken = getInterface().devMode.onConsoleLog(() => {
+            if (this.shouldPoll(this.status)) {
+                void this.refreshStatus();
+            }
+        });
     }
 
     public override dispose(_ctx: WorkspaceContext): void {
         this.stopPolling();
+        this.consoleLogToken?.cancel();
+        this.consoleLogToken = null;
         this.events.clear();
     }
 
@@ -42,17 +58,25 @@ export class DevModeService extends Service<DevModeService> {
     }
 
     public async refreshStatus(): Promise<DevModeStatus> {
-        if (this.refreshInFlight || this.launchInFlight) {
+        if (this.launchInFlight) {
+            return this.status;
+        }
+        if (this.refreshInFlight) {
+            this.refreshAgain = true;
             return this.status;
         }
         this.refreshInFlight = true;
         try {
-            const result = await getInterface().devMode.getStatus(this.projectPath());
-            if (result.success) {
-                this.updateStatus(result.data.status);
-            }
+            do {
+                this.refreshAgain = false;
+                const result = await getInterface().devMode.getStatus(this.projectPath());
+                if (result.success) {
+                    this.updateStatus(result.data.status);
+                }
+            } while (this.refreshAgain && !this.launchInFlight);
         } finally {
             this.refreshInFlight = false;
+            this.refreshAgain = false;
         }
         return this.status;
     }

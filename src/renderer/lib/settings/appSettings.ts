@@ -74,6 +74,7 @@ import {
 } from "@shared/constants/update";
 import { KEYBINDING_OVERRIDES_SETTINGS_KEY } from "@/lib/workspace/services/ui/KeybindingService";
 import { DOWNLOAD_REWRITES_KEY, USE_SYSTEM_PROXY_KEY } from "@shared/types/downloadSource";
+import { AGENT_FOLLOW_DEFAULT, AGENT_FOLLOW_KEY } from "@shared/agent/follow";
 import { OFFICIAL_SOURCE_VALUE } from "@/lib/settings/sourceSelection";
 import { MIRROR_PLUGIN_REGISTRY_URL } from "@shared/constants/pluginRegistry";
 import {
@@ -1030,6 +1031,21 @@ export const AppSettings: AppSettingDefinition[] = [
         labelKey: "settings.items.agentAccess.label",
         description: "",
         defaultValue: null,
+    },
+    {
+        // Follow mode, read by each workspace's `AgentFollowService` and switched from there by the
+        // Agent menu and the status bar cell - one value for every project and window. An ordinary
+        // preference in the settings store, unlike the endpoint above: it grants an agent nothing,
+        // it only decides whether the author is taken to what the agent changed.
+        key: AGENT_FOLLOW_KEY,
+        category: "agent",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Follow the agent's edits",
+        labelKey: "settings.items.agentFollow.label",
+        description: "Open each page, scene or blueprint an agent changes, bring it to the front and outline the change.",
+        descriptionKey: "settings.items.agentFollow.description",
+        defaultValue: AGENT_FOLLOW_DEFAULT,
     },
     {
         // Rendered by `SETTING_PANELS.projectTrust`. Nothing is stored under this key; the ledger

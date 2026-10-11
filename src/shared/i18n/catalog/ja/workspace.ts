@@ -406,18 +406,18 @@ export const workspace = {
         menu: {
             pause: "エージェントを一時停止",
             resume: "エージェントを再開",
-            follow: "エージェントの編集を追う",
+            follow: "エージェントの変更を追う",
         },
         tooltip: "エージェントのオプション",
         appMenu: {
             title: "エージェント",
             status: "エージェント：{client} · {state}",
+            statusOff: "エージェント連携：無効",
             notConnected: "未接続",
             state: {
                 working: "作業中",
                 idle: "待機中",
                 paused: "一時停止中",
-                off: "無効",
             },
             log: "エージェントログ",
             enable: "エージェント連携を有効にする",
