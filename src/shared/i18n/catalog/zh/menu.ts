@@ -58,9 +58,9 @@ export const menu = {
         minimize: "最小化",
         zoom: "缩放",
         front: "全部置于顶层",
-        leftSidebar: "显示左边栏",
-        bottomPanel: "显示底边栏",
-        rightSidebar: "显示右边栏",
+        leftSidebar: "切换左边栏显示",
+        bottomPanel: "切换底边栏显示",
+        rightSidebar: "切换右边栏显示",
     },
     help: {
         title: "帮助",

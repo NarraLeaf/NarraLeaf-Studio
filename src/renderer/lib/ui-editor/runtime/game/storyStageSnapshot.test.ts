@@ -800,6 +800,50 @@ describe("computeStoryStageSnapshot and the sound at the target row", () => {
 });
 
 /**
+ * The speaker names the walked path's `/rename` rows left: a launch replaces those rows, so it has to
+ * replay the names they gave or open on the cast's names.
+ */
+describe("computeStoryStageSnapshot and /rename", () => {
+    const rename = (id: string, characterId: string, displayName: string, parentId: string | null = null) =>
+        block(id, "action", { action: "character", operation: "setName", characterId, displayName }, parentId);
+
+    it("records, for each character, the last /rename on the path before the target", () => {
+        const document = baseDocument({
+            hide: rename("hide", "char-alice", "？？？"),
+            bob: rename("bob", "char-bob", "Mr. B"),
+            reveal: rename("reveal", "char-alice", "Alice"),
+            target: say("target"),
+            later: rename("later", "char-alice", "Al"),
+        }, ["hide", "bob", "reveal", "target", "later"]);
+
+        expect(snapshot(document, "target").renames).toEqual([
+            { characterId: "char-alice", setBy: "reveal" },
+            { characterId: "char-bob", setBy: "bob" },
+        ]);
+        // A rename at the target row is the tail's to play, not the opening's.
+        expect(snapshot(document, "reveal").renames).toEqual([
+            { characterId: "char-alice", setBy: "hide" },
+            { characterId: "char-bob", setBy: "bob" },
+        ]);
+        expect(snapshot(document, null).renames).toEqual([]);
+    });
+
+    it("leaves out a /rename on an arm the path did not take, and a disabled one", () => {
+        const document = baseDocument({
+            cond: block("cond", "control", { control: "condition" }, null, ["yes", "otherwise"]),
+            yes: block("yes", "control", { control: "conditionBranch", branch: "if", condition: { kind: "variable", target: { scope: "scene", variableId: "flag" }, operator: "isTrue" } }, "cond", ["named"]),
+            named: rename("named", "char-alice", "Alice", "yes"),
+            otherwise: block("otherwise", "control", { control: "conditionBranch", branch: "else" }, "cond", ["hidden"]),
+            hidden: rename("hidden", "char-alice", "？？？", "otherwise"),
+            off: { ...rename("off", "char-bob", "Bob"), disabled: true } as StoryBlock,
+            target: say("target"),
+        }, ["cond", "off", "target"]);
+
+        expect(snapshot(document, "target").renames).toEqual([{ characterId: "char-alice", setBy: "hidden" }]);
+    });
+});
+
+/**
  * A disabled row is compiled out with everything under it, so the stage a playthrough reaches never
  * saw it - and neither may the walk that reconstructs that stage.
  */

@@ -265,8 +265,8 @@ export const settings = {
             label: "ダウンロード先の書き換え",
         },
         useSystemProxy: {
-            label: "このコンピュータのプロキシを使う",
-            description: "Studio のダウンロードはこのコンピュータのプロキシを使います",
+            label: "システムのプロキシ設定を使用",
+            description: "Studio のダウンロードはオペレーティングシステムに設定されたプロキシを経由する",
         },
         pluginRegistryUrl: {
             label: "プラグインレジストリの URL",
@@ -349,6 +349,10 @@ export const settings = {
         },
         agentAccess: {
             label: "MCP エンドポイント",
+        },
+        agentFollow: {
+            label: "エージェントの変更を追う",
+            description: "エージェントが変更するたびに、そのページ・シーン・ブループリントを開いて前面に出し、変更箇所を枠で囲んで示す",
         },
         projectTrust: {
             label: "信頼済みプロジェクト",

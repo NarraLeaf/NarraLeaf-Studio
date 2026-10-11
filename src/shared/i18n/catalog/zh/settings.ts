@@ -252,8 +252,8 @@ export const settings = {
             label: "下载地址替换",
         },
         useSystemProxy: {
-            label: "使用本机已有代理",
-            description: "Studio 的下载走本机已有的代理",
+            label: "使用系统代理设置",
+            description: "Studio 的下载通过操作系统中设置的代理连接",
         },
         pluginRegistryUrl: {
             label: "插件注册表地址",
@@ -340,6 +340,10 @@ export const settings = {
         },
         agentAccess: {
             label: "MCP 端点",
+        },
+        agentFollow: {
+            label: "跟随 Agent 的修改",
+            description: "Agent 每次修改时打开对应的页面、场景或蓝图，切到前台并标出改动",
         },
         projectTrust: {
             label: "受信任的项目",

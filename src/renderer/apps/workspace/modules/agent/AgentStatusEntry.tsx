@@ -6,6 +6,8 @@ import { Services } from "@/lib/workspace/services/services";
 import type { AgentFollowService, AgentFollowState } from "@/lib/workspace/services/agent/AgentFollowService";
 import { useWorkspace } from "../../context/WorkspaceContext";
 import { StatusEntry } from "../status-bar/StatusEntry";
+import { agentStatusCellShown } from "./useAgentActive";
+import { useAgentQuickState } from "./useAgentQuickState";
 
 const NO_SUBSCRIPTION = () => () => {};
 
@@ -17,7 +19,8 @@ const NO_SUBSCRIPTION = () => () => {};
  * Silent until an agent has called this window, so a project nobody connects an agent to never
  * shows it. From the first call on it stays, naming the client - or "external agent" for one that
  * called without introducing itself - so the author can always find the pause switch. The last write
- * stays named for a few seconds after it lands; a call alone is over too fast to read.
+ * stays named for a few seconds after it lands; a call alone is over too fast to read. Agent access
+ * turned off takes the cell away: there is no agent then, and the Agent menu turns access back on.
  *
  * Comments in English per project convention.
  */
@@ -30,6 +33,7 @@ export function AgentStatusEntry() {
         [follow],
     );
     const state = useSyncExternalStore<AgentFollowState | null>(subscribe, () => follow?.getState() ?? null);
+    const quick = useAgentQuickState();
     const { menuState, showMenu, hideMenu } = useContextMenu();
 
     const menu = useMemo<ContextMenuDef>(() => {
@@ -51,7 +55,7 @@ export function AgentStatusEntry() {
         ];
     }, [follow, state, t]);
 
-    if (!follow || !state || (state.lastCallAt === null && state.activity === null && !state.paused)) {
+    if (!follow || !state || !agentStatusCellShown(state, quick)) {
         return null;
     }
 

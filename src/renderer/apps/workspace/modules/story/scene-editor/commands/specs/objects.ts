@@ -1,10 +1,12 @@
 import { ALargeSmall, BringToFront, Image, Layers, Play, Replace, Type } from "lucide-react";
-import type { StoryBlock } from "@shared/types/story";
+import type { StoryBlock, StoryLayerDepth } from "@shared/types/story";
+import { STORY_LAYER_DEPTHS } from "@shared/types/story";
 import { createBlockForCommand } from "../../storyActionCommands";
 import type { StoryCommandResolutionIssue, StoryCommandValue } from "../../storyCommandValues";
 import {
     asBoolean,
     asColor,
+    asEnum,
     asNumber,
     asTarget,
     asText,
@@ -105,17 +107,31 @@ export const layer = defineStoryCommand({
     token: "layer",
     category: "layer",
     icon: Layers,
-    examples: ["/layer overlay", "/layer overlay z=10"],
+    examples: ["/layer overlay", "/layer overlay z=10", "/layer hills z=-1 depth=far", "/layer backgroundLayer depth=mid"],
     params: {
         name: { hint: "objectName", type: { kind: "text" }, positional: true, core: true },
         z: { aliases: ["zindex"], hint: "z", type: { kind: "number", integer: true } },
+        depth: { hint: "depth", type: { kind: "enum", options: STORY_LAYER_DEPTHS.map(value => ({ value })) } },
     },
     build(args, ctx) {
+        const depth = asEnum(args.depth) as StoryLayerDepth | undefined;
+        // The scene's own background layer has no `create` row to carry a depth - the engine builds
+        // it - so naming it by its reserved word writes the one row that says how far away it sits.
+        if (asText(args.name)?.toLowerCase() === "backgroundlayer") {
+            const row = createBlockForCommand("layerDepth", ctx.generateId);
+            if (row.kind !== "action" || row.payload.action !== "layer" || !depth) {
+                return row;
+            }
+            return { ...row, payload: { ...row.payload, depth } };
+        }
         const block = createBlockForCommand("layerCreate", ctx.generateId);
         if (block.kind !== "action" || block.payload.action !== "layer") {
             return block;
         }
         const payload = { ...block.payload };
+        if (depth) {
+            payload.depth = depth;
+        }
         const name = asText(args.name);
         if (name !== undefined) {
             payload.objectName = name;

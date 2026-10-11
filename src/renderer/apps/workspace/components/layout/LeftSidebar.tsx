@@ -9,6 +9,8 @@ import { FocusArea } from "@/lib/workspace/services/ui";
 import { blurSidebarRailFocusIfLeavingRail } from "./blurSidebarRailFocus";
 import { SidebarPanelStack } from "./SidebarPanelStack";
 import { useTranslation } from "@/lib/i18n";
+import { WorkspaceMenuAction } from "@shared/types/menu";
+import { useShortcutLabels } from "../../hooks/useShortcutLabels";
 
 interface LeftSidebarProps {
     panelId: string;
@@ -23,6 +25,8 @@ interface LeftSidebarProps {
  */
 export function LeftSidebar({ panelId, onClose, width }: LeftSidebarProps) {
     const { t } = useTranslation();
+    // Closing the dock is the open half of its toggle, so the close button names that key.
+    const closeShortcut = useShortcutLabels().forBinding(WorkspaceMenuAction.ToggleLeftSidebar);
     const { panels } = useRegistry();
     const { context } = useWorkspace();
     const leftPanels = panels.filter((p) => p.position === PanelPosition.Left);
@@ -81,6 +85,7 @@ export function LeftSidebar({ panelId, onClose, width }: LeftSidebarProps) {
                     className="w-6 h-6 rounded-md flex items-center justify-center text-fg-muted hover:bg-fill hover:text-fg transition-colors cursor-default"
                     aria-label={t("workspace.shell.closePanel")}
                     data-tip={t("workspace.shell.closePanel")}
+                    data-tip-shortcut={closeShortcut}
                 >
                     <X className="w-4 h-4" />
                 </button>

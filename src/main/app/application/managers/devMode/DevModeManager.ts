@@ -575,10 +575,10 @@ export class DevModeManager {
 
     private async compileAndSendBundle(session: DevModeSession, status: DevModeStatus): Promise<void> {
         this.emitVerbose(session, `bundle pipeline requested: ${status}`);
-        session.status = status;
-        if (status === "starting" || status === "reloading") {
-            session.status = "compiling";
-        }
+        // A launch reports its compile as `compiling`. A reload keeps `reloading` until the new bundle
+        // is sent: the game is already up, and the workspace's run cell says that it is being
+        // refreshed rather than started again.
+        session.status = status === "starting" ? "compiling" : status;
         this.emitVerbose(session, `status set to ${session.status}`);
 
         try {

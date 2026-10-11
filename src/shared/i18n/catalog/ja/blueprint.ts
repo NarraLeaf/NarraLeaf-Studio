@@ -370,7 +370,7 @@ export const blueprint = {
         back: "戻る",
         openDetail: "詳細を表示",
         choicesHeading: "追加後に選ぶ項目",
-        choicesNone: "追加すればそのまま動く",
+        choicesNone: "追加するとそのまま機能する",
         previewLabel: "グラフのプレビュー",
         category: {
             pageFlow: "ページの流れ",

@@ -1028,7 +1028,11 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         ? t("properties.panel.character")
         : activeSet
         ? t("assets.sets.itemType")
-        : activeAsset?.type;
+        // The kind of asset, named the way the rename dialog names it (Image, 图片, 画像) rather than
+        // by the enum value the library stores.
+        : activeAsset
+        ? t(`dialogs.noun.${activeAsset.type}`)
+        : undefined;
 
     /**
      * Both halves of what the set inspector draws.

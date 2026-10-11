@@ -8,6 +8,8 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusArea } from "@/lib/workspace/services/ui";
 import { SidebarPanelStack } from "./SidebarPanelStack";
 import { useTranslation } from "@/lib/i18n";
+import { WorkspaceMenuAction } from "@shared/types/menu";
+import { useShortcutLabels } from "../../hooks/useShortcutLabels";
 
 interface BottomPanelProps {
     panelId: string;
@@ -30,6 +32,8 @@ const BOTTOM_PANEL_CHROME_OFFSET = 1;
  */
 export function BottomPanel({ panelId, onClose, height }: BottomPanelProps) {
     const { t } = useTranslation();
+    // Closing the dock is the open half of its toggle, so the close button names that key.
+    const closeShortcut = useShortcutLabels().forBinding(WorkspaceMenuAction.ToggleBottomPanel);
     const { panels } = useRegistry();
     const { context } = useWorkspace();
     const bottomPanels = panels.filter((p) => p.position === PanelPosition.Bottom);
@@ -92,6 +96,7 @@ export function BottomPanel({ panelId, onClose, height }: BottomPanelProps) {
                     className="w-6 h-6 rounded-md flex items-center justify-center text-fg-muted hover:bg-fill hover:text-fg transition-colors cursor-default"
                     aria-label={t("workspace.shell.closePanel")}
                     data-tip={t("workspace.shell.closePanel")}
+                    data-tip-shortcut={closeShortcut}
                 >
                     <X className="w-4 h-4" />
                 </button>

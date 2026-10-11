@@ -271,8 +271,8 @@ export const settings = {
             label: "Download address rewrites",
         },
         useSystemProxy: {
-            label: "Use this computer's proxy",
-            description: "Studio downloads follow the proxy this computer already uses.",
+            label: "Use system proxy settings",
+            description: "Studio downloads connect through the proxy set in the operating system.",
         },
         pluginRegistryUrl: {
             label: "Plugin registry URL",
@@ -355,6 +355,10 @@ export const settings = {
         },
         agentAccess: {
             label: "MCP endpoint",
+        },
+        agentFollow: {
+            label: "Follow the agent's edits",
+            description: "Open each page, scene or blueprint an agent changes, bring it to the front and outline the change.",
         },
         projectTrust: {
             label: "Trusted projects",

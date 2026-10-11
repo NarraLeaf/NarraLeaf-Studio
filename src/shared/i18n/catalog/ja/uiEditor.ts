@@ -196,10 +196,10 @@ export const uiEditor = {
         componentMissing: "コンポーネントが見つからない",
         componentLoopBlocked: "コンポーネントの循環を止めた",
         componentRootMissing: "コンポーネントのルートがない",
-        wordsFromRowField: "この文字はリスト行の項目「{field}」から来る",
+        wordsFromRowField: "この文字はリスト行の項目「{field}」から取得する",
         wordsFromBlueprintValue: "この文字はブループリント値「{name}」で決まる",
-        wordsFromComponentParam: "この文字はコンポーネントのパラメータ「{param}」から来る。値は置いたものごとに設定する",
-        wordsFromPageParam: "この文字はページのパラメータ「{param}」から来る。ページを開くときに渡される",
+        wordsFromComponentParam: "この文字はコンポーネントのパラメータ「{param}」から取得する。値は置いたものごとに設定する",
+        wordsFromPageParam: "この文字はページのパラメータ「{param}」から取得する。ページを開くときに渡される",
     },
     editor: {
         componentNotFound: "コンポーネントが見つからない",

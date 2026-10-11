@@ -395,20 +395,20 @@ export const workspace = {
         menu: {
             pause: "暂停 Agent",
             resume: "恢复 Agent",
-            follow: "跟随 Agent 的编辑",
+            follow: "跟随 Agent 的修改",
         },
         tooltip: "Agent 选项",
         appMenu: {
-            // Only the menu bar's own word: a Latin word stands out in a row of Chinese menu names.
-            // The rows inside keep "Agent", as everywhere else in Studio.
-            title: "智能体",
+            // "Agent", the English word, as everywhere else in Chinese Studio - the menu bar's own
+            // title included, so the menu and the rows inside it name the same thing.
+            title: "Agent",
             status: "Agent：{client} · {state}",
+            statusOff: "Agent 接入：未开启",
             notConnected: "未连接",
             state: {
                 working: "工作中",
                 idle: "空闲",
                 paused: "已暂停",
-                off: "未开启",
             },
             log: "Agent 日志",
             enable: "启用 Agent 接入",
@@ -784,9 +784,6 @@ export const workspace = {
             closeSplit: "关闭拆分",
             reopenClosed: "重新打开关闭的标签",
         },
-        toggleLeftSidebar: "切换左侧边栏",
-        toggleRightSidebar: "切换右侧边栏",
-        toggleBottomPanel: "切换底部面板",
         mainMenu: {
             label: "主菜单",
             modes: {

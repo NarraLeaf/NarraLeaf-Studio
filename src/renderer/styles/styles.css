@@ -789,6 +789,46 @@ input[data-floating-item]:focus-visible {
 }
 
 /*
+ * The story editor's row actions in a narrow editor group.
+ *
+ * Every row keeps its hover cluster (insert, delete, play, and the speaker's placement on a group
+ * head) mounted and merely transparent, so hovering a row never re-wraps its words. In a wide group
+ * the width it holds is nothing; in a narrow one it is 80-108px of a short line, and a dialogue row's
+ * words, squeezed between it and the nametag, broke one character per line. A narrow row holds no
+ * width for it: the cluster floats over the end of the row's first line on an overlay chip, so the
+ * words keep the whole line and hovering still changes only what is drawn on top, never the height.
+ *
+ * Floating, it would cover the words of the row the keyboard is on for as long as that row is
+ * active, so there it shows only for the pointer (or focus inside it); a keyboard author has the
+ * keys the tooltips name.
+ *
+ * The container is the row's content column. Its containment makes it the containing block of any
+ * fixed-position descendant, which changes nothing: the virtualiser's `translateY` on every row
+ * wrapper already does, which is why every in-row popup is portalled.
+ */
+.nl-story-row-content {
+    container: nl-story-row / inline-size;
+}
+
+@container nl-story-row (max-width: 440px) {
+    .nl-story-row-actions {
+        position: absolute;
+        top: 0.25rem;
+        right: 0;
+        z-index: 1;
+        padding: 0 2px;
+        border: 1px solid var(--nl-edge);
+        border-radius: 0.375rem;
+        background-color: rgb(var(--nl-surface-overlay));
+    }
+
+    .nl-story-row-actions[data-shown-for="active"] {
+        opacity: 0;
+        pointer-events: none;
+    }
+}
+
+/*
  * Range slider (see lib/components/elements/Slider.tsx). Scoped to `.nl-slider`
  * rather than `input[type="range"]` so it never reaches a range input inside the
  * game preview. The track/thumb pseudo-elements are out of Tailwind's reach.

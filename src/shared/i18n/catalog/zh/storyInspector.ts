@@ -367,6 +367,7 @@ export const storyInspector = {
     },
     layerOperation: {
         setZIndex: "设置层级",
+        setDepth: "设置纵深",
     },
     videoOperation: {
         play: "播放",
@@ -445,6 +446,8 @@ export const storyInspector = {
     layer: {
         layerName: "图层名称",
         zIndex: "层级",
+        depth: "纵深",
+        setDepthHint: "为整个场景设置背景图层的纵深",
     },
     video: {
         videoName: "视频名称",

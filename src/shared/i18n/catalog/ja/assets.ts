@@ -433,7 +433,7 @@ export const assets = {
             filter: "メンバー共通のタグ",
             residencyBlocked: "バリアントによって変わるセットは、言語によって変わるセットの下に置けない。",
             fallback: "既定の値",
-            fallbackMissing: "この値にファイルがないため、セット全体が解決できない。",
+            fallbackMissing: "この値にファイルがないため、セット全体が解決できない",
             variants: "値",
             variantInherited: "既定",
             variantMissing: "ファイルなし",

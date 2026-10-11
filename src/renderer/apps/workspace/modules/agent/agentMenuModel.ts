@@ -4,7 +4,8 @@ import { Separator, type ActionDefinition, type ActionMenuItem } from "../../reg
 
 /**
  * The Agent menu's rows, as data: a read-only line saying which agent is connected and what it is
- * doing, the author's two session switches (pause, follow), the log, and the three things that
+ * doing, the author's two switches over it (pause, for this session; follow, which is the Studio-wide
+ * setting of the same name in Settings ▸ Agent access), the log, and the three things that
  * belong to agent access as a whole (the endpoint, write access, connection configuration and the
  * skill), then the way to the full settings. While access is off, only the status line, the switch
  * that turns it on and the way to settings. When the endpoint had to move to another port, a second
@@ -19,6 +20,13 @@ import { Separator, type ActionDefinition, type ActionMenuItem } from "../../reg
 
 /** The group's id. Exempt from the freeze in `freezeActionPolicy`: nothing here writes the project. */
 export const AGENT_MENU_GROUP_ID = "narraleaf-studio:agent";
+
+/**
+ * The letter Alt reaches the menu by on the in-app bar, beside File (F), Edit (E) and Help (H): the
+ * one its name starts with in English and Chinese, and free in every language. Like Alt+H, it yields
+ * to the UI editor's align chord while that binding is live (see `TitleBarMenus`).
+ */
+export const AGENT_MENU_MNEMONIC = "A";
 
 export const AGENT_MENU_ACTIONS = {
     status: "narraleaf-studio:agent-status",
@@ -50,15 +58,20 @@ export function agentMenuStateKind(
     return session.busy ? "working" : "idle";
 }
 
-const STATE_KEYS: Record<AgentMenuStateKind, TranslationKey> = {
+const STATE_KEYS: Record<Exclude<AgentMenuStateKind, "off">, TranslationKey> = {
     working: "workspace.agent.appMenu.state.working",
     idle: "workspace.agent.appMenu.state.idle",
     paused: "workspace.agent.appMenu.state.paused",
-    off: "workspace.agent.appMenu.state.off",
 };
 
-/** `Agent: Claude Code · Working`, or `Agent: Not connected · Off`. */
+/**
+ * `Agent: Claude Code · Working`, or `Agent: Not connected · Idle`. With access off there is no
+ * agent, so no client is named - not even the last one that called - only `Agent access: Off`.
+ */
 export function agentMenuStatusLine(t: Translator["t"], clientName: string | null, state: AgentMenuStateKind): string {
+    if (state === "off") {
+        return t("workspace.agent.appMenu.statusOff");
+    }
     return t("workspace.agent.appMenu.status", {
         client: clientName ?? t("workspace.agent.appMenu.notConnected"),
         state: t(STATE_KEYS[state]),

@@ -82,3 +82,57 @@ describe("quick open on a blueprint", () => {
         expect(quickOpen("bp-app").title).toBe("Global");
     });
 });
+
+/**
+ * A blueprint is named after what it hangs on, so a project's pages each carry a "Config" button
+ * blueprint and the picker listed them as identical rows. The detail says whose each one is, in the
+ * words the search panel uses for the same blueprint.
+ */
+describe("quick open names a blueprint's owner", () => {
+    function entriesWithDocument() {
+        const services: Partial<Record<Services, unknown>> = {
+            [Services.UI]: { editor: { open: vi.fn(), get: () => undefined } },
+            [Services.Story]: { listStories: () => [] },
+            [Services.Character]: { listCharacter: () => [] },
+            [Services.UIDocument]: {
+                getDocument: () => ({
+                    surfaces: [{ id: "log", name: "Log" }, { id: "config", name: "Config" }],
+                    components: [{ id: "card", name: "Card", elements: { label: { id: "label", name: "Caption", type: "text" } } }],
+                    elements: {},
+                }),
+            },
+            [Services.Assets]: { getAssets: () => ({}) },
+            [Services.LocalBlueprint]: {
+                getBlueprintDocument: () => ({
+                    ownerRecords: {
+                        [GLOBAL_MAIN_OWNER_KEY]: { blueprintId: "bp-app" },
+                        [surfaceMainOwnerKey("config")]: { blueprintId: "bp-config" },
+                        [componentWidgetMainOwnerKey("card", "label")]: { blueprintId: "bp-label" },
+                    },
+                    blueprints: {
+                        "bp-app": { id: "bp-app", name: "Global" },
+                        "bp-config": { id: "bp-config", name: "Config" },
+                        "bp-label": { id: "bp-label", name: "Caption" },
+                    },
+                }),
+            },
+        };
+        const context = { services: { get: (id: Services) => services[id] } } as unknown as WorkspaceContext;
+        return collectQuickOpenEntries(context);
+    }
+
+    const detailOf = (blueprintId: string) =>
+        entriesWithDocument().find(entry => entry.key === `blueprint:${blueprintId}`)?.detail;
+
+    it("names a page's blueprint by its page", () => {
+        expect(detailOf("bp-config")).toBe("Config");
+    });
+
+    it("names a component control's blueprint by its component and control", () => {
+        expect(detailOf("bp-label")).toBe("Card › Caption");
+    });
+
+    it("names the project's own blueprint as the global one", () => {
+        expect(detailOf("bp-app")).toBe("Global");
+    });
+});
