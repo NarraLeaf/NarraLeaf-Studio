@@ -1,3 +1,4 @@
+import { Switch } from "@/lib/components/elements/Switch";
 import type { Asset, AssetSource } from "@/lib/workspace/services/assets/types";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { useRef, useState } from "react";
@@ -128,7 +129,7 @@ export function FrameSequenceEditor({
                                 step={1}
                                 value={sequence.fps}
                                 disabled={frozen || busy}
-                                className="w-16 rounded border border-edge bg-fill p-1"
+                                className="w-16 rounded-sm border border-edge bg-fill p-1"
                                 onChange={event => {
                                     const fps = Number(event.target.value);
                                     if (Number.isFinite(fps) && fps >= 1 && fps <= 120)
@@ -137,11 +138,12 @@ export function FrameSequenceEditor({
                             />
                         </label>
                         <label>
-                            <input
-                                type="checkbox"
+                            <Switch
+                                size="sm"
                                 checked={sequence.loop}
                                 disabled={frozen || busy}
-                                onChange={event => change(sequence.frameAssetIds, sequence.fps, event.target.checked)}
+                                aria-label={t("characters.editor.sequenceLoop")}
+                                onCheckedChange={loop => change(sequence.frameAssetIds, sequence.fps, loop)}
                             />{" "}
                             {t("characters.editor.sequenceLoop")}
                         </label>
