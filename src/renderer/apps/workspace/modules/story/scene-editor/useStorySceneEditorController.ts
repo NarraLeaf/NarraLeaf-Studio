@@ -1569,7 +1569,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         return block;
     }, [document, uuidService]);
 
-    const insertBlock = useCallback((block: StoryBlock, afterBlockId: StoryBlockId | null, openInspector = false, options?: { recordHistory?: boolean; target?: StoryBlockTarget; replaceBlockId?: StoryBlockId }) => {
+    const insertBlock = useCallback((block: StoryBlock, afterBlockId: StoryBlockId | null, openInspector = false, options?: { recordHistory?: boolean; target?: StoryBlockTarget; replaceBlockId?: StoryBlockId; keepSelection?: boolean }) => {
         if (!storyService || !storyId || !sceneId || !scene) {
             return;
         }
@@ -1589,6 +1589,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // mounts and the author is left with no caret at all. Both symptoms read as "the editor
         // refused to write my line", which is the one thing it did not do.
         revealRowInFilter(block);
+        // A row written on the author's behalf from elsewhere (the layer panel) leaves the row they
+        // were on selected, and with it the shot the preview is showing.
+        if (options?.keepSelection) {
+            return;
+        }
         setActiveBlockId(block.id);
         setSelectedBlockIds(new Set([block.id]));
         setEditorMode(openInspector ? { kind: "inspector", blockId: block.id } : { kind: "idle" });
