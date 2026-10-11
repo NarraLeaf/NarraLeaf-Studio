@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Sequence / engine transition exploration</title>
+<style>
+body { font: 15px system-ui; margin: 32px; color: #eee; background: #222; }
+#stage { position: relative; width: 128px; height: 128px; background: repeating-conic-gradient(#555 0% 25%, #333 0% 50%) 0 / 16px 16px; }
+button { margin: 12px 4px 12px 0; } pre { line-height: 1.6; }
+</style>
+<h1>PNG sequence feasibility</h1>
+<p>Experimental DOM driver using real engine transition resolvers and Image serialization. Not the production Player.</p>
+<div id="stage"></div><p id="time"></p>
+<button id="pause">Pause</button><button id="dissolve">Dissolve</button><button id="mask">Mask</button>
+<button id="save">Save</button><button id="load">Load</button><button id="remount">Remount</button>
+<pre id="results">Running…</pre>
+<script type="module" src="./frame-sequence-browser.bundle.js"></script>
