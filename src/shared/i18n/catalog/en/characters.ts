@@ -64,6 +64,15 @@ export const characters = {
         colorReset: "Compute from the name",
     },
     editor: {
+        sequenceImport: "Import PNG frames",
+        sequenceFps: "Frames per second",
+        sequenceLoop: "Loop",
+        sequenceStatic: "Use first frame only",
+        sequenceMoveUp: "Move frame up",
+        sequenceMoveDown: "Move frame down",
+        sequencePngOnly: "All frames must be PNG images.",
+        sequenceSizeMismatch: "All frames must have the same dimensions.",
+
         // No `live2d` / `spine` entries: those read as the product's own name, which is a trademark
         // and comes from the runtime registry rather than from here.
         kind: { preset: "Preset sprites", layered: "Layered sprite", puppet: "Custom runtime" },

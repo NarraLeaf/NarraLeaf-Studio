@@ -7277,6 +7277,14 @@ async function resolveCharacterImageUrl(
     }
     const appearance = ctx.characterSummaries.get(characterId)?.appearance;
     const entry = resolvePoseEntry(appearance, pose);
+    if (entry?.sequence) {
+        const frames = await Promise.all(entry.sequence.frameAssetIds.map(id => resolveAsset(ctx, id, "image", blockId)));
+        if (frames.some(frame => !frame)) return null;
+        const urls = frames as string[];
+        for (const url of urls) ctx.nlrScene.preloadImage(url);
+        const data = { id: `${characterId}:${entry.id}`, frames: urls, fps: entry.sequence.fps, loop: entry.sequence.loop };
+        return `${urls[0]}#nls-sequence=${encodeURIComponent(JSON.stringify(data))}`;
+    }
     return entry?.assetId
         ? resolveAsset(ctx, entry.assetId, "image", blockId, {
             variants: entry.assetVariants,
@@ -7417,7 +7425,9 @@ async function compileCharacterAvatars(
 
     if (summary.appearance.kind === "preset") {
         for (const pose of summary.appearance.poses) {
-            const url = pose.assetId
+            const url = pose.sequence
+                ? await resolveCharacterImageUrl(ctx, summary.id, pose.id, blockId)
+                : pose.assetId
                 ? await resolveAsset(ctx, pose.assetId, "image", blockId, {
                     variants: pose.assetVariants,
                     owner: poseOwner(ctx, summary.id, pose),
