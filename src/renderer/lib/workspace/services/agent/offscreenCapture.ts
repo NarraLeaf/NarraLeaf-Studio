@@ -169,8 +169,11 @@ function outstandingItems(box: HTMLElement, capture: OffscreenCapture, describe?
         }
     }
     for (const video of Array.from(box.querySelectorAll("video"))) {
-        // HAVE_CURRENT_DATA: a frame exists to be drawn. A video with no source has nothing to wait for.
-        if ((video.currentSrc || video.getAttribute("src")) && video.readyState < 2 && !video.error) {
+        // Only a playing video is photographed as a frame (see `videoStill` in domRaster): a paused
+        // one is drawn as its poster, which the rasteriser reads itself, or as a placeholder - so
+        // there is no frame to wait for, and waiting for one stalled every page with a video.
+        // HAVE_CURRENT_DATA: a frame exists to be drawn.
+        if (!video.paused && (video.currentSrc || video.getAttribute("src")) && video.readyState < 2 && !video.error) {
             items.push(`${where(video, "a video")} (no frame yet)`);
         }
     }

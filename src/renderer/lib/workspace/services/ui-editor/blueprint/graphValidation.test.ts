@@ -362,6 +362,47 @@ describe("blueprint graph validation", () => {
         expect(validateBlueprintDocumentGraphs(doc, "widget").map(d => d.code)).toContain("node.variable_id_invalid");
     });
 
+    it("refuses an Element node that names a widget on another page, and accepts its own page's", () => {
+        registerCoreBlueprintNodes();
+        const docWith = (surfaceId: string): BlueprintDocument => ({
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            blueprints: {
+                choice: {
+                    id: "choice",
+                    name: "Choice list",
+                    owner: { kind: "widgetMain", surfaceId: "choice-page", elementId: "list" },
+                    members: { variables: {}, fields: {}, functions: {} },
+                    graphs: {
+                        events: {
+                            init: {
+                                id: "init",
+                                graph: {
+                                    nodes: {
+                                        textbox: {
+                                            id: "textbox",
+                                            type: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+                                            params: { surfaceId, elementId: "band", elementType: "nl.container" },
+                                        },
+                                    },
+                                    edges: [],
+                                },
+                            },
+                        },
+                        functions: {},
+                    },
+                },
+            },
+            ownerRecords: {},
+        });
+        const crossing = validateBlueprintDocumentGraphs(docWith("dialogue-page"), "choice", {
+            uiDocument: { elements: { band: { id: "band", name: "Dialogue band" } as never } },
+        }).find(d => d.code === "element.other_surface");
+        expect(crossing?.severity).toBe("error");
+        expect(crossing?.message).toContain('"Dialogue band", band');
+        expect(crossing?.target).toMatchObject({ kind: "node", nodeId: "textbox" });
+        expect(validateBlueprintDocumentGraphs(docWith("choice-page"), "choice").map(d => d.code)).not.toContain("element.other_surface");
+    });
+
     it("reports inferred Var type mismatches without removing existing edges", () => {
         registerCoreBlueprintNodes();
         const doc: BlueprintDocument = {

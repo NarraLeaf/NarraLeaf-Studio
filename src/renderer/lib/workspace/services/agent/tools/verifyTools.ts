@@ -268,7 +268,11 @@ export const playtestAdvance: AgentToolHandler = async (args, { ctx }) => {
 
 export const playtestScreenshot: AgentToolHandler = async (args, { ctx }) => {
     const maxSize = readOptionalInteger(args, "maxSize", { min: 64, max: 4096 }) ?? 1280;
-    const result = await getInterface().devMode.agentControl(ctx.project.getConfig().projectPath, { kind: "capture" });
+    const view = readOptionalString(args, "view") ?? "screen";
+    if (view !== "screen" && view !== "stage") {
+        throw refuse("invalid_args", "`view` must be \"screen\" (what the player sees) or \"stage\" (the stage alone).");
+    }
+    const result = await getInterface().devMode.agentControl(ctx.project.getConfig().projectPath, { kind: "capture", view });
     if (!result.success) {
         throw playtestRefusal(result);
     }
@@ -276,9 +280,11 @@ export const playtestScreenshot: AgentToolHandler = async (args, { ctx }) => {
         throw refuse("unavailable", "The game had nothing to capture.");
     }
     const scaled = await downscaleImage(result.data.png, maxSize);
-    const note = result.data.source === "window"
-        ? "Captured from the window (no game has been entered yet, so this is a page such as the title)."
-        : "The game stage as the engine draws it, Game UI included.";
+    const note = result.data.source === "screen"
+        ? "What the player sees: the stage with its Game UI and every page or layer open over it."
+        : result.data.source === "window"
+            ? "Captured from the whole Dev Mode window (the game's box could not be found, or the stage had nothing to capture yet)."
+            : "The game stage as the engine draws it, Game UI included; pages and layers open over it are not in this view (use view \"screen\").";
     return {
         ok: true,
         content: [
@@ -454,7 +460,12 @@ export const internalTest: AgentToolHandler = async (args, { ctx, request, follo
     const where = testFindingLocator(ctx);
     const findings = await Promise.all(run.findings.map(async finding => {
         const location = await where(finding.target);
-        return { severity: finding.severity, message: testText(finding.message), ...(location ? { location } : {}) };
+        return {
+            severity: finding.severity,
+            ...(finding.ruleId ? { rule: finding.ruleId } : {}),
+            message: finding.englishMessage || testText(finding.message),
+            ...(location ? { location } : {}),
+        };
     }));
     return answerJson(
         { testId: id, status: run.status, summary: testText(run.summary) || null, findings, ...(run.error ? { error: run.error } : {}) },

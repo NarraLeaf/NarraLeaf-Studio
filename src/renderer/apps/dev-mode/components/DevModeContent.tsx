@@ -1604,6 +1604,8 @@ export function DevModeContent(props: DevModeContentProps) {
             runAgentDriveAction(() => testControlsRef.current, action, browserPlaytestClock, undefined, {
                 // What the issue strip counts, so an agent hears about the warnings the author sees.
                 readIssues: () => runtimeIssuesRef.current.map(runtimeIssueForAgent),
+                // The title page before any story ran: no controls yet, but the game box is there.
+                findGameRoot: () => document.querySelector("[data-nl-game-root]"),
             }));
         return () => token.cancel();
     }, []);

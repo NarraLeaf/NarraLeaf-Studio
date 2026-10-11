@@ -172,12 +172,14 @@ export function VideoRenderer(props: WidgetRendererProps) {
 
     return (
         <RectangleChromeRenderer {...props}>
-            {sourceUrl ? (
+            {/* A poster alone still draws: a clip that has not resolved (or is not set yet) shows
+                its still rather than an empty box. */}
+            {sourceUrl || posterUrl ? (
                 <video
                     ref={videoRef}
                     data-ui-video="true"
                     data-ui-video-asset-id={videoProps.assetId ?? ""}
-                    src={sourceUrl}
+                    src={sourceUrl ?? undefined}
                     poster={posterUrl ?? undefined}
                     style={{ ...VIDEO_STYLE_BASE, objectFit: videoProps.objectFit }}
                     preload={preload}
@@ -195,7 +197,11 @@ export function VideoRenderer(props: WidgetRendererProps) {
                     onEnded={isLiveHost ? undefined : () => setVideoPreviewPlaying(element.id, false)}
                     onPause={isLiveHost ? undefined : () => setVideoPreviewPlaying(element.id, false)}
                     onPlay={isLiveHost ? undefined : () => setVideoPreviewPlaying(element.id, true)}
-                    onError={() => setSourceLoadFailedUrl(sourceUrl)}
+                    onError={() => {
+                        if (sourceUrl) {
+                            setSourceLoadFailedUrl(sourceUrl);
+                        }
+                    }}
                 />
             ) : null}
         </RectangleChromeRenderer>

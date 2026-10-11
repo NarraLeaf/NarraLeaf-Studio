@@ -56,6 +56,8 @@ import {
     type BlueprintVariableTypeOption,
 } from "./graphVariableTypeInference";
 import { isBlueprintFanOutOutputPin } from "./graphEditing";
+import { listBlueprintElementRefSites } from "./elementRefSites";
+import { buildUIComponentSurfaceId, isUIElementRefInScope } from "@shared/types/ui-editor/componentInstanceKey";
 import {
     analyzeBlueprintStructTypes,
     applyBlueprintStructTypes,
@@ -1206,6 +1208,68 @@ export function validateBlueprintDocumentGraphs(
     }
     out.push(...validateBlueprintBindingsForBlueprint(doc, blueprintId));
     out.push(...assetNameGapDiagnostics(options?.assetNameGaps ?? [], blueprintId));
+    out.push(...elementScopeDiagnostics(bp, options?.uiDocument ?? null));
+    return out;
+}
+
+/**
+ * Where a blueprint runs, as the runtime's scope check (`isUIElementRefInScope`) sees it: the page
+ * of a page or widget blueprint, a component definition's own tree. Null for an owner that runs on
+ * no page (global, story, variables), which the runtime does not restrict either.
+ */
+function elementScopeOwner(owner: BlueprintOwnerRef): { surfaceId: string; componentId?: string } | null {
+    switch (owner.kind) {
+        case "surfaceMain":
+        case "widgetMain":
+        case "widgetValue":
+            return { surfaceId: owner.surfaceId };
+        case "componentWidgetMain":
+            return { surfaceId: buildUIComponentSurfaceId(owner.componentId), componentId: owner.componentId };
+        default:
+            return null;
+    }
+}
+
+/**
+ * An Element node (or an element event head) naming a widget on another page.
+ *
+ * Nothing stopped this being written: the picker only offers the page's own widgets, but a graph
+ * written as text - or pasted from another page - can name any id. At run time every node that acts
+ * on such a reference is refused ("only elements of its own page or component") and every read
+ * comes back empty, so a Choice page blueprint that hides the Dialogue page's textbox silently does
+ * nothing. Said here, as an error, at the node, so the checker refuses it with the reason.
+ */
+function elementScopeDiagnostics(
+    bp: BlueprintDocument["blueprints"][string],
+    uiDocument: ValidateBlueprintDocumentGraphsOptions["uiDocument"],
+): BlueprintGraphEditorDiagnostic[] {
+    const owner = elementScopeOwner(bp.owner);
+    if (!owner) {
+        return [];
+    }
+    const out: BlueprintGraphEditorDiagnostic[] = [];
+    const graphs: { graphKind: "event" | "function"; graphId: string; graph: BlueprintGraphIr }[] = [
+        ...Object.entries(bp.graphs.events ?? {}).filter(([, entry]) => !entry.script).map(([graphId, entry]) => ({ graphKind: "event" as const, graphId, graph: ensureIr(entry.graph) })),
+        ...Object.entries(bp.graphs.functions ?? {}).map(([graphId, entry]) => ({ graphKind: "function" as const, graphId, graph: ensureIr(entry.graph) })),
+    ];
+    for (const { graphKind, graphId, graph } of graphs) {
+        for (const site of listBlueprintElementRefSites(graph)) {
+            if (isUIElementRefInScope(site.ref.surfaceId, owner)) {
+                continue;
+            }
+            const element = uiDocument?.elements?.[site.ref.elementId];
+            const elementLabel = element?.name?.trim() ? `"${element.name.trim()}", ${site.ref.elementId}` : site.ref.elementId;
+            out.push({
+                severity: "error",
+                code: "element.other_surface",
+                message: translate("blueprint.diagnostics.node.elementOtherSurface", {
+                    node: diagnosticNodeTitle(graph.nodes?.[site.nodeId]),
+                    element: elementLabel,
+                }),
+                target: { kind: "node", graphKind, graphId, nodeId: site.nodeId },
+            });
+        }
+    }
     return out;
 }
 

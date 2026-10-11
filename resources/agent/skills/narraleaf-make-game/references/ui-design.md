@@ -178,6 +178,54 @@ but get ids of their own, so find those pages by name (`ui_surfaces`).
   click graph: that is the contract Show Confirm talks through (`blueprint-format`, "The Confirm
   page"). A second confirm page of your own must keep the same contract.
 
+## The dialogue box
+
+Two behaviours players expect of the dialogue box are not settings; each is a small blueprint. Both
+follow the pattern the skeleton's own nametag uses: the blueprint sits on an element that **stays on
+screen** - the box's container (the skeleton's `Dialogue band`) - and shows or hides an element
+**inside** it. `Init` runs when the box appears and `On Flush` each time it shows a new line or the
+line finishes typing, so the state is re-read at every change. Both layers can live in one block on
+the container (`blueprint_show` it first if it already has one: a block replaces every layer of its
+owner). Get the ids from `ui_surfaces {query:"Dialogue"}` and `ui_show`.
+
+**A click-to-continue mark shown only once the line is complete.** Add the mark (an `nl.image`, say,
+with an explicit `id`) inside the container, then:
+
+```
+blueprint "Dialogue band" owner=widgetMain surface=<Dialogue page id> element=<container id>
+
+event "Show the continue mark once the line is complete"
+    appear: blueprint.event.head.init
+    appearDone: blueprint.game.isDialogWaiting
+    appearMark: blueprint.element.ref
+        surfaceId = <Dialogue page id>
+        elementId = <mark id>
+    appearShow: blueprint.element.displayable.setProperty property=visible
+    line: blueprint.event.head.flush
+    lineDone: blueprint.game.isDialogWaiting
+    lineMark: blueprint.element.ref
+        surfaceId = <Dialogue page id>
+        elementId = <mark id>
+    lineShow: blueprint.element.displayable.setProperty property=visible
+
+    appear.then -> appearShow.in
+    appearDone.isWaiting -> appearShow.value
+    appearMark.element -> appearShow.element
+    line.then -> lineShow.in
+    lineDone.isWaiting -> lineShow.value
+    lineMark.element -> lineShow.element
+```
+
+`Is Dialog Waiting` is true once the line has finished typing and the game waits for the click.
+
+**The empty box hidden while a menu shows.** During a choice menu with no question the box has no
+line. A second layer on the same container hides the box's picture (the textbox image or plate
+inside the container) whenever there is no line - the same graph with `blueprint.game.getDialogText`
+-> `blueprint.string.isBlank` -> `blueprint.boolean.not` feeding `value` (wire `text` -> `value`,
+`result` -> `a`, `result` -> `value`) and the textbox picture as the element. The sentence is empty
+then anyway, and the skeleton's nametag already hides itself. Do not put this on the Choice page: a
+blueprint reaches only the elements of its own page (`blueprint-format`).
+
 ## Templates instead
 
 `ui_templates` lists ready-made interface sets from Studio's template store and `ui_template_apply`

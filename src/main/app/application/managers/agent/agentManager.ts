@@ -1253,10 +1253,19 @@ function headlessTestResult(
         return agentRefusal("unavailable", finished);
     }
     if (finished.test) {
-        const { title, status, summary, findings } = finished.test;
+        const { title, status, summary } = finished.test;
+        // An agent reads English (the tool descriptions are), so a finding's English rendering wins
+        // over the one in the Studio UI language when the test supplied it; the rule id travels as
+        // `rule`, the name the `lint` tool uses for the same thing.
+        const findings = finished.test.findings.map(({ englishMessage, id, ...finding }) => ({
+            severity: finding.severity,
+            ...(id ? { rule: id } : {}),
+            message: englishMessage || finding.message,
+            ...(finding.location ? { location: finding.location } : {}),
+        }));
         const lines = [
             `${title} (${finished.test.testId}): ${status}${summary ? ` - ${summary}` : ""}`,
-            ...findings.slice(0, 50).map(finding => `- [${finding.severity}] ${finding.message}${finding.location ? ` (${finding.location})` : ""}`),
+            ...findings.slice(0, 50).map(finding => `- [${finding.severity}]${finding.rule ? ` ${finding.rule}:` : ""} ${finding.message}${finding.location ? ` (${finding.location})` : ""}`),
         ];
         return agentText(lines.join("\n"), { ...finished.test, findings: findings.slice(0, 200) });
     }

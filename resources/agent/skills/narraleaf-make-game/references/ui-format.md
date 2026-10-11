@@ -197,5 +197,12 @@ Notes, not refusals: `ui.unknown_prop` (kept, probably does nothing - check the 
 ## After every visible change
 
 `ui_screenshot {surface}` (or `{component}`, or `{surface, element}` to crop) renders the page as the
-game draws it. Game UIs render with sample text. Look before moving on - see `ui-design` for the
-checklist.
+game draws it. Game UIs render with sample text. A crop to an element takes in what it draws past its
+own box (a picture hanging over a button's edge) unless the element clips its contents. A video
+element is drawn as its poster (`posterAssetId`), or as a grey placeholder with a play mark when it
+has none - a still never plays; check motion in a playtest. Look before moving on - see `ui-design`
+for the checklist.
+
+A list's scrollbar parts (`scrollbar.trackStyle` / `thumbStyle`) take an image like any fill
+(`fillType: "image"`, `imageFill`); left unset, `fillOpacity` is 1 for an image and the faint default
+tint only for a colour fill.

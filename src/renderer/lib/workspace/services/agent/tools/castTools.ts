@@ -50,6 +50,7 @@ import { opaqueImageWarning, readImageAlpha, type ImageAlphaFacts } from "../ima
 import { drawnBoxAtCenter, stageSizeOf, standingEntrance, type PixelSize } from "../spriteStage";
 import { describeLayered } from "../layeredSpec";
 import { storyRowsChoosingLook } from "../characterLooks";
+import { applyAvatarRequest, asksForAvatars, carryPresetAvatars, describeAvatars, presetAvatarsByPoseName, readAvatarArgs, type AvatarRequest } from "../characterAvatars";
 import { liveBlueprintDocument, loadAllStories, uiDocumentService } from "./textFormat";
 
 /** The project's design resolution: the stage every sprite position is a share of. */
@@ -127,6 +128,7 @@ export function describeCharacter(character: Character, assets: AssetsService, s
         nameColor: profile.getColor() ?? null,
         kind,
         ...looks,
+        ...describeAvatars(appearance, profile.getDefaultAvatarAssetId(), assetId => images[assetId]?.name ?? null),
         entranceTransform: entranceTransform ?? null,
         // The default look's own pixels (a layered character's canvas), and the box it lands in on a
         // `pos=center` row - the numbers an agent needs to judge size and baseline without a
@@ -357,6 +359,7 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
     const defaultPose = readOptionalString(args, "defaultPose");
     const entrance = readEntrance(args);
     const confirmSwitch = args.confirmSwitch === true;
+    const avatarArgs = readAvatarArgs(args);
     if (!id && !name) {
         throw refuse("invalid_args", "Give the character's `id` (to update one) or `name`.");
     }
@@ -368,6 +371,19 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
     if (defaultPose && poses && !poses.some(pose => pose.name === defaultPose)) {
         throw refuse("invalid_args", `\`defaultPose\` "${defaultPose}" is not one of the poses given.`);
     }
+    // Avatar pictures likewise, so a misspelt asset leaves the character untouched.
+    const avatarRequest: AvatarRequest = {
+        ...(avatarArgs.avatarAxes !== undefined ? { avatarAxes: avatarArgs.avatarAxes } : {}),
+        ...(avatarArgs.defaultAvatar !== undefined
+            ? { defaultAvatar: avatarArgs.defaultAvatar === null ? null : resolveAsset(ctx, avatarArgs.defaultAvatar, AssetType.Image).id }
+            : {}),
+        ...(avatarArgs.avatars
+            ? {
+                avatars: Object.fromEntries(Object.entries(avatarArgs.avatars).map(([key, ref]) =>
+                    [key, ref === null ? null : resolveAsset(ctx, ref, AssetType.Image).id])),
+            }
+            : {}),
+    };
 
     const cast = ctx.services.get<CharacterService>(Services.Character);
     let character: Character | null = id ? cast.getCharacter(id) ?? null : null;
@@ -433,6 +449,7 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
         appearance.setKind("preset");
     }
     if (poses) {
+        const avatarsByPose = presetAvatarsByPoseName(appearance);
         for (const pose of [...appearance.getPoses()]) {
             appearance.removePose(pose.id);
         }
@@ -442,6 +459,7 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
                 appearance.setPoseAsset(made.id, pose.assetId);
             }
         }
+        carryPresetAvatars(appearance, avatarsByPose);
     }
     if (defaultPose) {
         const pose = appearance.getPoses().find(item => item.name === defaultPose);
@@ -449,6 +467,9 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
             throw refuse("not_found", `"${profile.getName()}" has no pose "${defaultPose}".`);
         }
         appearance.setDefaultPoseId(pose.id);
+    }
+    if (asksForAvatars(avatarArgs)) {
+        applyAvatarRequest(appearance, assetId => profile.setDefaultAvatarAssetId(assetId), profile.getName(), avatarRequest);
     }
 
     const stage = stageSize(ctx);

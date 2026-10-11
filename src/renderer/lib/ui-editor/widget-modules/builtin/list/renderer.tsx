@@ -188,6 +188,8 @@ function styleToRectangleLike(style: UIListScrollbarPartStyle): RectangleLikePro
         backgroundImage: style.backgroundImage,
         backgroundFit: style.backgroundFit,
         imageFill: style.imageFill,
+        // Passed through so a gradient part draws its own stops rather than the chrome's default.
+        ...(style.gradientFill ? { gradientFill: style.gradientFill } : {}),
         fillType: style.fillType,
         fillVisible: true,
         fillOpacity: style.fillOpacity,

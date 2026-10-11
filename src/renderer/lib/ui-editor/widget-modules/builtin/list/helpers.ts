@@ -280,18 +280,23 @@ function coerceScrollbarFillType(
 
 function normalizePartStyle(value: unknown, fallback: UIListScrollbarPartStyle): UIListScrollbarPartStyle {
     const raw = value && typeof value === "object" ? value as Partial<UIListScrollbarPartStyle> : {};
+    const fillType = coerceScrollbarFillType(raw.fillType, fallback.fillType);
+    // The per-part fallback opacities (a faint track, a half-strength thumb) are tints for the
+    // default white colour fill. An image or gradient the author picked is the artwork itself, so
+    // an unset opacity there means "as drawn"; inheriting 0.08 made a track image all but invisible.
+    const fillOpacityFallback = fillType === "color" ? fallback.fillOpacity : 1;
     return {
         ...defaultListScrollbarPartStyle,
         ...fallback,
         ...raw,
         backgroundColor:
             typeof raw.backgroundColor === "string" ? raw.backgroundColor : fallback.backgroundColor,
-        fillType: coerceScrollbarFillType(raw.fillType, fallback.fillType),
+        fillType,
         backgroundImage:
             typeof raw.backgroundImage === "string" ? raw.backgroundImage : fallback.backgroundImage,
         backgroundFit:
             typeof raw.backgroundFit === "string" ? raw.backgroundFit : fallback.backgroundFit,
-        fillOpacity: clampNumber(raw.fillOpacity, fallback.fillOpacity, 0, 1),
+        fillOpacity: clampNumber(raw.fillOpacity, fillOpacityFallback, 0, 1),
         borderRadius: clampNumber(raw.borderRadius, fallback.borderRadius, 0, 999),
         borderColor: typeof raw.borderColor === "string" ? raw.borderColor : fallback.borderColor,
         borderWidth: clampNumber(raw.borderWidth, fallback.borderWidth, 0, 64),

@@ -6,11 +6,16 @@
  * the new ones on its next write. The game's languages go through `LocalizationService`, the one the
  * Localization panel adds and removes them with, so the panel and an agent cannot disagree.
  *
+ * The player defaults (`playerDefaults`) are the project's starting preferences - text speed,
+ * auto-forward delay, volumes, skipping - the same table as Studio's Project → Game page, baked into
+ * the build and seeded into a fresh player's settings. A player's own saved settings win over them.
+ *
  * Comments in English per project convention.
  */
 
 import { resolveEntrySurface } from "@shared/types/ui-editor/entrySurface";
 import { isValidLocaleCode, localeAutonym } from "@shared/types/localization";
+import { PLAYER_PREFERENCE_KEYS, PLAYER_PREFERENCE_SPECS, type PlayerPreferenceKey, type PlayerPreferences } from "@shared/types/preference";
 import { Services, type WorkspaceContext } from "../../services";
 import type { ProjectService } from "../../core/ProjectService";
 import type { UIDocumentService } from "../../ui-editor/UIDocumentService";
@@ -61,6 +66,7 @@ export const projectInfo: AgentToolHandler = async (_args, { ctx }) => {
         languages: localization.locales.map(locale => locale.code),
         entryPage: entrySurface ? { id: entrySurface.id, name: entrySurface.name } : null,
         defaultStory: story.getDefaultStoryId() ?? null,
+        playerDefaults: project.getPlayerPreferences(),
         stories,
         counts: {
             stories: stories.length,
@@ -157,14 +163,49 @@ async function changeLanguages(
     return plan;
 }
 
+/**
+ * `playerDefaults`, checked against the preference table. Refused rather than clamped: an agent that
+ * wrote 1000 cps meant "instant", and silently storing 200 would hide that the table stops there.
+ */
+export function readPlayerDefaults(args: Record<string, unknown>): Partial<PlayerPreferences> | undefined {
+    const raw = args.playerDefaults;
+    if (raw === undefined) {
+        return undefined;
+    }
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        throw refuse("invalid_args", "`playerDefaults` must be an object, e.g. `{ \"cps\": 40, \"autoForwardDelay\": 1500 }`.");
+    }
+    const patch: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+        if (!(PLAYER_PREFERENCE_KEYS as readonly string[]).includes(key)) {
+            throw refuse("invalid_args", `playerDefaults.${key}: not a player preference.`, `Known: ${PLAYER_PREFERENCE_KEYS.join(", ")}.`);
+        }
+        const spec = PLAYER_PREFERENCE_SPECS[key as PlayerPreferenceKey];
+        if (spec.kind === "boolean") {
+            if (typeof value !== "boolean") {
+                throw refuse("invalid_args", `playerDefaults.${key} must be true or false.`);
+            }
+        } else if (spec.kind === "number") {
+            if (typeof value !== "number" || !Number.isFinite(value) || value < spec.min || value > spec.max) {
+                throw refuse("invalid_args", `playerDefaults.${key} must be a number from ${spec.min} to ${spec.max}${spec.display.unit === "percent" ? " (0-1 = 0-100%)" : ` (${spec.display.unit})`}.`);
+            }
+        } else if (typeof value !== "string" || !(spec.options as readonly string[]).includes(value)) {
+            throw refuse("invalid_args", `playerDefaults.${key} must be one of ${spec.options.join(", ")}.`);
+        }
+        patch[key] = value;
+    }
+    return patch as Partial<PlayerPreferences>;
+}
+
 export const projectSettingsSet: AgentToolHandler = async (args, { ctx, log }) => {
     const name = readOptionalString(args, "name");
     const width = readOptionalInteger(args, "width", { min: 16, max: 16384 });
     const height = readOptionalInteger(args, "height", { min: 16, max: 16384 });
     const languages = readOptionalStringArray(args, "languages");
     const removeLanguages = readOptionalStringArray(args, "removeLanguages") ?? [];
-    if (name === undefined && width === undefined && height === undefined && languages === undefined && removeLanguages.length === 0) {
-        throw refuse("invalid_args", "Give at least one of `name`, `width`, `height`, `languages`, `removeLanguages`.");
+    const playerDefaults = readPlayerDefaults(args);
+    if (name === undefined && width === undefined && height === undefined && languages === undefined && removeLanguages.length === 0 && playerDefaults === undefined) {
+        throw refuse("invalid_args", "Give at least one of `name`, `width`, `height`, `languages`, `removeLanguages`, `playerDefaults`.");
     }
     const project = ctx.services.get<ProjectService>(Services.Project);
     const changed: string[] = [];
@@ -189,6 +230,15 @@ export const projectSettingsSet: AgentToolHandler = async (args, { ctx, log }) =
             log("info", `resolution ${current.width}x${current.height} -> ${next.width}x${next.height}`);
         }
     }
+    if (playerDefaults) {
+        const current = project.getPlayerPreferences();
+        const differing = (Object.keys(playerDefaults) as PlayerPreferenceKey[]).filter(key => current[key] !== playerDefaults[key]);
+        if (differing.length > 0) {
+            await project.updatePlayerPreferences(playerDefaults);
+            changed.push("player defaults");
+            log("info", `player defaults ${differing.map(key => `${key}=${String(playerDefaults[key])}`).join(", ")}`);
+        }
+    }
     const config = project.getProjectConfig();
     const localization = languagePlan ? ctx.services.get<LocalizationService>(Services.Localization).getConfiguration() : null;
     return answerJson(
@@ -196,6 +246,7 @@ export const projectSettingsSet: AgentToolHandler = async (args, { ctx, log }) =
             changed,
             name: config.name,
             resolution: config.metadata?.resolution ?? DEFAULT_RESOLUTION,
+            ...(playerDefaults ? { playerDefaults: project.getPlayerPreferences() } : {}),
             ...(languagePlan && localization
                 ? {
                       sourceLanguage: localization.sourceLocale || null,
@@ -208,6 +259,7 @@ export const projectSettingsSet: AgentToolHandler = async (args, { ctx, log }) =
         changed.length === 0 ? "Nothing changed: the project already had these settings." : `Changed ${changed.join(" and ")}.`
             + (changed.includes("resolution") ? " Existing pages keep their design size; resize them with ui_patch if they should follow." : "")
             + (languagePlan && languagePlan.remove.length > 0 ? " A removed language's translation file stays on disk; adding the language back restores it." : "")
-            + (languagePlan && languagePlan.add.length > 0 ? " A new language starts untranslated: lint lists every line it lacks." : ""),
+            + (languagePlan && languagePlan.add.length > 0 ? " A new language starts untranslated: lint lists every line it lacks." : "")
+            + (changed.includes("player defaults") ? " New players start with these; a player's own saved settings (and a Dev Mode session's) keep theirs." : ""),
     );
 };

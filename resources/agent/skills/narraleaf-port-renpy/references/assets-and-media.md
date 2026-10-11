@@ -24,6 +24,14 @@ codecs, not the extension, and says what is wrong.
 
 Decode VP9 inputs with `-c:v libvpx-vp9` *before* `-i`, or ffmpeg's native decoder drops the alpha.
 
+**Colours of an alpha WebM.** Studio plays the file as it is (no re-encode on import or build) and
+reads an untagged VP9 stream as BT.601 limited range - which is what the recipe above writes, since
+ffmpeg's RGB->YUV default is BT.601. Keep the two in step: either leave the file untagged and
+converted with the default, or convert and tag the same way, e.g. `...,format=rgba,scale=out_color_matrix=bt709:out_range=tv,format=yuva420p`
+plus `-colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv`. A clip that looks
+brighter than in Ren'Py is most often a blend mode (Screen or Add) on the overlay; to rule out the
+encode, compare one frame's alpha (`-vf alphaextract`) with the mask movie's frame.
+
 ## Things to know
 
 - **Duplicates.** Byte-identical files are imported once; the second path is answered under

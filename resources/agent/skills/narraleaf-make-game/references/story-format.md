@@ -72,6 +72,24 @@ Escape with a backslash: a line of narration that starts with `/`, `-`, `?`, `//
 `: ` (which would read as dialogue) needs `\` before the marker - `\...Huh.`, `\- not an option`,
 `It said\: closed.` Leading or trailing spaces need it too. `story_show` writes escapes for you.
 
+### Inline styling
+
+Dialogue, narration and choice options may style part of a line:
+
+```
+Mei: That was {b}not{/b} my idea.
+The sign read {color=#d03030}KEEP OUT{/color}, in {i}fresh{/i} paint.
+Aki: {color=#40a8c4}{b}Run!{/b}{/color}
+```
+
+`{b}…{/b}` bold, `{i}…{/i}` italic, `{color=…}…{/color}` colour (a hex code such as `#d03030`, or a
+CSS colour name). Tags nest and must close on the same line; a stray or unclosed tag is refused
+(`compile.inlineMarkup`). A literal brace that would read as one of these tags is written `\{b}`; any
+other brace (`{gold}`) is ordinary text. `story_show` prints styled lines this way. A line with
+styling the format has no tag for - ruby, size, typing speed, emphasis dots, an inline pause or
+variable, all set in Studio - prints as a `»` row instead; keep it as it is. Text tags from another
+engine (`{size=…}`, `{w}`, `{a=…}`, …) are not understood: rewrite the three above, drop the rest.
+
 ## Anchors: the row's identity
 
 `story_show` ends each line with `⟦…⟧` - the first characters of the row's id, optionally followed by
@@ -194,6 +212,47 @@ scene of your own, copy one such `»` line and its `#data` entry from a skeleton
 fresh UUID (its first 8 characters become the anchor and the `#data` key, the whole UUID goes in the
 entry's `"id"`), and set `"value"` to `"scene:<your scene id>"`. Check it with `dryRun: true`. If it
 gives trouble, leave it out: saves then show no place, nothing else breaks.
+
+## A row that runs a blueprint
+
+A `/blueprint` row runs a blueprint of its own when play reaches it - the way to grant an
+achievement, unlock a gallery CG the moment it shows, or call any plugin's node at a point in the
+story. Such a row has no line spelling: it is a `»` row whose `#data` entry names its blueprint, and
+the blueprint is written with `blueprint_apply` under the owner `storyAction`.
+
+1. Find the node: `blueprint_nodes {query:"achievement"}` (plugin nodes are listed when the plugin is
+   loaded in the project), then `blueprint_node {type}` for its pins and fields.
+2. Pick two fresh UUIDs: one for the row, one for its blueprint.
+3. Write the blueprint - `owner=storyAction blueprint=<blueprint uuid>` and `id=` the same uuid - with
+   an **On Call** head (`blueprint.event.head.onCall`) wired to the node:
+
+```
+blueprint "Grant: reached the lighthouse" owner=storyAction blueprint=7d1e3c55-2f0a-4b8e-9c47-1a6b0d93e2f4 id=7d1e3c55-2f0a-4b8e-9c47-1a6b0d93e2f4
+
+event "Grant the achievement"
+    call: blueprint.event.head.onCall
+    grant: <the plugin's unlock node type>
+        <its id field> = lighthouse
+
+    call.then -> grant.in
+```
+
+4. Put the row in the scene with `story_apply`: a `»` line whose anchor is the row uuid's first 8
+   characters, and its entry in the `#data` footer (merge it into the footer `story_show` printed, if
+   there is one):
+
+```
+Aki: We made it to the top.
+» Blueprint  ⟦3b9f6a21⟧
+
+#data
+{"3b9f6a21":{"id":"3b9f6a21-8c4d-4e5f-a617-2b3c4d5e6f70","parentId":null,"childrenIds":[],"kind":"action","payload":{"action":"blueprint","blueprintId":"7d1e3c55-2f0a-4b8e-9c47-1a6b0d93e2f4"}}}
+```
+
+Apply the blueprint first, then the scene (`dryRun: true` on both). From then on `story_show` prints
+the row as `» Blueprint Grant: reached the lighthouse  ⟦3b9f6a21⟧` - keep that line and its `#data`
+entry as they are; to change what it does, `blueprint_show` / `blueprint_apply` its blueprint. One
+blueprint per row: copy the pattern with new UUIDs for the next one.
 
 ## Rules that cause refusals or broken games
 

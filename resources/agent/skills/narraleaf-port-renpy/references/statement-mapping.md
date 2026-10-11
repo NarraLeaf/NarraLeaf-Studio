@@ -26,7 +26,8 @@ Measure anything visual once in a scratch scene before you generate thousands of
 | `e "…" (multiple=2)`, `nvl` mode | `/nvl` block | check `story_command /nvl` |
 | `"???" "…"` before a name is known | `/rename` the character, then dialogue | not a second character |
 | text tags `{w}`, `{p}`, `{nw}` | inline pause / line break forms from `story_command` | |
-| `{color}`, `{b}`, `{size}`, `{font}` | not expressible in `.story` text yet | strip them; log what styling was lost |
+| `{color=#f00}`, `{b}`, `{i}` | the same tags in `.story` text: `{color=#f00}…{/color}`, `{b}…{/b}`, `{i}…{/i}` | close each tag on the same line; `{/color}` etc. as in Ren'Py |
+| `{size}`, `{font}`, `{u}`, `{s}`, `{a=…}` | not expressible in `.story` text | strip them; log what styling was lost |
 | `[var]` interpolation | the story format's interpolation form | see `narraleaf-make-game` story format |
 
 Keep the speaker's Ren'Py `Character` arguments (`who_color`, `window_background`, `what_prefix`
@@ -88,7 +89,7 @@ wrong or no image. Record unresolvable statements with their line numbers.
 | `$ persistent.x = True` | `/set` on the persistent variable | |
 | `return` at a route's end | `/ending <name>` | |
 | `$ renpy.notify("…")` | a notification (see the interface chapter) | |
-| `$ achievement.grant("X")` | the achievements plugin's unlock where available, else a `/note` row | list in "Needs the author" |
+| `$ achievement.grant("X")` | a `/blueprint` row running the achievements plugin's unlock node (story-format, "A row that runs a blueprint"); a `/note` row only when there is no such plugin | list the note rows in "Needs the author" |
 | other `python` | decide per block; log each | |
 
 ## Splitting and naming

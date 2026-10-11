@@ -90,8 +90,17 @@ export type DevModeStatus =
  * driven standalone run uses (`GameAppTestControls`): an advance is the click a player makes, a
  * choice goes through the choice runtime, and a capture is the engine's own picture of its stage.
  */
+/** Which picture `playtest_screenshot` takes; see {@link DevModeAgentAction}. */
+export type DevModeCaptureView = "screen" | "stage";
+
 export type DevModeAgentAction =
-    | { kind: "capture" }
+    /**
+     * `screen` (the default) is what the player sees: the stage with every page and layer open over
+     * it (a backlog, settings opened in game, a Confirm dialog), photographed from the window's pixels
+     * cropped to the game's box. `stage` is the engine's own picture of its stage alone - the scene and
+     * the Game UI on it, without pages - which is what a save's thumbnail shows.
+     */
+    | { kind: "capture"; view?: DevModeCaptureView }
     /**
      * Where the game is, without acting on it. With `settle`, first wait (bounded) for a line or a
      * menu to come up, and let a line still typing finish - clicking once to complete it when it
@@ -213,14 +222,19 @@ export type DevModeAgentIssue = {
 export type DevModeAgentResult =
     | {
           kind: "capture";
-          /** A PNG data URL. */
+          /** A PNG data URL. Empty when main is to photograph the window (see `rect`). */
           png: string;
           /**
-           * `engine` is the engine's stage capture: the scene and the Game UI on it. `window` is the
-           * window's own pixels, taken by main when the engine had nothing to capture (a page such as
-           * the title is showing).
+           * `screen` is the window's pixels cropped to the game's box: stage, pages and layers, as
+           * the player sees them. `engine` is the engine's stage capture: the scene and the Game UI
+           * on it. `window` is the whole window, taken by main when there was neither (no game box).
            */
-          source: "engine" | "window";
+          source: "engine" | "window" | "screen";
+          /**
+           * The game's box in the window, in CSS pixels, for main to crop its capture to. Sent with
+           * an empty `png`.
+           */
+          rect?: { x: number; y: number; width: number; height: number };
       }
     | { kind: "state"; state: DevModeAgentGameState; issues?: DevModeAgentIssue[] }
     | {

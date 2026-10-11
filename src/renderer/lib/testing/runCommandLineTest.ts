@@ -321,7 +321,9 @@ export async function runCommandLineTest(
         }
         const findings: CommandLineRunFinding[] = record.findings.map(finding => ({
             severity: finding.severity,
+            ...(finding.ruleId ? { id: finding.ruleId } : {}),
             message: formatTestText(finding.message),
+            ...(finding.englishMessage ? { englishMessage: finding.englishMessage } : {}),
         }));
         const status = record.status as Exclude<TestRunRecord["status"], "running">;
         workspace.reportCommandLineRun({

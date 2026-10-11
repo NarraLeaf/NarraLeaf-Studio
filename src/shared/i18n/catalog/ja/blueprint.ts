@@ -208,6 +208,7 @@ export const blueprint = {
         node: {
             contextInvalid: "ノード「{name}」は{owner}では使えない。{hint}",
             contextValueReturnHint: " 値を返すノードはブループリント値のグラフにしか置けない",
+            elementOtherSurface: "「{node}」が別のページまたはゲーム UI の要素（{element}）を参照している。ブループリントが扱えるのは所属するページまたはコンポーネントの要素だけで、実行時にこのノードは拒否される（読み取りノードは何も返さない）。その処理は該当ページのブループリントで行う。そこではゲームの状態（ダイアログのテキストを取得、選択肢の数を取得）や、このブループリントが書き込む変数を読める",
             contextListItemHint: " このノードは自分が並んでいるリストの行を読むが、ここには行がない",
             noRuntime: "ノード「{node}」に対応する実装がない",
             inputMissing: "「{node}」の「{pin}」に何も接続されていない",

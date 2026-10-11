@@ -76,7 +76,7 @@ pixels) rather than by eye.
 3. `ui_screenshot` the page and put it next to the Ren'Py capture (or diff them). Fix until the
    rectangles agree to a pixel or two.
 4. **Check it in the running game** - `playtest_start`, then `playtest_screenshot` (open the page
-   with `playtest_click` / `playtest_key`). Fonts, list layouts, text effects and video can differ
+   with `playtest_click` / `playtest_key`; the screenshot includes pages open over the game). Fonts, list layouts, text effects and video can differ
    between the editor render and the game; compare the playtest shot with the Ren'Py capture too,
    and log any difference you cannot fix with both screenshots.
 5. Wire behaviour (blueprints) and test it with `playtest_click`: every button does what the Ren'Py
@@ -88,9 +88,16 @@ pixels) rather than by eye.
   changes where lines wrap.
 - **Text outlines.** Ren'Py `outlines` map to a text shadow with spread; check that the game draws it.
 - **The dialogue box during a menu.** Ren'Py hides an empty dialogue window for a menu by default
-  (`config.window "auto"`); check what Studio shows under the options and match it.
-- **CTC.** Ren'Py shows the click-to-continue indicator only when the line is complete.
+  (`config.window "auto"`). In Studio it is a blueprint on the box's container that hides the
+  textbox picture while there is no line - `ui-design` in the make-game guide, "The dialogue box".
+  It must live on the Dialogue page: a Choice-page blueprint cannot reach the Dialogue page's
+  elements (the checker refuses it).
+- **CTC.** Ren'Py shows the click-to-continue indicator only when the line is complete: same section,
+  `Is Dialog Waiting` driving the mark's Visible.
 - **Default preferences.** Ren'Py's defaults (`preferences.text_cps`, `afm_time`, volumes) are in
-  `options.rpy` / `gui.rpy`; set Studio's defaults to the same values.
-- **Large backgrounds** may appear a moment late the first time a page opens; preload or use the
-  same image on the page before it.
+  `options.rpy` / `gui.rpy`; set Studio's with `project_settings_set {playerDefaults}`. `text_cps 0`
+  (instant) is `cps: 200`, the fastest the engine types; `afm_time` is seconds for a whole line where
+  `autoForwardDelay` is milliseconds after the line has finished, so a short pause (1000-2000) is the
+  usual match. Volumes are 0-1 in both.
+- **Large backgrounds** may still appear a moment late the first time a page opens; Studio holds the
+  page until a picture covering most of it has decoded, up to 1.5 s.

@@ -505,6 +505,22 @@ export async function advanceLines(
     }
 }
 
+/**
+ * What the player sees, asked of main: the game's box in the window, for main to photograph.
+ *
+ * The engine's capture draws its stage alone, and pages and layers (a backlog, settings opened in
+ * game, a Confirm dialog) are siblings of the stage, not inside it - so the only picture with them in
+ * it is the window's own pixels. Cropped to the game root, it leaves out Dev Mode's chrome. With no
+ * game root yet the rect is omitted and main takes the whole window.
+ */
+export function screenCaptureRequest(root: Element | null): DevModeAgentResult {
+    const box = root?.getBoundingClientRect();
+    if (!box || box.width < 1 || box.height < 1) {
+        return { kind: "capture", png: "", source: "window" };
+    }
+    return { kind: "capture", png: "", source: "screen", rect: { x: box.left, y: box.top, width: box.width, height: box.height } };
+}
+
 /** The engine's stage capture, bounded, with what was waiting named when it runs out. */
 export async function captureWithin(
     capture: () => Promise<string | null>,
@@ -564,6 +580,11 @@ export type PlaytestInputOptions = {
     readIssues?: () => DevModeAgentIssue[];
     /** What the window remembers between calls; one per window. */
     memory?: PlaytestMemory;
+    /**
+     * The game's root element when the game app has published no controls yet (a page such as the
+     * title before any story ran), for a screen capture to crop to.
+     */
+    findGameRoot?: () => Element | null;
 };
 
 /**
@@ -777,6 +798,9 @@ async function runAgentDriveActionInner(
 ): Promise<RequestStatus<DevModeAgentResult>> {
     if (action.kind === "capture") {
         const controls = getControls();
+        if ((action.view ?? "screen") === "screen") {
+            return { success: true, data: screenCaptureRequest(controls?.readGameRoot() ?? input.findGameRoot?.() ?? null) };
+        }
         // No controls yet means nothing to capture yet: an empty answer, and main photographs the
         // window instead.
         return captureWithin(() => (controls ? controls.capture() : Promise.resolve(null)), clock);

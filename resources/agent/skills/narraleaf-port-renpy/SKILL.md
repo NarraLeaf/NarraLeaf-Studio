@@ -163,8 +163,10 @@ navigation, confirm prompts, preferences, the gallery's locks, quick-menu action
 
 - Gallery: entries from the Ren'Py gallery definition; unlock with the same condition (a persistent
   "seen" flag set where the CG first shows).
-- Achievements: if the project has an achievements plugin, wire unlocks at the same points; otherwise
-  keep a note row at each grant and list them under "Needs the author".
+- Achievements: if the project has an achievements plugin, grant at the same points with a
+  `/blueprint` row whose blueprint calls the plugin's unlock node (`story-format` in the make-game
+  guide, "A row that runs a blueprint"). Without such a plugin, keep a note row at each grant and
+  list them under "Needs the author".
 
 ## Step 10 - Verify and hand over
 

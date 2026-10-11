@@ -37,7 +37,7 @@ import {
 import { AGENT_HISTORY_LABEL, assetsService, listAssets, resolveAsset, resolveComponent, resolveSurface, resolveSurfaceOrComponent } from "../agentLookups";
 import { applyUiPatch, readUiPatchOps, type UIPatchTarget } from "../uiPatch";
 import { listUiSubtree, resolveUiElementRef, uiElementPath, type UIElementPool } from "../uiElementRefs";
-import { designRectFromClientRects, planScreenshot, type ScreenshotRect } from "../screenshotGeometry";
+import { designRectFromClientRects, drawnBounds, planScreenshot, type ClientBox, type DrawnBox, type ScreenshotRect } from "../screenshotGeometry";
 import { blobToDataUrl, rasterizeElement } from "../domRaster";
 import { OffscreenCapture, waitForOffscreenPage } from "../offscreenCapture";
 import { AssetLoadTrackerContext } from "@/lib/ui-editor/runtime/assetLoadTracker";
@@ -155,6 +155,42 @@ function componentDesignSize(component: UIComponentDefinition): { width: number;
         width: Math.max(1, Math.round(component.previewMeta?.width ?? root?.layout.width ?? 160)),
         height: Math.max(1, Math.round(component.previewMeta?.height ?? root?.layout.height ?? 88)),
     };
+}
+
+/**
+ * A screenshot is a still, so a video is drawn as its poster (or a placeholder box with a play mark
+ * where it has none): said every time one is on the page, so a missing animation is not mistaken
+ * for a broken video.
+ */
+function describeVideoStills(videos: readonly { label: string; shownAs: "poster" | "placeholder" | "frame" }[]): string {
+    if (videos.length === 0) {
+        return "";
+    }
+    const placeholders = videos.filter(video => video.shownAs === "placeholder").map(video => video.label);
+    return "Video elements are shown as their poster, not playing"
+        + (placeholders.length > 0 ? `; a grey placeholder with a play mark stands in where there is no readable poster (${listForSummary(placeholders)}) - set posterAssetId to see a still.` : ".");
+}
+
+/** The drawn element nodes carry their id under one of these: editable drawings and preview drawings. */
+const ELEMENT_ID_SELECTOR = "[data-ui-element-id], [data-ui-preview-element-id]";
+
+function clientBox(node: Element): ClientBox {
+    const rect = node.getBoundingClientRect();
+    return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
+}
+
+function clipsContents(node: Element): boolean {
+    const style = getComputedStyle(node);
+    return style.overflowX !== "visible" || style.overflowY !== "visible" || (style.clipPath !== "" && style.clipPath !== "none");
+}
+
+/** The element's drawn subtree, for {@link drawnBounds}: what it draws, not just its own box. */
+function measureDrawn(node: Element): DrawnBox {
+    return { box: clientBox(node), clips: clipsContents(node), children: [...node.children].map(measureDrawn) };
+}
+
+function boxAsRect(box: ClientBox): { left: number; top: number; width: number; height: number } {
+    return { left: box.left, top: box.top, width: box.right - box.left, height: box.bottom - box.top };
 }
 
 /** An element's box from its layout alone, walking up the parents: the fallback when it was not drawn with an id. */
@@ -292,8 +328,8 @@ export const uiScreenshot: AgentToolHandler = async (args, tool) => {
     // The nearest element of this page's own pool: an element inside a placed component carries the
     // definition's id, which the page does not have, so the walk goes on up to the placement.
     const describe = (node: Element): string | null => {
-        for (let at = node.closest("[data-ui-element-id]"); at; at = at.parentElement?.closest("[data-ui-element-id]") ?? null) {
-            const element = pool[at.getAttribute("data-ui-element-id") ?? ""];
+        for (let at = node.closest(ELEMENT_ID_SELECTOR); at; at = at.parentElement?.closest(ELEMENT_ID_SELECTOR) ?? null) {
+            const element = pool[at.getAttribute("data-ui-element-id") ?? at.getAttribute("data-ui-preview-element-id") ?? ""];
             if (element) {
                 return uiElementPath(pool, element);
             }
@@ -315,9 +351,10 @@ export const uiScreenshot: AgentToolHandler = async (args, tool) => {
         }
         let crop: ScreenshotRect | null = null;
         if (targetElement) {
-            const node = page.querySelector<HTMLElement>(`[data-ui-element-id="${CSS.escape(targetElement.id)}"]`);
+            const id = CSS.escape(targetElement.id);
+            const node = page.querySelector<HTMLElement>(`[data-ui-element-id="${id}"], [data-ui-preview-element-id="${id}"]`);
             crop = node
-                ? designRectFromClientRects(page.getBoundingClientRect(), node.getBoundingClientRect(), design)
+                ? designRectFromClientRects(page.getBoundingClientRect(), boxAsRect(drawnBounds(measureDrawn(node))), design)
                 : layoutRect(pool, targetElement);
         }
         const plan = planScreenshot(design, crop, maxSize);
@@ -335,6 +372,7 @@ export const uiScreenshot: AgentToolHandler = async (args, tool) => {
                 ? `Photographed after ${Math.round(readiness.elapsedMs / 1000)}s with these still arriving, so they may be absent or half-drawn: ${listForSummary(readiness.outstanding)}.`
                 : "",
             notDrawn.length > 0 ? `Not drawn: ${listForSummary(notDrawn)}.` : "",
+            describeVideoStills(raster.videos),
         ].filter(Boolean).join(" ");
         return {
             ok: true,
@@ -350,6 +388,7 @@ export const uiScreenshot: AgentToolHandler = async (args, tool) => {
                 height: plan.height,
                 source: plan.source,
                 ...(notDrawn.length > 0 ? { notDrawn } : {}),
+                ...(raster.videos.length > 0 ? { videos: raster.videos } : {}),
                 ...(readiness.outstanding.length > 0 ? { stillArriving: readiness.outstanding } : {}),
             },
         };

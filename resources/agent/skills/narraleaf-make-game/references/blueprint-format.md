@@ -46,7 +46,9 @@ event "Ask, then quit the game"
   `widgetMain` (an element: `surface=` + `element=`), `surfaceMain` (a page: `surface=`),
   `componentWidgetMain` (an element inside a component definition: `component=` + `element=`; runs once
   per placement), `widgetValue` (a value blueprint driving one prop: `surface=` `element=` `prop=`),
-  `globalMain` (the game's own). `ui_surfaces` prints owner fields ready to paste. `id=` is optional.
+  `globalMain` (the game's own), `storyAction` (what a `/blueprint` story row runs: `blueprint=<uuid>`,
+  with `id=` the same uuid, head `blueprint.event.head.onCall`; see `story-format`, "A row that runs a
+  blueprint"). `ui_surfaces` prints owner fields ready to paste. `id=` is optional.
 - **`event <name>`** opens a graph (a layer). Name it for its job ("Open the route map"), never
   "Layer 1". A blueprint can hold several; every event head in every layer fires.
 - **`<nodeId>: <nodeType> [key=value …] [@x,y]`** declares a node. The node id is yours (`pressed`,
@@ -76,6 +78,13 @@ event "Ask, then quit the game"
 
 Elements a blueprint refers to need stable ids: give them an explicit `id` when you add them with
 `ui_patch`.
+
+**A blueprint reaches only its own page.** An Element node (`blueprint.element.ref`) on a page's or
+widget's blueprint must name an element of that same page (or, inside a component, of that
+component); `surfaceId` is that page's id. One naming another page or Game UI is refused
+(`element.other_surface`) - at run time it would do nothing. To make one page react to another,
+put the blueprint on the page that changes, and give it something to read: game state (Get Dialog
+Text, Get Choice Count, Is Dialog Waiting) or a variable the other page sets.
 
 ## Nodes you will reach for
 

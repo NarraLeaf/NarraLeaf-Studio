@@ -10,6 +10,7 @@ import {
     captureWithin,
     movedOn,
     runAgentDriveAction,
+    screenCaptureRequest,
     toAgentGameState,
     type PlaytestClock,
     type PlaytestGame,
@@ -562,6 +563,25 @@ describe("captureWithin: a capture that never settles", () => {
             data: { kind: "capture", png: "data:image/png;base64,AAAA", source: "engine" },
         });
         expect(await captureWithin(async () => null, clock)).toMatchObject({ success: true, data: { png: "" } });
+    });
+});
+
+describe("screenCaptureRequest", () => {
+    const rooted = (rect: { left: number; top: number; width: number; height: number }) =>
+        ({ getBoundingClientRect: () => rect }) as unknown as Element;
+
+    it("asks main for the game's box, so pages open over the stage are in the picture", () => {
+        expect(screenCaptureRequest(rooted({ left: 0, top: 32, width: 1280, height: 720 }))).toEqual({
+            kind: "capture",
+            png: "",
+            source: "screen",
+            rect: { x: 0, y: 32, width: 1280, height: 720 },
+        });
+    });
+
+    it("falls back to the whole window without a game box", () => {
+        expect(screenCaptureRequest(null)).toEqual({ kind: "capture", png: "", source: "window" });
+        expect(screenCaptureRequest(rooted({ left: 0, top: 0, width: 0, height: 0 }))).toMatchObject({ source: "window" });
     });
 });
 

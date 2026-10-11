@@ -123,6 +123,11 @@ Checkpoint: a filled brief and, for a supplied script, an inventory and name map
   changing the resolution later does not rescale pages already built. `languages` is the full list
   (source language included); a language holding translations goes only when `removeLanguages`
   names it.
+- How a new player's settings start - text speed, auto-forward delay, volumes, skipping - is
+  `project_settings_set {playerDefaults}` (Studio's Project → Game page; `project_info` shows the
+  values). The skeleton starts text at 10 characters per second; `cps: 200` is as near instant as
+  the engine types, e.g. `{ "cps": 40, "autoForwardDelay": 1500 }`. A player's own saved settings
+  win over these, so set them before playtests that judge pacing.
 
 Then `project_info` (resolution, languages, entry page and scene, counts) and `story_list`,
 `characters_list`, `variables_list`, `assets_list`, `ui_surfaces` to learn what is there. **The
@@ -195,6 +200,11 @@ Checkpoint: every asset in the name map exists in the project under its agreed n
   layers change together under one axis) or `character_layered_set`. Check combinations with
   `character_preview`. Its looks are axis tags: `/char Mei smile` changes the expression and keeps the
   outfit. Live2D / Spine characters are set up by the author in Studio; you only write their rows.
+- **Avatars** (the face beside a line in the dialogue box and the backlog): `character_upsert` with
+  `defaultAvatar` (shown wherever nothing more specific is - off-stage lines and the backlog too) and
+  `avatars` per pose (`{ "smile": "mei_face_smile" }`) or, for a layered character, per tag
+  combination of its `avatarAxes`. Without either, Studio cuts avatars from the sprites when the
+  author opens the Characters panel - say so on the hand-over if the dialogue box shows one.
 - A speaker with no sprite still deserves a character (name colour, backlog, voice later). Truly
   one-off speakers may stay plain `Name: text` lines.
 - `variable_upsert` for every flag, counter and route switch the story needs: `saved` for anything
@@ -283,6 +293,11 @@ the same way.
    restyle those instead). An applied page is never the entry: `ui_page_set_entry` makes it one,
    and `ui_page_delete` removes the pages it replaced once nothing opens them.
 6. When the author says "this" or "the selected one", `ui_selection` tells you what they selected.
+7. **The dialogue box's behaviour.** A click-to-continue mark that should appear only once the line
+   has finished typing, and an empty box that should step aside while a choice menu is up, are each
+   a small blueprint on the box's container - `ui-design`, "The dialogue box", has both, ready to
+   paste. A blueprint reaches only the elements of its own page: one on the Choice page cannot hide
+   the Dialogue page's box (the checker refuses it).
 
 Checkpoint: every page screenshot passes the checklist, and the title shows the game's title and art.
 
@@ -305,6 +320,11 @@ Prefer settings to blueprints where one exists: a button's click and hover sound
 hears and is told them. A CG needs an Unlock Gallery node: set a persistent variable in the story
 where the CG appears, and unlock from the title page's open event - the recipe is in
 `agent_guide {chapter:"plugin:narraleaf.gallery"}`.
+
+**Something to do at a story row** - grant an achievement, unlock a CG at the moment it shows, call
+any plugin's node: a `/blueprint` row runs a blueprint of its own (owner `storyAction`). The `.story`
+spelling and a worked example are in `story-format`, "A row that runs a blueprint". Do not leave such
+a moment as a `//` note: notes never run.
 
 Checkpoint: every new control does what it says, checked in step 8.
 

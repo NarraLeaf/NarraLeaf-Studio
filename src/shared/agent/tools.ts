@@ -197,18 +197,42 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "project_info",
         "Project overview",
-        "Name, design resolution, languages, entry page and scene, and counts of stories, scenes, surfaces, assets, characters and variables.",
+        "Name, design resolution, languages, entry page and scene, the player defaults (starting text speed, auto-forward delay, volumes, skipping), and counts of stories, scenes, surfaces, assets, characters and variables.",
     ),
     ws(
         "project_settings_set",
         "Change project settings",
-        "Changes the project's name, design resolution or game languages. Changing the resolution after the interface is built does not rescale it. `languages` is the full list the game offers (the source language must be in it); a language that holds translations is dropped only when `removeLanguages` names it, and its translation file stays on disk. Translate with localization_list / localization_set; voice-over languages are separate (voice_settings_set).",
+        "Changes the project's name, design resolution or game languages. Changing the resolution after the interface is built does not rescale it. `languages` is the full list the game offers (the source language must be in it); a language that holds translations is dropped only when `removeLanguages` names it, and its translation file stays on disk. Translate with localization_list / localization_set; voice-over languages are separate (voice_settings_set). `playerDefaults` sets what a new player's settings start at (Studio's Project → Game page); a player's saved settings keep theirs.",
         {
             name: { type: "string" },
             width: { type: "integer" },
             height: { type: "integer" },
             languages: { type: "array", items: { type: "string" }, description: "Every language the game offers, e.g. `[\"zh-CN\", \"en\"]`. Languages not listed and holding no translations are removed; new ones are added untranslated." },
             removeLanguages: { type: "array", items: { type: "string" }, description: "Languages to drop even though they hold translations. Never the source language." },
+            playerDefaults: {
+                type: "object",
+                description: "Merged into the starting preferences; keys left out keep their value. `cps` text speed in characters per second (1-200; 200 is as near instant as the engine types), `textRevealDuration` fade per character in ms (0-500), `autoForward` (bool) and `autoForwardDelay` ms after a line (0-30000), `gameSpeed` (0.1-10), `globalVolume`/`bgmVolume`/`soundVolume`/`voiceVolume` 0-1, `skip`, `skipReadText` (only skip text already read), `skipDelay`/`skipInterval` ms, `showDialog`, `voiceEndMode` (stop / fade / none: what a voice line does when the player advances) and `voiceFadeDuration` ms, `muteOnWindowBlur`. project_info shows the current values.",
+                properties: {
+                    cps: { type: "number" },
+                    textRevealDuration: { type: "number" },
+                    gameSpeed: { type: "number" },
+                    autoForward: { type: "boolean" },
+                    autoForwardDelay: { type: "number" },
+                    showDialog: { type: "boolean" },
+                    skip: { type: "boolean" },
+                    skipReadText: { type: "boolean" },
+                    skipDelay: { type: "number" },
+                    skipInterval: { type: "number" },
+                    globalVolume: { type: "number" },
+                    bgmVolume: { type: "number" },
+                    soundVolume: { type: "number" },
+                    voiceVolume: { type: "number" },
+                    voiceEndMode: { type: "string", enum: ["stop", "fade", "none"] },
+                    voiceFadeDuration: { type: "number" },
+                    muteOnWindowBlur: { type: "boolean" },
+                },
+                additionalProperties: false,
+            },
         },
         [],
         true,
@@ -279,12 +303,12 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "characters_list",
         "List characters",
-        "Lists characters with id, name, nicknames, name colour, `kind` and their looks: a `preset` character's `poses` (one sprite image each); a `layered` character's `layered` block (canvas, axes with their tags and default, and the layer stack bottom to top with what each layer draws per tag - the exact shape character_layered_set takes, so edit it and send it back); a `live2d`/`spine`/`puppet` character's model (read-only: those are set up in Studio). Also `entranceTransform` (how big the sprite is drawn and where it stands). `spriteSize` is the default look's pixels (a layered character's canvas) and `drawnAtCenter` the box it occupies on a `/show <name> pos=center` row, in design pixels from the stage's top-left - check it instead of guessing from a screenshot.",
+        "Lists characters with id, name, nicknames, name colour, `kind` and their looks: a `preset` character's `poses` (one sprite image each); a `layered` character's `layered` block (canvas, axes with their tags and default, and the layer stack bottom to top with what each layer draws per tag - the exact shape character_layered_set takes, so edit it and send it back); a `live2d`/`spine`/`puppet` character's model (read-only: those are set up in Studio). Also `entranceTransform` (how big the sprite is drawn and where it stands) and the dialog avatar: `defaultAvatar`, the hand-drawn `avatars` per pose or tag combination, `bakedAvatars` (crops Studio cut from the sprites itself) and a layered character's `avatarAxes`. `spriteSize` is the default look's pixels (a layered character's canvas) and `drawnAtCenter` the box it occupies on a `/show <name> pos=center` row, in design pixels from the stage's top-left - check it instead of guessing from a screenshot.",
     ),
     ws(
         "character_upsert",
         "Create or update a character",
-        "Creates a character, or updates the one with this `id` or exact `name`. Poses are sprite images already imported as assets. A line `Name: text` in a story resolves to the character with that name or nickname. A sprite is drawn at its own pixel size times `zoom`, its centre placed by `position`; a character that gets poses and has no `entranceTransform` yet is given a standing one (feet on the bottom edge, own pixel size, scaled down only if taller than the stage). A reused character keeps the entrance its old art was tuned for - the answer warns; pass `entranceTransform: \"standing\"` to refit. Warns when a pose image has no transparency. Name, colour, nicknames and entrance work on a layered character too; its looks are written with character_layered_set. One step of undo.",
+        "Creates a character, or updates the one with this `id` or exact `name`. Poses are sprite images already imported as assets. A line `Name: text` in a story resolves to the character with that name or nickname. A sprite is drawn at its own pixel size times `zoom`, its centre placed by `position`; a character that gets poses and has no `entranceTransform` yet is given a standing one (feet on the bottom edge, own pixel size, scaled down only if taller than the stage). A reused character keeps the entrance its old art was tuned for - the answer warns; pass `entranceTransform: \"standing\"` to refit. Warns when a pose image has no transparency. Name, colour, nicknames, entrance and avatars work on a layered character too; its looks are written with character_layered_set. Avatars (the face beside a line in the dialogue box and the backlog): `defaultAvatar` shows wherever nothing more specific does - and is the only one a Live2D/Spine character has; `avatars` gives a picture per pose (preset) or per tag combination (layered). Without either, Studio cuts avatars from the sprites when the author opens the Characters panel. One step of undo.",
         {
             id: { type: "string" },
             name: { type: "string" },
@@ -300,6 +324,19 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
                 },
             },
             defaultPose: { type: "string", description: "Pose name shown when a line names none." },
+            defaultAvatar: {
+                description: "Image asset (name or id) shown as the speaker's avatar wherever no pose or tag combination has its own - the backlog and off-stage lines included. null clears it.",
+                oneOf: [{ type: "string" }, { type: "null" }],
+            },
+            avatars: {
+                type: "object",
+                additionalProperties: { oneOf: [{ type: "string" }, { type: "null" }] },
+                description: "Hand-drawn avatars, merged into what is there: pose name -> image asset for a preset character; for a layered one, one tag of each avatar axis joined with `+` (any order), e.g. `{ \"smile\": \"mei_face_smile\" }` or `{ \"casual+smile\": … }`. null drops that one (Studio's own crop shows again). Restating `poses` keeps the avatars of poses whose name is unchanged.",
+            },
+            avatarAxes: {
+                description: "Layered only: the axes the avatar varies with, by name (e.g. `[\"expression\"]` = one avatar per expression whatever the outfit). null = every axis. Set it before (or in the same call as) `avatars`, since it decides what their keys mean.",
+                oneOf: [{ type: "array", items: { type: "string" } }, { type: "null" }],
+            },
             confirmSwitch: CONFIRM_SWITCH,
             entranceTransform: {
                 description:
@@ -543,7 +580,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "ui_screenshot",
         "Look at a page",
-        "Renders a page (or one element of it) as it looks in the game and returns the image. Do this after every visible change and check alignment, contrast, overlap and text overflow before moving on. Elements are drawn at rest; pass `element` with `state: \"hovered\"` or `\"active\"` to see a button's hover or pressed look.",
+        "Renders a page (or one element of it) as it looks in the game and returns the image. Do this after every visible change and check alignment, contrast, overlap and text overflow before moving on. Elements are drawn at rest; pass `element` with `state: \"hovered\"` or `\"active\"` to see a button's hover or pressed look. A crop to `element` takes in what the element draws past its own box (a picture hanging over a button's edge) unless the element clips it. Video elements are shown as their poster (`posterAssetId`), or a grey placeholder with a play mark where there is none - the result says which.",
         {
             surface: { type: "string", description: "Page name or id." },
             component: { type: "string", description: "Component name or id, instead of a page." },
@@ -842,7 +879,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     main(
         "test",
         "Run a project test",
-        "Runs a built-in test headlessly: `narraleaf-studio:route-coverage` (every scene reachable), `narraleaf-studio:reachable-endings`, `narraleaf-studio:project-diagnostics`.",
+        "Runs a built-in test headlessly: `narraleaf-studio:route-coverage` (every scene reachable), `narraleaf-studio:reachable-endings`, `narraleaf-studio:project-diagnostics` (the lint rules as one pass/fail verdict). Findings come in English where the test supplies it, each with the `rule` that produced it when it has one (project-diagnostics gives the lint rule id, as `lint` does).",
         { project: PROJECT_ARG, id: { type: "string" } },
         ["id"],
     ),
@@ -861,7 +898,15 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
             choice: { type: "integer", description: "1-based option of the menu showing, in the order shown (hidden options are not counted)." },
         },
     ),
-    ws("playtest_screenshot", "Look at the game", "Screenshot of the running Dev Mode game: the stage with its Game UI, or the window when a page such as the title is showing. Fails within about 10 s, saying why, when the game cannot be captured.", { maxSize: { type: "integer", default: 1280 } }),
+    ws(
+        "playtest_screenshot",
+        "Look at the game",
+        "Screenshot of the running Dev Mode game as the player sees it: the stage with its Game UI and every page or layer open over it (the title, a backlog or settings page opened in game, a Confirm dialog). `view: \"stage\"` gives the engine's picture of the stage alone - the scene and the Game UI, without pages - which is what a save thumbnail shows. Fails within about 10 s, saying why, when the game cannot be captured.",
+        {
+            maxSize: { type: "integer", default: 1280 },
+            view: { type: "string", enum: ["screen", "stage"], default: "screen", description: "`screen` (default): what the player sees. `stage`: the stage alone, without pages and layers." },
+        },
+    ),
     ws(
         "playtest_click",
         "Click in the game",

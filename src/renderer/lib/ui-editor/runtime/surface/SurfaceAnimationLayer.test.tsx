@@ -11,7 +11,7 @@ import { AnimatePresence } from "motion/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { PageAnimationMotion } from "@/lib/ui-editor/runtime/pageAnimation";
 import { ensureAnimationFramePolyfill } from "@/lib/ui-editor/runtime/testing/lifecycleTestKit";
-import { SurfaceAnimationLayer } from "./SurfaceAnimationLayer";
+import { SurfaceAnimationLayer, largeUndecodedImages } from "./SurfaceAnimationLayer";
 
 beforeAll(() => {
     ensureAnimationFramePolyfill();
@@ -88,5 +88,48 @@ describe("SurfaceAnimationLayer exit visibility", () => {
 
         rerender(ui(false));
         expect(contentOpacity(container)).toBe("1");
+    });
+});
+
+describe("SurfaceAnimationLayer held back for its pictures", () => {
+    it("does not show its backdrop colour bare while the prepaint is pending", async () => {
+        const { container } = render(
+            <AnimatePresence>
+                <SurfaceAnimationLayer
+                    key="layer"
+                    prepaintKey="layer"
+                    direction="forward"
+                    pageMotion={pageMotion}
+                    style={{ backgroundColor: "rgb(0, 0, 0)" }}
+                    contentClassName="layer-content"
+                >
+                    <span>content</span>
+                </SurfaceAnimationLayer>
+            </AnimatePresence>,
+        );
+        const layer = container.querySelector<HTMLElement>("[data-ui-surface-prepaint]")!;
+        expect(layer.getAttribute("data-ui-surface-prepaint")).toBe("pending");
+        expect(layer.style.backgroundColor).toBe("transparent");
+        await waitFor(() => expect(layer.getAttribute("data-ui-surface-prepaint")).toBe("ready"));
+        expect(layer.style.backgroundColor).toBe("rgb(0, 0, 0)");
+    });
+
+    it("counts only undecoded pictures that cover a large share of the layer", () => {
+        const root = document.createElement("div");
+        const rect = (left: number, top: number, width: number, height: number) =>
+            () => ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}) }) as DOMRect;
+        root.getBoundingClientRect = rect(0, 0, 1920, 1080);
+        const backdrop = document.createElement("img");
+        backdrop.setAttribute("src", "app://fs/bg.png");
+        backdrop.getBoundingClientRect = rect(0, 0, 1920, 1080);
+        const icon = document.createElement("img");
+        icon.setAttribute("src", "app://fs/icon.png");
+        icon.getBoundingClientRect = rect(10, 10, 64, 64);
+        const empty = document.createElement("img");
+        empty.getBoundingClientRect = rect(0, 0, 1920, 1080);
+        root.append(backdrop, icon, empty);
+        // jsdom never decodes, so `complete && naturalWidth > 0` is false for both pictures.
+        expect(largeUndecodedImages(root)).toEqual([backdrop]);
+        expect(largeUndecodedImages(null)).toEqual([]);
     });
 });

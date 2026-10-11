@@ -1125,7 +1125,7 @@ export function createListInspector(ctx: InspectorContext) {
                                 label: t("widgets.list.trackImage"),
                                 hidden: hasAuthoredScrollbarParts,
                                 getValue: (d: D) => getLiveListProps(d).scrollbar.trackStyle.imageFill ?? undefined,
-                                setValue: (_d: D, value: ImageFill) => patchScrollbarPart("trackStyle", { imageFill: value, fillType: "image" }),
+                                setValue: (_d: D, value: ImageFill) => patchScrollbarPart("trackStyle", { imageFill: value, fillType: "image", fillOpacity: 1 }),
                             }),
                             defineField<D, any>({
                                 id: "list.scrollbar.thumbColor",
@@ -1144,7 +1144,7 @@ export function createListInspector(ctx: InspectorContext) {
                                 label: t("widgets.list.thumbImage"),
                                 hidden: hasAuthoredScrollbarParts,
                                 getValue: (d: D) => getLiveListProps(d).scrollbar.thumbStyle.imageFill ?? undefined,
-                                setValue: (_d: D, value: ImageFill) => patchScrollbarPart("thumbStyle", { imageFill: value, fillType: "image" }),
+                                setValue: (_d: D, value: ImageFill) => patchScrollbarPart("thumbStyle", { imageFill: value, fillType: "image", fillOpacity: 1 }),
                             }),
                             defineField<D, any>({
                                 id: "list.scrollbar.customize",

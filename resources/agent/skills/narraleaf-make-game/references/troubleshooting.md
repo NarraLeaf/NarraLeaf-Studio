@@ -82,6 +82,16 @@ traps that do not produce a refusal at all.
   MP3, images to PNG.
 - **Video plays sound over black.** HEVC/H.265 MP4, ProRes MOV or Theora OGV; convert to WebM or H.264
   MP4.
+- **A transparent (alpha) video's colours look off.** Studio plays an alpha WebM as it is - it is not
+  re-encoded on import or by the build - with straight (not premultiplied) alpha, composited
+  normally unless its overlay was given a blend mode in Studio's inspector. Colour shifts come from the encode: the RGB->YUV matrix used
+  to make the file has to be the one the file says it uses. Encode alpha clips as VP9 `yuva420p` and
+  state the colours explicitly, e.g. convert with `-vf "format=rgba,scale=out_color_matrix=bt709:out_range=tv,format=yuva420p"`
+  and tag with `-colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv` (decode a
+  VP9 alpha source with `-c:v libvpx-vp9` before `-i`, or ffmpeg drops the alpha). A file with no
+  colour tags is shown as BT.601 limited range, which is also what ffmpeg's default conversion
+  writes - so re-tagging only, without converting the same way, makes it worse. A Screen or Add blend
+  mode on an alpha clip brightens it; leave the blend at Normal for a clip that carries its own alpha.
 - **A sprite is gigantic, tiny or floating.** A sprite is drawn at its pixel size times its
   character's entrance `zoom`, centred at the `/show` position. `character_upsert {id,
   entranceTransform:"standing"}` puts its feet on the bottom edge at its own size; for a smaller
