@@ -41,6 +41,7 @@ import {
 } from "./managers/storage/cacheRoot";
 import { PluginPermissionManager } from "./managers/pluginPermissionManager";
 import { ProjectTrustManager } from "./managers/projectTrustManager";
+import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { PluginManager } from "./managers/pluginManager";
 import { PluginIconCache } from "./managers/pluginIconCache";
 import { UITemplatePosterCache } from "./managers/uiTemplatePosterCache";
@@ -146,6 +147,8 @@ export class BaseApp {
      * latch would put the dialog back on screen each time.
      */
     private experimentalNoticePending = true;
+    /** Projects `trust-all-projects` has let run, so each is named in the log once rather than per gate. */
+    private readonly experimentallyTrustedProjects = new Set<string>();
     /** Memoized by {@link resolveCacheRootOnce}; see it for why it must not be recomputed. */
     private cacheRootResolution: CacheRootResolution | null = null;
 
@@ -215,7 +218,9 @@ export class BaseApp {
         // the answer is fixed for the rest of the session.
         this.logger.info(`[Cache] ${describeCacheRoot(this.resolveCacheRootOnce())}`);
         this.pluginPermissionManager = new PluginPermissionManager(this.getUserDataDir());
-        this.projectTrustManager = new ProjectTrustManager(this.getUserDataDir());
+        this.projectTrustManager = new ProjectTrustManager(this.getUserDataDir(), {
+            trustUnvouched: projectPath => this.trustUnvouchedProject(projectPath),
+        });
         this.pluginManager = new PluginManager(this.getUserDataDir(), this.pluginPermissionManager, {
             builtInPluginsDir: this.getBuiltInPluginsDir(),
         });
@@ -861,6 +866,31 @@ export class BaseApp {
             return false;
         }
         this.experimentalNoticePending = false;
+        return true;
+    }
+
+    /**
+     * The experimental `trust-all-projects` condition: let a project the ledger does not trust run
+     * anyway, for a test instance nobody is at the screen of to answer the trust question.
+     *
+     * Asked only after the ledger has said no, so a project the author vouched for is trusted on its
+     * own merits and never named here. Every project this does let through is named in the log the
+     * first time - that line is the record of what the run would have been refused without the
+     * flag. The ledger itself is never written: turning the condition off puts every project it
+     * covered back exactly where it was, waiting for the author.
+     */
+    private trustUnvouchedProject(projectPath: string): boolean {
+        if (!this.hasExperimentalCondition("trust-all-projects")) {
+            return false;
+        }
+        const key = normalizeProjectPath(projectPath);
+        if (!this.experimentallyTrustedProjects.has(key)) {
+            this.experimentallyTrustedProjects.add(key);
+            this.logger.warn(
+                `[Experimental] trust-all-projects treated ${projectPath} as trusted. The author never `
+                + "vouched for it; Studio as shipped does not run it.",
+            );
+        }
         return true;
     }
 
