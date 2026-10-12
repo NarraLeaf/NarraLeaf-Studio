@@ -1219,6 +1219,13 @@ type StoryPluginActionRegistration = {
      */
     describe?: (params: Record<string, unknown>) => string | null | undefined;
     /**
+     * Words a typed command finds this action by in every interface language, as a built-in command
+     * answers to its own word: with `keywords: ["unlock"]`, `/unlock ACH_WIN` commits this action with
+     * "ACH_WIN" as its initial text. Without them a typed command has to start the label or the id.
+     * Single words; a built-in command's word stays the built-in's.
+     */
+    keywords?: readonly string[];
+    /**
      * The fields the scene inspector shows when one of this action's `{action:"plugin"}` rows is
      * selected, each editing one key of the row's `params`. Without them a row keeps whatever
      * `createBlock` wrote, and changing it means inserting the row again.

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { commandI18nStore, i18nStore } from "@/lib/i18n";
 import { LOCALIZED_COMMANDS_DEFAULT } from "@/lib/settings/commandLanguageOptions";
-import type { PaletteActionCommand } from "./storyActionCommands";
+import { pluginActionToPaletteCommand, type PaletteActionCommand } from "./storyActionCommands";
 import { specPaletteCommands } from "./commands/specPalette";
 import { commandNamedByWord, searchActionCommands, findPluginActionsByCommandWord } from "./storyCommandSearch";
 
@@ -120,6 +120,21 @@ describe("findPluginActionsByCommandWord", () => {
     it("does not match on a loose subsequence or an empty word", () => {
         expect(ids("rps")).toEqual([]);
         expect(ids("  ")).toEqual([]);
+    });
+
+    it("finds an action by its own keywords whatever language its label is in", () => {
+        // A Chinese label: `unlock` starts neither it nor the id, so only the keyword can name it.
+        const steam = pluginActionToPaletteCommand({
+            id: "acme.steam.story.unlock",
+            label: "解锁 Steam 成就",
+            detail: "解锁一项成就",
+            keywords: ["unlock", "achievement"],
+        });
+        const found = (word: string) => findPluginActionsByCommandWord([...PLUGIN, steam], word).map(command => command.id);
+        expect(found("unlock")).toEqual(["acme.steam.story.unlock"]);
+        expect(found("ach")).toEqual(["acme.steam.story.unlock"]);
+        expect(found("解锁")).toEqual(["acme.steam.story.unlock"]);
+        expect(findPluginActionsByCommandWord([pluginActionToPaletteCommand({ ...steam, keywords: undefined })], "unlock")).toEqual([]);
     });
 });
 

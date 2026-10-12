@@ -1,6 +1,7 @@
 /**
- * The fields a plugin story action declares for its rows (`StoryPluginActionRegistration.params`):
- * checking them at registration, and the pure half of the scene inspector that edits them.
+ * What a plugin story action declares beyond its label: the fields its rows show
+ * (`StoryPluginActionRegistration.params`) and the words a typed command finds it by (`keywords`).
+ * Checking both at registration, and the pure half of the scene inspector that edits the fields.
  *
  * Kept apart from the inspector component so the story service can refuse a malformed declaration
  * without importing UI, and so the option list and the param write are testable without React.
@@ -46,6 +47,23 @@ export function storyPluginActionParamsProblem(params: unknown): string | null {
             return `params declares "${key}" twice`;
         }
         keys.add(key);
+    }
+    return null;
+}
+
+/** Why a registration's `keywords` cannot be used, or null when they can. */
+export function storyPluginActionKeywordsProblem(keywords: unknown): string | null {
+    if (keywords === undefined) {
+        return null;
+    }
+    if (!Array.isArray(keywords)) {
+        return "keywords must be an array";
+    }
+    for (const [index, keyword] of keywords.entries()) {
+        // A typed command word ends at the first space, so a keyword holding one could never match.
+        if (typeof keyword !== "string" || !/^\S+$/.test(keyword)) {
+            return `keywords[${index}] must be a single word`;
+        }
     }
     return null;
 }

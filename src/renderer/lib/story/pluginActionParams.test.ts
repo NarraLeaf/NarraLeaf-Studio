@@ -4,6 +4,7 @@ import type { StoryPluginActionParamDef } from "@/lib/workspace/services/service
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import {
     editableStoryPluginActionParams,
+    storyPluginActionKeywordsProblem,
     storyPluginActionParamsProblem,
     storyPluginParamSelectOptions,
     withStoryPluginParam,
@@ -40,6 +41,20 @@ describe("storyPluginActionParamsProblem", () => {
             { key: "a", label: "A", kind: "string" },
             { key: "a", label: "Again", kind: "number" },
         ])).toMatch(/twice/);
+    });
+});
+
+describe("storyPluginActionKeywordsProblem", () => {
+    it("accepts no keywords and single words", () => {
+        expect(storyPluginActionKeywordsProblem(undefined)).toBeNull();
+        expect(storyPluginActionKeywordsProblem(["unlock", "成就"])).toBeNull();
+    });
+
+    it("refuses a keyword a typed command word could never be", () => {
+        expect(storyPluginActionKeywordsProblem("unlock")).toMatch(/array/);
+        expect(storyPluginActionKeywordsProblem(["unlock achievement"])).toMatch(/single word/);
+        expect(storyPluginActionKeywordsProblem([""])).toMatch(/single word/);
+        expect(storyPluginActionKeywordsProblem([7])).toMatch(/single word/);
     });
 });
 

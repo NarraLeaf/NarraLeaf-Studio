@@ -85,7 +85,10 @@ export type PaletteActionCommand = {
     detail: string;
     icon: typeof Settings2;
     nlrCapability?: string;
-    /** Slash spellings that jump straight to this command, e.g. "//" → Note. */
+    /**
+     * Spellings that jump straight to this command: a spec's slash tokens (e.g. "//" → Note), or a
+     * plugin story action's `keywords`.
+     */
     aliases?: string[];
 };
 
@@ -100,6 +103,7 @@ export function pluginActionToPaletteCommand(registration: {
     id: string;
     label: string;
     detail?: string;
+    keywords?: readonly string[];
 }): PaletteActionCommand {
     return {
         id: registration.id,
@@ -107,6 +111,8 @@ export function pluginActionToPaletteCommand(registration: {
         label: registration.label,
         detail: registration.detail ?? translate("story.pluginActionFallbackDetail"),
         icon: Puzzle,
+        // The action's own words, matched as a built-in's tokens are: whole, in any interface language.
+        ...(registration.keywords?.length ? { aliases: [...registration.keywords] } : {}),
     };
 }
 
