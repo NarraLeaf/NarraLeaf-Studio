@@ -13,6 +13,9 @@ import { helpTitleKey, type HelpTopicId } from "./helpTopics";
  * keyboard (`focus-visible` reveals it too), so hiding it costs nothing but pixels.
  *
  * Put it inside a container that sets `group/help`; the header's own hover state then drives it.
+ *
+ * Marked `data-help-trigger`: it opens help and writes nothing, so a read-only view such as a
+ * version comparison keeps it while every control that edits is disabled.
  */
 export function HelpTrigger({ topic, className }: { topic: HelpTopicId; className?: string }) {
     const { t } = useTranslation();
@@ -22,6 +25,7 @@ export function HelpTrigger({ topic, className }: { topic: HelpTopicId; classNam
         <button
             ref={ref}
             type="button"
+            data-help-trigger=""
             aria-label={t("help.ui.openTopic", { title: t(helpTitleKey(topic)) })}
             onClick={() => openHelpTopic(topic, ref.current)}
             className={cn(
