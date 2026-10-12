@@ -1714,8 +1714,8 @@ export const blueprint = {
     nodeDescription: {
         getComponentParam: "The value this placement sets for the chosen parameter, or the parameter's default when it sets none. A Text parameter that reads from a translation key gives the key's name; Translation Key Text gives its words.",
         getPageParam: "The value the page was opened with for the chosen param, or the param's default when it was given none. Params are declared in the page's properties.",
-        compareEqual: "True when A and B are the same value of the same type. The number 1 and the text \"1\" are not equal.",
-        compareNotEqual: "True when A and B differ in value or in type. The number 1 and the text \"1\" count as different.",
+        compareEqual: "True when A and B are the same value of the same type. Lists and objects are compared by their contents, an element by which element it is. The number 1 and the text \"1\" are not equal; an input left unconnected counts as Null.",
+        compareNotEqual: "True when A and B differ in value or in type, judged as Equal judges them. The number 1 and the text \"1\" count as different.",
         compareGreaterThan: "True when A is greater than B. Both sides are compared as numbers; a side that cannot be read as a number gives false.",
         compareGreaterThanOrEqual: "True when A is greater than or equal to B. Both sides are compared as numbers; a side that cannot be read as a number gives false.",
         compareLessThan: "True when A is less than B. Both sides are compared as numbers; a side that cannot be read as a number gives false.",
