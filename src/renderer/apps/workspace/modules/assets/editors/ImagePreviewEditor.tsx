@@ -86,20 +86,22 @@ function PreviewToolbar({
     const size = controls.imageSize ?? imageData.metadata;
 
     return (
-        <div className="flex items-center justify-between gap-4 px-4 py-2 border-b border-edge bg-surface-raised">
-            {/* Each value is one unit and never breaks across lines. In a narrow editor group the
-                values that do not fit drop out whole, from the right - the file size first, then the
-                format - by wrapping onto a second line this one-line-high strip does not show; the
-                pixel size goes last, and only ever shortens to an ellipsis. The zoom controls never
-                give up their room to them. */}
-            <div className="flex h-5 min-w-0 flex-1 flex-wrap items-center gap-x-4 overflow-hidden text-sm text-fg-muted">
-                <span className="min-w-0 truncate">
+        <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-edge bg-surface-raised">
+            {/* Each value is one unit: it never breaks across lines and is never cut short. In a
+                narrow editor group the values that do not fit drop out whole, from the right - the
+                file size first, then the format, the pixel size last - by wrapping onto a second line
+                this one-line-high strip does not show. The empty first item is what lets the pixel
+                size wrap away too: a flex line keeps its first item however wide it is. The zoom
+                controls never give up their room to them. */}
+            <div className="flex h-5 min-w-0 flex-1 flex-wrap content-start items-center overflow-hidden whitespace-nowrap text-sm text-fg-muted">
+                <span aria-hidden className="h-5 w-0" />
+                <span>
                     {size.width} × {size.height}
                 </span>
-                <span className="whitespace-nowrap">
+                <span className="ml-4">
                     {imageData.metadata.format.toUpperCase()}
                 </span>
-                <span className="whitespace-nowrap">
+                <span className="ml-4">
                     {(imageData.metadata.size / 1024).toFixed(1)} KB
                 </span>
             </div>
@@ -113,7 +115,7 @@ function PreviewToolbar({
                 >
                     <ZoomOut className="w-4 h-4" />
                 </button>
-                <span className="text-sm text-fg-muted min-w-16 text-center whitespace-nowrap">
+                <span className="text-sm text-fg-muted min-w-12 text-center whitespace-nowrap">
                     {controls.zoomLabel}
                 </span>
                 <button
@@ -126,7 +128,7 @@ function PreviewToolbar({
                 </button>
                 <button
                     onClick={controls.resetView}
-                    className="p-1 rounded-md hover:bg-fill text-fg-muted hover:text-fg transition-colors cursor-default ml-2"
+                    className="p-1 rounded-md hover:bg-fill text-fg-muted hover:text-fg transition-colors cursor-default"
                     data-tip={t("assets.image.resetView")} aria-label={t("assets.image.resetView")}
                     data-tip-shortcut={shortcuts.forBinding("assets.image.reset-view")}
                 >
