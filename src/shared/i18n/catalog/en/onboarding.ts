@@ -50,6 +50,7 @@ export const onboarding = {
         identity: "Author",
         team: "Team",
         story: "Story editor",
+        agent: "Agent access",
         done: "Done",
     },
     /**
@@ -61,7 +62,7 @@ export const onboarding = {
      */
     welcome: {
         title: "Welcome",
-        expectation: "Six interface and story-editor settings. Each one takes effect immediately and remains available in Settings.",
+        expectation: "Seven settings for the interface, the story editor and agent access. Each one takes effect immediately and remains available in Settings.",
         /** Above the import row, naming what the row is for rather than asking after the reader. */
         haveSettings: "Settings from another installation",
     },
@@ -107,6 +108,34 @@ export const onboarding = {
     story: {
         title: "Story editor",
         expectation: "How the scene editor is read and typed in.",
+    },
+    /**
+     * Connecting the author's own AI agent: which application it is, the configuration that points
+     * it at Studio, and the skill that tells it how to make a game. Product names are not
+     * translated and live in `@shared/agent/clients`.
+     */
+    agent: {
+        title: "Agent access",
+        expectation: "An AI agent connects to Studio over MCP and edits the open project. An agent is optional.",
+        app: "Agent application",
+        /** The catch-all row, for any other MCP client. */
+        other: "Other",
+        connection: "Connection",
+        /** Under the connection while the endpoint is off; names the switch above by its label. */
+        offHint: "Available once \"Allow agents to connect\" is on.",
+        runCommand: "Run in a terminal.",
+        mergeInto: "Merge into {file}.",
+        claudeDesktop: "Merge into claude_desktop_config.json (in Claude: Settings > Developer > Edit Config), then restart Claude.",
+        otherClient: "Streamable HTTP. Enter this address and header in the client's MCP settings.",
+        skill: "Skill",
+        skillFolder: "Copied into {path}. Other skills there are kept.",
+        skillInstall: "Install skill",
+        skillReinstall: "Reinstall",
+        skillInstalled: "Installed in {path}.",
+        skillUpload: "Saved as a zip file to upload in Claude under Settings > Capabilities > Skills.",
+        skillSave: "Save zip file…",
+        skillSaved: "Saved to {path}.",
+        skillServed: "Other applications read the same guide from Studio's MCP server. One that supports skills can install them with this command.",
     },
     /**
      * The way past every question at once, on the first screen. See `WelcomeStep` for why it is

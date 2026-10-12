@@ -110,10 +110,26 @@ Checkpoint: a filled brief and, for a supplied script, an inventory and name map
   quick menu, save/load, settings, backlog, extras, and a three-scene demo story - all wired. You
   restyle and refill it; you do not build those screens from nothing.
 - **Existing game:** `project_open` with its folder.
+- **A project made from the empty template** (or any project whose `ui_surfaces` shows one blank page
+  and no Game UIs): it has no title, dialogue box, save/load, settings or log, and nothing below
+  works until it does. If the game has not been started yet, the simplest fix is a new project from
+  the skeleton - ask the author first. Otherwise call `ui_install_standard_screens` (try `dryRun:
+  true` first): it brings the skeleton's wired screens, components and blueprints into this project
+  in one undo step, with the files, palette entries, input actions, save field and persistent
+  variable they use, makes the splash the entry page in place of the blank one, and points Start at
+  the project's own story. Read what it says it left out: a Game UI slot the project already fills is
+  skipped unless you pass `replace: true`, and the Extra page needs the Gallery plugin. Then check
+  as in step 6. Do not rebuild these screens from store templates (`ui_templates`): those are
+  layouts with no logic behind them.
 - Name, resolution or languages wrong? `project_settings_set` - now, before the interface work:
   changing the resolution later does not rescale pages already built. `languages` is the full list
   (source language included); a language holding translations goes only when `removeLanguages`
   names it.
+- How a new player's settings start - text speed, auto-forward delay, volumes, skipping - is
+  `project_settings_set {playerDefaults}` (Studio's Project → Game page; `project_info` shows the
+  values). The skeleton starts text at 10 characters per second; `cps: 200` is as near instant as
+  the engine types, e.g. `{ "cps": 40, "autoForwardDelay": 1500 }`. A player's own saved settings
+  win over these, so set them before playtests that judge pacing.
 
 Then `project_info` (resolution, languages, entry page and scene, counts) and `story_list`,
 `characters_list`, `variables_list`, `assets_list`, `ui_surfaces` to learn what is there. **The
@@ -130,8 +146,13 @@ scenes are 走廊 / 社团活动室 / 最后的光, the variables 真心 / 地�
 their own opening picture and music (step 5) - re-cast the demo characters (`character_upsert` with
 their `id`), rename or re-type the demo variables (`variable_upsert` with their `id`). What you do not
 reuse, delete once nothing refers to it: `scene_delete`, `character_delete`, `variable_delete`,
-`asset_delete` (the demo pictures and music lint lists as `assets/unused`) refuse while something
-still does and list what. Pages are not deleted - hide what the game does not need.
+`asset_delete` (the demo pictures and music lint lists as `assets/unused` - check each with
+`asset_usage` first and delete only what it shows unused) refuse while something still does and list
+what; a chapter left empty goes with `chapter_delete` (`chapter_rename` renames
+one). Keep the skeleton's pages: hide what the game does not need rather than
+deleting it, because the other screens' buttons open them. `ui_page_delete` is for a page nothing
+opens any more (a leftover template page, say); it refuses the entry page and lists what still opens
+the page.
 
 Checkpoint: the project is open in Studio and you have its overview.
 
@@ -140,12 +161,17 @@ Checkpoint: the project is open in Studio and you have its overview.
 1. `assets_import` the author's files with `names` chosen from your name map and a `folder` per kind
    (`Backgrounds`, `Sprites`, `CG`, `Music`, `SFX`, `Video`). Paths must be absolute. A path outside
    the project and the allowed directories makes Studio ask the author for its folder first (step 0).
+   Imports are deduplicated by content: a file byte-identical to one already in the project is listed
+   under `duplicates` with the **existing** asset's name and is not imported again, so the name you
+   asked for does not exist - write the existing name into your name map. A path with no file behind
+   it comes back under `failed` as not found; fix the path rather than asking for folder access.
 2. Formats: images PNG/JPEG/WebP/GIF/AVIF/SVG; audio MP3/OGG/Opus/WAV/M4A/AAC/FLAC; video WebM or
    MP4 (H.264); fonts TTF/OTF/WOFF/WOFF2. AVI, WMV, FLV, MPEG, TS, TIFF and AIFF are refused; HEVC
    MP4, ProRes MOV and Theora OGV import but play sound over a black picture. Tell the author which
    files need converting rather than importing broken ones.
-3. **Sprites need a transparent background** - an opaque one shows as a rectangle. `assets_import`
-   and `character_upsert` return `warnings` for an opaque sprite; ask the author for a cut-out, and
+3. **Sprites need a transparent background** - an opaque one shows as a rectangle. `character_upsert`
+   (and the layered tools) return `warnings` for a pose or layer with no transparency; backgrounds and
+   CGs are opaque by design and are not warned about. Ask the author for a cut-out, and
    list it on the hand-over if none comes. A sprite is drawn at its own pixel size times its
    character's entrance `zoom`, centred where the `/show` row places it; the character's
    `entranceTransform` sets zoom and baseline (step 4). For 1920x1080, standing sprites about
@@ -176,6 +202,11 @@ Checkpoint: every asset in the name map exists in the project under its agreed n
   layers change together under one axis) or `character_layered_set`. Check combinations with
   `character_preview`. Its looks are axis tags: `/char Mei smile` changes the expression and keeps the
   outfit. Live2D / Spine characters are set up by the author in Studio; you only write their rows.
+- **Avatars** (the face beside a line in the dialogue box and the backlog): `character_upsert` with
+  `defaultAvatar` (shown wherever nothing more specific is - off-stage lines and the backlog too) and
+  `avatars` per pose (`{ "smile": "mei_face_smile" }`) or, for a layered character, per tag
+  combination of its `avatarAxes`. Without either, Studio cuts avatars from the sprites when the
+  author opens the Characters panel - say so on the hand-over if the dialogue box shows one.
 - A speaker with no sprite still deserves a character (name colour, backlog, voice later). Truly
   one-off speakers may stay plain `Name: text` lines.
 - `variable_upsert` for every flag, counter and route switch the story needs: `saved` for anything
@@ -227,7 +258,9 @@ Checkpoint: `story_list` shows every scene; each applies cleanly; every route re
 ## Step 6 - Interface
 
 Read `ui-design` and `ui-format` first. **Restyle the skeleton; do not rebuild it.** Its screens are
-wired to save, load, settings and backlog logic that a rebuilt page would lose.
+wired to save, load, settings and backlog logic that a rebuilt page would lose. A project made from
+the empty template gets the same screens from `ui_install_standard_screens` (step 2); restyle those
+the same way.
 
 1. **Palette first.** `brand_get`, then `brand_set` with colours for the art style (background,
    panel, primary/accent, foreground text, muted text, borders) and the game's font if the author
@@ -255,9 +288,18 @@ wired to save, load, settings and backlog logic that a rebuilt page would lose.
    then `narraleaf_gallery__list` and `narraleaf_gallery__add_entries`. The page shows the catalog by
    itself; restyle it like any other page.
 5. `ui_usage {type}` shows how the skeleton itself uses a widget, in pasteable `.ui` text - the
-   fastest way to get a new element right. `ui_templates` / `ui_template_apply` add a ready-made set
-   of pages from Studio's template store when the author prefers one; restyle it the same way.
+   fastest way to get a new element right. `ui_templates` / `ui_template_apply` add pages from
+   Studio's template store when the author picks a look from it - but they are layouts: the answer
+   says per page what logic came with it, usually none, so Start, save slots, the log and sliders do
+   nothing until you wire them (or take the working screens with `ui_install_standard_screens` and
+   restyle those instead). An applied page is never the entry: `ui_page_set_entry` makes it one,
+   and `ui_page_delete` removes the pages it replaced once nothing opens them.
 6. When the author says "this" or "the selected one", `ui_selection` tells you what they selected.
+7. **The dialogue box's behaviour.** A click-to-continue mark that should appear only once the line
+   has finished typing, and an empty box that should step aside while a choice menu is up, are each
+   a small blueprint on the box's container - `ui-design`, "The dialogue box", has both, ready to
+   paste. A blueprint reaches only the elements of its own page: one on the Choice page cannot hide
+   the Dialogue page's box (the checker refuses it).
 
 Checkpoint: every page screenshot passes the checklist, and the title shows the game's title and art.
 
@@ -281,6 +323,11 @@ hears and is told them. A CG needs an Unlock Gallery node: set a persistent vari
 where the CG appears, and unlock from the title page's open event - the recipe is in
 `agent_guide {chapter:"plugin:narraleaf.gallery"}`.
 
+**Something to do at a story row** - grant an achievement, unlock a CG at the moment it shows, call
+any plugin's node: a `/blueprint` row runs a blueprint of its own (owner `storyAction`). The `.story`
+spelling and a worked example are in `story-format`, "A row that runs a blueprint". Do not leave such
+a moment as a `//` note: notes never run.
+
 Checkpoint: every new control does what it says, checked in step 8.
 
 ## Step 8 - Verify
@@ -297,8 +344,11 @@ Read `verify-and-ship`. In short:
    done. `playtest_screenshot` at every new background, character entrance, menu, last line and
    ending. Look at each image: right picture, sprite size and position, text readable and inside the
    box, choice menu legible.
-4. `console_read {level:"error"}` after each run for runtime errors; fix the row or graph named.
-5. `playtest_stop` when done.
+4. Press every button you wired or restyled: `playtest_click {element}` (by id, path, name or the
+   words it shows), `playtest_key {key:"Escape"}` and the arrows for keyboard paths, then
+   `playtest_screenshot`. Each answer says what opened or closed (`verify-and-ship`).
+5. `console_read {level:"error"}` after each run for runtime errors; fix the row or graph named.
+6. `playtest_stop` when done.
 
 Checkpoint: lint has no errors, both tests pass, every route was played to its ending, the console
 is clean.

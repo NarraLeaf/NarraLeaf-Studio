@@ -158,7 +158,21 @@ export class DevModeManager {
         }
         return driveDevModeWindow({
             ask: (driven, timeoutMs) => window.invokeIpcRequest(IPCEventType.devModeAgentDrive, { action: driven }, { timeoutMs }),
-            capturePage: async () => (await window.win.webContents.capturePage()).toDataURL(),
+            // The rect arrives in the page's CSS pixels; `capturePage` takes the window's DIPs, which
+            // differ by the page zoom (Studio's interface zoom applies to the Dev Mode window too).
+            capturePage: async rect => {
+                const contents = window.win.webContents;
+                const zoom = contents.getZoomFactor() || 1;
+                const area = rect
+                    ? {
+                        x: Math.max(0, Math.floor(rect.x * zoom)),
+                        y: Math.max(0, Math.floor(rect.y * zoom)),
+                        width: Math.max(1, Math.round(rect.width * zoom)),
+                        height: Math.max(1, Math.round(rect.height * zoom)),
+                    }
+                    : undefined;
+                return (await (area ? contents.capturePage(area) : contents.capturePage())).toDataURL();
+            },
             // For the rest of this window's life once an agent has driven it, as a test-driven
             // standalone run is (`backgroundThrottling` in the runtime's main): between two calls the
             // game should go on typing and fading as it would in front of a player, not freeze

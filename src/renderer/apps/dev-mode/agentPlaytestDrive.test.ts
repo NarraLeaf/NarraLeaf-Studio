@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { GameAppTestControls, GameAppTestState } from "@/lib/ui-editor/runtime/app/GameApp";
 import { buildGameTestState } from "@/lib/ui-editor/runtime/app/gameTestState";
 import { DevModeAgentErrorCode } from "@shared/types/devMode";
@@ -9,6 +10,8 @@ import {
     captureWithin,
     movedOn,
     runAgentDriveAction,
+    screenCaptureRequest,
+    toAgentGameState,
     type PlaytestClock,
     type PlaytestGame,
 } from "./agentPlaytestDrive";
@@ -33,7 +36,9 @@ import {
 
 type ScriptItem =
     | { say: string; speaker?: string | null; typeMs: number }
-    | { rows: number }
+    | { rows: number; pause?: { kind: "timed"; ms: number } | { kind: "video" } }
+    /** A `/wait click` row: nothing on screen, stopped until a click. */
+    | { clickWait: true }
     | { menu: { text: string; index: number; disabled?: boolean; to: number }[] }
     | { ending: string | null; page?: string | null; quitMs?: number };
 
@@ -58,7 +63,7 @@ function virtualClock(options: { frames?: boolean } = {}): PlaytestClock & { adv
     };
 }
 
-function pretendEngine(clock: PlaytestClock, script: ScriptItem[], options: { startAt?: number; readable?: boolean } = {}) {
+function pretendEngine(clock: PlaytestClock, script: ScriptItem[], options: { startAt?: number; readable?: boolean; clickGuardMs?: number } = {}) {
     let position = 0;
     let startedAt = options.startAt ?? 0;
     let started = false;
@@ -132,6 +137,8 @@ function pretendEngine(clock: PlaytestClock, script: ScriptItem[], options: { st
             endings,
             lastEnding,
             page: inGame ? null : page,
+            waitingForClick: Boolean(item && "clickWait" in item),
+            pausedBy: item && "rows" in item && item.pause ? item.pause : null,
         });
     };
     const game: PlaytestGame & { clicks: string[]; boxText: () => string | null } = {
@@ -141,7 +148,18 @@ function pretendEngine(clock: PlaytestClock, script: ScriptItem[], options: { st
         advance: async () => {
             sync();
             const item = current();
+            if (item && "clickWait" in item) {
+                clicks.push("release wait");
+                enter(position + 1, clock.now());
+                sync();
+                return;
+            }
             if (!item || !("say" in item)) {
+                clicks.push("swallowed");
+                return;
+            }
+            // An engine that takes no input for a moment after a line comes up.
+            if (options.clickGuardMs !== undefined && clock.now() - startedAt < options.clickGuardMs) {
                 clicks.push("swallowed");
                 return;
             }
@@ -178,6 +196,86 @@ function pretendEngine(clock: PlaytestClock, script: ScriptItem[], options: { st
 
 const LONG = 5000;
 const SHORT = 200;
+
+describe("advanceLines past a timed wait, a video and an ending with no line after them", () => {
+    // The scene shape that used to answer "No line came up within 10 s" on every call and never say
+    // the ending was reached: the last line, `/wait 3`, a `/video` the story waits out, `/ending`.
+    const tail = (videoMs: number): ScriptItem[] => [
+        { say: "Goodbye.", speaker: "Aki", typeMs: 0 },
+        { rows: 3000, pause: { kind: "timed", ms: 3000 } },
+        { rows: videoMs, pause: { kind: "video" } },
+        { ending: "Farewell", page: "Title" },
+    ];
+
+    it("waits the pauses out and reports the ending", async () => {
+        const clock = virtualClock();
+        const game = pretendEngine(clock, tail(15_000));
+        const outcome = await advanceLines(game, { steps: 3 }, clock);
+        expect(outcome.error).toBeUndefined();
+        expect(outcome).toMatchObject({ advanced: 1, ending: { name: "Farewell" }, state: { inGame: false, page: "Title" } });
+    });
+
+    it("says a video is playing when it outlasts the call, and the next call reports the ending", async () => {
+        const clock = virtualClock();
+        const game = pretendEngine(clock, tail(400_000));
+        const first = await advanceLines(game, { steps: 1 }, clock);
+        expect(first.advanced).toBe(1);
+        const stuck = await advanceLines(game, { steps: 1, endingsSeen: 0 }, clock);
+        expect(stuck.error).toMatch(/A video is playing/);
+        expect(stuck.error).not.toMatch(/No line came up/);
+        expect(toAgentGameState(stuck.state).pausedBy).toEqual({ kind: "video" });
+        // The video ends and the story ends with it while no call is running.
+        clock.advanceTo(clock.now() + 400_000);
+        const after = await advanceLines(game, { steps: 1, endingsSeen: 0 }, clock);
+        expect(after.error).toBeUndefined();
+        expect(after).toMatchObject({ advanced: 0, ending: { name: "Farewell" } });
+    });
+
+    it("says a timed wait is running rather than calling the game stuck", async () => {
+        const clock = virtualClock();
+        const game = pretendEngine(clock, [
+            { say: "Wait for it.", typeMs: 0 },
+            { rows: 300_000, pause: { kind: "timed", ms: 300_000 } },
+            { say: "Now.", typeMs: 0 },
+        ]);
+        const outcome = await advanceLines(game, { steps: 2 }, clock);
+        expect(outcome.error).toMatch(/timed wait \(\/wait 300 s\)/);
+    });
+});
+
+describe("advanceLines through a /wait click row", () => {
+    it("clicks through it as one step instead of waiting 10 s for a line", async () => {
+        const clock = virtualClock();
+        const game = pretendEngine(clock, [
+            { say: "The lights go out.", typeMs: 0 },
+            { clickWait: true },
+            { rows: 100 },
+            { say: "Someone is at the door.", speaker: "Mei", typeMs: 0 },
+        ]);
+        let outcome = await advanceLines(game, { steps: 1 }, clock);
+        expect(outcome.error).toBeUndefined();
+        expect(outcome.state).toMatchObject({ line: null, waitingForClick: true });
+        expect(toAgentGameState(outcome.state).waitingForClick).toBe(true);
+        const before = clock.now();
+        outcome = await advanceLines(game, { steps: 1 }, clock);
+        expect(outcome).toMatchObject({ advanced: 1, state: { line: { speaker: "Mei", text: "Someone is at the door." } } });
+        expect(outcome.error).toBeUndefined();
+        expect(clock.now() - before).toBeLessThan(PLAYTEST_TIMING.appearMs);
+        expect(game.clicks).toEqual(["next from The lights go out.", "release wait"]);
+    });
+
+    it("counts the wait as a step when reading on several lines at once", async () => {
+        const clock = virtualClock();
+        const game = pretendEngine(clock, [
+            { say: "one", typeMs: 0 },
+            { clickWait: true },
+            { say: "two", typeMs: 0 },
+            { say: "three", typeMs: 0 },
+        ]);
+        const outcome = await advanceLines(game, { steps: 3 }, clock);
+        expect(outcome).toMatchObject({ advanced: 3, state: { line: { text: "three" } } });
+    });
+});
 
 describe("advanceLines: one step is one line, and the answer is what is on screen", () => {
     it("is not a line behind across rows with no line (/show d=0.4, /sound) - acceptance run #2", async () => {
@@ -304,6 +402,34 @@ describe("advanceLines: one step is one line, and the answer is what is on scree
         const lineGame = pretendEngine(clock, [{ say: "one", typeMs: 0 }]);
         expect((await advanceLines(lineGame, { steps: 1, choice: 1 }, clock)).error).toMatch(/No choice menu/);
         expect(menuGame.clicks).toEqual([]);
+    });
+
+    it("reads on from a scene that opens with timed waits, though the click that would complete its first line is swallowed", async () => {
+        const clock = virtualClock();
+        const game = pretendEngine(clock, [
+            { rows: 3000 },
+            { say: "one", typeMs: LONG },
+            { say: "two", typeMs: SHORT },
+        ], { clickGuardMs: 300 });
+        const outcome = await advanceLines(game, { steps: 1 }, clock);
+        expect(outcome.error).toBeUndefined();
+        expect(outcome.advanced).toBe(1);
+        expect(outcome.state?.line).toEqual({ speaker: null, text: "two", complete: true });
+        expect(game.clicks).toEqual(["swallowed", "complete one", "next from one"]);
+    });
+
+    it("clicks once more when a click on a whole line was swallowed", async () => {
+        const clock = virtualClock();
+        const game = pretendEngine(clock, [
+            { say: "one", typeMs: 0 },
+            { say: "two", typeMs: 0 },
+        ], { clickGuardMs: 2000 });
+        clock.advanceTo(10);
+        const outcome = await advanceLines(game, { steps: 1 }, clock);
+        expect(outcome.error).toBeUndefined();
+        expect(outcome.advanced).toBe(1);
+        expect(outcome.state?.line?.text).toBe("two");
+        expect(game.clicks).toEqual(["swallowed", "next from one"]);
     });
 
     it("stops with a reason when a click does not move the game", async () => {
@@ -440,6 +566,25 @@ describe("captureWithin: a capture that never settles", () => {
     });
 });
 
+describe("screenCaptureRequest", () => {
+    const rooted = (rect: { left: number; top: number; width: number; height: number }) =>
+        ({ getBoundingClientRect: () => rect }) as unknown as Element;
+
+    it("asks main for the game's box, so pages open over the stage are in the picture", () => {
+        expect(screenCaptureRequest(rooted({ left: 0, top: 32, width: 1280, height: 720 }))).toEqual({
+            kind: "capture",
+            png: "",
+            source: "screen",
+            rect: { x: 0, y: 32, width: 1280, height: 720 },
+        });
+    });
+
+    it("falls back to the whole window without a game box", () => {
+        expect(screenCaptureRequest(null)).toEqual({ kind: "capture", png: "", source: "window" });
+        expect(screenCaptureRequest(rooted({ left: 0, top: 0, width: 0, height: 0 }))).toMatchObject({ source: "window" });
+    });
+});
+
 describe("runAgentDriveAction", () => {
     function controlsFor(game: PlaytestGame): GameAppTestControls | null {
         if (game.read() === null) {
@@ -451,6 +596,8 @@ describe("runAgentDriveAction", () => {
             choose: game.choose,
             capture: async () => null,
             readState: () => game.read()!,
+            readGameRoot: () => null,
+            readUiDocument: () => ({ surfaces: [], elements: {} }) as unknown as UIDocument,
         };
     }
 

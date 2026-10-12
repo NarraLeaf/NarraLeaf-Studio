@@ -3,7 +3,9 @@ import path from "path";
 import { UserDataNamespace } from "@shared/types/constants";
 import { inspectPluginIconBytes, pluginIconMimeType } from "@shared/utils/pluginIcon";
 import type { ImageFormat } from "@shared/utils/imageDimensions";
-import { downloadIcon, fetchRegistryIndex } from "./pluginRegistryClient";
+import type { StoreSourceChoice } from "@shared/constants/storeSource";
+import { downloadIcon, fetchPluginCatalogue } from "./pluginRegistryClient";
+import { fetchFromStore, type StoreOrigin } from "./storeSource";
 
 /**
  * The store's thumbnails, fetched by the main process and kept on disk.
@@ -41,10 +43,10 @@ export class PluginIconCache {
      * `null` is not an error: the caller draws the name monogram instead, which
      * is also what a plugin that never shipped an icon gets.
      */
-    public async resolve(registryUrl: string, pluginId: string): Promise<string | null> {
+    public async resolve(choice: StoreSourceChoice, pluginId: string): Promise<string | null> {
         // A minute is long enough that a screen full of rows shares one read and
         // short enough that Refresh -> icons follows the index the user just saw.
-        const index = await fetchRegistryIndex(registryUrl, { maxAgeMs: 60_000 });
+        const { index, origin } = await fetchPluginCatalogue(choice, { maxAgeMs: 60_000 });
         const entry = index.plugins.find(plugin => plugin.id === pluginId);
         if (!entry?.icon) {
             return null;
@@ -63,7 +65,7 @@ export class PluginIconCache {
             return existing;
         }
 
-        const pending = this.fetchAndStore(key, entry.id, entry.icon)
+        const pending = this.fetchAndStore(key, entry.id, entry.icon, origin)
             .catch(error => {
                 console.warn(`[PluginIconCache] ${key}: ${error instanceof Error ? error.message : String(error)}`);
                 this.failures.add(key);
@@ -99,22 +101,36 @@ export class PluginIconCache {
         await this.sweep(pluginId, null);
     }
 
-    private async fetchAndStore(key: string, pluginId: string, url: string): Promise<string | null> {
-        const bytes = await downloadIcon(url);
-        const inspected = inspectPluginIconBytes(bytes);
-        if ("error" in inspected) {
+    private async fetchAndStore(key: string, pluginId: string, url: string, origin: StoreOrigin): Promise<string | null> {
+        // Inspected per host, so a host that answers with something other than the icon (a
+        // placeholder picture, a block page) hands over to the other one.
+        let fetched: { bytes: Buffer; format: ImageFormat };
+        try {
+            ({ value: fetched } = await fetchFromStore(origin, url, async address => {
+                const bytes = await downloadIcon(address);
+                const inspected = inspectPluginIconBytes(bytes);
+                if ("error" in inspected) {
+                    throw new IconRejected(inspected.error);
+                }
+                return { bytes, format: inspected.format };
+            }));
+        } catch (error) {
+            if (!(error instanceof IconRejected)) {
+                throw error;
+            }
             // The registry is not the author's package, and Studio cannot refuse
             // to install over it, so a bad store icon degrades to the monogram
             // rather than becoming an error the user can do nothing about.
             this.failures.add(key);
-            console.warn(`[PluginIconCache] ${key}: ${inspected.error}`);
+            console.warn(`[PluginIconCache] ${key}: ${error.message}`);
             return null;
         }
-        const fileName = `${encodeURIComponent(key)}.${inspected.format}`;
+        const { bytes, format } = fetched;
+        const fileName = `${encodeURIComponent(key)}.${format}`;
         await fs.mkdir(this.cacheDir, { recursive: true });
         await fs.writeFile(path.join(this.cacheDir, fileName), bytes);
         await this.sweep(pluginId, fileName);
-        return dataUrl(bytes, inspected.format);
+        return dataUrl(bytes, format);
     }
 
     private async read(key: string): Promise<string | null> {
@@ -153,6 +169,9 @@ export class PluginIconCache {
         return fs.readdir(this.cacheDir).catch(() => []);
     }
 }
+
+/** An icon that arrived but breaks the icon rules, as opposed to one that did not arrive. */
+class IconRejected extends Error {}
 
 function dataUrl(bytes: Buffer, format: ImageFormat): string {
     return `data:${pluginIconMimeType(format)};base64,${bytes.toString("base64")}`;

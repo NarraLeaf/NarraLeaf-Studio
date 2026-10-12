@@ -47,9 +47,15 @@ A group name nobody has yet is created on the way.
 
 Recollections, tracks and voice lines collect themselves. A CG does not - nothing tells the game a
 picture counts as seen - so it needs an **Unlock Gallery** node (`narraleaf.gallery.add`, fields
-`galleryItemId` = the entry id, `galleryVariantId` = one variant, or empty for all of them). A story
-row cannot run a plugin node in the text format, so record the moment in the story and unlock from a
-page:
+`galleryItemId` = the entry id, `galleryVariantId` = one variant, or empty for all of them). Two
+ways to run it:
+
+- **At the row where the CG appears**: a `/blueprint` row whose own blueprint (owner `storyAction`)
+  is `blueprint.event.head.onCall` -> `narraleaf.gallery.add`. The `.story` spelling is in the
+  `story-format` chapter, "A row that runs a blueprint". The unlock happens the moment the player
+  sees the picture.
+- **From a page**, when the moment is better recorded as a variable (one flag that several CGs or
+  routes share):
 
 1. One persistent variable per CG (or per route): `variable_upsert {name: "seen_cg_rooftop",
    valueType: "boolean", scope: "persistent", defaultValue: false}`.

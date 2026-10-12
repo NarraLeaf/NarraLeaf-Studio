@@ -4,6 +4,9 @@ import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PluginIconCache } from "./pluginIconCache";
 
+/** A catalogue at a typed address, fetched as written - which is what these tests stub. */
+const custom = (customUrl: string) => ({ preference: "custom" as const, customUrl });
+
 /** A PNG header of the given dimensions - the icon checks are header-only. */
 function png(width: number, height = width): Buffer {
     const be32 = (value: number) => [(value >>> 24) & 0xff, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff];
@@ -41,7 +44,7 @@ describe("PluginIconCache", () => {
 
     beforeEach(async () => {
         userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-icon-cache-"));
-        // A URL per test: fetchRegistryIndex memoizes per URL for a minute, and a
+        // A URL per test: the catalogue is memoised per store choice for a minute, and a
         // shared address would let one test answer another's index request.
         registryUrl = `https://registry.example.com/${Math.random().toString(36).slice(2)}/index.json`;
         indexBody = indexJson("1.0.0");
@@ -66,7 +69,7 @@ describe("PluginIconCache", () => {
     it("fetches an icon once and serves every later call from disk", async () => {
         const cache = new PluginIconCache(userDataDir);
 
-        const first = await cache.resolve(registryUrl, "acme.demo");
+        const first = await cache.resolve(custom(registryUrl), "acme.demo");
         expect(first).toMatch(/^data:image\/png;base64,/);
         expect(first).toContain(iconBytes.toString("base64"));
 
@@ -74,7 +77,7 @@ describe("PluginIconCache", () => {
         expect(iconFetches()).toBe(1);
 
         // A second reader, so nothing in memory can be what answers.
-        expect(await new PluginIconCache(userDataDir).resolve(registryUrl, "acme.demo")).toBe(first);
+        expect(await new PluginIconCache(userDataDir).resolve(custom(registryUrl), "acme.demo")).toBe(first);
         expect(iconFetches()).toBe(1);
     });
 
@@ -82,9 +85,9 @@ describe("PluginIconCache", () => {
         const cache = new PluginIconCache(userDataDir);
 
         const results = await Promise.all([
-            cache.resolve(registryUrl, "acme.demo"),
-            cache.resolve(registryUrl, "acme.demo"),
-            cache.resolve(registryUrl, "acme.demo"),
+            cache.resolve(custom(registryUrl), "acme.demo"),
+            cache.resolve(custom(registryUrl), "acme.demo"),
+            cache.resolve(custom(registryUrl), "acme.demo"),
         ]);
 
         expect(new Set(results).size).toBe(1);
@@ -93,7 +96,7 @@ describe("PluginIconCache", () => {
 
     it("re-fetches after an update and sweeps the old version", async () => {
         const cache = new PluginIconCache(userDataDir);
-        await cache.resolve(registryUrl, "acme.demo");
+        await cache.resolve(custom(registryUrl), "acme.demo");
         expect(await cacheDirEntries()).toEqual(["acme.demo%401.0.0.png"]);
 
         await cache.invalidate("acme.demo");
@@ -103,7 +106,7 @@ describe("PluginIconCache", () => {
         iconBytes = png(256);
         // The memo would otherwise still be serving 1.0.0 for the next minute.
         const fresh = new PluginIconCache(userDataDir);
-        const updated = await fresh.resolve(`${registryUrl}?v=2`, "acme.demo");
+        const updated = await fresh.resolve(custom(`${registryUrl}?v=2`), "acme.demo");
 
         expect(updated).toContain(iconBytes.toString("base64"));
         expect(await cacheDirEntries()).toEqual(["acme.demo%402.0.0.png"]);
@@ -113,14 +116,14 @@ describe("PluginIconCache", () => {
         iconBytes = png(512, 256);
         const cache = new PluginIconCache(userDataDir);
 
-        expect(await cache.resolve(registryUrl, "acme.demo")).toBeNull();
+        expect(await cache.resolve(custom(registryUrl), "acme.demo")).toBeNull();
         expect(await cacheDirEntries()).toEqual([]);
         // Remembered, so a screen full of rows does not re-download it each time.
-        expect(await cache.resolve(registryUrl, "acme.demo")).toBeNull();
+        expect(await cache.resolve(custom(registryUrl), "acme.demo")).toBeNull();
         expect(fetchMock.mock.calls.filter(call => call[0] === ICON_URL).length).toBe(1);
 
         cache.clearFailures();
-        expect(await cache.resolve(registryUrl, "acme.demo")).toBeNull();
+        expect(await cache.resolve(custom(registryUrl), "acme.demo")).toBeNull();
         expect(fetchMock.mock.calls.filter(call => call[0] === ICON_URL).length).toBe(2);
     });
 
@@ -128,8 +131,8 @@ describe("PluginIconCache", () => {
         indexBody = indexJson("1.0.0", null);
         const cache = new PluginIconCache(userDataDir);
 
-        expect(await cache.resolve(registryUrl, "acme.demo")).toBeNull();
-        expect(await cache.resolve(registryUrl, "acme.missing")).toBeNull();
+        expect(await cache.resolve(custom(registryUrl), "acme.demo")).toBeNull();
+        expect(await cache.resolve(custom(registryUrl), "acme.missing")).toBeNull();
         expect(fetchMock.mock.calls.filter(call => call[0] === ICON_URL).length).toBe(0);
     });
 
@@ -139,7 +142,7 @@ describe("PluginIconCache", () => {
         ));
         const cache = new PluginIconCache(userDataDir);
 
-        expect(await cache.resolve(registryUrl, "acme.demo")).toBeNull();
+        expect(await cache.resolve(custom(registryUrl), "acme.demo")).toBeNull();
         expect(await cacheDirEntries()).toEqual([]);
     });
 });

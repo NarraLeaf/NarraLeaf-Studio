@@ -469,6 +469,11 @@ export const storyInspector = {
         returnable: "Return after the target scene",
     },
 
+    setVariable: {
+        // A /set value that names a scene which is no longer in the story.
+        missingScene: "Missing scene",
+    },
+
     note: {
         label: "Note",
     },

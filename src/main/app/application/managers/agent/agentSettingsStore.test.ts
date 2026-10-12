@@ -167,6 +167,18 @@ describe("buildAgentClientConfig", () => {
         expect(() => buildAgentClientConfig("stdio", url, token)).toThrow();
     });
 
+    it("gives Codex a TOML table", () => {
+        expect(buildAgentClientConfig("codex", url, token)).toBe(
+            `[mcp_servers.narraleaf]\nurl = "${url}"\nhttp_headers = { "Authorization" = "Bearer abc" }`,
+        );
+    });
+
+    it("gives Gemini CLI its httpUrl key", () => {
+        expect(JSON.parse(buildAgentClientConfig("gemini", url, token))).toEqual({
+            mcpServers: { narraleaf: { httpUrl: url, headers: { Authorization: "Bearer abc" } } },
+        });
+    });
+
     it("gives opencode its remote block", () => {
         expect(JSON.parse(buildAgentClientConfig("opencode", url, token))).toEqual({
             mcp: { narraleaf: { type: "remote", url, headers: { Authorization: "Bearer abc" } } },

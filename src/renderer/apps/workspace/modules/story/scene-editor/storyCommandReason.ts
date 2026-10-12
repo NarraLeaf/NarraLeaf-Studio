@@ -233,6 +233,10 @@ function resolutionReason(issue: StoryCommandResolutionIssue, token: string): St
             return { key: reasonKey(issue.code), params: { keys: issue.keys.join(" / ") } };
         case "repeatTimesAndUntil":
             return { key: reasonKey(issue.code), params: {} };
+        case "positionOutOfRange":
+            return { key: reasonKey(issue.code), params: { value: issue.value } };
+        case "offsetWithoutPosition":
+            return { key: reasonKey(issue.code), params: { key: issue.key } };
         case "expressionError":
             // Report the *inner* issue directly rather than wrapping it: "no variable named gold" is
             // the whole message, and a generic "invalid expression: …" prefix adds nothing.

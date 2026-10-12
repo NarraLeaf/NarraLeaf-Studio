@@ -48,6 +48,7 @@ import {
     videoPlayHidesOnEnd,
     videoPlayWaits,
 } from "@shared/types/story";
+import { parseSceneTranslationUnitId, sceneTranslationUnitId } from "@shared/types/localization";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { buildMergedVariableView } from "@shared/variables/mergedPersistentView";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
@@ -895,6 +896,9 @@ function SetVariableEditor(props: {
 }) {
     const options = useStoryVariableOptions(props.document, props.sceneId);
     const valueType = resolveRefValueType(props.payload.target, options);
+    const sceneValue = props.payload.expression || typeof props.payload.value !== "string"
+        ? null
+        : parseSceneTranslationUnitId(props.payload.value);
     return (
         <div className="nl-field-grid">
             <VariableRefPicker
@@ -902,12 +906,51 @@ function SetVariableEditor(props: {
                 options={options}
                 onChange={target => props.onChange({ ...props.payload, target })}
             />
-            <VariableValueField
-                valueType={valueType}
-                value={props.payload.value}
-                onChange={value => props.onChange({ ...props.payload, value })}
-            />
+            {sceneValue !== null ? (
+                <SceneReferenceValueField
+                    document={props.document}
+                    sceneId={sceneValue}
+                    onChange={value => props.onChange({ ...props.payload, value, expression: undefined })}
+                />
+            ) : (
+                <VariableValueField
+                    valueType={valueType}
+                    value={props.payload.value}
+                    onChange={value => props.onChange({ ...props.payload, value })}
+                />
+            )}
         </div>
+    );
+}
+
+/**
+ * The value of a `/set` that stores a scene reference (`scene:<id>`), shown and picked as the scene.
+ *
+ * The runtime reads such a value as that scene's name wherever it is displayed - a save slot's place
+ * is what the skeleton stores it for - so the field offers the scenes by name, as the row's own value
+ * token does, and writes the reference back. A reference whose scene is gone reads as missing.
+ */
+function SceneReferenceValueField(props: {
+    document: StoryDocument;
+    sceneId: StorySceneId;
+    onChange: (value: string) => void;
+}) {
+    const { t } = useTranslation();
+    const scenes = listScenesInDocumentOrder(props.document);
+    const current = sceneTranslationUnitId(props.sceneId);
+    const sceneOptions: SelectOption[] = [
+        ...(scenes.some(scene => scene.id === props.sceneId)
+            ? []
+            : [{ value: current, label: t("storyInspector.setVariable.missingScene") }]),
+        ...scenes.map(scene => ({ value: sceneTranslationUnitId(scene.id), label: scene.name })),
+    ];
+    return (
+        <SelectField
+            label={t("storyInspector.field.value")}
+            options={sceneOptions}
+            value={current}
+            onChange={value => props.onChange(String(value))}
+        />
     );
 }
 

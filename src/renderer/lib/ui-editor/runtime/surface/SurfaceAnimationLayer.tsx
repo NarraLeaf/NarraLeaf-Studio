@@ -36,6 +36,19 @@ export const SURFACE_PREPAINT_TIMEOUT_MS = 900;
  * an author's transition can absorb it.
  */
 const SURFACE_PREPAINT_IMAGE_TIMEOUT_MS = 120;
+/**
+ * How much longer the prepaint holds a layer back for a picture that covers much of it.
+ *
+ * The 120ms above is right for a thumbnail popping into its box. It is wrong for a page whose
+ * backdrop is one large picture: revealed before it decodes, the page is its bare background colour -
+ * usually black - for the second or two a big PNG takes on first open, which reads as a broken page
+ * rather than a slow one. So a picture covering at least {@link SURFACE_PREPAINT_LARGE_IMAGE_SHARE}
+ * of the layer is waited for up to this long, and meanwhile the layer stays fully transparent: what
+ * the player sees is whatever was under it (the page they came from, the stage) until it is ready.
+ * Warmed pictures are already decoded and cost nothing here.
+ */
+const SURFACE_PREPAINT_LARGE_IMAGE_TIMEOUT_MS = 1500;
+const SURFACE_PREPAINT_LARGE_IMAGE_SHARE = 0.25;
 const SURFACE_PREPAINT_FRAME_TIMEOUT_MS = 50;
 const SURFACE_ENTER_COMPLETE_FALLBACK_MS = 80;
 /**
@@ -181,6 +194,41 @@ function waitForImages(root: HTMLElement | null): Promise<unknown> {
     }));
 }
 
+function decodedOrSettled(image: HTMLImageElement): Promise<unknown> {
+    if (typeof image.decode === "function") {
+        return image.decode().catch(() => undefined);
+    }
+    return new Promise<void>(resolve => {
+        image.addEventListener("load", () => resolve(), { once: true });
+        image.addEventListener("error", () => resolve(), { once: true });
+    });
+}
+
+/**
+ * The pictures under `root` that cover a large share of it and have not decoded yet. Read after the
+ * first wait, so a picture whose address arrived during it (the `<img>` mounts when its URL resolves)
+ * is counted too.
+ */
+export function largeUndecodedImages(root: HTMLElement | null, share = SURFACE_PREPAINT_LARGE_IMAGE_SHARE): HTMLImageElement[] {
+    if (!root) {
+        return [];
+    }
+    const box = root.getBoundingClientRect();
+    const area = box.width * box.height;
+    if (area <= 0) {
+        return [];
+    }
+    return Array.from(root.querySelectorAll("img")).filter(image => {
+        if (!image.getAttribute("src") || (image.complete && image.naturalWidth > 0)) {
+            return false;
+        }
+        const rect = image.getBoundingClientRect();
+        const visibleWidth = Math.max(0, Math.min(rect.right, box.right) - Math.max(rect.left, box.left));
+        const visibleHeight = Math.max(0, Math.min(rect.bottom, box.bottom) - Math.max(rect.top, box.top));
+        return visibleWidth * visibleHeight >= area * share;
+    });
+}
+
 /**
  * A wait that resolved without the browser ever getting to paint is a wait that changed nothing.
  *
@@ -216,6 +264,12 @@ function useSurfacePrepaint(prepaintKey: string, rootRef: RefObject<HTMLDivEleme
                 waitWithTimeout(waitForDocumentFonts(), SURFACE_PREPAINT_TIMEOUT_MS),
                 waitWithTimeout(waitForImages(rootRef.current), SURFACE_PREPAINT_IMAGE_TIMEOUT_MS),
             ]);
+            // A backdrop-sized picture still decoding is worth holding the layer for (see
+            // SURFACE_PREPAINT_LARGE_IMAGE_TIMEOUT_MS); a small one is not.
+            const large = cancelled ? [] : largeUndecodedImages(rootRef.current);
+            if (large.length > 0) {
+                await waitWithTimeout(Promise.all(large.map(decodedOrSettled)), SURFACE_PREPAINT_LARGE_IMAGE_TIMEOUT_MS);
+            }
             // A second frame, but only when the waits above actually held something back. They
             // usually do not (fonts load once per session, images are decoded by the time the layer
             // is laid out), and waiting for a frame that has nothing to reveal cost another 100ms of
@@ -475,8 +529,15 @@ export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
         };
     }, [pageMotion.animate, pageMotion.exit, pageMotion.initial, resolveExit, scale]);
 
+    // While the layer is held back its own background is held back too: a page's backdrop colour on
+    // the animation layer would otherwise show, bare, for as long as its pictures take - the black
+    // first open of a page with a large background picture.
+    const holdingBack = isPresent && !prepaintReady;
     const mergedStyle: CSSProperties = {
         ...style,
+        // Longhands only: React warns when a render swaps a shorthand against the longhands beside it.
+        ...(holdingBack && style?.backgroundColor !== undefined ? { backgroundColor: "transparent" } : {}),
+        ...(holdingBack && style?.backgroundImage !== undefined ? { backgroundImage: "none" } : {}),
         zIndex: isPresent ? presentZIndex : exitZIndex,
         pointerEvents: isPresent && prepaintReady && interactive ? style?.pointerEvents : "none",
     };

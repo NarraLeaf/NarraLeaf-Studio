@@ -1,4 +1,4 @@
-import type { StoryClipReveal, StoryTransformProps, StoryTransformRef, StoryTransitionRef } from "@shared/types/story";
+import type { StoryAlignPositionValue, StoryClipReveal, StoryTransformProps, StoryTransformRef, StoryTransitionRef } from "@shared/types/story";
 import { legacyPresetPosition } from "@shared/story/transformLegacy";
 import type { StoryCommandEnumOption } from "../storyCommandGrammar";
 
@@ -392,7 +392,20 @@ export function applyPlacementToTransform(
     placement: string,
 ): StoryTransformRef | undefined {
     const position = legacyPresetPosition(placement, {});
-    return position ? withTransformChannels(current, { to: { position } }) : current;
+    return position ? applyPositionToTransform(current, position) : current;
+}
+
+/**
+ * The same fold for a whole position - a word's, or an align pair with its offsets.
+ *
+ * A placement states the row's look the way a `t=` word does (the transform holds one), so it goes
+ * through the same channel replacement and leaves no leftover zoom or fade behind it.
+ */
+export function applyPositionToTransform(
+    current: StoryTransformRef | undefined,
+    position: StoryAlignPositionValue,
+): StoryTransformRef {
+    return withTransformChannels(current, { to: { position } });
 }
 
 function withTransformChannels(
@@ -506,6 +519,11 @@ export function placementWordFor(position: StoryTransformProps["position"]): "le
 }
 
 function slideWordFor(position: StoryTransformProps["position"]): StoryTransitionWord | null {
+    // A slide word writes bare shares, so a position carrying pixels is not one - naming it would
+    // print a line that reads back without them.
+    if (position?.xoffset !== undefined || position?.yoffset !== undefined) {
+        return null;
+    }
     for (const word of ["slide-left", "slide-right", "slide-up", "slide-down"] as const) {
         const target = REVEAL_EFFECTS[word]?.to?.position;
         if (target && target.xalign === position?.xalign && target.yalign === position?.yalign) {

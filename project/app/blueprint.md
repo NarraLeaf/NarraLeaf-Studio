@@ -287,7 +287,7 @@ Three findings are warnings rather than refusals, deliberately:
   the shipped skeleton contains one.
 - **`compile.graph_dropped`** - see below.
 
-One more is a warning rather than a silence, and one thing is filled in rather than demanded:
+One more is a warning rather than a silence, and two things are filled in rather than demanded:
 
 - **`compile.element_type_unknown`** - an `Element` node names an id the project does not hold.
   Every node that follows an element reference checks its type before doing anything, so a
@@ -296,6 +296,11 @@ One more is a warning rather than a silence, and one thing is filled in rather t
 - An `Element` node written with `surfaceId` and `elementId` gets `elementType` **filled in** from
   the project, so a hand-written reference does not have to carry a line no author would think to
   write. Without `--project` there is nothing to look it up in, so write the type yourself.
+- A `Get Var` / `Set Var` that names its own blueprint's variable the long way,
+  `variableId = bp:<this blueprint>:<variable>`, is **written as the bare** `<variable>` and noted
+  (`compile.own_variable_ref`, info). Both spellings run, but the editor lists a blueprint's own
+  variables under the bare id only, so the long one shows as an empty field there. Write
+  `bp:<id>:<variable>` only for another blueprint's variable - a page's or the project's.
 
 Two limits worth knowing:
 

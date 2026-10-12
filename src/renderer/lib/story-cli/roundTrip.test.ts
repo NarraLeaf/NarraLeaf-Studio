@@ -150,6 +150,56 @@ describe("printing a scene and reading it back", () => {
     });
 });
 
+describe("an opaque row whose #data payload names the wrong kind", () => {
+    /**
+     * A narration stored as `kind: "action"` applied cleanly, showed in the editor as an effect row
+     * and was skipped by the game. The payload is copied verbatim, so the file has to be told here.
+     */
+    function compileOpaque(stored: Record<string, unknown>) {
+        commandI18nStore.setPreference(false);
+        const project = skeletonProject();
+        expect(project).not.toBeNull();
+        const { data, document } = project!;
+        const scene = { ...(Object.values(document.scenes)[0] as StoryScene), rootBlockIds: [], blocks: {} };
+        const lookups = buildLookups(data, document, scene, buildContext(data, document, scene));
+        const anchor = "7c1f4b02-0000-4000-8000-000000000001";
+        const row = { id: anchor, parentId: null, childrenIds: [], ...stored };
+        const source = `#nlstory 1\n#scene ${scene.name} ⟦${scene.id}⟧\n\n${OPAQUE_PREFIX}Narration ⟦${anchor}⟧\n\n`
+            + `#data\n${JSON.stringify({ [anchor]: row })}\n`;
+        return compileStoryFile({
+            ast: parseStoryFile(source).ast,
+            existing: scene,
+            document,
+            contextFor: stage => buildContext(data, document, stage ?? scene),
+            prose: lookups.prose,
+            conditions: lookups.conditions,
+            mintId: () => "00000000-0000-4000-8000-000000000099",
+        });
+    }
+
+    const narration = { action: "narration", text: { textId: "t-1", value: "The rain stopped.", role: "narration" } };
+
+    it("is refused, naming the kind the row needs", () => {
+        const compiled = compileOpaque({ kind: "action", payload: narration });
+        expect(compiled.diagnostics).toEqual([
+            expect.objectContaining({ code: "compile.opaque_wrong_kind", severity: "error", line: 4 }),
+        ]);
+        expect(compiled.diagnostics[0]?.message).toContain('"nodeAction"');
+    });
+
+    it("is refused the other way round too", () => {
+        const compiled = compileOpaque({ kind: "nodeAction", payload: { action: "wait", mode: "click" } });
+        expect(compiled.diagnostics.map(diagnostic => diagnostic.code)).toEqual(["compile.opaque_wrong_kind"]);
+    });
+
+    it("is taken as written when the kind is right", () => {
+        const compiled = compileOpaque({ kind: "nodeAction", payload: narration });
+        expect(compiled.diagnostics).toEqual([]);
+        const [row] = compiled.scene!.rootBlockIds.map(id => compiled.scene!.blocks[id]);
+        expect(row).toMatchObject({ kind: "nodeAction", payload: { action: "narration" } });
+    });
+});
+
 describe("a row that names a row the same file adds", () => {
     it("is bound to the id that row ends up with", () => {
         // The second pass resolves names against the first pass's scene, so a target bound to the row
@@ -648,5 +698,128 @@ describe("a project this tool cannot read", () => {
         const context = buildContext(emptyProjectData(), null, null);
         expect(context.characters).toEqual([]);
         expect(context.images).toEqual([]);
+    });
+});
+
+describe("a /transform bound to the row that walked a character on", () => {
+    /**
+     * A character brought on by `/show <name>` keys on its id, and the row that brought it on carries
+     * no typed name - so the declaring row's label is the placeholder "Character". A `/transform` in
+     * the same file binds to that row, and used to print its subject as that placeholder: a word the
+     * target slot does not answer to, so the echo check failed and the row came back opaque.
+     */
+    it("prints the character's cast name, and reads back as the same row", () => {
+        commandI18nStore.setPreference(false);
+        const project = skeletonProject();
+        expect(project).not.toBeNull();
+        const { data, document } = project!;
+        const scene = { ...(Object.values(document.scenes)[0] as StoryScene), rootBlockIds: [], blocks: {} };
+        const lookups = buildLookups(data, document, scene, buildContext(data, document, scene));
+        const line = "/transform Narra pos=0.5,0.3056 zoom=1.4 d=0.75s ease=easeInOut";
+        const source = `#nlstory 1\n#scene ${scene.name} ⟦${scene.id}⟧\n\n/show Narra\n${line}\n`;
+        let next = 0;
+        const compiled = compileStoryFile({
+            ast: parseStoryFile(source).ast,
+            existing: scene,
+            document,
+            contextFor: stage => buildContext(data, document, stage ?? scene),
+            prose: lookups.prose,
+            conditions: lookups.conditions,
+            mintId: () => `00000000-0000-4000-8000-${String(next++).padStart(12, "0")}`,
+        });
+        expect(compiled.diagnostics).toEqual([]);
+        const written = compiled.scene!;
+        const transform = written.blocks[written.rootBlockIds[1]];
+        expect(transform?.kind === "action" && transform.payload.action === "displayable"
+            ? transform.payload.target.sourceBlockId : undefined).toBe(written.rootBlockIds[0]);
+
+        const { printed, parseDiagnostics, compiled: again } = roundTrip(data, { ...document, scenes: { ...document.scenes, [written.id]: written } }, written);
+        expect(printed.stats.opaque).toBe(0);
+        expect(printed.text).toContain(`${line}  ⟦${transform!.id}⟧`);
+        expect(parseDiagnostics).toEqual([]);
+        expect(again.diagnostics).toEqual([]);
+        expect(sameRowContent(again.scene!.blocks[transform!.id], transform!)).toBe(true);
+    });
+});
+
+describe("pixel offsets in a story file", () => {
+    /**
+     * `xoffset=` / `yoffset=` through a whole file and back: written as lines, applied, printed, and
+     * read again. Before they had a spelling, every one of these rows printed as an opaque `»` line;
+     * now each is a line, with both shares of `pos=` beside its offsets, and the scene reads back as
+     * itself. The one shape the line still cannot say - an offset beside a half-stated pair - keeps
+     * going through the escape hatch, whole.
+     */
+    function applied(lines: readonly string[]) {
+        commandI18nStore.setPreference(false);
+        const project = skeletonProject();
+        expect(project).not.toBeNull();
+        const { data, document } = project!;
+        const scene = { ...(Object.values(document.scenes)[0] as StoryScene), rootBlockIds: [], blocks: {} };
+        const lookups = buildLookups(data, document, scene, buildContext(data, document, scene));
+        const source = `#nlstory 1\n#scene ${scene.name} ⟦${scene.id}⟧\n\n${lines.join("\n")}\n`;
+        let next = 0;
+        const compiled = compileStoryFile({
+            ast: parseStoryFile(source).ast,
+            existing: scene,
+            document,
+            contextFor: stage => buildContext(data, document, stage ?? scene),
+            prose: lookups.prose,
+            conditions: lookups.conditions,
+            mintId: () => `00000000-0000-4000-8000-${String(next++).padStart(12, "0")}`,
+        });
+        expect(compiled.diagnostics).toEqual([]);
+        const written = compiled.scene!;
+        return { data, document: { ...document, scenes: { ...document.scenes, [written.id]: written } }, scene: written };
+    }
+
+    it("writes every row with an offset as a line, and reads the scene back as itself", () => {
+        const lines = [
+            "/show Narra pos=0.25,0.5 xoffset=-40 d=0.3s",
+            "/transform Narra pos=0.5,0.5 xoffset=40 yoffset=-12 d=0.4s",
+            "/image classroom name=poster pos=0.5,0.6 yoffset=20",
+            "/show poster",
+            "/text name=sign pos=0.5,0.8 xoffset=-8 Closed today",
+            "/show sign",
+        ];
+        const { data, document, scene } = applied(lines);
+        const positions = scene.rootBlockIds.map(id => {
+            const block = scene.blocks[id];
+            return block?.kind === "action" ? (block.payload as { transform?: { to?: { position?: unknown } } }).transform?.to?.position : undefined;
+        });
+        expect(positions[0]).toEqual({ xalign: 0.25, yalign: 0.5, xoffset: -40 });
+        expect(positions[1]).toEqual({ xalign: 0.5, yalign: 0.5, xoffset: 40, yoffset: -12 });
+        expect(positions[2]).toEqual({ xalign: 0.5, yalign: 0.6, yoffset: 20 });
+        expect(positions[4]).toEqual({ xalign: 0.5, yalign: 0.8, xoffset: -8 });
+
+        const { printed, parseDiagnostics, compiled } = roundTrip(data, document, scene);
+        expect(printed.stats.opaque).toBe(0);
+        // The rows with an offset print exactly as they were typed; the bare `/show` rows spell out
+        // the house reveal they were given, which is not what this is about.
+        for (const index of [0, 1, 2, 4]) {
+            expect(printed.text).toContain(`${lines[index]}  ⟦${scene.rootBlockIds[index]}⟧`);
+        }
+        expect(parseDiagnostics).toEqual([]);
+        expect(compiled.diagnostics).toEqual([]);
+        for (const [id, block] of Object.entries(scene.blocks)) {
+            expect(sameRowContent(compiled.scene!.blocks[id], block), `row ${id}`).toBe(true);
+        }
+    });
+
+    it("keeps an offset beside a half-stated pair whole, as an opaque row", () => {
+        const { data, document, scene } = applied(["/show Narra", "/transform Narra zoom=1.2 d=0.4s"]);
+        const id = scene.rootBlockIds[1];
+        const block = scene.blocks[id];
+        expect(block?.kind === "action" && block.payload.action === "displayable").toBe(true);
+        const payload = block!.payload as Extract<StoryBlock["payload"], { action: "displayable" }>;
+        const dragged: StoryBlock = {
+            ...block!,
+            payload: { ...payload, transform: { ...payload.transform, to: { ...payload.transform?.to, position: { xalign: 0.4, xoffset: 40 } } } },
+        } as StoryBlock;
+        const edited = { ...scene, blocks: { ...scene.blocks, [id]: dragged } };
+        const { printed, compiled } = roundTrip(data, { ...document, scenes: { ...document.scenes, [edited.id]: edited } }, edited);
+        expect(printed.stats.opaque).toBe(1);
+        expect(printed.opaqueRows.map(row => row.anchor)).toEqual([id]);
+        expect(sameRowContent(compiled.scene!.blocks[id], dragged)).toBe(true);
     });
 });

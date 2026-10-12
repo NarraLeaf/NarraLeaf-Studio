@@ -4,6 +4,7 @@ import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents"
 import { WindowAppType } from "@shared/types/window";
 import { AGENT_COPY_CONFIG_KINDS, toAgentQuickState, type AgentQuickState, type AgentQuickTogglePatch } from "@shared/agent/workspaceAccess";
 import type { AgentFolderAccessAnswer } from "@shared/agent/protocol";
+import { findAgentClient, type AgentClientSetupInfo, type AgentSkillInstallResult } from "@shared/agent/clients";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -19,11 +20,29 @@ import { IPCHandler } from "./IPCHandler";
  * `AgentManager.quickToggle`, because a workspace runs plugin code.
  *
  * Game windows (Dev Mode, Preview) run project code and are refused, as is everything else that is
- * not a workspace or the Settings window.
+ * not a workspace or the Settings window - except the launcher while it is showing first-run setup,
+ * whose agent access screen switches access on and copies a configuration the same way the menu does.
+ * The launcher runs no plugin or project code, and once setup is over it is refused again.
  */
+function isLauncherInSetup(window: AppWindow): boolean {
+    return window.getWindowType() === WindowAppType.Launcher && window.getApp().isFirstRunSetupOpen() === true;
+}
+
+/**
+ * First-run setup's own handlers: the endpoint and the skill folders, and installing the skill.
+ * The address is answered here, which the menu's handlers never do, so these answer only the
+ * Settings window and the launcher while setup is open - not a workspace.
+ */
+function refuseOutsideSetup(window: AppWindow, action: string): Error | null {
+    if (window.getWindowType() === WindowAppType.Settings || isLauncherInSetup(window)) {
+        return null;
+    }
+    window.app.logger.warn(`[Agent] Refused to ${action} for a ${window.getWindowType()} window`);
+    return new Error(`A ${window.getWindowType()} window cannot ${action}.`);
+}
 function refuseOutsideWorkspace(window: AppWindow, action: string): Error | null {
     const windowType = window.getWindowType();
-    if (windowType === WindowAppType.Workspace || windowType === WindowAppType.Settings) {
+    if (windowType === WindowAppType.Workspace || windowType === WindowAppType.Settings || isLauncherInSetup(window)) {
         return null;
     }
     window.app.logger.warn(`[Agent] Refused to ${action} for a ${windowType} window`);
@@ -188,6 +207,47 @@ export class AgentRequestFolderAccessHandler extends IPCHandler<IPCEventType.age
                 callId: typeof request?.callId === "string" ? request.callId : "",
                 paths: Array.isArray(request?.paths) ? request.paths : [],
             }));
+        } catch (error) {
+            return this.failed(error);
+        }
+    }
+}
+
+export class AgentClientSetupHandler extends IPCHandler<IPCEventType.agentClientSetup> {
+    readonly name = IPCEventType.agentClientSetup;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<AgentClientSetupInfo>> {
+        const refused = refuseOutsideSetup(window, "read how to connect an agent");
+        if (refused) {
+            return this.failed(refused);
+        }
+        try {
+            return this.success(await window.getApp().getAgentManager().clientSetup());
+        } catch (error) {
+            return this.failed(error);
+        }
+    }
+}
+
+export class AgentInstallSkillHandler extends IPCHandler<IPCEventType.agentInstallSkill> {
+    readonly name = IPCEventType.agentInstallSkill;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        request: IPCEvents[IPCEventType.agentInstallSkill]["data"],
+    ): Promise<RequestStatus<AgentSkillInstallResult>> {
+        const refused = refuseOutsideSetup(window, "install the agent skill");
+        if (refused) {
+            return this.failed(refused);
+        }
+        const client = findAgentClient(request?.client);
+        if (!client || client.skill === "served") {
+            return this.failed(new Error(`No skill to install for: ${String(request?.client)}`));
+        }
+        try {
+            return this.success(await window.getApp().getAgentManager().installSkill(window, client.id));
         } catch (error) {
             return this.failed(error);
         }

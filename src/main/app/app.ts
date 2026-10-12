@@ -45,6 +45,7 @@ import { AgentManager } from "./application/managers/agent/agentManager";
 import { SpellcheckManager } from "./application/managers/spellcheck/spellcheckManager";
 import { ProjectSessionLockManager } from "./application/managers/projectSessionLockManager";
 import { SPELLCHECK_LANGUAGE_KEY } from "@shared/types/spellcheck";
+import { STORE_SOURCE_KEY } from "@shared/constants/storeSource";
 import { resolveStartupProject } from "./application/startupProject";
 import { CommandLineBuildRun } from "./application/commandLineBuild";
 import { CommandLineCheckRun } from "./application/commandLineCheck";
@@ -270,6 +271,7 @@ export class App extends BaseApp {
         this.spellcheckManager = new SpellcheckManager({
             cacheRoot: () => this.getCacheRootDir(),
             readSetting: () => this.globalState.get(SPELLCHECK_LANGUAGE_KEY),
+            readStoreSource: () => this.globalState.get(STORE_SOURCE_KEY),
         });
 
         // Built as soon as there is an Electron app to attach it to, because from here on it is
@@ -440,6 +442,16 @@ export class App extends BaseApp {
             return false;
         }
         return needsOnboarding(this.globalState.get(ONBOARDING_STATE_KEY));
+    }
+
+    /**
+     * Whether first-run setup is what the launcher is showing right now. The agent access screen in
+     * setup is let through a few of the agent handlers that otherwise answer only Settings and
+     * workspaces, and only for as long as this holds: once the marker is written the launcher is the
+     * home screen again and is refused like any other window.
+     */
+    public isFirstRunSetupOpen(): boolean {
+        return this.shouldRunOnboarding();
     }
 
     async launchLauncher(

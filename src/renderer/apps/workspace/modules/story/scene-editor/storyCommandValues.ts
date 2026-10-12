@@ -532,6 +532,17 @@ export type StoryCommandResolutionIssue =
     | { code: "repeatTimesAndUntil"; span: StoryCommandSpan }
     /** An enum value this command's variant of the shared vocabulary does not support (`/bg t=zoom`). */
     | { code: "unsupportedOption"; span: StoryCommandSpan; value: string; allowed: readonly string[] }
+    /**
+     * A `pos=x,y` pair too far out to be a share of the stage (`pos=100,200`): almost always pixels
+     * typed where fractions belong, and the object would land far off screen.
+     */
+    | { code: "positionOutOfRange"; span: StoryCommandSpan; value: string }
+    /**
+     * `xoffset=` / `yoffset=` with no `pos=` on the line: pixels added to shares the line never
+     * states. Refused rather than stored, because the row would mean "40 pixels right of wherever an
+     * earlier row left it" and would print back without the pair it shifts.
+     */
+    | { code: "offsetWithoutPosition"; span: StoryCommandSpan; key: string }
     /** Carries the whole underlying {@link StoryExpressionIssue} - its params make the message worth having. */
     | { code: "expressionError"; span: StoryCommandSpan; value: string; issue: StoryExpressionIssue }
     /** `/if gold` - parses fine, but a condition that is not a comparison is nearly always unfinished. */

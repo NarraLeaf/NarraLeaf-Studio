@@ -136,6 +136,19 @@ export type TestFinding = {
     severity: TestFindingSeverity;
     message: TestText;
     target?: SearchJumpTarget;
+    /**
+     * A stable, machine-readable name for the rule or check that produced this finding (for the
+     * project-diagnostics test, the lint rule id such as `story/dead-end`). Optional: a finding
+     * without one is still a finding. Never translated, so a script or an agent can match on it.
+     */
+    ruleId?: string;
+    /**
+     * The message in English, for machine readers (Studio's agent connection hands findings to
+     * agents whose tool descriptions are English). Optional; when absent the agent gets `message`
+     * rendered as well as it can be. Never shown in Studio's own report, which follows the editor
+     * language through `message`.
+     */
+    englishMessage?: string;
 };
 
 /** Error first, info last - the order findings are reported and rendered in. */

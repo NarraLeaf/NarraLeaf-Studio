@@ -13,11 +13,20 @@
 
 import { createTranslator, type TranslationKey } from "@shared/i18n";
 import { listSceneBlocksInDocumentOrder } from "@shared/types/story";
-import type { DevModeAgentGameState, DevModeEntry } from "@shared/types/devMode";
+import {
+    DevModeAgentErrorCode,
+    type DevModeAgentAction,
+    type DevModeAgentGameState,
+    type DevModeAgentIssue,
+    type DevModeAgentPointerGesture,
+    type DevModeEntry,
+} from "@shared/types/devMode";
 import type { GameBuildPlatform, GameBuildStateSnapshot } from "@shared/types/gameBuild";
 import { getInterface } from "@/lib/app/bridge";
 import { translate as translateForAuthor } from "@/lib/i18n";
-import { describeLintLocation } from "@/lib/lint/locationText";
+import { describeLintLocation, LINT_LOCATION_SEPARATOR } from "@/lib/lint/locationText";
+import { createStoryRowLocator, type StoryRowLocator } from "@/lib/lint/storyLocator";
+import type { SearchJumpTarget } from "@/lib/workspace/services/search/searchJumpTarget";
 import { resolveLintMessageParams, type LintSeverity } from "@/lib/lint/types";
 import type { TestRunRecord, TestText } from "@/lib/testing/types";
 import { TEST_TERMINAL_STATUSES } from "@/lib/testing/types";
@@ -31,6 +40,7 @@ import type { BuildService } from "../../core/BuildService";
 import {
     answer,
     answerJson,
+    readOptionalBoolean,
     readOptionalInteger,
     readOptionalRecord,
     readOptionalString,
@@ -38,42 +48,55 @@ import {
     refuse,
     type AgentToolHandler,
 } from "../agentCall";
-import { resolveScene, resolveStory } from "../agentLookups";
+import type { AgentCallResult } from "@shared/agent/protocol";
+import { resolveScene, resolveStory, storyService } from "../agentLookups";
 import { downscaleImage } from "../domRaster";
-import { describeAdvance, describeGameState, gameStateData, launchIsUp, playtestHint } from "./playtestReport";
+import { describeLintPage, LINT_PAGE_DEFAULT_LIMIT, LINT_PAGE_MAX_LIMIT, pageLintEntries, SEVERITY_RANK } from "./lintPage";
+import { describeAdvance, describeGameState, describeInputResult, describeIssues, gameStateData, launchIsUp, playtestHint } from "./playtestReport";
 
 const english = createTranslator("en");
 const translate = (key: TranslationKey, params?: Record<string, string | number>) => english.t(key, params);
 
 // ── lint ─────────────────────────────────────────────────────────────────────────────────────────
 
-const SEVERITY_RANK: Record<LintSeverity, number> = { error: 0, warning: 1, info: 2 };
-const LINT_FINDINGS_CAP = 150;
-
 export const lint: AgentToolHandler = async (args, { ctx }) => {
     const threshold = (readOptionalString(args, "severity") ?? "warning") as LintSeverity;
     if (!(threshold in SEVERITY_RANK)) {
         throw refuse("invalid_args", "`severity` must be error, warning or info.");
     }
+    const rule = readOptionalString(args, "rule");
+    const limit = readOptionalInteger(args, "limit", { min: 1, max: LINT_PAGE_MAX_LIMIT }) ?? LINT_PAGE_DEFAULT_LIMIT;
+    const cursor = readOptionalString(args, "cursor");
+    const offset = cursor === undefined ? 0 : Number(cursor);
+    if (!Number.isInteger(offset) || offset < 0) {
+        throw refuse("invalid_args", "`cursor` must be the `nextCursor` a previous lint call returned.");
+    }
+    const request = { threshold, ...(rule ? { rule } : {}), offset, limit };
+
     const report = await ctx.services.get<LintService>(Services.Lint).run();
-    const findings = report.entries
-        .filter(entry => SEVERITY_RANK[entry.severity] <= SEVERITY_RANK[threshold])
-        .sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity])
-        .map(entry => {
-            const location = describeLintLocation(entry.location, key => translate(key));
-            return {
-                severity: entry.severity,
-                rule: entry.ruleId,
-                message: translate(entry.messageKey, resolveLintMessageParams(entry, key => translate(key), (base, count, params) => english.tn(base, count, params))),
-                ...(location ? { location } : {}),
-            };
-        });
-    const shown = findings.slice(0, LINT_FINDINGS_CAP);
+    const { byRule, matched, page, nextCursor } = pageLintEntries(report.entries, request);
+    // Rendered in English and only for the page: the rule id stays beside every message, so an
+    // author reading Studio's own lint panel in their language can find the same finding by it.
+    const findings = page.map(entry => {
+        const location = describeLintLocation(entry.location, key => translate(key));
+        return {
+            severity: entry.severity,
+            rule: entry.ruleId,
+            message: translate(entry.messageKey, resolveLintMessageParams(entry, key => translate(key), (base, count, params) => english.tn(base, count, params))),
+            ...(location ? { location } : {}),
+        };
+    });
     return answerJson(
-        { counts: report.counts, shown: shown.length, total: findings.length, findings: shown },
-        `${report.counts.error} error(s), ${report.counts.warning} warning(s), ${report.counts.info} info.`
-            + (findings.length > shown.length ? ` Showing the first ${shown.length} of ${findings.length}.` : "")
-            + (report.counts.error > 0 ? " Fix every error before building." : ""),
+        {
+            counts: report.counts,
+            byRule,
+            matched,
+            from: offset,
+            shown: findings.length,
+            nextCursor,
+            findings,
+        },
+        describeLintPage(report.counts, { byRule, matched, nextCursor, shown: findings.length }, request),
     );
 };
 
@@ -160,7 +183,7 @@ export const playtestStart: AgentToolHandler = async (args, { ctx, request, foll
     const projectPath = ctx.project.getConfig().projectPath;
     // A game already running in place is replaced by this launch; how many times it had entered a
     // story is what tells the new game from it below. Nothing running reads as "none yet".
-    const before = await getInterface().devMode.agentControl(projectPath, { kind: "state" });
+    const before = await getInterface().devMode.agentControl(projectPath, { kind: "state", baseline: true });
     const entriesBefore = before.success && before.data.kind === "state" && before.data.state.ready
         ? before.data.state.entries
         : -1;
@@ -194,16 +217,24 @@ export const playtestStart: AgentToolHandler = async (args, { ctx, request, foll
         }
         await delay(250);
     }
+    let issues: DevModeAgentIssue[] | undefined;
     if (story && state && launchIsUp(state, { story, entriesBefore, sawOutOfStory })) {
         const settled = await getInterface().devMode.agentControl(projectPath, { kind: "state", settle: true });
         if (settled.success && settled.data.kind === "state") {
             state = settled.data.state;
+            issues = settled.data.issues;
+        }
+    } else if (status === "running") {
+        const read = await getInterface().devMode.agentControl(projectPath, { kind: "state" });
+        if (read.success && read.data.kind === "state") {
+            issues = read.data.issues;
         }
     }
     const where = state ? ` ${describeGameState(state)}` : "";
+    const reported = describeIssues(issues);
     return answerJson(
-        { status, from, ...(state ? gameStateData(state) : {}) },
-        `Dev Mode is ${status}, from ${from}.${where} Use playtest_screenshot to look and playtest_advance to read on.`,
+        { status, from, ...(state ? gameStateData(state) : {}), ...(issues?.length ? { issues } : {}) },
+        `Dev Mode is ${status}, from ${from}.${where} Use playtest_screenshot to look and playtest_advance to read on.${reported ? `\n${reported}` : ""}`,
     );
 };
 
@@ -227,22 +258,28 @@ export const playtestAdvance: AgentToolHandler = async (args, { ctx }) => {
     if (result.data.kind !== "advance") {
         throw refuse("internal", "The game answered something other than an advance.");
     }
-    const { advanced, error, ending, state } = result.data;
+    const { advanced, error, ending, state, issues } = result.data;
     const where = state ? ` ${describeGameState(state)}` : "";
+    const reported = describeIssues(issues);
     return answerJson(
         {
             advanced,
             ...(error ? { stoppedBecause: error } : {}),
             ...(ending ? { ending: ending.name } : {}),
             ...(state ? gameStateData(state) : {}),
+            ...(issues?.length ? { issues } : {}),
         },
-        `${describeAdvance(result.data)}${where}`,
+        `${describeAdvance(result.data)}${where}${reported ? `\n${reported}` : ""}`,
     );
 };
 
 export const playtestScreenshot: AgentToolHandler = async (args, { ctx }) => {
     const maxSize = readOptionalInteger(args, "maxSize", { min: 64, max: 4096 }) ?? 1280;
-    const result = await getInterface().devMode.agentControl(ctx.project.getConfig().projectPath, { kind: "capture" });
+    const view = readOptionalString(args, "view") ?? "screen";
+    if (view !== "screen" && view !== "stage") {
+        throw refuse("invalid_args", "`view` must be \"screen\" (what the player sees) or \"stage\" (the stage alone).");
+    }
+    const result = await getInterface().devMode.agentControl(ctx.project.getConfig().projectPath, { kind: "capture", view });
     if (!result.success) {
         throw playtestRefusal(result);
     }
@@ -250,9 +287,11 @@ export const playtestScreenshot: AgentToolHandler = async (args, { ctx }) => {
         throw refuse("unavailable", "The game had nothing to capture.");
     }
     const scaled = await downscaleImage(result.data.png, maxSize);
-    const note = result.data.source === "window"
-        ? "Captured from the window (no game has been entered yet, so this is a page such as the title)."
-        : "The game stage as the engine draws it, Game UI included.";
+    const note = result.data.source === "screen"
+        ? "What the player sees: the stage with its Game UI and every page or layer open over it."
+        : result.data.source === "window"
+            ? "Captured from the whole Dev Mode window (the game's box could not be found, or the stage had nothing to capture yet)."
+            : "The game stage as the engine draws it, Game UI included; pages and layers open over it are not in this view (use view \"screen\").";
     return {
         ok: true,
         content: [
@@ -261,6 +300,66 @@ export const playtestScreenshot: AgentToolHandler = async (args, { ctx }) => {
         ],
         structured: { width: scaled.width, height: scaled.height, source: result.data.source },
     };
+};
+
+/**
+ * A pointer or key act's answer: what was done, what it changed, what is on screen now - and the
+ * nudge to look, because a sentence can say a page opened but not whether it is laid out right.
+ */
+async function playtestInput(ctx: WorkspaceContext, action: DevModeAgentAction): Promise<AgentCallResult> {
+    const result = await getInterface().devMode.agentControl(ctx.project.getConfig().projectPath, action);
+    if (!result.success) {
+        if (result.code === DevModeAgentErrorCode.inputTarget) {
+            throw refuse("invalid_args", result.error ?? "The game could not act on that.");
+        }
+        throw playtestRefusal(result);
+    }
+    if (result.data.kind !== "input") {
+        throw refuse("internal", "The game answered something other than an input.");
+    }
+    const { did, changed, surfaces, state, issues } = result.data;
+    const reported = describeIssues(issues);
+    return answerJson(
+        { did, changed, surfaces, ...gameStateData(state), ...(issues?.length ? { issues } : {}) },
+        `${describeInputResult(result.data)}${reported ? `\n${reported}` : ""}`,
+    );
+}
+
+export const playtestClick: AgentToolHandler = async (args, { ctx }) => playtestPointer(ctx, args, "click");
+
+export const playtestHover: AgentToolHandler = async (args, { ctx }) => playtestPointer(ctx, args, "hover");
+
+async function playtestPointer(
+    ctx: WorkspaceContext,
+    args: Record<string, unknown>,
+    gesture: DevModeAgentPointerGesture,
+): Promise<AgentCallResult> {
+    const at = readOptionalRecord(args, "at");
+    let point: { x: number; y: number } | undefined;
+    if (at) {
+        const x = at.x;
+        const y = at.y;
+        if (typeof x !== "number" || typeof y !== "number" || !Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1 || y < 0 || y > 1) {
+            throw refuse("invalid_args", "`at` must be `{ x, y }`, each a share of the element's box from 0 to 1 (0,0 is its top-left corner).");
+        }
+        point = { x, y };
+    }
+    const index = readOptionalInteger(args, "index", { min: 1, max: 500 });
+    const surface = readOptionalString(args, "surface");
+    return playtestInput(ctx, {
+        kind: "pointer",
+        gesture,
+        element: readString(args, "element"),
+        ...(surface ? { surface } : {}),
+        ...(index !== undefined ? { index } : {}),
+        ...(point ? { at: point } : {}),
+    });
+}
+
+export const playtestKey: AgentToolHandler = async (args, { ctx }) => {
+    const key = readString(args, "key");
+    const shift = readOptionalBoolean(args, "shift");
+    return playtestInput(ctx, { kind: "key", key, ...(shift ? { shift } : {}) });
 };
 
 export const playtestStop: AgentToolHandler = async (_args, { ctx }) => {
@@ -275,6 +374,36 @@ function testText(text: TestText | undefined): string {
         return "";
     }
     return text.key ? translate(text.key, text.params) : text.text;
+}
+
+/**
+ * Where a test finding points, spelled the way `lint` spells a story row (`Story / Scene:12`), so a
+ * finding such as `"Stay" stops without reaching an ending` says which scene and row it means. The
+ * report tab has the jump target for that; an agent has only this text.
+ */
+function testFindingLocator(ctx: WorkspaceContext): (target: SearchJumpTarget | undefined) => Promise<string | undefined> {
+    const locators = new Map<string, Promise<StoryRowLocator | null>>();
+    const locatorFor = (storyId: string, storyName: string): Promise<StoryRowLocator | null> => {
+        let locator = locators.get(storyId);
+        if (!locator) {
+            locator = storyService(ctx).loadStory(storyId)
+                .then(document => createStoryRowLocator([{ id: storyId, name: storyName, document }]))
+                .catch(() => null);
+            locators.set(storyId, locator);
+        }
+        return locator;
+    };
+    return async target => {
+        if (!target || (target.kind !== "storyBlock" && target.kind !== "storyScene")) {
+            return undefined;
+        }
+        const scene = `${target.storyName}${LINT_LOCATION_SEPARATOR}${target.sceneName}`;
+        if (target.kind === "storyScene") {
+            return scene;
+        }
+        const row = (await locatorFor(target.storyId, target.storyName))?.(target.storyId, target.sceneId, target.blockId);
+        return row ? `${scene}:${row.line}` : scene;
+    };
 }
 
 /** {@link testText} in the author's language, for what the author reads of the call. */
@@ -345,7 +474,16 @@ export const internalTest: AgentToolHandler = async (args, { ctx, request, follo
     if (!run) {
         throw refuse("internal", `Test "${id}" did not finish in time.`);
     }
-    const findings = run.findings.map(finding => ({ severity: finding.severity, message: testText(finding.message) }));
+    const where = testFindingLocator(ctx);
+    const findings = await Promise.all(run.findings.map(async finding => {
+        const location = await where(finding.target);
+        return {
+            severity: finding.severity,
+            ...(finding.ruleId ? { rule: finding.ruleId } : {}),
+            message: finding.englishMessage || testText(finding.message),
+            ...(location ? { location } : {}),
+        };
+    }));
     return answerJson(
         { testId: id, status: run.status, summary: testText(run.summary) || null, findings, ...(run.error ? { error: run.error } : {}) },
         `Test ${id}: ${run.status}.${run.summary ? ` ${testText(run.summary)}` : ""}`,

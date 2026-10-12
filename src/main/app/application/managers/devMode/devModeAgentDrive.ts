@@ -20,8 +20,8 @@ import type { RequestStatus } from "@shared/types/ipcEvents";
 export type DevModeAgentDriveTarget = {
     /** Ask the window to carry out `action`. May reject when the window goes away mid-call. */
     ask(action: DevModeAgentAction, timeoutMs: number): Promise<RequestStatus<DevModeAgentResult>>;
-    /** The window's own pixels, as a PNG data URL. */
-    capturePage(): Promise<string>;
+    /** The window's own pixels, as a PNG data URL: all of them, or the part `rect` (CSS pixels) covers. */
+    capturePage(rect?: { x: number; y: number; width: number; height: number }): Promise<string>;
     /**
      * Keep the page rendering while it is hidden or covered.
      *
@@ -52,6 +52,8 @@ const ACTION_NAMES: Record<DevModeAgentAction["kind"], string> = {
     capture: "screenshot",
     state: "status read",
     advance: "advance",
+    pointer: "pointer act",
+    key: "key press",
 };
 
 function seconds(ms: number): string {
@@ -115,17 +117,19 @@ export async function driveDevModeWindow(
         throw answer.code ? new DevModeAgentError(message, answer.code) : new Error(message);
     }
     if (answer.data.kind === "capture" && !answer.data.png) {
-        // Nothing on the stage yet - a page such as the title is all there is - so the window's own
-        // pixels stand in. Bounded like the engine's capture, for the same reason.
+        // The window's own pixels: cropped to the game's box for a screen capture (pages and layers
+        // open over the stage are only there), or the whole window when there was no game box and no
+        // stage to capture. Bounded like the engine's capture, for the same reason.
+        const rect = answer.data.rect && answer.data.rect.width >= 1 && answer.data.rect.height >= 1 ? answer.data.rect : undefined;
         const png = await withTimeout(
-            target.capturePage(),
+            target.capturePage(rect),
             DEV_MODE_AGENT_BUDGET_MS.capture,
             () => new DevModeAgentError(
                 `The Dev Mode window did not produce a picture of itself within ${seconds(DEV_MODE_AGENT_BUDGET_MS.capture)}.`,
                 DevModeAgentErrorCode.captureTimeout,
             ),
         );
-        return { kind: "capture", png, source: "window" };
+        return { kind: "capture", png, source: rect ? "screen" : "window" };
     }
     return answer.data;
 }

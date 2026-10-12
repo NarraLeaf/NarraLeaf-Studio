@@ -62,6 +62,7 @@ import {
     listNumericStoryVariables,
     sceneWritesAsUncertain,
     sceneWritesBefore,
+    startOfRunValue,
     unionVariableRanges,
     variableRangesEqual,
     type SceneFlowBlueprintWrites,
@@ -157,7 +158,7 @@ function armGuard(scene: { blocks: Record<StoryBlockId, StoryBlock> }, blockId: 
     return null;
 }
 
-/** The state a story starts in: every numeric variable at its declared default, or unknown. */
+/** The state a story starts in: every numeric variable where a run starts it, or unknown. */
 function seedState(
     variables: readonly SceneFlowNumericVariable[],
     externallyWritten: ReadonlySet<string>,
@@ -165,10 +166,12 @@ function seedState(
     const state: VariableState = new Map();
     for (const variable of variables) {
         // A missing default is not zero. The compiler seeds a saved variable to `null` and skips a
-        // scene-local with none, so a number the author never stated is a number nobody knows.
-        state.set(variable.key, variable.defaultValue === null || externallyWritten.has(variable.key)
+        // scene-local with none, so a number the author never stated is a number nobody knows - and a
+        // persistent one starts each run where the last run left it (`startOfRunValue`).
+        const start = startOfRunValue(variable);
+        state.set(variable.key, start === null || externallyWritten.has(variable.key)
             ? UNKNOWN
-            : { kind: "known", min: variable.defaultValue, max: variable.defaultValue });
+            : { kind: "known", min: start, max: start });
     }
     return state;
 }

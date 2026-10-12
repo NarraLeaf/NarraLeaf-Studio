@@ -242,7 +242,7 @@ A test that could claim `cancelled` could lie about having been killed, which is
 ```ts
 ctx.log(level, message)      // "verbose" | "info" | "success" | "warning" | "error"
 ctx.progress({ completed, total?, label? } | null)
-ctx.report({ severity, message, target? })
+ctx.report({ severity, message, target?, ruleId?, englishMessage? })
 ```
 
 A finding is **evidence for a verdict the test has already reached**, and carries its own
@@ -252,6 +252,13 @@ project's config. Reporting an `error` finding does not by itself fail the run; 
 `target` is a `SearchJumpTarget` (exported from `narraleaf-studio/plugin`), so the report tab's
 click-to-jump is existing machinery rather than anything a test has to draw. Omit it when the
 finding does not point anywhere; do not invent a shape.
+
+`ruleId` and `englishMessage` are optional and exist for machine readers. `ruleId` is a stable name
+for the check that produced the finding (Studio's own diagnostics test puts the lint rule id there,
+e.g. `story/dead-end`); it is never translated, so a script or an AI agent can match on it.
+`englishMessage` is the same sentence in English: Studio's agent connection reports it to agents in
+place of `message`, which follows the author's editor language. Studio's report tab never shows it.
+A test that omits both works exactly as before.
 
 `progress(null)` returns the bar to indeterminate. `total` is optional because most interesting
 tests do not know it up front; omitting it renders an indeterminate bar rather than a fake fraction.

@@ -78,6 +78,14 @@ export type ProjectTemplateInterfaceContent = {
      * read from a key, which a project lacking the key receives on the widgets instead.
      */
     localizationKeys: unknown;
+    /**
+     * `editor/variables.json`, or null: the variables the interface's blueprints may read, which a
+     * project bringing the whole interface in needs under the same ids. Optional for readers of an
+     * older main process.
+     */
+    variables?: unknown;
+    /** `editor/save-schema.json`, or null: the save-slot fields the save and load pages read and write. */
+    saveSchema?: unknown;
     /** `assets/assets.metadata.<type>.json`, keyed by the type segment of the file name. */
     assetRecords: Record<string, unknown>;
 };

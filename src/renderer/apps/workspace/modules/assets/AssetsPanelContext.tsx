@@ -6,6 +6,7 @@ import type { AssetSetAxisNaming } from '@shared/types/assetSetLabels';
 import type { ResolvedAssetSet } from './state/useAssetSets';
 import { ClipboardState } from './state/useClipboard';
 import { DraggedAssetSetState, DraggedItemState } from './state/useDragAndDrop';
+import type { SelectionModifiers } from './state/useMultiSelection';
 import type { AssetClaims, AssetTransfers } from './assetLiveSession';
 
 /**
@@ -103,7 +104,8 @@ interface AssetsPanelContextType {
     assetSetNaming: AssetSetAxisNaming;
 
     // Handlers
-    handleItemSelect: (itemId: string, isGroup: boolean, event: React.MouseEvent) => void;
+    /** A press on a row, or a key that moves the selection, with the modifiers it was made with. */
+    handleItemSelect: (itemId: string, isGroup: boolean, modifiers: SelectionModifiers) => void;
     /**
      * The selection keys of the rows this view is drawing, in the order it draws them.
      *

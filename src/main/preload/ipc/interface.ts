@@ -7,6 +7,7 @@ import type { AgentCallRequest, AgentCallResult, AgentFolderAccessRequest } from
 import type { AgentSettingsPatch, AgentSettingsSnapshot } from "@shared/agent/settings";
 import type { AgentCopyConfigKind, AgentMainActivity, AgentQuickState, AgentQuickTogglePatch } from "@shared/agent/workspaceAccess";
 import type { AgentPluginToolDescriptor } from "@shared/agent/pluginTools";
+import type { AgentClientId } from "@shared/agent/clients";
 import type { LibraryExchangeKind } from "@shared/story/libraryExchange";
 import type { AssetUrlDirectory, BlueprintPersistenceProjectRef, RendererErrorReport, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
@@ -391,6 +392,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         copyConfig: (kind: AgentCopyConfigKind) => ipcClient.invoke(IPCEventType.agentCopyConfig, { kind }),
         exportSkill: () => ipcClient.invoke(IPCEventType.agentExportSkill, {}),
         revealExportedSkill: () => ipcClient.invoke(IPCEventType.agentRevealExportedSkill, {}),
+        clientSetup: () => ipcClient.invoke(IPCEventType.agentClientSetup, {}),
+        installSkill: (client: AgentClientId) => ipcClient.invoke(IPCEventType.agentInstallSkill, { client }),
         onActivity: (handler: (activity: AgentMainActivity) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceAgentActivity, handler),
     },

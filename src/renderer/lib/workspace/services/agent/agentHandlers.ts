@@ -15,14 +15,15 @@
 import { AGENT_INTERNAL_TOOL_BUILD, AGENT_INTERNAL_TOOL_TEST } from "@shared/agent/protocol";
 import type { AgentToolHandler } from "./agentCall";
 import { projectInfo, projectSettingsSet } from "./tools/projectTools";
-import { assetDelete, assetsImport, assetsList, assetsPlaceholder } from "./tools/assetTools";
+import { assetDelete, assetsImport, assetsList, assetsPlaceholder, assetUsage } from "./tools/assetTools";
 import { audioTracksList, characterDelete, characterUpsert, charactersList, variableDelete, variableUpsert, variablesList } from "./tools/castTools";
 import { characterLayeredSet, characterLayersImport, characterPreview } from "./tools/layeredTools";
-import { sceneCreate, sceneDelete, sceneRename, sceneSetEntry, storyList, storyRename } from "./tools/storyTools";
+import { chapterDelete, chapterRename, sceneCreate, sceneDelete, sceneRename, sceneSetEntry, storyList, storyRename } from "./tools/storyTools";
 import { storyApply, storyCommand, storyCommands, storyShow, storyTargets } from "./tools/storyTextTools";
 import { brandGet, brandSet, uiPatch, uiScreenshot, uiSelection, uiTemplateApply, uiTemplates } from "./tools/uiTools";
 import { uiApply, uiShow, uiSurfaces, uiUsage, uiWidget, uiWidgets } from "./tools/uiTextTools";
-import { blueprintApply, blueprintList, blueprintNode, blueprintNodes, blueprintShow } from "./tools/blueprintTools";
+import { uiPageDelete, uiPageRename, uiPageSetEntry } from "./tools/uiPageTools";
+import { blueprintApply, blueprintList, blueprintNode, blueprintNodes, blueprintRemove, blueprintShow } from "./tools/blueprintTools";
 import { localizationList, localizationSet, localizationStatus } from "./tools/localizationTools";
 import { voiceAutoLink, voiceLink, voiceList, voiceSettingsSet, voiceStatus } from "./tools/voiceTools";
 import {
@@ -31,6 +32,9 @@ import {
     internalTest,
     lint,
     playtestAdvance,
+    playtestClick,
+    playtestHover,
+    playtestKey,
     playtestScreenshot,
     playtestStart,
     playtestStop,
@@ -43,6 +47,7 @@ export function createAgentToolHandlers(): Record<string, AgentToolHandler> {
         assets_list: assetsList,
         assets_import: assetsImport,
         assets_placeholder: assetsPlaceholder,
+        asset_usage: assetUsage,
         asset_delete: assetDelete,
         characters_list: charactersList,
         character_upsert: characterUpsert,
@@ -63,6 +68,8 @@ export function createAgentToolHandlers(): Record<string, AgentToolHandler> {
         story_apply: storyApply,
         scene_create: sceneCreate,
         scene_rename: sceneRename,
+        chapter_rename: chapterRename,
+        chapter_delete: chapterDelete,
         scene_set_entry: sceneSetEntry,
         scene_delete: sceneDelete,
         ui_widgets: uiWidgets,
@@ -76,6 +83,12 @@ export function createAgentToolHandlers(): Record<string, AgentToolHandler> {
         ui_screenshot: uiScreenshot,
         ui_templates: uiTemplates,
         ui_template_apply: uiTemplateApply,
+        ui_page_rename: uiPageRename,
+        ui_page_delete: uiPageDelete,
+        ui_page_set_entry: uiPageSetEntry,
+        // Loaded when first called: it reads the starter template's whole interface through the
+        // template modules, which every other tool can do without.
+        ui_install_standard_screens: async (args, tool) => (await import("./tools/standardScreensTool")).uiInstallStandardScreens(args, tool),
         brand_get: brandGet,
         brand_set: brandSet,
         blueprint_nodes: blueprintNodes,
@@ -83,6 +96,7 @@ export function createAgentToolHandlers(): Record<string, AgentToolHandler> {
         blueprint_list: blueprintList,
         blueprint_show: blueprintShow,
         blueprint_apply: blueprintApply,
+        blueprint_remove: blueprintRemove,
         localization_status: localizationStatus,
         localization_list: localizationList,
         localization_set: localizationSet,
@@ -96,6 +110,9 @@ export function createAgentToolHandlers(): Record<string, AgentToolHandler> {
         playtest_start: playtestStart,
         playtest_advance: playtestAdvance,
         playtest_screenshot: playtestScreenshot,
+        playtest_click: playtestClick,
+        playtest_hover: playtestHover,
+        playtest_key: playtestKey,
         playtest_stop: playtestStop,
     };
     return handlers;

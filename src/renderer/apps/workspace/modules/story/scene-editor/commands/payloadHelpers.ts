@@ -1,5 +1,6 @@
 import type {
     StoryActionableTargetRef,
+    StoryAlignPositionValue,
     StoryActionPayload,
     StoryBlock,
     StoryDisplayableTargetRef,
@@ -9,7 +10,7 @@ import type {
 import { ACTIONABLE_BUILTIN_META, BGM_STAGE_OBJECT_NAME, characterStageName, DISPLAYABLE_BUILTIN_META } from "@shared/types/story";
 import type { StoryCommandContext, StoryCommandStageObjectKind, StoryCommandTargetValue, StoryCommandValue } from "../storyCommandValues";
 import { asDurationMs, asEnum, asTarget } from "./spec";
-import { applyPlacementToTransform, applyTransitionWordToTransform, transitionKindFor } from "./transitions";
+import { applyPositionToTransform, applyTransitionWordToTransform, transitionKindFor } from "./transitions";
 
 /**
  * Shared "modifier args → payload fragment" writers.
@@ -55,18 +56,23 @@ export function withTransitionRef(
     };
 }
 
-/** Fold `at=` / `d=` into a transform - the three placements, for character and create commands. */
+/**
+ * Fold a placement and `d=` into a transform, for character and create commands.
+ *
+ * The placement is the whole position the line states - a word, or an align pair with its offsets -
+ * as `positionFromArgs` reads it off `pos=` / `xoffset=` / `yoffset=`. The caller reads it rather than
+ * this helper, so the three slots are parsed in one place for every command that takes them.
+ */
 export function withPlacementTransform(
     current: StoryTransformRef | undefined,
-    at: StoryCommandValue | undefined,
+    position: StoryAlignPositionValue | null | undefined,
     d: StoryCommandValue | undefined,
 ): StoryTransformRef | undefined {
-    const placement = asEnum(at);
     const durationMs = asDurationMs(d);
-    if (placement === undefined && durationMs === undefined) {
+    if (!position && durationMs === undefined) {
         return current;
     }
-    const placed = placement === undefined ? current : applyPlacementToTransform(current, placement);
+    const placed = position ? applyPositionToTransform(current, position) : current;
     if (durationMs === undefined) {
         return placed;
     }
