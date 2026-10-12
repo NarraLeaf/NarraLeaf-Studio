@@ -190,6 +190,28 @@ describe("getCommandLineReason", () => {
             expect(t(reason.key, storyCommandReasonParams(reason, t)), locale).toBe(expected[locale]);
         }
     });
+
+    /**
+     * The command word's rule, applied to the name after it: a word at the end of the line with
+     * nothing after it is still being typed, and a space is the decision. `/show N` used to say
+     * "Nothing on stage is named N" while the candidate list was already offering Narra.
+     */
+    it("waits for a name being typed to be finished, as it does for the command word", () => {
+        const typing = (source: string) => getCommandLineReason(source, CONTEXT, { typing: true })?.key ?? null;
+        expect(typing("/show Al")).toBeNull();
+        expect(typing("/show Zoe")).toBeNull();
+        expect(typing("/bg fore")).toBeNull();
+        expect(typing("/show Alice fr")).toBeNull();
+        // A space after it is the decision.
+        expect(typing("/show Zoe ")).toBe("storyExpr.reason.unknownTarget");
+        expect(typing("/bg fore ")).toBe("storyExpr.reason.unknownAssetOrSet");
+        // A name with more of the line after it is finished.
+        expect(typing("/bg fore t=fade")).toBe("storyExpr.reason.unknownAssetOrSet");
+        // Not a name lookup: reported at once, as before.
+        expect(typing("/bg twin")).toBe("storyExpr.reason.ambiguousName");
+        // A committed line (a draft row's reason) is reported whatever its end looks like.
+        expect(getCommandLineReason("/show Zoe", CONTEXT)?.key).toBe("storyExpr.reason.unknownTarget");
+    });
 });
 
 /**

@@ -2093,7 +2093,7 @@ function CommandGhostHint(props: { value: string; source: string; caret: number;
     // Why the line will not commit, if it will not. It outranks the hint: naming the next slot while
     // the line is already broken answers a question the author is no longer asking.
     const reason = useMemo(
-        () => getCommandLineReason(props.source, props.commandContext),
+        () => getCommandLineReason(props.source, props.commandContext, { typing: true }),
         [ct, props.commandContext, props.source],
     );
     if (!ghost && !reason && !props.confirmation) {

@@ -69,8 +69,36 @@ export function storyCommandReasonParams(
 
 const reasonKey = (code: string): TranslationKey => `storyExpr.reason.${code}` as TranslationKey;
 
-/** The first problem with this line, or null when it is fine (or is not a command at all). */
-export function getCommandLineReason(source: string, context: StoryCommandContext): StoryCommandReason | null {
+/**
+ * The resolution issues that only say "no such name": the ones a value still being typed raises on
+ * every keystroke until it is spelled out (`N` on its way to `Narra`, `room` on its way to
+ * `room-warm`).
+ */
+const NAME_LOOKUP_CODES: ReadonlySet<StoryCommandResolutionIssue["code"]> = new Set<StoryCommandResolutionIssue["code"]>([
+    "unknownAsset",
+    "unknownCharacter",
+    "unknownScene",
+    "unknownAudioTrack",
+    "unknownLabel",
+    "unknownAppTag",
+    "unknownSurface",
+    "unknownInputAction",
+    "unknownVariable",
+    "unknownForm",
+    "unknownTarget",
+]);
+
+/**
+ * The first problem with this line, or null when it is fine (or is not a command at all).
+ *
+ * `typing` is the line being typed in the slot, as opposed to a line that has been committed (a
+ * draft row's reason): a name the author is still typing is not reported yet - see below.
+ */
+export function getCommandLineReason(
+    source: string,
+    context: StoryCommandContext,
+    options: { typing?: boolean } = {},
+): StoryCommandReason | null {
     if (!source.startsWith("/")) {
         return null;
     }
@@ -89,7 +117,17 @@ export function getCommandLineReason(source: string, context: StoryCommandContex
         return parserReason(line, parserIssue);
     }
     const resolutionIssue = resolveCommandLine(line, context).issues[0];
-    return resolutionIssue ? resolutionReason(resolutionIssue, line.token ?? "") : null;
+    if (!resolutionIssue) {
+        return null;
+    }
+    // The same rule for a name as for the command word above, and the same signal: the value at the
+    // end of the line with nothing after it is still being typed (`/show N` toward `/show Narra`,
+    // while the candidates already list her), and a space after it is the decision. A name followed
+    // by more of the line, or a committed line, is reported.
+    if (options.typing && NAME_LOOKUP_CODES.has(resolutionIssue.code) && resolutionIssue.span.end >= source.length) {
+        return null;
+    }
+    return resolutionReason(resolutionIssue, line.token ?? "");
 }
 
 /**
