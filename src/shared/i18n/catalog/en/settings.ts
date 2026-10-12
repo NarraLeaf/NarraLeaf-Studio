@@ -559,6 +559,34 @@ export const settings = {
         pluginToolsEmpty: "No enabled plugin offers agent tools.",
         pluginToolsCount: "{tools} tools, {writes} of which can change the project",
         pluginToolsAllow: "Allow the agent tools of {plugin}",
+        /**
+         * Connecting one agent application (`AgentClientGuide`), in Settings and in first-run setup's
+         * agent access screen: which application it is, the configuration that points it at Studio,
+         * and how it gets the Agent Skill. Product names are not translated and live in
+         * `@shared/agent/clients`.
+         */
+        guide: {
+            app: "Agent application",
+            appHint: "The connection configuration and Agent Skill below are for this application.",
+            /** The catch-all row, for any other MCP client. */
+            other: "Other",
+            connection: "Connection",
+            /** Under the connection while the endpoint is off; names the switch above by its label. */
+            offHint: "Available once \"Allow agents to connect\" is on.",
+            runCommand: "Run in a terminal.",
+            mergeInto: "Merge into {file}.",
+            claudeDesktop: "Merge into claude_desktop_config.json (in Claude: Settings > Developer > Edit Config), then restart Claude.",
+            otherClient: "Streamable HTTP. Enter this address and header in the client's MCP settings.",
+            skill: "Skill",
+            skillFolder: "Copied into {path}. Other skills there are kept.",
+            skillInstall: "Install skill",
+            skillReinstall: "Reinstall",
+            skillInstalled: "Installed in {path}.",
+            skillUpload: "Saved as a zip file to upload in Claude under Settings > Capabilities > Skills.",
+            skillSave: "Save zip file…",
+            skillSaved: "Saved to {path}.",
+            skillServed: "Other applications read the same guide from Studio's MCP server. One that supports skills can install them with this command.",
+        },
     },
     data: {
         projectTrust: {

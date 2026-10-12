@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Check, Copy, Loader2, Trash2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
-import { Button, IconButton, Switch } from "@/lib/components/elements";
+import { Button, IconButton, Select, Switch } from "@/lib/components/elements";
 import { cn } from "@/lib/utils/cn";
 import { copyTextToClipboard } from "@shared/utils/copyText";
 import { pluginDisplayName } from "@shared/utils/pluginDisplayText";
@@ -12,9 +12,10 @@ import {
     type AgentSettingsPatch,
     type AgentSettingsSnapshot,
 } from "@shared/agent/settings";
-import { AGENT_COPY_CONFIGS } from "@shared/agent/clients";
+import { AGENT_COPY_CONFIGS, type AgentClientId } from "@shared/agent/clients";
 import type { TranslationKey } from "@shared/i18n";
 import { SETTING_CONTROL_WIDTH } from "../components/settingControlWidth";
+import { AgentClientGuide, useAgentClientOptions } from "../components/AgentClientGuide";
 
 /** Each copy button's label, by configuration. Every kind has one, so a kind added later gets a button. */
 const CONFIG_LABEL_KEYS: Record<AgentClientConfigKind, TranslationKey> = {
@@ -52,6 +53,10 @@ const CONFIG_KINDS: { kind: AgentClientConfigKind; labelKey: TranslationKey; tip
  *
  * Rows follow the generic settings row (label and description on the left, the control at the
  * shared control width on the right), so this section reads like the ones around it.
+ *
+ * Under the copy buttons, the guide first-run setup walks an author through: pick the agent
+ * application, then its configuration (token masked), where it goes, and its Agent Skill - the same
+ * component as the setup screen (`AgentClientGuide`), so what setup offered stays here.
  */
 export function AgentAccessPanel() {
     const { t, locale } = useTranslation();
@@ -67,6 +72,8 @@ export function AgentAccessPanel() {
     // (after a regeneration, once it is enabled again).
     const regenerateButton = useRef<HTMLButtonElement | null>(null);
     const refocusRegenerate = useRef(false);
+    const [guideClient, setGuideClient] = useState<AgentClientId>("claudeCode");
+    const clientOptions = useAgentClientOptions();
 
     const adopt = useCallback((result: Awaited<ReturnType<ReturnType<typeof getInterface>["agent"]["getSettings"]>>) => {
         if (result.success) {
@@ -246,6 +253,19 @@ export function AgentAccessPanel() {
                     ))}
                 </div>
             </Row>
+            <Row label={t("settings.agent.guide.app")} description={t("settings.agent.guide.appHint")}>
+                <Select
+                    size="sm"
+                    fullWidth
+                    options={clientOptions}
+                    value={guideClient}
+                    onChange={value => setGuideClient(value as AgentClientId)}
+                    ariaLabel={t("settings.agent.guide.app")}
+                />
+            </Row>
+            <div className="px-2 pb-3 pt-1" data-agent-client-guide>
+                <AgentClientGuide client={guideClient} enabled={settings.enabled} endpointKey={settings.url} />
+            </div>
             <div className="rounded-md px-2 py-2">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="flex min-w-0 grow basis-64 flex-col gap-1">

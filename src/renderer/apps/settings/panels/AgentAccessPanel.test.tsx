@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentSettingsSnapshot } from "@shared/agent/settings";
 import { AgentAccessPanel } from "./AgentAccessPanel";
@@ -43,6 +43,9 @@ const bridge = vi.hoisted(() => ({
     regenerate: null as null | ((value: unknown) => void),
     patches: [] as unknown[],
     clipboard: [] as string[],
+    /** What main was asked to copy or install, by the guide. */
+    mainCopies: [] as string[],
+    installs: [] as string[],
 }));
 
 vi.mock("@shared/utils/copyText", () => ({
@@ -64,6 +67,22 @@ vi.mock("@/lib/app/bridge", () => ({
                 bridge.regenerate = resolve;
             }),
             addImportRoot: () => Promise.resolve({ success: true, data: bridge.settings }),
+            clientSetup: () => Promise.resolve({
+                success: true,
+                data: {
+                    url: bridge.settings?.url ?? "",
+                    stdio: bridge.settings?.stdio ?? { command: "", args: [] },
+                    skillTargets: { claudeCode: { displayPath: "~/.claude/skills", installed: false } },
+                },
+            }),
+            copyConfig: (kind: string) => {
+                bridge.mainCopies.push(kind);
+                return Promise.resolve({ success: true, data: { copied: true } });
+            },
+            installSkill: (client: string) => {
+                bridge.installs.push(client);
+                return Promise.resolve({ success: true, data: { canceled: false, path: "/Users/author/.claude/skills" } });
+            },
         },
     }),
 }));
@@ -74,6 +93,8 @@ afterEach(() => {
     bridge.regenerate = null;
     bridge.patches = [];
     bridge.clipboard = [];
+    bridge.mainCopies = [];
+    bridge.installs = [];
 });
 
 async function renderPanel(overrides: Partial<AgentSettingsSnapshot> = {}) {
@@ -101,7 +122,8 @@ describe("the agent access panel", () => {
         const view = await renderPanel();
         expect(view.queryByText("settings.agent.port")).toBeNull();
         expect(view.container.querySelector("input")).toBeNull();
-        expect(view.getByText("http://127.0.0.1:41500/mcp")).toBeTruthy();
+        // The address row; the guide further down names the address inside a configuration as well.
+        expect(view.container.querySelector('[data-tip="http://127.0.0.1:41500/mcp"]')?.textContent).toBe("http://127.0.0.1:41500/mcp");
         expect(view.getByText("settings.agent.running")).toBeTruthy();
         fireEvent.click(view.getByRole("button", { name: "settings.agent.copyAddress" }));
         await waitFor(() => expect(bridge.clipboard).toEqual(["http://127.0.0.1:41500/mcp"]));
@@ -132,6 +154,30 @@ describe("the agent access panel", () => {
             "settings.agent.copyGemini",
             "settings.agent.copyJson",
         ]);
+    });
+
+    it("walks one agent application through, as first-run setup does, with the token masked", async () => {
+        const view = await renderPanel();
+        const guide = view.container.querySelector("[data-agent-client-guide]") as HTMLElement;
+        expect(view.getByText("settings.agent.guide.app")).toBeTruthy();
+        await waitFor(() => expect(guide.textContent).toContain("claude mcp add"));
+        expect(guide.textContent).not.toContain("secret-token");
+        expect(guide.textContent).toContain("settings.agent.guide.runCommand");
+
+        // Copying hands the kind to main, which writes the real configuration to the clipboard.
+        fireEvent.click(within(guide).getByRole("button", { name: "common.copy" }));
+        await waitFor(() => expect(bridge.mainCopies).toEqual(["claudeCode"]));
+        expect(bridge.clipboard).toEqual([]);
+
+        await waitFor(() => expect(guide.textContent).toContain("settings.agent.guide.skillFolder(~/.claude/skills)"));
+        fireEvent.click(within(guide).getByRole("button", { name: "settings.agent.guide.skillInstall" }));
+        await waitFor(() => expect(bridge.installs).toEqual(["claudeCode"]));
+
+        // Another application: its own place for the configuration, and its own way to the skill.
+        fireEvent.click(view.getByRole("button", { name: "settings.agent.guide.app" }));
+        fireEvent.click(view.getByText("Claude Desktop"));
+        await waitFor(() => expect(guide.textContent).toContain("settings.agent.guide.claudeDesktop"));
+        expect(within(guide).getByRole("button", { name: "settings.agent.guide.skillSave" })).toBeTruthy();
     });
 
     it("names a plugin with agent tools by its display name, never by its id", async () => {
