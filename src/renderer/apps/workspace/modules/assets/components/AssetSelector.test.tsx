@@ -53,6 +53,7 @@ vi.mock("@/lib/i18n", async importOriginal => ({
     useTranslation: () => ({
         t: (key: string) => key,
         tn: (key: string, count: number) => `${key}:${count}`,
+        formatList: (items: string[]) => items.join(", "),
         locale: "en",
     }),
 }));

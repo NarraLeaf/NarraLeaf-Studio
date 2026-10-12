@@ -163,7 +163,7 @@ function DetailsRow({ item, top, columns, showLocation, measures, gestures, onDr
     gestures: Gestures;
     onDropOnGroup: BrowserDetailsProps["onDropOnGroup"];
 }) {
-    const { t, tn } = useTranslation();
+    const { t, tn, formatList } = useTranslation();
     const {
         selectedItems,
         clipboard,
@@ -260,7 +260,7 @@ function DetailsRow({ item, top, columns, showLocation, measures, gestures, onDr
     const arriving = asset ? assetTransfers[asset.id] : undefined;
     const bytes = assetBrowserItemBytes(item, measures);
     const usage = assetBrowserItemUsage(item, measures);
-    const tags = asset ? readAssetTags(asset.tags, assetSetNaming).map(entry => entry.label).join(", ") : "";
+    const tags = asset ? formatList(readAssetTags(asset.tags, assetSetNaming).map(entry => entry.label), { style: "narrow" }) : "";
 
     return (
         <div

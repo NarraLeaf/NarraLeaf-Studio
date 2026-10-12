@@ -21,7 +21,7 @@ import { PuppetRuntimeInstaller, type PuppetRuntimeInstallTarget } from "./Puppe
 // to change without this file having an opinion.
 vi.mock("@/lib/i18n", async importOriginal => ({
     ...(await importOriginal<Record<string, unknown>>()),
-    useTranslation: () => ({ t: (key: string) => key, locale: "en" }),
+    useTranslation: () => ({ t: (key: string) => key, locale: "en", formatList: (items: string[]) => items.join(", ") }),
 }));
 
 vi.mock("@/lib/app/bridge", () => ({

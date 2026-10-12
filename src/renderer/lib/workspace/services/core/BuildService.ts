@@ -62,7 +62,8 @@ import { describeAssetNameGap } from "../references/assetNameGapText";
 // Type-only, like `LintService` above: the gate needs `getIndexResult()` and nothing else, and a
 // value import would drag every extractor into the build path and its tests.
 import type { ReferenceService } from "../references/ReferenceService";
-import { translate, translateN } from "@/lib/i18n";
+import type { TranslationKey } from "@shared/i18n";
+import { i18nStore, translate, translateN } from "@/lib/i18n";
 import { isProjectTrusted } from "@/lib/workspace/projectTrust";
 import { UIDocumentService } from "../ui-editor/UIDocumentService";
 import { UIGraphService } from "../ui-editor/UIGraphService";
@@ -1240,7 +1241,13 @@ export class BuildService extends Service<BuildService> {
                 consoleService?.log(
                     BUILD_CONSOLE_CHANNEL,
                     "warning",
-                    translate(key, { blueprint, platforms: nonDesktop.join(", ") }),
+                    translate(key, {
+                        blueprint,
+                        platforms: i18nStore.getTranslator().formatList(
+                            nonDesktop.map(platform => translate(`build.platform.${platform}` as TranslationKey)),
+                            { style: "narrow" },
+                        ),
+                    }),
                     { source: BUILD_CONSOLE_SOURCE },
                 );
             }

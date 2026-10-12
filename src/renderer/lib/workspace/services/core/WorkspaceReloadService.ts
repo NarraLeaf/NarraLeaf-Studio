@@ -1,6 +1,6 @@
 import type { TranslationKey } from "@shared/i18n";
 import type { DocumentSource } from "@shared/documents/documentSource";
-import { translate } from "@/lib/i18n";
+import { i18nStore, translate } from "@/lib/i18n";
 import { holdProjectWritesForReload } from "@/lib/app/writeFreeze";
 import { pushProjectDocumentSource } from "@/lib/app/documentSource";
 import { createProjectWorkingTreeSource } from "./DocumentStorage";
@@ -462,7 +462,7 @@ export class WorkspaceReloadService extends Service<WorkspaceReloadService> impl
             type: NotificationType.Error,
             message: translate("workspace.shell.reload.failedTitle"),
             detail: translate("workspace.shell.reload.failedDetail", {
-                stores: failures.map(failure => failure.label).join(", "),
+                stores: i18nStore.getTranslator().formatList(failures.map(failure => failure.label), { style: "narrow" }),
             }),
         });
     }

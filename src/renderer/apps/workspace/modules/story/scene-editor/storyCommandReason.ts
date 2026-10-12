@@ -1,4 +1,5 @@
 import type { TranslationKey } from "@shared/i18n";
+import { i18nStore } from "@/lib/i18n";
 import { missingCoreParams, parseCommandLine, type StoryCommandIssue, type StoryCommandLine } from "./storyCommandParser";
 import { paramHintKey } from "./storyCommandGrammar";
 import { localizedCommandToken, suggestCommandDef } from "./commands/registry";
@@ -228,7 +229,7 @@ function resolutionReason(issue: StoryCommandResolutionIssue, token: string): St
                 params: { token, value: issue.value, kind: issue.kind },
             };
         case "unsupportedOption":
-            return { key: reasonKey(issue.code), params: { value: issue.value, allowed: issue.allowed.join(", ") } };
+            return { key: reasonKey(issue.code), params: { value: issue.value, allowed: i18nStore.getTranslator().formatList([...issue.allowed], { style: "narrow" }) } };
         case "conflictingParams":
             return { key: reasonKey(issue.code), params: { keys: issue.keys.join(" / ") } };
         case "repeatTimesAndUntil":

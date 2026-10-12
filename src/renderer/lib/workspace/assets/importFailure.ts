@@ -1,4 +1,5 @@
 import type { InterpolationParams, TranslationKey } from "@shared/i18n";
+import { i18nStore } from "@/lib/i18n";
 import { REMOTE_ASSET_FETCH_TIMEOUT_MS, REMOTE_ASSET_MAX_BYTES } from "@shared/constants/remoteAsset";
 import { FsRejectErrorCode } from "@shared/types/os";
 import { RemoteAssetFetchErrorCode } from "@shared/types/remoteAsset";
@@ -255,7 +256,7 @@ function describeRemoteUnplayable(cause: RemoteUnplayableCause, t: Translate): s
     switch (cause.kind) {
         case "codecs":
             return t("workspace.shell.import.remote.unplayableCodecs", {
-                codecs: cause.codecs.map(codec => codec.toUpperCase()).join(", "),
+                codecs: i18nStore.getTranslator().formatList(cause.codecs.map(codec => codec.toUpperCase()), { style: "narrow" }),
             });
         case "container":
             return cause.container
