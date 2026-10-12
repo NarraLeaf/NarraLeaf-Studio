@@ -470,6 +470,10 @@ describe("variables/undeclared", () => {
 // --- variables/unused -------------------------------------------------------
 
 describe("variables/unused", () => {
+    it("is a minor warning by default: nothing in the game depends on the variable", () => {
+        expect(VARIABLES_LINT_RULES.find(rule => rule.id === "variables/unused")?.defaultSeverity).toBe("minor");
+    });
+
     it("reports a declaration nothing reads or writes", () => {
         const ctx = createTestLintContext({
             stories: [story("s1", "Main", [scene("sc1", "Prologue", [declaration("v1", "scene", "Gold")])])],

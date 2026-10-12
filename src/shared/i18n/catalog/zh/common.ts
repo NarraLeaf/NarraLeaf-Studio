@@ -77,6 +77,9 @@ export const common = {
         warnings: {
             other: "{count} 个警告",
         },
+        minorWarnings: {
+            other: "{count} 个次要警告",
+        },
         infos: {
             other: "{count} 个提示",
         },

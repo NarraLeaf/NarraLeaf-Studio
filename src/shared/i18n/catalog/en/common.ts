@@ -89,7 +89,7 @@ export const common = {
      * counts at once ("1 error, 3 warnings, 0 info"). A plural group covers one number; a tally of
      * three would need a key per combination, so each number takes its own form here and the
      * tally's template only joins them. Shared by the project check, the test report and Dev Mode,
-     * which count the same three severities.
+     * which count errors, warnings and info alike; minor warnings are the project check's alone.
      */
     count: {
         errors: {
@@ -99,6 +99,10 @@ export const common = {
         warnings: {
             one: "{count} warning",
             other: "{count} warnings",
+        },
+        minorWarnings: {
+            one: "{count} minor warning",
+            other: "{count} minor warnings",
         },
         infos: {
             one: "{count} info",

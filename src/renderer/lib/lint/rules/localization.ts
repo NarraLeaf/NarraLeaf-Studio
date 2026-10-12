@@ -347,7 +347,10 @@ export const LOCALIZATION_LINT_RULES: readonly LintRule[] = [
     {
         id: "localization/missing",
         category: "localization",
-        defaultSeverity: "warning",
+        // A minor warning: it is one finding per line per language, so a script in translation has
+        // thousands of them, and at `warning` they buried every other finding and every warning
+        // count. The player of that language still reads the line, in the fallback language.
+        defaultSeverity: "minor",
         slug: "localizationMissing",
         run: ctx => runMissing(ctx),
     },

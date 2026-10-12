@@ -18,12 +18,14 @@ export type {
     LintRuleSeverity,
     LintRulelessId,
     LintSeverity,
+    LintSeverityCounts,
     RegisteredLintRuleId,
 } from "./types";
 export {
     LINT_CATEGORY_ORDER,
     LINT_RULELESS_IDS,
     LINT_SEVERITY_ORDER,
+    countLintSeverities,
     deriveLintRuleSlug,
     isLintRulelessId,
     resolveLintMessageParams,

@@ -1457,6 +1457,7 @@ export const lint = {
     severity: {
         error: "エラー",
         warning: "警告",
+        minor: "軽微な警告",
         info: "情報",
         off: "オフ",
     },
@@ -1464,7 +1465,7 @@ export const lint = {
         title: "問題",
         empty: "問題は見つからなかった",
         running: "検査中…",
-        counts: "{errors}、{warnings}、{infos}",
+        counts: "{errors}、{warnings}、{minorWarnings}、{infos}",
         filtered: "{total} 件中 {shown} 件",
         rerun: "もう一度実行",
         filterAll: "すべて",
@@ -1497,7 +1498,7 @@ export const lint = {
         jumpFailed: "この場所はもう開けない",
     },
     statusBar: {
-        counts: "問題：{errors}、{warnings}、{infos}",
+        counts: "問題：{errors}、{warnings}、{minorWarnings}、{infos}",
     },
     command: {
         runProject: "プロジェクトを検査",

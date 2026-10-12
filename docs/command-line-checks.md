@@ -280,13 +280,15 @@ here too, and a finding carries the severity the project configured for its rule
 line changes either.
 
 **What fails the run is the build gate's own predicate.** An error always fails it, and a warning
-fails it exactly on the projects whose `failBuildOn` is set to `warning`. Inventing a second
-threshold here would hand an operator a green sweep and a refused build from one project on one day.
+fails it exactly on the projects whose `failBuildOn` is set to `warning`. A minor warning and an
+info never fail it, under either setting. Inventing a second threshold here would hand an operator
+a green sweep and a refused build from one project on one day.
 The `runOnBuild` setting is deliberately not consulted: that one says whether a *build* stops to
 lint, and this launch asked for a sweep outright.
 
 Every finding is printed as one line — location, message, rule id — in the words the Build console
-uses, because it is the same function that writes them there.
+uses, because it is the same function that writes them there. A minor warning is printed at `[info]`,
+since the console has no level between the two; the report carries its own severity, `minor`.
 
 ## The report
 
@@ -297,8 +299,8 @@ levels, and one of three result blocks:
 
 - `test` — the test's id, title, **mode**, terminal status, its summary, and every finding it
   reported.
-- `lint` — the counts by severity, every finding with its rule id and location, and which rules ran
-  and which were skipped.
+- `lint` — the counts by severity (`error`, `warning`, `minor`, `info`), every finding with its
+  severity, rule id and location, and which rules ran and which were skipped.
 - `tests` — for `--test-list`: the registry, as described above.
 
 Beside them, `plugins` lists what `--test-plugin` / `--lint-plugin` named, each by the name the plugin
