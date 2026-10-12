@@ -556,6 +556,24 @@ export const GAME_PREFERENCE_VALUE_TYPES: Readonly<Record<string, string>> = Obj
     GAME_PREFERENCE_NODE_META.map(meta => [meta.key, meta.valueType]),
 );
 
+/**
+ * Each preference's getter and setter, in the table's order.
+ *
+ * The add-node palette folds them into one Get Preference and one Set Preference
+ * (`blueprintNodeFamilies.ts`), and reads the members from here so that a preference added to the
+ * table joins both without a second list to keep in step. The sentence speed's setter is written
+ * by hand further down, and is named here so it is not the one preference missing from the family.
+ */
+export const GAME_PREFERENCE_NODE_TYPES: ReadonlyArray<{
+    key: BlueprintGamePreferenceKey;
+    getterType: string;
+    setterType?: string;
+}> = GAME_PREFERENCE_NODE_META.map(meta => ({
+    key: meta.key,
+    getterType: meta.getterType,
+    setterType: meta.key === "cps" ? BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED : meta.setterType,
+}));
+
 function createPreferenceDataPin(meta: GamePreferenceNodeMeta, kind: "input" | "output"): BlueprintNodePinDef {
     const pin: BlueprintNodePinDef = {
         id: meta.pinId,

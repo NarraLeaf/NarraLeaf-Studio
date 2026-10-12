@@ -11,6 +11,7 @@ import {
     blueprintAddNodeEntryKey,
     buildBlueprintAddNodeCategories,
     filterPreparedBlueprintAddNodeEntries,
+    foldBlueprintAddNodeFamilies,
     prepareBlueprintAddNodeEntries,
 } from "./BlueprintAddNodeMenuModel";
 import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox";
@@ -24,6 +25,7 @@ import {
 } from "../blueprintNodeI18n";
 import { useCategoryRowScroll } from "./useCategoryRowScroll";
 import { getBlueprintCategoryVisual } from "./blueprintCategoryVisuals";
+import { blueprintNodeFamilyOf } from "@/lib/ui-editor/blueprint-nodes/blueprintNodeFamilies";
 
 const MENU_W = 440;
 const MENU_MAX_H = 520;
@@ -133,7 +135,10 @@ export function BlueprintAddNodeMenu({
         return leadingEntries?.length ? [...leadingEntries, ...listed] : listed;
     }, [nodeCatalog, paletteContext, entryFilter, leadingEntries]);
 
-    const categories = useMemo(() => buildBlueprintAddNodeCategories(entries), [entries]);
+    // What the palette lists while it is browsed: a family is one row. The chips count those rows,
+    // so a chip says how many rows its category opens on.
+    const browseEntries = useMemo(() => foldBlueprintAddNodeFamilies(entries), [entries]);
+    const categories = useMemo(() => buildBlueprintAddNodeCategories(browseEntries), [browseEntries]);
     const categoryRow = useCategoryRowScroll([open, categories]);
     const categoryListRef = categoryRow.rowRef;
     const categoriesRef = useRef(categories);
@@ -172,17 +177,21 @@ export function BlueprintAddNodeMenu({
             title: displayName => resolveBlueprintNodeTitle(displayName, t),
             category: category => addNodeCategoryLabel(category, t),
             categoryAliases: blueprintCategoryFormerLabels,
+            familyTitle: type => {
+                const family = blueprintNodeFamilyOf(type);
+                return family ? t(family.title) : undefined;
+            },
         }));
     }, [entries, t]);
 
     const filteredEntries = useMemo(() => {
         if (!query.trim()) {
             return activeCategoryId === BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID
-                ? [...entries]
-                : entries.filter(entry => entry.category === activeCategoryId);
+                ? [...browseEntries]
+                : browseEntries.filter(entry => entry.category === activeCategoryId);
         }
         return filterPreparedBlueprintAddNodeEntries(foldCatalogue(), activeCategoryId, query);
-    }, [activeCategoryId, entries, foldCatalogue, query]);
+    }, [activeCategoryId, browseEntries, foldCatalogue, query]);
     const itemCount = filteredEntries.length;
     const listMaxHeight = Math.max(120, Math.min(MENU_MAX_H - MENU_CHROME_H, layout.maxHeight - MENU_CHROME_H));
 
@@ -499,20 +508,30 @@ const BlueprintAddNodeRow = memo(function BlueprintAddNodeRow(props: {
     const Icon = visual.icon;
     const magicRef = props.entry.magicElementRef;
     const categoryLabel = addNodeCategoryLabel(props.entry.category, t);
+    const family = props.entry.family;
     // A preset's title is already in the author's language: it is built from a field name.
-    const nodeTitle = props.entry.preset ? props.entry.preset.title : resolveBlueprintNodeTitle(props.entry.displayName, t);
-    const subtitle = props.entry.preset
+    const nodeTitle = family
+        ? t(family.title)
+        : props.entry.preset
+        ? props.entry.preset.title
+        : resolveBlueprintNodeTitle(props.entry.displayName, t);
+    const subtitle = family
+        ? t("blueprint.family.rowSubtitle", { category: categoryLabel, count: family.members.length })
+        : props.entry.preset
         ? props.entry.preset.subtitle
         : magicRef
         ? `${categoryLabel} -> ${magicRef.label}`
         : categoryLabel;
     // What the node does is the one thing the row cannot show; its type id is already on the right
-    // of the row, and the search keywords say nothing about the node.
-    const title = [
-        nodeTitle,
-        props.entry.description ? t(props.entry.description) : "",
-        magicRef ? t("blueprint.addNode.targetTooltip", { label: magicRef.label, type: magicRef.elementType }) : "",
-    ].filter(Boolean).join("\n");
+    // of the row, and the search keywords say nothing about the node. A family's row has no one node
+    // to describe, and names the ones it holds instead.
+    const title = family
+        ? [nodeTitle, family.members.map(member => resolveBlueprintNodeTitle(member.displayName, t)).join(" · ")].join("\n")
+        : [
+              nodeTitle,
+              props.entry.description ? t(props.entry.description) : "",
+              magicRef ? t("blueprint.addNode.targetTooltip", { label: magicRef.label, type: magicRef.elementType }) : "",
+          ].filter(Boolean).join("\n");
 
     return (
         <div
@@ -542,9 +561,11 @@ const BlueprintAddNodeRow = memo(function BlueprintAddNodeRow(props: {
                     <span className="block truncate text-sm text-fg">{nodeTitle}</span>
                     <span className="block truncate text-2xs text-fg-subtle">{subtitle}</span>
                 </span>
-                <span className="min-w-0 max-w-[180px] shrink-0 truncate font-mono text-2xs text-fg-subtle">
-                    {props.entry.type}
-                </span>
+                {family ? null : (
+                    <span className="min-w-0 max-w-[180px] shrink-0 truncate font-mono text-2xs text-fg-subtle">
+                        {props.entry.type}
+                    </span>
+                )}
             </button>
         </div>
     );

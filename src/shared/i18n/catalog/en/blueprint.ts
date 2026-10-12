@@ -549,6 +549,29 @@ export const blueprint = {
         unbound: "Unbound",
         clear: "Clear binding",
     },
+    /**
+     * Node families: node types the palette lists as one row and a card switches between
+     * (`blueprintNodeFamilies.ts`). A family's name is the palette row's title.
+     */
+    family: {
+        compare: "Compare",
+        key: "On Key",
+        gamepadButton: "On Gamepad Button",
+        getPreference: "Get Preference",
+        setPreference: "Set Preference",
+        trim: "Trim Whitespace",
+        changeCase: "Change Case",
+        pad: "Pad Text",
+        replace: "Replace Text",
+        checkType: "Check Type",
+        convert: "Convert Type",
+        rounding: "Rounding",
+        random: "Random Number",
+        /** Under a family's row in the palette. */
+        rowSubtitle: "{category} · {count} nodes",
+        /** The picker on a placed card that turns it into another member. */
+        switchLabel: "Switch to another node of this kind",
+    },
     element: {
         select: "Select element",
         selectNamed: "Select element {name}",

@@ -11,7 +11,12 @@ import {
     readBlueprintCommentSize,
     type BlueprintFrameRect,
 } from "./blueprintGroupFrame";
-import type { BlueprintFlowNodeData, BlueprintFlowNodeDiagnostic } from "./components/BlueprintFlowNode";
+import type {
+    BlueprintFlowNodeData,
+    BlueprintFlowNodeDiagnostic,
+    BlueprintFlowNodeFamilyChoice,
+} from "./components/BlueprintFlowNode";
+import { resolveBlueprintNodeFamilySwitches } from "@/lib/ui-editor/blueprint-nodes/blueprintNodeFamilies";
 import {
     withInferredBlueprintVariableValueTypeParam,
     type BlueprintGraphVariableTypeInferenceContext,
@@ -164,6 +169,8 @@ export function blueprintIrToFlowNodes(
     onBindElementLiteral?: (nodeId: string) => void,
     onEditSaveSchema?: () => void,
     onFitGroupFrame?: (nodeId: string) => void,
+    onRetypeNode?: (nodeId: string, type: string) => void,
+    isFamilyMemberAllowed?: (type: string) => boolean,
 ): Node<BlueprintFlowNodeData>[] {
     const nodes = ir.nodes ?? {};
     const wiredIn = wiredInputPortIdsByNodeId(ir);
@@ -201,10 +208,25 @@ export function blueprintIrToFlowNodes(
                 onBindElementLiteral,
                 onEditSaveSchema,
                 onFitGroupFrame,
+                ...(onRetypeNode && isFamilyMemberAllowed
+                    ? { familyChoice: projectFamilyChoice(n.type, nodeCatalog, isFamilyMemberAllowed), onRetypeNode }
+                    : {}),
             },
         };
     });
     return withBlueprintFlowNodeLayering(flowNodes);
+}
+
+/** The members a card's title menu offers, with the titles they are listed by. */
+function projectFamilyChoice(
+    type: string,
+    nodeCatalog: IBlueprintNodeCatalogService,
+    isAllowed: (type: string) => boolean,
+): BlueprintFlowNodeFamilyChoice | undefined {
+    const members = resolveBlueprintNodeFamilySwitches(type, isAllowed);
+    return members
+        ? { members: members.map(member => ({ type: member, displayName: nodeCatalog.resolveCatalogEntry(member).displayName })) }
+        : undefined;
 }
 
 /** Stable key for effect deps when the selected id *set* changes (order ignored). */
