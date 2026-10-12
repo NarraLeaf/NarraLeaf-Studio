@@ -1315,7 +1315,7 @@
           "layout": {
             "x": 16,
             "y": 300,
-            "width": 110,
+            "width": 200,
             "height": 24,
             "visible": true,
             "opacity": 1
@@ -1501,9 +1501,9 @@
           "parentId": "5107c0a1-0000-4000-8000-000000000001",
           "childrenIds": [],
           "layout": {
-            "x": 132,
+            "x": 222,
             "y": 300,
-            "width": 204,
+            "width": 136,
             "height": 24,
             "visible": true,
             "opacity": 1
@@ -2251,9 +2251,9 @@
           "parentId": "5107c0a1-0000-4000-8000-000000000001",
           "childrenIds": [],
           "layout": {
-            "x": 340,
+            "x": 364,
             "y": 300,
-            "width": 100,
+            "width": 76,
             "height": 24,
             "visible": true,
             "opacity": 1
@@ -9930,6 +9930,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -9943,6 +9949,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -9963,6 +9975,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -10001,6 +10019,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -10050,6 +10074,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -10156,6 +10186,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -10169,6 +10205,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -10189,6 +10231,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -10227,6 +10275,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -10276,6 +10330,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -17017,6 +17077,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -17030,6 +17096,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -17050,6 +17122,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -17088,6 +17166,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -17137,6 +17221,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -17243,6 +17333,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -17256,6 +17352,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -17276,6 +17378,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -17314,6 +17422,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -17363,6 +17477,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -18404,6 +18524,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -18417,6 +18543,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -18437,6 +18569,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -18475,6 +18613,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -18524,6 +18668,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -18630,6 +18780,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -18643,6 +18799,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -18663,6 +18825,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -18701,6 +18869,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -18750,6 +18924,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -29967,6 +30147,21 @@
                           "color": "nlbrand:primary"
                         }
                       }
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": {
+                        "storage": "layer",
+                        "layer": {
+                          "offsetX": 0,
+                          "offsetY": 0,
+                          "blur": 18,
+                          "spread": 0,
+                          "color": "nlbrand:primary"
+                        }
+                      }
                     }
                   ],
                   "transition": {
@@ -29985,6 +30180,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": -8
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": -8
                     }
@@ -30071,6 +30272,21 @@
                           "color": "nlbrand:primary"
                         }
                       }
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": {
+                        "storage": "layer",
+                        "layer": {
+                          "offsetX": 0,
+                          "offsetY": 0,
+                          "blur": 18,
+                          "spread": 0,
+                          "color": "nlbrand:primary"
+                        }
+                      }
                     }
                   ],
                   "transition": {
@@ -30089,6 +30305,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": -8
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": -8
                     }
@@ -30175,6 +30397,21 @@
                           "color": "nlbrand:primary"
                         }
                       }
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": {
+                        "storage": "layer",
+                        "layer": {
+                          "offsetX": 0,
+                          "offsetY": 0,
+                          "blur": 18,
+                          "spread": 0,
+                          "color": "nlbrand:primary"
+                        }
+                      }
                     }
                   ],
                   "transition": {
@@ -30193,6 +30430,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": -8
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": -8
                     }
@@ -30279,6 +30522,21 @@
                           "color": "nlbrand:primary"
                         }
                       }
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": {
+                        "storage": "layer",
+                        "layer": {
+                          "offsetX": 0,
+                          "offsetY": 0,
+                          "blur": 18,
+                          "spread": 0,
+                          "color": "nlbrand:primary"
+                        }
+                      }
                     }
                   ],
                   "transition": {
@@ -30297,6 +30555,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": -8
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": -8
                     }
@@ -30383,6 +30647,21 @@
                           "color": "nlbrand:primary"
                         }
                       }
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": {
+                        "storage": "layer",
+                        "layer": {
+                          "offsetX": 0,
+                          "offsetY": 0,
+                          "blur": 18,
+                          "spread": 0,
+                          "color": "nlbrand:primary"
+                        }
+                      }
                     }
                   ],
                   "transition": {
@@ -30401,6 +30680,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": -8
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": -8
                     }
@@ -30597,6 +30882,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:raisedFill"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:raisedFill"
                     }
@@ -34857,6 +35148,12 @@
                         "hovered": true
                       },
                       "value": "nlbrand:raisedFill"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": "nlbrand:raisedFill"
                     }
                   ],
                   "transition": {
@@ -34980,6 +35277,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:raisedFill"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:raisedFill"
                     }
@@ -35107,6 +35410,12 @@
                         "hovered": true
                       },
                       "value": "nlbrand:raisedFill"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": "nlbrand:raisedFill"
                     }
                   ],
                   "transition": {
@@ -35192,6 +35501,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:raisedFill"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:raisedFill"
                     }
@@ -35281,6 +35596,12 @@
                         "hovered": true
                       },
                       "value": "nlbrand:raisedFill"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": "nlbrand:raisedFill"
                     }
                   ],
                   "transition": {
@@ -35366,6 +35687,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:raisedFill"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:raisedFill"
                     }
@@ -42822,6 +43149,12 @@
                         "hovered": true
                       },
                       "value": "nlbrand:raisedFill"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": "nlbrand:raisedFill"
                     }
                   ],
                   "transition": {
@@ -44621,6 +44954,21 @@
                           "color": "nlbrand:primary"
                         }
                       }
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": {
+                        "storage": "layer",
+                        "layer": {
+                          "offsetX": 0,
+                          "offsetY": 0,
+                          "blur": 18,
+                          "spread": 0,
+                          "color": "nlbrand:primary"
+                        }
+                      }
                     }
                   ],
                   "transition": {
@@ -44639,6 +44987,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": -8
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": -8
                     }
@@ -45280,6 +45634,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -45293,6 +45653,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -45313,6 +45679,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -45351,6 +45723,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -45400,6 +45778,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -45506,6 +45890,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -45519,6 +45909,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -45539,6 +45935,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -45577,6 +45979,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -45626,6 +46034,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -46143,6 +46557,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -46156,6 +46576,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -46176,6 +46602,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -46214,6 +46646,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -46263,6 +46701,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -46363,6 +46807,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -46376,6 +46826,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -46396,6 +46852,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -46434,6 +46896,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -46483,6 +46951,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -46583,6 +47057,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -46596,6 +47076,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -46616,6 +47102,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -46654,6 +47146,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -46703,6 +47201,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -46803,6 +47307,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -46816,6 +47326,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -46836,6 +47352,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -46874,6 +47396,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -46923,6 +47451,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -48167,6 +48701,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -48180,6 +48720,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -48200,6 +48746,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -48238,6 +48790,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -48304,6 +48862,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -48317,6 +48881,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -48337,6 +48907,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -48375,6 +48951,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -49984,6 +50566,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -49997,6 +50585,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -50017,6 +50611,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -50055,6 +50655,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -50295,7 +50901,7 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-10-10T07:54:00.838Z"
+    "updatedAt": "2026-10-11T01:02:35.591Z"
   },
   "structs": {},
   "entrySurfaceId": "5107c0a1-0000-4000-8000-000000000500"

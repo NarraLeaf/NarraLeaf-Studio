@@ -1,5 +1,5 @@
 import { type ClassValue, clsx } from "clsx";
-import { extendTailwindMerge } from "tailwind-merge";
+import { extendTailwindMerge, validators } from "tailwind-merge";
 
 /**
  * tailwind-merge is taught about the design-system tokens defined in
@@ -9,8 +9,23 @@ import { extendTailwindMerge } from "tailwind-merge";
  *
  * Keep this list in sync with the `colors` / `fontSize` extensions in
  * `tailwind.config.js`.
+ *
+ * The outline groups are overridden because tailwind-merge 3 describes Tailwind 4, where a bare
+ * `outline` is a width. In the Tailwind 3 this app builds with, `outline` is the outline *style*
+ * (`outline-style: solid`) and `outline-1`/`outline-2` are widths. Left to its defaults the merge
+ * treats `outline outline-2` as two widths, keeps the last and drops the style - and an outline
+ * with no style is never drawn (the Switch focus ring and the change marks' selection were lost
+ * that way).
  */
 const twMerge = extendTailwindMerge({
+    override: {
+        classGroups: {
+            "outline-style": [{ outline: ["", "solid", "dashed", "dotted", "double", "none", "hidden"] }],
+            "outline-w": [{
+                outline: [validators.isNumber, validators.isArbitraryVariableLength, validators.isArbitraryLength],
+            }],
+        },
+    },
     extend: {
         theme: {
             color: [

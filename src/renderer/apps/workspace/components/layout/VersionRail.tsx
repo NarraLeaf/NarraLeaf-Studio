@@ -359,7 +359,9 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                 </button>
             </div>
 
-            <div className="flex-1 min-h-0 overflow-y-auto">
+            {/* `nl-frame-body`: under a wallpaper the lists below read on the dock plate rather than
+                on the clear frame plate (styles.css). */}
+            <div className="nl-frame-body flex-1 min-h-0 overflow-y-auto">
                 <FocusedVersion surface={surface} />
 
                 {/* Between the version block and the commit form, which is where it belongs in the

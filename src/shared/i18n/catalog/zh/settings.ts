@@ -255,6 +255,16 @@ export const settings = {
             label: "使用系统代理设置",
             description: "Studio 的下载通过操作系统中设置的代理连接",
         },
+        storeSource: {
+            label: "商店下载源",
+            description: "插件商店、模板商店与拼写词典的下载服务器。选择自动时同时连接 GitHub 与 GitCode，使用先响应的一个",
+            options: {
+                auto: "自动",
+                gitcode: "GitCode（中国大陆）",
+                custom: "自定义",
+            },
+            customOnly: "商店下载源为「自定义」时使用",
+        },
         pluginRegistryUrl: {
             label: "插件注册表地址",
             description: "插件商店索引的来源地址",

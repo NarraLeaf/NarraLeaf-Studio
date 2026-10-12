@@ -30,6 +30,7 @@ import { GlobalStateManager } from "./managers/storage/globalState";
 import { DOWNLOAD_REWRITES_KEY, setDownloadRewriteSource } from "./managers/downloadRewrites";
 import { setUseSystemProxySource } from "./managers/downloadProxy";
 import { USE_SYSTEM_PROXY_KEY } from "@shared/types/downloadSource";
+import { storeSourceMigration } from "@shared/constants/storeSource";
 import { sweepPsdTempDirectories } from "./managers/storage/cacheInventory";
 import {
     describeCacheRoot,
@@ -187,6 +188,18 @@ export class BaseApp {
         const sweptKeys = this.globalState.sweepRetiredKeys();
         if (sweptKeys.length > 0) {
             this.logger.info(`[App] Removed ${sweptKeys.length} retired setting(s): ${sweptKeys.join(", ")}`);
+        }
+        // A profile from before the store source choice: the retired "China mirror" address goes,
+        // and a typed registry address becomes the `custom` choice. A no-op once the choice exists.
+        const storeMigration = storeSourceMigration(this.globalState.raw());
+        for (const key of storeMigration.remove) {
+            this.globalState.delete(key as GlobalStateKeys);
+        }
+        for (const [key, value] of Object.entries(storeMigration.set)) {
+            this.globalState.set(key as GlobalStateKeys, value as GlobalStateValue<GlobalStateKeys>);
+        }
+        if (storeMigration.remove.length > 0 || Object.keys(storeMigration.set).length > 0) {
+            this.logger.info(`[App] Store source: removed ${storeMigration.remove.join(", ") || "nothing"}, set ${JSON.stringify(storeMigration.set)}`);
         }
         // Read through on every download rather than snapshotted: a mirror typed in the Settings
         // window has to apply to the next fetch, not the next launch.

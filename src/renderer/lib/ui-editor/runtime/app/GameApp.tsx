@@ -980,6 +980,14 @@ export function GameApp(props: GameAppProps): ReactNode {
     // The boot preload mounts the environment (fires gameReady) but does NOT enter — this stays false
     // until Start Game / Load Save.
     const gameEnteredRef = useRef(false);
+    /**
+     * Whether an `/ending` row has already answered how this run ends.
+     *
+     * The row is usually the last one, so the engine reports the story's own end right behind it -
+     * and that end lands on the build's ending page. The row's answer stands instead: its own page,
+     * the build's, or none at all. Reset whenever a run is entered.
+     */
+    const endingAnsweredRef = useRef(false);
     /** Every time `gameEnteredRef` turns true; see `GameAppTestState.entries`. */
     const gameEntriesRef = useRef(0);
     /**
@@ -2996,7 +3004,16 @@ export function GameApp(props: GameAppProps): ReactNode {
         },
     }), [playHead]);
 
-    const quitGame = useCallback(async (surfaceId: string): Promise<void> => {
+    /**
+     * End the run and put a page on screen.
+     *
+     * `landAfter` is something the page about to open reads and that has not landed yet - the
+     * endings record an `/ending` row is still writing. It is awaited after the run has stopped and
+     * before the page opens: the stage has already stopped taking clicks, so nothing can advance the
+     * story in the meantime, and the page's first reading is the one that counts. It must not reject;
+     * a write that fails is the caller's to report, and the player is owed the page either way.
+     */
+    const quitGame = useCallback(async (surfaceId: string, landAfter?: Promise<void>): Promise<void> => {
         const targetSurfaceId = String(surfaceId ?? "").trim();
         if (!targetSurfaceId) {
             throw refusal("blueprint.runtimeError.pickPage", "blueprint.node.quitGame");
@@ -3037,6 +3054,9 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrLiveGameSessionIdRef.current = null;
         stageWarmupRef.current = null;
         try {
+            if (landAfter) {
+                await landAfter;
+            }
             await openSurface(targetSurfaceId, undefined, { presentation: "appPage" });
         } finally {
             // Held back until the page is up because each of these three changes what the retained
@@ -3091,10 +3111,15 @@ export function GameApp(props: GameAppProps): ReactNode {
      * behaviour every build had before the ending page existed: the last frame stays on screen. A
      * default screen here would be one nobody authored, shown to players of projects that never
      * asked for it.
+     *
+     * Nor when a row has already ended the run. An `/ending` or a `/quit` row is usually the last
+     * one, so the engine reports the story's end right behind it; the row has already put its own
+     * page up (which turned `gameEnteredRef` off) or decided to show none (`endingAnsweredRef`), and
+     * opening the build's page as well put that page over the one the row chose.
      */
     const endingSurfaceId = host.endingSurfaceId?.trim() ?? "";
     const handleStoryEnd = useCallback(() => {
-        if (!endingSurfaceId) {
+        if (!endingSurfaceId || !gameEnteredRef.current || endingAnsweredRef.current) {
             return;
         }
         void quitGame(endingSurfaceId).catch(error => {
@@ -3112,9 +3137,12 @@ export function GameApp(props: GameAppProps): ReactNode {
      * and the session about to be torn down is the host's. The compiled row's whole contribution is
      * saying which ending it was.
      *
-     * The record is written first and not awaited by the rest. An ending that opened its page before
-     * the write landed would be one a player could see and then find locked, and the navigation must
-     * not wait on a store write either - the page is what the player is owed immediately.
+     * The record is started first, and the page waits for it. The page an ending lands on is where a
+     * game asks about endings - "all endings reached", a gallery that unlocks one - and it asks as it
+     * opens, off the session copy the write updates. Opened ahead of the write, it read the record as
+     * it was before this ending and showed the player it locked. The run itself still stops at once
+     * (see `quitGame`), so the wait is spent on the last frame, which no longer takes clicks. The
+     * plugins are told without waiting: the event is about the story, not about the record.
      *
      * With no page (`{kind:"none"}`, or nothing declared anywhere) the playthrough is left exactly
      * where it is, which is what every build did before endings existed: the last frame stays. Rows
@@ -3122,14 +3150,18 @@ export function GameApp(props: GameAppProps): ReactNode {
      * shape - an ending as the last row of a branch - there is nothing left to play either way.
      */
     const handleEndingReached = useCallback((ending: StoryEndingReach) => {
+        // The row's answer is the run's answer, page or no page: the story's own end, reported
+        // right behind this row, must not open the build's page over it (see `handleStoryEnd`).
+        endingAnsweredRef.current = true;
         const persistence = endingsPersistence();
-        if (persistence) {
-            void markEndingReached(persistence, ending.endingId).catch(error => {
+        const recorded = persistence
+            ? markEndingReached(persistence, ending.endingId).catch(error => {
                 // Reported, never thrown: the player has reached the ending whatever the store did,
-                // and a failed write must not take the window down on the last screen of the game.
+                // and a failed write must not take the window down on the last screen of the game -
+                // nor keep the page from opening, which waits on this promise.
                 host.log("error", `[${host.id}] the ending could not be recorded: ${normalizeError(error)}`);
-            });
-        }
+            })
+            : undefined;
         pluginHost?.emitEndingReached({ endingId: ending.endingId, name: ending.name });
         endingsReachedRef.current = {
             count: endingsReachedRef.current.count + 1,
@@ -3146,7 +3178,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         if (!page) {
             return;
         }
-        void quitGame(page).catch(error => {
+        void quitGame(page, recorded).catch(error => {
             host.log("error", `[${host.id}] the ending page could not be opened: ${normalizeError(error)}`);
         });
     }, [endingSurfaceId, endingsPersistence, host, pluginHost, quitGame]);
@@ -3716,6 +3748,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         // below, because both of them are the save being applied.
         playtime.seedRun(storedPlaytimeSeconds ?? 0);
         gameEnteredRef.current = true;
+        endingAnsweredRef.current = false;
         gameEntriesRef.current += 1;
         if (outcome.storyChanged) {
             // The launch that put the save's own story up has already entered and revealed its
@@ -5026,6 +5059,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         // later with the reading it inherited; nothing else in the file resets it.
         playtime.seedRun(0);
         gameEnteredRef.current = true;
+        endingAnsweredRef.current = false;
         gameEntriesRef.current += 1;
         // A document imported before this point has been waiting for exactly this moment:
         // `newGame()` clears every namespace and rebuilds it from its defaults, so anything written

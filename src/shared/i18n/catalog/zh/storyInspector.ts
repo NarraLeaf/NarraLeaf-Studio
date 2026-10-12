@@ -412,6 +412,9 @@ export const storyInspector = {
         targetScene: "目标场景",
         returnable: "目标场景结束后返回",
     },
+    setVariable: {
+        missingScene: "场景缺失",
+    },
     note: {
         label: "备注",
     },

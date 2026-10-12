@@ -64,7 +64,10 @@ export function Switch({
             className={cn(
                 "relative inline-flex shrink-0 cursor-default items-center rounded-full border p-0 transition-colors duration-200",
                 "appearance-none",
-                "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                // `!`: styles.css clears the outline of every focused `<button>` with `!important`, so
+                // only an important utility draws the keyboard's ring. `:focus-visible`, so a click
+                // with the mouse does not light it.
+                "focus-visible:!outline focus-visible:!outline-2 focus-visible:!outline-offset-2 focus-visible:!outline-primary",
                 disabled && !loading && "opacity-50 cursor-not-allowed",
                 checked
                     ? "bg-primary/70 border-transparent"

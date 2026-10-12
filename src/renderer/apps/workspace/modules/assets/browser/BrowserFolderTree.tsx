@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { AlertCircle, ChevronRight, Folder } from "lucide-react";
 import { ASSET_CATEGORY_ORDER, type AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import type { AssetGroup } from "@/lib/workspace/services/assets/types";
@@ -34,7 +34,7 @@ export interface BrowserFolderTreeProps {
  * searched for: the tree is where the author is, not what matched.
  */
 export function BrowserFolderTree({ location, onNavigate, openCategories, onToggleCategory, onDropOnPlace }: BrowserFolderTreeProps) {
-    const { assets, groups, expandedGroups, setExpandedGroups } = useAssetsPanelContext();
+    const { assets, groups, expandedGroups, setExpandedGroups, handleGroupFocus } = useAssetsPanelContext();
 
     const rows = useMemo(() => {
         const out: TreeRow[] = [];
@@ -101,16 +101,99 @@ export function BrowserFolderTree({ location, onNavigate, openCategories, onTogg
         });
     };
 
+    const toggle = (row: TreeRow) => (row.kind === "category" ? onToggleCategory(row.category) : toggleGroup(row.group.id));
+    const isCurrent = (row: TreeRow) => !!location && location.category === row.category
+        && (row.kind === "category" ? !location.groupId : location.groupId === row.group.id);
+
+    /** Go to a row's place, as a press on the row does. */
+    const goTo = (row: TreeRow) => {
+        if (row.kind === "group") {
+            handleGroupFocus(row.group.id);
+        }
+        onNavigate(row.kind === "group" ? { category: row.category, groupId: row.group.id } : { category: row.category });
+    };
+
+    // The row a key went to, scrolled into view once the place it names is the current one.
+    const treeRef = useRef<HTMLDivElement | null>(null);
+    const keyMoved = useRef(false);
+    const currentPlace = location ? `${location.category}/${location.groupId ?? ""}` : null;
+    useEffect(() => {
+        if (!keyMoved.current) {
+            return;
+        }
+        keyMoved.current = false;
+        treeRef.current?.querySelector("[aria-selected=true]")?.scrollIntoView({ block: "nearest" });
+    }, [currentPlace]);
+
+    /**
+     * The tree's keys, the ones every folder tree has: up and down go to the place above and below,
+     * right opens a closed row and then goes into its first child, left closes an open row and then
+     * goes up to the row it sits in, Home and End go to the first and the last row.
+     */
+    const onKeyDown = (event: React.KeyboardEvent) => {
+        if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || rows.length === 0) {
+            return;
+        }
+        const index = rows.findIndex(isCurrent);
+        const row = index >= 0 ? rows[index] : null;
+        let target: TreeRow | null = null;
+        switch (event.key) {
+            case "ArrowDown":
+                target = rows[index + 1] ?? null;
+                break;
+            case "ArrowUp":
+                target = index < 0 ? rows[rows.length - 1] : rows[index - 1] ?? null;
+                break;
+            case "Home":
+                target = rows[0];
+                break;
+            case "End":
+                target = rows[rows.length - 1];
+                break;
+            case "ArrowRight":
+                if (row?.hasChildren) {
+                    if (row.open) {
+                        target = rows[index + 1] ?? null;
+                    } else {
+                        toggle(row);
+                    }
+                }
+                break;
+            case "ArrowLeft":
+                if (row?.hasChildren && row.open) {
+                    toggle(row);
+                } else if (row?.kind === "group") {
+                    // The nearest row above at a shallower level: the folder it is in, or its category.
+                    target = rows.slice(0, index).reverse()
+                        .find(candidate => (candidate.kind === "category" ? 0 : candidate.level) < row.level) ?? null;
+                }
+                break;
+            default:
+                return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        if (target && target !== row) {
+            keyMoved.current = true;
+            goTo(target);
+        }
+    };
+
     return (
-        <div role="tree" className="min-h-0 flex-1 overflow-y-auto py-1">
+        <div
+            ref={treeRef}
+            role="tree"
+            tabIndex={0}
+            className="min-h-0 flex-1 overflow-y-auto py-1 outline-none"
+            onKeyDown={onKeyDown}
+        >
             {rows.map(row => (
                 <FolderTreeRow
                     key={row.kind === "category" ? `category:${row.category}` : `group:${row.group.id}`}
                     row={row}
-                    current={!!location && location.category === row.category
-                        && (row.kind === "category" ? !location.groupId : location.groupId === row.group.id)}
-                    onNavigate={onNavigate}
-                    onToggle={() => (row.kind === "category" ? onToggleCategory(row.category) : toggleGroup(row.group.id))}
+                    current={isCurrent(row)}
+                    onGoTo={() => goTo(row)}
+                    onToggle={() => toggle(row)}
                     onDropOnPlace={onDropOnPlace}
                 />
             ))}
@@ -118,15 +201,15 @@ export function BrowserFolderTree({ location, onNavigate, openCategories, onTogg
     );
 }
 
-function FolderTreeRow({ row, current, onNavigate, onToggle, onDropOnPlace }: {
+function FolderTreeRow({ row, current, onGoTo, onToggle, onDropOnPlace }: {
     row: TreeRow;
     current: boolean;
-    onNavigate: (location: AssetBrowserLocation) => void;
+    onGoTo: () => void;
     onToggle: () => void;
     onDropOnPlace: BrowserFolderTreeProps["onDropOnPlace"];
 }) {
     const { t } = useTranslation();
-    const { showContextMenu, unreadableCategories, handleGroupFocus } = useAssetsPanelContext();
+    const { showContextMenu, unreadableCategories } = useAssetsPanelContext();
     const group = row.kind === "group" ? row.group : null;
     const drop = useBrowserDropTarget(row.category, (event, kind) => onDropOnPlace(event, kind, row.category, group));
     const level = row.kind === "group" ? row.level : 0;
@@ -146,12 +229,7 @@ function FolderTreeRow({ row, current, onNavigate, onToggle, onDropOnPlace }: {
                 drop.over && "bg-primary/10 ring-1 ring-inset ring-primary/50",
             )}
             style={{ paddingLeft: 4 + level * INDENT_PX }}
-            onClick={() => {
-                if (group) {
-                    handleGroupFocus(group.id);
-                }
-                onNavigate(group ? { category: row.category, groupId: group.id } : { category: row.category });
-            }}
+            onClick={onGoTo}
             onContextMenu={event => (group
                 ? showContextMenu(event, row.category, group, true)
                 : showContextMenu(event, row.category, null, false))}

@@ -6,6 +6,7 @@ import { getInterface } from "@/lib/app/bridge";
 import type { VcsAvailability } from "@shared/types/vcs";
 import { versionControlOptions } from "../constants";
 import { ProjectData, DirectoryValidationResult, ValidationErrors, VersionControlChoice } from "../types";
+import { ValidationService } from "../services/validationService";
 
 interface ProjectStepProps {
     projectData: ProjectData;
@@ -90,7 +91,7 @@ export function ProjectStep({
         updateAppId(value);
         if (value.trim() === "") {
             setAppIdError(t("wizard.project.appIdRequired"));
-        } else if (!/^[a-z0-9-]+$/.test(value)) {
+        } else if (!ValidationService.validateAppId(value)) {
             setAppIdError(t("wizard.project.appIdInvalid"));
         } else {
             setAppIdError("");

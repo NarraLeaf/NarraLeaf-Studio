@@ -261,6 +261,33 @@ event E
             v1: { id: "v1", name: "Score", valueType: "number", defaultValue: 3 },
         });
     });
+
+    it("writes a reference to the blueprint's own variable as its bare id", () => {
+        // Both spellings run, but the editor lists a blueprint's own variables under the bare id
+        // only, so the long spelling showed as an empty field on the canvas.
+        const source = (variableId: string) => `blueprint B owner=globalMain id=bp-self
+    var Score type=number default=3 id=v1
+event E
+    head: blueprint.event.head.appBoot
+    set: blueprint.local.set
+        variableId = ${variableId}
+
+    head -> set
+`;
+        const own = compile(source("bp:bp-self:v1"));
+        expect(own.errors).toEqual([]);
+        expect(own.graph?.nodes?.set?.params?.variableId).toBe("v1");
+        expect(own.diagnostics).toContainEqual(expect.objectContaining({
+            severity: "info",
+            code: "compile.own_variable_ref",
+            line: 6,
+        }));
+
+        // Another blueprint's variable keeps the long spelling: that is what the long spelling is for.
+        const other = compile(source("bp:bp-page:v9"));
+        expect(other.graph?.nodes?.set?.params?.variableId).toBe("bp:bp-page:v9");
+        expect(other.diagnostics.map(item => item.code)).not.toContain("compile.own_variable_ref");
+    });
 });
 
 describe("a var declared without id=", () => {

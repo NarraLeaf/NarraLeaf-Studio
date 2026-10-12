@@ -150,6 +150,56 @@ describe("printing a scene and reading it back", () => {
     });
 });
 
+describe("an opaque row whose #data payload names the wrong kind", () => {
+    /**
+     * A narration stored as `kind: "action"` applied cleanly, showed in the editor as an effect row
+     * and was skipped by the game. The payload is copied verbatim, so the file has to be told here.
+     */
+    function compileOpaque(stored: Record<string, unknown>) {
+        commandI18nStore.setPreference(false);
+        const project = skeletonProject();
+        expect(project).not.toBeNull();
+        const { data, document } = project!;
+        const scene = { ...(Object.values(document.scenes)[0] as StoryScene), rootBlockIds: [], blocks: {} };
+        const lookups = buildLookups(data, document, scene, buildContext(data, document, scene));
+        const anchor = "7c1f4b02-0000-4000-8000-000000000001";
+        const row = { id: anchor, parentId: null, childrenIds: [], ...stored };
+        const source = `#nlstory 1\n#scene ${scene.name} ⟦${scene.id}⟧\n\n${OPAQUE_PREFIX}Narration ⟦${anchor}⟧\n\n`
+            + `#data\n${JSON.stringify({ [anchor]: row })}\n`;
+        return compileStoryFile({
+            ast: parseStoryFile(source).ast,
+            existing: scene,
+            document,
+            contextFor: stage => buildContext(data, document, stage ?? scene),
+            prose: lookups.prose,
+            conditions: lookups.conditions,
+            mintId: () => "00000000-0000-4000-8000-000000000099",
+        });
+    }
+
+    const narration = { action: "narration", text: { textId: "t-1", value: "The rain stopped.", role: "narration" } };
+
+    it("is refused, naming the kind the row needs", () => {
+        const compiled = compileOpaque({ kind: "action", payload: narration });
+        expect(compiled.diagnostics).toEqual([
+            expect.objectContaining({ code: "compile.opaque_wrong_kind", severity: "error", line: 4 }),
+        ]);
+        expect(compiled.diagnostics[0]?.message).toContain('"nodeAction"');
+    });
+
+    it("is refused the other way round too", () => {
+        const compiled = compileOpaque({ kind: "nodeAction", payload: { action: "wait", mode: "click" } });
+        expect(compiled.diagnostics.map(diagnostic => diagnostic.code)).toEqual(["compile.opaque_wrong_kind"]);
+    });
+
+    it("is taken as written when the kind is right", () => {
+        const compiled = compileOpaque({ kind: "nodeAction", payload: narration });
+        expect(compiled.diagnostics).toEqual([]);
+        const [row] = compiled.scene!.rootBlockIds.map(id => compiled.scene!.blocks[id]);
+        expect(row).toMatchObject({ kind: "nodeAction", payload: { action: "narration" } });
+    });
+});
+
 describe("a row that names a row the same file adds", () => {
     it("is bound to the id that row ends up with", () => {
         // The second pass resolves names against the first pass's scene, so a target bound to the row

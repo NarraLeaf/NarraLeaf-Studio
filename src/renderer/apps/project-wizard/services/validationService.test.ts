@@ -52,6 +52,19 @@ describe("which page may be left", () => {
         }), "create")).toBe(true);
     });
 
+    it("takes a reverse-domain app id, which a build uses as the package id as it is", () => {
+        // `deriveGameAppId` passes a dotted id through verbatim and files anything else under
+        // NarraLeaf's own namespace, so refusing dots here left a studio no way to ship its own id.
+        for (const appId of ["com.studio.game", "jp.circle.my-game", "game.v2", "my-game"]) {
+            expect(ValidationService.validateAppId(appId), appId).toBe(true);
+        }
+        // A dot only between two non-empty parts: never leading, trailing or doubled - a trailing
+        // dot would also be dropped from the folder name on Windows - and no part ends in a hyphen.
+        for (const appId of ["com.", ".game", "com..game", "com.-game", "com.game-", "Com.Studio", "com.my game"]) {
+            expect(ValidationService.validateAppId(appId), appId).toBe(false);
+        }
+    });
+
     it("refuses an app id the project could not be identified by", () => {
         expect(ValidationService.isStepValid("project", data({
             name: "Game",
