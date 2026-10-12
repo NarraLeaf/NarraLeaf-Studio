@@ -303,8 +303,14 @@ export function StageSlotSurfaceBody(props: {
     surfacePointerEvents?: CSSProperties["pointerEvents"];
     /** Display-only slot: no widget inside takes pointer events (notification toasts). */
     passive?: boolean;
+    /**
+     * The keys and the pad move between its controls as soon as it is on screen - the choice menu's.
+     * Every other slot's controls are reached only once the player steps into them on purpose: the
+     * quick menu during dialogue is not where a D-pad press should land (`toggleStageControls`).
+     */
+    navigable?: boolean;
 }) {
-    const { options, surface, runtime, surfacePointerEvents, passive } = props;
+    const { options, surface, runtime, surfacePointerEvents, passive, navigable = false } = props;
     // Stepped off the screen, not unmounted, while a page is up: the line keeps revealing and the
     // graphs keep their state, so closing the page brings back exactly what it covered.
     const concealed = useStageCoveredByPage() && isStageSlotConcealedByPage(surface.mount.slotId);
@@ -427,6 +433,7 @@ export function StageSlotSurfaceBody(props: {
                     passive={passive || covered || !pressable}
                     concealed={concealed}
                     keyboardInteractive={hearsKeys}
+                    stageNavigationScope={!hearsKeys || passive ? undefined : navigable ? "choice" : "controls"}
                     // A Game UI slot has no page animation of its own - it appears when the scene
                     // says so - but the widgets on it can still arrive and leave on their own terms.
                     elementAnimations

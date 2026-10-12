@@ -71,7 +71,7 @@ describe("the verb a row reads back", () => {
         expect(storyRowSentence(action({ action: "image", operation: "show", objectName: "Sign" }), bare)).toContain("显示");
         expect(storyRowSentence(action({ action: "video", operation: "play", objectName: "Intro" }), bare)).toContain("播放");
         expect(storyRowSentence(action({ action: "audio", operation: "setBgm", objectName: "Piano" }), bare)).toContain("背景音乐");
-        expect(storyRowSentence(action({ action: "layer", operation: "create", objectName: "Fog" }), bare)).toContain("图层");
+        expect(storyRowSentence(action({ action: "layer", operation: "show", objectName: "Fog" }), bare)).toContain("图层");
     });
 });
 
@@ -109,6 +109,13 @@ describe("storyRowSentence — the sentence the editor shows", () => {
         // An unbound motion row has nothing to name, table or not.
         expect(storyRowSentence(action({ action: "camera", operation: "transform", transform: { mode: "animation" } }), { ...bare, motionName: () => "x" }))
             .toBe("Motion");
+    });
+
+    it("says what a layer row does to its layer, and where a z-index row moves it", () => {
+        expect(describeStoryBlock(action({ action: "layer", operation: "hide", objectName: "Fog" }), bare)).toBe("Hide layer Fog");
+        expect(describeStoryBlock(action({ action: "layer", operation: "setZIndex", objectName: "Fog", zIndex: 3 }), bare)).toBe("Layer Fog to z-index 3");
+        i18nStore.setLocale("zh");
+        expect(describeStoryBlock(action({ action: "layer", operation: "setZIndex", objectName: "Fog", zIndex: 3 }), bare)).toBe("图层 Fog 层级改为 3");
     });
 
     it("names a blueprint row by its blueprint, and only by its kind when there is nothing to say", () => {
@@ -475,5 +482,27 @@ describe("an assignment that stores a scene", () => {
 
     it("leaves a plain string alone", () => {
         expect(storyRowSentence(assign("scenery"), { ...bare, scenes: { [corridor.id]: corridor } })).toContain("scenery");
+    });
+});
+
+/**
+ * A jump whose target scene was deleted. The editor's token reads the unknown-scene word; the shared
+ * sentence used to fall back to the stored id, so Dev Mode's issue list quoted the row as
+ * `Jump to c083e0f3-…` while the editor named the same row `Jump to unknown scene`.
+ */
+describe("a jump to a scene that is gone", () => {
+    const clubroom: StoryScene = { id: "5143dcd8-bebc-4468-b4e2-00f6d5781af6", name: "The clubroom", runtimeName: "clubroom", rootBlockIds: [], blocks: {} };
+    const goneId = "c083e0f3-8665-451a-800a-6d2cd5650d33";
+    const jump = (targetSceneId: string): StoryBlock => ({ id: "j", kind: "jump", parentId: null, childrenIds: [], payload: { targetSceneId } });
+
+    it("names a scene that is there", () => {
+        expect(storyRowSentence(jump(clubroom.id), { ...bare, scenes: { [clubroom.id]: clubroom } })).toContain("The clubroom");
+    });
+
+    it("reads as an unknown scene, never as the stored id", () => {
+        const sentence = storyRowSentence(jump(goneId), { ...bare, scenes: { [clubroom.id]: clubroom } });
+
+        expect(sentence).not.toContain(goneId);
+        expect(sentence).toContain("unknown scene");
     });
 });

@@ -19,8 +19,10 @@ import type {
 import { isSafeRelativeEntry } from "@shared/utils/pluginManifest";
 import { normalizeLocalizedTextPack } from "@shared/types/localizedText";
 import { resolveDownloadSource } from "@shared/utils/downloadSource";
+import type { StoreSourceChoice } from "@shared/constants/storeSource";
 import { applyDownloadRewrite } from "./downloadRewrites";
 import { studioFetch } from "./downloadProxy";
+import { customStoreOrigin, fetchFromStore, readStoreCatalogue, storeChoiceKey, type StoreOrigin } from "./storeSource";
 
 /**
  * Read-only client for the UI template store.
@@ -184,34 +186,47 @@ function normalizeThemeDescriptor(raw: unknown): UIThemeDescriptor | null {
     };
 }
 
+/** The store's catalogue, and the host it came from - which is where its template files come from. */
+export type TemplateCatalogue = { index: UITemplateRegistryIndex; origin: StoreOrigin };
+
 /**
- * Last index read per URL.
+ * Last catalogue read per store choice.
  *
  * Opt-in through `maxAgeMs`, exactly as the plugin registry's memo is: a Refresh
  * passes nothing and therefore really goes to the network, while the calls that
  * only need the index to resolve a path — "which file belongs to this template
  * id" — reuse it. Without this, opening the store, entering a theme and adding
- * one screen fetched index.json four times over.
+ * one screen fetched index.json four times over. Keeping the origin with it keeps
+ * a template's files on the host its card came from.
  */
-const indexMemo = new Map<string, { at: number; index: UITemplateRegistryIndex }>();
+const catalogueMemo = new Map<string, { at: number; catalogue: TemplateCatalogue }>();
 
-export async function fetchTemplateIndex(
-    url: string,
+/** Read the catalogue from where the store source setting says (see `storeSource.ts`). */
+export async function fetchTemplateCatalogue(
+    choice: StoreSourceChoice,
     options: { maxAgeMs?: number } = {},
-): Promise<UITemplateRegistryIndex> {
+): Promise<TemplateCatalogue> {
+    const key = storeChoiceKey(choice);
     const maxAgeMs = options.maxAgeMs ?? 0;
     if (maxAgeMs > 0) {
-        const cached = indexMemo.get(url);
+        const cached = catalogueMemo.get(key);
         if (cached && Date.now() - cached.at <= maxAgeMs) {
-            return cached.index;
+            return cached.catalogue;
         }
     }
-    const index = await readTemplateIndex(url);
-    indexMemo.set(url, { at: Date.now(), index });
-    return index;
+    const { value: index, origin } = await readStoreCatalogue({
+        choice,
+        officialUrl: DEFAULT_UI_TEMPLATE_REGISTRY_URL,
+        customUrl: resolveTemplateRegistryUrl(choice.customUrl),
+        read: fetchTemplateIndex,
+    });
+    const catalogue = { index, origin };
+    catalogueMemo.set(key, { at: Date.now(), catalogue });
+    return catalogue;
 }
 
-async function readTemplateIndex(url: string): Promise<UITemplateRegistryIndex> {
+/** Read and validate one template registry index at `url`. */
+export async function fetchTemplateIndex(url: string): Promise<UITemplateRegistryIndex> {
     const response = await fetchWithTimeout(url);
     if (!response.ok) {
         throw new Error(`Template registry request failed (${response.status} ${response.statusText})`);
@@ -249,6 +264,16 @@ async function readTemplateIndex(url: string): Promise<UITemplateRegistryIndex> 
         themes,
         templates,
     };
+}
+
+/**
+ * Where a template's files come from: a catalogue origin, or (for a caller that has only an index
+ * address) that address, fetched as written.
+ */
+type TemplateFilesOrigin = StoreOrigin | string;
+
+function asOrigin(origin: TemplateFilesOrigin): StoreOrigin {
+    return typeof origin === "string" ? customStoreOrigin(origin) : origin;
 }
 
 /**
@@ -317,12 +342,25 @@ async function fetchAssetFile(url: string, ref: UITemplateAssetRef): Promise<UIT
         throw new Error("Template resource exceeds the maximum size");
     }
     const fileName = ref.path.slice(ref.path.lastIndexOf("/") + 1) || ref.id;
+    const mime = inferMime(fileName);
+    // A host that answers a picture's address with a web page - a block page, a sign-in wall -
+    // still says 200. Refused here, so the other host is asked rather than the page becoming a
+    // broken resource in the author's project.
+    if (mime.startsWith("image/") && mime !== "image/svg+xml" && startsWithMarkup(buffer)) {
+        throw new Error("Template resource is not the file it names");
+    }
     return {
         id: ref.id,
         fileName,
-        mime: inferMime(fileName),
+        mime,
         dataBase64: buffer.toString("base64"),
     };
+}
+
+/** Whether the bytes open like HTML or XML, which no raster image format does. */
+function startsWithMarkup(buffer: Buffer): boolean {
+    const head = buffer.subarray(0, 64).toString("latin1").trimStart();
+    return head.startsWith("<");
 }
 
 /**
@@ -336,17 +374,19 @@ export type FetchedThemePoster = { id: string; mime: string; dataBase64: string 
 
 export async function fetchThemePreviews(
     themes: UIThemeDescriptor[],
-    indexUrl: string,
+    from: TemplateFilesOrigin,
 ): Promise<FetchedThemePoster[]> {
-    const baseDir = registryBaseDir(indexUrl);
+    const origin = asOrigin(from);
+    const baseDir = registryBaseDir(origin.catalogueUrl);
     const previews: FetchedThemePoster[] = [];
     for (const theme of themes) {
-        if (!theme.preview) {
+        const preview = theme.preview;
+        if (!preview) {
             continue;
         }
         try {
-            const url = resolveTemplateFileUrl(baseDir, theme.path, theme.preview);
-            const fetched = await fetchAssetFile(url, { id: theme.id, path: theme.preview });
+            const url = resolveTemplateFileUrl(baseDir, theme.path, preview);
+            const { value: fetched } = await fetchFromStore(origin, url, address => fetchAssetFile(address, { id: theme.id, path: preview }));
             previews.push({ id: theme.id, mime: fetched.mime, dataBase64: fetched.dataBase64 });
         } catch (error) {
             console.warn(`[uiTemplates] theme poster unavailable for ${theme.id}`, error);
@@ -366,13 +406,14 @@ export async function fetchThemePreviews(
  */
 export async function fetchTemplatePreviews(
     entries: UITemplateRegistryEntry[],
-    indexUrl: string,
+    from: TemplateFilesOrigin,
 ): Promise<UITemplatePreview[]> {
-    const baseDir = registryBaseDir(indexUrl);
+    const origin = asOrigin(from);
+    const baseDir = registryBaseDir(origin.catalogueUrl);
     const previews: UITemplatePreview[] = [];
     for (const entry of entries) {
         try {
-            const document = await fetchJsonFile(resolveTemplateFileUrl(baseDir, entry.path, entry.document));
+            const { value: document } = await fetchFromStore(origin, resolveTemplateFileUrl(baseDir, entry.path, entry.document), fetchJsonFile);
             previews.push({ id: entry.id, document });
         } catch (error) {
             console.warn(`[uiTemplates] preview unavailable for ${entry.id}`, error);
@@ -388,12 +429,15 @@ export async function fetchTemplatePreviews(
  */
 export async function fetchTemplateBundle(
     entry: UITemplateRegistryEntry,
-    indexUrl: string,
+    from: TemplateFilesOrigin,
 ): Promise<UITemplateBundle> {
-    const baseDir = registryBaseDir(indexUrl);
+    const origin = asOrigin(from);
+    const baseDir = registryBaseDir(origin.catalogueUrl);
+    const fetchJson = async (relativePath: string) =>
+        (await fetchFromStore(origin, resolveTemplateFileUrl(baseDir, entry.path, relativePath), fetchJsonFile)).value;
 
-    const document = await fetchJsonFile(resolveTemplateFileUrl(baseDir, entry.path, entry.document));
-    const graphs = await fetchJsonFile(resolveTemplateFileUrl(baseDir, entry.path, entry.graphs));
+    const document = await fetchJson(entry.document);
+    const graphs = await fetchJson(entry.graphs);
 
     if (entry.assets.length > UI_TEMPLATE_MAX_ASSETS) {
         throw new Error("Template declares too many resources");
@@ -401,7 +445,7 @@ export async function fetchTemplateBundle(
     const assets: UITemplateFetchedAsset[] = [];
     for (const ref of entry.assets) {
         const url = resolveTemplateFileUrl(baseDir, entry.path, ref.path);
-        assets.push(await fetchAssetFile(url, ref));
+        assets.push((await fetchFromStore(origin, url, address => fetchAssetFile(address, ref))).value);
     }
 
     return {

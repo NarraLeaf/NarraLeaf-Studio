@@ -39,6 +39,16 @@ jobs:
         with:
           packages-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # The typechecks' incremental state (see `tsBuildInfoFile` in each
+      # src/*/tsconfig.json). The newest run's state is a fine starting point
+      # for any commit: tsc compares every file's content against it and
+      # rechecks what differs, so a stale cache costs time, never correctness.
+      - uses: actions/cache@v4
+        with:
+          path: .cache/tsc
+          key: tsc-${{ runner.os }}-${{ github.sha }}
+          restore-keys: tsc-${{ runner.os }}-
+
       - name: Checks
         run: node scripts/verify.mjs --checks --ci
 

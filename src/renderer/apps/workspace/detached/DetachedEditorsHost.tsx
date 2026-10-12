@@ -9,6 +9,7 @@ import {
 import { useTranslation } from "@/lib/i18n";
 import { BlueprintEntryTab } from "../modules/blueprint-lite/editors/BlueprintEntryTab";
 import { useOpenBlueprintTarget } from "../modules/blueprint-lite/hooks/useOpenBlueprintTarget";
+import { blueprintTargetKeepingLayer } from "../modules/blueprint-lite/blueprintEntryTabId";
 import {
     readDetachedEditors,
     releaseDetachedEditor,
@@ -45,15 +46,8 @@ export function DetachedEditorsHost() {
             if (behaviorRef.current !== "restoreTab") {
                 return;
             }
-            openBlueprint({
-                blueprintId: entry.payload.blueprintId,
-                ownerKind: entry.payload.ownerKind,
-                surfaceId: entry.payload.surfaceId,
-                componentId: entry.payload.componentId,
-                elementId: entry.payload.elementId,
-                propPath: entry.payload.propPath,
-                title: entry.tabTitle,
-            });
+            // Back on the layer the window had open, which the window kept in its payload.
+            openBlueprint(blueprintTargetKeepingLayer(entry.payload, entry.tabTitle));
         },
         [openBlueprint, t],
     );

@@ -1,16 +1,17 @@
 import { ALargeSmall, BringToFront, Image, Layers, Play, Replace, Type } from "lucide-react";
 import type { StoryBlock } from "@shared/types/story";
+import { addSceneLayer, sceneLayerNameProblem, sceneLayerStack } from "@shared/types/story";
 import { createBlockForCommand } from "../../storyActionCommands";
 import type { StoryCommandResolutionIssue, StoryCommandValue } from "../../storyCommandValues";
 import {
     asBoolean,
     asColor,
+    asEnum,
     asNumber,
     asTarget,
     asText,
     defineStoryCommand,
     holdParam,
-    placementParam,
     secondsParam,
     targetParam,
     type StoryCommandValidateContext,
@@ -25,6 +26,7 @@ import {
     withTransitionRef,
 } from "../payloadHelpers";
 import { clipConcealOptions, transitionOptions } from "../transitions";
+import { PLACEMENT_PARAMS, positionFromArgs, positionIssues } from "../transformVocabulary";
 import { validateNameTarget } from "./character";
 
 /** Media objects: `/image`, `/text`, `/layer`, `/swap`, `/play`, `/front`, `/font`. */
@@ -35,11 +37,16 @@ export const image = defineStoryCommand({
     aliases: ["img"],
     category: "image",
     icon: Image,
-    examples: ["/image night", "/image night name=sky pos=center", "/image forest_day name=backdrop in=fade d=0.4"],
+    examples: ["/image night name=sky", "/image night name=sky pos=center", "/image forest_day name=backdrop in=fade d=0.4"],
+    sequence: {
+        note: "Declares an image object and does not display it. A later `/show <name>` reveals it; "
+            + "`/show <image asset> name=<name>` declares and reveals in one row.",
+        lines: ["/image night name=sky pos=center", "/show sky in=fade d=0.5"],
+    },
     params: {
         image: { aliases: ["src"], hint: "imageAsset", type: { kind: "asset", assetType: "image", allowSets: true }, positional: true, core: true },
         name: { hint: "objectName", type: { kind: "text" } },
-        pos: placementParam(),
+        ...PLACEMENT_PARAMS,
         // `in=`, the same rename `/show` carries: what this writes is the create's entrance TRANSFORM,
         // not a `StoryTransitionRef`. An image has no transition field at all.
         in: { aliases: ["reveal"], hint: "reveal", type: { kind: "enum", options: transitionOptions("reveal") } },
@@ -62,10 +69,11 @@ export const image = defineStoryCommand({
         // Placement wins when both are given - a create is placed; its entrance rides `t=` only when
         // no placement pins the preset (the transform holds one preset).
         const transform = args.pos
-            ? withPlacementTransform(payload.transform, args.pos, args.d)
+            ? withPlacementTransform(payload.transform, positionFromArgs(args), args.d)
             : withRevealTransform(payload.transform, "reveal", args.in, args.d);
         return { ...block, payload: { ...payload, ...(transform ? { transform } : {}) } };
     },
+    validate: (args, ctx) => positionIssues(args, ctx),
 });
 
 export const text = defineStoryCommand({
@@ -74,11 +82,16 @@ export const text = defineStoryCommand({
     aliases: ["txt"],
     category: "text",
     icon: Type,
-    examples: ["/text Welcome home", "/text name=title pos=center Chapter One"],
+    examples: ["/text name=title Welcome home", "/text name=title pos=center Chapter One"],
+    sequence: {
+        note: "Declares a text object and does not display it: nothing is on screen until a `/show <name>` row. "
+            + "Write `name=` (before the text) so the `/show` can address it.",
+        lines: ["/text name=title pos=center Chapter One", "/show title in=fade d=0.5"],
+    },
     params: {
         // `name=` must be typed before the greedy content - the one ordering rule greedy imposes.
         name: { hint: "objectName", type: { kind: "text" } },
-        pos: placementParam(),
+        ...PLACEMENT_PARAMS,
         content: { hint: "content", type: { kind: "text" }, positional: true, greedy: true, core: true },
     },
     deriveArgs: deriveObjectName("text", null, "text"),
@@ -95,36 +108,60 @@ export const text = defineStoryCommand({
         if (args.content?.kind === "text") {
             payload.text = args.content.value;
         }
-        const transform = withPlacementTransform(payload.transform, args.pos, undefined);
+        const transform = withPlacementTransform(payload.transform, positionFromArgs(args), undefined);
         return { ...block, payload: { ...payload, ...(transform ? { transform } : {}) } };
     },
+    validate: (args, ctx) => positionIssues(args, ctx),
 });
 
+/**
+ * `/layer` - add a layer to the scene.
+ *
+ * It writes no row. A layer belongs to its scene, which puts up every layer it has as it starts, so
+ * the command adds one to the scene's stack: just behind the characters and moving exactly with the
+ * camera, which is how every layer has always moved until the author places it in the live preview's
+ * layer view. A name the scene's layers already use, or one a built-in layer is written with, is
+ * refused on the line.
+ */
 export const layer = defineStoryCommand({
     id: "layer",
     token: "layer",
     category: "layer",
     icon: Layers,
-    examples: ["/layer overlay", "/layer overlay z=10"],
+    examples: ["/layer hills"],
+    header: {
+        note: "Not a row in a file. A scene's layers are header lines, one #layer per layer, nearest first; "
+            + "displayableLayer is the base layer, which holds everything not placed on another layer, at distance 1; distance= is how far away a layer is "
+            + "(below 1 is nearer; 2 is twice as far and moves half as much with the camera; inf does not move).",
+        lines: ["#layer displayableLayer", "#layer hills distance=3", "#layer sky distance=inf"],
+    },
     params: {
         name: { hint: "objectName", type: { kind: "text" }, positional: true, core: true },
-        z: { aliases: ["zindex"], hint: "z", type: { kind: "number", integer: true } },
     },
-    build(args, ctx) {
-        const block = createBlockForCommand("layerCreate", ctx.generateId);
-        if (block.kind !== "action" || block.payload.action !== "layer") {
-            return block;
+    editScene(args, ctx) {
+        const stack = sceneLayerStack(ctx.scene);
+        const name = asText(args.name)?.trim() ?? "";
+        if (sceneLayerNameProblem(stack, name) !== null) {
+            return null;
         }
-        const payload = { ...block.payload };
-        const name = asText(args.name);
-        if (name !== undefined) {
-            payload.objectName = name;
+        return { layers: addSceneLayer(stack, { id: ctx.generateId(), name }) };
+    },
+    validate(args, ctx) {
+        const name = asText(args.name)?.trim();
+        const span = name ? ctx.spanOf("name") : undefined;
+        if (!name || !span) {
+            return [];
         }
-        const zIndex = asNumber(args.z);
-        if (zIndex !== undefined) {
-            payload.zIndex = zIndex;
+        // The stage objects the line sees are the scene's layers as the context read them.
+        const stack = ctx.context.stageObjects.layer.map((existing, index) => ({ kind: "custom" as const, id: `existing-${index}`, name: existing }));
+        const problem = sceneLayerNameProblem(stack, name);
+        if (problem === "taken") {
+            return [{ code: "duplicateLayer", span, value: name }];
         }
-        return { ...block, payload };
+        if (problem === "reserved") {
+            return [{ code: "reservedLayerName", span, value: name }];
+        }
+        return [];
     },
 });
 
@@ -352,7 +389,7 @@ export const front = defineStoryCommand({
         // A layer, a video and an ambience overlay are refused rather than left out, the same way
         // `/transform` refuses the last two: each is on stage under a name the author can see, so a
         // slot that did not resolve them would answer "nothing on stage is named that" about a thing
-        // sitting in plain sight. A layer's own front-to-back is `z=`, which `/layer` already writes.
+        // sitting in plain sight. A layer's own front-to-back is its place in the scene's layers.
         target: targetParam(["image", "text", "character"], { core: true, refuses: ["layer", "video", "vfx"] }),
     },
     build(args, ctx): StoryBlock {

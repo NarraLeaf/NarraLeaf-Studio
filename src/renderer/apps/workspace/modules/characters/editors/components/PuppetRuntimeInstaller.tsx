@@ -68,7 +68,7 @@ export function PuppetRuntimeInstaller(props: {
     onInstalled: (backend: string) => void;
 }) {
     // `locale` decides which translation of the guide the links open; see puppetRuntimeDocsUrl.
-    const { t, locale } = useTranslation();
+    const { t, locale, formatList } = useTranslation();
     const { context } = useWorkspace();
     const runtime: KnownPuppetRuntime | null = props.target.kind === "known"
         ? knownPuppetRuntimeFor(props.target.id)
@@ -154,7 +154,7 @@ export function PuppetRuntimeInstaller(props: {
             const installed = await installPrebuiltPuppetRuntime(context.project, name, { kind, path } as never);
             return {
                 backend: installed.backend,
-                summary: installed.registered.join(", "),
+                summary: formatList(installed.registered, { style: "narrow" }),
                 // Said out loud rather than silently corrected: the name the author's characters must use
                 // is the one the module registers, and it just changed under them.
                 note: installed.renamedFrom

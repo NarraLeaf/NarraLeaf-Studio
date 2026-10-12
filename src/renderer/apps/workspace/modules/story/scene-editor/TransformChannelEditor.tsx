@@ -31,6 +31,7 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { useFloatingLayer, useHostDocument } from "@/lib/components/layout";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { placementWordFor } from "./commands/transitions";
+import { clampToAlignReach } from "./commands/transformVocabulary";
 import { AssetField } from "./AssetField";
 import { TransformChannelPreview } from "./TransformChannelPreview";
 import { TransformCardMenu } from "./TransformCardMenu";
@@ -452,17 +453,19 @@ function channelBody(
             control: <PositionControl value={to.position} t={t} onChange={position => setProps({ position })} />,
             below: placementWordFor(to.position) ? undefined : (
                 <div className="flex items-center gap-1.5">
+                    {/* Held to the reach the command line takes, so the row never stores a pair its own
+                        line would refuse - pixels typed where shares belong stop at the bound. */}
                     <AxisNumber
                         label={t("storyInspector.transformChannel.xAlign")}
                         value={to.position?.xalign}
                         fallback={0.5}
-                        onChange={xalign => setProps({ position: { ...(to.position ?? {}), xalign } })}
+                        onChange={xalign => setProps({ position: { ...(to.position ?? {}), xalign: clampToAlignReach(xalign) } })}
                     />
                     <AxisNumber
                         label={t("storyInspector.transformChannel.yAlign")}
                         value={to.position?.yalign}
                         fallback={0.5}
-                        onChange={yalign => setProps({ position: { ...(to.position ?? {}), yalign } })}
+                        onChange={yalign => setProps({ position: { ...(to.position ?? {}), yalign: clampToAlignReach(yalign) } })}
                     />
                 </div>
             ),

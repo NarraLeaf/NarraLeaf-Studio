@@ -42,10 +42,19 @@ export class ValidationService {
     }
 
     /**
-     * Validate if app ID contains only allowed characters
+     * Whether an app id can be written down as typed.
+     *
+     * Two shapes, both lowercase. A bare name (`my-game`), which a build files under NarraLeaf's own
+     * namespace; and a reverse-domain id (`com.studio.game`), which a build uses as the package and
+     * bundle id verbatim - `deriveGameAppId` was written to take one, and a studio publishing to a
+     * store needs its own. The dotted shape is held to that function's own pattern, so every id the
+     * wizard accepts with a dot is one the build takes as it is, and none of its segments is empty or
+     * ends in a hyphen. That also keeps a dot from ending the name of the project's folder, which is
+     * named after this id and which Windows would silently shorten.
      */
     static validateAppId(appId: string): boolean {
-        return /^[a-z0-9-]+$/.test(appId);
+        return /^[a-z0-9-]+$/.test(appId)
+            || /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(appId);
     }
 
     /**

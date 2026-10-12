@@ -21,6 +21,7 @@ import {
 } from "@shared/types/blueprint/graph";
 import type { UIInputBinding, UIInputPointerGesture } from "@shared/types/ui-editor/inputAction";
 import { isTextEntryTarget } from "../app/isTextEntryTarget";
+import { isSyntheticKeyPress } from "./syntheticKeyPress";
 
 /** The physical inputs down at one moment. */
 export type UIHeldInputs = {
@@ -183,7 +184,8 @@ export function createInputHoldTracker(view: Window | null | undefined): UIInput
     const onKeyDown = (event: KeyboardEvent): void => {
         // Typing is not a gesture. The same exemption the app-level key dispatch makes, for the
         // same reason: holding a letter down in a name field must not read as holding an action.
-        if (isTextEntryTarget(event.target)) {
+        // Nor is a press the game made for a pad's Confirm, which no key-up will ever follow.
+        if (isTextEntryTarget(event.target) || isSyntheticKeyPress(event)) {
             return;
         }
         const key = normalizeBlueprintKeyboardEventKeyName(event.key);

@@ -108,9 +108,10 @@ export const help = {
             title: "Keyboard and Mouse",
             body:
                 "Shortcuts and Mouse Actions lists every shortcut and mouse action in Studio, grouped by editor, "
-                + "including those that apply only while a particular editor is open. Opened from an editor, it "
-                + "starts at that editor's group.\n"
+                + "including those that apply only while a particular editor is open. What works in the focused "
+                + "editor or panel is listed first.\n"
                 + "\n"
+                + "- The search box filters the list by name, key or group.\n"
                 + "- Every shortcut can be changed in Settings, under Shortcuts. Mouse actions, and the few keys "
                 + "that Settings does not list, are fixed.\n"
                 + "- A changed shortcut is updated in the sheet, the menus and the command palette.",
@@ -182,6 +183,15 @@ export const help = {
                 + "- In picture-in-picture, the live preview stays on screen over the other editors and shows the scene "
                 + "of the scene editor used last.\n"
                 + "- Edits to the Game UI appear in the live preview as they are made.\n"
+                + "- Layers, at the top of the live preview, shows the scene's layers. The list on the left runs front to back, "
+                + "and layers at the same distance form one level. Distance is measured from the base layer, which holds everything not placed on another layer and is at 1: "
+                + "larger values are farther away and move less with the camera, and at ∞ a layer stays still. Click a level's "
+                + "value to type a distance. Drag a row onto another level to join it, or between two levels to make a new one; "
+                + "drag the name on a layer to change its distance, and close to another level it joins that level. The small view "
+                + "in the corner shows the camera moving. The Layers button in the scene's title bar opens the same view, and /layer name adds a layer "
+                + "to the scene.\n"
+                + "- The small view in the corner of Layers grows while the pointer is on it: the camera follows the pointer, scrolling zooms, "
+                + "and it settles back when the pointer leaves. With a camera row that sets the camera's position selected, it starts from that row's shot.\n"
                 + "- The ▶ on a row, Play from this row, runs the scene in Dev Mode starting at that row.",
         },
         storyCommands: {
@@ -316,6 +326,10 @@ export const help = {
                 + "- The library groups ready-made motions by purpose. Choosing one copies it into the project, "
                 + "and the copy can be edited.\n"
                 + "- A motion describes how something moves, not what moves. The row names the target.\n"
+                + "- Each motion is made for one kind of object (character, image, text, layer or camera) and "
+                + "is offered only on rows that move that kind.\n"
+                + "- In the bottom panel, double-click a motion to open its editor. Its name, repeats and "
+                + "preview pictures are set in the inspector.\n"
                 + "- The preview is drawn at the size the game draws, so its timing matches playback.",
         },
         assets: {
@@ -775,6 +789,7 @@ export const help = {
                 + "The Problems panel lists the findings and updates them shortly after each edit. The status bar shows how many errors and warnings there are.\n"
                 + "\n"
                 + "- Selecting a finding opens the place it is about. Its ? opens the rule: what it found and how to fix it.\n"
+                + "- Each rule reports at the level set in Project ▸ Project ▸ Project check. A minor warning is listed in the panel, is not counted in the status bar, and never stops a build.\n"
                 + "- Check Project reads every file again, including assets changed outside Studio.\n"
                 + "- Running the checks modifies nothing.",
         },

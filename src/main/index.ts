@@ -11,12 +11,24 @@ import {
     readCommandLineRunIdentity,
 } from '@/app/application/commandLineRunEnd';
 import { installWindowTag, readWindowTag } from '@shared/utils/windowTag';
+import { isMcpStdioLaunch } from '@/app/application/managers/agent/agentStdioBridge';
+import { startAgentStdioBridge } from '@/app/application/managers/agent/agentStdioMain';
+
+// `--mcp-stdio`: this process is the stdio bridge an MCP client launched, not a Studio. It forwards
+// JSON-RPC between its standard streams and the running Studio's endpoint, and none of what follows
+// may run - no app, no profile claimed, no single-instance lock asked for (asking would make the
+// running Studio open its home screen), no window. First, because it must hide the Dock icon and
+// turn the GPU off before Electron is ready. See `agentStdioMain.ts`.
+const mcpStdioBridge = isMcpStdioLaunch(process.argv);
+if (mcpStdioBridge) {
+    startAgentStdioBridge(electronApp, process.argv);
+}
 
 // Before anything that can fail. A `--build`, `--test` or `--lint` launch has nobody at the screen,
 // and from here on every failure that would otherwise put something in front of a person - the
 // error box Electron shows for a throw below, the crash prompt, a quit nobody asked for - ends the
 // run with exit 4 and a report instead. Null for every other launch. See `commandLineRunEnd.ts`.
-const commandLineRun = installCommandLineRunEnd(process.argv, createProcessRunEndHost(electronApp));
+const commandLineRun = mcpStdioBridge ? null : installCommandLineRunEnd(process.argv, createProcessRunEndHost(electronApp));
 // And into the profile's log, as the run's own lines are. Log sinks are shared by every logger, so
 // this reaches the file from the moment `BaseApp` opens it - including when `App.create` then fails
 // a few statements later, which is exactly the log a person goes looking in.
@@ -24,7 +36,9 @@ const bootLogger = new Logger('MainProcess');
 commandLineRun?.useLog(line => bootLogger.info(`[CommandLine] ${line}`));
 // Before any window exists: every one of them, dialogs and popups included, carries the session's
 // label when the launch asked for one. See `windowTag.ts`.
-installWindowTag(electronApp, readWindowTag(process.env));
+if (!mcpStdioBridge) {
+    installWindowTag(electronApp, readWindowTag(process.env));
+}
 
 /**
  * Build the app, or hand a failure to build it to the command-line run.
@@ -102,7 +116,7 @@ function ignoredByCommandLineRun(instance: App, what: string): boolean {
     return true;
 }
 
-const app = createApp();
+const app = mcpStdioBridge ? null : createApp();
 if (app) {
     start(app);
 }

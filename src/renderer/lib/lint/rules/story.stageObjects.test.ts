@@ -126,6 +126,21 @@ describe("story/stage-object-missing", () => {
         expect(rule("story/stage-object-missing").defaultSeverity).toBe("error");
     });
 
+    it("reads a layer off the scene's layers, and names one the scene does not have as a layer", async () => {
+        const blocks = [
+            actionBlock("onFog", { action: "image", operation: "create", objectName: "mist", assetId: "asset-image", layer: { kind: "custom", sourceBlockId: "fog", name: "fog" } }),
+            actionBlock("onGone", { action: "image", operation: "create", objectName: "dust", assetId: "asset-image", layer: { kind: "custom", sourceBlockId: "gone", name: "gone" } }),
+            actionBlock("hideFog", { action: "layer", operation: "hide", objectName: "fog", target: { kind: "custom", sourceBlockId: "fog", name: "fog" } }),
+            actionBlock("hideGone", { action: "layer", operation: "hide", objectName: "gone", target: { kind: "custom", sourceBlockId: "gone", name: "gone" } }),
+        ];
+        const entry = storyEntry(blocks);
+        entry.document.scenes[SCENE_ID].layers = [{ kind: "custom", id: "fog", name: "fog" }, { kind: "displayable" }, { kind: "background" }];
+        const findings = await run("story/stage-object-missing", createTestLintContext({ stories: [entry] }));
+        expect(findings.map(finding => finding.location.kind === "story" ? finding.location.blockId : null)).toEqual(["onGone", "hideGone"]);
+        expect(findings.every(finding => finding.messageKey === "lint.rule.storyStageObjectMissing.messageLayer")).toBe(true);
+        expect(findings[0].messageParams).toEqual({ object: "gone" });
+    });
+
     it("reports a row acting on an object no row creates", async () => {
         const findings = await run(
             "story/stage-object-missing",
@@ -361,12 +376,6 @@ describe("story/declared-never-shown", () => {
         ])).toEqual([]);
     });
 
-    it("leaves a layer alone, since a layer is visible the moment it exists", async () => {
-        expect(await reportedRows("story/declared-never-shown", [
-            actionBlock("layer", { action: "layer", operation: "create", objectName: "foreground" }),
-        ])).toEqual([]);
-    });
-
     it("reads an ambience overlay within its own scene, as every other stage object", async () => {
         // An overlay leaves the stage with the scene that declares it, so a show in a later scene
         // reveals nothing of it: the declaration is never shown, and says so.
@@ -419,13 +428,6 @@ describe("story/stage-object-duplicate", () => {
         expect(await reportedRows("story/stage-object-duplicate", [
             createImage("first", "poster"),
             createImage("second", "sign"),
-        ])).toEqual([]);
-    });
-
-    it("keeps the kinds apart: an image and a layer may share a word", async () => {
-        expect(await reportedRows("story/stage-object-duplicate", [
-            createImage("image", "fx"),
-            actionBlock("layer", { action: "layer", operation: "create", objectName: "fx" }),
         ])).toEqual([]);
     });
 
@@ -649,7 +651,9 @@ describe("lint and the story compiler answer as one", () => {
     function compilerReportedRows(diagnostics: { level: string; blockId?: string; message: string }[]): string[] {
         return diagnostics
             .filter(diagnostic => diagnostic.level === "error"
-                && (diagnostic.message.includes("is not on stage") || diagnostic.message.includes("is not playing")))
+                && (diagnostic.message.includes("is not on stage") || diagnostic.message.includes("is not playing")
+                    // A layer is the scene's, so the compiler says the scene has none of that name.
+                    || diagnostic.message.includes("This scene has no layer")))
             .map(diagnostic => diagnostic.blockId ?? "");
     }
 

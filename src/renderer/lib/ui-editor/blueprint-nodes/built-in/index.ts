@@ -34,6 +34,7 @@ import { sliderBlueprintNodes } from "./sliderNodes";
 import { soundBlueprintNodes } from "./soundNodes";
 import { structuralBlueprintNodes } from "./structuralNodes";
 import { switchBlueprintNodes } from "./switchNodes";
+import { videoBlueprintNodes } from "./videoNodes";
 import { textInputBlueprintNodes } from "./textInputNodes";
 import { storyVariableBlueprintNodes } from "./storyVariableNodes";
 import { visitedBlueprintNodes } from "./visitedNodes";
@@ -77,6 +78,7 @@ export { endingBlueprintNodes } from "./endingNodes";
 export { sliderBlueprintNodes } from "./sliderNodes";
 export { soundBlueprintNodes } from "./soundNodes";
 export { switchBlueprintNodes } from "./switchNodes";
+export { videoBlueprintNodes } from "./videoNodes";
 export { textInputBlueprintNodes } from "./textInputNodes";
 export { stringBlueprintNodes } from "./stringNodes";
 export { textBlueprintNodes } from "./textNodes";
@@ -134,6 +136,7 @@ export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...withHostApiOwnerKinds(textBlueprintNodes),
     ...withHostApiOwnerKinds(sliderBlueprintNodes),
     ...withHostApiOwnerKinds(switchBlueprintNodes),
+    ...withHostApiOwnerKinds(videoBlueprintNodes),
     ...withHostApiOwnerKinds(textInputBlueprintNodes),
     ...withHostApiOwnerKinds(widgetPropertyBlueprintNodes),
     ...devtoolsBlueprintNodes,

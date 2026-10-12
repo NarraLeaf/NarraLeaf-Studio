@@ -7,6 +7,8 @@
 import {
     parseShadowLikeFragment,
     shadowLayerDataToCss,
+    textShadowCssWithSpread,
+    textShadowLayerDataToCss,
     type EffectShadowLayerData,
 } from "./shadowLayerCodec";
 import { parseSimpleFilter, serializeSimpleFilter, type FilterPresetId } from "./effectFilterCodec";
@@ -175,7 +177,13 @@ export function normalizeElementEffectValues(raw: unknown): ElementEffectValues 
 
 export type ShadowSlotKind = "outer" | "inner" | "glow";
 
-/** Convert stored shadow to one CSS fragment for box-shadow / text-shadow composition. */
+/**
+ * Convert stored shadow to one CSS fragment for `box-shadow` composition.
+ *
+ * Not for `text-shadow`: a spread is a fourth length `text-shadow` does not accept, and one in the
+ * value makes the browser drop the whole declaration. Text goes through
+ * {@link effectTextShadowStoredToCss}.
+ */
 export function effectShadowStoredToCss(value: EffectShadowStored | null, slot: ShadowSlotKind): string {
     if (!value) {
         return "";
@@ -185,6 +193,22 @@ export function effectShadowStoredToCss(value: EffectShadowStored | null, slot: 
     }
     const mode = slot === "inner" ? "inner" : slot === "glow" ? "glow" : "outer";
     return shadowLayerDataToCss(value.layer, mode);
+}
+
+/**
+ * Convert a stored text shadow to a `text-shadow` value every browser draws, spread included.
+ *
+ * The one entry point for every widget that paints a text shadow - text, a button's label, a text
+ * field, the dialogue line the engine types out - so the editor and the game draw the same outline.
+ */
+export function effectTextShadowStoredToCss(value: EffectShadowStored | null): string {
+    if (!value) {
+        return "";
+    }
+    if (value.storage === "css") {
+        return textShadowCssWithSpread(value.css);
+    }
+    return textShadowLayerDataToCss(value.layer);
 }
 
 /** Serialize filter stored value to a CSS filter() fragment (excluding blur() from effectBlur). */
@@ -233,6 +257,8 @@ export const WIDGET_EFFECT_KINDS_BY_TYPE: Record<string, readonly VisualEffectKi
     "nl.button": ["blur", "backgroundBlur", "shadow", "textShadow", "innerShadow", "blend", "glow", "filter"],
     // Reuses the button appearance kind, so it offers the same set (text shadow applies to the field text).
     "nl.textInput": ["blur", "backgroundBlur", "shadow", "textShadow", "innerShadow", "blend", "glow", "filter"],
+    // Glyphs and words over the scene, as a text is.
+    "nl.inputHints": ["blur", "textShadow", "blend", "filter"],
 };
 
 export function getSupportedEffectKindsForWidgetType(type: string): readonly VisualEffectKind[] {

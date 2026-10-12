@@ -446,7 +446,7 @@ export function ImageCropper({
                         <div className="flex flex-col">
                             <span className="text-sm font-semibold">{headerLabel}</span>
                             <span className="text-xs text-fg-muted">
-                                {imageSize ? `${imageSize.width}x${imageSize.height}px` : t("common.loading")}
+                                {imageSize ? `${imageSize.width} × ${imageSize.height}` : t("common.loading")}
                             </span>
                         </div>
                     </div>
@@ -559,7 +559,7 @@ export function ImageCropper({
 
                                     {dragState && dragState.handle !== "move" && (
                                         <div className="absolute left-2 bottom-2 bg-black/60 text-2xs px-2 py-1 rounded-md text-white pointer-events-none">
-                                            {Math.round(selection.width)} x {Math.round(selection.height)}
+                                            {Math.round(selection.width)} × {Math.round(selection.height)}
                                         </div>
                                     )}
                                 </div>

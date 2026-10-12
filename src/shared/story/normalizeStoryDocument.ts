@@ -30,6 +30,8 @@
 
 import {
     deriveUnassignedSceneIds,
+    isDefaultSceneLayerStack,
+    normalizeSceneLayerStack,
     STORY_DOCUMENT_SCHEMA_VERSION,
     StoryBlock,
     StoryBlockId,
@@ -40,7 +42,7 @@ import {
     StorySceneId,
 } from "@shared/types/story";
 import { assertValidStoryId } from "@shared/utils/storyId";
-import { migrateStoryDocumentToLatest, StoryDocumentTooNewError } from "@shared/story/migrateStoryDocument";
+import { migrateStoryDocumentToLatest, StoryDocumentTooNewError, type StoryMigrationOptions } from "@shared/story/migrateStoryDocument";
 
 /**
  * Refuse a document this build cannot represent.
@@ -86,9 +88,12 @@ export function assertSupportedStoryDocument(document: StoryDocument): void {
  * scenes listing rows that are gone, rows whose parent is gone (re-rooted rather than dropped, so
  * the row stays reachable in the editor), an entry scene that no longer exists, and a scene's
  * opening track with no asset behind it.
+ *
+ * `options` reaches the migration ladder: the story service passes the command language a note that
+ * stands in for a row the ladder could not carry over is written in.
  */
-export function normalizeStoryDocument(document: StoryDocument, now?: string): StoryDocument {
-    const migrated = migrateStoryDocumentToLatest(document);
+export function normalizeStoryDocument(document: StoryDocument, now?: string, options?: StoryMigrationOptions): StoryDocument {
+    const migrated = migrateStoryDocumentToLatest(document, options);
     assertSupportedStoryDocument(migrated);
     assertValidStoryId(migrated.id);
     return normalizeMigrated(migrated, now);
@@ -218,6 +223,14 @@ function normalizeScene(scene: StoryScene): StoryScene {
         normalized.defaultBackgroundAssetId = defaultBackgroundAssetId;
     } else {
         delete normalized.defaultBackgroundAssetId;
+    }
+    // A stack the stage can have, and none at all when it is the one every scene starts with - so a
+    // scene that gave its layers back to the default holds no residue of them.
+    const layers = normalizeSceneLayerStack(scene.layers);
+    if (isDefaultSceneLayerStack(layers)) {
+        delete normalized.layers;
+    } else {
+        normalized.layers = layers;
     }
     return normalized;
 }

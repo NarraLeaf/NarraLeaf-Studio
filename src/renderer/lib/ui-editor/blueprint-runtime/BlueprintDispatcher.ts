@@ -19,7 +19,9 @@ import {
     collectSurfaceEventHeadNodeIdsForDispatch,
     collectGlobalEventHeadNodeIdsForDispatch,
     isBlueprintEventDispatchHeadType,
+    namesInputPress,
 } from "@shared/types/blueprint/graph";
+import { UI_SURFACE_INPUT_ACTION_EVENT } from "@shared/types/ui-editor/inputActionEvent";
 import { findBlueprintFnByRef, isBlueprintFnVisibleToOwner } from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
 import { writeBlueprintNodeOutputValues } from "@/lib/ui-editor/blueprint-nodes/nodeOutputValues";
 import type { BlueprintElementRef } from "@shared/types/blueprint/valueTypes";
@@ -1815,6 +1817,32 @@ export async function invokeBlueprintFnCall(options: {
  * Dispatch a lifecycle event into the surfaceMain blueprint for a given surface.
  * Used for events like "surfaceInit" that fire when a page is entered.
  */
+/**
+ * Whether a surface's own blueprint, or the global one (`surfaceId` null), has a graph that names
+ * this key or pad button press (`namesInputPress`). Read without running anything, before any graph
+ * hears the press, so a caller can still keep the browser's default for it.
+ */
+export function blueprintNamesInputPress(input: {
+    blueprintDocument: BlueprintDocument;
+    surfaceId: string | null;
+    eventName: string;
+    eventPayload: Record<string, unknown>;
+}): boolean {
+    const ownerKey = input.surfaceId ? surfaceMainOwnerKey(input.surfaceId) : GLOBAL_MAIN_OWNER_KEY;
+    const blueprintId = input.blueprintDocument.ownerRecords[ownerKey]?.blueprintId;
+    const bp = blueprintId ? input.blueprintDocument.blueprints[blueprintId] : undefined;
+    return Object.values(bp?.graphs.events ?? {}).some(eventGraph =>
+        namesInputPress(eventGraph.graph?.nodes, input.eventName, input.eventPayload));
+}
+
+/** Whether the global blueprint has an `On Action` graph for this action. Read without running it. */
+export function globalBlueprintAnswersInputAction(blueprintDocument: BlueprintDocument, actionId: string): boolean {
+    const blueprintId = blueprintDocument.ownerRecords[GLOBAL_MAIN_OWNER_KEY]?.blueprintId;
+    const bp = blueprintId ? blueprintDocument.blueprints[blueprintId] : undefined;
+    return Object.values(bp?.graphs.events ?? {}).some(eventGraph =>
+        collectGlobalEventHeadNodeIdsForDispatch(eventGraph.graph?.nodes, UI_SURFACE_INPUT_ACTION_EVENT, { actionId }).length > 0);
+}
+
 export async function dispatchSurfaceBlueprintEvent(options: {
     blueprintDocument: BlueprintDocument;
     persistentVariables: PersistentVariableRuntimeTable;

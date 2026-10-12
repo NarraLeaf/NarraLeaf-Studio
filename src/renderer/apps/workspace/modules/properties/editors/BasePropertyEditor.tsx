@@ -34,9 +34,13 @@ export function BasePropertyEditor<T extends AssetType>({ asset, onChange, child
         setDescription(asset.description);
     }, [asset]);
 
-    // Keep focus on tag input after adding a tag
+    // Keep focus on tag input after adding a tag - and only then. The field also starts out empty,
+    // and focusing it on mount pulled the caret out of whatever the author had just clicked, the
+    // same as in `TagsField`.
+    const refocusAfterAddRef = useRef(false);
     useEffect(() => {
-        if (newTag === "") {
+        if (newTag === "" && refocusAfterAddRef.current) {
+            refocusAfterAddRef.current = false;
             // Small delay to ensure DOM has updated
             const timer = setTimeout(() => {
                 tagInputRef.current?.focus();
@@ -83,6 +87,7 @@ export function BasePropertyEditor<T extends AssetType>({ asset, onChange, child
         if (newTag.trim() && !tags.includes(newTag.trim())) {
             const newTags = [...tags, newTag.trim()];
             setTags(newTags);
+            refocusAfterAddRef.current = true;
             setNewTag("");
             saveChanges('tags', newTags);
         }

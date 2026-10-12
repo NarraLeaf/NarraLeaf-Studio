@@ -22,7 +22,8 @@ describe("storyVerbVocabulary", () => {
             ["character", ["enter", "exit", "move", "expression", "setName", "setMotion", "setSkin", "setParams"]],
             ["image", ["create", "setSource", "show", "hide"]],
             ["text", ["create", "setText", "show", "hide", "setFontSize", "setFontColor"]],
-            ["layer", ["create", "setZIndex", "show", "hide", "transform"]],
+            // `setZIndex` is kept for the rows that hold it and has no command; see the test below.
+            ["layer", ["show", "hide", "transform"]],
             ["video", ["hide", "play", "pause", "resume", "stop", "seek"]],
             ["vfx", ["create", "show", "hide", "pause", "resume", "setRate"]],
             ["audio", ["setBgm", "playSound", "stopSound", "pauseSound", "resumeSound", "setVolume", "setRate", "seekSound"]],
@@ -39,6 +40,10 @@ describe("storyVerbVocabulary", () => {
             }
         }
         expect(unknown).toEqual([]);
+    });
+
+    it("names no command for a layer's z-index row, which no command writes any more", () => {
+        expect(storyVerbCommandId(payload({ action: "layer", operation: "setZIndex" }))).toBeNull();
     });
 
     it("names the verb-carrying payloads that own no operation", () => {

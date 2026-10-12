@@ -4,6 +4,7 @@ import {
     decodeBlueprintOwnerKey,
     decodeLegacyBlueprintOwnerKey,
     encodeBlueprintOwnerKey,
+    readTypedBlueprintOwnerKey,
 } from "./ownerKey";
 
 /** One of every owner kind, so a kind added without a case here is visible as a gap. */
@@ -99,5 +100,27 @@ describe("reading owner keys written before the parts were escaped", () => {
                 elementId: "e-1",
                 propPath: "items.0/label",
             });
+    });
+});
+
+describe("reading an owner key someone typed", () => {
+    const element = "8f1d2c3b-1111-4222-8333-944455556666";
+
+    it("takes the key as the ids read, with the built-in surface's separator left in", () => {
+        expect(readTypedBlueprintOwnerKey("widgetMain:narraleaf-studio:main-surface:8f1d2c3b-1111-4222-8333-944455556666")).toEqual({
+            kind: "widgetMain",
+            surfaceId: "narraleaf-studio:main-surface",
+            elementId: element,
+        });
+    });
+
+    it("takes the escaped key this file writes, unchanged", () => {
+        const key = encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: "narraleaf-studio:main-surface", elementId: element });
+        expect(readTypedBlueprintOwnerKey(` ${key} `)).toEqual(decodeBlueprintOwnerKey(key));
+    });
+
+    it("names nothing for text that is not an owner key", () => {
+        expect(readTypedBlueprintOwnerKey("开始")).toBeNull();
+        expect(readTypedBlueprintOwnerKey("widgetMain:only-one-part")).toBeNull();
     });
 });

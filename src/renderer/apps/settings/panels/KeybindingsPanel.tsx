@@ -40,7 +40,7 @@ function canonicalChord(binding: string): string {
  * the catalog still list under "Other" so they remain visible and resettable.
  */
 export function KeybindingsPanel() {
-    const { t } = useTranslation();
+    const { t, formatList } = useTranslation();
     const [query, setQuery] = useState("");
     const [recordingId, setRecordingId] = useState<string | null>(null);
     const [overrides, setOverrides] = useState<Record<string, string>>({});
@@ -261,7 +261,7 @@ export function KeybindingsPanel() {
                                             <span
                                                 className="flex shrink-0 items-center gap-1 text-2xs text-warning"
                                                 data-tip={t("workspace.shell.keybindings.conflict", {
-                                                    name: conflictWith.join("、"),
+                                                    name: formatList(conflictWith, { style: "narrow" }),
                                                 })}
                                             >
                                                 <TriangleAlert className="h-3 w-3" />

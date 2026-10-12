@@ -173,5 +173,5 @@ export function getInputBindingRoutingDevices(binding: UIInputBinding): Readonly
     return inputBindingDevices(binding) as ReadonlySet<string>;
 }
 
-/** The 17 standard buttons the add-menu lists. Hardware names, not localised. */
+/** The 17 standard buttons and the left stick's four directions the add-menu lists. Hardware names, not localised. */
 export const GAMEPAD_BINDING_BUTTONS = BLUEPRINT_GAMEPAD_BUTTONS;

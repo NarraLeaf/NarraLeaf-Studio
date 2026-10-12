@@ -195,6 +195,9 @@ const KEY_ACTIVATED_CONTROL_SELECTOR = [
     "[role=option]",
     "[role=tab]",
     "[data-ui-list-item-index][tabindex]",
+    // A box an author made reachable by navigation presses itself on Enter, as a button does.
+    '[data-ui-nav-focusable="always"]',
+    '[data-ui-nav-focusable="press"]',
 ].join(", ");
 
 /** The keys a focused control acts on without anyone asking it to: activation. */

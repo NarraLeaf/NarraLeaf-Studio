@@ -53,6 +53,8 @@ export type StoryScenePreviewStageContext = {
     compiled: NlrStageSession["compiled"];
     targetBlockId: string | null;
     phase: StoryScenePreviewPhase;
+    /** When the target is a camera transform: the camera's settled props once it has played. */
+    targetCamera: Record<string, unknown> | null;
 };
 
 /**
@@ -74,7 +76,7 @@ export type StoryScenePreviewController = {
     stageLayers: StoryScenePreviewStageLayer[];
     designSize: { width: number; height: number };
     targetBlockId: string | null;
-    /** Phase-2 seam: the live stage at the previewed row (motion editor prefill). */
+    /** The live stage at the previewed row: the layer view's framing reads the camera it leaves. */
     getStageContext: () => StoryScenePreviewStageContext | null;
     /** Wire into NlrStageLayer's onLiveGameReady. */
     onLiveGameReady: (sessionId: string, liveGame: LiveGame) => void;
@@ -108,6 +110,8 @@ type PreviewRun = {
     posed: boolean;
     arrived: boolean;
     targetBlockId: string | null;
+    /** See {@link StoryScenePreviewStageContext.targetCamera}. */
+    targetCamera: Record<string, unknown> | null;
     /** Compiled to show its line in full: without the line's pauses, and with `startRevealPump`. */
     skipTyping: boolean;
     /** The game's own advance on this session's line (see `StoryPreviewGame.advance`). */
@@ -659,6 +663,7 @@ export function useStoryScenePreviewController(input: {
                 posed: false,
                 arrived: false,
                 targetBlockId,
+                targetCamera: snapshot.targetCamera,
                 skipTyping,
                 advance: previewGame.advance,
                 afterNewGame: previewGame.afterNewGame,
@@ -844,6 +849,7 @@ export function useStoryScenePreviewController(input: {
             // While a newer run builds hidden, the visible stage is still the old frame — report
             // what *it* is doing, not the pending run's phase.
             phase: run.arrived ? "settled" : phaseRef.current,
+            targetCamera: run.targetCamera,
         };
     }, []);
 

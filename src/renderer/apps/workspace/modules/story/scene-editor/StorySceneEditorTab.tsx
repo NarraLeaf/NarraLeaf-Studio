@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { BookOpen, Check, ChevronDown, ChevronRight, Code, FileText, Filter, Image as ImageIcon, MonitorPlay, Plus, Rows3, Trash2 } from "lucide-react";
+import { BookOpen, Check, ChevronDown, ChevronRight, Code, FileText, Filter, Image as ImageIcon, Layers, MonitorPlay, Plus, Rows3, Trash2 } from "lucide-react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
@@ -15,6 +15,7 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene, StorySceneUpdate } from "@shared/types/story";
+import { sceneLayerUses } from "@shared/types/story";
 import { listScenesInDocumentOrder } from "@shared/types/story";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
@@ -68,6 +69,9 @@ import type { TranslationKey } from "@shared/i18n";
 import { filterOutSelectedDescendants, getCharacterName, getContainerHeaderInfo, getTextSegment } from "./storySceneBlockUtils";
 import { StoryFindBar } from "./StoryFindBar";
 import { StoryRowFilterMenu } from "./StoryRowFilterMenu";
+import type { StoryPreviewLayersApi } from "./preview/StoryLayerStackView";
+import { previewCameraRowPayload, type StoryPreviewCameraApi } from "./preview/storyPreviewCameraModel";
+import { createBlockForCommand } from "./storyActionCommands";
 import { appendDeveloperIdSection } from "@/lib/developer";
 import { EMPTY_STORY_ROW_FILTER, storyRowFilterSize } from "./storyRowFilter";
 import { StoryCommandLineProvider } from "./StoryCommandLineView";
@@ -105,6 +109,7 @@ import {
     STORY_PREVIEW_PANE_MAX_FRACTION,
     STORY_PREVIEW_PANE_MIN_WIDTH,
     type StoryScenePreviewPaneMode,
+    type StoryScenePreviewView,
 } from "./preview/storyScenePreviewSessionStore";
 import {
     dragStoryPreviewDockWidth,
@@ -200,6 +205,12 @@ function describeScrollContext(
 
 /** A row's `py-1`, the part of its height the density's box does not cover. */
 const ROW_VERTICAL_PADDING_PX = 8;
+
+/**
+ * How many frames a returning tab waits for its open slot's row to be windowed back in before it
+ * stops trying to put the caret back. The list measures within a frame or two of being shown.
+ */
+const SLOT_REFOCUS_MAX_FRAMES = 20;
 
 /** "No drag in progress", as one shared value — a fresh `new Set()` would re-render every row. */
 const EMPTY_DRAG_GROUP: Set<StoryBlockId> = new Set();
@@ -845,6 +856,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // otherwise leave the panel's callbacks closed over the pre-change scene — the next panel edit would
     // then record that stale scene as its undo snapshot, so one Ctrl+Z silently reverts two edits.
     const editorRef = useRef(editor);
+    /** The layer view's opener, for the inspector bridge published before it is defined. */
+    const showLayerViewRef = useRef<() => void>(() => undefined);
     editorRef.current = editor;
 
     // Whole-scene writes that arrive from elsewhere (a script import, run from the story panel or the
@@ -1193,7 +1206,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     }
                 },
                 generateTextId: () => editorRef.current.uuidService?.generate() ?? crypto.randomUUID(),
-                onCreateLayer: nextBeforeBlockId => editorRef.current.createLayerBeforeBlock(nextBeforeBlockId),
+                onCreateLayer: () => editorRef.current.createSceneLayer(),
+                onManageLayers: () => showLayerViewRef.current(),
                 onUpdateScene: patch => editorRef.current.updateSceneMetadata(patch),
             });
         }
@@ -1450,6 +1464,27 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     target.focus();
                 }
             });
+        } else if (target && target.closest("[data-story-insert-slot]") && editorRef.current.editorMode.kind === "insert") {
+            // The open slot's field, unmounted with its row while the tab was hidden (the windowed
+            // list renders nothing at 0 px) and mounted again as a new element once the list has
+            // measured. The caret goes back into that one, at the end of the line it still holds,
+            // so the author carries on typing where they left off.
+            let frames = 0;
+            const refocusSlot = () => {
+                if (lastFocusedRef.current !== target || editorRef.current.editorMode.kind !== "insert") {
+                    return;
+                }
+                const field = editorRef.current.insertInputRef.current;
+                if (field && field.isConnected) {
+                    field.focus();
+                    field.setSelectionRange(field.value.length, field.value.length);
+                    return;
+                }
+                if (frames++ < SLOT_REFOCUS_MAX_FRAMES) {
+                    window.requestAnimationFrame(refocusSlot);
+                }
+            };
+            window.requestAnimationFrame(refocusSlot);
         }
     }, [active, scrollContainerRef]);
 
@@ -1544,6 +1579,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const previewWidth = previewPane?.width ?? STORY_PREVIEW_PANE_DEFAULT_WIDTH;
     const previewMode: StoryScenePreviewPaneMode = previewPane?.mode ?? "dock";
     const previewSkipTyping = previewPane?.skipTyping === true;
+    const layerViewShown = previewOpen && previewPane?.mode !== "float" && previewPane?.view === "layers";
     const previewWidthRef = useRef(previewWidth);
     previewWidthRef.current = previewWidth;
     const editorBodyRef = useRef<HTMLDivElement | null>(null);
@@ -1792,6 +1828,58 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             return rect ? { left: rect.left, right: rect.right, bottom: rect.bottom } : null;
         });
     }, []);
+    /**
+     * The scene's layers are the live preview's layer view: the header button and every "manage
+     * layers" entry go there, opening the preview - docked, since the view belongs to the scene's own
+     * editor - when it was closed or floating. The button takes the view back to the shot when it is
+     * already showing.
+     */
+    const showLayerView = useCallback(() => {
+        if (!previewHub) {
+            return;
+        }
+        previewHub.noteFocused(tabId);
+        previewHub.patchLayout({ open: true, mode: "dock", view: "layers" });
+    }, [previewHub, tabId]);
+    showLayerViewRef.current = showLayerView;
+    const toggleLayerView = useCallback(() => {
+        const layout = previewHub?.getLayout();
+        if (layout?.open && layout.mode === "dock" && layout.view === "layers") {
+            previewHub?.patchLayout({ view: "stage" });
+            return;
+        }
+        showLayerView();
+    }, [previewHub, showLayerView]);
+    const setPreviewView = useCallback((view: StoryScenePreviewView) => {
+        previewHub?.patchLayout({ view });
+    }, [previewHub]);
+    // `/layer` writes no row: what it did is in the scene's layers, so that is where the answer is shown.
+    const sceneLayersCommitted = editor.sceneLayersCommitted;
+    useEffect(() => {
+        if (sceneLayersCommitted > 0) {
+            showLayerView();
+        }
+    }, [sceneLayersCommitted, showLayerView]);
+    // Built every render on purpose: the scene is edited in place, so nothing about the object says
+    // that its layers changed.
+    const layersApi: StoryPreviewLayersApi | undefined = editor.scene
+        ? {
+            scene: editor.scene,
+            readOnlyReason: freeze.frozen ? freeze.reason : null,
+            setSceneLayers: layers => editorRef.current.setSceneLayers(layers),
+            createSceneLayer: () => editorRef.current.createSceneLayer(),
+            layerUses: layerId => sceneLayerUses(editorRef.current.scene, layerId).length,
+        }
+        : undefined;
+    // The selected row, when it is a camera row that states a pose and the preview shows it: the layer
+    // view's moving preview rests on that shot.
+    const framedCameraBlockId = editor.activeBlockId;
+    const framedCameraPayload = framedCameraBlockId && editor.scene && !freeze.frozen && framedCameraBlockId === preview.targetBlockId
+        ? previewCameraRowPayload(editor.scene.blocks[framedCameraBlockId])
+        : null;
+    const previewCamera: StoryPreviewCameraApi | null = framedCameraBlockId && framedCameraPayload
+        ? { blockId: framedCameraBlockId, payload: framedCameraPayload }
+        : null;
     const [menuTargetId, setMenuTargetId] = useState<StoryBlockId | null>(null);
     const openRowContextMenu = useCallback((event: ReactMouseEvent, blockId: StoryBlockId) => {
         if (!editor.selectedBlockIds.has(blockId)) {
@@ -2361,6 +2449,18 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     {/* The manual used to be a modal, which meant closing what you were reading before
                         you could use it. It is the right-hand panel now, so the documentation and the
                         line you are writing are on screen together. */}
+                    {/* The scene's layers: the live preview's layer view, the shot taken apart into them. */}
+                    <button
+                        type="button"
+                        onClick={toggleLayerView}
+                        data-tip={t("story.sceneLayers.open")}
+                        aria-label={t("story.sceneLayers.open")}
+                        aria-pressed={layerViewShown}
+                        className={["rounded-md p-1.5 transition-colors", layerViewShown ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
+                        data-story-layer-view-button=""
+                    >
+                        <Layers className="h-4 w-4" />
+                    </button>
                     <button
                         type="button"
                         onClick={openCommandManual}
@@ -2480,6 +2580,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                         characters={editor.characters}
                                         commandContext={editor.commandContext}
                                         inputRef={editor.insertInputRef}
+                                        draftRef={editor.insertDraftRef}
                                         onValueChange={editor.handleInsertValueChange}
                                         onCommitNarration={focusNext => editor.commitNarrationFromInsert(focusNext)}
                                         onDismissChooser={editor.dismissInsertChooser}
@@ -2505,6 +2606,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                         characters={editor.characters}
                                         commandContext={editor.commandContext}
                                         inputRef={editor.insertInputRef}
+                                        draftRef={editor.insertDraftRef}
                                         onValueChange={editor.handleInsertValueChange}
                                         onCommitNarration={focusNext => editor.commitNarrationFromInsert(focusNext)}
                                         onDismissChooser={editor.dismissInsertChooser}
@@ -2547,6 +2649,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                         characters={editor.characters}
                                         commandContext={editor.commandContext}
                                         inputRef={editor.insertInputRef}
+                                        draftRef={editor.insertDraftRef}
                                         onValueChange={editor.handleInsertValueChange}
                                         onCommitNarration={focusNext => editor.commitNarrationFromInsert(focusNext)}
                                         onDismissChooser={editor.dismissInsertChooser}
@@ -2574,6 +2677,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         characters={editor.characters}
                         commandContext={editor.commandContext}
                         inputRef={editor.insertInputRef}
+                        draftRef={editor.insertDraftRef}
                         onValueChange={editor.handleInsertValueChange}
                         onCommitNarration={focusNext => editor.commitNarrationFromInsert(focusNext)}
                         onDismissChooser={editor.dismissInsertChooser}
@@ -2748,6 +2852,10 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                             skipTyping={previewSkipTyping}
                             onToggleSkipTyping={togglePreviewSkipTyping}
                             stageAspectRatio={previewStacked ? preview.designSize.width / preview.designSize.height : undefined}
+                            layers={layersApi}
+                            camera={previewCamera}
+                            view={previewPane?.view}
+                            onSetView={setPreviewView}
                         />
                     </div>
                 </>

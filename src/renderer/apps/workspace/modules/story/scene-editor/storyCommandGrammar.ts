@@ -162,6 +162,14 @@ export type StoryCommandParamType =
      */
     | { kind: "appTag" }
     | { kind: "surface" }
+    /**
+     * One of the project's input actions, by name: the `Confirm` in `/waitinput Confirm`.
+     *
+     * A closed set resolved the way {@link surface} is - the candidates are the actions the project
+     * declares, a name matching none of them is an error, and the row stores the action's id so a
+     * rename never reaches it.
+     */
+    | { kind: "inputAction" }
     | { kind: "variable" }
     /**
      * The subject of a generic verb (`/show poster`, `/hide Alice`, `/vol piano`): a character or a
@@ -249,6 +257,13 @@ export type StoryCommandParamType =
            * Optional on input in every locale — the bare number is still the canonical spelling.
            */
           unit?: string;
+          /**
+           * What the number MEANS, when its type alone does not say - the unit it is counted in and
+           * which way a positive value goes (`xoffset=` is design pixels, + is right). In English, for
+           * the command catalogue an agent reads, exactly as the text branch's `format` is; the editor
+           * does not print it.
+           */
+          format?: string;
       }
     | { kind: "boolean" }
     | { kind: "color" }
@@ -270,8 +285,12 @@ export type StoryCommandParamType =
     /**
      * Free text with no candidates. Two shapes use it: a `greedy` line of prose (`/say`'s text), and a
      * single-token *name the author invents* for a stage object (`/layer overlay`).
+     *
+     * `format`, when a text slot is not free at all but has a shape of its own that no candidate
+     * list can show (`pos=0.3,0.5`), says what that shape is - in English, for the command catalogue
+     * an agent reads; the editor does not print it.
      */
-    | { kind: "text" }
+    | { kind: "text"; format?: string }
     /**
      * A computed value: the `gold + 1` in `/set gold gold + 1`, the `score > 90` in `/if score > 90`.
      *
@@ -481,6 +500,8 @@ export function allowsFreeValue(type: StoryCommandParamType): boolean {
         // A page that is not in the project is not a page anything can be shown, so there is no
         // name here that free text could stand for either.
         case "surface":
+        // An input action the project does not declare is one no player can perform.
+        case "inputAction":
         case "appTag":
         case "characterForm":
         // Content is typed by its target: an image target's content is an asset that must resolve.

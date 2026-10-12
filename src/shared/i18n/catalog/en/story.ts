@@ -239,6 +239,7 @@ export const story = {
         },
         reason: {
             blueprintAction: "A blueprint runs this row, and a blueprint has no script form.",
+            inputAction: "This row works with the player's input or the controller's rumble, and has no script form.",
             blueprintCondition: "A blueprint decides this condition.",
             blueprintInterpolation: "A blueprint computes a value inside this text.",
             inlineEvent: "The text carries an event that fires while it is being typed out.",
@@ -269,6 +270,7 @@ export const story = {
             danglingBranch: "This branch has no condition above it.",
             badTag: "This line carries a formatting tag that is unknown, or left open.",
             badExpression: "This expression does not resolve.",
+            layerDeclaration: "A script cannot declare a layer. Add it to the scene's layers",
         },
         // The scene read and written as a script inside the editor. Editable for a scene the script
         // can say in full; read-only for good for one it cannot - which is the whole job of `gate`:
@@ -539,10 +541,35 @@ export const story = {
     },
     layerField: {
         label: "Layer",
-        defaultName: "Displayable layer",
-        notOnStageTitle: "No layer with this name is declared earlier in this scene. Pick an existing layer",
-        hint: "Layer",
+        defaultName: "Base layer",
+        notOnStageTitle: "This scene has no layer with this name. Pick one of its layers",
         createNew: "Create new layer",
+        backgroundName: "Background layer",
+        displayableHint: "The default layer, always at distance 1",
+        backgroundHint: "No nearer than the base layer",
+        manage: "Manage layers…",
+    },
+    sceneLayers: {
+        open: "Scene layers",
+        unnamed: "Unnamed layer",
+        defaultName: "Layer {index}",
+        distance: "Distance {value}",
+        distanceColumn: "Distance",
+        distanceTip: "Measured from the base layer, which is at 1. Larger values are farther away and move less with the camera; at ∞ the layer stays still",
+        distanceInvalid: "Enter a value from 0.5 to 100, or ∞",
+        levelKeepsBase: "The base layer stays at 1; the other layers at this level move together",
+        frontToBack: "Front to back",
+        fixedTip: "The base layer is always at distance 1; every other distance is measured from it",
+        backgroundDragTip: "Drag to change the layer's distance; the background layer cannot come nearer than the base layer",
+        dragTip: "Drag to change the layer's distance",
+        remove: "Remove layer",
+        inUseOne: "1 row uses this layer",
+        inUseMany: "{count} rows use this layer",
+        nameTaken: "This scene already has a layer with this name",
+        nameReserved: "This name refers to a built-in layer",
+        swayCaption: "Camera moving",
+        framingCaption: "This row's shot",
+        lookHint: "The camera follows the pointer; scroll to zoom",
     },
     appearance: {
         noPoses: "This character has no poses yet.",
@@ -698,6 +725,16 @@ export const story = {
         labelName: "Label",
         endingName: "Ending",
         quitPage: "Page",
+        rumblePreset: "Shape",
+        rumbleLeft: "Left Motor",
+        rumbleRight: "Right Motor",
+        rumbleWait: "Wait for the rumble",
+        inputLock: "Lock / Unlock",
+        inputAction: "Input Action",
+        inputTimeout: "Time Limit",
+        inputResult: "Result Variable",
+        holdDuration: "Hold Seconds",
+        mashCount: "Presses",
         scene: "Scene",
         track: "Audio Track",
         appTag: "Build Variant",
@@ -730,8 +767,10 @@ export const story = {
         hold: "Hold Seconds",
         opacity: "Opacity",
         size: "Font Size",
-        z: "Z-Index",
         // The prop vocabulary (`commands/transformVocabulary.ts`) — one key per channel of the bag.
+        // The two offsets are design pixels added to `pos=`, + right and + up.
+        xOffset: "X Offset px",
+        yOffset: "Y Offset px",
         zoom: "Zoom",
         scale: "Scale",
         scaleX: "Scale X",
@@ -786,6 +825,15 @@ export const story = {
      * that merely echoes a canonical value, so these entries change nothing on their own.
      */
     enumValue: {
+        tap: "tap",
+        pulse: "pulse",
+        impact: "impact",
+        quake: "quake",
+        alert: "alert",
+        custom: "custom",
+        stop: "stop",
+        lock: "lock",
+        unlock: "unlock",
         // How each repeat runs (`repeatType=`).
         loop: "loop",
         reverse: "reverse",
@@ -1003,6 +1051,7 @@ export const story = {
             label: "Label in this scene",
             appTag: "Build variant",
             surface: "Page",
+            inputAction: "Input action",
             variable: "Variable",
             content: "New content, typed by the target",
             color: "Color",
@@ -1049,17 +1098,13 @@ export const story = {
             one: "Drag {count} row",
             other: "Drag {count} rows",
         },
-        // Two strings per row button, and the difference is load-bearing: `insert`/`delete` are the
-        // ACCESSIBLE NAMES and `insertTitle`/`deleteTitle` the tooltips, which add the keybinding. They
-        // read the same because a screen reader and a pointer deserve the same sentence — these used to
-        // be the bare words "Insert" and "Delete", left over from when the buttons had visible text, so
-        // the only thing announced was a verb with no object. The shortcut stays out of the name (it
-        // belongs to the tooltip and the cheat sheet, not to what the control IS), and the bracket
-        // convention lives in the catalogue because zh wants full-width ones.
+        // The accessible name and the tooltip of each row button. They are one sentence because a
+        // screen reader and a pointer deserve the same one - these used to be the bare words "Insert"
+        // and "Delete", left over from when the buttons had visible text, so the only thing announced
+        // was a verb with no object. The key is not part of it: the tooltip prints it after the
+        // sentence (`data-tip-shortcut`), as it does on every button with a key.
         insert: "Insert a blank row after this one",
         delete: "Delete this row",
-        insertTitle: "Insert a blank row after this one ({keys})",
-        deleteTitle: "Delete this row ({keys})",
         playFromRow: "Play from this row",
         playBranch: "Play this branch",
         insertPlaceholder: "Type narration, {trigger} for actions, # for characters…",
@@ -1137,6 +1182,8 @@ export const story = {
         dock: "Dock in the scene editor",
         pip: "Picture-in-picture",
         skipTyping: "Skip typing animation",
+        viewStage: "Stage",
+        viewLayers: "Layers",
         selectRow: "Select a story row to preview its stage state.",
         failed: "Preview failed",
         settleTimeout: "The stage did not finish setting up in time.",
@@ -1274,7 +1321,7 @@ export const story = {
         notOnStage: {
             image: "Image “{name}” is not on stage; an earlier row has to create it.",
             text: "Text “{name}” is not on stage; an earlier row has to create it.",
-            layer: "Layer “{name}” is not on stage; an earlier row has to create it.",
+            layer: "This scene has no layer “{name}”.",
             video: "Video “{name}” is not on stage; an earlier row has to play it.",
             ambience: "Ambience effect “{name}” is not on stage; an earlier row has to create it.",
             character: "Character “{name}” is not on stage; an earlier row has to bring it on stage.",
@@ -1418,7 +1465,7 @@ export const story = {
         image: { label: "Image", detail: "Declare an image on stage; /show reveals it" },
         text: { label: "Text", detail: "Declare text on stage; /show reveals it" },
         vfx: { label: "Ambience", detail: "Declare a looping full-screen overlay: petals, rain, dust, light" },
-        layer: { label: "Layer", detail: "Create a render layer" },
+        layer: { label: "Layer", detail: "Add a layer to this scene" },
         swap: { label: "Swap", detail: "Replace an object's image or text" },
         play: { label: "Play", detail: "Play a video from the asset library, or play a video again" },
         front: { label: "Bring to Front", detail: "Draw a character or a stage object in front of the rest of its layer" },
@@ -1464,6 +1511,11 @@ export const story = {
         // Named for what the player sees, not for the act: "Quit" alone reads as leaving the game.
         // The detail carries the half the name cannot - the run ends without an ending being recorded.
         quit: { label: "Quit to page", detail: "End this playthrough at this line and show a page. No ending is recorded" },
+        rumble: { label: "Rumble", detail: "Vibrate the player's controller. Pick a preset, or set each motor" },
+        input: { label: "Input lock", detail: "Lock or unlock player input. While locked, clicking to advance, the advance key, auto-forward and skipping do nothing; choices can still be picked. Unlock before the next line of dialogue" },
+        waitInput: { label: "Wait for input", detail: "Wait until the player performs an input action, optionally within a time limit" },
+        hold: { label: "Hold", detail: "Wait until the player holds an input action down for a number of seconds" },
+        mash: { label: "Mash", detail: "Wait until the player presses an input action a number of times" },
         blueprint: { label: "Blueprint", detail: "Run a Story Action Blueprint" },
         // The detail line is where "kept across scenes" belongs — every command has one, and it is the
         // first thing an author reads about the camera in the slash menu and the command reference.
@@ -1521,6 +1573,8 @@ export const story = {
         cut: "Cut point",
         ending: "Ending",
         quit: "Quit to page",
+        rumble: "Rumble",
+        input: "Input",
         jump: "Jump",
         note: "Note",
         invalid: "Invalid",
@@ -1569,6 +1623,7 @@ export const story = {
         image: "{operation} image {name}",
         text: "{operation} text {name}",
         layer: "{operation} layer {name}",
+        layerZIndex: "Layer {name} to z-index {z}",
         video: "{operation} video {name}",
         vfx: "{operation} ambience {name}",
         nvl: "NVL block",
@@ -1599,6 +1654,18 @@ export const story = {
         cutUnknown: "Cut point",
         ending: "Ending {name}",
         quit: "Quit to {page}",
+        rumble: "Rumble: {shape}",
+        rumbleStop: "Stop rumble",
+        inputLock: "Lock player input",
+        inputUnlock: "Unlock player input",
+        inputActionNamed: "\"{name}\"",
+        inputAnyAction: "any input",
+        inputActionUnknown: "an input action",
+        /** A command line naming an action no longer in the project, as `sceneUnknown` names a scene. */
+        inputActionNotFound: "unknown input action",
+        inputWait: "Wait for {action}",
+        inputHold: "Hold {action} for {seconds}s",
+        inputMash: "Press {action} {count} times",
         quitUnset: "Quit to page",
         jump: "Jump {scene}",
         note: "Note",
@@ -1649,6 +1716,7 @@ export const story = {
     history: {
         deleteScene: "delete scene {name}",
         deleteChapter: "delete chapter {name}",
+        renameChapter: "rename chapter {name}",
         deleteStory: "delete story {name}",
         deleteAnimation: "delete motion {name}",
         // One word for both halves of a drag: changing chapters and changing position are the same

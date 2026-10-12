@@ -18,8 +18,18 @@ import type {
     InfoFieldDefinition,
     SectionFieldDefinition,
     SelectFieldDefinition,
+    SelectOption,
     TextFieldDefinition,
+    ToggleFieldDefinition,
 } from "../framework/types";
+import { navigationTargetOptions } from "../fields/navigationTargetOptions";
+import {
+    normalizeUISurfaceNavigation,
+    readUISurfaceNavigation,
+    UI_NAVIGATION_AUTO_FOCUS_DEFAULT,
+    type UINavigationAutoFocus,
+    type UISurfaceNavigation,
+} from "@shared/types/ui-editor/navigation";
 import { SurfaceBlueprintEntrySection } from "../blueprint/SurfaceBlueprintEntrySection";
 import { SurfaceBackgroundImageField } from "../fields/SurfaceBackgroundImageField";
 import { SurfaceInputActionsField } from "../fields/SurfaceInputActionsField";
@@ -82,6 +92,42 @@ function SurfacePageAnimationField({ data }: CustomFieldProps<SceneEditorContext
     // two child timings: space them out as they arrive, and do not leave before they have.
     return createElement(PageAnimationEditor, { settings, onChange: update, showChildTiming: true });
 }
+
+/** The elements a surface's focus may start on, for its select, in outline order. */
+function surfaceElementOptions(data: SceneEditorContext, t: TranslateFn): SelectOption[] {
+    return [
+        { value: "", label: t("properties.scene.navigation.defaultFocusAuto") },
+        ...navigationTargetOptions({
+            document: data.documentService.getDocument(),
+            rootId: data.surface.rootElementId,
+            t,
+            current: readUISurfaceNavigation(data.surface).defaultFocusElementId,
+        }),
+    ];
+}
+
+function updateSurfaceNavigation(
+    data: SceneEditorContext,
+    field: string,
+    change: (current: UISurfaceNavigation) => UISurfaceNavigation,
+): void {
+    data.documentService.updateSurface(data.surface.id, surface => {
+        const next = normalizeUISurfaceNavigation(change(readUISurfaceNavigation(surface)));
+        const settings = { ...(surface.settings ?? {}) };
+        if (next) {
+            settings.navigation = next;
+        } else {
+            delete settings.navigation;
+        }
+        surface.settings = settings;
+    }, { mergeKey: `surface:${data.surface.id}:navigation:${field}` });
+}
+
+/**
+ * Whether keys and a pad move about this surface at all: every page does, and of the Game UI only the
+ * choice menu - the rest of the stage is reached by pointing (see `focusNavigation`).
+ */
+const isNavigable = (surface: UISurface): boolean => !isGameUi(surface) || surface.mount.slotId === "choice";
 
 export const scenePropertySchema = (t: TranslateFn) =>
     createPropertyEditorSchema<SceneEditorContext>({
@@ -175,6 +221,53 @@ export const scenePropertySchema = (t: TranslateFn) =>
                 }),
             ],
             hidden: data => isGameUi(data.surface),
+        }),
+        defineField<SceneEditorContext, SectionFieldDefinition<SceneEditorContext>>({
+            id: "scene.navigation",
+            type: "section",
+            title: t("properties.scene.navigation.title"),
+            collapsible: true,
+            defaultCollapsed: true,
+            hidden: data => !isNavigable(data.surface),
+            fields: [
+                defineField<SceneEditorContext, SelectFieldDefinition<SceneEditorContext>>({
+                    id: "scene.navigation.defaultFocus",
+                    type: "select",
+                    label: t("properties.scene.navigation.defaultFocus"),
+                    options: data => surfaceElementOptions(data, t),
+                    getValue: data => readUISurfaceNavigation(data.surface).defaultFocusElementId ?? "",
+                    setValue: (data, value) => updateSurfaceNavigation(data, "defaultFocus", current => ({
+                        ...current,
+                        defaultFocusElementId: value ? String(value) : undefined,
+                    })),
+                }),
+                defineField<SceneEditorContext, SelectFieldDefinition<SceneEditorContext>>({
+                    id: "scene.navigation.autoFocus",
+                    type: "select",
+                    label: t("properties.scene.navigation.autoFocus"),
+                    tip: t("properties.scene.navigation.autoFocusTip"),
+                    options: [
+                        { value: "device", label: t("properties.scene.navigation.autoFocusDevice") },
+                        { value: "always", label: t("properties.scene.navigation.autoFocusAlways") },
+                        { value: "never", label: t("properties.scene.navigation.autoFocusNever") },
+                    ],
+                    getValue: data => readUISurfaceNavigation(data.surface).autoFocus ?? UI_NAVIGATION_AUTO_FOCUS_DEFAULT,
+                    setValue: (data, value) => updateSurfaceNavigation(data, "autoFocus", current => ({
+                        ...current,
+                        autoFocus: value === UI_NAVIGATION_AUTO_FOCUS_DEFAULT ? undefined : (value as UINavigationAutoFocus),
+                    })),
+                }),
+                defineField<SceneEditorContext, ToggleFieldDefinition<SceneEditorContext>>({
+                    id: "scene.navigation.wrap",
+                    type: "toggle",
+                    label: t("properties.scene.navigation.wrap"),
+                    getValue: data => readUISurfaceNavigation(data.surface).wrap === true,
+                    setValue: (data, value) => updateSurfaceNavigation(data, "wrap", current => ({
+                        ...current,
+                        wrap: value || undefined,
+                    })),
+                }),
+            ],
         }),
         defineField<SceneEditorContext, SelectFieldDefinition<SceneEditorContext>>({
             id: "scene.gameUiSlot",

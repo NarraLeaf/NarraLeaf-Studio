@@ -25,6 +25,7 @@ import { assetLibraryFreezeScope } from "../assetLiveSession";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
 import { TooltipGroup } from "@/lib/tooltip";
+import { useShortcutLabels } from "@/apps/workspace/hooks/useShortcutLabels";
 import { Select } from "@/lib/components/elements";
 import { ASSET_UNDECODABLE } from "@/lib/workspace/services/assets/assetReadFailure";
 import { openAssetPreviewTabsInEditor } from "../dnd/openDraggedAssetsInEditor";
@@ -429,6 +430,9 @@ export function VideoPreviewEditor({ tabId, payload, active }: EditorComponentPr
         idPrefix: `video-preview-${tabId}`,
         catalogPrefix: "assets.video.",
     });
+    // The toolbar names the key each of its buttons shares with the keyboard, as rebound in Settings.
+    const shortcuts = useShortcutLabels();
+    const key = (id: string) => shortcuts.forBinding(`assets.video.${id}`);
 
     // ---- zoom menu -----------------------------------------------------------
 
@@ -492,6 +496,7 @@ export function VideoPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     disabled={!ready}
                     className={ICON_BUTTON_CLASS}
                     data-tip={playing ? t("assets.audio.pause") : t("assets.audio.play")}
+                    data-tip-shortcut={key("play-pause")}
                     aria-label={playing ? t("assets.audio.pause") : t("assets.audio.play")}
                 >
                     {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
@@ -502,6 +507,7 @@ export function VideoPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     disabled={!ready}
                     className={ICON_BUTTON_CLASS}
                     data-tip={t("assets.audio.editor.toStart")}
+                    data-tip-shortcut={key("to-start")}
                     aria-label={t("assets.audio.editor.toStart")}
                 >
                     <SkipBack className="h-4 w-4" />
@@ -512,6 +518,7 @@ export function VideoPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     disabled={!ready}
                     className={ICON_BUTTON_CLASS}
                     data-tip={t("assets.video.editor.previousFrame")}
+                    data-tip-shortcut={key("previous-frame")}
                     aria-label={t("assets.video.editor.previousFrame")}
                 >
                     <StepBack className="h-4 w-4" />
@@ -522,6 +529,7 @@ export function VideoPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     disabled={!ready}
                     className={ICON_BUTTON_CLASS}
                     data-tip={t("assets.video.editor.nextFrame")}
+                    data-tip-shortcut={key("next-frame")}
                     aria-label={t("assets.video.editor.nextFrame")}
                 >
                     <StepForward className="h-4 w-4" />
@@ -531,6 +539,7 @@ export function VideoPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     onClick={() => setLoop(value => !value)}
                     className={controlButtonClass(loop)}
                     data-tip={t("assets.audio.editor.loop")}
+                    data-tip-shortcut={key("loop")}
                     aria-label={t("assets.audio.editor.loop")}
                     aria-pressed={loop}
                 >
@@ -640,25 +649,43 @@ export function VideoPreviewEditor({ tabId, payload, active }: EditorComponentPr
                 </div>
             </div>
 
-            {/* One status bar, values only. */}
-            <div className="flex shrink-0 items-center gap-3 border-t border-edge px-3 py-1 text-2xs tabular-nums text-fg-subtle">
-                {hasSelection && selection && (
-                    <span className="text-fg-muted">
-                        {formatTime(selection.start)} – {formatTime(selection.end)}
-                        {" ("}
-                        {formatTime(selection.end - selection.start)}
-                        {")"}
-                    </span>
-                )}
-                <span className="flex-1" />
-                {currentFrame !== null && totalFrames !== null && (
-                    <span>{t("assets.video.editor.frame", { frame: currentFrame + 1, total: totalFrames })}</span>
-                )}
-                {frameSize && <span>{frameSize.width}×{frameSize.height}</span>}
-                {frameRate && <span>{formatFrameRate(frameRate)} fps</span>}
-                {transparent && <span>{t("assets.video.editor.transparent")}</span>}
-                {bytes && <span>{formatBytes(bytes.byteLength)}</span>}
-                <span className="max-w-[16rem] truncate">{asset.name}</span>
+            {/* One status bar, values only.
+
+                Each value is one unit: it never breaks across lines and is never squeezed. In a
+                narrow editor group the values that do not fit drop out whole, from the right - the
+                name first, the selection last - by wrapping onto a second line this one-line-high
+                strip does not show; the empty first item lets the first value wrap away too, and
+                values are spaced by their own left margin so that item adds no space. The frame
+                counter holds the width of its widest reading, so playing the clip never makes the
+                values after it drop out and come back as the number grows a digit. */}
+            <div className="flex shrink-0 border-t border-edge py-1 pr-3 text-2xs tabular-nums text-fg-subtle">
+                <div className="flex h-4 min-w-0 flex-1 flex-wrap content-start items-center overflow-hidden whitespace-nowrap">
+                    <span aria-hidden className="h-4 w-0" />
+                    {hasSelection && selection && (
+                        <span className="ml-3 text-fg-muted">
+                            {formatTime(selection.start)} – {formatTime(selection.end)}
+                            {" ("}
+                            {formatTime(selection.end - selection.start)}
+                            {")"}
+                        </span>
+                    )}
+                    <span aria-hidden className="ml-3 flex-1" />
+                    {currentFrame !== null && totalFrames !== null && (
+                        <span className="ml-3 inline-grid justify-items-end">
+                            <span aria-hidden className="invisible col-start-1 row-start-1">
+                                {t("assets.video.editor.frame", { frame: totalFrames, total: totalFrames })}
+                            </span>
+                            <span className="col-start-1 row-start-1">
+                                {t("assets.video.editor.frame", { frame: currentFrame + 1, total: totalFrames })}
+                            </span>
+                        </span>
+                    )}
+                    {frameSize && <span className="ml-3">{frameSize.width}×{frameSize.height}</span>}
+                    {frameRate && <span className="ml-3">{formatFrameRate(frameRate)} fps</span>}
+                    {transparent && <span className="ml-3">{t("assets.video.editor.transparent")}</span>}
+                    {bytes && <span className="ml-3">{formatBytes(bytes.byteLength)}</span>}
+                    <span className="ml-3 max-w-[16rem] truncate">{asset.name}</span>
+                </div>
             </div>
         </div>
     );

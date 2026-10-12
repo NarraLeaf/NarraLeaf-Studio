@@ -35,7 +35,7 @@ import {
     subjectGroupId,
     type StoryCommandCategoryId,
 } from "./storyCommandCategories";
-import { searchActionCommands } from "./storyCommandSearch";
+import { commandNamedByWord, searchActionCommands } from "./storyCommandSearch";
 import {
     characterScopedActions,
     characterScopedSidebarGroups,
@@ -511,7 +511,9 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                     </span>
                 ) : null}
             </div>
-            <div className="relative min-w-0 py-1">
+            {/* `nl-story-row-content` is the container a narrow row's action cluster is laid out
+                against (styles.css). */}
+            <div className="nl-story-row-content relative min-w-0 py-1">
                 <RowNesting
                     depth={row.depth}
                     nextDepth={row.nextRowDepth ?? 0}
@@ -675,8 +677,11 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                     )}
                     <div
                         aria-hidden={!showRowActions}
+                        // Who the cluster is showing for. In a narrow group it floats over the words
+                        // (`.nl-story-row-actions`), and there it shows for the pointer only.
+                        data-shown-for={hovered || actionsFocused ? "pointer" : active ? "active" : undefined}
                         className={[
-                            "flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1 transition-opacity",
+                            "nl-story-row-actions flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1 transition-opacity",
                             containerInfo ? "ml-auto" : "",
                             showRowActions ? "opacity-100" : "pointer-events-none opacity-0",
                             controlsOverArtwork ? "nl-on-media" : "",
@@ -1162,8 +1167,8 @@ function TextEditBox(props: {
  * Shown on hover *and* on the active row: the editor is keyboard-first, and a control that only
  * exists under a pointer is a control a keyboard author never learns about. They stay `tabIndex={-1}`
  * on purpose — `Tab` indents the row (see the interaction model), so it is not a focus-traversal key
- * here and these must not swallow it. The keyboard path is the shortcut, which is why the shortcut is
- * on the `title`: that is the whole point of showing them on the active row.
+ * here and these must not swallow it. The keyboard path is the shortcut, which is why the tooltip
+ * names it: that is the whole point of showing them on the active row.
  */
 function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; active: boolean }) {
     const { t } = useTranslation();
@@ -1174,8 +1179,9 @@ function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; ac
     // Rendered from the catalog entries the two keys are bound under, so a key rebound in Settings
     // shows rebound here too; a hint that prints the default is how it drifts from the key it names.
     const shortcuts = useShortcutLabels();
-    const insertKeys = shortcuts.forBinding("story.insert-blank-after-selection") ?? "";
-    const deleteKeys = shortcuts.forBinding("story.delete") ?? "";
+    // A frozen button's tooltip is the freeze reason, which no key follows.
+    const insertKeys = freeze.frozen ? undefined : shortcuts.forBinding("story.insert-blank-after-selection");
+    const deleteKeys = freeze.frozen ? undefined : shortcuts.forBinding("story.delete");
     return (
         <div
             className={[
@@ -1188,11 +1194,12 @@ function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; ac
                 What the accessible names must NOT do is inherit the old visible text: "Insert" and
                 "Delete" were fine as words next to each other in a row's context, and are a verb with
                 no object once they are the only thing a screen reader gets. They now carry the same
-                sentence as the tooltip, minus the keybinding. */}
+                sentence as the tooltip, which prints the key after it. */}
             <button
                 type="button"
                 tabIndex={-1}
-                {...freeze.writes(false, t("story.rows.insertTitle", { keys: insertKeys }))}
+                {...freeze.writes(false, t("story.rows.insert"))}
+                data-tip-shortcut={insertKeys}
                 aria-label={t("story.rows.insert")}
                 className="grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-muted"
                 onClick={event => {
@@ -1205,7 +1212,8 @@ function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; ac
             <button
                 type="button"
                 tabIndex={-1}
-                {...freeze.writes(false, t("story.rows.deleteTitle", { keys: deleteKeys }))}
+                {...freeze.writes(false, t("story.rows.delete"))}
+                data-tip-shortcut={deleteKeys}
                 aria-label={t("story.rows.delete")}
                 className="grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-danger/10 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-muted"
                 onClick={event => {
@@ -2085,7 +2093,7 @@ function CommandGhostHint(props: { value: string; source: string; caret: number;
     // Why the line will not commit, if it will not. It outranks the hint: naming the next slot while
     // the line is already broken answers a question the author is no longer asking.
     const reason = useMemo(
-        () => getCommandLineReason(props.source, props.commandContext),
+        () => getCommandLineReason(props.source, props.commandContext, { typing: true }),
         [ct, props.commandContext, props.source],
     );
     if (!ghost && !reason && !props.confirmation) {
@@ -2122,6 +2130,13 @@ export function InsertRow(props: {
     /** What a name typed on this line may refer to — the same view the resolver reads. */
     commandContext: StoryCommandContext;
     inputRef: RefObject<HTMLTextAreaElement | null>;
+    /**
+     * The controller's copy of the line (`insertDraftRef`), which outlives this component: the slot
+     * renders inside the windowed row list, so a hidden tab or a scroll unmounts it while the slot
+     * stays open. A remount seeds from this rather than from `mode.initialValue`, or the field came
+     * back empty while Enter still committed the text it had lost.
+     */
+    draftRef: RefObject<string>;
     onValueChange: (value: string) => void;
     onCommitNarration: (focusNext: boolean) => void;
     /** Escape #1 — drop the candidates, keep the line. */
@@ -2156,9 +2171,14 @@ export function InsertRow(props: {
      * The slot object is the identity of "which line is being typed", so a new slot re-seeds the
      * field. This is React's documented adjust-state-on-prop-change form rather than an effect: an
      * effect would render one frame of the previous slot's text into the new slot.
+     *
+     * Mounting is not always a new slot: the same slot comes back after its row was windowed out
+     * (a hidden tab measures 0 px and renders no rows; a long scroll does the same). The controller's
+     * draft is the line as it stood, so the field starts from that - what the author sees is then
+     * always what Enter commits. For a slot that has just opened the two are the same text.
      */
     const [seededSlot, setSeededSlot] = useState(props.mode.slot);
-    const [value, setValue] = useState(props.mode.initialValue);
+    const [value, setValue] = useState(() => props.draftRef.current ?? props.mode.initialValue);
     if (seededSlot !== props.mode.slot) {
         setSeededSlot(props.mode.slot);
         setValue(props.mode.initialValue);
@@ -2244,7 +2264,7 @@ export function InsertRow(props: {
 
     // Where the caret is decides what the slot offers, so it has to be state: `/bg fo|` asks for an
     // image, `/bg forest_day t=|` for a transition, and only the caret tells them apart.
-    const [caret, setCaret] = useState(props.mode.initialValue.length);
+    const [caret, setCaret] = useState(() => value.length);
     // `ct` is a dependency here for the same reason it is one in `CommandGhostHint`: the command
     // locale is a hidden input to every parse, so a locale switch has to invalidate these too.
     const cursor = useMemo(() => getCommandCursor(source, caret), [ct, caret, source]);
@@ -2828,19 +2848,22 @@ function useActionCommandMenuState(
     const [activeKey, setActiveKey] = useState<string | null>(null);
     const activeStop = stops.find(stop => stop.key === activeKey) ?? stops[0] ?? null;
     /**
-     * The row an exact abbreviation names. A typed filter otherwise keeps the highlight wherever it
-     * already was, but `/c` is a word the line will turn into one particular command on the next space,
-     * so Enter has to take that command too - the highlight goes to it whenever the rows change.
+     * The row a finished command word names: a spelling the parser reads as one command (`bg`, `char`,
+     * 背景, 表示), or one of the author's abbreviations. A typed filter otherwise keeps the highlight
+     * wherever it already was - and `/show`, lit when the menu opened, still matches "b" and "bg" - but
+     * a finished word is the command the line will be once it is committed, so Enter has to take that
+     * command too: the highlight goes to it whenever the rows change. A built-in spelling comes before
+     * an abbreviation, as it does on the line.
      */
-    const abbreviatedCommandId = abbreviations.get(query.trim().toLowerCase()) ?? null;
-    const abbreviatedKey = abbreviatedCommandId === null
+    const namedCommandId = commandNamedByWord(query, abbreviations);
+    const namedKey = namedCommandId === null
         ? null
-        : stops.find(stop => stop.command.id === abbreviatedCommandId)?.key ?? null;
+        : stops.find(stop => stop.command.id.toLowerCase() === namedCommandId.toLowerCase())?.key ?? null;
 
     useEffect(() => {
-        setActiveKey(current => abbreviatedKey
+        setActiveKey(current => namedKey
             ?? (stops.some(stop => stop.key === current) ? current : stops[0]?.key ?? null));
-    }, [abbreviatedKey, stops]);
+    }, [namedKey, stops]);
 
     const selectKey = (key: string) => {
         setActiveKey(key);

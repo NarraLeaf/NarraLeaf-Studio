@@ -379,6 +379,16 @@ export function useMnemonicReveal(): boolean {
 }
 
 /**
+ * Whether menus in this interface language take their accelerator in brackets even when the label
+ * carries the letter. Chinese and Japanese menu bars do - `文件(F)`, and `Git(G)` beside it - so a
+ * Latin-script name among them (`Agent`) reads as one more menu of the same bar, not as one that
+ * has no accelerator until Alt is held.
+ */
+export function mnemonicsInBrackets(locale: string): boolean {
+    return /^(zh|ja|ko)(-|$)/i.test(locale);
+}
+
+/**
  * A menu's label with its accelerator marked.
  *
  * The letter is underlined where the label already contains it, and appended in brackets where it
@@ -386,18 +396,20 @@ export function useMnemonicReveal(): boolean {
  * labels stop being English. The bracket half is permanent, because a hint that only exists while
  * Alt is held is no hint at all in a language whose labels can never carry the underline; the
  * underline itself appears with Alt, so a label that can carry it stays clean until it is asked for.
+ * `bracketed` asks for the bracket form whatever the label: see {@link mnemonicsInBrackets}.
  */
-export function MnemonicLabel({ label, mnemonic, reveal }: {
+export function MnemonicLabel({ label, mnemonic, reveal, bracketed = false }: {
     label: string;
     mnemonic?: string;
     reveal: boolean;
+    bracketed?: boolean;
 }) {
     const index = mnemonic ? label.toUpperCase().indexOf(mnemonic.toUpperCase()) : -1;
 
     if (!mnemonic) {
         return <>{label}</>;
     }
-    if (index < 0) {
+    if (index < 0 || bracketed) {
         return (
             <>
                 {label}

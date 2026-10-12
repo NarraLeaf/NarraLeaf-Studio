@@ -424,12 +424,13 @@ const SWITCH_EVENTS: readonly WidgetLogicEventDef[] = [
 ];
 
 /**
- * Video and Model: the displayable set, and nothing of their own.
+ * What Video and Model share: the displayable set.
  *
- * Neither widget reports what happens inside it to a blueprint. The video element's play, pause and
- * end, and the puppet backend's ready and error states, drive the widget's own drawing and are not
- * dispatched, and no head node exists to start a graph on them - so none is listed. An event offered
- * here that never fires is a graph an author wires and then waits on forever.
+ * An event is listed only once the widget's renderer raises it in a running game and a head node
+ * exists to start a graph on it. An event offered here that never fires is a graph an author wires
+ * and then waits on forever - Video and Model once listed play / pause / ended and ready / error that
+ * nothing dispatched. The puppet backend's ready and error states still only drive the widget's own
+ * drawing, so Model has nothing of its own; Video adds the one event its renderer raises, below.
  */
 const MEDIA_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
     INIT_EVENT,
@@ -439,6 +440,26 @@ const MEDIA_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
     ...DISPLAYABLE_EVENTS,
     ...BROADCAST_EVENTS,
     ...WINDOW_EVENTS,
+];
+
+/**
+ * Video: the media set, and its clip playing to the end.
+ *
+ * `ended` is the `<video>` element's own event, raised by the video renderer in Dev Mode and in a
+ * built game - once each time the clip reaches its end. A looping clip never reaches it, and the
+ * editor canvas, which never plays on its own, raises nothing. Play and pause are not events: a
+ * graph that started or stopped the clip already knows, and the player has no other way to do either
+ * unless the native controls are showing.
+ */
+const VIDEO_EVENTS: readonly WidgetLogicEventDef[] = [
+    ...MEDIA_WIDGET_EVENTS,
+    {
+        id: "ended",
+        displayName: "Playback ended",
+        description: "Fires once when the clip plays to its end. Never fires while Loop is on.",
+        dispatchKind: "lifecycle",
+        headNodeTypes: ["blueprint.event.head.videoEnded"],
+    },
 ];
 
 const DISPLAYABLE_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
@@ -592,6 +613,20 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
     },
     "nl.text": createTextWidgetLogicApi("Text logic"),
     "nl.dialog.sentence": createTextWidgetLogicApi("Sentence logic"),
+    /**
+     * The input hint bar draws what the buttons do; nothing a player does to it means anything, so it
+     * has no logic of its own. Other graphs show, hide and restyle it like any displayable widget.
+     */
+    "nl.inputHints": {
+        supportsPrivateBlueprint: false,
+        events: [],
+        commands: [...baseCommands],
+        readableState: [
+            { id: "visible", displayName: "Visible" },
+            { id: "enabled", displayName: "Enabled" },
+        ],
+        writableProps: [],
+    },
     "nl.image": {
         supportsPrivateBlueprint: true,
         blueprintLabel: "Image logic",
@@ -615,23 +650,27 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
      * `nl.video` owns the DOM `<video>`, so the split between the two lists below is not cosmetic:
      * `readableState` entries like `currentTime` change inside the element with nothing writing to
      * the override store, and `commands` like Play / Seek are one-shot actions rather than state.
-     * Every command marked `planned` has no implementation behind it.
+     * Play, Pause, Stop and Seek are the `Play Video` family of nodes (`videoNodes.ts`), carried out by
+     * the renderer through the widget runtime store; the volume, mute, loop and speed setters write
+     * the props of the same names over what the author set. Every command marked `planned` has no
+     * implementation behind it. `setSource` is one: no pin carries a video asset, and the build and
+     * the asset references read clips only from the widget's own props.
      */
     "nl.video": {
         supportsPrivateBlueprint: true,
         blueprintLabel: "Video logic",
-        events: MEDIA_WIDGET_EVENTS,
+        events: VIDEO_EVENTS,
         commands: [
             ...baseCommands,
-            { id: "play", displayName: "Play", availability: "planned" },
-            { id: "pause", displayName: "Pause", availability: "planned" },
-            { id: "stop", displayName: "Stop", availability: "planned" },
-            { id: "seek", displayName: "Seek", availability: "planned" },
+            { id: "play", displayName: "Play", capabilityId: "widget.controlVideo", availability: "available" },
+            { id: "pause", displayName: "Pause", capabilityId: "widget.controlVideo", availability: "available" },
+            { id: "stop", displayName: "Stop", capabilityId: "widget.controlVideo", availability: "available" },
+            { id: "seek", displayName: "Seek", capabilityId: "widget.controlVideo", availability: "available" },
             { id: "setSource", displayName: "Set video source", availability: "planned" },
-            { id: "setVolume", displayName: "Set volume", availability: "planned" },
-            { id: "setMuted", displayName: "Set muted", availability: "planned" },
-            { id: "setLoop", displayName: "Set loop", availability: "planned" },
-            { id: "setPlaybackRate", displayName: "Set playback rate", availability: "planned" },
+            { id: "setVolume", displayName: "Set volume", capabilityId: "widget.setVideoProperties", availability: "available" },
+            { id: "setMuted", displayName: "Set muted", capabilityId: "widget.setVideoProperties", availability: "available" },
+            { id: "setLoop", displayName: "Set loop", capabilityId: "widget.setVideoProperties", availability: "available" },
+            { id: "setPlaybackRate", displayName: "Set playback rate", capabilityId: "widget.setVideoProperties", availability: "available" },
         ],
         readableState: [
             { id: "visible", displayName: "Visible" },

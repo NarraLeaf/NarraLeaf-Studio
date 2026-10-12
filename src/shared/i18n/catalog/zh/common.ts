@@ -77,6 +77,9 @@ export const common = {
         warnings: {
             other: "{count} 个警告",
         },
+        minorWarnings: {
+            other: "{count} 个次要警告",
+        },
         infos: {
             other: "{count} 个提示",
         },
@@ -90,5 +93,6 @@ export const common = {
         down: "下",
         left: "左",
         right: "右",
+        overview: "概览",
     },
 } satisfies LocaleNamespace<"common">;

@@ -37,6 +37,7 @@ import type {
     StoryBlockId,
     StoryExpression,
     StoryScene,
+    StorySceneLayer,
     StoryVariableRef,
 } from "@shared/types/story";
 import {
@@ -102,7 +103,9 @@ export type NarralangParseReason =
     /** A rich-text tag this dialect does not name, or one left open. */
     | "badTag"
     /** Expression source that does not resolve. The tree is kept so the row can be repaired. */
-    | "badExpression";
+    | "badExpression"
+    /** A `layer` declaration: a scene's layers are part of the scene, and a script line cannot add one. */
+    | "layerDeclaration";
 
 export type NarralangDiagnostic = {
     /** 1-based, so it can be handed to an editor unchanged. */
@@ -143,6 +146,11 @@ export type NarralangParseOptions = {
      * there instead of on a copy of it. Nothing here decides identity on its own; see the file header.
      */
     readonly blockIdForLine?: (line: number) => StoryBlockId | null;
+    /**
+     * The layers of the scene the text is read into. A script names a layer the scene declares and
+     * never declares one itself, so these are what a layer's name resolves against.
+     */
+    readonly sceneLayers?: readonly StorySceneLayer[];
 };
 
 // --- Lines ------------------------------------------------------------------------------------------
@@ -390,6 +398,11 @@ export function parseNarralangSceneWithDialect(
         createId,
         scope: buildScope(),
     };
+    for (const layer of options.sceneLayers ?? []) {
+        if (layer.kind === "custom" && layer.name.trim() && !state.stage.has(layer.name.trim())) {
+            state.stage.set(layer.name.trim(), { kind: "layer", blockId: layer.id });
+        }
+    }
     scanSymbols(state, roots);
     const rootBlockIds = buildBlocks(state, roots, null, null, body.lineOffset);
     // A line is read several ways before one of them wins, and a defect in a part every reading shares
@@ -509,7 +522,6 @@ function splitSceneHeader(text: string, dialect: NarralangDialect): SceneHeader 
 const CREATORS: Partial<Record<NarralangVerb, NarralangStageEntry["kind"]>> = {
     imageCreate: "image",
     textCreate: "text",
-    layerCreate: "layer",
     videoPlay: "video",
     vfxCreate: "vfx",
 };

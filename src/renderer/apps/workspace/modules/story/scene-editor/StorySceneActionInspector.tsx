@@ -12,6 +12,7 @@ import type {
     StoryEndingPage,
     StoryGroupKind,
     StoryLiteralValue,
+    StoryRumblePresetId,
     StoryScene,
     StorySceneId,
     StoryTransitionRef,
@@ -41,10 +42,13 @@ import {
     storyGroupWaits,
     storyPersistentDefs,
     storyTransitionKindOf,
+    STORY_RUMBLE_DEFAULT_PRESET,
+    STORY_RUMBLE_PRESET_IDS,
     videoLeaveFadeMs,
     videoPlayHidesOnEnd,
     videoPlayWaits,
 } from "@shared/types/story";
+import { parseSceneTranslationUnitId, sceneTranslationUnitId } from "@shared/types/localization";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { buildMergedVariableView } from "@shared/variables/mergedPersistentView";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
@@ -66,6 +70,7 @@ import { audioBusStatusLine } from "@/lib/story/audioBusStatus";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
 import { useProjectAppTags } from "@/lib/story/useProjectAppTags";
 import { useProjectSurfaces } from "@/lib/story/useProjectSurfaces";
+import { useProjectInputActions } from "@/lib/story/useProjectInputActions";
 import { BGM_OBJECT_NAME } from "./storyCommandValues";
 import { useTranslation } from "@/lib/i18n";
 import type { Translator, TranslationKey } from "@shared/i18n";
@@ -515,14 +520,15 @@ const textOperationOptions = (t: TFunc): SelectOption[] => [
 ];
 
 // `transform` is intentionally omitted: transforming a layer goes through the unified
-// "Transform displayable" target list (which includes both built-in layers). The `layer` action
-// stays layer-lifecycle only. `transform` remains valid in the type + compiler so pre-existing
-// layer-transform blocks still compile; it is just no longer offered as a new choice here.
-const layerOperationOptions = (t: TFunc): SelectOption[] => [
-    { value: "create", label: t("common.create") },
-    { value: "setZIndex", label: t("storyInspector.layerOperation.setZIndex") },
+// "Transform displayable" target list (which includes both built-in layers). `transform` remains
+// valid in the type + compiler so pre-existing layer-transform blocks still compile; it is just no
+// longer offered as a new choice here. So is `setZIndex`, offered only on a row that already holds
+// it: the scene's layer stack is where a layer's place is set now. Declaring a layer is not a row's
+// to do at all - the scene declares its layers.
+const layerOperationOptions = (t: TFunc, current: string): SelectOption[] => [
     { value: "show", label: t("common.show") },
     { value: "hide", label: t("common.hide") },
+    ...(current === "setZIndex" ? [{ value: "setZIndex", label: t("storyInspector.layerOperation.setZIndex") }] : []),
 ];
 
 // `play` first: it is the row that brings a clip on, and the others name a clip a play defined.
@@ -573,7 +579,10 @@ export function ActionInspector(props: {
     onClose: () => void;
     onSetDialogueCharacter: (characterId: string | undefined) => void;
     generateTextId: () => string;
-    onCreateLayer: (beforeBlockId: StoryBlockId) => string | null;
+    /** Add a layer to the scene's stack and return its id. */
+    onCreateLayer: () => string | null;
+    /** Show the scene's layers - the live preview's layer view. */
+    onManageLayers?: () => void;
 }) {
     const { context, isInitialized } = useWorkspace();
     const block = props.block;
@@ -590,6 +599,8 @@ export function ActionInspector(props: {
     const resolveMotionName = useStoryMotionNames();
     const blueprintName = useStoryBlueprintNames();
     const variableOptions = useStoryVariableOptions(props.document, props.sceneId);
+    const projectSurfaces = useProjectSurfaces();
+    const projectInputActions = useProjectInputActions();
     const subject = describeBlockSubject(
         block,
         props.characters,
@@ -599,6 +610,10 @@ export function ActionInspector(props: {
         resolveMotionName,
         projectVariableNameOf(variableOptions),
         blueprintName,
+        {
+            surfaceName: surfaceId => projectSurfaces.find(page => page.id === surfaceId)?.name ?? null,
+            inputActionName: actionId => projectInputActions.find(action => action.id === actionId)?.name ?? null,
+        },
     );
     /**
      * The read-only clamp for a frozen workspace, and why it is a `<fieldset>` rather than a
@@ -619,6 +634,7 @@ export function ActionInspector(props: {
             onSetDialogueCharacter={props.onSetDialogueCharacter}
             generateTextId={props.generateTextId}
             onCreateLayer={props.onCreateLayer}
+            onManageLayers={props.onManageLayers}
         />
     );
 
@@ -666,7 +682,10 @@ function InspectorFields(props: {
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
     onSetDialogueCharacter: (characterId: string | undefined) => void;
     generateTextId: () => string;
-    onCreateLayer: (beforeBlockId: StoryBlockId) => string | null;
+    /** Add a layer to the scene's stack and return its id. */
+    onCreateLayer: () => string | null;
+    /** Show the scene's layers - the live preview's layer view. */
+    onManageLayers?: () => void;
 }) {
     const { t } = useTranslation();
     const { block } = props;
@@ -765,6 +784,7 @@ function InspectorFields(props: {
                 characters={props.characters}
                 onChange={props.onUpdatePayload}
                 onCreateLayer={props.onCreateLayer}
+                onManageLayers={props.onManageLayers}
             />
         );
     }
@@ -876,6 +896,9 @@ function SetVariableEditor(props: {
 }) {
     const options = useStoryVariableOptions(props.document, props.sceneId);
     const valueType = resolveRefValueType(props.payload.target, options);
+    const sceneValue = props.payload.expression || typeof props.payload.value !== "string"
+        ? null
+        : parseSceneTranslationUnitId(props.payload.value);
     return (
         <div className="nl-field-grid">
             <VariableRefPicker
@@ -883,11 +906,182 @@ function SetVariableEditor(props: {
                 options={options}
                 onChange={target => props.onChange({ ...props.payload, target })}
             />
-            <VariableValueField
-                valueType={valueType}
-                value={props.payload.value}
-                onChange={value => props.onChange({ ...props.payload, value })}
+            {sceneValue !== null ? (
+                <SceneReferenceValueField
+                    document={props.document}
+                    sceneId={sceneValue}
+                    onChange={value => props.onChange({ ...props.payload, value, expression: undefined })}
+                />
+            ) : (
+                <VariableValueField
+                    valueType={valueType}
+                    value={props.payload.value}
+                    onChange={value => props.onChange({ ...props.payload, value })}
+                />
+            )}
+        </div>
+    );
+}
+
+/**
+ * The value of a `/set` that stores a scene reference (`scene:<id>`), shown and picked as the scene.
+ *
+ * The runtime reads such a value as that scene's name wherever it is displayed - a save slot's place
+ * is what the skeleton stores it for - so the field offers the scenes by name, as the row's own value
+ * token does, and writes the reference back. A reference whose scene is gone reads as missing.
+ */
+function SceneReferenceValueField(props: {
+    document: StoryDocument;
+    sceneId: StorySceneId;
+    onChange: (value: string) => void;
+}) {
+    const { t } = useTranslation();
+    const scenes = listScenesInDocumentOrder(props.document);
+    const current = sceneTranslationUnitId(props.sceneId);
+    const sceneOptions: SelectOption[] = [
+        ...(scenes.some(scene => scene.id === props.sceneId)
+            ? []
+            : [{ value: current, label: t("storyInspector.setVariable.missingScene") }]),
+        ...scenes.map(scene => ({ value: sceneTranslationUnitId(scene.id), label: scene.name })),
+    ];
+    return (
+        <SelectField
+            label={t("storyInspector.field.value")}
+            options={sceneOptions}
+            value={current}
+            onChange={value => props.onChange(String(value))}
+        />
+    );
+}
+
+type InputPayload = Extract<StoryActionPayload, { action: "input" }>;
+
+/** The rumble shapes the picker offers, `stop` last - the one that ends a rumble rather than starting one. */
+const RUMBLE_PICKER_VALUES = [...STORY_RUMBLE_PRESET_IDS, "stop"] as const;
+
+/**
+ * The inspector for `/rumble`, `/input`, `/waitinput`, `/hold` and `/mash`.
+ *
+ * One editor for the one payload arm, switching on the operation the way the row's own line does.
+ * The result variable offers boolean variables only: the row writes `true` or `false`, so a number
+ * would be a choice the command line refuses and the compiler cannot honour.
+ */
+function InputActionEditor(props: {
+    document: StoryDocument;
+    sceneId: StorySceneId;
+    payload: InputPayload;
+    onChange: (payload: StoryBlock["payload"]) => void;
+}) {
+    const { t } = useTranslation();
+    const { payload, onChange } = props;
+    const actions = useProjectInputActions();
+    const variables = useStoryVariableOptions(props.document, props.sceneId);
+
+    if (payload.operation === "rumble" || payload.operation === "stopRumble") {
+        const shape = payload.operation === "stopRumble" ? "stop" : payload.preset ?? STORY_RUMBLE_DEFAULT_PRESET;
+        const shapeOptions: SelectOption[] = RUMBLE_PICKER_VALUES.map(value => ({
+            value,
+            label: t(`story.enumValue.${value}` as TranslationKey),
+        }));
+        const setShape = (next: string) => {
+            if (next === "stop") {
+                onChange({ action: "input", operation: "stopRumble" });
+                return;
+            }
+            const base = payload.operation === "rumble" ? payload : { action: "input" as const, operation: "rumble" as const };
+            onChange({ ...base, preset: next as StoryRumblePresetId });
+        };
+        return (
+            <div className="grid grid-cols-1 gap-3">
+                <SelectField label={t("storyInspector.input.shape")} options={shapeOptions} value={shape} onChange={next => setShape(String(next))} />
+                {payload.operation === "rumble" && (
+                    <>
+                        <FieldGrid cols={2}>
+                            <NumberField
+                                label={t("storyInspector.input.leftMotor")}
+                                value={payload.strongMagnitude}
+                                onChange={value => onChange({ ...payload, strongMagnitude: value === undefined ? undefined : Math.min(1, Math.max(0, value)) })}
+                            />
+                            <NumberField
+                                label={t("storyInspector.input.rightMotor")}
+                                value={payload.weakMagnitude}
+                                onChange={value => onChange({ ...payload, weakMagnitude: value === undefined ? undefined : Math.min(1, Math.max(0, value)) })}
+                            />
+                        </FieldGrid>
+                        <SecondsField label={t("storyInspector.field.duration")} value={payload.durationMs} onChange={durationMs => onChange({ ...payload, durationMs })} />
+                        <ToggleField
+                            label={t("storyInspector.input.waitForRumble")}
+                            checked={payload.wait === true}
+                            onChange={checked => onChange({ ...payload, wait: checked ? true : undefined })}
+                        />
+                    </>
+                )}
+            </div>
+        );
+    }
+
+    if (payload.operation === "lock" || payload.operation === "unlock") {
+        return (
+            <SelectField
+                label={t("storyInspector.input.state")}
+                options={[
+                    { value: "lock", label: t("story.enumValue.lock") },
+                    { value: "unlock", label: t("story.enumValue.unlock") },
+                ]}
+                value={payload.operation}
+                onChange={next => onChange({ action: "input", operation: next === "unlock" ? "unlock" : "lock" })}
             />
+        );
+    }
+
+    const actionOptions: SelectOption[] = [
+        { value: "", label: t("storyInspector.input.anyAction") },
+        ...actions.map(action => ({ value: action.id, label: action.name })),
+    ];
+    // Keyed by scope and id together: two scopes may hold the same id-shaped word.
+    const resultOptions: SelectOption[] = [
+        { value: "", label: t("storyInspector.input.noResult") },
+        ...(["scene", "saved", "persistent"] as const).flatMap(scope => variables[scope]
+            .filter(option => option.valueType === "boolean")
+            .map(option => ({ value: `${scope}:${option.id}`, label: option.name }))),
+    ];
+    const resultValue = payload.resultTarget ? `${payload.resultTarget.scope}:${payload.resultTarget.variableId}` : "";
+    const setResult = (next: string) => {
+        const split = next.indexOf(":");
+        if (split < 0) {
+            onChange({ ...payload, resultTarget: undefined });
+            return;
+        }
+        onChange({ ...payload, resultTarget: makeVariableRef(next.slice(0, split) as StoryVariableScope, next.slice(split + 1)) });
+    };
+    return (
+        <div className="grid grid-cols-1 gap-3">
+            <SelectField
+                label={t("storyInspector.input.action")}
+                options={actionOptions}
+                value={payload.actionId ?? ""}
+                onChange={next => onChange({ ...payload, actionId: next ? String(next) : undefined })}
+            />
+            {payload.operation === "hold" && (
+                <SecondsField
+                    label={t("storyInspector.input.holdSeconds")}
+                    value={payload.holdMs}
+                    onChange={holdMs => onChange({ ...payload, holdMs: holdMs ?? 1000 })}
+                />
+            )}
+            {payload.operation === "mash" && (
+                <NumberField
+                    label={t("storyInspector.input.pressCount")}
+                    value={payload.count}
+                    onChange={count => onChange({ ...payload, count: Math.max(1, Math.round(count ?? 1)) })}
+                />
+            )}
+            <SecondsField
+                label={t("storyInspector.input.timeout")}
+                value={payload.timeoutMs}
+                onChange={timeoutMs => onChange({ ...payload, timeoutMs })}
+            />
+            <SelectField label={t("storyInspector.input.result")} options={resultOptions} value={resultValue} onChange={next => setResult(String(next))} />
         </div>
     );
 }
@@ -966,7 +1160,10 @@ function ActionPayloadFields(props: {
     payload: StoryActionPayload;
     characters: Character[];
     onChange: (payload: StoryBlock["payload"]) => void;
-    onCreateLayer: (beforeBlockId: StoryBlockId) => string | null;
+    /** Add a layer to the scene's stack and return its id. */
+    onCreateLayer: () => string | null;
+    /** Show the scene's layers - the live preview's layer view. */
+    onManageLayers?: () => void;
 }) {
     const { t } = useTranslation();
     const payload = props.payload;
@@ -1007,6 +1204,9 @@ function ActionPayloadFields(props: {
     if (payload.action === "blueprint") {
         return <StoryActionBlueprintEditor payload={payload} onChange={props.onChange} />;
     }
+    if (payload.action === "input") {
+        return <InputActionEditor document={props.document} sceneId={props.sceneId} payload={payload} onChange={props.onChange} />;
+    }
     if (payload.action === "wait") {
         return (
             <div className="nl-field-grid nl-field-grid-2">
@@ -1037,7 +1237,8 @@ function ActionPayloadFields(props: {
                         blockId={props.block.id}
                         value={payload.layer}
                         onChange={layer => props.onChange({ ...payload, layer })}
-                        onCreateLayer={() => props.onCreateLayer(props.block.id)}
+                        onCreateLayer={props.onCreateLayer}
+                        onManageLayers={props.onManageLayers}
                     />
                     <AssetField
                         label={t("storyInspector.image.imageAsset")}
@@ -1132,7 +1333,8 @@ function ActionPayloadFields(props: {
                         blockId={props.block.id}
                         value={payload.layer}
                         onChange={layer => props.onChange({ ...payload, layer })}
-                        onCreateLayer={() => props.onCreateLayer(props.block.id)}
+                        onCreateLayer={props.onCreateLayer}
+                        onManageLayers={props.onManageLayers}
                     />
                     <NumberField label={t("storyInspector.text.fontSize")} value={payload.fontSize} onChange={fontSize => props.onChange({ ...payload, fontSize })} />
                     <ColorTextField label={t("storyInspector.text.fontColor")} value={payload.fontColor ?? "#ffffff"} onChange={fontColor => props.onChange({ ...payload, fontColor })} />
@@ -1154,41 +1356,36 @@ function ActionPayloadFields(props: {
         );
     }
     if (payload.action === "layer") {
-        const isCreate = payload.operation === "create";
-        // Non-create ops target an existing layer (built-in or custom) via the layer picker; `create`
-        // names a new one. Z-index only applies to create / setZIndex; transform/show/hide animate.
-        const showZIndex = isCreate || payload.operation === "setZIndex";
+        // Every op targets one of the scene's layers (built-in or its own) via the layer picker.
+        // Z-index only applies to setZIndex; transform/show/hide animate.
+        const showZIndex = payload.operation === "setZIndex";
         const showTransform = payload.operation === "transform" || payload.operation === "show" || payload.operation === "hide";
         const layerRefValue = layerActionTargetRef(payload.target, payload.objectName);
-        const layerName = isCreate
-            ? (payload.objectName || t("storyInspector.motionTarget.layer"))
-            : (resolveStoryLayerRef(props.document.scenes[props.sceneId], layerRefValue).name || t("storyInspector.motionTarget.layer"));
+        const layerName = resolveStoryLayerRef(props.document.scenes[props.sceneId], layerRefValue).name || t("storyInspector.motionTarget.layer");
         return (
             <div className="grid grid-cols-1 gap-3">
                 <div className="nl-field-grid">
                     <SelectField
                         label={t("storyInspector.field.operation")}
-                        options={layerOperationOptions(t)}
+                        options={layerOperationOptions(t, payload.operation)}
                         value={payload.operation}
                         onChange={operation => props.onChange({ ...payload, operation: operation as Extract<StoryActionPayload, { action: "layer" }>["operation"] })}
                     />
-                    {isCreate ? (
-                        <TextField label={t("storyInspector.layer.layerName")} value={payload.objectName} onChange={objectName => props.onChange({ ...payload, objectName })} />
-                    ) : (
-                        <StoryLayerField
-                            label={t("storyInspector.field.layer")}
-                            document={props.document}
-                            sceneId={props.sceneId}
-                            blockId={props.block.id}
-                            value={layerRefValue}
-                            onChange={target => props.onChange({ ...payload, target })}
-                            onCreateLayer={() => props.onCreateLayer(props.block.id)}
-                        />
-                    )}
+                    <StoryLayerField
+                        label={t("storyInspector.field.layer")}
+                        document={props.document}
+                        sceneId={props.sceneId}
+                        blockId={props.block.id}
+                        value={layerRefValue}
+                        onChange={target => props.onChange({ ...payload, target })}
+                        onCreateLayer={props.onCreateLayer}
+                        onManageLayers={props.onManageLayers}
+                    />
                     {showZIndex ? (
                         <NumberField label={t("storyInspector.layer.zIndex")} value={payload.zIndex} onChange={zIndex => props.onChange({ ...payload, zIndex })} />
                     ) : null}
                 </div>
+                {showZIndex ? <div className="text-2xs text-fg-subtle">{t("storyInspector.layer.zIndexRowHint")}</div> : null}
                 {showTransform ? (
                     <TransformPresetEditor
                         value={payload.transform}

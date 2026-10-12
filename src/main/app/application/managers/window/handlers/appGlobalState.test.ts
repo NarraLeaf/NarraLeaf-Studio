@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ONBOARDING_VERSION } from "@shared/constants/onboarding";
 import type { AppWindow } from "../appWindow";
 import {
     AppGlobalStateDeleteHandler,
@@ -75,6 +76,26 @@ describe("keys only the main process writes", () => {
         const result = new AppGlobalStateSetHandler().handle(window, { key: "app.theme" as never, value: "dark" as never });
         expect(result.success).toBe(true);
         expect(written).toEqual(["app.theme"]);
+    });
+});
+
+describe("the first-run setup marker", () => {
+    it("lets a window record that setup is over", () => {
+        const { window, store } = makeWindow({});
+        const result = new AppGlobalStateSetHandler().handle(window, { key: "app.onboardingVersion", value: ONBOARDING_VERSION });
+        expect(result.success).toBe(true);
+        expect(store.get("app.onboardingVersion")).toBe(ONBOARDING_VERSION);
+    });
+
+    it("refuses to move it back or to delete it, so no window can replay setup", () => {
+        const { window, store, written } = makeWindow({ "app.onboardingVersion": ONBOARDING_VERSION });
+        for (const value of [0, ONBOARDING_VERSION - 1, "1"]) {
+            expect(new AppGlobalStateSetHandler().handle(window, { key: "app.onboardingVersion", value: value as never }).success).toBe(false);
+        }
+        const deleted = new AppGlobalStateDeleteHandler().handle(window, { keys: ["app.onboardingVersion"] });
+        expect(deleted.success && deleted.data).toEqual({ deleted: [], refused: ["app.onboardingVersion"] });
+        expect(written).toEqual([]);
+        expect(store.get("app.onboardingVersion")).toBe(ONBOARDING_VERSION);
     });
 });
 

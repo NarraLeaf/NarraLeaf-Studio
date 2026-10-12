@@ -13,6 +13,8 @@ import {
 import { ZOOM_PERCENT_DEFAULT } from "@shared/constants/zoom";
 import { WINDOW_ICON_DEFAULT } from "@shared/constants/windowIcon";
 import { DownloadRewriteRule, USE_SYSTEM_PROXY_KEY } from "@shared/types/downloadSource";
+import { STORE_SOURCE_KEY, type StoreSourcePreference } from "@shared/constants/storeSource";
+import { AGENT_FOLLOW_DEFAULT, AGENT_FOLLOW_KEY } from "@shared/agent/follow";
 import { SPELLCHECK_LANGUAGE_DEFAULT } from "@shared/types/spellcheck";
 import { PersistentState } from "@shared/utils/persistentState";
 import type { VcsServerSession, VcsSessionUse } from "@shared/types/vcs";
@@ -188,6 +190,13 @@ export interface GlobalStateType extends Record<string, any> {
     "ui.backgroundSidebarFill": boolean;
     /** Opacity of the dock plate while it is on, as a percentage; clamped to 10–100 when read. */
     "ui.backgroundSidebarOpacity": number;
+    /**
+     * Whether the window's frame (title bar, tab strips, rails, status bar, panel headers) keeps its
+     * paint over the wallpaper; absent means off. Meaningless without `ui.backgroundImage`.
+     */
+    "ui.backgroundFrameFill": boolean;
+    /** Opacity of the frame plate while it is on, as a percentage; clamped to 10–100 when read. */
+    "ui.backgroundFrameOpacity": number;
     /**
      * User keybinding rebinds as one `catalogId -> chord` map. One key rather than one key per
      * binding because catalog ids contain dots, which the dotted-path settings store would split
@@ -372,15 +381,25 @@ export interface GlobalStateType extends Record<string, any> {
      */
     [USE_SYSTEM_PROXY_KEY]: boolean;
     /**
-     * Plugin store registry index URL; "" = the official NarraLeaf/Plugins index
-     * (see @shared/constants/pluginRegistry). Read by the main process when the
-     * launcher's Plugins store fetches or installs.
+     * Where the plugin store, the template store and the dictionaries download from: GitHub,
+     * GitCode, both (`auto`, the reading of an absent value) or the typed addresses below
+     * (`custom`). See `@shared/constants/storeSource`.
+     *
+     * Deliberately absent from `GLOBAL_STATE_DEFAULTS`: `storeSourceMigration` tells a profile that
+     * never chose from one that chose `auto` by whether the key is stored, and a default would be
+     * written to disk on the first launch and erase that difference.
+     */
+    [STORE_SOURCE_KEY]: StoreSourcePreference;
+    /**
+     * Plugin store registry index URL, read under the `custom` store source; "" = the official
+     * NarraLeaf/Plugins index (see @shared/constants/pluginRegistry). Read by the main process when
+     * the launcher's Plugins store fetches or installs.
      */
     "plugins.registryUrl": string;
     /**
-     * UI template store registry index URL; "" = the official NarraLeaf/UI-Templates
-     * index (see @shared/constants/uiTemplateRegistry). Read by the main process when
-     * the UI editor's template store fetches the index or a template bundle.
+     * UI template store registry index URL, read under the `custom` store source; "" = the
+     * official NarraLeaf/UI-Templates index (see @shared/constants/uiTemplateRegistry). Read by the
+     * main process when the UI editor's template store fetches the index or a template bundle.
      */
     "uiTemplates.registryUrl": string;
     /**
@@ -538,6 +557,12 @@ export interface GlobalStateType extends Record<string, any> {
      * workspace opening on it must not start a room around an author who came back tomorrow.
      */
     "team.hostedLiveSessions": Record<string, { story: string; at: number }>;
+    /**
+     * Follow mode: each write an agent makes opens the tab it landed in, brings it to the front and
+     * outlines the change. Studio-wide rather than per project, and on by default - see
+     * `@shared/agent/follow`. Not in main's `agent-mcp.json`: it grants nothing.
+     */
+    "agent.follow": boolean;
 }
 
 export type GlobalStateKeys = string;
@@ -614,6 +639,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     // be calling itself the same thing.
     "team.machineLabel": "",
     "team.hostedLiveSessions": {},
+    [AGENT_FOLLOW_KEY]: AGENT_FOLLOW_DEFAULT,
 };
 
 /**

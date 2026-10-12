@@ -22,8 +22,11 @@ import {
     declaresStageObject,
     isStoryExpressionEvaluable,
     resolveDisplayableTargetRef,
+    resolveStoryLayerRef,
     revealCreates,
     savedVariableDefs,
+    sceneLayerStack,
+    sceneLayerZIndex,
     sceneVariableDefs,
     soundStageObjectName,
     storyPersistentDefs,
@@ -245,6 +248,20 @@ export type StageSnapshotMusic = StageSnapshotSoundState & {
     setBy?: string;
 };
 
+/**
+ * A character's speaker name at the target row, as the last `/rename` on the walked path left it.
+ *
+ * Named by the row rather than copied out of it, as the music channel is by its `/bgm` row: the
+ * launch replays that row's own words, so the name and the words its translation is looked up by
+ * come from one place.
+ */
+export type StageSnapshotRename = {
+    /** The character the row renames; absent when the row names none, as the compiler reads it. */
+    characterId?: string;
+    /** The `/rename` row whose words the character speaks under at the target row. */
+    setBy: string;
+};
+
 export type StoryStageSnapshot = {
     background: { assetId?: string; color?: string } | null;
     /** Displayables in creation order. */
@@ -296,6 +313,18 @@ export type StoryStageSnapshot = {
      * one any row here can address.
      */
     sounds: StageSnapshotSound[];
+    /**
+     * Every character a `/rename` on the walked path renamed, each with the row that last did.
+     *
+     * A launch replaces the rows before the target, so without this every speaker it opens on is
+     * back under the name the cast gives them - "Alice" over a line written for "？？？" - in the
+     * launch, in a save made in it (which is put back at its row through this same walk), and in a
+     * hot reload that carries on from a row.
+     *
+     * Only this scene's rows, for the reason the camera is: which scenes ran before this one is a
+     * question of how the player got here, which a walk of one scene cannot answer.
+     */
+    renames: StageSnapshotRename[];
     /** Props accumulated against the built-in scene background image. */
     backgroundProps: Record<string, unknown>;
     backgroundEffects: StageSnapshotEffects;
@@ -306,6 +335,12 @@ export type StoryStageSnapshot = {
     savedVariables: Record<string, StoryLiteralValue>;
     /** Settled stage-camera pose accumulated within this scene, or null if neutral. */
     camera: StageSnapshotCamera | null;
+    /**
+     * When the target row is a camera transform: the camera's settled props once that row has
+     * played (everything before it, with the row's own pose over it). Null for any other target.
+     * The layer view's framing starts from this pose: it is the shot the row leaves.
+     */
+    targetCamera: Record<string, unknown> | null;
     /** True when the target sits inside an NVL container. */
     nvl: boolean;
     diagnostics: StageSnapshotDiagnostic[];
@@ -505,6 +540,8 @@ class SnapshotWalker {
     private readonly soundStates = new Map<string, StageSnapshotSoundState>();
     /** The music channel as the walk has it so far; see {@link StoryStageSnapshot.music}. */
     private music: StageSnapshotMusic | null;
+    /** Character id (empty for a row naming none) → its last `/rename` so far; see {@link StoryStageSnapshot.renames}. */
+    private readonly renames = new Map<string, StageSnapshotRename>();
     /**
      * How many disabled rows the walk is inside. Only ever above zero on the way to a target row
      * that sits under one: such a row is compiled out with everything beneath it, so nothing passed
@@ -521,6 +558,7 @@ class SnapshotWalker {
     private builtinLayerProps = { backgroundLayer: {} as Record<string, unknown>, displayableLayer: {} as Record<string, unknown> };
     /** Story-level camera pose accumulated within this scene; null until a `/camera` op sets one. */
     private camera: StageSnapshotCamera | null = null;
+    private targetCamera: Record<string, unknown> | null = null;
     private nvl = false;
     private reachedTarget = false;
 
@@ -553,6 +591,13 @@ class SnapshotWalker {
 
     run(): StoryStageSnapshot {
         this.scanCompileOrder(this.scene.rootBlockIds);
+        // The scene's own layers are up before its first row runs, visible and where its stack puts them.
+        const layers = sceneLayerStack(this.scene);
+        layers.forEach((layer, index) => {
+            if (layer.kind === "custom") {
+                this.ensure("layer", layer.name, layer.id).zIndex = sceneLayerZIndex(layers, index);
+            }
+        });
         if (this.targetBlockId === null) {
             // Scene start: nothing has executed yet.
         } else if (!this.pathBlockIds.has(this.targetBlockId)) {
@@ -579,12 +624,14 @@ class SnapshotWalker {
                 sourceBlockId,
                 ...(this.soundStates.get(objectName) ?? { playing: false, paused: false }),
             })),
+            renames: [...this.renames.values()],
             backgroundProps: this.backgroundProps,
             backgroundEffects: this.backgroundEffects,
             builtinLayerProps: this.builtinLayerProps,
             sceneVariables: this.assignedScene,
             savedVariables: this.assignedSaved,
             camera: this.camera,
+            targetCamera: this.targetCamera,
             nvl: this.nvl,
             diagnostics: this.diagnostics,
         };
@@ -600,8 +647,7 @@ class SnapshotWalker {
      * table they land in changes. What is dropped afterwards is being SEEN: a `/character enter` is
      * a declaration and an entrance at once, and the entrance belongs to the arm that runs.
      *
-     * Layers keep their own default, because a declared layer really is visible and hiding one
-     * would take everything a later row puts on it down with it.
+     * Layers are not in it: the scene declares its layers, and {@link run} puts them up before any row.
      */
     private collectDeclarations(blockIds: readonly string[]): void {
         for (const blockId of blockIds) {
@@ -618,9 +664,6 @@ class SnapshotWalker {
                         break;
                     case "text":
                         this.applyText(block, block.payload);
-                        break;
-                    case "layer":
-                        this.applyLayer(block, block.payload);
                         break;
                     case "character":
                         this.applyCharacter(block, block.payload);
@@ -648,9 +691,6 @@ class SnapshotWalker {
     /** Strip the "and it is seen" half off every declaration; see {@link collectDeclarations}. */
     private hideDeclarations(): void {
         for (const record of this.declared.values()) {
-            if (record.kind === "layer") {
-                continue;
-            }
             record.visible = false;
             delete record.props.opacity;
         }
@@ -795,6 +835,7 @@ class SnapshotWalker {
         if (block.id === this.targetBlockId) {
             this.reachedTarget = true;
             this.nvl = insideNvl;
+            this.targetCamera = this.cameraAfter(block);
             return;
         }
         // A disabled row is compiled out with everything under it, so a playthrough never runs it.
@@ -1093,6 +1134,13 @@ class SnapshotWalker {
             // shown would conjure a blank one. Falling through to the enter/expression arm below would
             // be worse still: that arm rebuilds `source` from a payload `setName` never carries, so an
             // earlier `/face` would silently revert to the default look in a row-precise launch.
+            // What it does leave is the name, which a launch replays - see `StoryStageSnapshot.renames`.
+            // A rename declares nothing, so the declaration pass never brings one here; the guard says
+            // so rather than relying on it.
+            if (!this.declaring) {
+                const characterId = payload.characterId?.trim() ?? "";
+                this.renames.set(characterId, { ...(characterId ? { characterId } : {}), setBy: block.id });
+            }
             return;
         }
         if (payload.operation === "setMotion" || payload.operation === "setSkin" || payload.operation === "setParams") {
@@ -1327,14 +1375,7 @@ class SnapshotWalker {
     }
 
     private applyLayer(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "layer" }>): void {
-        if (payload.operation === "create") {
-            const record = this.ensure("layer", payload.objectName, block.id);
-            if (payload.zIndex !== undefined) {
-                record.zIndex = payload.zIndex;
-            }
-            return;
-        }
-        // Non-create layer ops address an existing target (built-in fallback: displayable layer).
+        // Every layer op addresses one of the scene's layers (built-in fallback: displayable layer).
         const targetProps = this.resolveLayerTargetProps(payload);
         if (payload.operation === "setZIndex") {
             if (targetProps.record) {
@@ -1369,6 +1410,29 @@ class SnapshotWalker {
      * The zoom clamp mirrors the compiler's: the pose is pre-posed straight onto the camera and never
      * passes through `compileCameraAction`.
      */
+    /**
+     * The camera's settled props once `block` has played, when it is a camera transform the walk
+     * would act on; null otherwise. Worked out on a copy, so the snapshot itself still stops before
+     * the row.
+     */
+    private cameraAfter(block: StoryBlock): Record<string, unknown> | null {
+        if (block.disabled || this.inert > 0 || block.kind !== "action") {
+            return null;
+        }
+        const payload = block.payload as StoryActionPayload;
+        if (payload.action !== "camera" || payload.operation !== "transform") {
+            return null;
+        }
+        const saved = this.camera;
+        this.camera = saved ? { ...saved, props: { ...saved.props }, effects: { ...saved.effects } } : null;
+        try {
+            this.applyCamera(block, payload);
+            return { ...(this.camera?.props ?? {}) };
+        } finally {
+            this.camera = saved;
+        }
+    }
+
     private applyCamera(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "camera" }>): void {
         if (payload.operation === "reset") {
             this.camera = null;
@@ -1404,11 +1468,7 @@ class SnapshotWalker {
             return { builtin: target.layer === "background" ? "backgroundLayer" : "displayableLayer" };
         }
         if (target?.kind === "custom") {
-            const source = target.sourceBlockId ? this.scene.blocks[target.sourceBlockId] : undefined;
-            const name = source?.kind === "action" && source.payload.action === "layer"
-                ? source.payload.objectName
-                : target.name;
-            const record = this.displayables.get(this.key("layer", name ?? ""));
+            const record = this.displayables.get(this.key("layer", resolveStoryLayerRef(this.scene, target).name));
             return record ? { record } : { builtin: "displayableLayer" };
         }
         const record = this.displayables.get(this.key("layer", payload.objectName));

@@ -39,6 +39,7 @@ const CONTEXT: StoryCommandContext = {
     labels: ["intro", "after refusal"],
     appTags: [{ id: "release", name: "main" }, { id: "demo", name: "Demo" }],
     surfaces: [{ id: "u1", name: "Map" }, { id: "u2", name: "Title" }],
+    inputActions: [{ id: "act_confirm", name: "Confirm" }, { id: "act_dodge", name: "Dodge" }],
     variables: [
         { name: "gold", ref: { scope: "scene", variableId: "var_gold" }, valueType: "number", defaultValue: 10 },
         { name: "met", ref: { scope: "saved", variableId: "var_met" }, valueType: "boolean" },
@@ -85,6 +86,20 @@ function buildIn(source: string, context: StoryCommandContext): StoryBlock {
         throw new Error(`no build on ${line.def.commandId}`);
     }
     return spec.build(args, { generateId, context });
+}
+
+/** Parse, resolve and commit a scene-changing line against an empty scene; the change it makes. */
+function editSceneWith(source: string): unknown {
+    const line = parseCommandLine(source);
+    if (line.kind !== "command" || !line.def) {
+        throw new Error(`not a command: ${source}`);
+    }
+    expect(line.issues).toEqual([]);
+    const { args, issues } = resolveCommandLine(line, CONTEXT);
+    expect(issues).toEqual([]);
+    const spec = getCommandSpec(line.def.commandId);
+    const scene = { id: "s", name: "Scene", runtimeName: "scene", rootBlockIds: [], blocks: {} };
+    return spec?.editScene?.(args, { generateId, context: CONTEXT, scene }) ?? null;
 }
 
 /** Resolution issues for a line - for asserting what must NOT commit. */
@@ -806,6 +821,18 @@ describe("variables", () => {
         expect(build("/reset gold")).toMatchObject({ payload: { value: 10, expression: undefined } });
     });
 
+    it("an assignment written with an expression stores no literal beside it", () => {
+        // Every new assignment block starts as `value: true`; the sugars used to spread it into the
+        // saved row next to the expression that replaces it.
+        for (const line of ["/inc gold", "/dec gold 2", "/toggle met", "/set gold gold + 1"]) {
+            const block = build(line) as Extract<StoryBlock, { kind: "action" }>;
+            expect(block.payload).toMatchObject({ action: "setVariable", value: null });
+            expect((block.payload as { expression?: unknown }).expression).toBeDefined();
+        }
+        // A literal keeps its value, as it always has.
+        expect(build("/set gold 100")).toMatchObject({ payload: { value: 100 } });
+    });
+
     it("declarationFromArgs pins the whole line to the declaration it produces", () => {
         // The bug class this guards: a default read under the wrong kind silently declaring the
         // wrong type. `/local gold 100` must be a NUMBER with default 100, never a boolean.
@@ -1032,7 +1059,26 @@ describe("logic and effects", () => {
         // Camera only, and structurally so: the engine renders the lens from the camera's own overlay
         // and no other Displayable has one.
         expect(issuesOf("/transform hero lens=blink")).toEqual(["unsupportedParam"]);
+        // Shares of the stage, not pixels: a pair far off it is refused, one just off it is a slide-in start.
+        expect(issuesOf("/transform hero pos=100,200")).toEqual(["positionOutOfRange"]);
+        expect(issuesOf("/transform hero pos=-0.3,0.5")).toEqual([]);
+        expect(issuesOf("/transform hero pos=50%,20%")).toEqual(["unsupportedOption"]);
         expect(issuesOf("/transform hero shutter=1")).toEqual(["unsupportedParam"]);
+    });
+
+    it("takes back a far-out pair a row of the scene already stores, in pos= and in from=", () => {
+        const stored: StoryCommandContext = { ...CONTEXT, storedFarPositions: ["100,200"] };
+        const issuesIn = (source: string, context: StoryCommandContext) => {
+            const line = parseCommandLine(source);
+            if (line.kind !== "command" || !line.def) {
+                throw new Error(`not a command: ${source}`);
+            }
+            return resolveCommandLine(line, context).issues.map(issue => issue.code);
+        };
+        expect(issuesIn("/transform hero pos=100,200", stored)).toEqual([]);
+        expect(issuesIn("/transform hero pos=100,201", stored)).toEqual(["positionOutOfRange"]);
+        expect(issuesIn("/transform hero from=pos=100,200 pos=0.5,0.5", stored)).toEqual([]);
+        expect(issuesIn("/transform hero from=pos=100,200 pos=0.5,0.5", CONTEXT)).toEqual(["unsupportedOption"]);
     });
 
     it("/transform takes a drawn easing curve where it takes an easing word", () => {
@@ -1293,6 +1339,61 @@ describe("logic and effects", () => {
  * same parse → resolve → build the editor uses makes that impossible: an example either works or the
  * suite is red.
  */
+describe("input commands", () => {
+    it("/rumble stores the preset it names and only the numbers the line states", () => {
+        expect(build("/rumble")).toMatchObject({ payload: { action: "input", operation: "rumble" } });
+        expect((build("/rumble") as { payload: object }).payload).not.toHaveProperty("preset");
+        expect(build("/rumble impact d=0.4 wait")).toMatchObject({
+            payload: { action: "input", operation: "rumble", preset: "impact", durationMs: 400, wait: true },
+        });
+        expect(build("/rumble custom left=1 right=0.3")).toMatchObject({
+            payload: { preset: "custom", strongMagnitude: 1, weakMagnitude: 0.3 },
+        });
+    });
+
+    it("/rumble stop is the stop operation and carries nothing else", () => {
+        expect((build("/rumble stop") as { payload: object }).payload).toEqual({ action: "input", operation: "stopRumble" });
+    });
+
+    it("/rumble refuses a motor outside 0..1", () => {
+        expect(commandLineIssues("/rumble custom left=2")).not.toEqual([]);
+    });
+
+    it("/input lock and unlock", () => {
+        expect(build("/input lock")).toMatchObject({ payload: { action: "input", operation: "lock" } });
+        expect(build("/input unlock")).toMatchObject({ payload: { action: "input", operation: "unlock" } });
+    });
+
+    it("/waitinput resolves the action by name and stores its id", () => {
+        expect(build("/waitinput Confirm timeout=2 into=met")).toMatchObject({
+            payload: {
+                action: "input",
+                operation: "wait",
+                actionId: "act_confirm",
+                timeoutMs: 2000,
+                resultTarget: { scope: "saved", variableId: "var_met" },
+            },
+        });
+        expect(issuesOf("/waitinput Jump")).toEqual(["unknownInputAction"]);
+    });
+
+    it("/waitinput with no action waits for any of them", () => {
+        expect((build("/waitinput") as { payload: object }).payload).not.toHaveProperty("actionId");
+    });
+
+    it("/hold and /mash may skip the action and lead with their number", () => {
+        expect(build("/hold 1.5")).toMatchObject({ payload: { operation: "hold", holdMs: 1500 } });
+        expect((build("/hold 1.5") as { payload: object }).payload).not.toHaveProperty("actionId");
+        expect(build("/hold Confirm 2")).toMatchObject({ payload: { operation: "hold", actionId: "act_confirm", holdMs: 2000 } });
+        expect(build("/mash 10 timeout=3")).toMatchObject({ payload: { operation: "mash", count: 10, timeoutMs: 3000 } });
+        expect(build("/mash Dodge 5")).toMatchObject({ payload: { operation: "mash", actionId: "act_dodge", count: 5 } });
+    });
+
+    it("refuses a result variable that is not a boolean", () => {
+        expect(issuesOf("/waitinput Confirm into=gold")).toEqual(["expressionTypeMismatch"]);
+    });
+});
+
 describe("manual examples", () => {
     const specs = listCommandSpecs();
 
@@ -1313,6 +1414,11 @@ describe("manual examples", () => {
     it("parses, resolves and builds every one of them", () => {
         for (const spec of specs) {
             for (const example of spec.examples ?? []) {
+                if (spec.editScene) {
+                    // A command that changes the scene writes no row: what it commits is the change.
+                    expect(editSceneWith(example), example).not.toBeNull();
+                    continue;
+                }
                 // `build` asserts zero parse and zero resolution issues on the way through.
                 expect(build(example), example).toBeTruthy();
             }

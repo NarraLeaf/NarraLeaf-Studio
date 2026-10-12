@@ -7,9 +7,11 @@ import {
     SPELLCHECK_REGISTRY_FORMAT_VERSION,
 } from "@shared/constants/spellcheckRegistry";
 import type { SpellcheckRegistryEntry, SpellcheckRegistryIndex } from "@shared/types/spellcheckRegistry";
+import type { StoreSourceChoice } from "@shared/constants/storeSource";
 import { resolveDownloadSource } from "@shared/utils/downloadSource";
 import { applyDownloadRewrite } from "../downloadRewrites";
 import { studioFetch } from "../downloadProxy";
+import { customStoreOrigin, fetchFromStore, readStoreCatalogue, type StoreOrigin } from "../storeSource";
 
 /**
  * Read-only client for the dictionary registry.
@@ -21,10 +23,10 @@ import { studioFetch } from "../downloadProxy";
  * before and after it arrives, and the bytes are refused unless their sha256 is the one the index
  * named.
  *
- * Every request goes through {@link applyDownloadRewrite}, so an author behind a national firewall
- * can point both the index and the per-entry download at a mirror. That matters here for the same
- * reason it does in the plugin store: an entry's `download` is an absolute URL out of the index, so
- * redirecting the index alone would leave every install timing out.
+ * The index and the dictionaries come from GitHub or GitCode as the store source setting says (see
+ * `storeSource.ts`); an entry's `download` is a GitHub address either way, mapped onto GitCode when
+ * GitCode is the host. Every request also goes through {@link applyDownloadRewrite}, so an author's
+ * own mirror rules still apply on top.
  */
 
 /** Resolve the effective registry URL: a configured value, else the official default. */
@@ -109,6 +111,23 @@ export function normalizeDictionaryEntry(raw: unknown): SpellcheckRegistryEntry 
     };
 }
 
+/** The registry's catalogue, and the host it came from - which is where the dictionaries come from. */
+export type DictionaryCatalogue = { index: SpellcheckRegistryIndex; origin: StoreOrigin };
+
+/**
+ * Read the catalogue from where the store source setting says. `customUrl` is what `custom` reads;
+ * the dictionaries have no settings row for one, so in practice that is the official catalogue.
+ */
+export async function fetchDictionaryCatalogue(choice: StoreSourceChoice): Promise<DictionaryCatalogue> {
+    const { value: index, origin } = await readStoreCatalogue({
+        choice,
+        officialUrl: DEFAULT_SPELLCHECK_REGISTRY_URL,
+        customUrl: resolveDictionaryRegistryUrl(choice.customUrl),
+        read: fetchDictionaryIndex,
+    });
+    return { index, origin };
+}
+
 export async function fetchDictionaryIndex(url: string): Promise<SpellcheckRegistryIndex> {
     const response = await fetchWithTimeout(url);
     if (!response.ok) {
@@ -143,15 +162,22 @@ export async function fetchDictionaryIndex(url: string): Promise<SpellcheckRegis
 }
 
 /**
- * Fetch one dictionary's gzipped bytes, verified.
+ * Fetch one dictionary's gzipped bytes, verified, from the catalogue's host (`origin`; absent means
+ * the entry's address as written).
  *
  * The size is refused twice - once on the declared length, once on what actually arrived - because
  * `content-length` is the server's claim and the second check is the only one that is a fact. The
  * digest is checked before this returns, so nothing that fails it ever reaches the caller, let
- * alone the disk.
+ * alone the disk. It is checked per host: a host still serving the previous list after the index
+ * moved on fails it, and the other host is asked.
  */
-export async function downloadDictionary(entry: SpellcheckRegistryEntry): Promise<Buffer> {
-    const response = await fetchWithTimeout(entry.download);
+export async function downloadDictionary(entry: SpellcheckRegistryEntry, origin?: StoreOrigin): Promise<Buffer> {
+    const from = origin ?? customStoreOrigin(entry.download);
+    return (await fetchFromStore(from, entry.download, url => downloadVerified(entry, url))).value;
+}
+
+async function downloadVerified(entry: SpellcheckRegistryEntry, url: string): Promise<Buffer> {
+    const response = await fetchWithTimeout(url);
     if (!response.ok) {
         throw new Error(`Dictionary download failed (${response.status} ${response.statusText})`);
     }

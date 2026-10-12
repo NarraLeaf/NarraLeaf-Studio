@@ -28,11 +28,16 @@ export interface OptionListProps {
     value: string;
     options: readonly OptionItem[];
     onChange: (value: string) => void;
+    /**
+     * Two columns for a list of short names with no hints (the agent applications), which would
+     * otherwise run a single narrow column twice as far down the screen.
+     */
+    columns?: 1 | 2;
 }
 
-export function OptionList({ label, value, options, onChange }: OptionListProps) {
+export function OptionList({ label, value, options, onChange, columns = 1 }: OptionListProps) {
     return (
-        <div role="radiogroup" aria-label={label} className="space-y-1.5">
+        <div role="radiogroup" aria-label={label} className={columns === 2 ? "grid grid-cols-2 gap-1.5" : "space-y-1.5"}>
             {options.map(option => {
                 const selected = option.value === value;
                 const Icon = option.icon;

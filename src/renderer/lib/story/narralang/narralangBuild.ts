@@ -157,7 +157,9 @@ export type NarralangBuildFailure =
     /** A slot the statement cannot do without. */
     | "missingValue"
     /** Two slots that cannot both be filled - a placement AND a reveal preset are one field. */
-    | "conflictingValues";
+    | "conflictingValues"
+    /** `layer hills`: a scene's layers are part of the scene, not lines of its script. */
+    | "layerDeclaration";
 
 export type NarralangBuildResult =
     | { readonly ok: true; readonly draft: NarralangBlockDraft; readonly warnings: readonly NarralangBuildWarning[] }
@@ -1373,19 +1375,7 @@ function textObjectDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots:
 
 function layerDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots: NarralangSlots): NarralangBlockDraft | Fail {
     if (verb === "layerCreate") {
-        const objectName = nameOf(slots, "subject");
-        if (objectName === undefined) {
-            return fail("missingValue", "subject");
-        }
-        return {
-            kind: "action",
-            payload: prune({
-                action: "layer" as const,
-                operation: "create" as const,
-                objectName,
-                zIndex: numberOf(slots, "zIndex"),
-            }),
-        };
+        return fail("layerDeclaration", nameOf(slots, "subject") ?? "layer");
     }
     const target = layerRefOf(ctx, slots, "subject");
     if (isFail(target)) {

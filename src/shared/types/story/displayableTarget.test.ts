@@ -48,10 +48,8 @@ describe("displayableCreatorIdentity", () => {
         expect(displayableSourceIdentity(face)).not.toBeNull();
     });
 
-    it("reads a layer exactly as the permissive rule does, since that one already gates on create", () => {
-        const create = action("a", { action: "layer", operation: "create", objectName: "fx" });
+    it("takes no layer row for a declaration, because the scene declares its layers", () => {
         const zIndex = action("b", { action: "layer", operation: "setZIndex", objectName: "fx", zIndex: 2 });
-        expect(displayableCreatorIdentity(create)).toEqual(displayableSourceIdentity(create));
         expect(displayableCreatorIdentity(zIndex)).toBeNull();
         expect(displayableSourceIdentity(zIndex)).toBeNull();
     });
@@ -95,6 +93,14 @@ describe("resolveDisplayableTargetRef - the dangling case", () => {
         const document = scene([action("create-1", { action: "image", operation: "create", objectName: "banner" })]);
         expect(resolveDisplayableTargetRef(document, { kind: "image", name: "poster", label: "poster", sourceBlockId: "create-1" }))
             .toEqual({ name: "banner", kind: "image", label: "banner" });
+    });
+});
+
+describe("resolveDisplayableTargetRef - a layer", () => {
+    it("finds a layer among the scene's layers by its id, and follows a rename", () => {
+        const withLayer: StoryScene = { ...scene([]), layers: [{ kind: "custom", id: "fog-1", name: "mist" }, { kind: "displayable" }, { kind: "background" }] };
+        expect(resolveDisplayableTargetRef(withLayer, { kind: "layer", name: "fog", label: "fog", sourceBlockId: "fog-1" }))
+            .toEqual({ name: "mist", kind: "layer", label: "mist" });
     });
 });
 

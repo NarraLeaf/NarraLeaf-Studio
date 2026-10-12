@@ -71,6 +71,16 @@ const PRELOAD_VALUES: readonly UIVideoPreload[] = ["none", "metadata", "auto"];
 export const UI_VIDEO_MIN_PLAYBACK_RATE = 0.0625;
 export const UI_VIDEO_MAX_PLAYBACK_RATE = 16;
 
+/**
+ * Where a seek to `seconds` lands on a clip `duration` seconds long: never before the start and
+ * never past the end. A time that is not a number goes to the start. A duration the element does
+ * not know - before the clip's metadata has loaded, or a stream with no end - bounds only the start.
+ */
+export function clampVideoSeekSeconds(seconds: number, duration: number): number {
+    const from = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+    return Number.isFinite(duration) && duration >= 0 ? Math.min(from, duration) : from;
+}
+
 function readTrimmedId(value: unknown): string | null {
     if (typeof value !== "string") {
         return null;

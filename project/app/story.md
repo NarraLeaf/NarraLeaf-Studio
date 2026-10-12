@@ -29,7 +29,7 @@ so does a `--category` value that is not one of the ones there are.
 ## Finding a command
 
 ```sh
-node project/app/story.js commands                 # all 52, by category
+node project/app/story.js commands                 # all 57, by category
 node project/app/story.js commands sound           # search token, id, params, examples
 node project/app/story.js commands --category flow
 node project/app/story.js commands --limit 0     # the first 60 otherwise
@@ -78,7 +78,8 @@ node project/app/story.js targets Alice --project D:/path/to/project
 `targets` reads the same resolved table a typed line resolves against, so a name
 it prints is a name that resolves. It lists characters, one-off speakers already
 used in the story, images, audio, videos, audio tracks, variables, scenes, pages,
-build variants, value blueprints and choice options. Stage objects and labels are
+build variants, value blueprints and choice options - and, last, the scene settings
+(`#background`, `#music`) each scene opens with. Stage objects and labels are
 scene-scoped and deliberately absent - they belong to the scene being written.
 
 `--story` picks the story when a project has more than one; with a single story
@@ -93,6 +94,8 @@ a line comes from what it starts with and nothing else:
 #nlstory 1
 #story Skeleton
 #scene The corridor ⟦f306e2d5-70c0-421b-ba8a-c7b2d3ce9d33⟧
+#background corridor
+#music none
 
 » Set background corridor  ⟦db4296b2⟧
 /bgm bgm-quiet track=Music vol=0.7 fade=1.2s loop=true  ⟦a63fe9cb⟧
@@ -121,6 +124,15 @@ Narra: You're late.  ⟦51d4f8dc⟧
 Escaping is a backslash, before a leading marker, a `: ` inside narration, an
 anchor bracket, or a space at either end. `show` writes these for you.
 
+Dialogue, narration and options may carry inline styling: `{b}…{/b}`, `{i}…{/i}`
+and `{color #e04040}…{/color}`, nested as needed and closed on the same line
+(`dsl/inlineMarkup.ts`). These are NarraLang's tags, spelled off its dialect
+table (`narralangDialect.ts`): a colour holding a space is quoted
+(`{color "rgb(224, 64, 64)"}`), and the older `{color=#e04040}` is still read but
+never printed. A `{` that would read as one of those tags is written `\{`; any
+other brace is text. Styling the format has no tag for - ruby, size, typing
+speed, emphasis, an inline pause or variable - keeps the row as a `»` line.
+
 ### The anchor is the row
 
 The trailing `⟦…⟧` carries the block id - its first eight characters, or more
@@ -132,6 +144,68 @@ is filed under, and its block id is what a save anchor and a row-level launch
 point resolve against. A line with an anchor keeps its row; a line without one is
 a new row; **a line deleted takes its row with it**, because a file describes the
 whole scene.
+
+### `#background` and `#music` are the scene's own settings
+
+A scene can open on a background and with music of its own, before its first row runs -
+the engine puts both up as part of the scene's init. They are not rows, so they live in
+the header:
+
+```
+#background corridor          the image the scene opens on, or none
+#background 'night street'    a name with spaces, quoted the way targets prints it
+#music bgm-quiet track=Music vol=0.7 fade=1.2s loop=true
+#music none
+```
+
+`#music` takes the clip, then the settings a `/bgm` row takes, spelled the way the row
+spells them: `track=` (an audio track's name), `vol=` (0 to 1), `fade=` (seconds, with
+the unit: `1.2s`) and `loop=` (`true` or `false`; a bare `loop` is `true`). A key left
+out is left out of the record and the track's own default answers. Files printed before
+the header used the row's words say `volume=` and a bare fade in milliseconds
+(`fade=1200`); both still read, the bare fade with a warning, because the same number on
+a row means seconds. A name may also be the asset's id, which
+is what `show` prints for one whose name is ambiguous or no longer resolves.
+
+Both count **only in the header**: before the first row, each at the start of its line.
+Further down (or indented) a `#music ...` line is a comment like any other unknown `#`
+line, so a note reading `#music swells here` stays a note; `check` warns that it changes
+nothing.
+
+`show` always writes both lines. **A file that leaves one out leaves that setting as it
+is** - unlike rows, which a file lists in full - and `apply` says so, naming what the
+scene still opens on. So a scene reused for something new (the skeleton's demo scenes)
+keeps opening on its old picture for a beat before the first `/bg` row until the file
+says `#background none` (or names the new picture). `targets` lists every scene setting
+under "scene settings", which is where an image the linter counts as used, and no row
+names, is used.
+
+### `#layer` lines are the scene's layers
+
+A layer belongs to its scene, not to a row: the scene puts up every layer it has before
+its first row runs, and an image placed on a layer only names it. So a file
+states the layers in the header, one `#layer` line per layer, **nearest first**:
+
+```
+#layer leaves distance=0.7      one of the scene's own layers
+#layer displayableLayer         the base layer: everything not placed on another layer
+#layer hills distance=3
+#layer backgroundLayer distance=inf
+```
+
+The order of the lines is the order on screen, and `distance=` is how far away a layer is,
+counted in the base layer's distance, which is 1: a layer at 2 is twice as far and moves half
+as much with the camera, and one at `inf` does not move with it. A line that leaves it out is
+at 1. Layers at one distance are one level, and the editor shows them as one. A layer written
+in front of `displayableLayer` is no farther than 1 and one behind it no nearer; a line that
+says otherwise is moved to its neighbour's distance and `check` warns. A name may be quoted
+(`#layer 'far hills'`) when it has spaces.
+
+A `/layer hills` *row* is refused: on the editor's command line it adds the layer to the
+scene and leaves no row, and a file says the same thing with a `#layer` line. `show` prints
+the lines only for a scene with layers of its own. **A file that states no `#layer` leaves
+the layers as they are; one that states any states the whole stack** - a layer it leaves
+out is removed, and a name the scene does not have yet is a new layer.
 
 ### `/show <asset>` and `/play <clip>` write `name=`, and have to
 
@@ -285,11 +359,15 @@ were already there are counted in one line and left alone; `check` is where they
 are read. Two findings are told apart by rule and site, and counted, so a second
 empty choice on a new row is new even though the project already had one.
 
-Five things to know before using it:
+Six things to know before using it:
 
 - **A file describes a whole scene.** Applying it deletes every row the file does
   not mention; `apply` names them before it happens, and writes nothing without
   `--write`.
+- **Scene settings change only when the header states them.** `#background` and
+  `#music` left out of a file are kept, and `apply` names what the scene still opens
+  with; `#background none` / `#music none` clear them. `#layer` lines are the same:
+  none leaves the layers alone, any state all of them.
 - **A project's own errors do not block it.** One bad row in another chapter used
   to mean nothing could be written anywhere.
 - **A zero-edit round trip changes nothing.** `show` then `apply` on an untouched

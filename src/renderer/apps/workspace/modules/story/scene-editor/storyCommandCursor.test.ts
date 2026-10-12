@@ -21,6 +21,7 @@ const CONTEXT: StoryCommandContext = {
     labels: ["intro", "retry"],
     appTags: [{ id: "release", name: "main" }, { id: "demo", name: "Demo" }],
     surfaces: [],
+    inputActions: [],
     variables: [{ name: "gold", ref: { scope: "scene", variableId: "v1" }, valueType: "number" }],
     appearanceByCharacterId: { c1: [{ id: "t1", name: "smile" }, { id: "t2", name: "angry" }] },
     puppetCharacterIds: ["c3", "c4"],
@@ -500,11 +501,14 @@ describe("candidate marks", () => {
             { kind: "number", duration: true },
             { kind: "number", duration: true },
         ]);
-        // The two trailing numbers are the overlay knobs `/show` carries for an ambience target;
-        // they are offered on every `/show`, and refused with a reason on anything else.
+        // The two numbers after the placement are its pixel offsets (`xoffset=` / `yoffset=`). The two
+        // trailing numbers are the overlay knobs `/show` carries for an ambience target; they are
+        // offered on every `/show`, and refused with a reason on anything else.
         expect(marks("/show Alice smile |")).toEqual([
             { kind: "text" },
             { kind: "options", lead: "left" },
+            { kind: "number" },
+            { kind: "number" },
             { kind: "options", lead: "fade" },
             { kind: "number", duration: true },
             { kind: "number" },

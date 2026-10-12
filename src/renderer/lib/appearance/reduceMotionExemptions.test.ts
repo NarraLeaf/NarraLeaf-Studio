@@ -53,6 +53,8 @@ const CALM: Record<string, string> = {
     "apps/workspace/modules/ui-editor/panel/ComponentLibraryPanel.tsx": "component library cards",
     "apps/workspace/modules/ui-editor/panel/templates/UITemplateCard.tsx": "template gallery cards",
     "lib/ui-editor/docker/UIEditorDockerBar.tsx": "the docker bar's component strip",
+    "lib/workspace/services/agent/tools/uiTools.ts":
+        "ui_screenshot's offscreen page, photographed for an agent after every animation is finished - nobody watches it move",
 };
 
 /** The playback box in the properties panel, which is not a bridge caller but answers the same question. */

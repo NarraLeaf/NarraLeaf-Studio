@@ -24,6 +24,7 @@ export const CACHE_BUCKET_IDS = [
     "electronBuilder",
     "browser",
     "psdImports",
+    "payloadReaders",
     "logs",
 ] as const;
 

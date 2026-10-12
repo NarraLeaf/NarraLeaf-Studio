@@ -24,6 +24,7 @@ const DEFAULT_MODULE_TYPES = [
     "nl.puppet",
     "nl.slider",
     "nl.list",
+    "nl.inputHints",
     "nl.frame",
 ] as const;
 
@@ -72,6 +73,7 @@ describe("insert palette", () => {
             "nl.puppet",
             "nl.slider",
             "nl.list",
+            "nl.inputHints",
             "nl.frame",
         ]);
         expect(entries.map(entry => entry.placement)).toEqual([
@@ -79,6 +81,7 @@ describe("insert palette", () => {
             "primary",
             "primary",
             "primary",
+            "overflow",
             "overflow",
             "overflow",
             "overflow",

@@ -187,6 +187,17 @@ export function createGalleryStore(
             notify();
         },
         getData: () => data,
+        /**
+         * Replace the catalog in one commit: what an agent tool hands in after editing several
+         * entries at once. One commit is one write, which is what makes the tool's whole edit one
+         * step of undo (the host captures plugin storage writes per tool call). Normalized like
+         * every other commit, and refused while the project is frozen like every other commit.
+         */
+        async replaceData(next: GalleryStoreData) {
+            await commit(next);
+        },
+        /** A clip's length the way the import paths measure it; null when it cannot be read in time. */
+        measureAudio: (asset: Asset) => readAudioLength(asset),
         getItems: () => data.items,
         getGroups: () => data.groups,
         getSettings: () => data.settings,

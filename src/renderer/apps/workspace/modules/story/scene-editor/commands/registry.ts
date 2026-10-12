@@ -11,6 +11,7 @@ import { LOGIC_COMMANDS } from "./specs/logic";
 import { TRANSFORM_COMMANDS } from "./specs/transform";
 import { VFX_COMMANDS } from "./specs/vfx";
 import { MISC_COMMANDS } from "./specs/misc";
+import { INPUT_COMMANDS } from "./specs/input";
 
 /**
  * The command registry: every spec, aggregated, indexed, and projected onto the grammar shape the
@@ -33,6 +34,7 @@ const ALL_SPECS: readonly AnyStoryCommandSpec[] = [
     ...LOGIC_COMMANDS,
     ...TRANSFORM_COMMANDS,
     ...VFX_COMMANDS,
+    ...INPUT_COMMANDS,
     ...MISC_COMMANDS,
 ] as readonly AnyStoryCommandSpec[];
 

@@ -9,6 +9,7 @@ import {
 import { BUILD_CONSOLE_SOURCE } from "@/lib/workspace/services/core/BuildService";
 import { LINT_CONSOLE_CHANNEL, LINT_CONSOLE_SOURCE } from "@/lib/workspace/services/core/LintService";
 import { TEST_CONSOLE_CHANNEL, TEST_CONSOLE_SOURCE } from "@/lib/testing/TestRunService";
+import { AGENT_CONSOLE_CHANNEL, AGENT_CONSOLE_SOURCE } from "@/lib/workspace/services/agent/agentConsole";
 
 type Translate = (key: TranslationKey) => string;
 
@@ -28,6 +29,7 @@ const CHANNEL_LABEL_KEYS: Partial<Record<ConsoleChannelId, TranslationKey>> = {
     storage: "console.channels.storage",
     [LINT_CONSOLE_CHANNEL]: "lint.console.channel",
     [TEST_CONSOLE_CHANNEL]: "test.console.channel",
+    [AGENT_CONSOLE_CHANNEL]: "console.channels.agent",
 };
 
 /** What hovering a tab says - also its accessible name. Same table, same reason. */
@@ -38,6 +40,7 @@ const CHANNEL_DESCRIPTION_KEYS: Partial<Record<ConsoleChannelId, TranslationKey>
     storage: "console.channels.storageDescription",
     [LINT_CONSOLE_CHANNEL]: "lint.console.channelDescription",
     [TEST_CONSOLE_CHANNEL]: "test.console.channelDescription",
+    [AGENT_CONSOLE_CHANNEL]: "console.channels.agentDescription",
 };
 
 /**
@@ -55,6 +58,7 @@ const SOURCE_LABEL_KEYS: ReadonlyMap<string, TranslationKey> = new Map<string, T
     [BLUEPRINT_CONSOLE_SOURCE, "console.channels.blueprint"],
     [BLUEPRINT_LOG_CONSOLE_SOURCE, "console.sources.blueprintLog"],
     [DEV_MODE_CONSOLE_SOURCE, "devMode.title"],
+    [AGENT_CONSOLE_SOURCE, "console.channels.agent"],
 ]);
 
 export function consoleChannelLabel(t: Translate, channel: ConsoleChannelDefinition): string {

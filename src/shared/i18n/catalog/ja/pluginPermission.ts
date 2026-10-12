@@ -70,8 +70,18 @@ export const pluginPermission = {
             network: "ゲームが要求するデータ",
             networkNote: "ゲームの実行中、このプラグインは次のアドレスからデータを要求する",
             studio: "Studio の権限",
+            agentTools: "AI エージェント",
         },
         sidecarPlatforms: "{platforms} で動く",
+        agentToolsSummary: "{tools}（{writes}）",
+        agentTools: {
+            one: "Studio に接続した AI エージェントにツールを {count} 個提供する",
+            other: "Studio に接続した AI エージェントにツールを {count} 個提供する",
+        },
+        agentToolsWrites: {
+            one: "うち {count} 個はプロジェクトを変更できる",
+            other: "うち {count} 個はプロジェクトを変更できる",
+        },
         /**
          * 見出しは両方をまとめて指すので、どちらなのかは行ごとに書く。片方は独立したプログラム、
          * もう片方はゲームと同じ届き方をするプラグイン自身のコードで、判断が変わる。

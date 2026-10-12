@@ -9,7 +9,7 @@ import {
     resolveGlobalLifecycleEventHeadTypes,
     resolveSurfaceLifecycleEventHeadTypes,
 } from "@shared/types/ui-editor/blueprintLifecycle";
-import { formatBlueprintGamepadButton } from "./gamepad";
+import { formatBlueprintGamepadButton, isPhysicalBlueprintGamepadButton } from "./gamepad";
 
 /** Persisted on BlueprintGraphIr.meta to disambiguate slot semantics (events vs functions vs macros). */
 export type BlueprintGraphKind = "event" | "function" | "macro";
@@ -102,6 +102,11 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_CHANGED = "blueprint.event.he
  */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_ON = "blueprint.event.head.switchTurnedOn" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_OFF = "blueprint.event.head.switchTurnedOff" as const;
+/**
+ * A video widget's clip played to its end: the `<video>` element's own `ended`, raised once per
+ * time the clip reaches its end. A clip set to loop never reaches it, so this never runs for one.
+ */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_VIDEO_ENDED = "blueprint.event.head.videoEnded" as const;
 /** Entry for global `appBoot` lifecycle event (application start). */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT = "blueprint.event.head.appBoot" as const;
 /** Entry for global NarraLeaf game runtime readiness. */
@@ -197,6 +202,7 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_ON,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_OFF,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_VIDEO_ENDED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
@@ -292,6 +298,12 @@ const BLUEPRINT_KEYBOARD_KEY_ALIASES: Record<string, string> = {
     right: "arrowright",
     up: "arrowup",
     down: "arrowdown",
+    // The labels the arrows are written with (`BLUEPRINT_KEYBOARD_KEY_LABELS`). Without these a
+    // binding written as its label read back as a key no keyboard has, and stopped matching the arrow.
+    "arrow left": "arrowleft",
+    "arrow right": "arrowright",
+    "arrow up": "arrowup",
+    "arrow down": "arrowdown",
 };
 
 const BLUEPRINT_KEYBOARD_KEY_LABELS: Record<string, string> = {
@@ -537,6 +549,10 @@ function matchesDispatchPayload(
     if (isFilteredGamepadEventHeadType(node.type)) {
         return matchesGamepadButtonDispatch(node, eventPayload);
     }
+    if (node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_GAMEPAD_BUTTON_DOWN
+        || node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_GAMEPAD_BUTTON_UP) {
+        return isPhysicalBlueprintGamepadButton(eventPayload?.button);
+    }
     if (node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED) {
         return matchesPreferenceChangeDispatch(node, eventPayload);
     }
@@ -643,6 +659,26 @@ export function collectGlobalEventHeadNodeIdsForDispatch(
         .filter(([, node]) => allowed.has(node.type) && matchesDispatchPayload(node, eventPayload))
         .map(([id]) => id)
         .sort();
+}
+
+/**
+ * Whether any of these nodes is a head that names this press by its key or button - `On Key Down`
+ * set to Escape, `Gamepad Button Down` set to B - rather than hearing every press, as `Any Key Down`
+ * does.
+ *
+ * What a graph that names a key says is "this key means something here", and a press it names is
+ * one the focus system leaves to it (`navigationDefaults`). A head that hears every key says nothing
+ * about this one.
+ */
+export function namesInputPress(
+    nodes: Record<string, { type: string; params?: Record<string, unknown> }> | undefined,
+    eventName: string,
+    eventPayload: Record<string, unknown>,
+): boolean {
+    const allowed = new Set([...resolveSurfaceEventHeadTypes(eventName), ...resolveGlobalEventHeadTypes(eventName)]);
+    return Object.values(nodes ?? {}).some(node => allowed.has(node.type)
+        && (isFilteredKeyboardEventHeadType(node.type) || isFilteredGamepadEventHeadType(node.type))
+        && matchesDispatchPayload(node, eventPayload));
 }
 
 /** True if this node type is the Story Action Blueprint "On Call" entry head. */
@@ -1217,6 +1253,11 @@ export const BLUEPRINT_NODE_TYPE_GAME_IS_NARRATOR = "blueprint.game.isNarrator" 
  */
 export const BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER = "blueprint.game.getCharacter" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS = "blueprint.game.getNotifications" as const;
+/**
+ * Show a line in the running game's notification stream - the one the engine's own notices go
+ * into, which `Get Notifications` reads and the Game UI notification slot draws.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_POST_NOTIFICATION = "blueprint.game.postNotification" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT = "blueprint.game.getChoiceCount" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE = "blueprint.game.isNvlMode" as const;
 /** True while a dialog line is on screen and its message is read (seen before, or display finished). */
@@ -1600,6 +1641,41 @@ export const BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_SET_CHECKED = "blueprint.element
 export const BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_TOGGLE = "blueprint.element.switch.toggle" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_TURN_ON = "blueprint.element.switch.turnOn" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_TURN_OFF = "blueprint.element.switch.turnOff" as const;
+
+/**
+ * A video widget's playback. The `blueprint.video.*` nodes act on the video whose own blueprint they
+ * are in; the `blueprint.element.video.*` twins act on the video wired into their Video pin, from any
+ * graph on the page.
+ */
+export const BLUEPRINT_NODE_TYPE_VIDEO_PLAY = "blueprint.video.play" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_PAUSE = "blueprint.video.pause" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_STOP = "blueprint.video.stop" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_SEEK = "blueprint.video.seek" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_GET_TIME = "blueprint.video.getTime" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_GET_DURATION = "blueprint.video.getDuration" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_IS_PLAYING = "blueprint.video.isPlaying" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_IS_ENDED = "blueprint.video.isEnded" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_PLAY = "blueprint.element.video.play" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_PAUSE = "blueprint.element.video.pause" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_STOP = "blueprint.element.video.stop" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SEEK = "blueprint.element.video.seek" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_TIME = "blueprint.element.video.getTime" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_DURATION = "blueprint.element.video.getDuration" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_PLAYING = "blueprint.element.video.isPlaying" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_ENDED = "blueprint.element.video.isEnded" as const;
+/** The video props a graph sets at run time, over what the author set on the widget. */
+export const BLUEPRINT_NODE_TYPE_VIDEO_SET_VOLUME = "blueprint.video.setVolume" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_SET_MUTED = "blueprint.video.setMuted" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_SET_LOOP = "blueprint.video.setLoop" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_SET_PLAYBACK_RATE = "blueprint.video.setPlaybackRate" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_GET_VOLUME = "blueprint.video.getVolume" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_IS_MUTED = "blueprint.video.isMuted" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_VOLUME = "blueprint.element.video.setVolume" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_MUTED = "blueprint.element.video.setMuted" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_LOOP = "blueprint.element.video.setLoop" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_PLAYBACK_RATE = "blueprint.element.video.setPlaybackRate" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_VOLUME = "blueprint.element.video.getVolume" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_MUTED = "blueprint.element.video.isMuted" as const;
 
 export const BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS = "blueprint.list.setItems" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS = "blueprint.list.getItems" as const;

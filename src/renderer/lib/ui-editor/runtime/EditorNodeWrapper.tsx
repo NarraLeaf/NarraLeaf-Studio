@@ -8,11 +8,21 @@ import React, {
     useState,
     useSyncExternalStore,
 } from "react";
-import type { CSSProperties, FocusEvent, MouseEvent, PointerEvent, WheelEvent } from "react";
+import type { CSSProperties, FocusEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent, PointerEvent, WheelEvent } from "react";
 import { MotionConfigContext } from "motion/react";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
+import { normalizeUIElementNavigation, uiElementHasFocusLook } from "@shared/types/ui-editor/navigation";
+import { isOperableWidgetType } from "@shared/types/ui-editor/inputAction";
 import {
+    elementNavigationAttributes,
+    FOCUS_LOOK_ATTRIBUTE,
+    NAV_FOCUSABLE_ATTRIBUTE,
+    NAV_FOCUSABLE_PRESS,
+} from "@/lib/ui-editor/runtime/navigation/focusNavigation";
+import { useGameNavigationEnabled } from "@/lib/ui-editor/runtime/navigation/gameNavigationContext";
+import {
+    NavigationFocusProvider,
     useWidgetRuntimeElementState,
     useWidgetRuntimeElementKey,
     useWidgetRuntimeStateStore,
@@ -36,6 +46,7 @@ import { NodeWrapperMotionDriver, nodeWrapperTransform, type NodeWrapperPose } f
 import { uiDrawingAttributeValue } from "./surfaceMeasurement";
 import { localPointerPoint, readElementPointerPositions } from "./elementPointerPosition";
 import { isTextEntryTarget } from "./app/isTextEntryTarget";
+import { isSyntheticKeyPress } from "./input/syntheticKeyPress";
 import { offerUIElementHoverSound, playUIElementInteractionSound } from "./interactionSounds";
 import { readUIInteractionSoundAssetId } from "@shared/types/ui-editor/interactionSounds";
 import { EnteredStateProvider, variantOverrideIdFor } from "@/lib/ui-editor/hooks/enteredStateContext";
@@ -481,8 +492,9 @@ export function EditorNodeWrapper({
         // The field's own Submit/Value Changed events are dispatched by its renderer, not here.
         const onKeyDown = (event: KeyboardEvent) => {
             // A held key's repeats are not presses: `On Key Down` answers the key going down, once,
-            // as the game's own keys do (`keyboardOwner`).
-            if (isTextEntryTarget(event.target) || event.repeat) {
+            // as the game's own keys do (`keyboardOwner`). Nor is the Enter a pad's Confirm presses
+            // a focused control with: nobody pressed a key (`syntheticKeyPress`).
+            if (isTextEntryTarget(event.target) || event.repeat || isSyntheticKeyPress(event)) {
                 return;
             }
             const eventControl = getOrCreateDomEventPropagationControl(event);
@@ -701,6 +713,8 @@ export function EditorNodeWrapper({
             if (isDirectElementEvent(e.target)) {
                 widgetRuntimeStore?.setFocusedTarget(runtimeElementKey);
             }
+            // On it or inside it: drawn the way a pointer resting there would draw it.
+            widgetRuntimeStore?.setFocusWithin(runtimeElementKey, true);
             dispatchWidgetEvent("focus", e.target, undefined, getOrCreateDomEventPropagationControl(e.nativeEvent));
         },
         [dispatchWidgetEvent, isDirectElementEvent, runtimeElementKey, widgetRuntimeStore],
@@ -711,10 +725,61 @@ export function EditorNodeWrapper({
             if (isDirectElementEvent(e.target)) {
                 widgetRuntimeStore?.setFocusedTarget(null);
             }
+            const next = e.relatedTarget;
+            if (!(next instanceof Node) || !e.currentTarget.contains(next)) {
+                widgetRuntimeStore?.setFocusWithin(runtimeElementKey, false);
+            }
             dispatchWidgetEvent("blur", e.target, undefined, getOrCreateDomEventPropagationControl(e.nativeEvent));
         },
-        [dispatchWidgetEvent, isDirectElementEvent, widgetRuntimeStore],
+        [dispatchWidgetEvent, isDirectElementEvent, runtimeElementKey, widgetRuntimeStore],
     );
+
+    // A drawing that leaves while the focus is inside it takes no blur with it.
+    useEffect(() => () => widgetRuntimeStore?.setFocusWithin(runtimeElementKey, false), [runtimeElementKey, widgetRuntimeStore]);
+
+    // How the player reaches this element without a pointer (`focusNavigation`). In a running game
+    // only: the canvas has no focus to move. A box an author made reachable is a control of its own -
+    // a Tab stop, pressed by Enter and Space the way a button is, which is also how a pad's Confirm
+    // presses it.
+    const navigationEnabled = useGameNavigationEnabled();
+    const navigationProps = useMemo(() => {
+        if (!interactive || !blueprintRuntime) {
+            return {};
+        }
+        // Drawn with its own focused look when it has the focus, so it needs no ring (`styles.css`).
+        // Whatever moved the focus there - navigation, or Tab in a game that has none.
+        const ownLook = uiElementHasFocusLook(element) ? { [FOCUS_LOOK_ATTRIBUTE]: "" } : {};
+        if (!navigationEnabled) {
+            return ownLook;
+        }
+        const navigation = normalizeUIElementNavigation(element.navigation);
+        // An element whose own logic answers a click is a control, whatever widget it is - a save
+        // slot drawn as a container with a Mouse Click head is pressed like a button. Reachable as
+        // an author's `always` is, unless the author said `never`.
+        const answersPress = !navigation?.focusable
+            && !isOperableWidgetType(element.type)
+            && blueprintRuntime.elementAnswersPress?.(element.id) === true;
+        const reachable = navigation?.focusable === "always" || answersPress;
+        const attributes: Record<string, unknown> = { ...elementNavigationAttributes(navigation), ...ownLook };
+        if (answersPress) {
+            // Marked apart from an author's `always`: on the stage a box that answers a click is
+            // the area a click reads the story on with, not a control (`isNavigationTarget`).
+            attributes[NAV_FOCUSABLE_ATTRIBUTE] = NAV_FOCUSABLE_PRESS;
+        }
+        if (reachable) {
+            attributes.tabIndex = 0;
+            attributes.onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+                if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) {
+                    return;
+                }
+                event.preventDefault();
+                if (!event.repeat) {
+                    event.currentTarget.click();
+                }
+            };
+        }
+        return attributes;
+    }, [blueprintRuntime, element, interactive, navigationEnabled]);
 
     /** Where this node is placed, state offset included. Its own channel, so a gesture cannot take it. */
     const placedLeft = enteredOffsetsInFlow ? 0 : layout.x + Math.min(0, layout.width) + placedEnteredOffsets.x;
@@ -1111,7 +1176,11 @@ export function EditorNodeWrapper({
         <EnteredStateProvider value={broadcastState}>
         <div
             ref={containerRef}
+            {...navigationProps}
             data-ui-element-id={interactive ? element.id : undefined}
+            // A preview drawing (no editor chrome: thumbnails, an agent's screenshot) still says which
+            // element it is, under its own name so nothing that looks for an editable node finds it.
+            data-ui-preview-element-id={interactive ? undefined : element.id}
             // Which drawing this is, for measuring one row or one placement rather than whichever
             // copy of the element the page happens to hold first. See `surfaceMeasurement`.
             data-ui-drawing={interactive && instanceKey ? uiDrawingAttributeValue(instanceKey) : undefined}
@@ -1130,7 +1199,10 @@ export function EditorNodeWrapper({
             onFocus={interactive && (widgetRuntimeStore || blueprintRuntime) ? onFocus : undefined}
             onBlur={interactive && (widgetRuntimeStore || blueprintRuntime) ? onBlur : undefined}
         >
-            {children}
+            {/* Holding the focus draws this subtree as focused: see `NavigationFocusProvider`. */}
+            <NavigationFocusProvider focused={runtimeElementState.holdsFocus}>
+                {children}
+            </NavigationFocusProvider>
         </div>
         </EnteredStateProvider>
     );

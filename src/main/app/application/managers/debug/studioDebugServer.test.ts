@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { buildBridgeCallScript } from "./studioDebugServer";
+import { buildBridgeCallScript, refuseForeignRequest } from "./studioDebugServer";
 
 const ANOMALIES_BODY = "return {available:true,data:{anomalies:d.anomalies()}};";
 
@@ -79,5 +79,21 @@ describe("the bridge call script", () => {
             available: false,
             reason: "bridge-too-old",
         });
+    });
+});
+
+describe("who the debug server answers", () => {
+    it("answers a tool that names this server as its Host and sends no Origin", () => {
+        expect(refuseForeignRequest({ host: "127.0.0.1:9223" }, 9223)).toBeNull();
+        expect(refuseForeignRequest({ host: "localhost:9223" }, 9223)).toBeNull();
+    });
+
+    it("refuses anything a web page could send", () => {
+        expect(refuseForeignRequest({ host: "127.0.0.1:9223", origin: "http://example.com" }, 9223)).toMatch(/web pages/);
+        expect(refuseForeignRequest({ host: "127.0.0.1:9223", origin: "null" }, 9223)).toMatch(/web pages/);
+        // A page that rebound its own name to 127.0.0.1 still sends its own name as the Host.
+        expect(refuseForeignRequest({ host: "rebind.example:9223" }, 9223)).toMatch(/Host/);
+        expect(refuseForeignRequest({ host: "127.0.0.1:9224" }, 9223)).toMatch(/Host/);
+        expect(refuseForeignRequest({}, 9223)).toMatch(/Host/);
     });
 });

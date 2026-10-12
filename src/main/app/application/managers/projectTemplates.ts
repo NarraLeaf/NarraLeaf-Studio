@@ -382,6 +382,9 @@ const TEMPLATE_UI_DOCUMENT = ["editor", "ui", "uidoc.json"] as const;
 const TEMPLATE_UI_GRAPHS = ["editor", "ui", "uigraphs.json"] as const;
 const TEMPLATE_BRAND = ["editor", "brand.json"] as const;
 const TEMPLATE_LOCALIZATION_KEYS = ["editor", "localization", "keys.json"] as const;
+/** The variables and save-slot fields the interface's blueprints may read. */
+const TEMPLATE_VARIABLES = ["editor", "variables.json"] as const;
+const TEMPLATE_SAVE_SCHEMA = ["editor", "save-schema.json"] as const;
 /** The asset records, one file per asset type, and the directory the files are sharded under. */
 const TEMPLATE_ASSETS_DIR = "assets";
 const TEMPLATE_ASSET_RECORDS = /^assets\.metadata\.([a-z]+)\.json$/;
@@ -483,6 +486,8 @@ export async function readProjectTemplateInterface(
         uiGraphs: await readJsonInTrees(trees, TEMPLATE_UI_GRAPHS),
         brand: await readJsonInTrees(trees, TEMPLATE_BRAND),
         localizationKeys: await readJsonInTrees(trees, TEMPLATE_LOCALIZATION_KEYS),
+        variables: await readJsonInTrees(trees, TEMPLATE_VARIABLES),
+        saveSchema: await readJsonInTrees(trees, TEMPLATE_SAVE_SCHEMA),
         assetRecords,
     };
 }

@@ -55,38 +55,40 @@ vi.mock("electron", () => ({
     ipcMain: ipcMainMock,
 }));
 
-import { IPCHost, IPCWindow } from "./ipcHost";
+import { IPC_PAGE_GONE, IPCHost, IPCWindow } from "./ipcHost";
 
 type FakeWebContents = {
     send: ReturnType<typeof vi.fn>;
     once: (event: string, listener: () => void) => void;
     removeListener: (event: string, listener: () => void) => void;
+    emit: (event: string) => void;
     emitDestroyed: () => void;
+    /** Listeners still registered, all events together. */
+    listenerCount: () => number;
 };
 
 function createFakeWindow(): { win: IPCWindow; webContents: FakeWebContents; destroy: () => void } {
     let destroyed = false;
-    const destroyedListeners: Array<() => void> = [];
+    const listeners = new Map<string, Array<() => void>>();
     const webContents: FakeWebContents = {
         send: vi.fn(),
         once: (event, listener) => {
-            if (event === "destroyed") {
-                destroyedListeners.push(listener);
-            }
+            listeners.set(event, [...(listeners.get(event) ?? []), listener]);
         },
         removeListener: (event, listener) => {
-            if (event === "destroyed") {
-                const index = destroyedListeners.indexOf(listener);
-                if (index !== -1) {
-                    destroyedListeners.splice(index, 1);
-                }
+            const existing = listeners.get(event) ?? [];
+            const index = existing.indexOf(listener);
+            if (index !== -1) {
+                existing.splice(index, 1);
             }
         },
-        emitDestroyed: () => {
-            for (const listener of [...destroyedListeners]) {
+        emit: event => {
+            for (const listener of [...(listeners.get(event) ?? [])]) {
                 listener();
             }
         },
+        emitDestroyed: () => webContents.emit("destroyed"),
+        listenerCount: () => [...listeners.values()].reduce((sum, entries) => sum + entries.length, 0),
     };
     return {
         win: {
@@ -153,6 +155,48 @@ describe("IPCHost.invoke", () => {
         webContents.emitDestroyed();
         await assertion;
         expect(ipcMainMock.listeners.get(replyChannel)).toHaveLength(0);
+    });
+
+    it("rejects at once, with the page-gone code, when the page reloads or navigates before replying", async () => {
+        const host = new IPCHost(Namespace.NarraLeafStudio);
+        const { win, webContents } = createFakeWindow();
+
+        const promise = host.invoke(win, "test-event" as never, {} as never, { timeoutMs: 20 * 60 * 1000 });
+        const replyChannel = getReplyChannel(webContents);
+        const failure = promise.catch(error => error);
+
+        webContents.emit("did-navigate");
+        const error = await failure;
+        expect(error.message).toContain("reloaded or navigated away before replying");
+        expect(error.code).toBe(IPC_PAGE_GONE);
+        expect(ipcMainMock.listeners.get(replyChannel)).toHaveLength(0);
+        expect(webContents.listenerCount()).toBe(0);
+    });
+
+    it("rejects at once, with the page-gone code, when the renderer process goes away", async () => {
+        const host = new IPCHost(Namespace.NarraLeafStudio);
+        const { win, webContents } = createFakeWindow();
+
+        const promise = host.invoke(win, "test-event" as never, {} as never, { timeoutMs: 20 * 60 * 1000 });
+        const failure = promise.catch(error => error);
+
+        webContents.emit("render-process-gone");
+        const error = await failure;
+        expect(error.message).toContain("lost its renderer process");
+        expect(error.code).toBe(IPC_PAGE_GONE);
+        expect(webContents.listenerCount()).toBe(0);
+    });
+
+    it("leaves no page listeners behind once the reply came", async () => {
+        const host = new IPCHost(Namespace.NarraLeafStudio);
+        const { win, webContents } = createFakeWindow();
+
+        const promise = host.invoke(win, "test-event" as never, {} as never);
+        ipcMainMock.emit(getReplyChannel(webContents), {}, { ok: true });
+        await expect(promise).resolves.toEqual({ ok: true });
+        expect(webContents.listenerCount()).toBe(0);
+        // A later reload is nothing to this request any more.
+        webContents.emit("did-navigate");
     });
 
     it("throws when invoked on a destroyed window", () => {

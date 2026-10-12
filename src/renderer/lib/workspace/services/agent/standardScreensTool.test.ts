@@ -1,0 +1,327 @@
+import fs from "node:fs";
+import path from "node:path";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import type { AgentCallResult } from "@shared/agent/protocol";
+import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
+import { BLUEPRINT_NODE_TYPE_GAME_START_STORY } from "@shared/types/blueprint/graph";
+import type { SaveSchema } from "@shared/types/saveSchema";
+import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument } from "@shared/types/ui-editor/document";
+import { resolveEntrySurface } from "@shared/types/ui-editor/entrySurface";
+import type { VariableRegistry } from "@shared/types/variables/registry";
+import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
+import { translate } from "@/lib/i18n";
+import { ensureWidgetModulesRegistered } from "@/lib/ui-editor/widget-modules/registryInstance";
+import { HistoryService } from "../history/HistoryService";
+import { projectHistoryScope } from "../history/historyScopes";
+import { Services } from "../services";
+import { StoryService } from "../story/StoryService";
+import { UIDocumentService } from "../ui-editor/UIDocumentService";
+import { UIEditorHistoryService } from "../ui-editor/UIEditorHistoryService";
+import { AgentFollowService } from "./AgentFollowService";
+import type { AgentToolContext } from "./agentCall";
+import { uiInstallStandardScreens } from "./tools/standardScreensTool";
+
+vi.mock("@/lib/app/writeFreeze", () => ({ getProjectWriteFreeze: () => null }));
+
+/** The shipped skeleton's interface, handed over the way main reads it for a workspace. */
+const SKELETON = path.resolve(__dirname, "../../../../../../resources/templates/skeleton/content/editor");
+const readJson = (...parts: string[]) => JSON.parse(fs.readFileSync(path.join(SKELETON, ...parts), "utf8")) as unknown;
+
+vi.mock("@/lib/app/bridge", () => ({
+    getInterface: () => ({
+        projectTemplates: {
+            readInterface: async () => ({
+                success: true,
+                data: {
+                    uiDocument: readJson("ui", "uidoc.json"),
+                    uiGraphs: readJson("ui", "uigraphs.json"),
+                    brand: readJson("brand.json"),
+                    localizationKeys: readJson("localization", "keys.json"),
+                    variables: readJson("variables.json"),
+                    saveSchema: readJson("save-schema.json"),
+                    assetRecords: {},
+                },
+            }),
+            readAssets: async () => ({ success: true, data: [] }),
+        },
+    }),
+}));
+
+/**
+ * `ui_install_standard_screens` end to end over real interface, story and history services, on a
+ * project made from the empty template: one blank page and nothing else.
+ */
+
+function emptyProjectInterface(): UIDocument {
+    return {
+        schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+        id: "doc",
+        name: "Doc",
+        surfaces: [{ id: "blank", name: "Page 1", host: "app", kind: "appSurface", designSize: { width: 1920, height: 1080 }, rootElementId: "blankRoot" }],
+        elements: {
+            blankRoot: {
+                id: "blankRoot",
+                type: "nl.root",
+                name: "Root",
+                parentId: null,
+                childrenIds: [],
+                layout: { x: 0, y: 0, width: 1920, height: 1080, opacity: 1, visible: true },
+            },
+        },
+        components: [],
+        meta: {},
+    } as UIDocument;
+}
+
+function createHarness(options: { story?: boolean } = {}) {
+    const history = new HistoryService();
+    const story = new StoryService();
+    const uidoc = new UIDocumentService();
+    const uiHistory = new UIEditorHistoryService();
+    const graphDocument = {
+        blueprintDocument: { schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION, blueprints: {}, ownerRecords: {}, meta: {} } as BlueprintDocument,
+    };
+    const registry: VariableRegistry = { schemaVersion: 2, entries: {} } as VariableRegistry;
+    let saveSchema: SaveSchema = { schemaVersion: 1, fields: {} } as SaveSchema;
+    const ok = async () => ({ ok: true as const, data: undefined });
+    const fsService = {
+        writeFileNoFollowOrCreate: vi.fn(ok),
+        read: vi.fn(async () => ({ ok: false as const, error: { message: "missing", code: "ENOENT" } })),
+        deleteFile: vi.fn(ok),
+        deleteDir: vi.fn(ok),
+        isFileExists: vi.fn(async () => ({ ok: true as const, data: false })),
+        isDirExists: vi.fn(async () => ({ ok: true as const, data: true })),
+        createDir: vi.fn(ok),
+        mkdir: vi.fn(ok),
+    };
+    const colors = new Map<string, unknown>();
+    const context = {
+        project: { resolve: (...parts: (string | string[])[]) => parts.flatMap(part => (Array.isArray(part) ? part : [part])).join("/") },
+        services: {
+            get(id: Services) {
+                switch (id) {
+                    case Services.History: return history;
+                    case Services.FileSystem: return fsService;
+                    case Services.Uuid: return { generate: () => crypto.randomUUID() };
+                    case Services.Project:
+                        return {
+                            getProjectConfig: () => ({ name: "Test", metadata: { resolution: { width: 1920, height: 1080 } } }),
+                            getLocalizationConfiguration: () => ({ sourceLocale: "en", locales: [] }),
+                        };
+                    case Services.Story: return story;
+                    case Services.UIDocument: return uidoc;
+                    case Services.UIEditorHistory: return uiHistory;
+                    case Services.UIGraph:
+                        return { getDocument: () => graphDocument, applyGraphMutation: (mutator: (document: typeof graphDocument) => void) => mutator(graphDocument) };
+                    case Services.LocalBlueprint:
+                        return {
+                            applyBlueprintMutation: (mutator: (document: BlueprintDocument) => void) => mutator(graphDocument.blueprintDocument),
+                            getBlueprintDocument: () => graphDocument.blueprintDocument,
+                        };
+                    case Services.UIBlueprintLifecycle: return { syncFromUidoc: () => undefined };
+                    case Services.Assets: return { getAssets: () => ({}) };
+                    case Services.Brand:
+                        return {
+                            getColor: (colorId: string) => colors.get(colorId),
+                            adoptColors: (adopted: { id: string }[]) => {
+                                adopted.forEach(color => colors.set(color.id, color));
+                                return adopted.length;
+                            },
+                        };
+                    case Services.VariableRegistry:
+                        return { getRegistry: () => registry, applyRegistryMutation: (mutator: (next: VariableRegistry) => void) => mutator(registry) };
+                    case Services.SaveSchema:
+                        return { getSchema: () => saveSchema, replaceSchema: (next: SaveSchema) => { saveSchema = next; } };
+                    case Services.BlueprintNodeCatalog:
+                        // Studio's own nodes only: this project does not run the Gallery.
+                        return { get: (type: string) => blueprintNodeRegistry.get(type) };
+                    default: throw new Error(`Unexpected service ${id}`);
+                }
+            },
+        } as never,
+        commandLineRun: false,
+    } as never;
+    history.setContext(context);
+    story.setContext(context);
+    uidoc.setContext(context);
+    uiHistory.setContext(context);
+    (uiHistory as never as { init(ctx: unknown): void }).init(context);
+    (uidoc as never as { document: UIDocument }).document = emptyProjectInterface();
+    (uidoc as never as { scheduleAutoSave: () => void }).scheduleAutoSave = () => undefined;
+    (story as never as { index: unknown }).index = { schemaVersion: 1, stories: [], meta: {} };
+    (story as never as { animationIndex: unknown }).animationIndex = { schemaVersion: 1, animations: [], meta: {} };
+    const entry = options.story === false ? null : story.createStory("Tale");
+    const sceneId = entry ? story.getStoryDocument(entry.id).chapters[0].sceneIds[0] : null;
+
+    const follow = new AgentFollowService();
+    const tool: AgentToolContext = {
+        ctx: context,
+        request: { callId: "call-1", tool: "ui_install_standard_screens", args: {}, clientName: null, policy: { writesEnabled: true, allowedImportRoots: [] }, deadline: Date.now() + 60_000 },
+        follow,
+        offscreen: null as never,
+        log: () => undefined,
+    };
+    const steps = () => history.describe().find(stack => stack.scopeId === projectHistoryScope())?.undo ?? 0;
+    return { uidoc, history, story, graphDocument, registry, follow, saveSchema: () => saveSchema, storyId: entry?.id, sceneId, steps, run: (args: Record<string, unknown>) => uiInstallStandardScreens(args, tool) };
+}
+
+function structured(result: AgentCallResult): Record<string, unknown> {
+    if (!result.ok) {
+        throw new Error(`refused: ${result.error.code} ${result.error.message}`);
+    }
+    return result.structured ?? {};
+}
+
+function textOf(result: AgentCallResult): string {
+    if (!result.ok) {
+        throw new Error(`refused: ${result.error.code} ${result.error.message}`);
+    }
+    return result.content.map(item => (item.type === "text" ? item.text : "")).join("\n");
+}
+
+beforeAll(async () => {
+    await ensureWidgetModulesRegistered();
+}, 120_000);
+
+describe("ui_install_standard_screens", () => {
+    it("writes nothing on a dry run, and says what would come and what would not", async () => {
+        const { uidoc, graphDocument, follow, steps, run } = createHarness();
+        const describeCall = vi.spyOn(follow, "describeCall");
+        const answer = structured(await run({ dryRun: true }));
+        // The Agent log names the call in the author's language, through the catalog.
+        expect(describeCall).toHaveBeenCalledWith("call-1", translate("workspace.agent.log.target.standardScreens"));
+        expect(translate("workspace.agent.log.target.standardScreens")).toBe("Standard screens");
+        expect(answer.written).toBe(false);
+        expect((answer.pages as string[]).length).toBeGreaterThan(4);
+        expect((answer.gameUis as string[]).length).toBe(4);
+        expect((answer.leftOut as { needs: string[] }[]).map(item => item.needs.every(type => type.startsWith("narraleaf.gallery.")))).toEqual([true]);
+        expect(uidoc.getDocument().surfaces.map(surface => surface.id)).toEqual(["blank"]);
+        expect(Object.keys(graphDocument.blueprintDocument.blueprints)).toEqual([]);
+        expect(steps()).toBe(0);
+    }, 120_000);
+
+    it("brings the working screens into an empty project as one step that undo takes back whole", async () => {
+        const { uidoc, history, graphDocument, registry, saveSchema, storyId, sceneId, steps, run } = createHarness();
+        const answer = structured(await run({}));
+        expect(answer.written).toBe(true);
+
+        const document = uidoc.getDocument();
+        // The blank page made way, and the splash is what the game opens on.
+        expect(document.surfaces.some(surface => surface.id === "blank")).toBe(false);
+        expect(resolveEntrySurface(document)?.name).toBe("Splash");
+        // Every Game UI slot is filled, and the dialogue box still advances on a click.
+        const slots = document.surfaces.flatMap(surface => (surface.kind === "stageSurface" ? [surface.mount.slotId] : []));
+        expect(slots.sort()).toEqual(["choice", "dialog", "notification", "onStage"]);
+        const dialogue = document.surfaces.find(surface => surface.kind === "stageSurface" && surface.mount.slotId === "dialog");
+        expect(dialogue?.actions?.map(item => item.actionId)).toContain("advance");
+        expect(document.actions?.advance).toBeDefined();
+        // Blueprints came with them, and Start begins this project's story.
+        const starts = Object.values(graphDocument.blueprintDocument.blueprints)
+            .flatMap(blueprint => Object.values(blueprint.graphs.events ?? {}))
+            .flatMap(layer => Object.values(layer?.graph?.nodes ?? {}))
+            .filter(node => node.type === BLUEPRINT_NODE_TYPE_GAME_START_STORY && node.params?.storyId);
+        expect(starts.length).toBeGreaterThan(0);
+        expect(starts.every(node => node.params?.storyId === storyId && node.params?.sceneId === sceneId)).toBe(true);
+        // What the save pages read beyond the interface came too, under the template's ids.
+        expect(Object.values(registry.entries).map(entry => entry.scope)).toContain("persistent");
+        expect(Object.keys(saveSchema().fields).length).toBe(1);
+        // The Extra page needs the Gallery, which this project does not run.
+        expect(document.surfaces.some(surface => surface.name === "Extra")).toBe(false);
+
+        expect(steps()).toBe(1);
+        history.undo(projectHistoryScope());
+        const undone = uidoc.getDocument();
+        expect(undone.surfaces.map(surface => surface.id)).toEqual(["blank"]);
+        expect(resolveEntrySurface(undone)?.id).toBe("blank");
+        expect(Object.keys(graphDocument.blueprintDocument.ownerRecords)).toEqual([]);
+        // The input actions the screens answer went with them: their bindings would go on taking keys.
+        expect(Object.keys(undone.actions ?? {})).toEqual([]);
+        history.redo(projectHistoryScope());
+        expect(uidoc.getDocument().actions?.advance).toBeDefined();
+    }, 120_000);
+
+    it("writes nothing when the author pauses while the template is read", async () => {
+        const { uidoc, graphDocument, registry, follow, saveSchema, steps, run } = createHarness();
+        // The bridge let the call in; the handler then awaits the template, and the author pauses.
+        const pending = run({});
+        follow.setPaused(true);
+        await expect(pending).rejects.toMatchObject({ code: "paused", message: expect.stringContaining("Nothing was written.") });
+        expect(uidoc.getDocument().surfaces.map(surface => surface.id)).toEqual(["blank"]);
+        expect(uidoc.getDocument().actions).toBeUndefined();
+        expect(Object.keys(graphDocument.blueprintDocument.blueprints)).toEqual([]);
+        expect(Object.keys(registry.entries)).toEqual([]);
+        expect(Object.keys(saveSchema().fields)).toEqual([]);
+        expect(steps()).toBe(0);
+    }, 120_000);
+
+    it("says what one undo takes back and what it leaves, and leaves exactly that", async () => {
+        const { story, history, registry, saveSchema, uidoc, run } = createHarness({ story: false });
+        const result = await run({});
+        const text = textOf(result);
+        expect(text).toContain("One step of undo in Studio takes back those pages, Game UIs and components with their blueprints and the input actions they brought, puts back what they replaced and returns the entry page.");
+        expect(text).toMatch(/It leaves the rest of what came with them in the project, unused: the story "Test" made for Start, .*the variable\(s\) .*the save-slot field\(s\) .*the translation keys of their words\./);
+        expect(structured(result).madeStory).toBe("Test");
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(uidoc.getDocument().surfaces.map(surface => surface.id)).toEqual(["blank"]);
+        expect(story.listStories().map(entry => entry.name)).toEqual(["Test"]);
+        expect(Object.keys(registry.entries).length).toBeGreaterThan(0);
+        expect(Object.keys(saveSchema().fields).length).toBe(1);
+    }, 120_000);
+
+    it("says what it had already written when the author pauses part-way, and keeps it", async () => {
+        const { story, follow, uidoc, steps, run } = createHarness({ story: false });
+        const create = story.createStory.bind(story);
+        // The author pauses agents right after the story for Start is made.
+        vi.spyOn(story, "createStory").mockImplementation(name => {
+            const made = create(name);
+            follow.setPaused(true);
+            return made;
+        });
+        await expect(run({})).rejects.toMatchObject({
+            code: "paused",
+            message: expect.stringMatching(/Story "Test" was made for Start to begin; it stays, and nothing else was written\.$/),
+        });
+        expect(story.listStories().map(entry => entry.name)).toEqual(["Test"]);
+        expect(uidoc.getDocument().surfaces.map(surface => surface.id)).toEqual(["blank"]);
+        expect(steps()).toBe(0);
+    }, 120_000);
+
+    it("writes nothing - not even a story for Start - when it refuses", async () => {
+        const { story, run } = createHarness();
+        structured(await run({}));
+        // The working screens stay; the project's story does not.
+        (story as never as { index: unknown }).index = { schemaVersion: 1, stories: [], meta: {} };
+        await expect(run({})).rejects.toMatchObject({ code: "unavailable" });
+        expect(story.listStories()).toEqual([]);
+    }, 120_000);
+
+    it("refuses a second set beside working screens", async () => {
+        const { uidoc, run } = createHarness();
+        structured(await run({}));
+        const surfaces = uidoc.getDocument().surfaces.length;
+        await expect(run({})).rejects.toMatchObject({ code: "unavailable" });
+        expect(uidoc.getDocument().surfaces.length).toBe(surfaces);
+    }, 120_000);
+
+    it("leaves a Game UI slot the project fills alone, unless asked to replace it", async () => {
+        const { uidoc, run } = createHarness();
+        const document = uidoc.getDocument();
+        document.surfaces.push({
+            id: "mine",
+            name: "My dialogue",
+            host: "player",
+            kind: "stageSurface",
+            designSize: { width: 1920, height: 1080 },
+            rootElementId: "mineRoot",
+            mount: { kind: "slot", slotId: "dialog" },
+        } as never);
+        document.elements.mineRoot = { ...document.elements.blankRoot, id: "mineRoot" };
+        const kept = structured(await run({ dryRun: true }));
+        expect(kept.skippedSlots).toEqual(["dialog"]);
+        const replaced = structured(await run({ dryRun: true, replace: true }));
+        expect(replaced.skippedSlots).toEqual([]);
+        expect((replaced.removed as { name: string }[]).map(item => item.name)).toContain("My dialogue");
+    }, 120_000);
+});

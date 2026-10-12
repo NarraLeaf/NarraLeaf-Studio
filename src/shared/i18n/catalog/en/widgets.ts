@@ -264,6 +264,37 @@ export const widgets = {
     image: {
         title: "Image",
     },
+    inputHints: {
+        title: "Input Hints",
+        sectionContent: "Content",
+        sectionStyle: "Style",
+        sectionWords: "Words",
+        showFor: "Show for",
+        showForKeysAndGamepad: "Keyboard and gamepad",
+        showForGamepad: "Gamepad only",
+        showForAlways: "Every device",
+        showForTip: "The inputs the bar shows hints for. While any other input is in use, it shows none.",
+        glyphStyle: "Button glyphs",
+        glyphAuto: "Match the connected controller",
+        glyphXbox: "Xbox",
+        glyphPlayStation: "PlayStation",
+        glyphNintendo: "Nintendo",
+        align: "Alignment",
+        alignStart: "Start",
+        alignCenter: "Center",
+        alignEnd: "End",
+        fontSize: "Font size",
+        color: "Text color",
+        glyphBackground: "Glyph fill",
+        glyphColor: "Glyph text",
+        gap: "Spacing",
+        wordsTip: "Left empty, each hint uses Studio's own word in the player's language. Actions the project declares are named by their own names.",
+        wordSelect: "Select",
+        wordConfirm: "Confirm",
+        wordBack: "Back",
+        wordAdvance: "Advance",
+        wordStageControls: "Quick menu",
+    },
     video: {
         title: "Video",
         sectionSource: "Source",
@@ -282,7 +313,7 @@ export const widgets = {
         loop: "Loop",
         muted: "Muted",
         autoplay: "Autoplay",
-        autoplayHint: "Applies in the game. The editor canvas stays paused; use the docker bar to preview.",
+        autoplayHint: "Applies in the game. The editor canvas stays paused; use the toolbar to preview.",
         volume: "Volume",
         volumeHint: "0 to 1. A blueprint volume pin overrides this at runtime.",
         audioTrack: "Audio Track",
@@ -300,6 +331,7 @@ export const widgets = {
         previewPlay: "Preview playback",
         previewPause: "Pause preview",
         previewRestart: "Back to first frame",
+        playRefused: "Video “{name}” did not start playing. A video with sound plays only after the player has clicked or pressed a key; a muted one plays at once.",
     },
     /**
      * The widget's stored type is `nl.puppet` and names no renderer; every string an author reads
@@ -391,6 +423,7 @@ export const widgets = {
      * baked value reflects the editor language when the element is inserted.
      */
     defaults: {
+        inputHints: { name: "Input Hints" },
         button: { name: "Button", label: "Button" },
         choiceList: { name: "Choice List", choiceA: "Choice A", choiceB: "Choice B", choiceC: "Choice C" },
         container: { name: "Container" },

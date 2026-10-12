@@ -9,25 +9,16 @@
  *
  * `--project` points the same scan at any project instead.
  *
+ * Pure: the document is handed in. Finding the skeleton on disk is `project.ts`'s job
+ * (`readSkeletonDocument`), and Studio's agent bridge hands in whichever document it has.
+ *
  * Comments in English per project convention.
  */
 
-import * as fs from "node:fs";
-import * as path from "node:path";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { propAssignmentKey } from "./dsl/parse";
 import { printElementTree } from "./dsl/print";
-import { elementPath } from "./project";
-
-export const SKELETON_UI_DOCUMENT_RELATIVE_PATH = path.join(
-    "resources",
-    "templates",
-    "skeleton",
-    "content",
-    "editor",
-    "ui",
-    "uidoc.json",
-);
+import { elementPath } from "./model";
 
 export type UsageSite = {
     /** Which surface or component definition holds it. */
@@ -37,44 +28,6 @@ export type UsageSite = {
     element: UIElement;
     pool: Record<string, UIElement>;
 };
-
-/**
- * The checkout this tool was run from.
- *
- * The wrapper knows it and says so, because the working directory does not have to be inside the
- * repository - the CLI is often run from a project directory. The walk up is for tests, which import
- * these functions without going through the wrapper.
- */
-export function repoRoot(): string {
-    const told = process.env.NLS_UI_CLI_ROOT;
-    if (told && fs.existsSync(told)) {
-        return path.resolve(told);
-    }
-    let dir = process.cwd();
-    for (;;) {
-        if (fs.existsSync(path.join(dir, "package.json"))) {
-            return dir;
-        }
-        const parent = path.dirname(dir);
-        if (parent === dir) {
-            return process.cwd();
-        }
-        dir = parent;
-    }
-}
-
-/** The template that ships with Studio, which is what "how is this normally done" means here. */
-export function readSkeletonDocument(repoRoot: string): UIDocument | null {
-    const filePath = path.join(repoRoot, SKELETON_UI_DOCUMENT_RELATIVE_PATH);
-    if (!fs.existsSync(filePath)) {
-        return null;
-    }
-    try {
-        return JSON.parse(fs.readFileSync(filePath, "utf8")) as UIDocument;
-    } catch {
-        return null;
-    }
-}
 
 export function findUsages(document: UIDocument, elementType: string): UsageSite[] {
     const out: UsageSite[] = [];

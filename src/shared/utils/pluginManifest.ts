@@ -20,6 +20,7 @@ import {
     type PluginBuildConfigType,
     type PluginBuildDependencyContribution,
     type PluginBuildDependencyTargetContribution,
+    type PluginAgentToolContribution,
     type PluginContributes,
     type PluginLocaleContribution,
     type PluginManifestEntries,
@@ -31,6 +32,7 @@ import {
     type PluginWidgetTextContribution,
 } from "../types/plugins";
 import { UI_STRUCT_FIELD_TYPES, type UIStructFieldType } from "../types/ui-editor/struct";
+import { AGENT_PLUGIN_TOOL_NAME_PATTERN, agentPluginToolMcpName } from "../agent/pluginTools";
 
 export type PluginManifestValidationResult =
     | { ok: true; manifest: NormalizedPluginManifestV2 }
@@ -92,6 +94,11 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
         if (contributes.network.length > 0) {
             return invalid("Plugin contributes.network requires a runtime entry");
         }
+    }
+    // Agent tools are registered by the studio entry, the only one that runs in the editor an agent
+    // talks to. Declaring them without it asks the author to approve tools that can never exist.
+    if (!entries.studio && contributes.agentTools.length > 0) {
+        return invalid("Plugin contributes.agentTools requires a studio entry");
     }
 
     const icon = validateIcon(value.icon);
@@ -260,6 +267,15 @@ function derivePermissionsFromContributes(
     if (contributes.network.length > 0) {
         derived.push({ kind: "network", patterns: [...contributes.network] });
     }
+    // One permission for every tool, for the reason the two above are one each: the author answers
+    // one question - may agents call into this plugin - and is told how many of the tools write.
+    if (contributes.agentTools.length > 0) {
+        derived.push({
+            kind: "agentTools",
+            tools: contributes.agentTools.map(tool => tool.name),
+            writeTools: contributes.agentTools.filter(tool => tool.write).map(tool => tool.name),
+        });
+    }
     return derived;
 }
 
@@ -286,6 +302,8 @@ const CONTRIBUTES_KEYS = [
     "network",
     "widgetText",
     "structs",
+    "agentTools",
+    "agentGuide",
 ] as const;
 
 /**
@@ -362,6 +380,8 @@ function validateContributes(value: unknown, pluginId: string): Required<PluginC
         network: [],
         widgetText: {},
         structs: [],
+        agentTools: [],
+        agentGuide: "",
     };
     if (value === undefined) {
         return empty;
@@ -477,7 +497,65 @@ function validateContributes(value: unknown, pluginId: string): Required<PluginC
         result.widgetText = widgetText;
     }
 
+    if (value.agentTools !== undefined) {
+        const tools = validateAgentTools(value.agentTools, pluginId);
+        if (typeof tools === "string") {
+            return tools;
+        }
+        result.agentTools = tools;
+    }
+
+    if (value.agentGuide !== undefined) {
+        const guide = typeof value.agentGuide === "string" ? value.agentGuide.trim() : "";
+        if (!guide || !isSafeRelativeEntry(guide) || !guide.toLowerCase().endsWith(".md")) {
+            return "Plugin contributes.agentGuide must be a relative path to a Markdown file inside the plugin package";
+        }
+        result.agentGuide = guide;
+    }
+
     return result;
+}
+
+/**
+ * `contributes.agentTools`: the tools the studio entry may register for AI agents.
+ *
+ * Each name is prefixed with the plugin id like every other contributed id, uses only the characters
+ * a tool name may have, and must map to an advertised name a client accepts (`<plugin>__<tool>`,
+ * at most 64 characters) - refused here rather than at registration, so the plugin's author finds
+ * out before anyone installs it. `write` is required: a declaration that left it out would be
+ * shown to the author as a reading tool whatever the code does.
+ */
+function validateAgentTools(value: unknown, pluginId: string): PluginAgentToolContribution[] | string {
+    if (!Array.isArray(value)) {
+        return "Plugin contributes.agentTools must be an array of { name, write }";
+    }
+    const out: PluginAgentToolContribution[] = [];
+    const advertised = new Set<string>();
+    for (const entry of value) {
+        if (!isRecord(entry)) {
+            return "Plugin contributes.agentTools entries must be objects with name and write";
+        }
+        const name = typeof entry.name === "string" ? entry.name.trim() : "";
+        if (!name.startsWith(`${pluginId}.`)) {
+            return `Contributed agent tool must be prefixed with the plugin id: ${name || "(no name)"}`;
+        }
+        if (!AGENT_PLUGIN_TOOL_NAME_PATTERN.test(name)) {
+            return `Contributed agent tool may use only lower-case letters, digits, "_", "." and "-": ${name}`;
+        }
+        const mcpName = agentPluginToolMcpName(pluginId, name);
+        if (!mcpName) {
+            return `Contributed agent tool ${name} cannot be offered to agents: its advertised name would be longer than 64 characters or empty`;
+        }
+        if (advertised.has(mcpName)) {
+            return `Contributed agent tool ${name} is declared twice (or collides with another once "." and "-" become "_")`;
+        }
+        if (typeof entry.write !== "boolean") {
+            return `Contributed agent tool ${name} must say whether it changes the project (write: true or false)`;
+        }
+        advertised.add(mcpName);
+        out.push({ name, write: entry.write });
+    }
+    return out;
 }
 
 /** A widget prop name: what the element's props are keyed by, and what the `.ui` format writes. */
@@ -1239,7 +1317,7 @@ function validatePermissions(value: unknown): PluginInstallPermission[] | string
 }
 
 /** Permission kinds produced by {@link derivePermissionsFromContributes}, never authored. */
-const DERIVED_PERMISSION_KINDS = ["runtime", "sidecar", "buildDependency", "externalLink"];
+const DERIVED_PERMISSION_KINDS = ["runtime", "sidecar", "buildDependency", "externalLink", "agentTools"];
 
 function readString(record: Record<string, unknown>, key: string): string | null {
     const value = record[key as string];

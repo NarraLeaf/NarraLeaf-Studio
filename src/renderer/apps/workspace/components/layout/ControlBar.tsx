@@ -22,6 +22,9 @@ interface ControlBarProps {
  * Each button's tooltip carries its key. These are the controls an author reaches for when they want
  * a dock out of the way, so this is where the faster way to do it is found; the chord is the one that
  * fires, rebinding included.
+ *
+ * Each dock button is named by the `menu.window.*` entry the command palette, the shortcut cheat sheet
+ * and the macOS Window menu also use, so the one action reads the same wherever it is found.
  */
 export function ControlBar({
     leftSidebarVisible,
@@ -49,9 +52,9 @@ export function ControlBar({
                         : "text-fg-muted hover:bg-fill hover:text-fg"
                     }
                 `}
-                data-tip={t("workspace.shell.toggleLeftSidebar")}
+                data-tip={t("menu.window.leftSidebar")}
                 data-tip-shortcut={shortcuts.forBinding(WorkspaceMenuAction.ToggleLeftSidebar)}
-                aria-label={t("workspace.shell.toggleLeftSidebar")}
+                aria-label={t("menu.window.leftSidebar")}
             >
                 <PanelLeft className="w-4 h-4" />
             </button>
@@ -66,9 +69,9 @@ export function ControlBar({
                         : "text-fg-muted hover:bg-fill hover:text-fg"
                     }
                 `}
-                data-tip={t("workspace.shell.toggleBottomPanel")}
+                data-tip={t("menu.window.bottomPanel")}
                 data-tip-shortcut={shortcuts.forBinding(WorkspaceMenuAction.ToggleBottomPanel)}
-                aria-label={t("workspace.shell.toggleBottomPanel")}
+                aria-label={t("menu.window.bottomPanel")}
             >
                 <PanelBottom className="w-4 h-4" />
             </button>
@@ -83,9 +86,9 @@ export function ControlBar({
                         : "text-fg-muted hover:bg-fill hover:text-fg"
                     }
                 `}
-                data-tip={t("workspace.shell.toggleRightSidebar")}
+                data-tip={t("menu.window.rightSidebar")}
                 data-tip-shortcut={shortcuts.forBinding(WorkspaceMenuAction.ToggleRightSidebar)}
-                aria-label={t("workspace.shell.toggleRightSidebar")}
+                aria-label={t("menu.window.rightSidebar")}
             >
                 <PanelRight className="w-4 h-4" />
             </button>

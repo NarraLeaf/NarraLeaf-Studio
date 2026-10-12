@@ -23,10 +23,11 @@ import {
     isUIListScrolledToEnd,
     resolveUIListScrollMetrics,
 } from "@shared/types/ui-editor/list";
+import { focusNavigationTarget } from "@/lib/ui-editor/runtime/navigation/focusNavigation";
+import { useGameNavigationEnabled } from "@/lib/ui-editor/runtime/navigation/gameNavigationContext";
 import { resolvePageAnimationMotion } from "@/lib/ui-editor/runtime/pageAnimation";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
-import type { UIStructDef } from "@shared/types/ui-editor/struct";
-import { makeDefaultStructItem, readUIStructFieldValue } from "@shared/types/ui-editor/struct";
+import { makeDefaultStructItem } from "@shared/types/ui-editor/struct";
 import { DEFAULT_ELEMENT_EFFECT_VALUES } from "@shared/types/ui-editor/effects";
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
@@ -36,6 +37,7 @@ import {
     useWidgetRuntimeElementKey,
     useWidgetRuntimeSnapshot,
     useWidgetRuntimeStateStore,
+    NavigationFocusProvider,
     WidgetRuntimeInstanceProvider,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { composeListHostEffectStyle } from "@/lib/ui-editor/widget-modules/shared/effects/effectStyleComposer";
@@ -47,6 +49,7 @@ import {
     resolveListItemContentAlignmentStyle,
     resolveListItemsBindingArray,
     resolveListRepeatLayout,
+    resolveListRowKeys,
 } from "./helpers";
 import { pressIsAnsweredInRow } from "./rowPress";
 
@@ -170,29 +173,6 @@ function findRenderedUiElement(root: Element | null, id: string): HTMLElement | 
     return null;
 }
 
-/**
- * What keys one row.
- *
- * The declared key field when it holds something usable, the row's position otherwise. Falling back
- * to the index rather than refusing to draw is deliberate: rows arrive from graphs and from the slot
- * bridge, and a list whose first row is missing an id should still be a list.
- */
-function itemKey(
-    item: unknown,
-    index: number,
-    struct: UIStructDef | null,
-    fieldId: string | null | undefined,
-): string {
-    const raw = readUIStructFieldValue(struct, fieldId, item);
-    if (typeof raw === "string" && raw.length > 0) {
-        return raw;
-    }
-    if (typeof raw === "number" && Number.isFinite(raw)) {
-        return String(raw);
-    }
-    return String(index);
-}
-
 function styleToRectangleLike(style: UIListScrollbarPartStyle): RectangleLikeProps {
     return {
         backgroundColor: style.backgroundColor,
@@ -208,6 +188,8 @@ function styleToRectangleLike(style: UIListScrollbarPartStyle): RectangleLikePro
         backgroundImage: style.backgroundImage,
         backgroundFit: style.backgroundFit,
         imageFill: style.imageFill,
+        // Passed through so a gradient part draws its own stops rather than the chrome's default.
+        ...(style.gradientFill ? { gradientFill: style.gradientFill } : {}),
         fillType: style.fillType,
         fillVisible: true,
         fillOpacity: style.fillOpacity,
@@ -408,6 +390,8 @@ export function ListRenderer(props: WidgetRendererProps) {
         ? [...runtimeListItems]
         : boundItems ?? (p.items.length > 0 ? p.items : placeholderItems);
     const count = Math.min(128, items.length);
+    const shownItems = items.slice(0, count);
+    const rowKeys = resolveListRowKeys(shownItems, itemStruct, p.itemKeyFieldId);
     const itemTemplateIds = element.childrenIds.filter(childId => isUIListItemTemplateChild(document.elements[childId]));
     const itemTemplateDescendantIds = useMemo(
         () => collectElementDescendants(document, itemTemplateIds),
@@ -567,9 +551,13 @@ export function ListRenderer(props: WidgetRendererProps) {
      * The row the keyboard enters this list on: the one it last left, else the selected one, else the
      * first. The list is one stop on Tab however many rows it has - the rest are reached with the
      * arrows - so a menu of four options or a backlog of two hundred lines costs the same one press
-     * to pass. See `listRowKeyboardMove` for the keys.
+     * to pass. In a game with navigation the arrows are navigation's, which moves between rows like
+     * any other controls; without it they are the list's. See `listRowKeyboardMove`.
      */
     const [keyboardRowIndex, setKeyboardRowIndex] = useState<number | null>(null);
+    const navigationEnabled = useGameNavigationEnabled();
+    /** The row that has the focus right now, drawn as focused (`NavigationFocusProvider`). */
+    const [focusedRowIndex, setFocusedRowIndex] = useState<number | null>(null);
     const tabStopRowIndex = count > 0
         ? Math.min(count - 1, Math.max(0, keyboardRowIndex ?? (selectedIndex >= 0 && selectedIndex < count ? selectedIndex : 0)))
         : -1;
@@ -588,7 +576,7 @@ export function ListRenderer(props: WidgetRendererProps) {
                 }
                 return;
             }
-            const next = listRowKeyboardMove(event.key, scope.index, scope.count);
+            const next = listRowKeyboardMove(event.key, scope.index, scope.count, !navigationEnabled);
             if (next === null) {
                 return;
             }
@@ -596,10 +584,14 @@ export function ListRenderer(props: WidgetRendererProps) {
             const row = Array.from(event.currentTarget.parentElement?.children ?? [])
                 .find(sibling => sibling.getAttribute("data-ui-list-item-index") === String(next));
             if (row instanceof HTMLElement) {
-                row.focus();
+                if (navigationEnabled) {
+                    focusNavigationTarget(row);
+                } else {
+                    row.focus();
+                }
             }
         },
-        [handleListItemClick],
+        [handleListItemClick, navigationEnabled],
     );
     // Resolved once for the whole list rather than per row: every row gets the same motion, and only
     // the delay differs. `initial={false}` on the presence below is what keeps a list that is simply
@@ -608,8 +600,8 @@ export function ListRenderer(props: WidgetRendererProps) {
         ? resolvePageAnimationMotion({ settings: p.itemAnimation })
         : null;
     const rowStaggerMs = Math.max(0, (p.itemAnimation?.childStaggerSeconds ?? 0) * 1000);
-    const listBody = items.slice(0, count).map((item, i) => {
-        const key = itemKey(item, i, itemStruct, p.itemKeyFieldId);
+    const listBody = shownItems.map((item, i) => {
+        const key = rowKeys[i]!;
         const instanceKey = buildUIListItemInstanceKey(outerInstanceKey, element.id, key);
         // On the canvas nothing is selected: `selectedIndex` defaults to a row, and drawing the
         // template in its selected state would show the author a row most rows will never look like.
@@ -638,10 +630,22 @@ export function ListRenderer(props: WidgetRendererProps) {
             // In a running game a row is a control the keyboard reaches, as a button is: Enter and
             // Space raise Item Click exactly as a click does. On the canvas it is only a drawing.
             tabIndex: isRuntime ? (i === tabStopRowIndex ? 0 : -1) : undefined,
+            // The row holding the focus is drawn the way the pointer resting on it would draw it,
+            // and says so the way the pointer does - Item Hover - so a hover look a graph paints
+            // follows the D-pad too.
             onFocus: isRuntime
                 ? (event: FocusEvent<HTMLDivElement>) => {
                       if (event.target === event.currentTarget) {
                           setKeyboardRowIndex(i);
+                          setFocusedRowIndex(i);
+                          handleListItemHover(scope);
+                      }
+                  }
+                : undefined,
+            onBlur: isRuntime
+                ? (event: FocusEvent<HTMLDivElement>) => {
+                      if (event.target === event.currentTarget) {
+                          setFocusedRowIndex(current => (current === i ? null : current));
                       }
                   }
                 : undefined,
@@ -658,11 +662,13 @@ export function ListRenderer(props: WidgetRendererProps) {
                     instanceKey={instanceKey}
                 />
                 <WidgetRuntimeInstanceProvider instance={{ key: instanceKey, selected }}>
-                    {renderChildren?.({
-                        childrenIds: itemTemplateIds,
-                        listItemScope: scope,
-                        instanceKey,
-                    })}
+                    <NavigationFocusProvider focused={isRuntime && i === focusedRowIndex}>
+                        {renderChildren?.({
+                            childrenIds: itemTemplateIds,
+                            listItemScope: scope,
+                            instanceKey,
+                        })}
+                    </NavigationFocusProvider>
                 </WidgetRuntimeInstanceProvider>
             </>
         );

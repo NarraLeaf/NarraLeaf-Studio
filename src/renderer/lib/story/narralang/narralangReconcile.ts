@@ -69,6 +69,7 @@
  */
 
 import type { StoryBlock, StoryBlockId, StoryScene } from "@shared/types/story";
+import { sceneLayerStack } from "@shared/types/story";
 import type { StoryExpressionScope } from "@shared/utils/storyExpressionParser";
 
 import { NARRALANG_DEFAULT_DIALECT, type NarralangDialect } from "./narralangDialect";
@@ -168,6 +169,7 @@ export function reconcileNarralangScene(input: NarralangReconcileInput): Narrala
     const parsed = parseNarralangSceneWithDialect(nextText, parseLookups, dialect, {
         blockIdForLine: (line) => idForLine.get(line) ?? null,
         expressionScope: input.expressionScope,
+        sceneLayers: sceneLayerStack(scene),
     });
     if (parsed.diagnostics.length > 0) {
         return { ok: false, diagnostics: parsed.diagnostics };

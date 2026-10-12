@@ -77,6 +77,10 @@ export const settings = {
             label: "Network",
             description: "Where Studio downloads plugins, templates and build tooling from.",
         },
+        agent: {
+            label: "Agent access",
+            description: "Let AI agents connect to Studio over MCP and work on the open project.",
+        },
         data: {
             label: "Data",
             description: "Cached files, resetting preferences, and moving them between machines.",
@@ -267,8 +271,18 @@ export const settings = {
             label: "Download address rewrites",
         },
         useSystemProxy: {
-            label: "Use this computer's proxy",
-            description: "Studio downloads follow the proxy this computer already uses.",
+            label: "Use system proxy settings",
+            description: "Studio downloads connect through the proxy set in the operating system.",
+        },
+        storeSource: {
+            label: "Store download source",
+            description: "Where the plugin store, the template store and spelling dictionaries are downloaded from. Automatic connects to GitHub and GitCode at once and uses the first to respond.",
+            options: {
+                auto: "Automatic",
+                gitcode: "GitCode (mainland China)",
+                custom: "Custom",
+            },
+            customOnly: "Used when the store download source is Custom.",
         },
         pluginRegistryUrl: {
             label: "Plugin registry URL",
@@ -348,6 +362,13 @@ export const settings = {
         },
         keybindings: {
             label: "Keyboard shortcuts",
+        },
+        agentAccess: {
+            label: "MCP endpoint",
+        },
+        agentFollow: {
+            label: "Follow the agent's edits",
+            description: "Open each page, scene or blueprint an agent changes, bring it to the front and outline the change.",
         },
         projectTrust: {
             label: "Trusted projects",
@@ -496,6 +517,75 @@ export const settings = {
             unknown: "The server could not be added.",
         },
     },
+    // The agent access panel (`AgentAccessPanel`).
+    agent: {
+        loading: "Reading…",
+        enable: "Allow agents to connect",
+        enableHint: "Serves an MCP endpoint on this computer for AI agents such as Claude Code and opencode.",
+        allowWrites: "Allow agents to change projects",
+        allowWritesHint: "When off, agents can read projects but every change they try is refused.",
+        fullAccess: "Allow agents full access",
+        fullAccessHint: "Agents may change projects and read any folder without asking, except Studio's own folders, the home folder as a whole and drive roots.",
+        endpoint: "Endpoint address",
+        running: "Listening.",
+        portMoved: "The endpoint moved to port {port}. Copy the connection configuration again for clients set up before.",
+        copyAddress: "Copy address",
+        stopped: "Not running.",
+        failed: "Could not start: {message}",
+        token: "Access token",
+        tokenHint: "Every request must carry it. It is part of the copied configuration.",
+        show: "Show",
+        hide: "Hide",
+        regenerate: "Regenerate access token",
+        regenerateHint: "Clients set up with the current token stop being let in.",
+        regenerateAction: "Regenerate",
+        copied: "Copied",
+        importRoots: "Folders agents may import from",
+        importRootsHint: "Agents can always import files from inside the project. When an agent needs another folder, Studio asks you and adds it here.",
+        importRootsEmpty: "No other folders.",
+        addFolder: "Add folder…",
+        removeFolder: "Remove",
+        pluginTools: "Plugin tools",
+        pluginToolsHint: "Tools the enabled plugins offer agents. A plugin switched off here has its tools hidden from agents and their calls refused.",
+        pluginToolsEmpty: "No enabled plugin offers agent tools.",
+        pluginToolsCount: "{tools} tools, {writes} of which can change the project",
+        pluginToolsAllow: "Allow the agent tools of {plugin}",
+        /**
+         * Connecting one agent application (`AgentClientGuide`), in Settings and in first-run setup's
+         * agent access screen: which application it is, the configuration that points it at Studio,
+         * and how it gets the Agent Skill. Product names are not translated and live in
+         * `@shared/agent/clients`.
+         */
+        guide: {
+            app: "Agent application",
+            appHint: "The connection configuration and Agent Skill below are for this application.",
+            /** The catch-all row, for any other MCP client. */
+            other: "Other",
+            connection: "Connection configuration",
+            /** Under the connection while the endpoint is off; names the switch above by its label. */
+            offHint: "Available once \"Allow agents to connect\" is on.",
+            runCommand: "Run in a terminal.",
+            mergeInto: "Merge into {file}.",
+            // Claude's own menu names, as Claude shows them.
+            claudeDesktop: "Merge into claude_desktop_config.json (Settings ▸ Developer ▸ Edit Config in Claude), then restart Claude.",
+            otherClient: "Streamable HTTP. Enter this address and header in the client's MCP settings.",
+            skill: "Agent Skill",
+            skillFolder: "Installs into {path}. Other skills there are kept.",
+            skillInstall: "Install Agent Skill",
+            skillReinstall: "Reinstall",
+            skillInstalled: "Installed in {path}.",
+            skillUpload: "Saves a zip file to upload in Claude under Settings ▸ Capabilities ▸ Skills.",
+            skillSave: "Save zip file…",
+            skillSaved: "Saved to {path}.",
+            skillServed: "Other applications read the same guide from Studio's MCP server.",
+            skillExport: "Export Agent Skill…",
+            skillExported: "Exported to {path}.",
+            copyFailed: "The connection configuration could not be copied: {error}",
+            installFailed: "The Agent Skill could not be installed: {error}",
+            saveFailed: "The Agent Skill could not be saved: {error}",
+            exportFailed: "The Agent Skill could not be exported: {error}",
+        },
+    },
     data: {
         projectTrust: {
             loading: "Reading…",
@@ -565,6 +655,10 @@ export const settings = {
                 psdImports: {
                     label: "PSD import working files",
                     description: "Layer images written while importing a PSD.",
+                },
+                payloadReaders: {
+                    label: "Protected build readers",
+                    description: "Readers copied from builds with asset protection to export a patch or DLC. Copied again the next time one is exported.",
                 },
                 logs: {
                     label: "Logs",

@@ -470,6 +470,10 @@ describe("variables/undeclared", () => {
 // --- variables/unused -------------------------------------------------------
 
 describe("variables/unused", () => {
+    it("is a minor warning by default: nothing in the game depends on the variable", () => {
+        expect(VARIABLES_LINT_RULES.find(rule => rule.id === "variables/unused")?.defaultSeverity).toBe("minor");
+    });
+
     it("reports a declaration nothing reads or writes", () => {
         const ctx = createTestLintContext({
             stories: [story("s1", "Main", [scene("sc1", "Prologue", [declaration("v1", "scene", "Gold")])])],
@@ -1167,6 +1171,38 @@ describe("variables/condition-never-holds", () => {
         expect(await runAsync("variables/condition-never-holds", reachingWith(pickedGuard(2)))).toEqual([]);
     });
 
+    it("leaves a persistent counter alone, since a run starts it where the last run left it", async () => {
+        // The shape a game with a second-run route has: an ending counts the clear, and a scene
+        // early in the story opens something once it has been cleared. Within one run `plays` is
+        // still 0 when the guard is reached - but the guard is for the run after, which starts with
+        // whatever the ending left. Seeded with the default, this was reported as never holding.
+        const PLAYS_REF: StoryVariableRef = { scope: "persistent", variableId: "plays" };
+        const guardOn = (scope: "persistent" | "saved"): LintContext => {
+            const ref: StoryVariableRef = scope === "persistent" ? PLAYS_REF : { scope: "saved", variableId: "plays" };
+            return createTestLintContext({
+                stories: [storyFrom("s1", "Story", [
+                    scene("a", "Chapter two", [
+                        {
+                            id: "plays",
+                            kind: "declaration",
+                            payload: { scope, name: "plays", valueType: "number", storageKey: "plays", defaultValue: 0 },
+                        },
+                        ifBranch("if1", "b1", "plays > 0", binary(">", varRead(ref, "plays"), num(0))),
+                        jump("j1", "end"),
+                    ]),
+                    scene("end", "Ending", [incBy("w1", ref, 1, "plays")]),
+                ], "a")],
+            });
+        };
+
+        expect(await runAsync("variables/condition-never-holds", guardOn("persistent"))).toEqual([]);
+        // The same story with a counter that lives in the save is still judged: a new game starts it
+        // at 0, and nothing before the guard moves it.
+        const saved = await runAsync("variables/condition-never-holds", guardOn("saved"));
+        expect(saved).toHaveLength(1);
+        expect(saved[0]?.messageParams).toMatchObject({ variable: "plays", bound: "0..0" });
+    });
+
     it("leaves the case with no writer at all to the other rule", async () => {
         // Both rules would have something to say; only one of them says the useful thing.
         const ctx = createTestLintContext({
@@ -1313,5 +1349,73 @@ describe("variables/condition-never-holds", () => {
         const findings = await runAsync("variables/condition-never-holds", guardAt(31));
         expect(findings).toHaveLength(1);
         expect(findings[0]?.messageParams).toMatchObject({ variable: "affection", bound: "10..30" });
+    });
+});
+
+// --- a wait's result variable -----------------------------------------------
+
+/**
+ * `/waitinput … into=met` writes `true` or `false` into `met`, so it is a writer like `/set` and a use
+ * like `/set`: a flag it sets is not "never written", and deleting the variable it names is the same
+ * undeclared reference.
+ */
+describe("a wait's result variable", () => {
+    const MET_REF: StoryVariableRef = { scope: "saved", variableId: "met" };
+    const metDeclaration: BlockSpec = {
+        id: "met",
+        kind: "declaration",
+        payload: { scope: "saved", name: "met", valueType: "boolean", storageKey: "met", defaultValue: false },
+    };
+    const waitInto = (id: string, target: StoryVariableRef): BlockSpec => ({
+        id,
+        kind: "action",
+        payload: { action: "input", operation: "wait", actionId: "confirm", timeoutMs: 2000, resultTarget: target },
+    });
+    const guardOnMet = ifBranch("if1", "b1", "met", varRead(MET_REF, "met"));
+
+    it("counts as writing the flag a condition then tests", () => {
+        const withWait = createTestLintContext({
+            stories: [story("s1", "Story", [scene("a", "A", [metDeclaration, waitInto("w1", MET_REF), guardOnMet])])],
+        });
+        expect(run("variables/read-never-written", withWait)).toEqual([]);
+        // The same script without the wait is the accident the rule is for.
+        const without = createTestLintContext({
+            stories: [story("s1", "Story", [scene("a", "A", [metDeclaration, guardOnMet])])],
+        });
+        expect(run("variables/read-never-written", without)).toHaveLength(1);
+    });
+
+    it("is a use, so the declaration is not unused and a deleted one is undeclared", () => {
+        expect(run("variables/unused", createTestLintContext({
+            stories: [story("s1", "Story", [scene("a", "A", [
+                declaration("v1", "scene", "Dodged"),
+                waitInto("w1", { scope: "scene", variableId: "v1" }),
+            ])])],
+        }))).toEqual([]);
+
+        const findings = run("variables/undeclared", createTestLintContext({
+            stories: [story("s1", "Story", [scene("a", "A", [waitInto("w1", { scope: "scene", variableId: "gone" })])])],
+        }));
+        expect(findings).toHaveLength(1);
+        expect(findings[0].location).toMatchObject({ blockId: "w1" });
+    });
+
+    it("leaves a range it writes unknown, so no bound is claimed past it", async () => {
+        // A variable re-declared as a number after the row was written: the wait writes a value no
+        // interval can name, so the `+2` before it is not the last word on what `end` can see.
+        const ctx = createTestLintContext({
+            stories: [storyFrom("s1", "Story", [
+                scene("a", "A", [
+                    numberDeclaration("affection", "affection", 0),
+                    incBy("w1", AFFECTION_REF, 2, "affection"),
+                    waitInto("w2", AFFECTION_REF),
+                    jump("j1", "end"),
+                ]),
+                scene("end", "End", [
+                    ifBranch("if1", "br1", "affection >= 50", binary(">=", varRead(AFFECTION_REF, "affection"), num(50))),
+                ]),
+            ], "a")],
+        });
+        expect(await runAsync("variables/condition-never-holds", ctx)).toEqual([]);
     });
 });

@@ -19,7 +19,7 @@ function Cell(props: {
     onName: () => void;
     onAvatar: (anchor: HTMLElement) => void;
 }) {
-    const { t } = useTranslation();
+    const { t, formatList } = useTranslation();
     // Picking a cell only moves the preview onto that look, so the tile stays clickable while frozen -
     // browsing the grid is what a past version is opened for. Naming the look stores a snapshot on the
     // appearance and giving it an avatar opens a picker that writes one, so both are off.
@@ -43,7 +43,8 @@ function Cell(props: {
                 {combination.missing.length > 0 && (
                     <AlertTriangle
                         className="h-3 w-3 shrink-0 text-warning"
-                        aria-label={t("characters.editor.combinations.missing", { list: combination.missing.join(", ") })}
+                        aria-label={t("characters.editor.combinations.missing", { list: formatList(combination.missing, { style: "narrow" }) })}
+                        data-tip={t("characters.editor.combinations.missing", { list: formatList(combination.missing, { style: "narrow" }) })}
                     />
                 )}
                 <button

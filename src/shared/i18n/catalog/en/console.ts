@@ -26,6 +26,8 @@ export const console = {
         buildDescription: "Build, packaging, and preview pipeline output",
         storyDescription: "Story scene preview diagnostics and warnings",
         storageDescription: "Project file writes: failed saves, retries, and recoveries",
+        agent: "Agent",
+        agentDescription: "Calls from AI agents connected to Studio",
     },
     // What a line says it came from, where no tab's name says it already: a blueprint's Log node,
     // as opposed to the blueprint runtime's own lines on the same tab.

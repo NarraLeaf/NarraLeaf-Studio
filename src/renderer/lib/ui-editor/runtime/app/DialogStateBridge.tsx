@@ -10,7 +10,7 @@ import {
     BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY,
     BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY,
 } from "@shared/types/blueprint/hostApi";
-import { findBlueprintCharacterInfo } from "@shared/types/blueprint/characterInfo";
+import { blueprintSpeakerColor, findBlueprintCharacterInfo } from "@shared/types/blueprint/characterInfo";
 import { toBlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 
@@ -45,7 +45,9 @@ import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBluep
  * rather than reported: the host stages *who* is speaking (a character id, not the nametag - see
  * `BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY`) and mirrors the character table, and this bridge
  * joins the two on the dialog beat. Deriving it here rather than staging the colour itself is what
- * lets a narrator line blank the colour without losing who spoke last.
+ * lets a narrator line blank the colour without losing who spoke last. A character with no colour of
+ * their own speaks in the palette's primary (`blueprintSpeakerColor`), the colour a nametag is drawn
+ * in until someone picks another.
  */
 export function DialogStateBridge(props: {
     core: BlueprintRuntimeCore | null;
@@ -77,7 +79,7 @@ export function DialogStateBridge(props: {
         const speaker = typeof speakerId === "string"
             ? findBlueprintCharacterInfo(core.scopeBridge.globalGet(BLUEPRINT_GAME_CHARACTERS_STATE_KEY), speakerId)
             : null;
-        core.scopeBridge.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, speaker?.color ?? null);
+        core.scopeBridge.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, blueprintSpeakerColor(speaker, dialog.isNarrator === true));
         // The line itself, on the same beat. `done` is the engine's own dialog state and is exactly
         // the click-to-continue condition: the typewriter has run out of characters (or a skip
         // finished it early) and nothing advances until the player says so. `text` is the whole

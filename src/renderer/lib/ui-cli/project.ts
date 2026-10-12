@@ -27,23 +27,27 @@
  * Comments in English per project convention.
  */
 
-import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { BlueprintDocument, BlueprintOwnerRef } from "@shared/types/blueprint/document";
-import { normalizeLocalizationConfiguration, normalizeLocalizationKeysDocument } from "@shared/types/localization";
+import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { decodeProjectConfig, findProjectConfigFileName } from "@shared/utils/nlproj";
 import { resolveBlueprintFile } from "../blueprint-cli/project";
-import {
-    UI_DOCUMENT_MIN_SUPPORTED_VERSION,
-    UI_DOCUMENT_SCHEMA_VERSION,
-    type UIComponentDefinition,
-    type UIDocument,
-    type UIElement,
-    type UIElementId,
-    type UISurface,
-} from "@shared/types/ui-editor/document";
-import { migrateUITextSourcesV13, UI_TEXT_SOURCES_SCHEMA_VERSION } from "@shared/types/ui-editor/textSourceMigration";
+import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument } from "@shared/types/ui-editor/document";
+import { indexBlueprintDocument, needsTextSourceStep, readableUiDocument, textKeysOf, type BlueprintIndex, type TextKeys } from "./model";
+
+// The walkers and the id derivation are pure and live in `model.ts`, where the renderer can reach
+// them; they are re-exported so the command line and its tests keep one place to import from.
+export {
+    collectTree,
+    deriveElementId,
+    elementPath,
+    elementPathSegments,
+    findComponent,
+    findSurface,
+    indexBlueprintDocument,
+    type BlueprintIndex,
+    type TextKeys,
+} from "./model";
 
 export const UI_DOCUMENT_RELATIVE_PATH = path.join("editor", "ui", "uidoc.json");
 export const UI_GRAPHS_RELATIVE_PATH = path.join("editor", "ui", "uigraphs.json");
@@ -103,22 +107,13 @@ export function readUiDocument(projectDir: string): UiDocumentFile {
         throw new ProjectIoError(`${filePath} has no "surfaces" / "elements": it is not an interface document.`);
     }
     // A document from before v13 is read the way Studio will read it once it is opened: through the
-    // same step, against the project's keys (`textSourceMigration.ts`). Only the document is needed to
-    // read it - the translation edits that step makes are Studio's to write when it opens the project.
-    if (
-        typeof raw.schemaVersion === "number"
-        && raw.schemaVersion >= UI_DOCUMENT_MIN_SUPPORTED_VERSION
-        && raw.schemaVersion < UI_TEXT_SOURCES_SCHEMA_VERSION
-    ) {
-        const textKeys = readTextKeys(projectDir);
-        const migrated = migrateUITextSourcesV13(raw, {
-            keys: Object.fromEntries(textKeys?.keys ?? []),
-            sourceLocale: textKeys?.sourceLocale ?? "",
-            translations: {},
-        });
-        return { filePath, document: migrated.document, migratedFrom: raw.schemaVersion };
-    }
-    return { filePath, document: raw };
+    // same step, against the project's keys (`readableUiDocument` in `model.ts`). Only the document is
+    // needed to read it - the translation edits that step makes are Studio's to write when it opens
+    // the project. The keys are read only when the step will run.
+    const readable = readableUiDocument(raw, needsTextSourceStep(raw) ? readTextKeys(projectDir) : null);
+    return readable.migratedFrom === undefined
+        ? { filePath, document: readable.document }
+        : { filePath, document: readable.document, migratedFrom: readable.migratedFrom };
 }
 
 export function assertWritableSchema(file: UiDocumentFile): void {
@@ -150,14 +145,6 @@ export function writeUiDocument(file: UiDocumentFile): void {
 // The translation keys, read only
 // ---------------------------------------------------------------------------
 
-/** The project's named translation keys, and its source language. */
-export type TextKeys = {
-    /** The project's source language, or "" when it has none. Keys are read either way. */
-    sourceLocale: string;
-    /** Key name to source-language text, from `editor/localization/keys.json`. */
-    keys: ReadonlyMap<string, string>;
-};
-
 /**
  * Read the key registry and the project's source language. Null when the project config cannot be
  * read, which is not the same as a project with no keys.
@@ -179,38 +166,26 @@ export function readTextKeys(projectDir: string): TextKeys | null {
         return null;
     }
     const app = config.app && typeof config.app === "object" ? (config.app as Record<string, unknown>) : undefined;
-    const localization = normalizeLocalizationConfiguration(app?.localization);
-    const keys = new Map<string, string>();
     const keysPath = path.join(projectDir, "editor", "localization", "keys.json");
+    let keysDocument: unknown = null;
     if (fs.existsSync(keysPath)) {
         try {
-            const document = normalizeLocalizationKeysDocument(JSON.parse(fs.readFileSync(keysPath, "utf8")));
-            for (const [name, definition] of Object.entries(document.keys)) {
-                keys.set(name, definition.sourceText);
-            }
+            keysDocument = JSON.parse(fs.readFileSync(keysPath, "utf8"));
         } catch {
             return null;
         }
     }
-    return { sourceLocale: localization.sourceLocale, keys };
+    return textKeysOf({ localization: app?.localization, keysDocument });
 }
 
 // ---------------------------------------------------------------------------
 // The blueprint document, read only
 // ---------------------------------------------------------------------------
 
-export type BlueprintIndex = {
-    /** Every blueprint by id, with the owner it claims. */
-    byId: Map<string, { name: string; owner: BlueprintOwnerRef }>;
-    /** Blueprint ids by the element they hang off, whether as a widget's own graph or a value. */
-    byElement: Map<string, { id: string; name: string; owner: BlueprintOwnerRef }[]>;
-};
-
 export function readBlueprintIndex(projectDir: string): BlueprintIndex {
-    const index: BlueprintIndex = { byId: new Map(), byElement: new Map() };
     const filePath = path.join(projectDir, UI_GRAPHS_RELATIVE_PATH);
     if (!fs.existsSync(filePath)) {
-        return index;
+        return indexBlueprintDocument(null);
     }
     let document: BlueprintDocument | undefined;
     try {
@@ -219,95 +194,57 @@ export function readBlueprintIndex(projectDir: string): BlueprintIndex {
     } catch (error) {
         throw new ProjectIoError(`Cannot read ${filePath}: ${(error as Error).message}`);
     }
-    for (const blueprint of Object.values(document?.blueprints ?? {})) {
-        index.byId.set(blueprint.id, { name: blueprint.name, owner: blueprint.owner });
-        const owner = blueprint.owner as { elementId?: string };
-        if (typeof owner.elementId === "string") {
-            const list = index.byElement.get(owner.elementId) ?? [];
-            list.push({ id: blueprint.id, name: blueprint.name, owner: blueprint.owner });
-            index.byElement.set(owner.elementId, list);
-        }
-    }
-    return index;
+    return indexBlueprintDocument(document);
 }
 
 // ---------------------------------------------------------------------------
-// Walking the document
+// The shipped skeleton, which `usage` reads when given no project
 // ---------------------------------------------------------------------------
 
-/** Every element reachable from `rootId` in `pool`, root first, cycles and missing ids survived. */
-export function collectTree(pool: Record<UIElementId, UIElement>, rootId: string | undefined): UIElement[] {
-    const out: UIElement[] = [];
-    if (!rootId) {
-        return out;
-    }
-    const seen = new Set<string>();
-    const stack = [rootId];
-    while (stack.length > 0) {
-        const id = stack.pop() as string;
-        if (seen.has(id)) {
-            continue;
-        }
-        seen.add(id);
-        const element = pool[id];
-        if (!element) {
-            continue;
-        }
-        out.push(element);
-        for (const childId of [...(element.childrenIds ?? [])].reverse()) {
-            stack.push(childId);
-        }
-    }
-    return out;
-}
-
-export function findSurface(document: UIDocument, nameOrId: string): UISurface | undefined {
-    return document.surfaces.find(surface => surface.id === nameOrId)
-        ?? document.surfaces.find(surface => surface.name === nameOrId);
-}
-
-export function findComponent(document: UIDocument, nameOrId: string): UIComponentDefinition | undefined {
-    const components = document.components ?? [];
-    return components.find(component => component.id === nameOrId)
-        ?? components.find(component => component.name === nameOrId);
-}
-
-/** The names from the tree's root down to this element, which is what tells two "Button" apart. */
-export function elementPathSegments(pool: Record<UIElementId, UIElement>, element: UIElement): string[] {
-    const names: string[] = [];
-    let current: UIElement | undefined = element;
-    const seen = new Set<string>();
-    while (current && !seen.has(current.id)) {
-        seen.add(current.id);
-        names.unshift(current.name ?? current.type);
-        current = current.parentId ? pool[current.parentId] : undefined;
-    }
-    return names;
-}
-
-/** The same path as one readable line. */
-export function elementPath(pool: Record<UIElementId, UIElement>, element: UIElement): string {
-    return elementPathSegments(pool, element).join(" / ");
-}
-
-// ---------------------------------------------------------------------------
-// Ids
-// ---------------------------------------------------------------------------
-
-const UI_CLI_ID_NAMESPACE = "narraleaf-studio:ui-cli";
+export const SKELETON_UI_DOCUMENT_RELATIVE_PATH = path.join(
+    "resources",
+    "templates",
+    "skeleton",
+    "content",
+    "editor",
+    "ui",
+    "uidoc.json",
+);
 
 /**
- * A stable id for an element the file did not name one for.
+ * The checkout this tool was run from.
  *
- * Derived from where the element sits rather than drawn at random, so writing the same file into two
- * fresh projects produces the same ids - which is what makes a template a template. It is a real
- * v5-shaped UUID, so nothing downstream can tell it from one the editor minted.
+ * The wrapper knows it and says so, because the working directory does not have to be inside the
+ * repository - the CLI is often run from a project directory. The walk up is for tests, which import
+ * these functions without going through the wrapper.
  */
-export function deriveElementId(scope: string, elementPathKey: string): string {
-    const digest = createHash("sha1").update(`${UI_CLI_ID_NAMESPACE}\u0000${scope}\u0000${elementPathKey}`).digest();
-    const bytes = Buffer.from(digest.subarray(0, 16));
-    bytes[6] = (bytes[6] & 0x0f) | 0x50;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    const hex = bytes.toString("hex");
-    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+export function repoRoot(): string {
+    const told = process.env.NLS_UI_CLI_ROOT;
+    if (told && fs.existsSync(told)) {
+        return path.resolve(told);
+    }
+    let dir = process.cwd();
+    for (;;) {
+        if (fs.existsSync(path.join(dir, "package.json"))) {
+            return dir;
+        }
+        const parent = path.dirname(dir);
+        if (parent === dir) {
+            return process.cwd();
+        }
+        dir = parent;
+    }
+}
+
+/** The template that ships with Studio, which is what "how is this normally done" means here. */
+export function readSkeletonDocument(repoRoot: string): UIDocument | null {
+    const filePath = path.join(repoRoot, SKELETON_UI_DOCUMENT_RELATIVE_PATH);
+    if (!fs.existsSync(filePath)) {
+        return null;
+    }
+    try {
+        return JSON.parse(fs.readFileSync(filePath, "utf8")) as UIDocument;
+    } catch {
+        return null;
+    }
 }

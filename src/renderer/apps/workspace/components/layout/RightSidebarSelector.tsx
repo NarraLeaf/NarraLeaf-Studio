@@ -40,7 +40,7 @@ export function RightSidebarSelector({
         <TooltipGroup
             side="left"
             data-workspace-sidebar-rail=""
-            className="w-12 bg-surface-sunken border-l border-edge flex flex-col items-center py-2 gap-1"
+            className="nl-frame-surface w-12 bg-surface-sunken border-l border-edge flex flex-col items-center py-2 gap-1"
             onContextMenu={(event) => openMenu(event)}
         >
             <SidebarPanelRail
