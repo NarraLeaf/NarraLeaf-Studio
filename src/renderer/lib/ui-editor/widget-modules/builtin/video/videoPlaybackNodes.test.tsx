@@ -16,11 +16,17 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
     BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_DURATION,
     BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_TIME,
+    BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_VOLUME,
+    BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_MUTED,
     BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_ENDED,
     BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_PLAYING,
     BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_PAUSE,
     BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_PLAY,
     BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SEEK,
+    BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_LOOP,
+    BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_MUTED,
+    BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_PLAYBACK_RATE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_VOLUME,
     BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_STOP,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
@@ -512,5 +518,75 @@ describe("a request read back in the same graph", () => {
         await click();
 
         await waitFor(() => expect(page!.logs).toEqual(["true"]));
+    });
+});
+
+/** The remote's Mouse Click: one setter on the video, then Log what one read answers. */
+function remoteSettingThenReading(setType: string, params: Record<string, unknown>, readType: string, port: string): Blueprint {
+    return blueprintOf("bp-remote", { kind: "widgetMain", surfaceId: PAGE, elementId: "remote" }, {
+        click: {
+            graph: graphOf({
+                nodes: {
+                    head: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK },
+                    video: videoRef,
+                    set: { type: setType, params },
+                    read: { type: readType },
+                    log: { type: BLUEPRINT_NODE_TYPE_LOG },
+                },
+                exec: ["head", "set", "log"],
+                data: [
+                    ["video", "element", "set", "video"],
+                    ["video", "element", "read", "video"],
+                    ["read", port, "log", "value"],
+                ],
+            }),
+        },
+    });
+}
+
+describe("setting a video's volume, mute, loop and speed", () => {
+    async function setThenRead(setType: string, params: Record<string, unknown>, readType: string, port: string) {
+        page = createRowRuntime([remoteSettingThenReading(setType, params, readType, port)], {
+            document: videoDocument({ volume: 1, muted: false, loop: false, playbackRate: 1 }),
+            scopedHostApi: true,
+        });
+        await click();
+        await waitFor(() => expect(page!.logs).toHaveLength(1));
+        return page!.logs[0]!;
+    }
+
+    function widgetProps(): Record<string, unknown> {
+        const props = page!.hostApi.widget.getVideoProperties("opening");
+        return { volume: props.volume, muted: props.muted, loop: props.loop, playbackRate: props.playbackRate };
+    }
+
+    it("sets the volume, and Get Video Volume reads it back", async () => {
+        expect(await setThenRead(BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_VOLUME, { volume: 0.3 }, BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_VOLUME, "volume")).toBe("0.3");
+    });
+
+    it("keeps the volume between 0 and 1", async () => {
+        await setThenRead(BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_VOLUME, { volume: 5 }, BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_VOLUME, "volume");
+
+        expect(widgetProps().volume).toBe(1);
+    });
+
+    it("mutes, and Is Video Muted reads it back", async () => {
+        expect(await setThenRead(BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_MUTED, { muted: true }, BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_MUTED, "muted")).toBe("true");
+    });
+
+    it("turns Loop on and keeps the speed inside what the element accepts", async () => {
+        await setThenRead(BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_LOOP, { loop: true }, BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_MUTED, "muted");
+        expect(widgetProps()).toMatchObject({ loop: true, muted: false, volume: 1, playbackRate: 1 });
+
+        cleanup();
+        page?.release();
+        await setThenRead(BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_PLAYBACK_RATE, { speed: 100 }, BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_MUTED, "muted");
+        expect(widgetProps().playbackRate).toBe(16);
+    });
+
+    it("changes only the prop it sets", async () => {
+        await setThenRead(BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_PLAYBACK_RATE, { speed: 2 }, BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_MUTED, "muted");
+
+        expect(widgetProps()).toEqual({ volume: 1, muted: false, loop: false, playbackRate: 2 });
     });
 });

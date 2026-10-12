@@ -238,6 +238,8 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
     "blueprint.video.getDuration", "blueprint.video.getTime", "blueprint.video.isEnded",
     "blueprint.video.isPlaying", "blueprint.element.video.getDuration", "blueprint.element.video.getTime",
     "blueprint.element.video.isEnded", "blueprint.element.video.isPlaying",
+    "blueprint.video.getVolume", "blueprint.video.isMuted", "blueprint.element.video.getVolume",
+    "blueprint.element.video.isMuted",
 ];
 
 /**
@@ -345,6 +347,9 @@ const STEP_NODE_TYPES: readonly string[] = [
     "blueprint.video.pause", "blueprint.video.play", "blueprint.video.seek", "blueprint.video.stop",
     "blueprint.element.video.pause", "blueprint.element.video.play", "blueprint.element.video.seek",
     "blueprint.element.video.stop",
+    "blueprint.video.setLoop", "blueprint.video.setMuted", "blueprint.video.setPlaybackRate",
+    "blueprint.video.setVolume", "blueprint.element.video.setLoop", "blueprint.element.video.setMuted",
+    "blueprint.element.video.setPlaybackRate", "blueprint.element.video.setVolume",
 ];
 
 /**

@@ -1,5 +1,6 @@
 /**
- * Video widget nodes: play, pause, stop and seek a video, and read where it has got to.
+ * Video widget nodes: play, pause, stop and seek a video, read where it has got to, and set the
+ * playback props an author sets on the widget - volume, mute, loop and speed.
  *
  * Each comes twice, as the other widget families do: once for the video's own blueprint (category
  * Video, acting on the video the blueprint belongs to) and once for any graph on the page (category
@@ -18,25 +19,40 @@ import { isUIElementRefInScope } from "@shared/types/ui-editor/componentInstance
 import {
     BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_DURATION,
     BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_TIME,
+    BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_VOLUME,
     BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_ENDED,
+    BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_MUTED,
     BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_PLAYING,
     BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_PAUSE,
     BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_PLAY,
     BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SEEK,
+    BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_LOOP,
+    BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_MUTED,
+    BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_PLAYBACK_RATE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_VOLUME,
     BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_STOP,
     BLUEPRINT_NODE_TYPE_VIDEO_GET_DURATION,
     BLUEPRINT_NODE_TYPE_VIDEO_GET_TIME,
+    BLUEPRINT_NODE_TYPE_VIDEO_GET_VOLUME,
     BLUEPRINT_NODE_TYPE_VIDEO_IS_ENDED,
+    BLUEPRINT_NODE_TYPE_VIDEO_IS_MUTED,
     BLUEPRINT_NODE_TYPE_VIDEO_IS_PLAYING,
     BLUEPRINT_NODE_TYPE_VIDEO_PAUSE,
     BLUEPRINT_NODE_TYPE_VIDEO_PLAY,
     BLUEPRINT_NODE_TYPE_VIDEO_SEEK,
+    BLUEPRINT_NODE_TYPE_VIDEO_SET_LOOP,
+    BLUEPRINT_NODE_TYPE_VIDEO_SET_MUTED,
+    BLUEPRINT_NODE_TYPE_VIDEO_SET_PLAYBACK_RATE,
+    BLUEPRINT_NODE_TYPE_VIDEO_SET_VOLUME,
     BLUEPRINT_NODE_TYPE_VIDEO_STOP,
 } from "@shared/types/blueprint/graph";
 import { blueprintElementValueType } from "@shared/types/blueprint/valueTypes";
 import { UI_VIDEO_ELEMENT_TYPE } from "@shared/types/ui-editor/video";
 import { translate } from "@/lib/i18n";
-import type { BlueprintVideoCommand } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
+import type {
+    BlueprintVideoCommand,
+    BlueprintVideoPropertiesPatch,
+} from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import { widgetKindName } from "../widgetKindName";
 import { WIDGET_OWN_GRAPH_OWNER_KINDS, type BlueprintNodeDef, type BlueprintNodePinDef } from "../types";
@@ -81,6 +97,14 @@ const seekTimeIn: BlueprintNodePinDef = {
     label: "Time (s)",
     allowInlineLiteral: true,
 };
+const valueIn = (id: string, label: string, valueType: "float" | "boolean"): BlueprintNodePinDef => ({
+    id,
+    kind: "input",
+    semantic: "data",
+    valueType,
+    label,
+    allowInlineLiteral: true,
+});
 const out = (id: string, label: string, valueType: string): BlueprintNodePinDef => ({
     id,
     kind: "output",
@@ -143,6 +167,50 @@ function commandNode(input: {
             return { nextPort: "next" };
         },
     };
+}
+
+function propNode(input: {
+    type: string;
+    displayName: string;
+    description: BlueprintNodeDef["description"];
+    keywords: string[];
+    pin: BlueprintNodePinDef;
+    target: Target;
+    patch: (value: unknown) => BlueprintVideoPropertiesPatch;
+}): BlueprintNodeDef {
+    const elementTarget = input.target === "element";
+    return {
+        type: input.type,
+        displayName: input.displayName,
+        description: input.description,
+        category: elementTarget ? "Element" : "Video",
+        keywords: input.keywords,
+        graphKinds: [...WRITE_GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: elementTarget ? [execIn, execNext, videoIn, input.pin] : [execIn, execNext, input.pin],
+        magicElementTarget: elementTarget ? VIDEO_MAGIC_TARGET : undefined,
+        scope: elementTarget ? undefined : VIDEO_SCOPE,
+        execute: async ctx => {
+            const elementId = resolveVideoAddress(ctx, input.target);
+            await requireHostApi(ctx).widget.setVideoProperties(elementId, input.patch(resolveNodeInput(ctx, input.pin.id)));
+            return { nextPort: "next" };
+        },
+    };
+}
+
+/** A pin's value as a number; what is not one leaves the prop as it is. */
+function toNumberPatch(raw: unknown): number | undefined {
+    const value = typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() !== "" ? Number(raw) : Number.NaN;
+    return Number.isFinite(value) ? value : undefined;
+}
+
+/** A pin's value as a boolean, read the way the switch nodes read theirs; nothing leaves the prop as it is. */
+function toBooleanPatch(raw: unknown): boolean | undefined {
+    if (raw === undefined || raw === null) {
+        return undefined;
+    }
+    return raw === true || raw === "true" || raw === "1" || raw === 1;
 }
 
 /**
@@ -245,6 +313,58 @@ function videoNodes(target: Target): BlueprintNodeDef[] {
             description: "blueprint.nodeDescription.isVideoEnded",
             keywords: ["video", "movie", "clip", "ended", "finished", "done", "state", "check", "playback"],
             output: out("isEnded", "Is Ended", "boolean"),
+            target,
+        }),
+        propNode({
+            type: element ? BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_VOLUME : BLUEPRINT_NODE_TYPE_VIDEO_SET_VOLUME,
+            displayName: "Set Video Volume",
+            description: "blueprint.nodeDescription.setVideoVolume",
+            keywords: ["video", "movie", "clip", "volume", "loud", "quiet", "sound", "audio"],
+            pin: valueIn("volume", "Volume", "float"),
+            target,
+            patch: value => ({ volume: toNumberPatch(value) }),
+        }),
+        propNode({
+            type: element ? BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_MUTED : BLUEPRINT_NODE_TYPE_VIDEO_SET_MUTED,
+            displayName: "Set Video Muted",
+            description: "blueprint.nodeDescription.setVideoMuted",
+            keywords: ["video", "movie", "clip", "mute", "muted", "unmute", "silent", "sound", "audio"],
+            pin: valueIn("muted", "Muted", "boolean"),
+            target,
+            patch: value => ({ muted: toBooleanPatch(value) }),
+        }),
+        propNode({
+            type: element ? BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_LOOP : BLUEPRINT_NODE_TYPE_VIDEO_SET_LOOP,
+            displayName: "Set Video Loop",
+            description: "blueprint.nodeDescription.setVideoLoop",
+            keywords: ["video", "movie", "clip", "loop", "repeat", "playback"],
+            pin: valueIn("loop", "Loop", "boolean"),
+            target,
+            patch: value => ({ loop: toBooleanPatch(value) }),
+        }),
+        propNode({
+            type: element ? BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_PLAYBACK_RATE : BLUEPRINT_NODE_TYPE_VIDEO_SET_PLAYBACK_RATE,
+            displayName: "Set Video Speed",
+            description: "blueprint.nodeDescription.setVideoSpeed",
+            keywords: ["video", "movie", "clip", "speed", "rate", "playback", "fast", "slow"],
+            pin: valueIn("speed", "Speed", "float"),
+            target,
+            patch: value => ({ playbackRate: toNumberPatch(value) }),
+        }),
+        readNode({
+            type: element ? BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_VOLUME : BLUEPRINT_NODE_TYPE_VIDEO_GET_VOLUME,
+            displayName: "Get Video Volume",
+            description: "blueprint.nodeDescription.getVideoVolume",
+            keywords: ["video", "movie", "clip", "volume", "sound", "audio"],
+            output: out("volume", "Volume", "float"),
+            target,
+        }),
+        readNode({
+            type: element ? BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_MUTED : BLUEPRINT_NODE_TYPE_VIDEO_IS_MUTED,
+            displayName: "Is Video Muted",
+            description: "blueprint.nodeDescription.isVideoMuted",
+            keywords: ["video", "movie", "clip", "mute", "muted", "silent", "sound", "audio", "check"],
+            output: out("muted", "Muted", "boolean"),
             target,
         }),
     ];

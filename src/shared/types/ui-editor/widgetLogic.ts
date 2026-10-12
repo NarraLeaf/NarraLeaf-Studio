@@ -651,8 +651,10 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
      * `readableState` entries like `currentTime` change inside the element with nothing writing to
      * the override store, and `commands` like Play / Seek are one-shot actions rather than state.
      * Play, Pause, Stop and Seek are the `Play Video` family of nodes (`videoNodes.ts`), carried out by
-     * the renderer through the widget runtime store. Every command marked `planned` has no
-     * implementation behind it.
+     * the renderer through the widget runtime store; the volume, mute, loop and speed setters write
+     * the props of the same names over what the author set. Every command marked `planned` has no
+     * implementation behind it. `setSource` is one: no pin carries a video asset, and the build and
+     * the asset references read clips only from the widget's own props.
      */
     "nl.video": {
         supportsPrivateBlueprint: true,
@@ -665,10 +667,10 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
             { id: "stop", displayName: "Stop", capabilityId: "widget.controlVideo", availability: "available" },
             { id: "seek", displayName: "Seek", capabilityId: "widget.controlVideo", availability: "available" },
             { id: "setSource", displayName: "Set video source", availability: "planned" },
-            { id: "setVolume", displayName: "Set volume", availability: "planned" },
-            { id: "setMuted", displayName: "Set muted", availability: "planned" },
-            { id: "setLoop", displayName: "Set loop", availability: "planned" },
-            { id: "setPlaybackRate", displayName: "Set playback rate", availability: "planned" },
+            { id: "setVolume", displayName: "Set volume", capabilityId: "widget.setVideoProperties", availability: "available" },
+            { id: "setMuted", displayName: "Set muted", capabilityId: "widget.setVideoProperties", availability: "available" },
+            { id: "setLoop", displayName: "Set loop", capabilityId: "widget.setVideoProperties", availability: "available" },
+            { id: "setPlaybackRate", displayName: "Set playback rate", capabilityId: "widget.setVideoProperties", availability: "available" },
         ],
         readableState: [
             { id: "visible", displayName: "Visible" },

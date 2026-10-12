@@ -127,7 +127,7 @@ import type {
 import type { UISliderRuntimeValue, UISliderWidgetProps } from "@shared/types/ui-editor/slider";
 import { resolveSliderRuntimeValue } from "@shared/types/ui-editor/slider";
 import type { UISwitchRuntimeValue, UISwitchWidgetProps } from "@shared/types/ui-editor/switch";
-import { UI_VIDEO_ELEMENT_TYPE } from "@shared/types/ui-editor/video";
+import { normalizeVideoProps, UI_VIDEO_ELEMENT_TYPE, type UIVideoWidgetProps } from "@shared/types/ui-editor/video";
 import { normalizeSwitchProps, resolveSwitchRuntimeValue } from "@shared/types/ui-editor/switch";
 import type { UITextInputRuntimeValue, UITextInputWidgetProps } from "@shared/types/ui-editor/textInput";
 import { normalizeTextInputProps, resolveTextInputRuntimeValue } from "@shared/types/ui-editor/textInput";
@@ -353,11 +353,23 @@ export type BlueprintFrameProperties = {
 };
 
 /**
- * A video widget's playback as a graph reads it: where the clip is, how long it is, and whether it
- * is playing or has played to its end. Read from the drawn element when asked, so it is the moment's
- * answer; a video with nothing drawn reads as at rest.
+ * A video widget as a graph reads it.
+ *
+ * Two halves read from two places. Where the clip is, how long it is and whether it is playing or
+ * has played to its end are read from the drawn element when asked, so they are the moment's answer,
+ * and a video with nothing drawn reads as at rest. The volume, mute, loop and speed are the widget's
+ * props as this drawing has them: what the author set, under whatever a graph has set since. The
+ * volume is the widget's own, before the player's volume settings are applied to it.
  */
-export type BlueprintVideoProperties = UIVideoPlaybackReading;
+export type BlueprintVideoProperties = UIVideoPlaybackReading & {
+    volume: number;
+    muted: boolean;
+    loop: boolean;
+    playbackRate: number;
+};
+
+/** The video props a graph may set; each is kept to the range the widget accepts (`normalizeVideoProps`). */
+export type BlueprintVideoPropertiesPatch = Partial<Pick<UIVideoWidgetProps, "volume" | "muted" | "loop" | "playbackRate">>;
 
 /**
  * One thing a graph asks of a video widget's playback.
@@ -541,6 +553,7 @@ export type BlueprintHostApiRuntime = {
         getFrameProperties: (elementId: string) => BlueprintFrameProperties;
         setFrameProperties: (elementId: string, patch: Partial<BlueprintFrameProperties>) => Promise<void>;
         getVideoProperties: (elementId: string) => BlueprintVideoProperties;
+        setVideoProperties: (elementId: string, patch: BlueprintVideoPropertiesPatch) => Promise<void>;
         /** Play, pause, stop or seek a video widget. Settles once asked, not once playback has started. */
         controlVideo: (elementId: string, command: BlueprintVideoCommand) => Promise<void>;
     };
@@ -4098,12 +4111,42 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "widget.getVideoProperties";
                 emitHostCall(emit, cap, "call");
                 try {
-                    assertVideoElement(document, elementId);
+                    const el = assertVideoElement(document, elementId);
+                    const props = normalizeVideoProps(withWidgetPropOverride(el, runtimePatches, elementId).props);
                     return {
                         ...widgetRuntimeStore.readVideoPlayback(
                             scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
                         ),
+                        volume: props.volume,
+                        muted: props.muted,
+                        loop: props.loop,
+                        playbackRate: props.playbackRate,
                     };
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setVideoProperties: async (elementId: string, patch: BlueprintVideoPropertiesPatch) => {
+                const cap = "widget.setVideoProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const el = assertVideoElement(document, elementId);
+                    const changed = changeWidgetProps(elementId, el, drawn => {
+                        const current = normalizeVideoProps(drawn.props);
+                        // Through the widget's own normalizer, so a graph cannot set what the inspector
+                        // could not: a volume past 1, a speed the element would refuse.
+                        const next = normalizeVideoProps({ ...current, ...patch });
+                        const changes: Record<string, unknown> = {};
+                        for (const key of ["volume", "muted", "loop", "playbackRate"] as const) {
+                            if (patch[key] !== undefined && next[key] !== current[key]) {
+                                changes[key] = next[key];
+                            }
+                        }
+                        return changes;
+                    });
+                    if (changed) {
+                        scheduleElementFlush(elementId);
+                    }
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

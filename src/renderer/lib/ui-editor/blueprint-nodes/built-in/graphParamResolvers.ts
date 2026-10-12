@@ -339,6 +339,10 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_DURATION,
     BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_PLAYING,
     BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_ENDED,
+    BLUEPRINT_NODE_TYPE_VIDEO_GET_VOLUME,
+    BLUEPRINT_NODE_TYPE_VIDEO_IS_MUTED,
+    BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_VOLUME,
+    BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_MUTED,
     BLUEPRINT_NODE_TYPE_TEXT_INPUT_GET_VALUE,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_GET_VALUE,
     BLUEPRINT_NODE_TYPE_TEXT_GET_ALL_PROPERTIES,
@@ -2705,6 +2709,10 @@ const VIDEO_READ_OUTPUTS: Readonly<Record<string, { portId: string; element: boo
     [BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_DURATION]: { portId: "duration", element: true, read: props => props.duration },
     [BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_PLAYING]: { portId: "isPlaying", element: true, read: props => props.playing },
     [BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_ENDED]: { portId: "isEnded", element: true, read: props => props.ended },
+    [BLUEPRINT_NODE_TYPE_VIDEO_GET_VOLUME]: { portId: "volume", element: false, read: props => props.volume },
+    [BLUEPRINT_NODE_TYPE_VIDEO_IS_MUTED]: { portId: "muted", element: false, read: props => props.muted },
+    [BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_VOLUME]: { portId: "volume", element: true, read: props => props.volume },
+    [BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_MUTED]: { portId: "muted", element: true, read: props => props.muted },
 };
 
 /**

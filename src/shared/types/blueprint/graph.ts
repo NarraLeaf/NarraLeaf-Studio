@@ -1663,6 +1663,19 @@ export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_TIME = "blueprint.element.vid
 export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_DURATION = "blueprint.element.video.getDuration" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_PLAYING = "blueprint.element.video.isPlaying" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_ENDED = "blueprint.element.video.isEnded" as const;
+/** The video props a graph sets at run time, over what the author set on the widget. */
+export const BLUEPRINT_NODE_TYPE_VIDEO_SET_VOLUME = "blueprint.video.setVolume" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_SET_MUTED = "blueprint.video.setMuted" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_SET_LOOP = "blueprint.video.setLoop" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_SET_PLAYBACK_RATE = "blueprint.video.setPlaybackRate" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_GET_VOLUME = "blueprint.video.getVolume" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_IS_MUTED = "blueprint.video.isMuted" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_VOLUME = "blueprint.element.video.setVolume" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_MUTED = "blueprint.element.video.setMuted" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_LOOP = "blueprint.element.video.setLoop" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_PLAYBACK_RATE = "blueprint.element.video.setPlaybackRate" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_VOLUME = "blueprint.element.video.getVolume" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_MUTED = "blueprint.element.video.isMuted" as const;
 
 export const BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS = "blueprint.list.setItems" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS = "blueprint.list.getItems" as const;
