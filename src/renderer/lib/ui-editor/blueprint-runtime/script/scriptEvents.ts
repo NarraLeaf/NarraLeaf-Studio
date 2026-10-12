@@ -79,6 +79,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_SUBMIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_VALUE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_VIDEO_ENDED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED,
 } from "@shared/types/blueprint/graph";
 import type { BlueprintElementRef } from "@shared/types/blueprint/valueTypes";
@@ -186,6 +187,7 @@ export const SCRIPT_EVENT_PAYLOADS = {
     switchTurnedOff: {},
     textInputSubmit: { value: "string" },
     textInputValueChanged: { value: "string", previousValue: "string" },
+    videoEnded: {},
     pageEvent: { event: "string", data: "unknown" },
 } as const satisfies Record<string, Record<string, ScriptPinKind>>;
 
@@ -269,6 +271,7 @@ export const SCRIPT_EVENT_HEADS: Readonly<Record<string, ScriptEventId>> = {
     [BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_OFF]: "switchTurnedOff",
     [BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_SUBMIT]: "textInputSubmit",
     [BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_VALUE_CHANGED]: "textInputValueChanged",
+    [BLUEPRINT_NODE_TYPE_EVENT_HEAD_VIDEO_ENDED]: "videoEnded",
     [BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT]: "pageEvent",
 };
 
@@ -370,7 +373,7 @@ export const SCRIPT_EVENTS_BY_WIDGET = {
     "nl.container": ROW_WIDGET_EVENTS,
     "nl.text": ROW_WIDGET_EVENTS,
     "nl.image": ROW_WIDGET_EVENTS,
-    "nl.video": [...DISPLAYABLE_EVENTS, ...POINTER_EVENTS],
+    "nl.video": [...DISPLAYABLE_EVENTS, ...POINTER_EVENTS, "videoEnded"],
     "nl.puppet": [...DISPLAYABLE_EVENTS, ...POINTER_EVENTS],
     "nl.button": ROW_WIDGET_EVENTS,
     "nl.textInput": [...DISPLAYABLE_EVENTS, "focus", "blur", "textInputSubmit", "textInputValueChanged"],

@@ -545,6 +545,7 @@ const NODE_TITLE_KEYS: Record<string, TranslationKey> = {
     "Turn Switch Off": "blueprint.node.turnSwitchOff",
     "Turn Switch On": "blueprint.node.turnSwitchOn",
     "Turned Off": "blueprint.node.turnedOff",
+    "Playback Ended": "blueprint.node.playbackEnded",
     "Turned On": "blueprint.node.turnedOn",
     "Undo Last History Entry": "blueprint.node.undoLastHistoryEntry",
     "Unmount": "blueprint.node.unmount",

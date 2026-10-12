@@ -1936,6 +1936,7 @@ declare module "@narraleaf/script" {
     		readonly value: "string";
     		readonly previousValue: "string";
     	};
+    	readonly videoEnded: {};
     	readonly pageEvent: {
     		readonly event: "string";
     		readonly data: "unknown";
@@ -2114,7 +2115,8 @@ declare module "@narraleaf/script" {
     		"mouseWheel",
     		"rightClick",
     		"focus",
-    		"blur"
+    		"blur",
+    		"videoEnded"
     	];
     	readonly "nl.puppet": readonly [
     		"init",

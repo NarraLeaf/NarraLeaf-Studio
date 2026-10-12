@@ -408,6 +408,13 @@ Flush 是属性提交后的批处理通知。运行时会按帧合并同一元�
 只出现在 Switch 的私有蓝图中。玩家把开关拨到关时，在 `Changed` 之后触发。
 - `then` - 执行出口
 
+## Playback Ended
+
+`blueprint.event.head.videoEnded` - 视频播放结束事件
+
+只出现在 Video（`nl.video`）的私有蓝图中。视频播放到结尾时触发，每播到结尾一次触发一次。开启循环时永不触发；更换视频文件、页面在播完前关闭、编辑画布上的预览都不触发。与 `<video>` 元素的 `ended` 事件一致。
+- `then` - 执行出口
+
 ## Value Changed（Text Input）
 
 `blueprint.event.head.textInputValueChanged` - 文本框内容变化事件

@@ -369,6 +369,7 @@ const EVENT_HEAD_NODE_TYPES: readonly string[] = [
     "blueprint.event.head.switchChanged", "blueprint.event.head.switchTurnedOff",
     "blueprint.event.head.switchTurnedOn", "blueprint.event.head.textInputSubmit",
     "blueprint.event.head.textInputValueChanged", "blueprint.event.head.unmount",
+    "blueprint.event.head.videoEnded",
     "blueprint.event.head.windowCloseRequested", "blueprint.fn.head",
 ];
 

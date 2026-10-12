@@ -1622,6 +1622,7 @@ export const blueprint = {
         turnSwitchOn: "Turn Switch On",
         turnedOff: "Turned Off",
         turnedOn: "Turned On",
+        playbackEnded: "Playback Ended",
         undoLastHistoryEntry: "Undo Last History Entry",
         unmount: "Unmount",
         valueChanged: "Value Changed",
@@ -1681,6 +1682,7 @@ export const blueprint = {
         format: "Replaces the placeholders in Template with values: {0}, {1} and so on with the items of an array, {name} with the field of that name in an object. A placeholder with no value becomes empty. A translated template comes from Translation Key Text.",
         formatText: "Replaces {0}, {1} and so on in Text with the items of Values. Format does the same, also fills {name} from an object, and can be used in Blueprint Value and functions.",
         getField: "One field of the struct wired into Object, picked from that struct's fields. Inside a list row, leave Object unwired to read the row. Use Get JSON Field for an object whose fields are not declared.",
+        playbackEnded: "Runs each time the clip plays to its end. Does not run while Loop is on, when the clip is replaced, or when the page closes before the end.",
     },
     // A live session leaves the blueprint document writable. What the canvas gains is a mark
     // saying who else is inside a node.

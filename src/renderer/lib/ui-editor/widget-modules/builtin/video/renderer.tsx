@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type SyntheticEvent } from "react";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
+import { useWidgetEventDispatch } from "@/lib/ui-editor/widget-modules/shared/useWidgetEventDispatch";
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { useLocalizedAssetId } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
@@ -62,6 +63,7 @@ export function VideoRenderer(props: WidgetRendererProps) {
     const { element, hostAdapter, surface, instanceKey } = props;
     const videoProps = getVideoProps(element);
     const videoRef = useRef<HTMLVideoElement | null>(null);
+    const dispatchEvent = useWidgetEventDispatch(props.dispatchEvent);
 
     /**
      * `blueprintRuntime` is what tells the two hosts apart: the packaged game and Dev Mode install
@@ -123,6 +125,35 @@ export function VideoRenderer(props: WidgetRendererProps) {
 
     const preview = useVideoPreviewState(element.id, !isLiveHost);
     const shouldPlay = isLiveHost ? videoProps.autoplay : preview.playing;
+
+    /**
+     * Whether this drawing is still on screen. An `ended` the element queued just before the page
+     * closed would otherwise reach the graph after the widget is gone - a page change wired to it
+     * would then leave whatever page the player had moved to.
+     */
+    const mountedRef = useRef(false);
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+        };
+    }, []);
+
+    /**
+     * The clip played to its end: the widget's Playback Ended, once per time it gets there.
+     *
+     * Raised from the element's own `ended`, which a looping clip never fires. Read again at the
+     * moment it arrives rather than trusted: an `ended` queued just before the source changed lands
+     * on an element that has already started loading the next clip and no longer reports `ended`,
+     * and it does not belong to that clip.
+     */
+    const handleLiveEnded = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
+        const node = event.currentTarget;
+        if (!mountedRef.current || !node.ended || node.loop) {
+            return;
+        }
+        void dispatchEvent("ended", {});
+    }, [dispatchEvent]);
 
     // Nothing else gives the preview store a lifetime - see `releaseVideoPreviewPlayback`.
     useEffect(() => {
@@ -194,7 +225,7 @@ export function VideoRenderer(props: WidgetRendererProps) {
                     // `loop` off, or the author pauses it with the native control strip - and then
                     // the docker bar offers Pause over a stopped video and replaying takes two
                     // clicks. Reporting back is what keeps the button honest.
-                    onEnded={isLiveHost ? undefined : () => setVideoPreviewPlaying(element.id, false)}
+                    onEnded={isLiveHost ? handleLiveEnded : () => setVideoPreviewPlaying(element.id, false)}
                     onPause={isLiveHost ? undefined : () => setVideoPreviewPlaying(element.id, false)}
                     onPlay={isLiveHost ? undefined : () => setVideoPreviewPlaying(element.id, true)}
                     onError={() => {

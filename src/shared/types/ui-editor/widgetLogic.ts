@@ -424,12 +424,13 @@ const SWITCH_EVENTS: readonly WidgetLogicEventDef[] = [
 ];
 
 /**
- * Video and Model: the displayable set, and nothing of their own.
+ * What Video and Model share: the displayable set.
  *
- * Neither widget reports what happens inside it to a blueprint. The video element's play, pause and
- * end, and the puppet backend's ready and error states, drive the widget's own drawing and are not
- * dispatched, and no head node exists to start a graph on them - so none is listed. An event offered
- * here that never fires is a graph an author wires and then waits on forever.
+ * An event is listed only once the widget's renderer raises it in a running game and a head node
+ * exists to start a graph on it. An event offered here that never fires is a graph an author wires
+ * and then waits on forever - Video and Model once listed play / pause / ended and ready / error that
+ * nothing dispatched. The puppet backend's ready and error states still only drive the widget's own
+ * drawing, so Model has nothing of its own; Video adds the one event its renderer raises, below.
  */
 const MEDIA_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
     INIT_EVENT,
@@ -439,6 +440,26 @@ const MEDIA_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
     ...DISPLAYABLE_EVENTS,
     ...BROADCAST_EVENTS,
     ...WINDOW_EVENTS,
+];
+
+/**
+ * Video: the media set, and its clip playing to the end.
+ *
+ * `ended` is the `<video>` element's own event, raised by the video renderer in Dev Mode and in a
+ * built game - once each time the clip reaches its end. A looping clip never reaches it, and the
+ * editor canvas, which never plays on its own, raises nothing. Play and pause are not events: a
+ * graph that started or stopped the clip already knows, and the player has no other way to do either
+ * unless the native controls are showing.
+ */
+const VIDEO_EVENTS: readonly WidgetLogicEventDef[] = [
+    ...MEDIA_WIDGET_EVENTS,
+    {
+        id: "ended",
+        displayName: "Playback ended",
+        description: "Fires once when the clip plays to its end. Never fires while Loop is on.",
+        dispatchKind: "lifecycle",
+        headNodeTypes: ["blueprint.event.head.videoEnded"],
+    },
 ];
 
 const DISPLAYABLE_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
@@ -634,7 +655,7 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
     "nl.video": {
         supportsPrivateBlueprint: true,
         blueprintLabel: "Video logic",
-        events: MEDIA_WIDGET_EVENTS,
+        events: VIDEO_EVENTS,
         commands: [
             ...baseCommands,
             { id: "play", displayName: "Play", availability: "planned" },

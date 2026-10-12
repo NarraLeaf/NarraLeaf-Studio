@@ -102,6 +102,11 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_CHANGED = "blueprint.event.he
  */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_ON = "blueprint.event.head.switchTurnedOn" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_OFF = "blueprint.event.head.switchTurnedOff" as const;
+/**
+ * A video widget's clip played to its end: the `<video>` element's own `ended`, raised once per
+ * time the clip reaches its end. A clip set to loop never reaches it, so this never runs for one.
+ */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_VIDEO_ENDED = "blueprint.event.head.videoEnded" as const;
 /** Entry for global `appBoot` lifecycle event (application start). */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT = "blueprint.event.head.appBoot" as const;
 /** Entry for global NarraLeaf game runtime readiness. */
@@ -197,6 +202,7 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_ON,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_OFF,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_VIDEO_ENDED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,

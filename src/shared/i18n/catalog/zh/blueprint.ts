@@ -1552,6 +1552,7 @@ export const blueprint = {
         turnSwitchOn: "打开开关",
         turnedOff: "已关闭",
         turnedOn: "已打开",
+        playbackEnded: "播放结束",
         undoLastHistoryEntry: "撤销最后一条历史记录",
         unmount: "卸载",
         valueChanged: "值变更",
@@ -1606,6 +1607,7 @@ export const blueprint = {
         format: "把模板中的占位符替换为值：{0}、{1} 等取数组的各项，{name} 取对象中同名的字段；没有对应值的占位符替换为空。翻译过的模板可取自「翻译键文本」",
         formatText: "把文本中的 {0}、{1} 等替换为值列表的各项。「格式化」作用相同，还能用对象填写 {name}，并且可用于蓝图值与函数",
         getField: "读取连接到「对象」的结构中的一个字段，字段从该结构的字段中选择。在列表行中不连接「对象」时，读取当前行。字段未声明的对象用「获取 JSON 字段」读取",
+        playbackEnded: "视频每次播放到结尾时运行。开启「循环」时、更换视频文件时、以及页面在播完前关闭时不运行",
     },
     live: {
         nodeClaimed: "{name} 正在编辑该节点",
