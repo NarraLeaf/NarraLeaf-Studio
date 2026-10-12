@@ -10,6 +10,7 @@ import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument } from "@shared/types/ui-ed
 import { resolveEntrySurface } from "@shared/types/ui-editor/entrySurface";
 import type { VariableRegistry } from "@shared/types/variables/registry";
 import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
+import { translate } from "@/lib/i18n";
 import { ensureWidgetModulesRegistered } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { HistoryService } from "../history/HistoryService";
 import { projectHistoryScope } from "../history/historyScopes";
@@ -185,8 +186,12 @@ beforeAll(async () => {
 
 describe("ui_install_standard_screens", () => {
     it("writes nothing on a dry run, and says what would come and what would not", async () => {
-        const { uidoc, graphDocument, steps, run } = createHarness();
+        const { uidoc, graphDocument, follow, steps, run } = createHarness();
+        const describeCall = vi.spyOn(follow, "describeCall");
         const answer = structured(await run({ dryRun: true }));
+        // The Agent log names the call in the author's language, through the catalog.
+        expect(describeCall).toHaveBeenCalledWith("call-1", translate("workspace.agent.log.target.standardScreens"));
+        expect(translate("workspace.agent.log.target.standardScreens")).toBe("Standard screens");
         expect(answer.written).toBe(false);
         expect((answer.pages as string[]).length).toBeGreaterThan(4);
         expect((answer.gameUis as string[]).length).toBe(4);

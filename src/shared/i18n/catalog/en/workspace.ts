@@ -511,6 +511,10 @@ export const workspace = {
         // The Agent log panel (`AgentLogPanel`).
         log: {
             pluginTool: "A tool of the plugin {plugin}",
+            // What the log's target column names a call by when its subject has no name of its own.
+            target: {
+                standardScreens: "Standard screens",
+            },
             filter: {
                 all: "All calls",
                 writes: "Changes only",

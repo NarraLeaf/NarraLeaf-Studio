@@ -464,6 +464,9 @@ export const workspace = {
         },
         log: {
             pluginTool: "插件 {plugin} 提供的工具",
+            target: {
+                standardScreens: "标准界面",
+            },
             filter: {
                 all: "全部",
                 writes: "仅修改",

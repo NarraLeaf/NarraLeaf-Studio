@@ -23,6 +23,7 @@
  */
 
 import { getInterface } from "@/lib/app/bridge";
+import { translate } from "@/lib/i18n";
 import { nextUnusedVariableName } from "@shared/variables/variableRegistryModel";
 import { normalizeProjectBrandColors } from "@shared/types/brand";
 import type { SaveSchema, SaveSchemaField } from "@shared/types/saveSchema";
@@ -149,7 +150,8 @@ function projectCapabilities(ctx: WorkspaceContext) {
 export const uiInstallStandardScreens: AgentToolHandler = async (args, { ctx, request, follow }) => {
     const replace = readOptionalBoolean(args, "replace") ?? false;
     const dryRun = readOptionalBoolean(args, "dryRun") ?? false;
-    follow.describeCall(request.callId, "standard screens");
+    // Named in the author's language: the call is about no one page, and the log shows no ids.
+    follow.describeCall(request.callId, translate("workspace.agent.log.target.standardScreens"));
     const uidoc = uiDocumentService(ctx);
     const project = ctx.services.get<ProjectService>(Services.Project);
     const stories = ctx.services.get<StoryService>(Services.Story);

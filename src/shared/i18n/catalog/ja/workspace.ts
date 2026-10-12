@@ -473,6 +473,9 @@ export const workspace = {
         },
         log: {
             pluginTool: "プラグイン {plugin} のツール",
+            target: {
+                standardScreens: "標準画面",
+            },
             filter: {
                 all: "すべて",
                 writes: "変更のみ",
