@@ -193,3 +193,32 @@ describe("quick open tells same-named controls apart", () => {
         expect(read["blueprint:bp-plate-text"]).toBe("Config › Name plate · Widget value");
     });
 });
+
+/** An asset row's detail is the kind of asset it is, in the interface's words rather than the stored type. */
+describe("quick open names an asset's kind", () => {
+    function assetDetails() {
+        const services: Partial<Record<Services, unknown>> = {
+            [Services.UI]: { editor: { open: vi.fn(), get: () => undefined } },
+            [Services.Story]: { listStories: () => [] },
+            [Services.Character]: { listCharacter: () => [] },
+            [Services.UIDocument]: { getDocument: () => ({ surfaces: [], components: [], elements: {} }) },
+            [Services.Assets]: {
+                getAssets: () => ({
+                    image: { bg: { id: "bg", type: "image", name: "Corridor" } },
+                    audio: { theme: { id: "theme", type: "audio", name: "Theme" } },
+                    json: { table: { id: "table", type: "json", name: "Table" } },
+                }),
+            },
+            [Services.LocalBlueprint]: { getBlueprintDocument: () => ({ ownerRecords: {}, blueprints: {} }) },
+        };
+        const context = { services: { get: (id: Services) => services[id] } } as unknown as WorkspaceContext;
+        return Object.fromEntries(collectQuickOpenEntries(context).map(entry => [entry.key, entry.detail]));
+    }
+
+    it("reads the type as the properties panel heads the asset, not as its stored id", () => {
+        const read = assetDetails();
+        expect(read["asset:bg"]).toBe("Image");
+        expect(read["asset:theme"]).toBe("Audio");
+        expect(read["asset:table"]).toBe("JSON");
+    });
+});

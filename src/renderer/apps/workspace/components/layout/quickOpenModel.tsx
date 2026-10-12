@@ -138,7 +138,9 @@ export function collectQuickOpenEntries(ctx: WorkspaceContext): QuickOpenEntry[]
                 key: `asset:${asset.id}`,
                 kind: "asset",
                 title: asset.name,
-                detail: asset.type,
+                // The kind of asset in the interface's words (Image, 图片, 画像), the noun the
+                // properties panel heads the same asset with - not the enum value the library stores.
+                detail: translate(`dialogs.noun.${asset.type}`),
                 icon: assetIcon(asset),
                 open: () => {
                     if (asset.type === AssetType.Image || asset.type === AssetType.Audio) {
