@@ -484,6 +484,8 @@ export const story = {
         nameTaken: "このシーンには同じ名前のレイヤーがある",
         nameReserved: "この名前は組み込みレイヤーを指す",
         swayCaption: "カメラ移動",
+        framingCaption: "この行のショット",
+        framingSelectRow: "カメラの位置を設定するカメラ行を選ぶと、ここでフレーミングできる",
     },
     appearance: {
         noPoses: "このキャラクターにはまだポーズがない",

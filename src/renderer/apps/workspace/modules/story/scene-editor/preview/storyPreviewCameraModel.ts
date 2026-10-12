@@ -3,11 +3,20 @@ import { clampToAlignReach } from "../commands/transformVocabulary";
 
 export type PreviewCameraRowPayload = Extract<StoryActionPayload, { action: "camera" }>;
 
+/** The camera row the layer view frames: the selected row, when it is one that states a pose. */
+export type StoryPreviewCameraApi = {
+    blockId: string;
+    payload: PreviewCameraRowPayload;
+    /** Writes the row. Called once per gesture: on release, or once the wheel has rested. */
+    commit: (payload: PreviewCameraRowPayload) => void;
+};
+
 /**
- * The camera pose the preview's framing edits: where the stage's centre sits - a share of the stage
- * plus design pixels, from the bottom left, which is how the engine places the camera - and its zoom.
+ * The camera pose the framing edits: where the stage's centre sits - a share of the stage plus design
+ * pixels, from the bottom left, which is how the engine places the camera - and its zoom. Its rotation
+ * is only drawn; the framing does not write it.
  */
-export type PreviewCameraPose = { xalign: number; yalign: number; xoffset: number; yoffset: number; zoom: number };
+export type PreviewCameraPose = { xalign: number; yalign: number; xoffset: number; yoffset: number; zoom: number; rotation: number };
 
 /**
  * How far the wheel may push in or pull out. Below a tenth the stage is a speck in the frame; past
@@ -47,6 +56,7 @@ export function previewCameraPose(settled: Record<string, unknown> | null | unde
         xoffset: finite(position.xoffset, 0),
         yoffset: finite(position.yoffset, 0),
         zoom: finite(settled?.zoom, 1),
+        rotation: finite(settled?.rotation, 0),
     };
     const to = row?.transform?.to;
     const stated = (to?.position ?? {}) as StoryAlignPositionValue;
@@ -56,15 +66,26 @@ export function previewCameraPose(settled: Record<string, unknown> | null | unde
         xoffset: finite(stated.xoffset, pose.xoffset),
         yoffset: finite(stated.yoffset, pose.yoffset),
         zoom: finite(to?.zoom, pose.zoom),
+        rotation: finite(to?.rotation, pose.rotation),
     };
 }
 
-/** The props that put a pose on the camera, in the shape the preview poses it with. */
-export function previewCameraProps(pose: PreviewCameraPose): Record<string, unknown> {
-    return {
-        position: { xalign: pose.xalign, yalign: pose.yalign, xoffset: pose.xoffset, yoffset: pose.yoffset },
-        zoom: pose.zoom,
-    };
+/**
+ * Where a layer of the framing preview sits for a camera pose, the preview drawn `stage` pixels big:
+ * moved by its share of the camera's shift and zoomed by its share of the camera's zoom - the
+ * engine's parallax (narraleaf-react `cameraParallax.ts`), the camera's point being where the stage's
+ * centre lands. A layer that follows all of the camera is exactly the camera's own transform.
+ */
+export function previewCameraLayerTransform(
+    follow: number,
+    pose: PreviewCameraPose,
+    stage: { width: number; height: number },
+    design: { width: number; height: number },
+): string {
+    const shiftX = (pose.xalign - 0.5 + pose.xoffset / Math.max(1, design.width)) * stage.width;
+    const shiftY = -(pose.yalign - 0.5 + pose.yoffset / Math.max(1, design.height)) * stage.height;
+    const scale = Math.max(0.05, 1 + follow * (pose.zoom - 1));
+    return `translate3d(${(follow * shiftX).toFixed(2)}px, ${(follow * shiftY).toFixed(2)}px, 0) rotate(${pose.rotation}deg) scale(${scale.toFixed(4)})`;
 }
 
 /**

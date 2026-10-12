@@ -568,6 +568,8 @@ export const story = {
         nameTaken: "This scene already has a layer with this name",
         nameReserved: "This name refers to a built-in layer",
         swayCaption: "Camera moving",
+        framingCaption: "This row's shot",
+        framingSelectRow: "Select a camera row that sets a position to frame it here",
     },
     appearance: {
         noPoses: "This character has no poses yet.",

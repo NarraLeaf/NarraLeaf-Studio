@@ -884,13 +884,6 @@ export type StagePreviewCompileInput = {
      * own action plays. Superseded runs never need it resolved - disposing the game aborts the wait.
      */
     revealGate?: Promise<void>;
-    /**
-     * Open on a camera row's end frame instead of playing its move, for a host whose author is
-     * framing that shot on the stage: the pose is put on the camera with the rest of the still, and
-     * the row itself plays nothing. Only a camera transform target is settled this way; any other
-     * target plays as usual.
-     */
-    settleTarget?: boolean;
     /** Fires synchronously immediately before the target's own statements. */
     onBeforeTarget: () => void;
     /** Fires synchronously immediately after the target's own statements complete. */
@@ -2130,8 +2123,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
     const builtinLayerProps = snapshot.builtinLayerProps;
     // The camera too, as a launch poses it: a still of a row after a pan is a still of the panned
     // shot - and of the layers at their distances inside it - not of a camera that never moved.
-    const settledCamera = input.settleTarget === true && !input.continuous ? snapshot.targetCamera : null;
-    const cameraProps = settledCamera ?? snapshot.camera?.props ?? {};
+    const cameraProps = snapshot.camera?.props ?? {};
     statements.push(Script.execute(((scriptCtx: ScriptCtx) => {
         for (const registration of registrations) {
             DevTools.registerDisplayable(scriptCtx.gameState, registration.element as any, previewScene, registration.layer ?? null);
@@ -2188,8 +2180,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         }
     } else {
         const targetBlock = input.targetBlockId ? scene.blocks[input.targetBlockId] : undefined;
-        // A settled camera row is already on the camera, above.
-        if (targetBlock && !settledCamera) {
+        if (targetBlock) {
             let own = await compilePreviewTargetOwnStatements(ctx, targetBlock, input.onChoiceTaken);
             if (snapshot.nvl && own.length > 0) {
                 own = [previewScene.nvl({ duration: 0 } as any, own as any)];
