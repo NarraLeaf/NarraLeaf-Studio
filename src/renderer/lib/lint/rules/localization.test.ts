@@ -62,6 +62,10 @@ function contextOf(blocks: StoryBlock[], units: Record<string, LocalizationUnit>
 const LINE = "We should go home.";
 
 describe("localization/missing", () => {
+    it("is a minor warning by default, so a script in translation does not bury every other finding", () => {
+        expect(LOCALIZATION_LINT_RULES.find(rule => rule.id === "localization/missing")?.defaultSeverity).toBe("minor");
+    });
+
     it("reports an absent unit and an empty one, once per target locale", async () => {
         const findings = await run(
             "localization/missing",
