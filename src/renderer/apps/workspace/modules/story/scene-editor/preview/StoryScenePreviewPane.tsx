@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils/cn";
 import type { StoryScenePreviewController } from "./useStoryScenePreviewController";
 import type { StoryScenePreviewPaneMode, StoryScenePreviewView } from "./storyScenePreviewSessionStore";
 import { StoryLayerStackView, type StoryPreviewLayersApi } from "./StoryLayerStackView";
+import { useStoryPreviewCameraFraming, type StoryPreviewCameraApi } from "./useStoryPreviewCameraFraming";
 
 const NOOP = () => undefined;
 
@@ -65,6 +66,11 @@ export function StoryScenePreviewPane(props: {
      * has no scene editor behind it to change them, and then the pane shows only the shot.
      */
     layers?: StoryPreviewLayersApi;
+    /**
+     * The selected camera row, when it states a pose: on the shot, a drag moves the camera and the
+     * wheel zooms, writing the row. Absent where the pane has no editor behind it to write to.
+     */
+    camera?: StoryPreviewCameraApi | null;
     /** Which of the two the pane shows: the shot, or the shot taken apart into its layers. */
     view?: StoryScenePreviewView;
     onSetView?: (view: StoryScenePreviewView) => void;
@@ -77,10 +83,13 @@ export function StoryScenePreviewPane(props: {
     const busy = controller.phase === "compiling" || controller.phase === "mounting" || controller.phase === "starting";
     /** Where the primary press on the stage went down, until it comes up. */
     const pressRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
+    const framedCamera = view === "stage" && controller.phase !== "error" ? props.camera ?? null : null;
+    const framing = useStoryPreviewCameraFraming({ camera: framedCamera, controller, stageElement });
     const handleStagePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
         pressRef.current = event.button === 0 && event.isPrimary
             ? { pointerId: event.pointerId, x: event.clientX, y: event.clientY }
             : null;
+        framing.onPointerDown(event);
     };
     // Only a press that went down on the stage and came up near where it went down. A window dragged
     // by its header or an edge and let go over the stage never went down here.
@@ -174,7 +183,12 @@ export function StoryScenePreviewPane(props: {
             {/* The stage inherits what a shipped game's does, never Studio's theme. */}
             <div
                 ref={setStageElement}
-                className={`relative min-h-0 ${stageAspectRatio ? "flex-initial" : "flex-1"} select-none overflow-hidden ${GAME_STAGE_BASE_CLASS_NAME}`}
+                className={cn(
+                    "relative min-h-0 select-none overflow-hidden",
+                    stageAspectRatio ? "flex-initial" : "flex-1",
+                    framedCamera && (framing.dragging ? "cursor-grabbing" : "cursor-grab"),
+                    GAME_STAGE_BASE_CLASS_NAME,
+                )}
                 style={stageAspectRatio ? { aspectRatio: stageAspectRatio } : undefined}
                 data-story-preview-stage=""
                 onPointerDown={handleStagePointerDown}
@@ -200,6 +214,21 @@ export function StoryScenePreviewPane(props: {
                         />
                     </div>
                 ))}
+                {/* Framing a camera row: what the stage takes, or the pose while a gesture runs. */}
+                {framedCamera && controller.stageLayers.length > 0 ? (
+                    <div
+                        className="pointer-events-none absolute left-1.5 top-1.5 z-10 rounded-md bg-black/55 px-1.5 py-0.5 text-2xs tabular-nums text-white/85"
+                        data-story-preview-camera=""
+                    >
+                        {framing.readout
+                            ? t("story.preview.cameraPose", {
+                                x: framing.readout.xalign.toFixed(2),
+                                y: framing.readout.yalign.toFixed(2),
+                                zoom: framing.readout.zoom.toFixed(2),
+                            })
+                            : t("story.preview.cameraHint")}
+                    </div>
+                ) : null}
                 {controller.stageLayers.length === 0 && controller.phase === "idle" ? (
                     <div className="absolute inset-0 flex items-center justify-center p-4 text-center text-xs text-white/50">
                         {t("story.preview.selectRow")}

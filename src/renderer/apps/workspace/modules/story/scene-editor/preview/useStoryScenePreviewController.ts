@@ -53,6 +53,10 @@ export type StoryScenePreviewStageContext = {
     compiled: NlrStageSession["compiled"];
     targetBlockId: string | null;
     phase: StoryScenePreviewPhase;
+    /** When the target is a camera transform: the camera's settled props once it has played. */
+    targetCamera: Record<string, unknown> | null;
+    /** Whether the frame opened on the target's end state rather than playing it (see `holdTargetEnd`). */
+    settledTarget: boolean;
 };
 
 /**
@@ -74,8 +78,16 @@ export type StoryScenePreviewController = {
     stageLayers: StoryScenePreviewStageLayer[];
     designSize: { width: number; height: number };
     targetBlockId: string | null;
-    /** Phase-2 seam: the live stage at the previewed row (motion editor prefill). */
+    /** The live stage at the previewed row: what the pane's camera framing poses directly. */
     getStageContext: () => StoryScenePreviewStageContext | null;
+    /**
+     * From the next rebuild on, open on this camera row's end frame instead of playing its move, for
+     * as long as it stays the previewed row - the author is framing that shot on the stage, and a
+     * replayed move after every change would start each one from the previous pose. With `now`, a
+     * frame still playing that row's move is rebuilt at once onto its end, so a gesture begun during
+     * the move does not wait for it.
+     */
+    holdTargetEnd: (blockId: string, options?: { now?: boolean }) => void;
     /** Wire into NlrStageLayer's onLiveGameReady. */
     onLiveGameReady: (sessionId: string, liveGame: LiveGame) => void;
     /** Wire into NlrStageLayer's onError. */
@@ -108,6 +120,10 @@ type PreviewRun = {
     posed: boolean;
     arrived: boolean;
     targetBlockId: string | null;
+    /** See {@link StoryScenePreviewStageContext.targetCamera}. */
+    targetCamera: Record<string, unknown> | null;
+    /** Opened on the target's end state; see `holdTargetEnd`. */
+    settledTarget: boolean;
     /** Compiled to show its line in full: without the line's pauses, and with `startRevealPump`. */
     skipTyping: boolean;
     /** The game's own advance on this session's line (see `StoryPreviewGame.advance`). */
@@ -163,6 +179,8 @@ export function useStoryScenePreviewController(input: {
     const [stageLayers, setStageLayers] = useState<StoryScenePreviewStageLayer[]>([]);
 
     const runIdRef = useRef(0);
+    // The camera row whose end frame the preview opens on; see `holdTargetEnd`.
+    const holdTargetRef = useRef<string | null>(null);
     const phaseRef = useRef<StoryScenePreviewPhase>("idle");
     /** Signatures (`level|message`) of the diagnostics logged to the console on the previous compile,
      *  so identical recompiles (row switches, edits) don't re-append the same lines every time. */
@@ -560,6 +578,11 @@ export function useStoryScenePreviewController(input: {
                 return;
             }
             const targetBlockId = resolvedTargetId;
+            // A hold lasts while its row stays the previewed one; moving off it lets the row play again.
+            const settleTarget = targetBlockId !== null && holdTargetRef.current === targetBlockId;
+            if (!settleTarget) {
+                holdTargetRef.current = null;
+            }
             const snapshot = computeStoryStageSnapshot({
                 document,
                 sceneId,
@@ -593,6 +616,7 @@ export function useStoryScenePreviewController(input: {
                 persistence: host.persistence,
                 onStagePosed: () => handleStagePosed(runId),
                 revealGate,
+                settleTarget,
                 onBeforeTarget: () => handleBeforeTarget(runId),
                 // The frame holds on the target. The story runs past it only when a press handed to
                 // a line settled it, and that press is then the step on.
@@ -659,6 +683,8 @@ export function useStoryScenePreviewController(input: {
                 posed: false,
                 arrived: false,
                 targetBlockId,
+                targetCamera: snapshot.targetCamera,
+                settledTarget: settleTarget && snapshot.targetCamera !== null,
                 skipTyping,
                 advance: previewGame.advance,
                 afterNewGame: previewGame.afterNewGame,
@@ -844,7 +870,17 @@ export function useStoryScenePreviewController(input: {
             // While a newer run builds hidden, the visible stage is still the old frame — report
             // what *it* is doing, not the pending run's phase.
             phase: run.arrived ? "settled" : phaseRef.current,
+            targetCamera: run.targetCamera,
+            settledTarget: run.settledTarget,
         };
+    }, []);
+
+    const holdTargetEnd = useCallback((blockId: string, options?: { now?: boolean }) => {
+        holdTargetRef.current = blockId;
+        const display = displayRunRef.current;
+        if (options?.now && display?.targetBlockId === blockId && !display.settledTarget && pendingRunRef.current === null) {
+            void startRunRef.current();
+        }
     }, []);
 
     return {
@@ -856,6 +892,7 @@ export function useStoryScenePreviewController(input: {
         designSize: host.designSize,
         targetBlockId: resolvedTargetId,
         getStageContext,
+        holdTargetEnd,
         onLiveGameReady: handleLiveGameReady,
         onStageError: handleStageError,
         advanceFromStage,

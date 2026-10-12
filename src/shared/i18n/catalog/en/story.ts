@@ -1182,6 +1182,8 @@ export const story = {
         skipTyping: "Skip typing animation",
         viewStage: "Stage",
         viewLayers: "Layers",
+        cameraHint: "Drag to move the camera, scroll to zoom",
+        cameraPose: "Position {x}, {y} · Zoom {zoom}",
         selectRow: "Select a story row to preview its stage state.",
         failed: "Preview failed",
         settleTimeout: "The stage did not finish setting up in time.",
