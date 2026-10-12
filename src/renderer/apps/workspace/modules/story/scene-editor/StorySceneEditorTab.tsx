@@ -70,8 +70,7 @@ import { filterOutSelectedDescendants, getCharacterName, getContainerHeaderInfo,
 import { StoryFindBar } from "./StoryFindBar";
 import { StoryRowFilterMenu } from "./StoryRowFilterMenu";
 import type { StoryPreviewLayersApi } from "./preview/StoryLayerStackView";
-import { previewCameraRowPayload } from "./preview/storyPreviewCameraModel";
-import type { StoryPreviewCameraApi } from "./preview/useStoryPreviewCameraFraming";
+import { previewCameraRowPayload, type StoryPreviewCameraApi } from "./preview/storyPreviewCameraModel";
 import { createBlockForCommand } from "./storyActionCommands";
 import { appendDeveloperIdSection } from "@/lib/developer";
 import { EMPTY_STORY_ROW_FILTER, storyRowFilterSize } from "./storyRowFilter";
@@ -1872,8 +1871,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             layerUses: layerId => sceneLayerUses(editorRef.current.scene, layerId).length,
         }
         : undefined;
-    // The selected row, when it is a camera row that states a pose and the preview shows it: the docked
-    // preview frames that shot directly (drag to move, wheel to zoom), writing the row.
+    // The selected row, when it is a camera row that states a pose and the preview shows it: the layer
+    // view's moving preview frames that shot (drag to move, wheel to zoom), writing the row.
     const framedCameraBlockId = editor.activeBlockId;
     const framedCameraPayload = framedCameraBlockId && editor.scene && !freeze.frozen && framedCameraBlockId === preview.targetBlockId
         ? previewCameraRowPayload(editor.scene.blocks[framedCameraBlockId])

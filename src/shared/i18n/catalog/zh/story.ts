@@ -451,6 +451,8 @@ export const story = {
         nameTaken: "本场景已有同名图层",
         nameReserved: "该名称表示内置图层",
         swayCaption: "镜头移动",
+        framingCaption: "本行镜头",
+        framingSelectRow: "选中设置镜头位置的镜头行后，可在这里取景",
     },
     appearance: {
         noPoses: "该角色还没有姿态",
@@ -1024,7 +1026,7 @@ export const story = {
         skipTyping: "跳过打字动画",
         viewStage: "画面",
         viewLayers: "图层",
-        cameraHint: "拖动画面移动镜头，滚轮推拉",
+        cameraHint: "拖动移动镜头，滚轮推拉",
         cameraPose: "位置 {x}, {y} · 缩放 {zoom}",
         selectRow: "选择故事行以预览舞台状态",
         failed: "预览失败",

@@ -190,8 +190,8 @@ export const help = {
                 + "drag the name on a layer to change its distance, and close to another level it joins that level. The small view "
                 + "in the corner shows the camera moving. The Layers button in the scene's title bar opens the same view, and /layer name adds a layer "
                 + "to the scene.\n"
-                + "- With a camera row that sets the camera's position selected, drag the picture in the live preview to move the camera "
-                + "and scroll to zoom; the row is updated with the result.\n"
+                + "- The small view in the corner of Layers grows while the pointer is on it. With a camera row that sets the camera's "
+                + "position selected, it shows that row's shot: drag in it to move the camera and scroll to zoom; the row is updated with the result.\n"
                 + "- The ▶ on a row, Play from this row, runs the scene in Dev Mode starting at that row.",
         },
         storyCommands: {

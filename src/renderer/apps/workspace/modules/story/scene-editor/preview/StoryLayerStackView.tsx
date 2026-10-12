@@ -36,6 +36,15 @@ import { cn } from "@/lib/utils/cn";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 import { followPress } from "./followPress";
 import {
+    panPreviewCamera,
+    previewCameraLayerTransform,
+    previewCameraPose,
+    withPreviewCameraPose,
+    zoomPreviewCameraAt,
+    type PreviewCameraPose,
+    type StoryPreviewCameraApi,
+} from "./storyPreviewCameraModel";
+import {
     layerDepthAt,
     layerDistanceAtDepth,
     layerStackDepths,
@@ -76,6 +85,12 @@ const TALL_LAYOUT = { x: -38, y: -18, depth: 0.75 };
 /** The moving preview's camera: a sway a little wider than the zoom hides at the characters' distance. */
 const SWAY_ZOOM = 1.08;
 const SWAY_AMPLITUDE = 0.04;
+/** How long the wheel rests before a zoom is written: a turn of several notches is one change. */
+const WHEEL_REST_MS = 450;
+/** How much one pixel of wheel travel zooms; a notch (about 100) is a step of about a sixth. */
+const WHEEL_ZOOM_PER_PX = 0.0015;
+/** The moving preview's own grow and shrink as the pointer comes onto it and leaves. */
+const INSET_TRANSITION = "transform 180ms cubic-bezier(0.2, 0.7, 0.2, 1)";
 
 /** Where a dragged row would land: inside a level, or between two as a level of its own. */
 type RowDrop = {
@@ -104,6 +119,8 @@ function levelKey(stack: readonly StorySceneLayer[], level: SceneLayerLevel): st
  *    what the preview shows on its layers - drag a layer's name along the stack to move it nearer or
  *    farther, onto another level to join it;
  *  - the frame from the front with the camera swaying, which is what the distances do to the shot.
+ *    The pointer on it draws it larger; with a camera row selected it shows that row's shot instead,
+ *    and there a drag moves the camera and the wheel zooms, writing the row once per gesture.
  *
  * What the planes hold is copied from the preview's own stage, so they show exactly what the row
  * shows, without the camera; a layer with nothing on it at this row is an empty frame.
@@ -115,9 +132,14 @@ export function StoryLayerStackView(props: {
     /** Changes whenever the preview shows a new frame. */
     frameKey: string;
     designSize: { width: number; height: number };
+    /** The selected camera row, when it states a pose: the moving preview frames it. */
+    camera?: StoryPreviewCameraApi | null;
+    /** The camera's settled props once that row has played, as the preview worked them out. */
+    cameraSettled?: () => Record<string, unknown> | null;
 }) {
     const { t } = useTranslation();
     const { api, designSize } = props;
+    const camera = props.camera ?? null;
     const readOnly = api.readOnlyReason !== null;
     const stored = sceneLayerStack(api.scene);
     // The stack as a drag leaves it, until the drag ends and writes it.
@@ -175,6 +197,17 @@ export function StoryLayerStackView(props: {
     // The moving preview in the lower right corner, and the planes kept clear of its height.
     const insetWidth = Math.max(96, Math.min(200, box.width * 0.26, (box.height * 0.34) / aspect));
     const rigHeight = Math.max(0, box.height - insetWidth * aspect * 0.7);
+    // The preview is drawn at the size the pointer opens it to and scaled down in the corner, so it
+    // grows by one transform and what it holds never has to be laid out again.
+    const insetLarge = Math.max(insetWidth, Math.min(560, box.width - listWidth - 24, ((box.height - 16) * 0.92) / aspect));
+    const [insetHovered, setInsetHovered] = useState(false);
+    // A drag on it, or a zoom the wheel has made and not yet written.
+    const [insetGesture, setInsetGesture] = useState(false);
+    const insetOpen = insetHovered || insetGesture;
+    const insetScale = insetOpen ? 1 : insetWidth / Math.max(1, insetLarge);
+    // The framed row's shot: the pose a gesture has it at, or the one the row leaves.
+    const [framingDraft, setFramingDraft] = useState<PreviewCameraPose | null>(null);
+    const framingPose = camera ? framingDraft ?? previewCameraPose(props.cameraSettled?.() ?? null, camera.payload) : null;
     const angles = rigHeight > rigWidth * 0.9 ? TALL_LAYOUT : WIDE_LAYOUT;
     const radians = { x: (angles.x * Math.PI) / 180, y: (angles.y * Math.PI) / 180 };
     const nearest = Math.max(...layoutDepths, 0);
@@ -208,6 +241,12 @@ export function StoryLayerStackView(props: {
     const railDrawingRef = useRef<SVGSVGElement | null>(null);
     const stackRef = useRef(stack);
     stackRef.current = stack;
+    const framingPoseRef = useRef(framingPose);
+    framingPoseRef.current = framingPose;
+    const insetSizeRef = useRef({ width: insetLarge, height: insetLarge * aspect });
+    insetSizeRef.current = { width: insetLarge, height: insetLarge * aspect };
+    const designSizeRef = useRef(designSize);
+    designSizeRef.current = designSize;
     const levelKeysRef = useRef<string[]>([]);
     levelKeysRef.current = levels.map(level => levelKey(stack, level));
     useEffect(() => {
@@ -276,11 +315,16 @@ export function StoryLayerStackView(props: {
                         bar.setAttribute("y2", (base.y + across.y).toFixed(1));
                     }
                 }
+                // The moving preview: the framed row's shot when there is one, the sway otherwise.
                 const offset = layerSwayOffset(time, 4200, SWAY_AMPLITUDE);
+                const pose = framingPoseRef.current;
+                const size = insetSizeRef.current;
                 for (const layer of stackRef.current) {
                     const plane = swayRefs.current.get(sceneLayerKey(layer));
                     if (plane) {
-                        plane.style.transform = layerSwayTransform(sceneLayerFollow(layer), offset, SWAY_ZOOM, insetWidth);
+                        plane.style.transform = pose
+                            ? previewCameraLayerTransform(sceneLayerFollow(layer), pose, size, designSizeRef.current)
+                            : layerSwayTransform(sceneLayerFollow(layer), offset, SWAY_ZOOM, size.width);
                     }
                 }
             }
@@ -288,7 +332,7 @@ export function StoryLayerStackView(props: {
         };
         frame = requestAnimationFrame(tick);
         return () => cancelAnimationFrame(frame);
-    }, [insetWidth]);
+    }, []);
 
     const indexOfKey = (layers: readonly StorySceneLayer[], key: string) => layers.findIndex(layer => sceneLayerKey(layer) === key);
 
@@ -480,6 +524,116 @@ export function StoryLayerStackView(props: {
         endPressRef.current?.();
         endPressRef.current = followPress(event, handleMove, handleEnd);
     };
+
+    // Framing a camera row on the moving preview. Each gesture writes the row once; until the written
+    // row comes back, the shot holds the pose the gesture left.
+    const insetRef = useRef<HTMLDivElement | null>(null);
+    const cameraRef = useRef(camera);
+    cameraRef.current = camera;
+    const wheelRef = useRef<{ api: StoryPreviewCameraApi; pose: PreviewCameraPose; timer: ReturnType<typeof setTimeout> } | null>(null);
+    const commitFraming = (target: StoryPreviewCameraApi, pose: PreviewCameraPose, changed: { position: boolean; zoom: boolean }) => {
+        const next = withPreviewCameraPose(target.payload, pose, changed);
+        if (JSON.stringify(next) === JSON.stringify(target.payload)) {
+            setFramingDraft(null);
+            return;
+        }
+        target.commit(next);
+    };
+    const flushWheel = () => {
+        const pending = wheelRef.current;
+        if (!pending) {
+            return;
+        }
+        clearTimeout(pending.timer);
+        wheelRef.current = null;
+        setInsetGesture(false);
+        commitFraming(pending.api, pending.pose, { position: true, zoom: true });
+    };
+    const flushWheelRef = useRef(flushWheel);
+    flushWheelRef.current = flushWheel;
+    const beginFramingDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+        const target = camera;
+        const base = framingPoseRef.current;
+        const element = insetRef.current;
+        if (!target || !base || !element || event.button !== 0 || !event.isPrimary) {
+            return;
+        }
+        event.preventDefault();
+        flushWheel();
+        const rect = element.getBoundingClientRect();
+        const startX = event.clientX;
+        const startY = event.clientY;
+        let moved = false;
+        let pose: PreviewCameraPose | null = null;
+        endPressRef.current?.();
+        endPressRef.current = followPress(
+            event,
+            move => {
+                const dx = move.clientX - startX;
+                const dy = move.clientY - startY;
+                if (!moved && Math.hypot(dx, dy) < CLICK_SLOP_PX) {
+                    return;
+                }
+                if (!moved) {
+                    moved = true;
+                    setInsetGesture(true);
+                }
+                pose = panPreviewCamera(base, dx, dy, rect);
+                setFramingDraft(pose);
+            },
+            released => {
+                endPressRef.current = null;
+                setInsetGesture(false);
+                if (released && pose) {
+                    commitFraming(target, pose, { position: true, zoom: false });
+                } else {
+                    setFramingDraft(null);
+                }
+            },
+        );
+    };
+    // The wheel, on the preview itself: React's wheel listener is passive and cannot keep the page from
+    // scrolling, so this one is added by hand, and takes the wheel only while a camera row is framed.
+    useEffect(() => {
+        const element = insetRef.current;
+        if (!element) {
+            return;
+        }
+        const handleWheel = (event: WheelEvent) => {
+            const target = cameraRef.current;
+            const pending = wheelRef.current?.api.blockId === target?.blockId ? wheelRef.current : null;
+            const base = pending?.pose ?? framingPoseRef.current;
+            if (!target || !base || event.ctrlKey) {
+                return;
+            }
+            event.preventDefault();
+            const rect = element.getBoundingClientRect();
+            const lines = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rect.height : 1;
+            const pose = zoomPreviewCameraAt(
+                base,
+                Math.exp(-event.deltaY * lines * WHEEL_ZOOM_PER_PX),
+                { x: event.clientX - rect.left, y: event.clientY - rect.top },
+                rect,
+                designSizeRef.current,
+            );
+            setFramingDraft(pose);
+            setInsetGesture(true);
+            if (wheelRef.current) {
+                clearTimeout(wheelRef.current.timer);
+            }
+            wheelRef.current = { api: pending?.api ?? target, pose, timer: setTimeout(() => flushWheelRef.current(), WHEEL_REST_MS) };
+        };
+        element.addEventListener("wheel", handleWheel, { passive: false });
+        return () => element.removeEventListener("wheel", handleWheel);
+    }, []);
+    // The written row is back: the shot is the row's again.
+    const framedPayload = camera?.payload;
+    useEffect(() => {
+        setFramingDraft(null);
+    }, [framedPayload]);
+    // Another row, or none: a zoom still resting is written to the row it was made on.
+    const framedBlockId = camera?.blockId ?? null;
+    useEffect(() => () => flushWheelRef.current(), [framedBlockId]);
 
     /** A level at a typed distance: its layers go together, the characters' layer staying where it is. */
     const setLevelDistance = (level: SceneLayerLevel, distance: number) => {
@@ -861,15 +1015,29 @@ export function StoryLayerStackView(props: {
                 </div>
             </div>
 
-            {/* The shot from the front, the camera swaying: what the distances do. */}
+            {/* The shot from the front, the camera swaying: what the distances do. Larger under the
+                pointer; with a camera row selected, that row's shot, framed by dragging and the wheel. */}
             <div
+                ref={insetRef}
                 className={cn(
-                    "pointer-events-none absolute bottom-2 right-2 overflow-hidden rounded-md border border-edge shadow-lg transition-opacity duration-300",
-                    exploded ? "opacity-100" : "opacity-0",
+                    "absolute bottom-2 right-2 overflow-hidden rounded-md border shadow-lg",
+                    insetOpen ? "border-primary/60" : "border-edge",
+                    camera && (insetGesture ? "cursor-grabbing" : "cursor-grab"),
                     GAME_STAGE_BASE_CLASS_NAME,
                 )}
-                style={{ width: insetWidth, height: insetWidth * aspect }}
+                style={{
+                    width: insetLarge,
+                    height: insetLarge * aspect,
+                    transform: `scale(${insetScale.toFixed(4)})`,
+                    transformOrigin: "100% 100%",
+                    opacity: exploded ? 1 : 0,
+                    transition: `${INSET_TRANSITION}, opacity 300ms`,
+                }}
                 data-story-layer-sway=""
+                data-story-layer-framing={camera ? camera.blockId : undefined}
+                onPointerEnter={() => setInsetHovered(true)}
+                onPointerLeave={() => setInsetHovered(false)}
+                onPointerDown={beginFramingDrag}
             >
                 {[...stack].reverse().map(layer => {
                     const key = sceneLayerKey(layer);
@@ -883,11 +1051,30 @@ export function StoryLayerStackView(props: {
                             className="absolute inset-0"
                             style={{ transformOrigin: "50% 50%" }}
                         >
-                            <LayerContents source={sources.get(key)} version={sources.version} designSize={designSize} width={insetWidth} />
+                            <LayerContents source={sources.get(key)} version={sources.version} designSize={designSize} width={insetLarge} />
                         </div>
                     );
                 })}
-                <div className="absolute left-1.5 top-1 text-2xs text-white/70 [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]">{t("story.sceneLayers.swayCaption")}</div>
+                {/* Counter-scaled, so the words read the same size small and large. */}
+                <div
+                    className="pointer-events-none absolute left-1.5 top-1 origin-top-left whitespace-nowrap text-2xs tabular-nums text-white/80 [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]"
+                    style={{ transform: `scale(${(1 / insetScale).toFixed(4)})`, transition: INSET_TRANSITION }}
+                    data-story-layer-framing-caption=""
+                >
+                    {camera
+                        ? insetGesture && framingPose
+                            ? t("story.preview.cameraPose", {
+                                x: framingPose.xalign.toFixed(2),
+                                y: framingPose.yalign.toFixed(2),
+                                zoom: framingPose.zoom.toFixed(2),
+                            })
+                            : insetOpen
+                                ? t("story.preview.cameraHint")
+                                : t("story.sceneLayers.framingCaption")
+                        : insetOpen
+                            ? t("story.sceneLayers.framingSelectRow")
+                            : t("story.sceneLayers.swayCaption")}
+                </div>
             </div>
         </div>
     );

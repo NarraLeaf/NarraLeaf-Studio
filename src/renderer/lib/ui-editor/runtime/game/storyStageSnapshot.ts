@@ -338,8 +338,7 @@ export type StoryStageSnapshot = {
     /**
      * When the target row is a camera transform: the camera's settled props once that row has
      * played (everything before it, with the row's own pose over it). Null for any other target.
-     * The preview opens on this frame instead of playing the move while the author frames the shot
-     * on the stage, and reads the pose a drag starts from here.
+     * The layer view's framing starts from this pose: it is the shot the row leaves.
      */
     targetCamera: Record<string, unknown> | null;
     /** True when the target sits inside an NVL container. */
