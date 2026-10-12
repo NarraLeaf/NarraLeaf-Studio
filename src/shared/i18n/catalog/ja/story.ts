@@ -1067,6 +1067,8 @@ export const story = {
         skipTyping: "文字表示アニメーションをスキップ",
         viewStage: "画面",
         viewLayers: "レイヤー",
+        cameraHint: "ドラッグでカメラを移動、ホイールでズーム",
+        cameraPose: "位置 {x}, {y} · ズーム {zoom}",
         selectRow: "舞台の状態を見るには、ストーリーの行を選ぶ",
         failed: "プレビューに失敗",
         settleTimeout: "ステージの準備が時間内に完了しなかった",

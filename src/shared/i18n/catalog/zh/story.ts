@@ -1024,6 +1024,8 @@ export const story = {
         skipTyping: "跳过打字动画",
         viewStage: "画面",
         viewLayers: "图层",
+        cameraHint: "拖动画面移动镜头，滚轮推拉",
+        cameraPose: "位置 {x}, {y} · 缩放 {zoom}",
         selectRow: "选择故事行以预览舞台状态",
         failed: "预览失败",
         settleTimeout: "舞台未能在限定时间内完成布置",

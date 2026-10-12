@@ -187,6 +187,20 @@ describe("computeStoryStageSnapshot", () => {
         expect(snapshot(reset, "target").camera).toBeNull();
     });
 
+    it("works out the camera a camera target leaves, without moving the snapshot past it", () => {
+        const document = baseDocument({
+            pan: block("pan", "action", { action: "camera", operation: "transform", transform: { mode: "props", to: { position: { xalign: 0.25, yalign: 0.5 }, zoom: 2 } } }),
+            target: block("target", "action", { action: "camera", operation: "transform", transform: { mode: "props", to: { zoom: 3 } } }),
+            line: say("line"),
+        }, ["pan", "target", "line"]);
+        const result = snapshot(document, "target");
+        // Still the camera before the row: the preview plays the row's move from here.
+        expect(result.camera?.props.zoom).toBe(2);
+        // And the frame it ends on: the earlier pan, with the row's zoom over it.
+        expect(result.targetCamera).toEqual({ position: expect.objectContaining({ xalign: 0.25, yalign: 0.5 }), zoom: 3 });
+        expect(snapshot(document, "line").targetCamera).toBeNull();
+    });
+
     it("leaves the camera pose null when no /camera runs before the target", () => {
         const document = baseDocument({ target: say("target") }, ["target"]);
         expect(snapshot(document, "target").camera).toBeNull();
