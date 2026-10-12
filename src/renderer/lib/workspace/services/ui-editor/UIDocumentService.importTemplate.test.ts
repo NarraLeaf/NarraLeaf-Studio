@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UISurface } from "@shared/types/ui-editor/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
@@ -466,6 +466,31 @@ describe("importTemplateBundle: the input a surface answers", () => {
 
         expect(history.undo(projectHistoryScope())).toBe(true);
         expect(Object.keys(service.getDocument().actions ?? {})).toEqual(["backlog"]);
+    });
+
+    it("changes nothing when the import inside an install throws, even part-way", () => {
+        const { service, history } = withHistory();
+        const before = JSON.stringify(service.getDocument());
+        const mainId = service.getDocument().surfaces[0].id;
+        const importReally = service.importTemplateBundle.bind(service);
+        // Everything arrives - surfaces, blueprints, adopted actions - and then the import fails.
+        const spy = vi.spyOn(service, "importTemplateBundle").mockImplementation(input => {
+            importReally(input);
+            throw new Error("broken template");
+        });
+        expect(() => service.installBundle({
+            document: withActions(),
+            graphs: copiedGameUiGraphs(),
+            placement: IMPORT_PLACEMENT_FROM_SOURCE,
+            removeSurfaceIds: [mainId],
+            label: { key: "workspace.history.entry.agentEdit" as never },
+        })).toThrow("broken template");
+        spy.mockRestore();
+
+        expect(service.getDocument().surfaces.map(surface => surface.id)).toEqual([mainId]);
+        expect(service.getDocument().actions ?? {}).toEqual({});
+        expect(JSON.parse(JSON.stringify(service.getDocument()))).toEqual(JSON.parse(before));
+        expect(history.canUndo(projectHistoryScope())).toBe(false);
     });
 
     it("leaves off a key the project already binds, keeping the action's other bindings", () => {

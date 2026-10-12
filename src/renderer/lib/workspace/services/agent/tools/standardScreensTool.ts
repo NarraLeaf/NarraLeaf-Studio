@@ -9,11 +9,15 @@
  * what the project can take (`planStandardScreens`), and imports it the way a page copied from
  * another project is imported: files under the ids the template gave them, the palette entries and
  * translation keys it names, then the pages, Game UIs, components and blueprints together through
- * `UIDocumentService.installBundle`, which re-identifies them and records one step of undo.
+ * `UIDocumentService.installBundle`, which re-identifies them and records one step of undo - the
+ * input actions the screens answer included, and the pages they replaced and the entry page restored.
  *
  * The persistent variable and the save-slot field the save pages read are not interface records, so
  * they are adopted under the template's ids before the import - the blueprints name them by id. Like
- * the files and translations, they stay when the step is undone.
+ * the files, the palette entries, the translations and a story made for Start to begin, they stay
+ * when the step is undone, and the answer says so: none of them does anything without the interface,
+ * and any of them may have been put to use by the time the author presses Ctrl+Z, which a step that
+ * deleted them could not see. The same holds when the call is refused part-way.
  *
  * Comments in English per project convention.
  */
@@ -23,6 +27,7 @@ import { nextUnusedVariableName } from "@shared/variables/variableRegistryModel"
 import { normalizeProjectBrandColors } from "@shared/types/brand";
 import type { SaveSchema, SaveSchemaField } from "@shared/types/saveSchema";
 import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
+import type { UIInputBinding } from "@shared/types/ui-editor/inputAction";
 import { resolveEntrySurface } from "@shared/types/ui-editor/entrySurface";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { isBuiltinWidgetLogicType } from "@shared/types/ui-editor/widgetLogic";
@@ -166,9 +171,50 @@ export const uiInstallStandardScreens: AgentToolHandler = async (args, { ctx, re
         throw refuse("internal", "The skeleton template has no interface to install.");
     }
 
-    // A dry run must not give the project a story, which finding Start's target does when it has none.
+    // A second set beside a working one is two title pages and two save screens, and nothing here
+    // replaces pages that have something on them. Asked before anything else, because finding Start's
+    // target below can make the project a story, and a refused call writes nothing.
+    const workingTitle = findTemplateTitlePage(uidoc.getDocument(), liveBlueprintDocument(ctx));
+    if (workingTitle) {
+        throw refuse(
+            "unavailable",
+            `This project already has working screens: page "${workingTitle.name}" starts the story and loads saves.`,
+            "Restyle what is there (ui_show, ui_patch). To start over, delete those pages first (ui_page_delete), then install.",
+        );
+    }
+
+    // What a refusal part-way says was already written. Each of these stays when the call is refused,
+    // as it does when the install is undone: see the file comment.
+    const kept: string[] = [];
+    const assertStillWriting = () => {
+        const said = kept.join(", and ");
+        assertAgentMayStillWrite(
+            { ctx, request, follow },
+            kept.length === 0
+                ? "Nothing was written."
+                : `${said.charAt(0).toUpperCase()}${said.slice(1)}; ${kept.length === 1 ? "it stays" : "they stay"}, and nothing else was written.`,
+        );
+    };
+
+    // Start begins the default story at its entry scene. A project with none is given one - a write,
+    // so not on a dry run, which leaves Start naming nothing instead.
     const hasStory = Boolean(stories.getDefaultStoryId() ?? stories.listStories()[0]?.id);
-    const startTarget = dryRun && !hasStory ? null : await resolveStartTarget({ stories, project });
+    let madeStory: string | null = null;
+    let startTarget: Awaited<ReturnType<typeof resolveStartTarget>> = null;
+    if (hasStory) {
+        startTarget = await resolveStartTarget({ stories, project });
+    } else if (!dryRun) {
+        // Reading the template awaited; the author may have paused meanwhile.
+        assertStillWriting();
+        const storiesBefore = new Set(stories.listStories().map(entry => entry.id));
+        // The story is made before the function's first await, so it is in the library by the next line.
+        const resolving = resolveStartTarget({ stories, project });
+        madeStory = stories.listStories().find(entry => !storiesBefore.has(entry.id))?.name ?? null;
+        if (madeStory !== null) {
+            kept.push(`story "${madeStory}" was made for Start to begin`);
+        }
+        startTarget = await resolving;
+    }
     const capabilities = projectCapabilities(ctx);
     const plan = planStandardScreens({
         document: templateDocument,
@@ -182,16 +228,6 @@ export const uiInstallStandardScreens: AgentToolHandler = async (args, { ctx, re
     // What the project holds now, and what makes room.
     const document: UIDocument = uidoc.getDocument();
     const blueprints = liveBlueprintDocument(ctx);
-    // A second set beside a working one is two title pages and two save screens, and nothing here
-    // replaces pages that have something on them.
-    const workingTitle = findTemplateTitlePage(document, blueprints);
-    if (workingTitle) {
-        throw refuse(
-            "unavailable",
-            `This project already has working screens: page "${workingTitle.name}" starts the story and loads saves.`,
-            "Restyle what is there (ui_show, ui_patch). To start over, delete those pages first (ui_page_delete), then install.",
-        );
-    }
     const occupied = document.surfaces.filter((surface): surface is Extract<UISurface, { kind: "stageSurface" }> =>
         surface.kind === "stageSurface" && plan.stageSlots.includes(surface.mount.slotId));
     const blankPages = document.surfaces.filter(surface => surface.kind === "appSurface" && isBlankSurface(document, blueprints, surface));
@@ -242,25 +278,23 @@ export const uiInstallStandardScreens: AgentToolHandler = async (args, { ctx, re
     const missingFiles = () => plan.assetIds.filter(assetId => !findLibraryAsset(assets.getAssets(), assetId)).length;
     const filesBefore = missingFiles();
     // Reading the template and finding Start's target awaited; the author may have paused meanwhile.
-    assertAgentMayStillWrite({ ctx, request, follow });
+    assertStillWriting();
     await importTemplateFiles({ assets }, content, plan.assetIds, content.contentLocale ?? locale);
     // So did bringing the files in. They are filed under the template's ids, so a later install finds
     // them instead of filing them twice.
     const filesAdded = filesBefore - missingFiles();
-    assertAgentMayStillWrite(
-        { ctx, request, follow },
-        filesAdded > 0
-            ? `${filesAdded} of the template's files were added to the asset library (they stay, unused); nothing else was written.`
-            : "Nothing was written.",
-    );
+    if (filesAdded > 0) {
+        kept.push(`${filesAdded} of the template's files were added to the asset library`);
+    }
+    assertStillWriting();
     const brand = optionalService<BrandService>(ctx, Services.Brand);
-    if (brand) {
-        brand.adoptColors(brandColorsToAdopt(
+    const paletteAdded = brand
+        ? brand.adoptColors(brandColorsToAdopt(
             plan.brandColorIds,
             normalizeProjectBrandColors((content.brand as { colors?: unknown } | null)?.colors),
             id => Boolean(brand.getColor(id)),
-        ));
-    }
+        ))
+        : 0;
     if (variables.length > 0) {
         ctx.services.get<VariableRegistryService>(Services.VariableRegistry).applyRegistryMutation(registry => {
             for (const entry of variables) {
@@ -294,16 +328,38 @@ export const uiInstallStandardScreens: AgentToolHandler = async (args, { ctx, re
     if (titleSurface) {
         follow.noteWrite({ kind: "surface", surfaceId: titleSurface.id, name: titleSurface.name });
     }
-    const entry = resolveEntrySurface(uidoc.getDocument());
+    const after = uidoc.getDocument();
+    const entry = resolveEntrySurface(after);
+    const actionName = (actionId: string) => after.actions?.[actionId]?.name ?? actionId;
+    const heldBack = Object.entries(result.heldBackBindings).map(([actionId, bindings]) => ({
+        action: actionName(actionId),
+        bindings: bindings.map(describeBinding),
+    }));
+    // What one Ctrl+Z takes back, and what it leaves: said exactly, because the interface is one
+    // step and the rest is not part of it.
+    const leftBehind = [
+        madeStory !== null ? `the story "${madeStory}" made for Start` : "",
+        filesAdded > 0 ? `${filesAdded} file(s)` : "",
+        paletteAdded > 0 ? `${paletteAdded} palette entr${paletteAdded === 1 ? "y" : "ies"}` : "",
+        variables.length > 0 ? `the variable(s) ${variables.map(item => `"${item.name}"`).join(", ")}` : "",
+        saveFields.length > 0 ? `the save-slot field(s) ${saveFields.map(field => `"${field.name}"`).join(", ")}` : "",
+        "the translation keys of their words",
+    ].filter(Boolean);
     const lines = [
         `Installed ${result.importedSurfaces.filter(surface => surface.kind === "appSurface").length} page(s), `
             + `${result.importedSurfaces.filter(surface => surface.kind === "stageSurface").length} Game UI(s) and `
-            + `${result.importedComponents.length} component(s) with their blueprints, as one step of undo.`,
+            + `${result.importedComponents.length} component(s) with their blueprints.`,
+        `One step of undo in Studio takes back those pages, Game UIs and components with their blueprints and the input actions they brought`
+            + `${result.removedSurfaces.length > 0 ? ", puts back what they replaced" : ""}${entryMoves ? " and returns the entry page" : ""}. `
+            + `It leaves the rest of what came with them in the project, unused: ${leftBehind.join(", ")}.`,
         entry ? `The game opens on "${entry.name}".${entryMoves ? "" : " The entry page did not move, because it is not empty: make the new splash or title the entry with ui_page_set_entry if it should be."}` : "",
         startTarget ? "Start begins the project's default story at its entry scene; move it with scene_set_entry." : "The project has no scene yet, so Start names none: create a scene, then check the title's Start blueprint (blueprint_show).",
         result.removedSurfaces.length > 0 ? `Removed: ${result.removedSurfaces.map(surface => `"${surface.name}"`).join(", ")}.` : "",
-        variables.length > 0 ? `Added the variable(s) the save pages read: ${variables.map(entry => `"${entry.name}" (${entry.scope})`).join(", ")}. Set them from the story (\`/set\`) to show the place on a save slot.` : "",
+        variables.length > 0 ? `Added the variable(s) the save pages read: ${variables.map(item => `"${item.name}" (${item.scope})`).join(", ")}. Set them from the story (\`/set\`) to show the place on a save slot.` : "",
         saveFields.length > 0 ? `Added the save-slot field(s): ${saveFields.map(field => `"${field.name}"`).join(", ")}.` : "",
+        heldBack.length > 0
+            ? `Left unbound, because the project already gives them a meaning: ${heldBack.map(item => `${item.bindings.join(", ")} on "${item.action}"`).join("; ")}. Those actions answer their other bindings; ask the author before binding a key twice.`
+            : "",
         ...notes,
         "Check with ui_surfaces and ui_screenshot, then restyle as the ui-design chapter says; lint finds anything left dangling.",
     ].filter(Boolean);
@@ -316,7 +372,21 @@ export const uiInstallStandardScreens: AgentToolHandler = async (args, { ctx, re
             components: result.importedComponents.map(component => ({ id: component.id, name: component.name })),
             entry: entry ? { id: entry.id, name: entry.name } : null,
             adoptedActions: result.adoptedActionIds,
+            ...(heldBack.length > 0 ? { heldBackBindings: heldBack } : {}),
+            ...(madeStory !== null ? { madeStory } : {}),
         },
         lines.join("\n"),
     );
 };
+
+/** A key or pad-button binding as the agent reads it. */
+function describeBinding(binding: UIInputBinding): string {
+    switch (binding.kind) {
+        case "key":
+            return binding.key;
+        case "gamepad":
+            return `pad ${binding.button}`;
+        default:
+            return binding.gesture;
+    }
+}

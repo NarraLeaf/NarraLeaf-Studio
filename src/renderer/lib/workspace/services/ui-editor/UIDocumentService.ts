@@ -2804,15 +2804,28 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         if (ids.length === 0) {
             return {};
         }
-        this.mutateDocument(next => {
-            const actions = { ...(next.actions ?? {}) };
+        this.dropInputActions(ids);
+        const after = this.getDocument().actions ?? {};
+        return ids.some(id => after[id]) ? {} : held;
+    }
+
+    /**
+     * Remove vocabulary entries by id, recording nothing. A vocabulary left empty is left out of the
+     * document, as it is in one that never had an action - so taking back the import that brought a
+     * project its first actions gives back the document it had.
+     */
+    private dropInputActions(ids: readonly string[]): void {
+        this.mutateDocument(document => {
+            const actions = { ...(document.actions ?? {}) };
             for (const id of ids) {
                 delete actions[id];
             }
-            next.actions = actions;
+            if (Object.keys(actions).length > 0) {
+                document.actions = actions;
+            } else {
+                delete document.actions;
+            }
         }, { history: false });
-        const after = this.getDocument().actions ?? {};
-        return ids.some(id => after[id]) ? {} : held;
     }
 
     /**
@@ -3497,10 +3510,34 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             label: HistoryLabel;
         },
     ): ImportTemplateResult & { removedSurfaces: UISurface[] } {
-        const entryBefore = this.getDocument().entrySurfaceId;
+        const before = this.getDocument();
+        const entryBefore = before.entrySurfaceId;
+        const surfacesBefore = new Set(before.surfaces.map(surface => surface.id));
+        const componentsBefore = new Set((before.components ?? []).map(component => component.id));
+        const actionsBefore = new Set(Object.keys(before.actions ?? {}));
         const removeIds = [...new Set(input.removeSurfaceIds)];
+        // Taken before the import rather than after, because a Game UI slot one of them fills has to
+        // be free for the arriving Game UI of that slot.
         let removed = this.takeLibraryRecords({ surfaceIds: removeIds });
-        const result = this.importTemplateBundle({ ...input, history: false });
+        let result: ImportTemplateResult;
+        try {
+            result = this.importTemplateBundle({ ...input, history: false });
+        } catch (error) {
+            // A failed install changes nothing: whatever had arrived before the throw goes again, and
+            // the surfaces taken to make room come back. No step is recorded, so nothing is left for
+            // Ctrl+Z to find - and nothing is left for it to be needed for.
+            const now = this.getDocument();
+            this.takeLibraryRecords({
+                surfaceIds: now.surfaces.map(surface => surface.id).filter(id => !surfacesBefore.has(id)),
+                componentIds: (now.components ?? []).map(component => component.id).filter(id => !componentsBefore.has(id)),
+            });
+            const strayActions = Object.keys(this.getDocument().actions ?? {}).filter(id => !actionsBefore.has(id));
+            if (strayActions.length > 0) {
+                this.dropInputActions(strayActions);
+            }
+            this.putLibraryRecords(removed);
+            throw error;
+        }
         const entry = input.entrySourceSurfaceId ? result.surfaceIdMap[input.entrySourceSurfaceId] : undefined;
         if (entry) {
             this.applyEntrySurface(entry);

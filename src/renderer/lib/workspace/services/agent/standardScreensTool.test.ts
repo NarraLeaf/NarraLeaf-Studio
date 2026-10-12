@@ -73,7 +73,7 @@ function emptyProjectInterface(): UIDocument {
     } as UIDocument;
 }
 
-function createHarness() {
+function createHarness(options: { story?: boolean } = {}) {
     const history = new HistoryService();
     const story = new StoryService();
     const uidoc = new UIDocumentService();
@@ -150,8 +150,8 @@ function createHarness() {
     (uidoc as never as { scheduleAutoSave: () => void }).scheduleAutoSave = () => undefined;
     (story as never as { index: unknown }).index = { schemaVersion: 1, stories: [], meta: {} };
     (story as never as { animationIndex: unknown }).animationIndex = { schemaVersion: 1, animations: [], meta: {} };
-    const entry = story.createStory("Tale");
-    const sceneId = story.getStoryDocument(entry.id).chapters[0].sceneIds[0];
+    const entry = options.story === false ? null : story.createStory("Tale");
+    const sceneId = entry ? story.getStoryDocument(entry.id).chapters[0].sceneIds[0] : null;
 
     const follow = new AgentFollowService();
     const tool: AgentToolContext = {
@@ -162,7 +162,7 @@ function createHarness() {
         log: () => undefined,
     };
     const steps = () => history.describe().find(stack => stack.scopeId === projectHistoryScope())?.undo ?? 0;
-    return { uidoc, history, graphDocument, registry, follow, saveSchema: () => saveSchema, storyId: entry.id, sceneId, steps, run: (args: Record<string, unknown>) => uiInstallStandardScreens(args, tool) };
+    return { uidoc, history, story, graphDocument, registry, follow, saveSchema: () => saveSchema, storyId: entry?.id, sceneId, steps, run: (args: Record<string, unknown>) => uiInstallStandardScreens(args, tool) };
 }
 
 function structured(result: AgentCallResult): Record<string, unknown> {
@@ -170,6 +170,13 @@ function structured(result: AgentCallResult): Record<string, unknown> {
         throw new Error(`refused: ${result.error.code} ${result.error.message}`);
     }
     return result.structured ?? {};
+}
+
+function textOf(result: AgentCallResult): string {
+    if (!result.ok) {
+        throw new Error(`refused: ${result.error.code} ${result.error.message}`);
+    }
+    return result.content.map(item => (item.type === "text" ? item.text : "")).join("\n");
 }
 
 beforeAll(async () => {
@@ -241,6 +248,48 @@ describe("ui_install_standard_screens", () => {
         expect(Object.keys(registry.entries)).toEqual([]);
         expect(Object.keys(saveSchema().fields)).toEqual([]);
         expect(steps()).toBe(0);
+    }, 120_000);
+
+    it("says what one undo takes back and what it leaves, and leaves exactly that", async () => {
+        const { story, history, registry, saveSchema, uidoc, run } = createHarness({ story: false });
+        const result = await run({});
+        const text = textOf(result);
+        expect(text).toContain("One step of undo in Studio takes back those pages, Game UIs and components with their blueprints and the input actions they brought, puts back what they replaced and returns the entry page.");
+        expect(text).toMatch(/It leaves the rest of what came with them in the project, unused: the story "Test" made for Start, .*the variable\(s\) .*the save-slot field\(s\) .*the translation keys of their words\./);
+        expect(structured(result).madeStory).toBe("Test");
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(uidoc.getDocument().surfaces.map(surface => surface.id)).toEqual(["blank"]);
+        expect(story.listStories().map(entry => entry.name)).toEqual(["Test"]);
+        expect(Object.keys(registry.entries).length).toBeGreaterThan(0);
+        expect(Object.keys(saveSchema().fields).length).toBe(1);
+    }, 120_000);
+
+    it("says what it had already written when the author pauses part-way, and keeps it", async () => {
+        const { story, follow, uidoc, steps, run } = createHarness({ story: false });
+        const create = story.createStory.bind(story);
+        // The author pauses agents right after the story for Start is made.
+        vi.spyOn(story, "createStory").mockImplementation(name => {
+            const made = create(name);
+            follow.setPaused(true);
+            return made;
+        });
+        await expect(run({})).rejects.toMatchObject({
+            code: "paused",
+            message: expect.stringMatching(/Story "Test" was made for Start to begin; it stays, and nothing else was written\.$/),
+        });
+        expect(story.listStories().map(entry => entry.name)).toEqual(["Test"]);
+        expect(uidoc.getDocument().surfaces.map(surface => surface.id)).toEqual(["blank"]);
+        expect(steps()).toBe(0);
+    }, 120_000);
+
+    it("writes nothing - not even a story for Start - when it refuses", async () => {
+        const { story, run } = createHarness();
+        structured(await run({}));
+        // The working screens stay; the project's story does not.
+        (story as never as { index: unknown }).index = { schemaVersion: 1, stories: [], meta: {} };
+        await expect(run({})).rejects.toMatchObject({ code: "unavailable" });
+        expect(story.listStories()).toEqual([]);
     }, 120_000);
 
     it("refuses a second set beside working screens", async () => {
