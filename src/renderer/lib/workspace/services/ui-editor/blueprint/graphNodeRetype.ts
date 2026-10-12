@@ -66,11 +66,27 @@ export function retypeBlueprintNodeInIr(
     const newPinById = new Map(newEntry.pins.map(pin => [pin.id, pin]));
 
     const params: Record<string, unknown> = { ...oldParams };
-    // A setting only the old type had: `On Key Down`'s key means nothing on `Any Key Down`.
-    const newFieldKeys = new Set((newEntry.inspectorParams ?? []).map(spec => spec.key));
-    for (const spec of oldEntry.inspectorParams ?? []) {
-        if (!newFieldKeys.has(spec.key)) {
-            delete params[spec.key];
+    // A setting survives only where the new type has the same setting: `On Key Down`'s key means
+    // nothing on `Any Key Down`, and a String literal's text is no Integer literal's value - both
+    // name it `value`, as a text box and as a number box. A setting the old type did not have is
+    // cleared too, so the new type starts it from its own default rather than from whatever an
+    // earlier type left under that name.
+    const oldFields = new Map((oldEntry.inspectorParams ?? []).map(spec => [spec.key, spec]));
+    const newFields = new Map((newEntry.inspectorParams ?? []).map(spec => [spec.key, spec]));
+    const dataOutputType = (entry: BlueprintNodeEditorCatalogEntry) =>
+        entry.pins.find(pin => pin.kind === "output" && pin.semantic === "data")?.valueType;
+    for (const key of new Set([...oldFields.keys(), ...newFields.keys()])) {
+        const before = oldFields.get(key);
+        const after = newFields.get(key);
+        const same =
+            before !== undefined &&
+            after !== undefined &&
+            before.kind === after.kind &&
+            JSON.stringify(before.options ?? null) === JSON.stringify(after.options ?? null) &&
+            // A JSON box holds a rectangle on a Rect literal and a pair on a Vector2D literal.
+            (before.kind !== "json" || dataOutputType(oldEntry) === dataOutputType(newEntry));
+        if (!same) {
+            delete params[key];
         }
     }
     // A value typed into an input pin follows the pin when the pin it lands on takes the same kind
@@ -87,7 +103,7 @@ export function retypeBlueprintNodeInIr(
         const targetId = pinMap.get(pin.id);
         const target = targetId ? newPinById.get(targetId) : undefined;
         const carries = Boolean(target?.allowInlineLiteral && target.valueType === pin.valueType);
-        if (pin.id in oldParams && !newFieldKeys.has(pin.id)) {
+        if (pin.id in oldParams && !newFields.has(pin.id)) {
             delete params[pin.id];
             if (carries) {
                 movedLiterals[target!.id] = oldParams[pin.id];

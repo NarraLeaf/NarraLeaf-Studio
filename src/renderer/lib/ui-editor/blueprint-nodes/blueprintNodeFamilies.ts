@@ -43,6 +43,21 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAMEPAD_BUTTON_UP,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PLAYTIME,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_STORY,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME,
+    BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
+    BLUEPRINT_NODE_TYPE_LITERAL_COLOR,
+    BLUEPRINT_NODE_TYPE_LITERAL_FLOAT,
+    BLUEPRINT_NODE_TYPE_LITERAL_INTEGER,
+    BLUEPRINT_NODE_TYPE_LITERAL_JSON,
+    BLUEPRINT_NODE_TYPE_LITERAL_NULL,
+    BLUEPRINT_NODE_TYPE_LITERAL_RECT,
+    BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+    BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D,
     BLUEPRINT_NODE_TYPE_MATH_CEIL,
     BLUEPRINT_NODE_TYPE_MATH_FLOOR,
     BLUEPRINT_NODE_TYPE_MATH_RANDOM_FLOAT,
@@ -69,6 +84,51 @@ export type BlueprintNodeFamily = {
     /** In the order a card's menu lists them; the first one present is what picking the family places. */
     members: readonly string[];
 };
+
+/** The widgets whose own nodes and `Element` nodes read and write whether they are visible and enabled. */
+const VISIBLE_ENABLED_WIDGETS = ["button", "container", "frame", "image", "list", "slider", "switch", "text"] as const;
+/** A text's style properties, in the order its card's menu lists them. */
+const TEXT_STYLE_PROPERTIES = [
+    "Font",
+    "FontSize",
+    "FontWeight",
+    "TextColor",
+    "LineHeight",
+    "TextAlign",
+    "TextVerticalAlign",
+    "WrapMode",
+    "Effects",
+] as const;
+/** How an image sits in its box. */
+const IMAGE_FRAMING_PROPERTIES = ["FitMode", "FlipX", "FlipY", "CropRect"] as const;
+
+/**
+ * One property family pair for a widget's own blueprint and one for an `Element` node's, read and
+ * write: `blueprint.text.getFont` beside `blueprint.element.text.getFont`.
+ *
+ * Spelled from the type ids rather than listed one by one - they follow the pattern without an
+ * exception, and the test holds every name it makes to a registered node.
+ */
+function widgetPropertyFamilies(input: {
+    id: string;
+    widget: string;
+    properties: readonly string[];
+    getTitle: TranslationKey;
+    setTitle: TranslationKey;
+}): BlueprintNodeFamily[] {
+    return (["", "element."] as const).flatMap(owner => [
+        {
+            id: `${input.id}.${owner}${input.widget}.get`,
+            title: input.getTitle,
+            members: input.properties.map(property => `blueprint.${owner}${input.widget}.get${property}`),
+        },
+        {
+            id: `${input.id}.${owner}${input.widget}.set`,
+            title: input.setTitle,
+            members: input.properties.map(property => `blueprint.${owner}${input.widget}.set${property}`),
+        },
+    ]);
+}
 
 const PREFERENCE_ROWS = GAME_PREFERENCE_NODE_TYPES
     // The dialog's shown state is a preference to the engine, and to an author it is the dialog:
@@ -171,6 +231,56 @@ export const BLUEPRINT_NODE_FAMILIES: readonly BlueprintNodeFamily[] = [
         title: "blueprint.family.random",
         members: [BLUEPRINT_NODE_TYPE_MATH_RANDOM_INTEGER, BLUEPRINT_NODE_TYPE_MATH_RANDOM_FLOAT],
     },
+    {
+        id: "literal",
+        title: "blueprint.family.literal",
+        members: [
+            BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+            BLUEPRINT_NODE_TYPE_LITERAL_INTEGER,
+            BLUEPRINT_NODE_TYPE_LITERAL_FLOAT,
+            BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
+            BLUEPRINT_NODE_TYPE_LITERAL_COLOR,
+            BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D,
+            BLUEPRINT_NODE_TYPE_LITERAL_RECT,
+            BLUEPRINT_NODE_TYPE_LITERAL_JSON,
+            BLUEPRINT_NODE_TYPE_LITERAL_NULL,
+        ],
+    },
+    {
+        id: "saveInfo",
+        title: "blueprint.family.saveInfo",
+        members: [
+            BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME,
+            BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PLAYTIME,
+            BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE,
+            BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_STORY,
+            BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
+            BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
+        ],
+    },
+    ...widgetPropertyFamilies({
+        id: "textStyle",
+        widget: "text",
+        properties: TEXT_STYLE_PROPERTIES,
+        getTitle: "blueprint.family.getTextStyle",
+        setTitle: "blueprint.family.setTextStyle",
+    }),
+    ...widgetPropertyFamilies({
+        id: "imageFraming",
+        widget: "image",
+        properties: IMAGE_FRAMING_PROPERTIES,
+        getTitle: "blueprint.family.getImageFraming",
+        setTitle: "blueprint.family.setImageFraming",
+    }),
+    ...VISIBLE_ENABLED_WIDGETS.flatMap(widget =>
+        widgetPropertyFamilies({
+            id: "visibleEnabled",
+            widget,
+            properties: ["Visible", "Enabled"],
+            getTitle: "blueprint.family.getVisibleEnabled",
+            setTitle: "blueprint.family.setVisibleEnabled",
+        }),
+    ),
 ];
 
 const FAMILY_BY_MEMBER_TYPE: ReadonlyMap<string, BlueprintNodeFamily> = new Map(

@@ -516,7 +516,10 @@ const BlueprintAddNodeRow = memo(function BlueprintAddNodeRow(props: {
         ? props.entry.preset.title
         : resolveBlueprintNodeTitle(props.entry.displayName, t);
     const subtitle = family
-        ? t("blueprint.family.rowSubtitle", { category: categoryLabel, count: family.members.length })
+        ? t("blueprint.family.rowSubtitle", {
+              category: magicRef ? `${categoryLabel} -> ${magicRef.label}` : categoryLabel,
+              count: family.members.length,
+          })
         : props.entry.preset
         ? props.entry.preset.subtitle
         : magicRef
