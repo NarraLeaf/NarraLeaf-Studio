@@ -819,7 +819,10 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
                                     className={cn(
                                         ROW,
                                         "group cursor-pointer",
-                                        focus?.kind === "pose" && focus.id === pose.id ? FOCUSED : "border-edge",
+                                        // The pose the preview, the filmstrip and the avatar are showing -
+                                        // the default one until the author picks another, so on first open
+                                        // the list marks the same pose the preview draws.
+                                        pose.id === previewPoseId ? FOCUSED : "border-edge",
                                     )}
                                     onClick={() => setFocus({ kind: "pose", id: pose.id })}
                                 >

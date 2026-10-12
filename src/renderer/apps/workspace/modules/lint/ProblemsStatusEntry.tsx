@@ -55,11 +55,15 @@ export function ProblemsStatusEntry() {
     // follow edits are not announced here: they run after every pause in typing, and a cell that
     // spun each time would be a status bar flickering under the author's hands.
     const busy = !report || (state?.requestedRunning ?? false);
-    const counts = report?.counts ?? { error: 0, warning: 0, info: 0 };
+    const counts = report?.counts ?? { error: 0, warning: 0, minor: 0, info: 0 };
+    // The cell shows errors and warnings only. Minor warnings are named in the hover, as info is,
+    // and are never added to the warning number: that number is the one an author acts on, and a
+    // script still being translated would otherwise keep it in the thousands.
     const summary = report
         ? t("lint.statusBar.counts", {
               errors: tn("common.count.errors", counts.error),
               warnings: tn("common.count.warnings", counts.warning),
+              minorWarnings: tn("common.count.minorWarnings", counts.minor),
               infos: tn("common.count.infos", counts.info),
           })
         : t("lint.report.running");

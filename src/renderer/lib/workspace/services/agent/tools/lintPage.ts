@@ -15,7 +15,7 @@
 
 import type { LintSeverity } from "@/lib/lint/types";
 
-export const SEVERITY_RANK: Record<LintSeverity, number> = { error: 0, warning: 1, info: 2 };
+export const SEVERITY_RANK: Record<LintSeverity, number> = { error: 0, warning: 1, minor: 2, info: 3 };
 
 export const LINT_PAGE_DEFAULT_LIMIT = 150;
 export const LINT_PAGE_MAX_LIMIT = 500;

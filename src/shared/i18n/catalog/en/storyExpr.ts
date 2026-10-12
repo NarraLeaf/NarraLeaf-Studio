@@ -34,6 +34,12 @@ export const storyExpr = {
         duplicateVariable: "A variable with this name already exists in this scope.",
         compoundWithoutTarget: "There is no variable here to add to.",
     },
+    /** The kind of asset a slot looks a name up in, as `{assetType}` reads in the reasons below. */
+    assetType: {
+        image: "image",
+        audio: "audio",
+        video: "video",
+    },
     /**
      * Why a line will not commit, said in the row while it is being typed.
      *

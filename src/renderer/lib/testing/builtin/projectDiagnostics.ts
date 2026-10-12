@@ -88,14 +88,17 @@ export function createProjectDiagnosticsTest(host: BuiltInTestHost): TestDefinit
  * One lint entry as one finding.
  *
  * Straight through in every field that exists on both sides. `severity` in particular is *not*
- * re-derived: the engine already resolved it against the project's config table, and the ladders are
- * the same three words. `target` is passed on untouched because it is a `SearchJumpTarget` on both
+ * re-derived: the engine already resolved it against the project's config table. The one step the
+ * two ladders do not share is the lint's minor warning, which a test finding cannot carry - the test
+ * ladder is part of the plugin protocol - so it is reported as `info`, the level that, like it, never
+ * decides a verdict and is never counted with the warnings; `ruleId` still says which rule it was.
+ * `target` is passed on untouched because it is a `SearchJumpTarget` on both
  * sides, so the report tab's click-to-jump is existing machinery rather than a second navigation
  * layer that could disagree with the lint report's.
  */
 export function toFinding(entry: LintReportEntry): TestFinding {
     return {
-        severity: entry.severity,
+        severity: entry.severity === "minor" ? "info" : entry.severity,
         // Resolved here rather than carried: a test finding's params are words, and a catalogue key
         // among them would print as the key.
         message: { key: entry.messageKey, params: resolveLintMessageParams(entry, translate, translateN) },

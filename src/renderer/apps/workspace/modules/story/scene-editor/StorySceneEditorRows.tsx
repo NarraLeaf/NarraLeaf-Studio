@@ -35,7 +35,7 @@ import {
     subjectGroupId,
     type StoryCommandCategoryId,
 } from "./storyCommandCategories";
-import { searchActionCommands } from "./storyCommandSearch";
+import { commandNamedByWord, searchActionCommands } from "./storyCommandSearch";
 import {
     characterScopedActions,
     characterScopedSidebarGroups,
@@ -2093,7 +2093,7 @@ function CommandGhostHint(props: { value: string; source: string; caret: number;
     // Why the line will not commit, if it will not. It outranks the hint: naming the next slot while
     // the line is already broken answers a question the author is no longer asking.
     const reason = useMemo(
-        () => getCommandLineReason(props.source, props.commandContext),
+        () => getCommandLineReason(props.source, props.commandContext, { typing: true }),
         [ct, props.commandContext, props.source],
     );
     if (!ghost && !reason && !props.confirmation) {
@@ -2130,6 +2130,13 @@ export function InsertRow(props: {
     /** What a name typed on this line may refer to — the same view the resolver reads. */
     commandContext: StoryCommandContext;
     inputRef: RefObject<HTMLTextAreaElement | null>;
+    /**
+     * The controller's copy of the line (`insertDraftRef`), which outlives this component: the slot
+     * renders inside the windowed row list, so a hidden tab or a scroll unmounts it while the slot
+     * stays open. A remount seeds from this rather than from `mode.initialValue`, or the field came
+     * back empty while Enter still committed the text it had lost.
+     */
+    draftRef: RefObject<string>;
     onValueChange: (value: string) => void;
     onCommitNarration: (focusNext: boolean) => void;
     /** Escape #1 — drop the candidates, keep the line. */
@@ -2164,9 +2171,14 @@ export function InsertRow(props: {
      * The slot object is the identity of "which line is being typed", so a new slot re-seeds the
      * field. This is React's documented adjust-state-on-prop-change form rather than an effect: an
      * effect would render one frame of the previous slot's text into the new slot.
+     *
+     * Mounting is not always a new slot: the same slot comes back after its row was windowed out
+     * (a hidden tab measures 0 px and renders no rows; a long scroll does the same). The controller's
+     * draft is the line as it stood, so the field starts from that - what the author sees is then
+     * always what Enter commits. For a slot that has just opened the two are the same text.
      */
     const [seededSlot, setSeededSlot] = useState(props.mode.slot);
-    const [value, setValue] = useState(props.mode.initialValue);
+    const [value, setValue] = useState(() => props.draftRef.current ?? props.mode.initialValue);
     if (seededSlot !== props.mode.slot) {
         setSeededSlot(props.mode.slot);
         setValue(props.mode.initialValue);
@@ -2252,7 +2264,7 @@ export function InsertRow(props: {
 
     // Where the caret is decides what the slot offers, so it has to be state: `/bg fo|` asks for an
     // image, `/bg forest_day t=|` for a transition, and only the caret tells them apart.
-    const [caret, setCaret] = useState(props.mode.initialValue.length);
+    const [caret, setCaret] = useState(() => value.length);
     // `ct` is a dependency here for the same reason it is one in `CommandGhostHint`: the command
     // locale is a hidden input to every parse, so a locale switch has to invalidate these too.
     const cursor = useMemo(() => getCommandCursor(source, caret), [ct, caret, source]);
@@ -2836,19 +2848,22 @@ function useActionCommandMenuState(
     const [activeKey, setActiveKey] = useState<string | null>(null);
     const activeStop = stops.find(stop => stop.key === activeKey) ?? stops[0] ?? null;
     /**
-     * The row an exact abbreviation names. A typed filter otherwise keeps the highlight wherever it
-     * already was, but `/c` is a word the line will turn into one particular command on the next space,
-     * so Enter has to take that command too - the highlight goes to it whenever the rows change.
+     * The row a finished command word names: a spelling the parser reads as one command (`bg`, `char`,
+     * 背景, 表示), or one of the author's abbreviations. A typed filter otherwise keeps the highlight
+     * wherever it already was - and `/show`, lit when the menu opened, still matches "b" and "bg" - but
+     * a finished word is the command the line will be once it is committed, so Enter has to take that
+     * command too: the highlight goes to it whenever the rows change. A built-in spelling comes before
+     * an abbreviation, as it does on the line.
      */
-    const abbreviatedCommandId = abbreviations.get(query.trim().toLowerCase()) ?? null;
-    const abbreviatedKey = abbreviatedCommandId === null
+    const namedCommandId = commandNamedByWord(query, abbreviations);
+    const namedKey = namedCommandId === null
         ? null
-        : stops.find(stop => stop.command.id === abbreviatedCommandId)?.key ?? null;
+        : stops.find(stop => stop.command.id.toLowerCase() === namedCommandId.toLowerCase())?.key ?? null;
 
     useEffect(() => {
-        setActiveKey(current => abbreviatedKey
+        setActiveKey(current => namedKey
             ?? (stops.some(stop => stop.key === current) ? current : stops[0]?.key ?? null));
-    }, [abbreviatedKey, stops]);
+    }, [namedKey, stops]);
 
     const selectKey = (key: string) => {
         setActiveKey(key);

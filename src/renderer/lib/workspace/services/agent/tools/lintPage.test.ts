@@ -17,7 +17,7 @@ function floodedReport(): Entry[] {
     return entries;
 }
 
-const counts = { error: 2, warning: 501, info: 1 };
+const counts = { error: 2, warning: 501, minor: 0, info: 1 };
 
 describe("lint paging", () => {
     it("counts every rule over the whole report, most severe and then most numerous first", () => {

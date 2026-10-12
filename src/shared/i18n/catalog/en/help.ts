@@ -787,6 +787,7 @@ export const help = {
                 + "The Problems panel lists the findings and updates them shortly after each edit. The status bar shows how many errors and warnings there are.\n"
                 + "\n"
                 + "- Selecting a finding opens the place it is about. Its ? opens the rule: what it found and how to fix it.\n"
+                + "- Each rule reports at the level set in Project ▸ Project ▸ Project check. A minor warning is listed in the panel, is not counted in the status bar, and never stops a build.\n"
                 + "- Check Project reads every file again, including assets changed outside Studio.\n"
                 + "- Running the checks modifies nothing.",
         },

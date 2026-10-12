@@ -106,6 +106,7 @@ function report(entries: LintReportEntry[]): LintReport {
         counts: {
             error: entries.filter(entry => entry.severity === "error").length,
             warning: entries.filter(entry => entry.severity === "warning").length,
+            minor: entries.filter(entry => entry.severity === "minor").length,
             info: entries.filter(entry => entry.severity === "info").length,
         },
         rulesRun: [],
@@ -357,6 +358,32 @@ describe("BuildService lint gate", () => {
             expect(gameBuild.start).toHaveBeenCalledTimes(1);
             expect(state.status).toBe("done");
         }
+    });
+
+    it("never blocks on a minor warning, under either threshold", async () => {
+        for (const failBuildOn of ["error", "warning"] as const) {
+            gameBuild.start.mockClear();
+            const many = Array.from({ length: 30 }, () => finding("minor", "localization/missing"));
+            const { service } = mount({ linting: { failBuildOn }, run: async () => report(many) });
+
+            const state = await service.start(REQUEST);
+
+            expect(gameBuild.start).toHaveBeenCalledTimes(1);
+            expect(state.status).toBe("done");
+        }
+    });
+
+    it("logs a minor warning at info, and closes a sweep of nothing worse as a success", async () => {
+        const { service, lines } = mount({ run: async () => report([finding("minor", "localization/missing")]) });
+
+        await service.start(REQUEST);
+
+        const findingLine = lines.find(line => line.message.includes("localization/missing") && line.message.includes("lint.console.finding"));
+        expect(findingLine?.level).toBe("info");
+        // Nothing on the build channel is in the warning colour: neither the finding, nor its line in
+        // the per-rule count, nor the closing summary.
+        expect(lines.some(line => line.channel === BUILD_CONSOLE_CHANNEL && line.level === "warning")).toBe(false);
+        expect(lines.some(line => line.level === "success" && line.message.includes("lint.console.finishedCounts("))).toBe(true);
     });
 
     it("builds on a clean report and says so", async () => {
@@ -763,7 +790,8 @@ describe("countBlockingLintFindings", () => {
     const errors = report([finding("error")]);
     const warnings = report([finding("warning"), finding("warning")]);
     const infos = report([finding("info")]);
-    const mixed = report([finding("error"), finding("warning"), finding("info")]);
+    const minors = report([finding("minor"), finding("minor"), finding("minor")]);
+    const mixed = report([finding("error"), finding("warning"), finding("minor"), finding("info")]);
 
     it("counts errors under either threshold", () => {
         expect(countBlockingLintFindings(errors, "error")).toBe(1);
@@ -780,6 +808,13 @@ describe("countBlockingLintFindings", () => {
         expect(countBlockingLintFindings(infos, "warning")).toBe(0);
     });
 
+    it("never counts a minor warning, under any threshold the project can store", () => {
+        for (const failBuildOn of ["error", "warning"] as const) {
+            expect(countBlockingLintFindings(minors, failBuildOn)).toBe(0);
+            expect(shouldBlockBuild(minors, { runOnBuild: true, failBuildOn, severities: {}, options: {} })).toBe(false);
+        }
+    });
+
     it("counts the blocking slice of a mixed report", () => {
         expect(countBlockingLintFindings(mixed, "error")).toBe(1);
         expect(countBlockingLintFindings(mixed, "warning")).toBe(2);
@@ -788,7 +823,7 @@ describe("countBlockingLintFindings", () => {
     it("reads entries, not the report's own counts", () => {
         // A report whose header disagrees with its list: the console prints the list, so the number
         // in the refusal has to come from the same place or the two contradict each other.
-        const lying: LintReport = { ...report([finding("error")]), counts: { error: 99, warning: 0, info: 0 } };
+        const lying: LintReport = { ...report([finding("error")]), counts: { error: 99, warning: 0, minor: 0, info: 0 } };
         expect(countBlockingLintFindings(lying, "error")).toBe(1);
     });
 });

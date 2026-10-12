@@ -35,33 +35,71 @@ export type StoryCommandReason = {
      * with everywhere else.
      */
     valueTypeParams?: readonly string[];
+    /**
+     * Params that are a word of the sentence rather than something off the line - the kind of asset
+     * a name was looked up in - each with the catalog entry it reads as. The caller writes them in
+     * the interface language, like the sentence; `params` keeps the raw id as the fallback.
+     */
+    wordParams?: Readonly<Record<string, TranslationKey>>;
 };
 
 /**
  * A reason's params as the sentence reads them: each value type param written the way the variables
- * panel and a blueprint pin write that type. Every other param is passed through.
+ * panel and a blueprint pin write that type, and each word param in the interface language. Every
+ * other param is passed through.
  */
 export function storyCommandReasonParams(
     reason: StoryCommandReason,
     t: (key: TranslationKey, params?: Record<string, string | number>) => string,
 ): Record<string, string | number> {
-    if (!reason.valueTypeParams?.length) {
+    if (!reason.valueTypeParams?.length && !reason.wordParams) {
         return reason.params;
     }
     const params = { ...reason.params };
-    for (const name of reason.valueTypeParams) {
+    for (const name of reason.valueTypeParams ?? []) {
         const value = params[name];
         if (typeof value === "string") {
             params[name] = formatBlueprintValueTypeLabel(value, t);
         }
+    }
+    for (const [name, key] of Object.entries(reason.wordParams ?? {})) {
+        params[name] = t(key);
     }
     return params;
 }
 
 const reasonKey = (code: string): TranslationKey => `storyExpr.reason.${code}` as TranslationKey;
 
-/** The first problem with this line, or null when it is fine (or is not a command at all). */
-export function getCommandLineReason(source: string, context: StoryCommandContext): StoryCommandReason | null {
+/**
+ * The resolution issues that only say "no such name": the ones a value still being typed raises on
+ * every keystroke until it is spelled out (`N` on its way to `Narra`, `room` on its way to
+ * `room-warm`).
+ */
+const NAME_LOOKUP_CODES: ReadonlySet<StoryCommandResolutionIssue["code"]> = new Set<StoryCommandResolutionIssue["code"]>([
+    "unknownAsset",
+    "unknownCharacter",
+    "unknownScene",
+    "unknownAudioTrack",
+    "unknownLabel",
+    "unknownAppTag",
+    "unknownSurface",
+    "unknownInputAction",
+    "unknownVariable",
+    "unknownForm",
+    "unknownTarget",
+]);
+
+/**
+ * The first problem with this line, or null when it is fine (or is not a command at all).
+ *
+ * `typing` is the line being typed in the slot, as opposed to a line that has been committed (a
+ * draft row's reason): a name the author is still typing is not reported yet - see below.
+ */
+export function getCommandLineReason(
+    source: string,
+    context: StoryCommandContext,
+    options: { typing?: boolean } = {},
+): StoryCommandReason | null {
     if (!source.startsWith("/")) {
         return null;
     }
@@ -80,7 +118,17 @@ export function getCommandLineReason(source: string, context: StoryCommandContex
         return parserReason(line, parserIssue);
     }
     const resolutionIssue = resolveCommandLine(line, context).issues[0];
-    return resolutionIssue ? resolutionReason(resolutionIssue, line.token ?? "") : null;
+    if (!resolutionIssue) {
+        return null;
+    }
+    // The same rule for a name as for the command word above, and the same signal: the value at the
+    // end of the line with nothing after it is still being typed (`/show N` toward `/show Narra`,
+    // while the candidates already list her), and a space after it is the decision. A name followed
+    // by more of the line, or a committed line, is reported.
+    if (options.typing && NAME_LOOKUP_CODES.has(resolutionIssue.code) && resolutionIssue.span.end >= source.length) {
+        return null;
+    }
+    return resolutionReason(resolutionIssue, line.token ?? "");
 }
 
 /**
@@ -192,9 +240,13 @@ function resolutionReason(issue: StoryCommandResolutionIssue, token: string): St
         case "unknownAsset":
             // A slot that would have taken a set says so, or the author reads "no image named X" and
             // goes looking in the library for a row that was never going to be there.
+            //
+            // The kind is a word of the sentence, so it is written in the sentence's language: the raw
+            // id read "没有名为「room」的 image 资产" to a Chinese author.
             return {
                 key: reasonKey(issue.allowSets ? "unknownAssetOrSet" : issue.code),
                 params: { value: issue.value, assetType: issue.assetType },
+                wordParams: { assetType: `storyExpr.assetType.${issue.assetType}` as TranslationKey },
             };
         case "unknownCharacter":
         case "unknownScene":
