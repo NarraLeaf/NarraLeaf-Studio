@@ -1,8 +1,7 @@
 import { AlertTriangle } from "lucide-react";
 import { Modal, dialogFooterButtonClass } from "@/lib/components/elements/Modal";
 import { useTranslation } from "@/lib/i18n";
-import type { TranslationKey } from "@shared/i18n";
-import type { NarralangIssueRow } from "./narralangIo";
+import { narralangReasonText, type NarralangIssueRow } from "./narralangIo";
 
 const ROW = "flex flex-col gap-1 rounded-md border border-edge bg-fill-subtle px-2 py-1.5 text-xs";
 const NOTE = "flex items-start gap-1.5 text-2xs text-warning";
@@ -53,20 +52,10 @@ export function NarralangExportReportModal(props: {
                                     )}
                                     <span className="min-w-0 flex-1 truncate">{row.description}</span>
                                 </div>
-                                {row.reasons.map(({ reason, detail }) => (
-                                    <div key={`${reason}:${detail ?? ""}`} className={NOTE}>
+                                {row.reasons.map(entry => (
+                                    <div key={`${entry.reason}:${entry.detail ?? ""}`} className={NOTE}>
                                         <AlertTriangle className="mt-px h-3 w-3 shrink-0" />
-                                        <span className="min-w-0 flex-1">
-                                            {/* A dangling reference is the reason an author meets most, and the
-                                                generic sentence leaves them guessing whether the missing thing is
-                                                an asset or a character. Only this reason carries a detail worth
-                                                naming; the rest say all they can from the reason alone. */}
-                                            {reason === "unresolvedRef" && detail
-                                                ? t("story.narralang.unresolvedRefNamed", {
-                                                    what: t(`story.narralang.detail.${detail}` as TranslationKey),
-                                                })
-                                                : t(`story.narralang.reason.${reason}` as TranslationKey)}
-                                        </span>
+                                        <span className="min-w-0 flex-1">{narralangReasonText(entry, t)}</span>
                                     </div>
                                 ))}
                             </div>
