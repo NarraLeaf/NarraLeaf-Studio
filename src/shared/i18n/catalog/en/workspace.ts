@@ -893,11 +893,6 @@ export const workspace = {
         noActiveEditor: "No active editor",
         closePanel: "Close panel",
         closeTab: "Close {name}",
-        newTab: "New tab",
-        // Browser-style blank tab opened by the tab strip's "+".
-        newTabPage: {
-            title: "New Tab",
-        },
         tabMenu: {
             // Turns a preview tab - the italic one a group holds at most one of - into an ordinary tab.
             keepOpen: "Keep open",
