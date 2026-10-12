@@ -411,7 +411,7 @@ export function ComponentLibraryPanel({
             {/* The section's own scroller: it gets every pixel the section is given below the
                 search row, and a wheel that reaches its end stops there. No padding at its top edge, so
                 cards scrolled out of view are cut off a gap below the search box rather than against it. */}
-            <div ref={listRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-2 pb-2">
+            <div ref={listRef} className="nl-scroll-lane min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pb-2 pl-2">
                 {filteredComponents.length === 0 ? (
                     <div className="rounded-md border border-dashed border-edge px-3 py-4 text-center text-xs text-fg-subtle">
                         {components.length === 0 ? t("uiEditor.componentLibrary.emptyCreate") : t("uiEditor.componentLibrary.noMatches")}

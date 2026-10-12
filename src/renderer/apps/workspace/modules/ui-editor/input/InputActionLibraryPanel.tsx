@@ -379,7 +379,7 @@ export function InputActionLibraryPanel({ documentService, uiService, open, onOp
         >
             {/* The section's own scroller: it gets every pixel the section is given, and a
                 wheel that reaches its end stops there. */}
-            <div ref={listRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-2">
+            <div ref={listRef} className="nl-scroll-lane min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain py-2 pl-2">
                 {actions.length === 0 ? (
                     <div className="rounded-md border border-dashed border-edge px-3 py-4 text-center text-xs text-fg-subtle">
                         {t("uiEditor.inputActions.empty")}

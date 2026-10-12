@@ -472,6 +472,20 @@ html.nl-studio {
 }
 
 /*
+ * A list whose scrollbar sits where its right padding would be.
+ *
+ * The 8px lane is reserved whether or not the list overflows, and the element
+ * carries no right padding of its own - give it a left padding of 8px and the
+ * lane is the right one. The content is then exactly as wide with a scrollbar
+ * as without, so a neighbouring section opening and making the list overflow
+ * does not narrow every card in it. The thumb is invisible at rest (see
+ * Scrollbars above), so until the list moves the lane reads as padding.
+ */
+.nl-scroll-lane {
+    scrollbar-gutter: stable;
+}
+
+/*
  * A region one version does not have, where the other one has content.
  *
  * Hatched rather than blank, because a blank region of the same height reads as
