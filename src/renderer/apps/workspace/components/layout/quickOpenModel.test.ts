@@ -4,6 +4,8 @@ import {
     GLOBAL_MAIN_OWNER_KEY,
     componentWidgetMainOwnerKey,
     surfaceMainOwnerKey,
+    widgetMainOwnerKey,
+    widgetValueOwnerKey,
 } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 import { getBlueprintEntryTabId } from "../../modules/blueprint-lite/blueprintEntryTabId";
 import { getComponentEditorSurfaceId } from "../../modules/ui-editor/editors/componentEditorAdapter";
@@ -134,5 +136,60 @@ describe("quick open names a blueprint's owner", () => {
 
     it("names the project's own blueprint as the global one", () => {
         expect(detailOf("bp-app")).toBe("Global");
+    });
+});
+
+/**
+ * A page whose own container and whose rail item are both named after the page, and a name plate
+ * with both logic and a value binding: four blueprints, two names.
+ */
+describe("quick open tells same-named controls apart", () => {
+    function details() {
+        const elements = {
+            root: { id: "root", type: "nl.root", name: "Root", parentId: null },
+            page: { id: "page", type: "nl.container", name: "Config", parentId: "root" },
+            rail: { id: "rail", type: "nl.container", name: "Rail", parentId: "page" },
+            railItem: { id: "railItem", type: "nl.text", name: "Config", parentId: "rail" },
+            plate: { id: "plate", type: "nl.text", name: "Name plate", parentId: "page" },
+        };
+        const services: Partial<Record<Services, unknown>> = {
+            [Services.UI]: { editor: { open: vi.fn(), get: () => undefined } },
+            [Services.Story]: { listStories: () => [] },
+            [Services.Character]: { listCharacter: () => [] },
+            [Services.UIDocument]: {
+                getDocument: () => ({ surfaces: [{ id: "config", name: "Config", rootElementId: "root" }], components: [], elements }),
+            },
+            [Services.Assets]: { getAssets: () => ({}) },
+            [Services.LocalBlueprint]: {
+                getBlueprintDocument: () => ({
+                    ownerRecords: {
+                        [widgetMainOwnerKey("config", "page")]: { blueprintId: "bp-page" },
+                        [widgetMainOwnerKey("config", "railItem")]: { blueprintId: "bp-rail" },
+                        [widgetMainOwnerKey("config", "plate")]: { blueprintId: "bp-plate" },
+                        [widgetValueOwnerKey("config", "plate", "text")]: { blueprintId: "bp-plate-text" },
+                    },
+                    blueprints: {
+                        "bp-page": { id: "bp-page", name: "Config" },
+                        "bp-rail": { id: "bp-rail", name: "Config" },
+                        "bp-plate": { id: "bp-plate", name: "Name plate" },
+                        "bp-plate-text": { id: "bp-plate-text", name: "Name plate" },
+                    },
+                }),
+            },
+        };
+        const context = { services: { get: (id: Services) => services[id] } } as unknown as WorkspaceContext;
+        return Object.fromEntries(collectQuickOpenEntries(context).map(entry => [entry.key, entry.detail]));
+    }
+
+    it("names the group the rail item is in, and leaves the page's container as it was", () => {
+        const read = details();
+        expect(read["blueprint:bp-page"]).toBe("Config › Config");
+        expect(read["blueprint:bp-rail"]).toBe("Config › Rail › Config");
+    });
+
+    it("marks a value binding by its kind next to the same control's logic", () => {
+        const read = details();
+        expect(read["blueprint:bp-plate"]).toBe("Config › Name plate");
+        expect(read["blueprint:bp-plate-text"]).toBe("Config › Name plate · Widget value");
     });
 });

@@ -1,7 +1,7 @@
 import { FileText, Image as ImageIcon, Music, PanelsTopLeft, Users, Workflow, File } from "lucide-react";
 import type { ReactNode } from "react";
 import type { TranslationKey } from "@shared/i18n";
-import { blueprintDisplayName } from "@shared/types/ui-editor/ownerLabels";
+import { blueprintDisplayName, ownerLabelKey } from "@shared/types/ui-editor/ownerLabels";
 import { workspaceStoryBlueprintSummary } from "@/lib/story/storyBlueprintSummary";
 import type { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
 import { translate } from "@/lib/i18n";
@@ -16,12 +16,13 @@ import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalB
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { parseBlueprintOwnerKey } from "@/lib/workspace/services/search/blueprintOwnerKey";
-import { resolveBlueprintOwnerLabel } from "@/lib/workspace/services/search/sources/blueprintSource";
+import { resolveBlueprintOwnerPath } from "@/lib/workspace/services/search/sources/blueprintSource";
 import { createStorySceneEditorTab } from "../../modules/story/scene-editor/openStorySceneEditorTab";
 import { createBlueprintEntryEditorTab } from "../../modules/blueprint-lite/openBlueprintEditorTab";
 import { blueprintOwnerOpenTarget } from "../../modules/search/blueprintJumpTarget";
 import { createSurfaceEditorTab } from "../../modules/ui-editor/UISurfacesPanel";
 import { openAssetPreviewTabsInEditor } from "../../modules/assets/dnd/openDraggedAssetsInEditor";
+import { distinguishQuickOpenDetails, type QuickOpenPlacedRow } from "./quickOpenPlaces";
 
 export type QuickOpenKind = "scene" | "character" | "uiSurface" | "asset" | "blueprint";
 
@@ -161,20 +162,31 @@ export function collectQuickOpenEntries(ctx: WorkspaceContext): QuickOpenEntry[]
             ctx.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog),
             translate,
         );
+        const blueprintEntries: QuickOpenEntry[] = [];
+        const places: QuickOpenPlacedRow[] = [];
         for (const [ownerKey, record] of Object.entries(document.ownerRecords)) {
             const blueprint = document.blueprints[record.blueprintId];
             const owner = blueprint ? parseBlueprintOwnerKey(ownerKey) : null;
             if (!blueprint || !owner) {
                 continue;
             }
-            entries.push({
+            const title = blueprintDisplayName(blueprint, translate, whatItDoes(blueprint));
+            const path = resolveBlueprintOwnerPath(ctx, ownerKey);
+            places.push({
+                title,
+                // A value binding hangs on the same control as that control's logic, so only its kind
+                // can tell the two apart.
+                place: path
+                    ? { path, suffix: owner.ownerKind === "widgetValue" ? translate(ownerLabelKey("widgetValue")) : undefined }
+                    : undefined,
+            });
+            blueprintEntries.push({
                 key: `blueprint:${blueprint.id}`,
                 kind: "blueprint",
-                title: blueprintDisplayName(blueprint, translate, whatItDoes(blueprint)),
-                // Whose blueprint it is - the page, component or control it hangs on - named as the
-                // search panel names it. Blueprints take their owner's name, so without this every
-                // page's Config button read as one more identical "Config" row.
-                detail: resolveBlueprintOwnerLabel(ctx, ownerKey),
+                title,
+                // Filled in below, once every row is known: whose blueprint it is - the page,
+                // component or control it hangs on - named as the search panel names it.
+                detail: undefined,
                 icon: <Workflow className="h-4 w-4" />,
                 // Addressed and named as the interface panel and the inspector open it, so picking a
                 // blueprint whose editor is already open focuses that tab instead of adding another.
@@ -183,6 +195,14 @@ export function collectQuickOpenEntries(ctx: WorkspaceContext): QuickOpenEntry[]
                 },
             });
         }
+        // Blueprints take their owner's name, so `Page › Control` alone left a page's same-named
+        // controls - a slider's "Track", a rail item named after the page - as identical rows that
+        // each opened something else. Rows that read alike say where they are until they differ.
+        const details = distinguishQuickOpenDetails(places);
+        blueprintEntries.forEach((entry, index) => {
+            entry.detail = details[index];
+        });
+        entries.push(...blueprintEntries);
     } catch {
         // Blueprint document not loaded — same treatment as surfaces.
     }

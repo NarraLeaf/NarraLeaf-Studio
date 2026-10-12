@@ -1,4 +1,5 @@
-import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
+import type { Blueprint, BlueprintDocument, BlueprintOwnerRef } from "@shared/types/blueprint/document";
+import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { i18nStore, translate } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
@@ -292,51 +293,128 @@ export function extractBlueprintEntries(
  * actually locates it.
  */
 export function resolveBlueprintOwnerLabel(ctx: WorkspaceContext, ownerKey: string): string | undefined {
+    const path = resolveBlueprintOwnerPath(ctx, ownerKey);
+    return path ? blueprintOwnerPathLabel(path) : undefined;
+}
+
+/**
+ * Where a blueprint hangs, in parts: the page or component (or the one label a project or story
+ * blueprint has), the control's own name, and the controls between that page's root and the control.
+ *
+ * {@link resolveBlueprintOwnerLabel} prints only the first two, which is all a blueprint usually
+ * needs. The ancestors are for the lists that must tell two same-named controls apart - every slider
+ * on a settings page has a track called "Track" - and they are the names the layer outline shows.
+ */
+export interface BlueprintOwnerPath {
+    /** The page and component the blueprint belongs to, or the single label a project or story blueprint has. */
+    lead: string[];
+    /** The control's own name, for a blueprint on a control. */
+    leaf?: string;
+    /** The named controls between the page's (or component's) root and the control, nearest first. */
+    ancestors: string[];
+}
+
+/** `Page › Control`, as a search row's detail line reads. */
+export function blueprintOwnerPathLabel(path: BlueprintOwnerPath): string | undefined {
+    const parts = path.leaf ? [...path.lead, path.leaf] : path.lead;
+    return parts.length > 0 ? parts.join(" › ") : undefined;
+}
+
+/** {@link blueprintOwnerPath} for an owner key, read against the open project's interface document. */
+export function resolveBlueprintOwnerPath(ctx: WorkspaceContext, ownerKey: string): BlueprintOwnerPath | undefined {
     const owner = decodeBlueprintOwnerKey(ownerKey);
     if (!owner) {
         return undefined;
     }
+    let document: UIDocument | null = null;
+    const anchor = blueprintAnchor(owner);
+    if (anchor.kind !== "project" && anchor.kind !== "storyRow") {
+        try {
+            document = ctx.services.get<UIDocumentService>(Services.UIDocument).getDocument();
+        } catch {
+            return undefined;
+        }
+    }
+    return blueprintOwnerPath(owner, document, translate);
+}
+
+/**
+ * Where `owner` hangs in `document`, named. Pure, so a list can be checked against a project's own
+ * files without a workspace.
+ */
+export function blueprintOwnerPath(
+    owner: BlueprintOwnerRef,
+    document: UIDocument | null,
+    t: (key: TranslationKey) => string,
+): BlueprintOwnerPath | undefined {
     // The two positions that are their own label: neither has a surface, a component or an element
     // to name, so nothing below would find anything to print.
     const anchor = blueprintAnchor(owner);
     if (anchor.kind === "project") {
-        return translate("blueprint.owner.global" as TranslationKey);
+        return { lead: [t("blueprint.owner.global" as TranslationKey)], ancestors: [] };
     }
     if (anchor.kind === "storyRow") {
-        return translate("blueprint.owner.storyAction" as TranslationKey);
+        return { lead: [t("blueprint.owner.storyAction" as TranslationKey)], ancestors: [] };
     }
-    let document;
-    try {
-        document = ctx.services.get<UIDocumentService>(Services.UIDocument).getDocument();
-    } catch {
+    if (!document) {
         return undefined;
     }
-    const parts: string[] = [];
+    const lead: string[] = [];
     const surfaceId = anchorSurfaceId(owner);
-    if (surfaceId) {
-        const surface = document.surfaces.find(candidate => candidate.id === surfaceId);
-        if (surface?.name) {
-            parts.push(surface.name);
-        }
+    const surface = surfaceId ? document.surfaces.find(candidate => candidate.id === surfaceId) : undefined;
+    if (surface?.name) {
+        lead.push(surface.name);
     }
     const componentId = anchorComponentId(owner);
     const component = componentId
         ? (document.components ?? []).find(candidate => candidate.id === componentId)
         : undefined;
     if (component?.name) {
-        parts.push(component.name);
+        lead.push(component.name);
     }
+    let leaf: string | undefined;
+    const ancestors: string[] = [];
     const elementId = anchorElementId(owner);
     if (elementId) {
         // A component's controls live in the component's own table, not the document's, so a
         // component owner's element is looked up there or not at all.
-        const element = componentId ? component?.elements[elementId] : document.elements[elementId];
-        const name = element?.name || element?.type;
-        if (name) {
-            parts.push(name);
+        const elements = componentId ? component?.elements ?? {} : document.elements;
+        const element = elements[elementId];
+        leaf = element?.name || element?.type || undefined;
+        // Up to the page's root, which every control of the page shares and the outline names
+        // only as the page itself. A container nobody named has no name to offer and is passed over.
+        const roots = new Set<string>();
+        if (surface) {
+            roots.add(surface.rootElementId);
+            if (surface.kind === "stageSurface") {
+                for (const slot of Object.values(surface.slots ?? {})) {
+                    if (slot.rootElementId) {
+                        roots.add(slot.rootElementId);
+                    }
+                }
+            }
+        }
+        if (component) {
+            roots.add(component.rootElementId);
+        }
+        const seen = new Set<string>([elementId]);
+        let parentId = element?.parentId ?? null;
+        while (parentId && !seen.has(parentId) && !roots.has(parentId)) {
+            seen.add(parentId);
+            const parent = elements[parentId];
+            if (!parent || parent.type === "nl.root") {
+                break;
+            }
+            if (parent.name) {
+                ancestors.push(parent.name);
+            }
+            parentId = parent.parentId ?? null;
         }
     }
-    return parts.length > 0 ? parts.join(" › ") : undefined;
+    if (lead.length === 0 && !leaf) {
+        return undefined;
+    }
+    return { lead, leaf, ancestors };
 }
 
 /**
