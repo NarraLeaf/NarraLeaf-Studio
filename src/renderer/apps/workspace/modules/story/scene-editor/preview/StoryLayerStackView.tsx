@@ -10,22 +10,38 @@ import {
 } from "react";
 import type { StoryScene, StorySceneLayer } from "@shared/types/story";
 import {
-    moveSceneLayer,
+    layerFollowAtDistance,
     normalizeStageObjectName,
+    STORY_LAYER_DISTANCE_MIN,
+    placeSceneLayer,
     removeSceneLayer,
     renameSceneLayer,
+    sameSceneLayerStack,
+    sceneLayerDistance,
     sceneLayerFollow,
+    sceneLayerFollowBetween,
+    sceneLayerLevels,
     sceneLayerNameProblem,
     sceneLayerStack,
     setSceneLayerFollow,
+    setSceneLayerFollows,
+    type SceneLayerLevel,
 } from "@shared/types/story";
 import { DropIndicator } from "@/lib/components/elements/DropIndicator";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { GAME_STAGE_BASE_CLASS_NAME } from "@/lib/ui-editor/runtime/app/gameStageBase";
 import { useTranslation } from "@/lib/i18n";
-import { storyLayerFollowPercent, storySceneLayerLabel } from "@/lib/story/storyLayerLabel";
+import { formatLayerDistance, parseLayerDistance, storySceneLayerLabel } from "@/lib/story/storyLayerLabel";
 import { cn } from "@/lib/utils/cn";
-import { layerStackDepths, layerSwayOffset, layerSwayTransform, sceneLayerKey, snapLayerFollow } from "./storyLayerStackModel";
+import {
+    layerDepthAt,
+    layerDistanceAtDepth,
+    layerStackDepths,
+    layerSwayOffset,
+    layerSwayTransform,
+    roundLayerDistance,
+    sceneLayerKey,
+} from "./storyLayerStackModel";
 
 /** What the layer view needs from the scene's editor. */
 export type StoryPreviewLayersApi = {
@@ -42,30 +58,49 @@ export type StoryPreviewLayersApi = {
 
 /** How far a press may travel and still be a click rather than a drag (Windows' `SM_CXDRAG`). */
 const CLICK_SLOP_PX = 4;
-/** How far apart layers at the same distance are drawn, in shares. */
-const TIE_STEP = 0.12;
+/** How near, on screen, a dragged plane has to come to a level to join it. */
+const LEVEL_SNAP_PX = 9;
+/** How far apart the layers of one level are drawn, so they draw in stack order on their one plane. */
+const LEVEL_HAIR_PX = 0.4;
 /** The gap kept between two name tags that would otherwise sit on each other. */
 const TAG_GAP_PX = 2;
 /**
- * How the planes are turned, in degrees, and how far apart one share of the camera draws them, as a
- * fraction of a plane's width: from the side in a wide view, so the stack runs off to the right; from
+ * How the planes are turned, in degrees, and how far apart one unit of the view's depth draws them, as
+ * a fraction of a plane's width: from the side in a wide view, so the stack runs off to the right; from
  * below in a tall one, so it climbs and uses the height the view has.
  */
-const WIDE_LAYOUT = { x: 8, y: -50, depth: 0.75 };
-const TALL_LAYOUT = { x: -38, y: -18, depth: 0.95 };
+const WIDE_LAYOUT = { x: 8, y: -50, depth: 0.6 };
+const TALL_LAYOUT = { x: -38, y: -18, depth: 0.75 };
 /** The moving preview's camera: a sway a little wider than the zoom hides at the characters' distance. */
 const SWAY_ZOOM = 1.08;
 const SWAY_AMPLITUDE = 0.04;
+
+/** Where a dragged row would land: inside a level, or between two as a level of its own. */
+type RowDrop = {
+    /** The stack once it lands. */
+    next: StorySceneLayer[];
+    /** The level it joins, by the key of the level's first layer; null for a new level. */
+    joins: string | null;
+    /** The gap the line is drawn at, or null when the drop is onto a level as a whole. */
+    gap: number | null;
+    /** The distance a new level would be at. */
+    distance: number | null;
+};
+
+function levelKey(stack: readonly StorySceneLayer[], level: SceneLayerLevel): string {
+    return sceneLayerKey(stack[level.start]);
+}
 
 /**
  * The live preview's layer view: the shot the preview shows, taken apart into the scene's layers.
  *
  * Three parts, one stack:
- *  - the stack itself, front to back, which is the order the stage draws its layers in - drag a row
- *    to another place to put the layer there;
- *  - the same frame turned to the side, each layer a plane at its distance from the camera, holding
- *    what the preview shows on it - drag a plane's name along the stack to move it nearer or farther,
- *    and past another layer to change places with it;
+ *  - the stack itself, front to back, in levels: the layers at one distance are one level, with the
+ *    distance written once beside them - click it to type another, drag a row onto another level to
+ *    join it or between two to make a level of its own;
+ *  - the same frame turned to the side, each level a plane at its distance from the camera, holding
+ *    what the preview shows on its layers - drag a layer's name along the stack to move it nearer or
+ *    farther, onto another level to join it;
  *  - the frame from the front with the camera swaying, which is what the distances do to the shot.
  *
  * What the planes hold is copied from the preview's own stage, so they show exactly what the row
@@ -86,6 +121,7 @@ export function StoryLayerStackView(props: {
     // The stack as a drag leaves it, until the drag ends and writes it.
     const [draft, setDraft] = useState<StorySceneLayer[] | null>(null);
     const stack = draft ?? stored;
+    const levels = useMemo(() => sceneLayerLevels(stack), [stack]);
     const [selectedKey, setSelectedKey] = useState<string | null>(null);
     const [hoveredKey, setHoveredKey] = useState<string | null>(null);
     const [draggingKey, setDraggingKey] = useState<string | null>(null);
@@ -118,8 +154,14 @@ export function StoryLayerStackView(props: {
 
     // Geometry. The list keeps the left of the view; the planes turn in the rest of it, sized so the
     // whole stack - from its nearest layer to its farthest - fits, and centred on the middle of it.
-    const depths = useMemo(() => layerStackDepths(stack, TIE_STEP), [stack]);
-    const listWidth = Math.min(164, Math.max(124, box.width * 0.28));
+    // While a plane is dragged the view holds still at the stack the drag found, so the plane under the
+    // pointer is the only thing that moves; it settles to the new stack once the drag ends.
+    const [heldStack, setHeldStack] = useState<StorySceneLayer[] | null>(null);
+    const layoutDepths = useMemo(() => layerStackDepths(heldStack ?? stack), [heldStack, stack]);
+    const depths = useMemo(() => layerStackDepths(stack), [stack]);
+    // The dragged plane, drawn where the pointer has it rather than at the distance it rounds to.
+    const [dragDepth, setDragDepth] = useState<{ key: string; depth: number } | null>(null);
+    const listWidth = Math.min(184, Math.max(140, box.width * 0.3));
     const rigLeft = listWidth;
     const rigWidth = Math.max(0, box.width - rigLeft);
     const aspect = designSize.height / Math.max(1, designSize.width);
@@ -128,8 +170,8 @@ export function StoryLayerStackView(props: {
     const rigHeight = Math.max(0, box.height - insetWidth * aspect * 0.7);
     const angles = rigHeight > rigWidth * 0.9 ? TALL_LAYOUT : WIDE_LAYOUT;
     const radians = { x: (angles.x * Math.PI) / 180, y: (angles.y * Math.PI) / 180 };
-    const nearest = Math.max(...depths, 0);
-    const farthest = Math.min(...depths, 0);
+    const nearest = Math.max(...layoutDepths, 0);
+    const farthest = Math.min(...layoutDepths, 0);
     const span = nearest - farthest;
     const fitWidth = (rigWidth * 0.84) / (Math.abs(Math.cos(radians.y)) + Math.abs(Math.sin(radians.y)) * angles.depth * span);
     const fitHeight = (rigHeight * 0.8) / (
@@ -148,9 +190,11 @@ export function StoryLayerStackView(props: {
         ? `rotateX(${angles.x}deg) rotateY(${angles.y}deg) translateZ(${(-middle).toFixed(1)}px)`
         : `translate(${(box.width / 2 - centerX).toFixed(1)}px, ${(box.height / 2 - centerY).toFixed(1)}px) scale(${flatScale.toFixed(3)})`;
 
-    // Tags, inset planes and probes are moved every frame without a render.
+    // Tags, level marks, inset planes and probes are moved every frame without a render.
     const tagRefs = useRef(new Map<string, HTMLElement>());
     const anchorRefs = useRef(new Map<string, HTMLElement>());
+    const markRefs = useRef(new Map<string, HTMLElement>());
+    const markAnchorRefs = useRef(new Map<string, HTMLElement>());
     const swayRefs = useRef(new Map<string, HTMLElement>());
     const probeNearRef = useRef<HTMLDivElement | null>(null);
     const probeFarRef = useRef<HTMLDivElement | null>(null);
@@ -163,7 +207,7 @@ export function StoryLayerStackView(props: {
             if (element) {
                 const origin = element.getBoundingClientRect();
                 // Each tag over its plane's top edge, nearest layer first; a tag that would cover one
-                // already placed moves up past it, so layers at one distance keep readable names.
+                // already placed moves up past it, so the layers of one level stack their names.
                 const placed: { left: number; right: number; top: number; bottom: number }[] = [];
                 for (const layer of stackRef.current) {
                     const key = sceneLayerKey(layer);
@@ -193,6 +237,15 @@ export function StoryLayerStackView(props: {
                     placed.push({ left: x, right: x + width, top: bottom - height, bottom });
                     tag.style.transform = `translate(${x.toFixed(1)}px, ${(bottom - height).toFixed(1)}px)`;
                 }
+                // Each level's distance under its plane's lower corner.
+                for (const [key, mark] of markRefs.current) {
+                    const anchor = markAnchorRefs.current.get(key);
+                    if (!anchor) {
+                        continue;
+                    }
+                    const point = anchor.getBoundingClientRect();
+                    mark.style.transform = `translate(${(point.left - origin.left - mark.offsetWidth / 2).toFixed(1)}px, ${(point.top - origin.top + 3).toFixed(1)}px)`;
+                }
                 const offset = layerSwayOffset(time, 4200, SWAY_AMPLITUDE);
                 for (const layer of stackRef.current) {
                     const plane = swayRefs.current.get(sceneLayerKey(layer));
@@ -209,7 +262,11 @@ export function StoryLayerStackView(props: {
 
     const indexOfKey = (layers: readonly StorySceneLayer[], key: string) => layers.findIndex(layer => sceneLayerKey(layer) === key);
 
-    /** A press on a plane's name: a click selects it, a sideways drag moves it nearer or farther. */
+    /**
+     * A press on a layer's name: a click selects it, a drag along the stack moves it nearer or farther.
+     * The distance follows the pointer in steps an author can read, and a plane that comes close to
+     * another level joins it.
+     */
     const beginDepthDrag = (event: ReactPointerEvent, layer: StorySceneLayer) => {
         if (event.button !== 0) {
             return;
@@ -223,17 +280,25 @@ export function StoryLayerStackView(props: {
         }
         const near = probeNearRef.current?.getBoundingClientRect();
         const far = probeFarRef.current?.getBoundingClientRect();
-        // One share of the camera on screen, read off two points of the turned view one share apart:
-        // a drag along it, toward the near point, is a layer coming nearer.
+        // One unit of depth on screen, read off two points of the turned view one unit apart: a drag
+        // along it, toward the near point, is a layer coming nearer.
         const axis = near && far ? { x: near.left - far.left, y: near.top - far.top } : { x: -depthUnit, y: 0 };
         const axisLength = axis.x * axis.x + axis.y * axis.y;
         if (axisLength < 1) {
             return;
         }
+        const unitPx = Math.sqrt(axisLength);
+        const base = stored;
+        const startDepth = layerDepthAt(sceneLayerDistance(layer));
+        // The levels the plane can join: every other layer's distance, once each.
+        const targets = new Map<number, number>();
+        for (const other of base) {
+            if (sceneLayerKey(other) !== key) {
+                targets.set(sceneLayerFollow(other), layerDepthAt(sceneLayerDistance(other)));
+            }
+        }
         const startX = event.clientX;
         const startY = event.clientY;
-        const startFollow = sceneLayerFollow(layer);
-        const base = stored;
         let moved = false;
         let latest: StorySceneLayer[] | null = null;
         const target = event.currentTarget as HTMLElement;
@@ -247,18 +312,43 @@ export function StoryLayerStackView(props: {
             if (!moved) {
                 moved = true;
                 setDraggingKey(key);
+                setHeldStack(base);
             }
-            const follow = snapLayerFollow(base, key, startFollow + (dx * axis.x + dy * axis.y) / axisLength);
-            const from = latest ?? base;
-            latest = setSceneLayerFollow(from, indexOfKey(from, key), follow);
+            let depth = Math.min(layerDepthAt(STORY_LAYER_DISTANCE_MIN), Math.max(layerDepthAt(Infinity), startDepth + (dx * axis.x + dy * axis.y) / axisLength));
+            // The background stays behind the characters.
+            if (layer.kind === "background") {
+                depth = Math.min(depth, 0);
+            }
+            let follow: number | null = null;
+            let drawn = depth;
+            let closest = LEVEL_SNAP_PX;
+            for (const [share, at] of targets) {
+                const gap = Math.abs(at - depth) * unitPx;
+                if (gap <= closest && (layer.kind !== "background" || share <= 1)) {
+                    closest = gap;
+                    follow = share;
+                    drawn = at;
+                }
+            }
+            if (follow === null) {
+                const distance = roundLayerDistance(layerDistanceAtDepth(depth));
+                follow = layerFollowAtDistance(distance);
+                if (distance === Infinity) {
+                    drawn = layerDepthAt(Infinity);
+                }
+            }
+            latest = setSceneLayerFollow(base, indexOfKey(base, key), follow);
             setDraft(latest);
+            setDragDepth({ key, depth: drawn });
         };
         const handleUp = () => {
             target.removeEventListener("pointermove", handleMove);
             target.removeEventListener("pointerup", handleUp);
             target.removeEventListener("pointercancel", handleUp);
             setDraggingKey(null);
-            if (moved && latest) {
+            setDragDepth(null);
+            setHeldStack(null);
+            if (moved && latest && !sameSceneLayerStack(latest, base)) {
                 api.setSceneLayers(latest);
             }
             setDraft(null);
@@ -268,9 +358,10 @@ export function StoryLayerStackView(props: {
         target.addEventListener("pointercancel", handleUp);
     };
 
-    // The list: a row dragged to another place in the stack. A gap index, one line, as every list does.
+    // The list: a row dragged onto a level joins it; dragged between two levels it becomes a level of
+    // its own, at a distance between theirs. A gap index and one line, as every list does.
     const rowsRef = useRef<HTMLDivElement | null>(null);
-    const [dropGap, setDropGap] = useState<number | null>(null);
+    const [rowDrop, setRowDrop] = useState<RowDrop | null>(null);
     const beginRowDrag = (event: ReactPointerEvent, layer: StorySceneLayer) => {
         if (event.button !== 0 || readOnly || layer.kind === "displayable") {
             return;
@@ -278,27 +369,69 @@ export function StoryLayerStackView(props: {
         event.preventDefault();
         event.stopPropagation();
         const key = sceneLayerKey(layer);
-        const from = indexOfKey(stored, key);
+        const base = stored;
+        const from = indexOfKey(base, key);
+        const baseLevels = sceneLayerLevels(base);
         const startY = event.clientY;
         let moved = false;
-        let gap: number | null = null;
+        let drop: RowDrop | null = null;
         const target = event.currentTarget as HTMLElement;
         target.setPointerCapture?.(event.pointerId);
-        const gapAt = (clientY: number): number | null => {
-            const rows = rowsRef.current ? [...rowsRef.current.querySelectorAll<HTMLElement>("[data-layer-row]")] : [];
-            let index = rows.length;
-            for (let at = 0; at < rows.length; at += 1) {
-                const rect = rows[at].getBoundingClientRect();
-                if (clientY < rect.top + rect.height / 2) {
-                    index = at;
-                    break;
-                }
-            }
-            // The gaps either side of the row itself put it where it already is.
-            if (index === from || index === from + 1) {
+        const landed = (next: StorySceneLayer[] | null): StorySceneLayer[] | null => (next && !sameSceneLayerStack(next, base) ? next : null);
+        const onLevel = (level: SceneLayerLevel): RowDrop | null => {
+            // Onto the edge of the level nearest where the row came from.
+            if (from >= level.start && from < level.end) {
                 return null;
             }
-            return moveSceneLayer(stored, from, index > from ? index - 1 : index) ? index : null;
+            const next = landed(placeSceneLayer(base, from, from < level.start ? level.start - 1 : level.end, level.follow));
+            return next ? { next, joins: levelKey(base, level), gap: null, distance: null } : null;
+        };
+        const atGap = (gap: number): RowDrop | null => {
+            // The neighbours the row would land between, itself aside.
+            let front = gap - 1;
+            if (front === from) front -= 1;
+            let behind = gap;
+            if (behind === from) behind += 1;
+            const frontShare = front >= 0 ? sceneLayerFollow(base[front]) : undefined;
+            const behindShare = behind < base.length ? sceneLayerFollow(base[behind]) : undefined;
+            const to = gap > from ? gap - 1 : gap;
+            if (frontShare !== undefined && frontShare === behindShare) {
+                const level = baseLevels.find(candidate => candidate.follow === frontShare && front >= candidate.start && front < candidate.end);
+                const next = landed(placeSceneLayer(base, from, to, frontShare));
+                return next ? { next, joins: level ? levelKey(base, level) : null, gap, distance: null } : null;
+            }
+            let share = sceneLayerFollowBetween(frontShare, behindShare);
+            if (share === null) {
+                const next = landed(placeSceneLayer(base, from, to, frontShare ?? behindShare ?? 1));
+                return next ? { next, joins: null, gap, distance: null } : null;
+            }
+            // At a round distance where one lies between the two.
+            const round = roundLayerDistance(1 / Math.max(share, 1e-9));
+            const roundShare = share === 0 ? 0 : layerFollowAtDistance(round);
+            if ((frontShare === undefined || roundShare < frontShare) && (behindShare === undefined || roundShare > behindShare)) {
+                share = roundShare;
+            }
+            const next = landed(placeSceneLayer(base, from, to, share));
+            return next ? { next, joins: null, gap, distance: share === 0 ? Infinity : 1 / share } : null;
+        };
+        const dropAt = (clientY: number): RowDrop | null => {
+            const rows = rowsRef.current ? [...rowsRef.current.querySelectorAll<HTMLElement>("[data-layer-row]")] : [];
+            for (let at = 0; at < rows.length; at += 1) {
+                const rect = rows[at].getBoundingClientRect();
+                if (clientY >= rect.bottom) {
+                    continue;
+                }
+                const share = (clientY - rect.top) / Math.max(1, rect.height);
+                if (share < 0.28) {
+                    return atGap(at);
+                }
+                if (share > 0.72) {
+                    return atGap(at + 1);
+                }
+                const level = baseLevels.find(candidate => at >= candidate.start && at < candidate.end);
+                return level ? onLevel(level) : null;
+            }
+            return atGap(rows.length);
         };
         const handleMove = (move: PointerEvent) => {
             if (!moved && Math.abs(move.clientY - startY) < CLICK_SLOP_PX) {
@@ -308,20 +441,17 @@ export function StoryLayerStackView(props: {
                 moved = true;
                 setDraggingKey(key);
             }
-            gap = gapAt(move.clientY);
-            setDropGap(gap);
+            drop = dropAt(move.clientY);
+            setRowDrop(drop);
         };
         const handleUp = () => {
             target.removeEventListener("pointermove", handleMove);
             target.removeEventListener("pointerup", handleUp);
             target.removeEventListener("pointercancel", handleUp);
             setDraggingKey(null);
-            setDropGap(null);
-            if (moved && gap !== null) {
-                const next = moveSceneLayer(stored, from, gap > from ? gap - 1 : gap);
-                if (next) {
-                    api.setSceneLayers(next);
-                }
+            setRowDrop(null);
+            if (moved && drop) {
+                api.setSceneLayers(drop.next);
             } else if (!moved) {
                 setSelectedKey(key);
             }
@@ -329,6 +459,25 @@ export function StoryLayerStackView(props: {
         target.addEventListener("pointermove", handleMove);
         target.addEventListener("pointerup", handleUp);
         target.addEventListener("pointercancel", handleUp);
+    };
+
+    /** A level at a typed distance: its layers go together, the characters' layer staying where it is. */
+    const setLevelDistance = (level: SceneLayerLevel, distance: number) => {
+        let follow = layerFollowAtDistance(distance);
+        // A distance that reads as another level's is that level.
+        const typed = formatLayerDistance(distance);
+        const same = sceneLayerLevels(stored).find(other => other.follow !== level.follow && formatLayerDistance(other.follow === 0 ? Infinity : 1 / other.follow) === typed);
+        if (same) {
+            follow = same.follow;
+        }
+        const indices: number[] = [];
+        for (let index = level.start; index < level.end; index += 1) {
+            indices.push(index);
+        }
+        const next = setSceneLayerFollows(stored, indices, follow);
+        if (!sameSceneLayerStack(next, stored)) {
+            api.setSceneLayers(next);
+        }
     };
 
     const addLayer = () => {
@@ -351,6 +500,7 @@ export function StoryLayerStackView(props: {
     };
 
     const emphasized = draggingKey ?? hoveredKey ?? selectedKey;
+    const levelOf = (index: number) => levels.find(level => index >= level.start && index < level.end) ?? { follow: 1, start: index, end: index + 1 };
 
     return (
         <div
@@ -380,7 +530,14 @@ export function StoryLayerStackView(props: {
                 >
                     {stack.map((layer, index) => {
                         const key = sceneLayerKey(layer);
-                        const z = exploded ? depths[index] * depthUnit : 0;
+                        const level = levelOf(index);
+                        const dragged = dragDepth?.key === key;
+                        // The layers of one level a hair apart, back to front, so they draw in stack order.
+                        const z = !exploded
+                            ? 0
+                            : dragged
+                                ? dragDepth.depth * depthUnit
+                                : depths[index] * depthUnit + (level.end - 1 - index) * LEVEL_HAIR_PX;
                         const lit = emphasized === key;
                         return (
                             <div
@@ -391,7 +548,7 @@ export function StoryLayerStackView(props: {
                                 )}
                                 style={{
                                     transform: `translateZ(${z.toFixed(1)}px)`,
-                                    transition: draggingKey === key ? "none" : "transform 520ms cubic-bezier(0.2, 0.7, 0.2, 1)",
+                                    transition: dragged ? "none" : "transform 520ms cubic-bezier(0.2, 0.7, 0.2, 1)",
                                     // Back to front, as the stage draws them, for the moment the planes are flat.
                                     zIndex: stack.length - index,
                                     backgroundColor: layer.kind === "background" && !sources.get(key) ? "rgba(255,255,255,0.04)" : undefined,
@@ -411,16 +568,45 @@ export function StoryLayerStackView(props: {
                                     }}
                                     className="absolute left-1/2 top-0 h-px w-px"
                                 />
+                                {index === level.start ? (
+                                    <div
+                                        ref={element => {
+                                            if (element) markAnchorRefs.current.set(key, element);
+                                            else markAnchorRefs.current.delete(key);
+                                        }}
+                                        className="absolute bottom-0 left-1/2 h-px w-px"
+                                    />
+                                ) : null}
                             </div>
                         );
                     })}
-                    {/* Two points one share apart, read when a drag starts to turn screen pixels into shares. */}
+                    {/* Two points one unit of depth apart, read when a drag starts to turn screen pixels into depth. */}
                     <div ref={probeNearRef} className="absolute left-1/2 top-0 h-px w-px" style={{ transform: "translateZ(0px)" }} />
                     <div ref={probeFarRef} className="absolute left-1/2 top-0 h-px w-px" style={{ transform: `translateZ(${(-depthUnit).toFixed(1)}px)` }} />
                 </div>
             </div>
 
-            {/* Each plane's name, over the plane: drag it sideways to move the layer. */}
+            {/* Each level's distance, under its plane. */}
+            <div className={cn("pointer-events-none absolute inset-0 transition-opacity duration-300", exploded ? "opacity-100" : "opacity-0")}>
+                {levels.map(level => {
+                    const key = levelKey(stack, level);
+                    return (
+                        <span
+                            key={key}
+                            ref={element => {
+                                if (element) markRefs.current.set(key, element);
+                                else markRefs.current.delete(key);
+                            }}
+                            className="absolute left-0 top-0 whitespace-nowrap text-2xs tabular-nums text-fg-subtle"
+                            data-story-layer-mark={key}
+                        >
+                            {formatLayerDistance(level.follow === 0 ? Infinity : 1 / level.follow)}
+                        </span>
+                    );
+                })}
+            </div>
+
+            {/* Each layer's name, over its plane: drag it along the stack to move the layer. */}
             <div className={cn("pointer-events-none absolute inset-0 transition-opacity duration-300", exploded ? "opacity-100" : "opacity-0")}>
                 {stack.map(layer => {
                     const key = sceneLayerKey(layer);
@@ -446,16 +632,16 @@ export function StoryLayerStackView(props: {
                             onPointerLeave={() => setHoveredKey(current => (current === key ? null : current))}
                         >
                             <span className="max-w-[9rem] truncate">{storySceneLayerLabel(layer)}</span>
-                            {/* The share where the author is looking at this layer; the list carries every one. */}
+                            {/* The distance where the author is looking at this layer; the list carries every one. */}
                             {emphasized === key ? (
-                                <span className="tabular-nums text-fg-subtle">{t("story.sceneLayers.follow", { percent: String(storyLayerFollowPercent(layer)) })}</span>
+                                <span className="tabular-nums text-fg-subtle">{t("story.sceneLayers.distance", { value: formatLayerDistance(sceneLayerDistance(layer)) })}</span>
                             ) : null}
                         </button>
                     );
                 })}
             </div>
 
-            {/* The stack, front to back. */}
+            {/* The stack, front to back, in levels. */}
             <div
                 className={cn(
                     "absolute inset-y-0 left-0 flex flex-col border-r border-edge bg-surface/95 transition-opacity duration-300",
@@ -465,69 +651,102 @@ export function StoryLayerStackView(props: {
             >
                 <div className="flex items-center justify-between px-2.5 pb-1 pt-2 text-2xs text-fg-subtle">
                     <span>{t("story.sceneLayers.frontToBack")}</span>
-                    <span>{t("story.sceneLayers.followColumn")}</span>
+                    <span data-tip={t("story.sceneLayers.distanceTip")}>{t("story.sceneLayers.distanceColumn")}</span>
                 </div>
                 <div ref={rowsRef} className="min-h-0 flex-1 overflow-y-auto px-1">
-                    {stack.map((layer, index) => {
-                        const key = sceneLayerKey(layer);
-                        const fixed = layer.kind === "displayable";
-                        const uses = layer.kind === "custom" ? api.layerUses(layer.id) : 0;
+                    {levels.map((level, levelIndex) => {
+                        const key = levelKey(stack, level);
+                        const members = stack.slice(level.start, level.end);
+                        const movable = members.some(layer => layer.kind !== "displayable");
+                        const holdsCharacters = members.some(layer => layer.kind === "displayable");
                         return (
                             <div
                                 key={key}
-                                data-layer-row={key}
                                 className={cn(
-                                    "group relative flex h-7 items-center gap-1 rounded-md pl-0.5 pr-1.5 text-xs",
-                                    selectedKey === key ? "bg-primary/15 text-fg" : hoveredKey === key ? "bg-fill text-fg" : "text-fg-muted",
-                                    draggingKey === key && "opacity-60",
+                                    "relative flex rounded-md",
+                                    levelIndex > 0 && "mt-0.5",
+                                    rowDrop?.joins === key && rowDrop.gap === null && "bg-primary/10 ring-1 ring-inset ring-primary/40",
                                 )}
-                                onPointerEnter={() => setHoveredKey(key)}
-                                onPointerLeave={() => setHoveredKey(current => (current === key ? null : current))}
-                                onPointerDown={event => {
-                                    if (event.button === 0) setSelectedKey(key);
-                                }}
+                                data-layer-level={key}
                             >
-                                {dropGap === index ? <DropIndicator edge="before" /> : null}
-                                {dropGap === stack.length && index === stack.length - 1 ? <DropIndicator edge="after" /> : null}
-                                <span
-                                    className={cn("grid h-6 w-4 shrink-0 place-items-center text-fg-subtle", !fixed && !readOnly && "cursor-grab")}
-                                    style={{ touchAction: "none" }}
-                                    onPointerDown={event => beginRowDrag(event, layer)}
-                                    data-tip={fixed ? t("story.sceneLayers.fixedTip") : undefined}
-                                >
-                                    {fixed ? <Lock className="h-3 w-3" /> : <GripVertical className="h-3.5 w-3.5" />}
-                                </span>
-                                {layer.kind === "custom" && renamingId === layer.id ? (
-                                    <LayerNameInput
-                                        layer={layer}
-                                        stack={stored}
-                                        onCommit={name => commitRename(layer, name)}
-                                        onCancel={() => setRenamingId(null)}
-                                    />
-                                ) : (
-                                    <span
-                                        className="min-w-0 flex-1 truncate"
-                                        onDoubleClick={() => {
-                                            if (layer.kind === "custom" && !readOnly) setRenamingId(layer.id);
-                                        }}
-                                    >
-                                        {storySceneLayerLabel(layer)}
-                                    </span>
-                                )}
-                                {layer.kind === "custom" && !readOnly && renamingId !== layer.id ? (
-                                    <ToolbarButton
-                                        size="xs"
-                                        className="hidden h-5 w-5 shrink-0 group-hover:grid"
-                                        aria-label={t("story.sceneLayers.remove")}
-                                        data-tip={uses > 0 ? (uses === 1 ? t("story.sceneLayers.inUseOne") : t("story.sceneLayers.inUseMany", { count: String(uses) })) : t("story.sceneLayers.remove")}
-                                        disabled={uses > 0}
-                                        onPointerDown={event => event.stopPropagation()}
-                                        onClick={() => removeLayer(layer)}
-                                    >
-                                        <Trash2 className="h-3 w-3" />
-                                    </ToolbarButton>
-                                ) : null}
-                                <span className="shrink-0 tabular-nums text-2xs text-fg-subtle">{storyLayerFollowPercent(layer)}%</span>
+                                <div className="min-w-0 flex-1">
+                                    {members.map((layer, offset) => {
+                                        const index = level.start + offset;
+                                        const layerKey = sceneLayerKey(layer);
+                                        const fixed = layer.kind === "displayable";
+                                        const uses = layer.kind === "custom" ? api.layerUses(layer.id) : 0;
+                                        return (
+                                            <div
+                                                key={layerKey}
+                                                data-layer-row={layerKey}
+                                                className={cn(
+                                                    "group relative flex h-7 items-center gap-1 rounded-md pl-0.5 pr-1 text-xs",
+                                                    selectedKey === layerKey ? "bg-primary/15 text-fg" : hoveredKey === layerKey ? "bg-fill text-fg" : "text-fg-muted",
+                                                    draggingKey === layerKey && "opacity-60",
+                                                )}
+                                                onPointerEnter={() => setHoveredKey(layerKey)}
+                                                onPointerLeave={() => setHoveredKey(current => (current === layerKey ? null : current))}
+                                                onPointerDown={event => {
+                                                    if (event.button === 0) setSelectedKey(layerKey);
+                                                }}
+                                            >
+                                                {rowDrop?.gap === index ? <RowDropLine distance={rowDrop.distance} edge="before" /> : null}
+                                                {rowDrop?.gap === stack.length && index === stack.length - 1 ? <RowDropLine distance={rowDrop.distance} edge="after" /> : null}
+                                                <span
+                                                    className={cn("grid h-6 w-4 shrink-0 place-items-center text-fg-subtle", !fixed && !readOnly && "cursor-grab")}
+                                                    style={{ touchAction: "none" }}
+                                                    onPointerDown={event => beginRowDrag(event, layer)}
+                                                    data-tip={fixed ? t("story.sceneLayers.fixedTip") : undefined}
+                                                >
+                                                    {fixed ? <Lock className="h-3 w-3" /> : <GripVertical className="h-3.5 w-3.5" />}
+                                                </span>
+                                                {layer.kind === "custom" && renamingId === layer.id ? (
+                                                    <LayerNameInput
+                                                        layer={layer}
+                                                        stack={stored}
+                                                        onCommit={name => commitRename(layer, name)}
+                                                        onCancel={() => setRenamingId(null)}
+                                                    />
+                                                ) : (
+                                                    <span
+                                                        className="min-w-0 flex-1 truncate"
+                                                        onDoubleClick={() => {
+                                                            if (layer.kind === "custom" && !readOnly) setRenamingId(layer.id);
+                                                        }}
+                                                    >
+                                                        {storySceneLayerLabel(layer)}
+                                                    </span>
+                                                )}
+                                                {layer.kind === "custom" && !readOnly && renamingId !== layer.id ? (
+                                                    <ToolbarButton
+                                                        size="xs"
+                                                        className="hidden h-5 w-5 shrink-0 group-hover:grid"
+                                                        aria-label={t("story.sceneLayers.remove")}
+                                                        data-tip={uses > 0 ? (uses === 1 ? t("story.sceneLayers.inUseOne") : t("story.sceneLayers.inUseMany", { count: String(uses) })) : t("story.sceneLayers.remove")}
+                                                        disabled={uses > 0}
+                                                        onPointerDown={event => event.stopPropagation()}
+                                                        onClick={() => removeLayer(layer)}
+                                                    >
+                                                        <Trash2 className="h-3 w-3" />
+                                                    </ToolbarButton>
+                                                ) : null}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <LevelDistance
+                                    distance={level.follow === 0 ? Infinity : 1 / level.follow}
+                                    span={members.length}
+                                    editable={!readOnly && movable && draft === null}
+                                    tip={!movable
+                                        ? t("story.sceneLayers.fixedTip")
+                                        : readOnly
+                                            ? api.readOnlyReason ?? undefined
+                                            : holdsCharacters
+                                                ? t("story.sceneLayers.levelKeepsCharacters")
+                                                : t("story.sceneLayers.distanceTip")}
+                                    onCommit={distance => setLevelDistance(level, distance)}
+                                />
                             </div>
                         );
                     })}
@@ -575,6 +794,110 @@ export function StoryLayerStackView(props: {
                 })}
                 <div className="absolute left-1.5 top-1 text-2xs text-white/70 [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]">{t("story.sceneLayers.swayCaption")}</div>
             </div>
+        </div>
+    );
+}
+
+/** The line a dragged row would land at, with the distance it would take there when that is a new level. */
+function RowDropLine(props: { edge: "before" | "after"; distance: number | null }) {
+    return (
+        <>
+            <DropIndicator edge={props.edge} />
+            {props.distance !== null ? (
+                <span
+                    className={cn(
+                        "pointer-events-none absolute right-0 z-10 rounded-sm bg-surface-raised px-1 text-2xs tabular-nums text-primary shadow-sm",
+                        props.edge === "before" ? "-top-2" : "-bottom-2",
+                    )}
+                >
+                    {formatLayerDistance(props.distance)}
+                </span>
+            ) : null}
+        </>
+    );
+}
+
+/**
+ * A level's distance, written once beside its layers: click it to type another. Enter keeps a
+ * distance within range, Escape keeps the old one.
+ */
+function LevelDistance(props: {
+    distance: number;
+    /** How many rows the level holds, which a bracket spans. */
+    span: number;
+    editable: boolean;
+    tip: string | undefined;
+    onCommit: (distance: number) => void;
+}) {
+    const { t } = useTranslation();
+    const [editing, setEditing] = useState<string | null>(null);
+    const inputRef = useRef<HTMLInputElement | null>(null);
+    useLayoutEffect(() => {
+        if (editing !== null) {
+            inputRef.current?.focus();
+            inputRef.current?.select();
+        }
+        // Only on entering the field, not on every keystroke.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editing !== null]);
+    const label = formatLayerDistance(props.distance);
+    const parsed = editing === null ? null : parseLayerDistance(editing);
+    const commit = () => {
+        if (parsed !== null) {
+            props.onCommit(parsed);
+        }
+        setEditing(null);
+    };
+    const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+        event.stopPropagation();
+        if (event.nativeEvent.isComposing) {
+            return;
+        }
+        if (event.key === "Enter") {
+            event.preventDefault();
+            if (parsed !== null) commit();
+        } else if (event.key === "Escape") {
+            event.preventDefault();
+            setEditing(null);
+        }
+    };
+    return (
+        <div className="relative flex w-10 shrink-0 items-center justify-end pr-1">
+            {props.span > 1 ? <span aria-hidden className="pointer-events-none absolute bottom-1.5 left-0.5 top-1.5 w-1 rounded-l-sm border-y border-l border-edge" /> : null}
+            {editing !== null ? (
+                <input
+                    ref={inputRef}
+                    value={editing}
+                    onChange={event => setEditing(event.target.value)}
+                    onKeyDown={handleKeyDown}
+                    onBlur={commit}
+                    onPointerDown={event => event.stopPropagation()}
+                    aria-invalid={parsed === null}
+                    data-tip={parsed === null ? t("story.sceneLayers.distanceInvalid") : undefined}
+                    className={cn(
+                        "h-6 w-8 rounded-md border bg-surface-raised px-1 text-right text-2xs tabular-nums text-fg outline-none",
+                        parsed === null ? "border-danger" : "border-primary/50",
+                    )}
+                    data-story-layer-distance-input=""
+                />
+            ) : (
+                <button
+                    type="button"
+                    className={cn(
+                        "h-6 min-w-[1.75rem] rounded-md px-1 text-right text-2xs tabular-nums",
+                        props.editable ? "text-fg-muted hover:bg-fill hover:text-fg" : "cursor-default text-fg-subtle",
+                    )}
+                    aria-disabled={!props.editable}
+                    data-tip={props.tip}
+                    data-story-layer-distance={label}
+                    onPointerDown={event => event.stopPropagation()}
+                    onClick={() => {
+                        if (props.editable) setEditing(label);
+                    }}
+                >
+                    {label}
+                </button>
+            )}
         </div>
     );
 }

@@ -3,7 +3,13 @@ import type { StorySceneLayer } from "./document";
 import {
     addSceneLayer,
     isDefaultSceneLayerStack,
+    layerFollowAtDistance,
     moveSceneLayer,
+    placeSceneLayer,
+    sceneLayerDistance,
+    sceneLayerFollowBetween,
+    sceneLayerLevels,
+    setSceneLayerFollows,
     normalizeSceneLayerStack,
     rebindSceneLayerIds,
     sceneLayerFollow,
@@ -134,5 +140,54 @@ describe("sceneLayersForMovedRows", () => {
         expect([...carried.rebind]).toEqual([["hills", "hills-2"]]);
         expect(rebindSceneLayerIds(rows[1], carried.rebind)).toEqual({ payload: { target: { kind: "custom", sourceBlockId: "hills-2" } } });
         expect(rebindSceneLayerIds(rows[0], carried.rebind)).toBe(rows[0]);
+    });
+});
+
+describe("distances and levels", () => {
+    it("counts a layer's distance in the characters', with a layer that does not move infinitely far", () => {
+        expect(sceneLayerDistance({ kind: "displayable" })).toBe(1);
+        expect(sceneLayerDistance(custom("hills", 0.25))).toBe(4);
+        expect(sceneLayerDistance({ kind: "background", follow: 0 })).toBe(Infinity);
+        expect(layerFollowAtDistance(3)).toBe(0.3333);
+        expect(sceneLayerDistance(custom("x", layerFollowAtDistance(3)))).toBeCloseTo(3, 3);
+        expect(layerFollowAtDistance(Infinity)).toBe(0);
+        expect(layerFollowAtDistance(0.1)).toBe(2);
+    });
+
+    it("makes one level of each run of layers at one distance", () => {
+        const stack = normalizeSceneLayerStack([custom("fog", 2), { kind: "displayable" }, custom("street"), custom("hills", 0.25), { kind: "background", follow: 0.25 }]);
+        expect(sceneLayerLevels(stack)).toEqual([
+            { follow: 2, start: 0, end: 1 },
+            { follow: 1, start: 1, end: 3 },
+            { follow: 0.25, start: 3, end: 5 },
+        ]);
+    });
+
+    it("puts a new level halfway between two distances as the eye reads them, and twice as far past the last", () => {
+        expect(sceneLayerFollowBetween(0.5, 0.125)).toBe(0.25);
+        expect(sceneLayerFollowBetween(1, undefined)).toBe(0.5);
+        expect(sceneLayerFollowBetween(0.5, 0)).toBe(0.25);
+        expect(sceneLayerFollowBetween(undefined, 1)).toBe(1.5);
+        expect(sceneLayerFollowBetween(undefined, 2)).toBeNull();
+        expect(sceneLayerFollowBetween(1, 1)).toBeNull();
+        expect(sceneLayerFollowBetween(0.01, undefined)).toBe(0);
+    });
+
+    it("moves a whole level, leaving the characters' layer where it is", () => {
+        const stack = normalizeSceneLayerStack([{ kind: "displayable" }, custom("street"), { kind: "background" }, custom("hills", 0.5)]);
+        const next = setSceneLayerFollows(stack, [0, 1, 2], 0.25);
+        expect(keys(next)).toEqual(["displayable", "hills", "street", "background"]);
+        expect(shares(next)).toEqual([1, 0.5, 0.25, 0.25]);
+    });
+
+    it("joins a level when put inside it, and makes a level of its own between two", () => {
+        const stack = normalizeSceneLayerStack([{ kind: "displayable" }, custom("street"), custom("hills", 0.5), custom("sky", 0.125), { kind: "background", follow: 0.125 }]);
+        const joined = placeSceneLayer(stack, 1, 3, 1);
+        expect(joined && keys(joined)).toEqual(["displayable", "hills", "sky", "street", "background"]);
+        expect(joined && shares(joined)).toEqual([1, 0.5, 0.125, 0.125, 0.125]);
+        const between = placeSceneLayer(stack, 1, 2, 0.25);
+        expect(between && keys(between)).toEqual(["displayable", "hills", "street", "sky", "background"]);
+        expect(between && sceneLayerLevels(between).length).toBe(4);
+        expect(placeSceneLayer(stack, 4, 0, 1)).toBeNull();
     });
 });

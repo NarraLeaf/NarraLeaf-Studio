@@ -7,7 +7,7 @@ import type {
     StorySceneLayer,
 } from "@shared/types/story";
 import { resolveStoryLayerRef, sceneLayerStack, storyLayerRefFor, storyLayerRefIs } from "@shared/types/story";
-import { storyLayerFollowLabel, storyLayerLabel, storySceneLayerLabel } from "@/lib/story/storyLayerLabel";
+import { storyLayerDistanceLabel, storyLayerLabel, storySceneLayerLabel } from "@/lib/story/storyLayerLabel";
 import { useTranslation } from "@/lib/i18n";
 import { STAGE_OPTION_SELECTOR, useAutoMenuPlacement } from "./DisplayableTargetField";
 import { useFloatingLayer } from "@/lib/components/layout";
@@ -126,7 +126,7 @@ export function StoryLayerField(props: {
                             <LayerRow
                                 key={layer.kind === "custom" ? layer.id : layer.kind}
                                 label={storySceneLayerLabel(layer)}
-                                hint={layer.kind === "displayable" ? t("story.layerField.displayableHint") : storyLayerFollowLabel(layer)}
+                                hint={layer.kind === "displayable" ? t("story.layerField.displayableHint") : storyLayerDistanceLabel(layer)}
                                 active={!unresolved && storyLayerRefIs(scene, props.value, layer)}
                                 onChoose={() => choose(layer)}
                             />

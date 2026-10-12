@@ -7,14 +7,16 @@
  *
  * ## The grammar
  *
- *     #layer <name> [follow=30%]    one of the scene's own layers
+ *     #layer <name> [distance=3]    one of the scene's own layers
  *     #layer displayableLayer       the characters' layer
- *     #layer backgroundLayer [follow=0%]
+ *     #layer backgroundLayer [distance=inf]
  *
- * The lines are the stack in order, nearest first. `follow=` is how much of the camera's movement the
- * layer follows - a percentage, or a share (`follow=0.3`) - and a line that leaves it out follows all
- * of it. A layer can follow no more than the one in front of it; a line that says otherwise is moved
- * to its neighbour's share, and the check says so.
+ * The lines are the stack in order, nearest first. `distance=` is how far away the layer is, counted
+ * in the characters' distance, which is 1: a layer at 2 is twice as far and follows half of the
+ * camera's movement, and one at `inf` does not move with it. A line that leaves it out is at 1. A layer
+ * is no nearer than the one in front of it; a line that says otherwise is moved to its neighbour's
+ * distance, and the check says so. `follow=30%` - the share of the camera's movement, which the first
+ * files with layers wrote - still reads.
  *
  * ## A file that states no `#layer` changes nothing
  *
@@ -31,9 +33,12 @@ import {
     findSceneLayerByName,
     isDefaultSceneLayerStack,
     normalizeSceneLayerStack,
+    layerFollowAtDistance,
     sceneLayerFollow,
     sceneLayerNameProblem,
     sceneLayerStack,
+    STORY_LAYER_DISTANCE_MAX,
+    STORY_LAYER_DISTANCE_MIN,
     STORY_LAYER_FOLLOW_MAX,
 } from "@shared/types/story";
 import { errorAt, warningAt, type StoryFileDiagnostic } from "./ast";
@@ -63,9 +68,26 @@ export function printSceneLayers(scene: StoryScene): string[] {
         const follow = sceneLayerFollow(layer);
         return follow === 1 || layer.kind === "displayable"
             ? `${DIRECTIVE_LAYER} ${word}`
-            : `${DIRECTIVE_LAYER} ${word} follow=${Math.round(follow * 100)}%`;
+            : `${DIRECTIVE_LAYER} ${word} distance=${printDistance(follow)}`;
     });
 }
+
+/** A share as a distance, in the fewest digits that read back as the same share. */
+function printDistance(follow: number): string {
+    if (follow === 0) {
+        return INFINITY_WORD;
+    }
+    const distance = 1 / follow;
+    for (let digits = 1; digits <= 8; digits += 1) {
+        const text = String(Number(distance.toPrecision(digits)));
+        if (layerFollowAtDistance(Number(text)) === follow) {
+            return text;
+        }
+    }
+    return String(distance);
+}
+
+const INFINITY_WORD = "inf";
 
 /** `#layer` arguments: the name (bare, or quoted when it has spaces) and `key=value` settings. */
 function tokenize(text: string): string[] | null {
@@ -94,6 +116,19 @@ function tokenize(text: string): string[] | null {
         tokens.push(token);
     }
     return tokens;
+}
+
+/** A `distance=` value as a share: a number within range, or `inf`. Null when it is neither. */
+function readDistance(value: string): number | null {
+    const word = value.trim().toLowerCase();
+    if (word === INFINITY_WORD || word === "infinity" || word === "\u221e") {
+        return 0;
+    }
+    const distance = Number(word);
+    if (word === "" || !Number.isFinite(distance) || distance < STORY_LAYER_DISTANCE_MIN || distance > STORY_LAYER_DISTANCE_MAX) {
+        return null;
+    }
+    return layerFollowAtDistance(distance);
 }
 
 /** A `follow=` value as a share: `30%`, or `0.3`. Null when it is neither, or out of range. */
@@ -126,18 +161,18 @@ export function applySceneLayerDirectives(
     for (const directive of directives) {
         const tokens = tokenize(directive.value);
         if (!tokens || tokens.length === 0) {
-            diagnostics.push(errorAt("file.bad_setting", `${DIRECTIVE_LAYER} takes a layer name (quoted when it has spaces) and an optional follow=.`, directive.line));
+            diagnostics.push(errorAt("file.bad_setting", `${DIRECTIVE_LAYER} takes a layer name (quoted when it has spaces) and an optional distance=.`, directive.line));
             refused = true;
             continue;
         }
         let follow: number | undefined;
         for (const token of tokens.slice(1)) {
             const [key, value = ""] = token.split("=", 2);
-            const share = key === "follow" ? readFollow(value) : null;
+            const share = key === "distance" ? readDistance(value) : key === "follow" ? readFollow(value) : null;
             if (share === null) {
                 diagnostics.push(errorAt(
                     "file.bad_setting",
-                    `"${token}" is not a ${DIRECTIVE_LAYER} setting. It takes follow=, a percentage from 0% to ${STORY_LAYER_FOLLOW_MAX * 100}%.`,
+                    `"${token}" is not a ${DIRECTIVE_LAYER} setting. It takes distance=, from ${STORY_LAYER_DISTANCE_MIN} to ${STORY_LAYER_DISTANCE_MAX} or ${INFINITY_WORD}.`,
                     directive.line,
                 ));
                 refused = true;
@@ -179,8 +214,8 @@ export function applySceneLayerDirectives(
             const line = directives.find(directive => directive.value.trim().startsWith(layer.kind === "custom" ? layer.name : BACKGROUND_WORD))?.line;
             diagnostics.push(warningAt(
                 "file.layer_follow_adjusted",
-                `${DIRECTIVE_LAYER} ${layer.kind === "custom" ? layer.name : BACKGROUND_WORD}: a layer follows no more of the camera than the one in front of it, `
-                    + `so it follows ${Math.round(sceneLayerFollow(settled) * 100)}% here.`,
+                `${DIRECTIVE_LAYER} ${layer.kind === "custom" ? layer.name : BACKGROUND_WORD}: a layer is no nearer than the one in front of it, `
+                    + `so it is at distance=${printDistance(sceneLayerFollow(settled))} here.`,
                 line,
             ));
         }
