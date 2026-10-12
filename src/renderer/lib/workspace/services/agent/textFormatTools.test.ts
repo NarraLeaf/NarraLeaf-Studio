@@ -310,6 +310,30 @@ describe("scene_create in a story it creates, and the chapter tools", () => {
         expect(missing.hint).toContain('"Chapter 1"');
     }, 60_000);
 
+    it("takes a chapter's rename or deletion back without taking back rows written since", async () => {
+        const { story, storyId, sceneId, history, run } = createHarness();
+        const rows = () => Object.keys(story.getStoryDocument(storyId).scenes[sceneId].blocks).sort();
+        const chapters = () => story.getStoryDocument(storyId).chapters.map(chapter => chapter.name);
+        await run(chapterRename, { chapter: "Chapter 1", name: "Act One" });
+        story.insertBlock(storyId, sceneId, note("b", "written after the rename"), { parentId: null });
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(chapters()).toEqual(["Chapter 1"]);
+        expect(rows()).toEqual(["a", "b"]);
+        expect(history.redo(projectHistoryScope())).toBe(true);
+        expect(chapters()).toEqual(["Act One"]);
+        expect(rows()).toEqual(["a", "b"]);
+
+        story.createChapter(storyId, "Spare");
+        await run(chapterDelete, { chapter: "Spare" });
+        story.insertBlock(storyId, sceneId, note("c", "written after the deletion"), { parentId: null });
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(chapters()).toEqual(["Act One", "Spare"]);
+        expect(rows()).toEqual(["a", "b", "c"]);
+        expect(history.redo(projectHistoryScope())).toBe(true);
+        expect(chapters()).toEqual(["Act One"]);
+        expect(rows()).toEqual(["a", "b", "c"]);
+    }, 60_000);
+
     it("renames or deletes nothing when the author pauses while the story loads", async () => {
         const { story, storyId, follow, steps, run } = createHarness();
         story.createChapter(storyId, "Spare");

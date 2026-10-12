@@ -9,6 +9,7 @@
  * Comments in English per project convention.
  */
 
+import type { TranslationKey } from "@shared/i18n";
 import type { StoryChapter, StoryDocument, StoryScene } from "@shared/types/story";
 import { answer, answerJson, readOptionalString, readString, refuse, type AgentToolHandler, type AgentToolContext } from "../agentCall";
 import { AGENT_HISTORY_LABEL, resolveScene, resolveStory, storyService } from "../agentLookups";
@@ -325,10 +326,18 @@ export const chapterRename: AgentToolHandler = async (args, { ctx, request, foll
     const before = chapter.name;
     // Loading the story awaited; the author may have paused meanwhile.
     assertAgentMayStillWrite({ ctx, request, follow });
-    if (!storyService(ctx).renameChapterWithHistory(entry.id, chapter.id, name)) {
+    const story = storyService(ctx);
+    // An outline step holding the two names, never a snapshot of the story: taking the rename back
+    // after rows were written into a scene must leave those rows where they are.
+    const renamed = story.runAgentOutlineStep(
+        entry.id,
+        { key: "story.history.renameChapter" as TranslationKey, params: { name: before } },
+        () => story.renameChapter(entry.id, chapter.id, name),
+    );
+    if (!renamed) {
         throw refuse("internal", `Chapter "${before}" could not be renamed.`);
     }
-    return answer(`Renamed chapter "${before}" to "${name}" in story "${entry.name}".`, { chapter: { id: chapter.id, name } });
+    return answer(`Renamed chapter "${before}" to "${name}" in story "${entry.name}". One step of undo in Studio.`, { chapter: { id: chapter.id, name } });
 };
 
 export const chapterDelete: AgentToolHandler = async (args, { ctx, request, follow }) => {
@@ -345,8 +354,17 @@ export const chapterDelete: AgentToolHandler = async (args, { ctx, request, foll
         );
     }
     assertAgentMayStillWrite({ ctx, request, follow }, "Nothing was deleted.");
-    if (!storyService(ctx).deleteChapter(entry.id, chapter.id)) {
+    const story = storyService(ctx);
+    // An outline step that puts back this chapter and nothing else. The outline's own deletion
+    // records a snapshot of the whole story, and taking that back would also return every other
+    // scene's rows to how they stood when the chapter went.
+    const deleted = story.runAgentOutlineStep(
+        entry.id,
+        { key: "story.history.deleteChapter" as TranslationKey, params: { name: chapter.name } },
+        () => story.deleteChapter(entry.id, chapter.id),
+    );
+    if (!deleted) {
         throw refuse("internal", `Chapter "${chapter.name}" could not be deleted.`);
     }
-    return answer(`Deleted the empty chapter "${chapter.name}" from story "${entry.name}".`, { chapter: { id: chapter.id, name: chapter.name } });
+    return answer(`Deleted the empty chapter "${chapter.name}" from story "${entry.name}". One step of undo in Studio.`, { chapter: { id: chapter.id, name: chapter.name } });
 };
