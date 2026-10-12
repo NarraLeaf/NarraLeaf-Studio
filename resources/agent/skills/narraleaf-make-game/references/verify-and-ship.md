@@ -76,7 +76,8 @@ How the playtest tools behave:
 - Every result names the line it is on (and a menu's options), so take a `playtest_screenshot` only
   when you need to see the picture. It shows what the player sees - the stage with its Game UI and
   any page or layer open over it (a backlog or settings page opened in game, a Confirm dialog);
-  `view: "stage"` gives the stage alone, as a save thumbnail shows it.
+  `view: "stage"` gives the stage alone, as a save thumbnail shows it - with its text in a fallback
+  typeface, so check the project's fonts in the default view.
 - Every result also lists the errors and warnings Dev Mode has reported in this run, newest first,
   with the scene and row (or the page) each came from (`issues`) - the same ones the issue strip at
   the top of the Dev Mode window counts. Read them: a warning there is usually a blueprint input left

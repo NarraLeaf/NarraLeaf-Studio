@@ -131,7 +131,7 @@ export const layer = defineStoryCommand({
     examples: ["/layer hills"],
     header: {
         note: "Not a row in a file. A scene's layers are header lines, one #layer per layer, nearest first; "
-            + "displayableLayer is where the characters stand, at distance 1, and distance= is how far away a layer is "
+            + "displayableLayer is the base layer, which holds everything not placed on another layer, at distance 1; distance= is how far away a layer is "
             + "(below 1 is nearer; 2 is twice as far and moves half as much with the camera; inf does not move).",
         lines: ["#layer displayableLayer", "#layer hills distance=3", "#layer sky distance=inf"],
     },

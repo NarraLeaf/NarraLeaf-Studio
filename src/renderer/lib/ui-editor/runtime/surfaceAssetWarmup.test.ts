@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument } from "@shared/types/ui-editor/document";
-import { warmSurfaceAssets, type SurfaceWarmupSource } from "./surfaceAssetWarmup";
+import {
+    heldWarmupImageUrlsForTest,
+    resetHeldWarmupImagesForTest,
+    warmInterfaceAssets,
+    warmSurfaceAssets,
+    type SurfaceWarmupSource,
+} from "./surfaceAssetWarmup";
 
 /**
  * The pass as a Dev Mode window runs it: one screen, no pack.
@@ -57,6 +63,7 @@ function stubImages(started: string[]): void {
 
 afterEach(() => {
     vi.unstubAllGlobals();
+    resetHeldWarmupImagesForTest();
 });
 
 describe("warmSurfaceAssets", () => {
@@ -140,5 +147,118 @@ describe("warmSurfaceAssets", () => {
 
         expect(reports.map(([, total]) => total)).toEqual([3, 3, 3]);
         expect(reports.map(([settled]) => settled)).toEqual([1, 2, 3]);
+    });
+});
+
+/**
+ * The hold on decoded pictures: what keeps a page's backdrop decoded until the page opens, within a
+ * budget of 48 megapixels.
+ *
+ * A picture is decoded only when it is held, and held only while there is room - one beyond the
+ * budget is fetched and left undecoded, because a bitmap nothing keeps is memory nothing can reuse.
+ * Nothing held is let go for a later picture, which is what keeps the first screen's pictures (warmed
+ * first) from being the ones pushed out by a gallery warmed after them.
+ */
+describe("the warm-up's hold on decoded pictures", () => {
+    const types: Record<string, string> = {
+        "title-picture": "image",
+        "gallery-picture": "image",
+    };
+
+    /** An `Image` that knows its size from its URL, as a loaded picture does from its header. */
+    function stubSizedImages(sizes: Record<string, [number, number]>): { started: string[]; decoded: string[] } {
+        const log = { started: [] as string[], decoded: [] as string[] };
+        class SizedImage {
+            onload: (() => void) | null = null;
+            onerror: (() => void) | null = null;
+            naturalWidth = 0;
+            naturalHeight = 0;
+            private currentSrc = "";
+
+            set src(value: string) {
+                this.currentSrc = value;
+                log.started.push(value);
+                [this.naturalWidth, this.naturalHeight] = sizes[value] ?? [1, 1];
+                queueMicrotask(() => this.onload?.());
+            }
+
+            get src(): string {
+                return this.currentSrc;
+            }
+
+            decode(): Promise<void> {
+                log.decoded.push(this.currentSrc);
+                return Promise.resolve();
+            }
+        }
+        vi.stubGlobal("Image", SizedImage);
+        return log;
+    }
+
+    function access() {
+        return {
+            source: { uidoc: makeDocument(), fontAssetIds: [], manifestIds: new Set(Object.keys(types)) } satisfies SurfaceWarmupSource,
+            assetUrl: (assetId: string) => `app://fs/${assetId}`,
+            entryFor: (assetId: string) => ({ type: types[assetId] }),
+            loadFont: async () => undefined,
+            timeoutMs: 500,
+        };
+    }
+
+    it("fetches a picture the hold has no room for without decoding or holding it", async () => {
+        // 36 + 24 megapixels: the gallery's picture does not fit beside the title's.
+        const log = stubSizedImages({
+            "app://fs/title-picture": [6000, 6000],
+            "app://fs/gallery-picture": [6000, 4000],
+        });
+
+        const result = await warmInterfaceAssets({ ...access(), firstSurfaceId: "title" });
+
+        expect(result.failed).toEqual([]);
+        expect(result.loaded).toBe(2);
+        expect(log.started).toEqual(["app://fs/title-picture", "app://fs/gallery-picture"]);
+        expect(log.decoded).toEqual(["app://fs/title-picture"]);
+        expect(heldWarmupImageUrlsForTest()).toEqual(["app://fs/title-picture"]);
+    });
+
+    it("keeps the first screen's pictures when a page warmed after them would not fit beside them", async () => {
+        // The screen the game opens on is second in the document; it is still the one held.
+        const log = stubSizedImages({
+            "app://fs/title-picture": [6000, 4000],
+            "app://fs/gallery-picture": [6000, 6000],
+        });
+
+        await warmInterfaceAssets({ ...access(), firstSurfaceId: "gallery" });
+
+        expect(log.decoded).toEqual(["app://fs/gallery-picture"]);
+        expect(heldWarmupImageUrlsForTest()).toEqual(["app://fs/gallery-picture"]);
+    });
+
+    it("never lets an earlier picture go to make room for a later one", async () => {
+        const log = stubSizedImages({
+            "app://fs/title-picture": [4000, 3000],
+            "app://fs/gallery-picture": [8000, 5000],
+        });
+
+        await warmSurfaceAssets({ ...access(), surfaceId: "title" });
+        await warmSurfaceAssets({ ...access(), surfaceId: "gallery" });
+
+        expect(heldWarmupImageUrlsForTest()).toEqual(["app://fs/title-picture"]);
+        expect(log.decoded).toEqual(["app://fs/title-picture"]);
+        expect(log.started).toContain("app://fs/gallery-picture");
+    });
+
+    it("counts a picture warmed twice once, as Dev Mode warms its first screen and then the whole interface", async () => {
+        // 30 + 18 megapixels fill the hold exactly, which they would not if the title counted twice.
+        const log = stubSizedImages({
+            "app://fs/title-picture": [6000, 5000],
+            "app://fs/gallery-picture": [6000, 3000],
+        });
+
+        await warmSurfaceAssets({ ...access(), surfaceId: "title" });
+        await warmInterfaceAssets({ ...access(), firstSurfaceId: "title" });
+
+        expect(heldWarmupImageUrlsForTest()).toEqual(["app://fs/title-picture", "app://fs/gallery-picture"]);
+        expect(log.decoded).toContain("app://fs/gallery-picture");
     });
 });

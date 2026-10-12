@@ -7,8 +7,9 @@
  * loading a font that nothing else in Studio uses. The editor, the font preview and the version
  * history all read the bytes themselves and register the face from those, and those are the paths
  * that draw the author's font. A shipped game and Dev Mode were the only two that gave the browser's
- * font loader a custom-scheme URL - and they are exactly the two in which a project font fell back
- * to the system face, for every file tried, with nothing said anywhere.
+ * font loader a custom-scheme URL, and the only two in which a face that did not load said nothing
+ * anywhere. (Dev Mode's `url(app://fs/...)` load was measured to work; what this module adds there
+ * is the same route as everywhere else and a failure someone can read.)
  *
  * A font request is not an ordinary one. The loader asks in CORS mode, the asset scheme answers from
  * another host than the document's (`nlgame://asset` under `nlgame://runtime`; `app://fs` under a
@@ -58,28 +59,18 @@ function reasonOf(error: unknown): string {
     return String(error);
 }
 
-/** A face built from a font file, and the file it was built from. */
-export type LoadedFontFace = {
-    face: FontFace;
-    /**
-     * The bytes the face was built from, for the stylesheet rule a picture of the stage reads
-     * (see `documentFontFaces`): a face registered from script alone never reaches one.
-     */
-    bytes: ArrayBuffer;
-};
-
 /**
  * Fetch a font's bytes from `url` and build a loaded `FontFace` from them under `family`.
  *
  * The face is returned loaded but **not** added to the document: the callers keep their own record
- * of what is registered, and adding (`addFontFaceToDocument`) is the step that record is written
+ * of what is registered, and adding (`document.fonts.add`) is the step that record is written
  * beside.
  */
 export async function loadFontFaceFromUrl(
     family: string,
     url: string,
     environment: FontFaceEnvironment = pageEnvironment(),
-): Promise<LoadedFontFace> {
+): Promise<FontFace> {
     let bytes: ArrayBuffer;
     try {
         const response = await environment.fetch(url);
@@ -94,8 +85,7 @@ export async function loadFontFaceFromUrl(
         throw new FontFaceLoadError("read", "could not be read (the file is empty)");
     }
     try {
-        const face = (await environment.createFontFace(family, bytes).load()) as FontFace;
-        return { face, bytes };
+        return (await environment.createFontFace(family, bytes).load()) as FontFace;
     } catch (error) {
         throw new FontFaceLoadError("decode", `is not a font this browser can draw (${reasonOf(error)})`);
     }

@@ -10,7 +10,6 @@ import { getInterface } from "@/lib/app/bridge";
 import { resolveGameRuntimeAssetUrl } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
 import { resolveDevModeAssetUrl } from "@/lib/ui-editor/runtime/devModeAssetUrls";
 import { loadFontFaceFromUrl } from "@/lib/ui-editor/fonts/fontFaceFromUrl";
-import { addFontFaceToDocument } from "@/lib/ui-editor/fonts/documentFontFaces";
 import {
     getActiveProjectFontIds,
     resolveFontStackIds,
@@ -235,11 +234,15 @@ async function resolveDevModeFont(assetId: string): Promise<ResolvedFont> {
         const cssFamily = devModeCssFamilyForAssetId(assetId);
         // From the bytes, not from `url(...)`, as the editor does with the same file - see
         // `fontFaceFromUrl` for why the browser's font loader is not handed an asset URL.
-        const loaded = await loadFontFaceFromUrl(cssFamily, url);
-        // With the stylesheet rule beside the face, so the engine's picture of the stage - a save's
-        // thumbnail, an agent's play-test capture - is set in this font too. See `documentFontFaces`.
-        addFontFaceToDocument(cssFamily, loaded);
-        devModeFontCache.set(assetId, { cssFamily, fontFace: loaded.face });
+        const fontFace = await loadFontFaceFromUrl(cssFamily, url);
+        // On `document.fonts` only - never also as a stylesheet `@font-face` rule. The engine's stage
+        // capture (html-to-image) embeds every such rule's font in every capture: measured in Dev
+        // Mode, a capture went from 102-143 ms to ~395 ms, opening Save over the game from ~280 ms to
+        // 450-510 ms, and a 24 MB font left native memory climbing 89 -> 458 MB over 20 saves, never
+        // released. Save thumbnails and stage captures draw in the fallback face instead. A shipped
+        // game registers its fonts the same way (`runtimeFontFaces`).
+        document.fonts.add(fontFace);
+        devModeFontCache.set(assetId, { cssFamily, fontFace });
         return { assetId, cssFamily, error: null };
     } catch (err) {
         const error = err instanceof Error ? err.message : String(err);

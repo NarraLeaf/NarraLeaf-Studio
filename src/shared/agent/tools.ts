@@ -922,7 +922,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "playtest_screenshot",
         "Look at the game",
-        "Screenshot of the running Dev Mode game as the player sees it: the stage with its Game UI and every page or layer open over it (the title, a backlog or settings page opened in game, a Confirm dialog). `view: \"stage\"` gives the engine's picture of the stage alone - the scene and the Game UI, without pages - which is what a save thumbnail shows. Fails within about 10 s, saying why, when the game cannot be captured.",
+        "Screenshot of the running Dev Mode game as the player sees it: the stage with its Game UI and every page or layer open over it (the title, a backlog or settings page opened in game, a Confirm dialog). `view: \"stage\"` gives the engine's picture of the stage alone - the scene and the Game UI, without pages - which is what a save thumbnail shows, its text in a fallback typeface rather than the project's fonts (judge fonts from `screen`). Fails within about 10 s, saying why, when the game cannot be captured.",
         {
             maxSize: { type: "integer", default: 1280 },
             view: { type: "string", enum: ["screen", "stage"], default: "screen", description: "`screen` (default): what the player sees. `stage`: the stage alone, without pages and layers." },
