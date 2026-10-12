@@ -176,21 +176,6 @@ describe("the Agent menu's rows", () => {
         expect(model.run.copyConfig).toHaveBeenCalledWith("stdio");
     });
 
-    it("names each configuration as the Settings panel's copy buttons do, in every language", () => {
-        const keys = {
-            claudeCode: "settings.agent.copyClaudeCode",
-            stdio: "settings.agent.copyStdio",
-            codex: "settings.agent.copyCodex",
-            opencode: "settings.agent.copyOpencode",
-            gemini: "settings.agent.copyGemini",
-            json: "settings.agent.copyJson",
-        } as const;
-        const shared = AGENT_MENU_COPY_KINDS.map(entry => ({ ...entry, key: keys[entry.kind] }));
-        for (const t of [en, zh, createTranslator("ja").t]) {
-            expect(shared.map(entry => t(entry.key))).toEqual(shared.map(entry => entry.label));
-        }
-    });
-
     it("holds only the way to turn access on and its settings while access is off", () => {
         const model = input({ state: "off", quick: { enabled: false, allowWrites: true, fullAccess: false, running: false, movedToPort: null } });
         const items = buildAgentMenuItems(model);

@@ -66,11 +66,13 @@ NarraLeaf-Skills/
    and adds it to the list when you allow it. **Allow agents full access** lets the agent change
    projects and read any folder without asking (Studio's own folders stay closed); leave it off unless
    you want that.
-5. **Copy connection configuration** gives you the address (`http://127.0.0.1:<PORT>/mcp`, usually
-   port 47219) and the access token, already filled into the settings for the agent you pick
-   (Claude Code, Claude Desktop, opencode or plain JSON; the *Agent* menu's copy also offers Codex and
-   Gemini CLI). If another program holds that port, Studio moves to a nearby one, keeps it from then
-   on and says so on the settings page; copy the configuration again for agents you set up before.
+5. Under **Agent application**, pick your agent (Claude Code, Claude Desktop, Codex, opencode, Gemini
+   CLI, Cursor or Other): Studio shows its connection configuration - the address
+   (`http://127.0.0.1:<PORT>/mcp`, usually port 47219) and the access token, already filled in - with
+   a copy button, says where it goes, and installs this skill for it. The *Agent* menu's **Copy
+   connection configuration** offers the same configurations. If another program holds that port,
+   Studio moves to a nearby one, keeps it from then on and says so on the settings page; copy the
+   configuration again for agents you set up before.
 
 The server listens only on your own computer (127.0.0.1) and refuses any request without the token.
 Treat the token like a password; you can regenerate it in the same settings page.
@@ -81,7 +83,7 @@ edit listed under *Features* that have no undo).
 
 ### 2. Connect your agent
 
-Replace `<PORT>` and `<TOKEN>` with the values from *Copy connection configuration*. The files in
+Replace `<PORT>` and `<TOKEN>` with the values from the copied connection configuration. The files in
 `mcp-configs/` hold the same settings. Fill them in a copy outside this folder, or name the copy
 `*.local.json` (`.local.toml`, `.local.sh`) so git ignores it - never commit a real token.
 

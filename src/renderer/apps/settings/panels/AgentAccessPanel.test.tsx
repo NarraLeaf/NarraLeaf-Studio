@@ -112,7 +112,6 @@ describe("the agent access panel", () => {
             "settings.agent.fullAccess",
             "settings.agent.endpoint",
             "settings.agent.regenerate",
-            "settings.agent.copyConfig",
         ]) {
             expect(view.getByText(key)).toBeTruthy();
         }
@@ -131,29 +130,21 @@ describe("the agent access panel", () => {
         expect(bridge.patches).toEqual([]);
     });
 
-    it("says the endpoint moved, and answers it once a configuration is copied", async () => {
+    it("says the endpoint moved, and answers it once the address is copied", async () => {
         const view = await renderPanel({ url: "http://127.0.0.1:47220/mcp", movedToPort: 47220 });
         const notice = view.getByText("settings.agent.portMoved(47220)");
         expect(notice.className).toContain("text-warning");
         expect(view.queryByText("settings.agent.running")).toBeNull();
-        fireEvent.click(view.getByRole("button", { name: "settings.agent.copyClaudeCode" }));
+        fireEvent.click(view.getByRole("button", { name: "settings.agent.copyAddress" }));
         await waitFor(() => expect(bridge.patches).toEqual([{ acknowledgeMovedPort: true }]));
-        expect(bridge.clipboard[0]).toContain("http://127.0.0.1:47220/mcp");
+        expect(bridge.clipboard).toEqual(["http://127.0.0.1:47220/mcp"]);
     });
 
-    it("offers the configurations by client, in the Agent menu's order", async () => {
+    it("copies a configuration from the guide only, not from a second row of buttons", async () => {
         const view = await renderPanel();
-        const labels = view.getAllByRole("button")
-            .map(button => button.textContent ?? "")
-            .filter(text => text.startsWith("settings.agent.copy"));
-        expect(labels).toEqual([
-            "settings.agent.copyClaudeCode",
-            "settings.agent.copyStdio",
-            "settings.agent.copyCodex",
-            "settings.agent.copyOpencode",
-            "settings.agent.copyGemini",
-            "settings.agent.copyJson",
-        ]);
+        const guide = view.container.querySelector("[data-agent-client-guide]") as HTMLElement;
+        const copyButtons = view.getAllByRole("button").filter(button => /copy/i.test(button.getAttribute("aria-label") ?? button.textContent ?? ""));
+        expect(copyButtons.filter(button => !guide.contains(button)).map(button => button.getAttribute("aria-label"))).toEqual(["settings.agent.copyAddress"]);
     });
 
     it("walks one agent application through, as first-run setup does, with the token masked", async () => {
