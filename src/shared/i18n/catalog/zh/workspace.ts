@@ -910,6 +910,8 @@ export const workspace = {
                 asset: "资产",
                 blueprint: "蓝图",
             },
+            // 种类、名称与位置都相同的行，按项目中的顺序编号。
+            ordinal: "第 {n} 项",
         },
         // 底部状态条。各信号只在有意义时出现（运行中/构建中/未保存）。
         statusBar: {

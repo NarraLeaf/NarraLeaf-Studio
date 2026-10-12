@@ -12,10 +12,19 @@ export interface QuickOpenPlace {
     suffix?: string;
 }
 
-/** A row as it reads before its detail is settled: the title it shows, and where it goes. */
+/**
+ * A row as it reads before its detail is settled: its kind, the title it shows, and every way it can
+ * say where it is.
+ *
+ * `details` runs from the plainest to the fullest. The first is what the row reads while nothing else
+ * reads the same - a scene's story, an asset's type - and each one after says a little more, such as
+ * the chapter or the folder. An empty list, or `undefined` at a level, is a row with no detail there.
+ */
 export interface QuickOpenPlacedRow {
+    /** What the row is. Every row shows its kind beside it, so rows of different kinds never read alike. */
+    kind: string;
     title: string;
-    place: QuickOpenPlace | undefined;
+    details: readonly (string | undefined)[];
 }
 
 /**
@@ -36,52 +45,72 @@ function detailAt(place: QuickOpenPlace, level: number): string | undefined {
     return suffix && level >= 1 && label ? `${label} · ${suffix}` : label;
 }
 
-function mostLevel(place: QuickOpenPlace | undefined): number {
-    return place ? 1 + place.path.ancestors.length : 0;
+/**
+ * Every detail a blueprint row can read as, plainest first: `Page › Control`, then with its suffix,
+ * then with one more control above it at a time. A row with no place has none.
+ */
+export function blueprintPlaceDetails(place: QuickOpenPlace | undefined): (string | undefined)[] {
+    if (!place) {
+        return [];
+    }
+    const mostLevel = 1 + place.path.ancestors.length;
+    return Array.from({ length: mostLevel + 1 }, (_, level) => detailAt(place, level));
+}
+
+function groupAlike(rows: readonly QuickOpenPlacedRow[], detailOf: (index: number) => string | undefined): number[][] {
+    const alike = new Map<string, number[]>();
+    rows.forEach((row, index) => {
+        const key = `${row.kind}\u0000${row.title}\u0000${detailOf(index) ?? ""}`;
+        const members = alike.get(key);
+        if (members) {
+            members.push(index);
+        } else {
+            alike.set(key, [index]);
+        }
+    });
+    return [...alike.values()].filter(members => members.length > 1);
 }
 
 /**
  * The detail line of each row, saying only as much as it takes for no two rows to read the same.
  *
- * Blueprints take their control's name, and a page commonly has several controls of one name: every
- * slider on a settings page has a "Track", the navigation rail repeats the page's own title. Listed by
- * `Page › Control` alone those rows were identical while each opened a different blueprint. So rows
- * that read alike - same title, same detail - each say a little more, one level at a time, until they
- * differ or there is nothing left to say; a row that already reads uniquely is never lengthened.
+ * Rows are named after what they open, and names repeat: every slider on a settings page has a
+ * "Track", two chapters can each have a scene called "Corridor", two folders can each hold an image
+ * called "bg". Listed by their plainest detail those rows were identical while each opened something
+ * else. So rows that read alike - same kind, same title, same detail - each say a little more, one
+ * level at a time, until they differ or there is nothing left to say; a row that already reads
+ * uniquely is never lengthened.
  *
- * Returns one detail per row, in order. A row with no place keeps no detail.
+ * Rows that still read alike after that are told apart by their order: each is numbered through
+ * `numbered`, counting in the order the rows were given.
+ *
+ * Returns one detail per row, in order.
  */
-export function distinguishQuickOpenDetails(rows: readonly QuickOpenPlacedRow[]): (string | undefined)[] {
+export function distinguishQuickOpenDetails(
+    rows: readonly QuickOpenPlacedRow[],
+    numbered: (detail: string | undefined, ordinal: number) => string,
+): (string | undefined)[] {
     const levels = rows.map(() => 0);
-    const read = (index: number): string | undefined => {
-        const place = rows[index].place;
-        return place ? detailAt(place, levels[index]) : undefined;
-    };
+    const read = (index: number): string | undefined => rows[index].details[levels[index]];
     for (;;) {
-        const alike = new Map<string, number[]>();
-        rows.forEach((row, index) => {
-            const key = `${row.title}\u0000${read(index) ?? ""}`;
-            const members = alike.get(key);
-            if (members) {
-                members.push(index);
-            } else {
-                alike.set(key, [index]);
-            }
-        });
         let raised = false;
-        for (const members of alike.values()) {
-            if (members.length < 2) {
-                continue;
-            }
+        for (const members of groupAlike(rows, read)) {
             for (const index of members) {
-                if (levels[index] < mostLevel(rows[index].place)) {
+                if (levels[index] < rows[index].details.length - 1) {
                     levels[index] += 1;
                     raised = true;
                 }
             }
         }
         if (!raised) {
-            return rows.map((_, index) => read(index));
+            break;
         }
     }
+    const details = rows.map((_, index) => read(index));
+    for (const members of groupAlike(rows, index => details[index])) {
+        members.forEach((index, position) => {
+            details[index] = numbered(details[index], position + 1);
+        });
+    }
+    return details;
 }

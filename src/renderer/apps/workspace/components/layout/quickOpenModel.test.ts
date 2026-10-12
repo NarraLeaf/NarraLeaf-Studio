@@ -222,3 +222,91 @@ describe("quick open names an asset's kind", () => {
         expect(read["asset:table"]).toBe("JSON");
     });
 });
+
+/**
+ * Two chapters with a "Corridor" each, two folders with a "bg" each, two characters named Aoi and two
+ * identical clicks: every pair opens two different things, so no two of their rows may read the same.
+ */
+describe("quick open tells same-named rows of every kind apart", () => {
+    function details() {
+        const character = (id: string, name: string, groupId?: string) => ({
+            profile: { getProfile: () => ({ id, name }), getGroupId: () => groupId },
+        });
+        const services: Partial<Record<Services, unknown>> = {
+            [Services.UI]: { editor: { open: vi.fn(), get: () => undefined } },
+            [Services.Story]: {
+                listStories: () => [{ id: "main" }],
+                getStoryDocument: () => ({
+                    id: "main",
+                    name: "Main",
+                    chapters: [
+                        { id: "c1", name: "Chapter 1", sceneIds: ["s1", "s2"] },
+                        { id: "c2", name: "Chapter 2", sceneIds: ["s3"] },
+                    ],
+                    unassignedSceneIds: [],
+                    scenes: {
+                        s1: { id: "s1", name: "Corridor" },
+                        s2: { id: "s2", name: "Club room" },
+                        s3: { id: "s3", name: "Corridor" },
+                    },
+                }),
+            },
+            [Services.Character]: {
+                listCharacter: () => [character("aoi", "Aoi"), character("aoi2", "Aoi", "extras"), character("narra", "Narra")],
+                getGroup: (id: string) => (id === "extras" ? { id, name: "Extras" } : undefined),
+            },
+            [Services.UIDocument]: { getDocument: () => ({ surfaces: [], components: [], elements: {} }) },
+            [Services.Assets]: {
+                getAssets: () => ({
+                    image: {
+                        bg1: { id: "bg1", type: "image", name: "bg", groupId: "backgrounds" },
+                        bg2: { id: "bg2", type: "image", name: "bg", groupId: "indoors" },
+                        corridor: { id: "corridor", type: "image", name: "Corridor", groupId: "backgrounds" },
+                    },
+                    audio: {
+                        click1: { id: "click1", type: "audio", name: "click", groupId: "ui" },
+                        click2: { id: "click2", type: "audio", name: "click", groupId: "ui" },
+                    },
+                }),
+                getGroupAssetsManager: () => ({
+                    getGroups: (category: string) => category === "image"
+                        ? [
+                            { id: "backgrounds", name: "Backgrounds", category: "image" },
+                            { id: "indoors", name: "Indoors", category: "image", parentGroupId: "backgrounds" },
+                        ]
+                        : [{ id: "ui", name: "UI sounds", category: "media" }],
+                }),
+            },
+            [Services.LocalBlueprint]: { getBlueprintDocument: () => ({ ownerRecords: {}, blueprints: {} }) },
+        };
+        const context = { services: { get: (id: Services) => services[id] } } as unknown as WorkspaceContext;
+        return Object.fromEntries(collectQuickOpenEntries(context).map(entry => [entry.key, entry.detail]));
+    }
+
+    it("names the chapter of each same-named scene, and leaves the scene that is alone as its story", () => {
+        const read = details();
+        expect(read["scene:main:s1"]).toBe("Main › Chapter 1");
+        expect(read["scene:main:s3"]).toBe("Main › Chapter 2");
+        expect(read["scene:main:s2"]).toBe("Main");
+    });
+
+    it("names the folder of each same-named asset, and leaves the asset that is alone as its kind", () => {
+        const read = details();
+        expect(read["asset:bg1"]).toBe("Image · Backgrounds");
+        expect(read["asset:bg2"]).toBe("Image · Backgrounds › Indoors");
+        expect(read["asset:corridor"]).toBe("Image");
+    });
+
+    it("names the group of a character whose name another character has", () => {
+        const read = details();
+        expect(read["character:aoi"]).toBeUndefined();
+        expect(read["character:aoi2"]).toBe("Extras");
+        expect(read["character:narra"]).toBeUndefined();
+    });
+
+    it("numbers the rows that read alike everywhere, in the order the project lists them", () => {
+        const read = details();
+        expect(read["asset:click1"]).toBe("Audio · UI sounds · Item 1");
+        expect(read["asset:click2"]).toBe("Audio · UI sounds · Item 2");
+    });
+});

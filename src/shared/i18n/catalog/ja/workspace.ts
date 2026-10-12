@@ -934,6 +934,8 @@ export const workspace = {
                 asset: "アセット",
                 blueprint: "ブループリント",
             },
+            // 種類・名前・場所がすべて同じ行に、プロジェクト内の順序で振る番号。
+            ordinal: "{n} 番目",
         },
         // 下端のステータスの帯。意味のあるときだけ出る。
         statusBar: {

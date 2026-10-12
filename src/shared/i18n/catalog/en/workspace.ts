@@ -1028,6 +1028,9 @@ export const workspace = {
                 asset: "Asset",
                 blueprint: "Blueprint",
             },
+            // Ends the detail of rows that read alike in every other way (same kind, name and place),
+            // counted in the order the project lists them.
+            ordinal: "Item {n}",
         },
         // The bottom status strip. Signals only show while meaningful (running/ building/dirty).
         statusBar: {
