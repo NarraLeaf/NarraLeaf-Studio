@@ -73,6 +73,7 @@ import {
     writeNodeEditorLayout,
 } from "@/lib/workspace/services/ui-editor/blueprint/graphEditing";
 import { retypeBlueprintNodeInIr } from "@/lib/workspace/services/ui-editor/blueprint/graphNodeRetype";
+import { isBlueprintNodeAllowedInGraphContext } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import {
     pickBlueprintDragConnectTargetPin,
     resolveBlueprintDragConnectSource,
@@ -845,7 +846,25 @@ function BlueprintFlowCanvasInner({
     );
     const paletteTypesRef = useRef(paletteTypes);
     paletteTypesRef.current = paletteTypes;
-    const isFamilyMemberAllowed = useCallback((type: string) => paletteTypesRef.current.has(type), []);
+    const paletteContextRef = useRef(paletteContext);
+    paletteContextRef.current = paletteContext;
+    const isFamilyMemberAllowed = useCallback(
+        (type: string) => {
+            if (paletteTypesRef.current.has(type)) {
+                return true;
+            }
+            // A node that acts on an Element is listed only while this graph holds an Element it fits,
+            // and a card of one can be wired to an element some other way. It may be placed wherever
+            // its graph kind and owner allow, which is what the palette asks of it too once listed.
+            const def = nodeCatalog.get(type);
+            return Boolean(
+                def?.magicElementTarget &&
+                    !def.hideInPalette &&
+                    isBlueprintNodeAllowedInGraphContext({ ...def, scope: undefined }, paletteContextRef.current),
+            );
+        },
+        [nodeCatalog],
+    );
 
     const patchNodeParamRef = useRef(patchNodeParam);
     patchNodeParamRef.current = patchNodeParam;

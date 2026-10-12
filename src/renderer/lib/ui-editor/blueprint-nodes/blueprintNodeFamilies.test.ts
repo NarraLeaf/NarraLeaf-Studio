@@ -37,12 +37,18 @@ describe("blueprint node families", () => {
         }
     });
 
-    it("keeps a family's members in one category, with one role and one scope", () => {
+    it("keeps a family's members in one category, with one role, one scope and one element target", () => {
         const registry = registered();
         for (const family of BLUEPRINT_NODE_FAMILIES) {
             const shapes = family.members.map(type => {
                 const def = registry.get(type)!;
-                return JSON.stringify([def.category, def.role ?? null, def.scope ?? null, [...def.graphKinds].sort()]);
+                return JSON.stringify([
+                    def.category,
+                    def.role ?? null,
+                    def.scope ?? null,
+                    def.magicElementTarget ?? null,
+                    [...def.graphKinds].sort(),
+                ]);
             });
             expect(new Set(shapes).size, family.id).toBe(1);
         }
@@ -61,6 +67,14 @@ describe("blueprint node families", () => {
             BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN,
             BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP,
         ]);
+    });
+
+    it("folds a widget's own property nodes and the Element ones apart, both read and write", () => {
+        expect(blueprintNodeFamilyOf("blueprint.text.getFontSize")?.members).toContain("blueprint.text.getTextColor");
+        expect(blueprintNodeFamilyOf("blueprint.text.getFontSize")?.members).not.toContain("blueprint.text.setFontSize");
+        expect(blueprintNodeFamilyOf("blueprint.element.text.setFont")?.members).toContain("blueprint.element.text.setWrapMode");
+        expect(blueprintNodeFamilyOf("blueprint.element.text.setFont")?.members).not.toContain("blueprint.text.setFont");
+        expect(blueprintNodeFamilyOf("blueprint.button.getVisible")?.members).toEqual(["blueprint.button.getVisible", "blueprint.button.getEnabled"]);
     });
 
     it("offers on a card only the members its graph may hold, its own type always among them", () => {

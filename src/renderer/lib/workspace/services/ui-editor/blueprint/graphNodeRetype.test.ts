@@ -10,8 +10,13 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SET_BGM_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_ENABLED,
     BLUEPRINT_NODE_TYPE_GAME_SET_SOUND_VOLUME,
+    BLUEPRINT_NODE_TYPE_ELEMENT_REF,
     BLUEPRINT_NODE_TYPE_LITERAL_FLOAT,
+    BLUEPRINT_NODE_TYPE_LITERAL_INTEGER,
+    BLUEPRINT_NODE_TYPE_LITERAL_NULL,
+    BLUEPRINT_NODE_TYPE_LITERAL_RECT,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+    BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D,
     BLUEPRINT_NODE_TYPE_LOG,
 } from "@shared/types/blueprint/graph";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
@@ -121,6 +126,46 @@ describe("retyping a node within its family", () => {
 
         expect(ir.nodes!.head!.type).toBe(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN);
         expect(ir.edges).toEqual([edge("head", "then", "log", "in")]);
+    });
+
+    it("starts a literal's value over when the new kind of value cannot hold it", () => {
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                lit: { id: "lit", type: BLUEPRINT_NODE_TYPE_LITERAL_STRING, params: { value: "abc" } },
+            },
+            edges: [],
+        };
+
+        retypeBlueprintNodeInIr(ir, "lit", BLUEPRINT_NODE_TYPE_LITERAL_INTEGER);
+        expect(ir.nodes!.lit!.params).toEqual({ value: 0 });
+
+        ir.nodes!.lit!.params = { value: 3 };
+        retypeBlueprintNodeInIr(ir, "lit", BLUEPRINT_NODE_TYPE_LITERAL_FLOAT);
+        expect(ir.nodes!.lit!.params).toEqual({ value: 3 });
+
+        retypeBlueprintNodeInIr(ir, "lit", BLUEPRINT_NODE_TYPE_LITERAL_NULL);
+        retypeBlueprintNodeInIr(ir, "lit", BLUEPRINT_NODE_TYPE_LITERAL_STRING);
+        expect(ir.nodes!.lit!.params).toEqual({ value: "" });
+
+        ir.nodes!.lit!.type = BLUEPRINT_NODE_TYPE_LITERAL_RECT;
+        ir.nodes!.lit!.params = { value: { x: 1, y: 2, width: 3, height: 4 } };
+        retypeBlueprintNodeInIr(ir, "lit", BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D);
+        expect(ir.nodes!.lit!.params).toEqual({ value: { x: 0, y: 0 } });
+    });
+
+    it("keeps an Element node's element wire across its family", () => {
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                el: { id: "el", type: BLUEPRINT_NODE_TYPE_ELEMENT_REF },
+                font: { id: "font", type: "blueprint.element.text.getFont" },
+            },
+            edges: [edge("el", "element", "font", "element")],
+        };
+
+        retypeBlueprintNodeInIr(ir, "font", "blueprint.element.text.getFontSize");
+
+        expect(ir.nodes!.font!.type).toBe("blueprint.element.text.getFontSize");
+        expect(ir.edges).toEqual([edge("el", "element", "font", "element")]);
     });
 
     it("changes nothing for a node that is missing or already that type", () => {

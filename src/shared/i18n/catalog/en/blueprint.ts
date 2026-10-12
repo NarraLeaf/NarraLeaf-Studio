@@ -567,6 +567,14 @@ export const blueprint = {
         convert: "Convert Type",
         rounding: "Rounding",
         random: "Random Number",
+        literal: "Literal",
+        saveInfo: "Get Save Info",
+        getTextStyle: "Get Text Style",
+        setTextStyle: "Set Text Style",
+        getImageFraming: "Get Image Framing",
+        setImageFraming: "Set Image Framing",
+        getVisibleEnabled: "Get Visible or Enabled",
+        setVisibleEnabled: "Set Visible or Enabled",
         /** Under a family's row in the palette. */
         rowSubtitle: "{category} · {count} nodes",
         /** The picker on a placed card that turns it into another member. */

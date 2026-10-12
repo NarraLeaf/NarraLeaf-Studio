@@ -68,6 +68,32 @@ describe("node families in the add-node palette", () => {
         expect(results.slice(0, COMPARE_TYPES.length).map(entry => entry.type).sort()).toEqual([...COMPARE_TYPES].sort());
     });
 
+    it("folds the nodes offered for one bound element into one row per element", () => {
+        registerCoreBlueprintNodes();
+        const entry = (type: string, elementId: string): BlueprintNodeEditorCatalogEntry => ({
+            ...blueprintNodeRegistry.resolveCatalogEntry(type),
+            magicElementRef: {
+                sourceNodeId: `node-${elementId}`,
+                sourcePortId: "element",
+                targetPortId: "element",
+                surfaceId: "surface",
+                elementId,
+                label: elementId,
+                elementType: "nl.text",
+            },
+        });
+        const folded = foldBlueprintAddNodeFamilies([
+            entry("blueprint.element.text.getFont", "title"),
+            entry("blueprint.element.text.getFontSize", "title"),
+            entry("blueprint.element.text.getFont", "body"),
+            entry("blueprint.element.text.getFontSize", "body"),
+        ]);
+        expect(folded.map(row => [row.type, row.magicElementRef?.elementId, row.family?.members.length])).toEqual([
+            ["blueprint.element.text.getFont", "title", 2],
+            ["blueprint.element.text.getFont", "body", 2],
+        ]);
+    });
+
     it("leaves an entry made for one struct field as it is", () => {
         const entries = globalPalette();
         const greater = entries.find(entry => entry.type === BLUEPRINT_NODE_TYPE_COMPARE_GREATER_THAN)!;

@@ -85,7 +85,7 @@ export const settings = {
         },
         developerMode: {
             label: "开发者选项",
-            description: "右键菜单中增加一组操作，用于复制所选对象的 ID",
+            description: "右键菜单中增加一组操作，用于复制所选对象的 ID；蓝图的添加节点菜单显示每个节点的类型 ID",
         },
         screenEffectThreads: {
             label: "屏幕效果的线程数",

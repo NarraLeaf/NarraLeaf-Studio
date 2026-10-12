@@ -68,34 +68,36 @@ export function buildBlueprintAddNodeCategories(
  *
  * The row is the family's first member in the family's own order, carrying the family, so picking it
  * places that member, and the card it lands as offers the rest from beside its title. It stands where
- * the first of its members stood in the list. Entries made for one field of a struct or for one bound
- * element are left as they are: they are already one particular node with particular settings. A
- * search is answered from the unfolded list instead - a query names a node, and `>=` should land on
- * Greater Than Or Equal, not on a row the author then has to open.
+ * the first of its members stood in the list. Entries offered for one bound element fold among
+ * themselves, one row per element, so the row still places a node wired to that element. Entries made
+ * for one field of a struct are left as they are: they are already one particular node with particular
+ * settings. A search is answered from the unfolded list instead - a query names a node, and `>=`
+ * should land on Greater Than Or Equal, not on a row the author then has to open.
  */
 export function foldBlueprintAddNodeFamilies(
     entries: readonly BlueprintNodeEditorCatalogEntry[],
 ): BlueprintNodeEditorCatalogEntry[] {
     const groups = new Map<string, BlueprintNodeEditorCatalogEntry[]>();
     for (const entry of entries) {
-        const family = foldableFamilyOf(entry);
-        if (family) {
-            groups.set(family.id, [...(groups.get(family.id) ?? []), entry]);
+        const key = familyFoldKey(entry);
+        if (key) {
+            groups.set(key, [...(groups.get(key) ?? []), entry]);
         }
     }
     const placed = new Set<string>();
     const out: BlueprintNodeEditorCatalogEntry[] = [];
     for (const entry of entries) {
-        const family = foldableFamilyOf(entry);
-        const group = family ? groups.get(family.id) : undefined;
-        if (!family || !group || group.length < 2) {
+        const key = familyFoldKey(entry);
+        const family = key ? blueprintNodeFamilyOf(entry.type) : undefined;
+        const group = key ? groups.get(key) : undefined;
+        if (!key || !family || !group || group.length < 2) {
             out.push(entry);
             continue;
         }
-        if (placed.has(family.id)) {
+        if (placed.has(key)) {
             continue;
         }
-        placed.add(family.id);
+        placed.add(key);
         const members = family.members.flatMap(type => group.filter(candidate => candidate.type === type));
         out.push({
             ...members[0]!,
@@ -109,8 +111,16 @@ export function foldBlueprintAddNodeFamilies(
     return out;
 }
 
-function foldableFamilyOf(entry: BlueprintNodeEditorCatalogEntry) {
-    return entry.preset || entry.magicElementRef ? undefined : blueprintNodeFamilyOf(entry.type);
+/** Which folded row an entry joins: its family, and the bound element it was offered for if any. */
+function familyFoldKey(entry: BlueprintNodeEditorCatalogEntry): string | undefined {
+    const family = entry.preset ? undefined : blueprintNodeFamilyOf(entry.type);
+    if (!family) {
+        return undefined;
+    }
+    const ref = entry.magicElementRef;
+    return ref
+        ? [family.id, ref.sourceNodeId, ref.sourcePortId, ref.targetPortId, ref.surfaceId, ref.elementId].join("\0")
+        : family.id;
 }
 
 export function blueprintAddNodeEntryKey(entry: BlueprintNodeEditorCatalogEntry): string {
