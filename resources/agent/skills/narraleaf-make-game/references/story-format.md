@@ -51,6 +51,13 @@ Aoi: It is. I just don't know how to start.
   classroom` and the like): write `#background none` (or your own picture) and `#music none` in your
   source, or that picture shows for a beat before your first `/bg` - in the game the player sees.
   `story_targets {query}` lists, under "scene settings", which scenes open on which picture.
+- `#layer` lines are the **scene's layers**, also header-only: one line per layer, nearest first.
+  `#layer displayableLayer` is the base layer - where everything not placed on another layer stands, at
+  distance 1 - and `#layer hills distance=3` is a layer three times as far, which moves a third as much
+  when the camera moves (`distance=inf` does not move; below 1 is nearer than the base layer). Layers at
+  one distance are one level. A header with no `#layer` keeps the scene's layers; one with any states
+  all of them, and a layer it leaves out is removed. There is no `/layer` row: a file refuses one, and
+  `story_command layer` shows the header form.
 - Two spaces per nesting level. The rows under a menu option or an `/if` branch are indented one level
   deeper than it.
 - A blank line is spacing, not a row.
