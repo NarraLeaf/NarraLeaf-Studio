@@ -18,6 +18,10 @@
  * Comments in English per project convention.
  */
 
+import { loadFontFaceFromUrl, type LoadedFontFace } from "@/lib/ui-editor/fonts/fontFaceFromUrl";
+import { addFontFaceToDocument } from "@/lib/ui-editor/fonts/documentFontFaces";
+import { getGameRuntimeBridge } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
+
 /** Asset ids whose face is registered on the document, and the family it went in under. */
 const registered = new Map<string, string>();
 
@@ -79,14 +83,43 @@ async function registerFace(assetId: string, url: string): Promise<string | null
         return null;
     }
     const cssFamily = runtimeFontCssFamily(assetId);
-    const face = await new FontFace(cssFamily, `url("${url.replace(/"/g, "\\\"")}")`).load();
-    document.fonts.add(face);
+    let loaded: LoadedFontFace;
+    try {
+        // From the bytes, not from `url(...)`: see `fontFaceFromUrl` for why the browser's font
+        // loader is not handed an asset URL.
+        loaded = await loadFontFaceFromUrl(cssFamily, url);
+    } catch (error) {
+        reportFontFailure(assetId, error);
+        throw error;
+    }
+    // With the stylesheet rule beside the face, so the engine's picture of the stage - what a save
+    // shows on its slot - is set in this font too. See `documentFontFaces`.
+    addFontFaceToDocument(cssFamily, loaded);
     registered.set(assetId, cssFamily);
     return cssFamily;
+}
+
+/** Asset ids whose failure is already in the log, so a page of text widgets writes one line. */
+const reportedFailures = new Set<string>();
+
+/**
+ * Say in the game's log that a font did not load.
+ *
+ * The text falls back to the next family in its list either way, and before this nothing else
+ * happened: a game set in the wrong typeface with not one line anywhere saying why.
+ */
+function reportFontFailure(assetId: string, error: unknown): void {
+    if (reportedFailures.has(assetId)) {
+        return;
+    }
+    reportedFailures.add(assetId);
+    const reason = error instanceof Error ? error.message : String(error);
+    getGameRuntimeBridge()?.log("warning", `[fonts] font ${assetId} ${reason}; its text is drawn in the next font of its list`);
 }
 
 /** Forget everything registered. For tests, which share one module instance across cases. */
 export function resetRuntimeFontFacesForTest(): void {
     registered.clear();
     inFlight.clear();
+    reportedFailures.clear();
 }

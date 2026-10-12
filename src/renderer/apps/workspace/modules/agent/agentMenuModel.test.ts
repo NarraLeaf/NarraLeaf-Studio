@@ -157,10 +157,10 @@ describe("the Agent menu's rows", () => {
         expect(model.run.toggleFullAccess).toHaveBeenCalled();
     });
 
-    it("offers the four configurations by client, in the Settings panel's order, and copies the one picked", () => {
+    it("offers every configuration by client, in the Settings panel's order, and copies the one picked", () => {
         const model = input();
         const copy = buildAgentMenuItems(model).find(item => !isActionMenuSeparator(item) && item.id === AGENT_MENU_ACTIONS.copyConfig) as ActionSubmenu;
-        expect(copy.items.map(item => (item as ActionDefinition).label)).toEqual(["Claude Code", "Claude Desktop", "opencode", "JSON"]);
+        expect(copy.items.map(item => (item as ActionDefinition).label)).toEqual(["Claude Code", "Claude Desktop", "Codex", "opencode", "Gemini CLI", "JSON"]);
         (copy.items[1] as ActionDefinition).onClick(undefined as never);
         expect(model.run.copyConfig).toHaveBeenCalledWith("stdio");
     });
@@ -172,8 +172,10 @@ describe("the Agent menu's rows", () => {
             opencode: "settings.agent.copyOpencode",
             json: "settings.agent.copyJson",
         } as const;
+        // Codex and Gemini CLI have no copy button in Settings yet.
+        const shared = AGENT_MENU_COPY_KINDS.flatMap(entry => entry.kind in keys ? [{ ...entry, key: keys[entry.kind as keyof typeof keys] }] : []);
         for (const t of [en, zh, createTranslator("ja").t]) {
-            expect(AGENT_MENU_COPY_KINDS.map(entry => t(keys[entry.kind]))).toEqual(AGENT_MENU_COPY_KINDS.map(entry => entry.label));
+            expect(shared.map(entry => t(entry.key))).toEqual(shared.map(entry => entry.label));
         }
     });
 

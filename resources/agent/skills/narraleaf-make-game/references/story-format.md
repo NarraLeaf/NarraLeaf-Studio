@@ -74,6 +74,24 @@ Escape with a backslash: a line of narration that starts with `/`, `-`, `?`, `//
 `: ` (which would read as dialogue) needs `\` before the marker - `\...Huh.`, `\- not an option`,
 `It said\: closed.` Leading or trailing spaces need it too. `story_show` writes escapes for you.
 
+### Inline styling
+
+Dialogue, narration and choice options may style part of a line:
+
+```
+Mei: That was {b}not{/b} my idea.
+The sign read {color=#d03030}KEEP OUT{/color}, in {i}fresh{/i} paint.
+Aki: {color=#40a8c4}{b}Run!{/b}{/color}
+```
+
+`{b}…{/b}` bold, `{i}…{/i}` italic, `{color=…}…{/color}` colour (a hex code such as `#d03030`, or a
+CSS colour name). Tags nest and must close on the same line; a stray or unclosed tag is refused
+(`compile.inlineMarkup`). A literal brace that would read as one of these tags is written `\{b}`; any
+other brace (`{gold}`) is ordinary text. `story_show` prints styled lines this way. A line with
+styling the format has no tag for - ruby, size, typing speed, emphasis dots, an inline pause or
+variable, all set in Studio - prints as a `»` row instead; keep it as it is. Text tags from another
+engine (`{size=…}`, `{w}`, `{a=…}`, …) are not understood: rewrite the three above, drop the rest.
+
 ## Anchors: the row's identity
 
 `story_show` ends each line with `⟦…⟧` - the first characters of the row's id, optionally followed by
@@ -99,23 +117,48 @@ those you deliberately keep.
   the picture by that name, and a `/show` without `name=` means "reveal the object already called
   that". `/image` alone only creates a picture without showing it (`story/declared-never-shown`); use
   `/show <asset> name=`.
+- **Declare, then show.** `/image`, `/text` and `/vfx` rows only declare an object; nothing is on screen
+  until a `/show <name>` row. `/text name=title pos=center Chapter One` then `/show title in=fade d=0.5`;
+  `/vfx snow name=snow` then `/show snow` (and `/hide snow` to stop it). `story_command <token>`
+  prints these pairs under "together".
 - Do not create the same name twice in one scene (`story/stage-object-duplicate`): change the picture
   of an existing one with `/swap <name> <asset>`, bring it back with `/show <name>`.
 - **Video**: `/play <video asset> name=<name>` plays it to the end and clears it away (`wait=false`,
   `hide=false`, `muted` change that). `/show` refuses videos.
 - **Camera**: `/transform camera zoom=1.1 d=2 ease=easeOut`.
-- Positions are `left`, `center`, `right`. A sprite is drawn at its own pixel size times its
-  character's entrance `zoom`, its CENTRE placed at the position: `xalign`/`yalign` are shares of the
-  stage from the left and up from the bottom, `xoffset`/`yoffset` design pixels (+ is up). `pos=`
-  writes `xalign` 0.25/0.5/0.75 and `yalign` 0.5, so the baseline comes from the character's
+- **Positions.** `/show`, `/image`, `/text` and `/transform` all take a word, `pos=left|center|right`,
+  or an exact pair, `pos=x,y` (no spaces):
+  - `x` and `y` are **shares of the stage, not pixels and not percentages**. `x` runs from the left
+    edge (0) to the right edge (1); `y` runs from the **bottom** edge (0) up to the top (1).
+  - The pair says where the object's **centre** goes. There is no anchor: the engine always places
+    the centre. `left`/`center`/`right` are `0.25,0.5` / `0.5,0.5` / `0.75,0.5`.
+  - Values a little outside 0..1 park the object off screen - `pos=-0.3,0.5` is a slide-in start.
+    Anything below -1 or above 2 is refused (`pos=100,200` is pixels typed where shares belong).
+  - **Pixel offsets**: `xoffset=` and `yoffset=` add design pixels (the project resolution's pixels,
+    so the same distance at any window size) to the pair. `+xoffset` moves **right**; `+yoffset`
+    moves **up**, because the stage origin is its bottom-left corner. They are only accepted beside a
+    `pos=`, and a printed row always writes both shares with them: `/transform Mei pos=0.5,0.5
+    xoffset=40 yoffset=-12 d=0.4`, `/show Aki pos=0.25,0.5 xoffset=-40`. A word with an offset reads
+    back as its pair (`pos=left xoffset=40` prints as `pos=0.25,0.5 xoffset=40`). `xoffset=40` with
+    no `pos=` is refused. A row whose position has an offset but only one share (the inspector writes
+    that when a sprite is dragged along one axis) still prints as `»`.
+  A sprite is drawn at its own pixel size times its character's entrance `zoom`. `pos=` words write
+  `xalign` 0.25/0.5/0.75 and `yalign` 0.5, so the baseline comes from the character's
   `entranceTransform.position.yoffset`, never from `yalign`. `characters_list` gives `drawnAtCenter`.
+  A `yoffset=` on a character's `/show` **replaces** that entrance `yoffset` rather than adding to it
+  (the row and the entrance are merged axis by axis), so restate the baseline in it when you use one.
+- `/transform` moves images, texts, layers, characters and the camera. These params reach neither an
+  anchor nor a video's or `/vfx` overlay's own transform: `/transform` refuses videos and overlays
+  (the engine gives them none), and `/transform camera ...` moves them together with the rest of the
+  stage, while the dialogue box and menus stay put.
 
 ## Sound
 
 - `/bgm <audio> track=Music vol=0.7 fade=1.5 loop` - starts (or crossfades to) background music.
   Repeat the line in each scene where the music should change.
 - `/sound <audio> name=<name>` - a sound effect. Give it `name=` if a later row must `/stop` it;
-  `/stop <name> fade=0.5`. `story_command stop` explains what a `/stop` with no target stops.
+  `/stop <name> fade=0.5`. The music is the reserved name `bgm`: `/stop bgm fade=1`, `/vol bgm 0.5`,
+  `/pause bgm`. `music` is not a name - it only works if a row created something called that.
 - `track=` names an audio track from `audio_tracks_list` (Music, SFX, Voice, or custom ones).
 
 ## Branching and flow
@@ -171,6 +214,47 @@ scene of your own, copy one such `»` line and its `#data` entry from a skeleton
 fresh UUID (its first 8 characters become the anchor and the `#data` key, the whole UUID goes in the
 entry's `"id"`), and set `"value"` to `"scene:<your scene id>"`. Check it with `dryRun: true`. If it
 gives trouble, leave it out: saves then show no place, nothing else breaks.
+
+## A row that runs a blueprint
+
+A `/blueprint` row runs a blueprint of its own when play reaches it - the way to grant an
+achievement, unlock a gallery CG the moment it shows, or call any plugin's node at a point in the
+story. Such a row has no line spelling: it is a `»` row whose `#data` entry names its blueprint, and
+the blueprint is written with `blueprint_apply` under the owner `storyAction`.
+
+1. Find the node: `blueprint_nodes {query:"achievement"}` (plugin nodes are listed when the plugin is
+   loaded in the project), then `blueprint_node {type}` for its pins and fields.
+2. Pick two fresh UUIDs: one for the row, one for its blueprint.
+3. Write the blueprint - `owner=storyAction blueprint=<blueprint uuid>` and `id=` the same uuid - with
+   an **On Call** head (`blueprint.event.head.onCall`) wired to the node:
+
+```
+blueprint "Grant: reached the lighthouse" owner=storyAction blueprint=7d1e3c55-2f0a-4b8e-9c47-1a6b0d93e2f4 id=7d1e3c55-2f0a-4b8e-9c47-1a6b0d93e2f4
+
+event "Grant the achievement"
+    call: blueprint.event.head.onCall
+    grant: <the plugin's unlock node type>
+        <its id field> = lighthouse
+
+    call.then -> grant.in
+```
+
+4. Put the row in the scene with `story_apply`: a `»` line whose anchor is the row uuid's first 8
+   characters, and its entry in the `#data` footer (merge it into the footer `story_show` printed, if
+   there is one):
+
+```
+Aki: We made it to the top.
+» Blueprint  ⟦3b9f6a21⟧
+
+#data
+{"3b9f6a21":{"id":"3b9f6a21-8c4d-4e5f-a617-2b3c4d5e6f70","parentId":null,"childrenIds":[],"kind":"action","payload":{"action":"blueprint","blueprintId":"7d1e3c55-2f0a-4b8e-9c47-1a6b0d93e2f4"}}}
+```
+
+Apply the blueprint first, then the scene (`dryRun: true` on both). From then on `story_show` prints
+the row as `» Blueprint Grant: reached the lighthouse  ⟦3b9f6a21⟧` - keep that line and its `#data`
+entry as they are; to change what it does, `blueprint_show` / `blueprint_apply` its blueprint. One
+blueprint per row: copy the pattern with new UUIDs for the next one.
 
 ## Rules that cause refusals or broken games
 

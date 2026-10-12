@@ -43,7 +43,7 @@ export type AgentQuickTogglePatch = {
 /** The client configurations the Agent menu can copy; the same kinds the Settings panel offers. */
 export type AgentCopyConfigKind = AgentClientConfigKind;
 
-export const AGENT_COPY_CONFIG_KINDS: readonly AgentCopyConfigKind[] = ["claudeCode", "opencode", "json", "stdio"];
+export const AGENT_COPY_CONFIG_KINDS: readonly AgentCopyConfigKind[] = ["claudeCode", "opencode", "json", "stdio", "codex", "gemini"];
 
 /** The folder an exported skill is written into, inside the directory the author picked. */
 export const AGENT_SKILL_EXPORT_FOLDER = "NarraLeaf-Skills";

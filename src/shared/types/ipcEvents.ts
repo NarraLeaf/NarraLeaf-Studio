@@ -4,6 +4,7 @@ import type { ProjectTrustRecord } from "./projectTrust";
 import type { AgentCallRequest, AgentCallResult, AgentFolderAccessAnswer, AgentFolderAccessRequest } from "../agent/protocol";
 import type { AgentSettingsPatch, AgentSettingsSnapshot } from "../agent/settings";
 import type { AgentCopyConfigKind, AgentMainActivity, AgentQuickState, AgentQuickTogglePatch } from "../agent/workspaceAccess";
+import type { AgentClientId, AgentClientSetupInfo, AgentSkillInstallResult } from "../agent/clients";
 import type { AgentPluginToolDescriptor } from "../agent/pluginTools";
 import type { ProjectSessionHolder, ProjectSessionLockOutcome } from "./projectSession";
 import { IPCMessageType, IPCType } from "./ipc";
@@ -297,6 +298,8 @@ export enum IPCEventType {
     agentCopyConfig = "agent.quick.copyConfig",
     agentExportSkill = "agent.quick.exportSkill",
     agentRevealExportedSkill = "agent.quick.revealExportedSkill",
+    agentClientSetup = "agent.setup.clientSetup",
+    agentInstallSkill = "agent.setup.installSkill",
     workspaceAgentActivity = "workspace.agentActivity",
     agentReportPluginTools = "agent.reportPluginTools",
     agentRequestFolderAccess = "agent.requestFolderAccess",
@@ -2778,6 +2781,26 @@ export type IPCWorkspaceEvents = {
         consumer: IPCType.Host,
         data: Record<string, never>;
         response: { revealed: boolean };
+    };
+    /**
+     * What first-run setup needs to connect an agent: the endpoint, the stdio command and where each
+     * client's skill folder is. Settings and the launcher while first-run setup is open; never the token.
+     */
+    [IPCEventType.agentClientSetup]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: AgentClientSetupInfo;
+    };
+    /**
+     * Install the bundled skill for one agent application: copied into its skill folder, or written
+     * as a zip through a save picker for a client that takes an upload. Same windows as above.
+     */
+    [IPCEventType.agentInstallSkill]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { client: AgentClientId };
+        response: AgentSkillInstallResult;
     };
     /** One agent call main answered itself, for the workspace's Agent log. Fire-and-forget. */
     [IPCEventType.workspaceAgentActivity]: {

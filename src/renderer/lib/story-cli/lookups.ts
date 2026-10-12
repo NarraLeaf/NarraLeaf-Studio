@@ -74,6 +74,12 @@ export function buildLookups(
         surfaceName: surfaceId => data.surfaces.find(surface => surface.id === surfaceId)?.name ?? null,
         inputActionName: actionId => data.inputActions.find(action => action.id === actionId)?.name ?? null,
         audioTrackName: trackId => data.audioTracks.find(track => track.id === trackId)?.name ?? null,
+        // So a `/blueprint` row's `»` line says which blueprint it runs, by the name its author gave
+        // it (`blueprint_apply ... owner=storyAction`), rather than the bare kind.
+        blueprintName: blueprintId => {
+            const blueprint = data.blueprintDocument?.blueprints[blueprintId];
+            return blueprint?.owner?.kind === "storyAction" ? blueprint.name?.trim() || null : null;
+        },
         ...(scene ? { scene } : {}),
         ...(document ? { scenes: document.scenes, document } : {}),
         commandContext: context,

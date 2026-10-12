@@ -680,6 +680,9 @@ export const story = {
         z: "重ね順",
         depth: "奥行き",
         // 変形プロパティの語彙（`commands/transformVocabulary.ts`）。バッグの 1 チャンネルに 1 キー。
+        // 2 つのオフセットは `pos=` に加えるデザイン上のピクセル。正の値で右、上へ動く。
+        xOffset: "横オフセット",
+        yOffset: "縦オフセット",
         zoom: "ズーム",
         scale: "スケール",
         scaleX: "横スケール",
@@ -1558,6 +1561,7 @@ export const story = {
     history: {
         deleteScene: "シーン {name} の削除",
         deleteChapter: "チャプター {name} の削除",
+        renameChapter: "チャプター {name} の名前変更",
         deleteStory: "ストーリー {name} の削除",
         deleteAnimation: "モーション {name} の削除",
         // チャプターの移動も並べ替えも同じドラッグ操作なので、言い方も一つにする。

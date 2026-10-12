@@ -135,9 +135,11 @@ export type CommandLineRunLogLine = {
  */
 export type CommandLineRunFinding = {
     severity: "error" | "warning" | "info";
-    /** The rule id for lint. Absent for a test finding, which no registry names. */
+    /** The rule id: a lint rule's, or the one a test finding names (project-diagnostics carries the lint rule's). */
     id?: string;
     message: string;
+    /** The message in English when the producer supplied one - what the agent connection reports. */
+    englishMessage?: string;
     /** Where it is, when the finding knows - a story name, a scene, an asset. */
     location?: string;
 };

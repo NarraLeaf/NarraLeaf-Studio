@@ -86,7 +86,9 @@ export function agentMenuStatusLine(t: Translator["t"], clientName: string | nul
 export const AGENT_MENU_COPY_KINDS: readonly { kind: AgentCopyConfigKind; label: string }[] = [
     { kind: "claudeCode", label: "Claude Code" },
     { kind: "stdio", label: "Claude Desktop" },
+    { kind: "codex", label: "Codex" },
     { kind: "opencode", label: "opencode" },
+    { kind: "gemini", label: "Gemini CLI" },
     { kind: "json", label: "JSON" },
 ];
 

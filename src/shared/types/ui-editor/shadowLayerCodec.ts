@@ -134,3 +134,105 @@ export function shadowLayerDataToCss(layer: EffectShadowLayerData, mode: ShadowS
     const sl = layerDataToShadowLike({ ...layer, color }, mode === "inner");
     return serializeShadowLikeLayer(sl, mode);
 }
+
+/** The widest spread drawn as rings; beyond it the outline would cost more shadows than it is worth. */
+const TEXT_SHADOW_MAX_SPREAD = 24;
+/** The most rings, and the most copies on one ring, a spread is drawn with. */
+const TEXT_SHADOW_MAX_RINGS = 3;
+const TEXT_SHADOW_MAX_RING_COPIES = 16;
+const TEXT_SHADOW_MIN_RING_COPIES = 8;
+
+function roundShadowPx(value: number): number {
+    const rounded = Math.round(value * 100) / 100;
+    return Object.is(rounded, -0) ? 0 : rounded;
+}
+
+/**
+ * One layer as `text-shadow`, which - unlike `box-shadow` - takes no spread.
+ *
+ * A fourth length is not ignored by the browser: it makes the whole declaration invalid, so a text
+ * shadow with any spread painted nothing at all, on the canvas and in the game alike. That is the
+ * shadow authors reach for as an outline (no offset, no blur, a few pixels of spread), so the spread
+ * is drawn the way `text-shadow` can draw it: copies of the glyphs at the layer's offset, pushed out
+ * in a ring of directions at the spread's distance, each blurred by the layer's blur. Their union is
+ * the glyphs grown by the spread. For a wider spread, inner rings fill what a single ring would leave
+ * open around small marks such as a full stop.
+ *
+ * A spread of zero or less is the plain layer; text has nothing to shrink, so a negative spread is
+ * left out rather than drawn as something else. The colour is resolved as `shadowLayerDataToCss`
+ * resolves it.
+ */
+export function textShadowLayerDataToCss(layer: EffectShadowLayerData): string {
+    const color = getActiveBrandPalette().resolveValueCss(layer.color) ?? layer.color;
+    return textShadowLayerToCss({ ...layer, color });
+}
+
+function textShadowLayerToCss(layer: EffectShadowLayerData): string {
+    const spread = Math.min(TEXT_SHADOW_MAX_SPREAD, layer.spread);
+    if (!(spread > 0)) {
+        return serializeShadowLikeLayer({ inset: false, ...layer, spread: 0 }, "outer");
+    }
+    const blur = Math.max(0, layer.blur);
+    const rings = Math.min(TEXT_SHADOW_MAX_RINGS, Math.max(1, Math.ceil(spread / 2)));
+    const copies: string[] = [];
+    for (let ring = 1; ring <= rings; ring++) {
+        const radius = (spread * ring) / rings;
+        const count = Math.min(
+            TEXT_SHADOW_MAX_RING_COPIES,
+            Math.max(TEXT_SHADOW_MIN_RING_COPIES, Math.ceil((2 * Math.PI * radius) / 2)),
+        );
+        for (let step = 0; step < count; step++) {
+            const angle = (2 * Math.PI * step) / count;
+            const x = roundShadowPx(layer.offsetX + radius * Math.cos(angle));
+            const y = roundShadowPx(layer.offsetY + radius * Math.sin(angle));
+            copies.push(`${x}px ${y}px ${roundShadowPx(blur)}px ${layer.color}`);
+        }
+    }
+    return copies.join(", ");
+}
+
+/** Splits a shadow list on its top-level commas, leaving the ones inside `rgba(…)` and the like. */
+function splitShadowList(css: string): string[] {
+    const parts: string[] = [];
+    let depth = 0;
+    let start = 0;
+    for (let i = 0; i < css.length; i++) {
+        const ch = css[i];
+        if (ch === "(") {
+            depth += 1;
+        } else if (ch === ")") {
+            depth = Math.max(0, depth - 1);
+        } else if (ch === "," && depth === 0) {
+            parts.push(css.slice(start, i));
+            start = i + 1;
+        }
+    }
+    parts.push(css.slice(start));
+    return parts.map(part => part.trim()).filter(Boolean);
+}
+
+/**
+ * A free-form `text-shadow` value with every layer that carries a spread drawn as `text-shadow` can
+ * draw it (see {@link textShadowLayerDataToCss}).
+ *
+ * Only a layer with a spread is rewritten; every other one - and any the parser does not read, such
+ * as a colour written first - goes through exactly as typed, so a value that was valid stays valid.
+ */
+export function textShadowCssWithSpread(css: string): string {
+    const trimmed = css.trim();
+    if (!trimmed) {
+        return "";
+    }
+    const layers = splitShadowList(trimmed);
+    let rewritten = false;
+    const out = layers.map(layer => {
+        const parsed = parseShadowLikeFragment(layer);
+        if (!parsed.ok || parsed.value.inset || parsed.value.spread === 0) {
+            return layer;
+        }
+        rewritten = true;
+        const { offsetX, offsetY, blur, spread, color } = parsed.value;
+        return textShadowLayerToCss({ offsetX, offsetY, blur, spread, color });
+    });
+    return rewritten ? out.join(", ") : trimmed;
+}

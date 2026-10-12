@@ -1,15 +1,40 @@
-# NarraLeaf Skills
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/NarraLeaf/.github/refs/heads/master/doc/banner-md-transparent.png">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/NarraLeaf/.github/refs/heads/master/doc/banner-md-light.png">
+  <img alt="narraleaf banner" src="https://raw.githubusercontent.com/NarraLeaf/.github/refs/heads/master/doc/banner-md-light.png">
+</picture>
 
-This folder lets your AI agent make a complete, playable visual novel in NarraLeaf Studio, with you
-watching every edit land in Studio. It works with any agent that speaks MCP (the Model Context
-Protocol): Claude Code, Claude Desktop, opencode, Codex, Cursor, Gemini CLI and others.
+# NarraLeaf-Skills
 
-Two pieces:
+> This project is currently in the early stages of development.
 
-- **NarraLeaf Studio's MCP server** - built into Studio. It gives the agent tools to create projects,
-  import assets, write scenes, restyle the interface, playtest and build. Studio must be open.
-- **The `narraleaf-make-game` skill** - the guide the agent follows: the order of work, the text
-  formats it writes, interface design rules and the traps to avoid.
+NarraLeaf Skills lets an AI agent make a complete, playable visual novel in
+[NarraLeaf Studio](https://github.com/NarraLeaf/NarraLeaf-Studio) while you watch every edit land in
+the open project. It works with any agent that speaks MCP (the Model Context Protocol): Claude Code,
+Claude Desktop, opencode, Codex, Cursor, Gemini CLI and others.
+
+Studio does the work; these skills tell the agent how. Studio's built-in MCP server gives the
+agent tools to create projects, import assets, write scenes, restyle the interface, playtest and
+build. The skills here are the guides the agent follows: the order of work, the text formats it
+writes, the interface conventions it keeps and the traps to avoid.
+
+## Features
+
+- **A whole game, not a demo.** From a brief, a script and a folder of art to a game that builds:
+  project, assets, characters, branching story, a restyled interface, translations, voice, gallery,
+  verification and packaging.
+- **Watched, not hidden.** Every edit lands live in the Studio you have open and is one undo step.
+  The status bar shows what the agent is editing, and you can pause it at any moment.
+- **Any agent.** The guide is plain Markdown with an open `SKILL.md` format, and Studio's server also
+  serves it to agents that have no skill support at all.
+- **Ready-made connections.** Settings for Claude Code, Claude Desktop, opencode, Codex, Cursor and
+  Gemini CLI in [`mcp-configs/`](mcp-configs/).
+- **Ren'Py porting** *(experimental)*. Moving an existing Ren'Py game, with its source, into Studio:
+  a converter-based method, Ren'Py-to-Studio mappings, and an interface traced from screenshots of
+  the running Ren'Py game.
+
+> **Ren'Py porting is still being tested and is not stable yet.** Expect gaps and differences from the
+> original game, and check the result yourself before you rely on it.
 
 ```
 NarraLeaf-Skills/
@@ -17,15 +42,18 @@ NarraLeaf-Skills/
   AGENTS.md                  pointer for agents that read AGENTS.md
   mcp-configs/               ready-made connection settings per agent
   narraleaf-make-game/       the skill (SKILL.md + references/ + assets/)
+  narraleaf-port-renpy/      the Ren'Py porting skill - experimental (needs narraleaf-make-game too)
 ```
 
-## 1. Switch on agent access in Studio
+## Getting started
+
+### 1. Switch on agent access in Studio
 
 1. Open NarraLeaf Studio.
 2. **Settings -> Agent access** (also in the menu bar's *Agent* menu): switch on agent access.
 3. Switch on **Allow agents to change projects** when you want the agent to edit (it can read without).
 4. Optional: under **Folders agents may import from**, add the folder that holds your art and audio.
-   You can skip this - when the agent needs a folder outside the project, Studio asks you in a dialog
+   You can skip this - when the agent needs a folder outside the project, Studio asks you in a window
    and adds it to the list when you allow it. **Full access** lets the agent change projects and read
    any folder without asking (Studio's own folders stay closed); leave it off unless you want that.
 5. **Copy configuration** gives you the address (`http://127.0.0.1:<PORT>/mcp`, usually port 47219)
@@ -39,12 +67,13 @@ Treat the token like a password; you can regenerate it in the same settings page
 While the agent works, Studio's status bar shows what it is editing; **Pause agent** there stops it
 at once, and **Ctrl+Z** (Cmd+Z) undoes its last edit like any of yours.
 
-## 2. Connect your agent
+### 2. Connect your agent
 
 Replace `<PORT>` and `<TOKEN>` with the values from *Copy configuration*. The files in `mcp-configs/`
-hold the same settings.
+hold the same settings. Fill them in a copy outside this folder, or name the copy `*.local.json`
+(`.local.toml`, `.local.sh`) so git ignores it - never commit a real token.
 
-### Claude Code
+#### Claude Code
 
 ```sh
 claude mcp add --scope user --transport http narraleaf http://127.0.0.1:<PORT>/mcp --header "Authorization: Bearer <TOKEN>"
@@ -66,7 +95,7 @@ up front in `~/.claude/settings.json`:
 You can still pause the agent from Studio at any moment, and Studio's own switch decides whether it
 may change anything at all.
 
-### Claude Desktop
+#### Claude Desktop
 
 Claude Desktop's configuration file starts local programs, and Studio can be that program: started
 with `--mcp-stdio`, it opens no window and forwards the connection to the Studio you have open
@@ -82,46 +111,72 @@ If that does not work for you, `mcp-configs/claude-desktop-mcp-remote.json` does
 Claude Desktop offers adding a custom connector by URL, you can use the address and token there
 instead.
 
-### opencode
+#### opencode
 
 Merge `mcp-configs/opencode.json` into `opencode.json` in your working folder, or into
 `~/.config/opencode/opencode.json` for every folder. Check with `opencode mcp list`.
 
-### Codex CLI
+#### Codex CLI
 
 Append `mcp-configs/codex.toml` to `~/.codex/config.toml`. Check with `codex mcp list`, or `/mcp`
 inside Codex.
 
-### Cursor
+#### Cursor
 
 Copy `mcp-configs/cursor.mcp.json` to `.cursor/mcp.json` in your working folder, or to
 `~/.cursor/mcp.json` for every folder. Enable the server under *Cursor Settings -> MCP*.
 
-### Gemini CLI
+#### Gemini CLI
 
 Merge `mcp-configs/gemini-settings.json` into `~/.gemini/settings.json` (or `.gemini/settings.json`
 in your working folder). The `context.fileName` entry makes Gemini read `AGENTS.md`. Check with
 `/mcp` inside Gemini CLI.
 
-### Any other MCP client
+#### Any other MCP client
 
 Streamable HTTP transport, URL `http://127.0.0.1:<PORT>/mcp`, header
 `Authorization: Bearer <TOKEN>`. For a client that only starts local (stdio) programs, run Studio
 itself with `--mcp-stdio` (*Copy configuration -> stdio*), or a bridge such as `mcp-remote`, as in the
 Claude Desktop example.
 
-## 3. Give your agent the skill
+### 3. Give your agent the skill
 
-The skill is the folder `narraleaf-make-game/`. Copy the whole folder (not just `SKILL.md`) to where
-your agent looks for skills:
+The skill is the folder `narraleaf-make-game/`. `narraleaf-port-renpy/` is the Ren'Py porting skill; it
+relies on `narraleaf-make-game`, so install both if you are porting a Ren'Py game.
+
+#### With npx
+
+With Node.js installed, the [`skills`](https://github.com/vercel-labs/skills) command (a third-party
+tool by Vercel Labs) copies the skills into the folders your agents read:
+
+```sh
+npx skills add NarraLeaf/Skills -g
+```
+
+It asks which skills to install and for which agents. To answer up front:
+
+```sh
+npx skills add NarraLeaf/Skills -g --skill narraleaf-make-game -a claude-code -a codex
+```
+
+`-a codex` writes to `~/.agents/skills/`, which opencode, Cursor and Gemini CLI read as well, so the
+two cover all five agents. `-g` installs for your user, so the skill is there in every folder; without
+it the skill goes into the project you run the command in. `npx skills update` fetches a newer version
+later.
+
+#### By hand
+
+Copy the whole folder (not just `SKILL.md`) to where your agent looks for skills:
 
 | Agent | Personal (every folder) | One project |
 |---|---|---|
 | Claude Code | `~/.claude/skills/narraleaf-make-game/` | `.claude/skills/narraleaf-make-game/` |
-| opencode | `~/.config/opencode/skill/narraleaf-make-game/` | `.opencode/skill/narraleaf-make-game/` |
-| Codex CLI | `~/.codex/skills/narraleaf-make-game/` | - |
+| Codex, opencode, Cursor, Gemini CLI | `~/.agents/skills/narraleaf-make-game/` | `.agents/skills/narraleaf-make-game/` |
 | Claude Desktop / claude.ai | zip the folder and upload it under *Settings -> Capabilities -> Skills* | - |
-| Cursor, Gemini CLI, others | no skill folder needed - see below | |
+
+`~/.agents/skills/` is the one folder all four of those agents read; some also have a folder of their
+own (`~/.config/opencode/skills/`, `~/.cursor/skills/`, `~/.gemini/skills/`). Cursor and opencode read
+`~/.claude/skills/` too, so with the skill in both places they may list it twice. Either copy works.
 
 **The simplest way for every agent:** start your agent *inside this folder* (`NarraLeaf-Skills`).
 Agents that read `AGENTS.md` (opencode, Codex, Cursor, Gemini CLI with the setting above, and many
@@ -142,12 +197,12 @@ So with any MCP client, this first message works:
 > Use the NarraLeaf Studio tools. Call agent_guide with chapter "workflow" and follow it to make my
 > game.
 
-## 4. Make a game
+### 4. Make a game
 
 Tell your agent what you want, for example:
 
-> Make a visual novel from the script in `~/Documents/winter-story/script.txt` with the art in
-> `~/Documents/winter-story/art`. Chinese text, 1920x1080, two endings.
+> Make a visual novel from the script in `~/Documents/my-novel/script.txt` with the art in
+> `~/Documents/my-novel/art`. Chinese text, 1920x1080, two endings.
 
 The agent will check the connection, go through a short brief with you, create the project from the
 Skeleton template, import your assets (making labelled placeholders for anything missing), set up
@@ -158,15 +213,19 @@ It can also translate a finished game into another language, scene by scene, and
 voice recordings to the lines they belong to:
 
 > Translate the game into English. Then link the Japanese voice recordings in
-> `~/Documents/winter-story/voice-ja` and tell me which lines still have no recording.
+> `~/Documents/my-novel/voice-ja` and tell me which lines still have no recording.
 
 ## Troubleshooting the connection
 
 - **The agent has no NarraLeaf tools.** Studio is closed, agent access is off, or the port/token is
   wrong. Re-copy the configuration from Studio and restart the agent.
 - **"writes_disabled".** Switch on *Allow agents to change projects*.
-- **"path_not_allowed" when importing.** You declined Studio's folder dialog, or have not answered it
+- **"path_not_allowed" when importing.** You declined Studio's folder prompt, or have not answered it
   yet (look for it on the Studio window). Allow the folder there, or add it under *Folders agents may
   import from*.
 - **The agent edits the wrong project.** With several projects open, the agent must name the project
   folder; or close the others.
+
+## License
+
+MIT, in [LICENSE](LICENSE).

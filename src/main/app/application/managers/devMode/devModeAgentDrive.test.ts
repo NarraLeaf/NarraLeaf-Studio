@@ -112,4 +112,21 @@ describe("driveDevModeWindow", () => {
         await vi.advanceTimersByTimeAsync(DEV_MODE_AGENT_BUDGET_MS.capture);
         await assertion;
     });
+
+    it("crops the window capture to the game's box for a screen capture", async () => {
+        const rects: unknown[] = [];
+        const { value } = target({
+            ask: async () => ({ success: true, data: { kind: "capture", png: "", source: "screen", rect: { x: 10, y: 40, width: 1280, height: 720 } } }),
+            capturePage: async rect => {
+                rects.push(rect);
+                return "data:image/png;base64,GAME";
+            },
+        });
+        await expect(driveDevModeWindow(value, { kind: "capture", view: "screen" })).resolves.toEqual({
+            kind: "capture",
+            png: "data:image/png;base64,GAME",
+            source: "screen",
+        });
+        expect(rects).toEqual([{ x: 10, y: 40, width: 1280, height: 720 }]);
+    });
 });

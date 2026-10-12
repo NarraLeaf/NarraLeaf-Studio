@@ -771,6 +771,9 @@ export const story = {
         z: "Z-Index",
         depth: "Depth",
         // The prop vocabulary (`commands/transformVocabulary.ts`) — one key per channel of the bag.
+        // The two offsets are design pixels added to `pos=`, + right and + up.
+        xOffset: "X Offset px",
+        yOffset: "Y Offset px",
         zoom: "Zoom",
         scale: "Scale",
         scaleX: "Scale X",
@@ -1721,6 +1724,7 @@ export const story = {
     history: {
         deleteScene: "delete scene {name}",
         deleteChapter: "delete chapter {name}",
+        renameChapter: "rename chapter {name}",
         deleteStory: "delete story {name}",
         deleteAnimation: "delete motion {name}",
         // One word for both halves of a drag: changing chapters and changing position are the same

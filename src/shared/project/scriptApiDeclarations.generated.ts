@@ -1175,6 +1175,15 @@ declare module "@narraleaf/script" {
     		 */
     		getCharacter: (characterId: string) => BlueprintCharacterInfo | null;
     		getNotifications: () => BlueprintGameNotification[];
+    		/**
+    		 * Add a line to the running game's notification stream - the one the engine's own notices
+    		 * go into, so it is drawn by the Game UI notification slot (or the engine's own toast when
+    		 * the project has none) and listed by \`getNotifications\` until it times out.
+    		 *
+    		 * \`durationSeconds\` undefined means the engine's default. Throws with no game running:
+    		 * there is no stream to post into.
+    		 */
+    		postNotification: (message: string, durationSeconds?: number) => void;
     		getChoiceCount: () => number;
     		isNvlMode: () => boolean;
     		/** True while a dialog line is on screen and its message is marked read. */

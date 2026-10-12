@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { OffscreenCapture, waitForOffscreenPage } from "./offscreenCapture";
+import { videoPlaceholderDataUrl } from "./domRaster";
 
 const site = { surfaceId: "page", elementId: "art", ownerName: "Key art", slot: "imageFill" as const, instanceKey: "" };
 
@@ -61,5 +62,28 @@ describe("waitForOffscreenPage", () => {
         const readiness = await waitForOffscreenPage(box, capture, { timeoutMs: 200, describe: () => "Root/Frame" });
         expect(readiness.outstanding).toEqual(["asset slow-asset (still loading)", "Root/Frame (not revealed yet)"]);
         box.remove();
+    });
+
+    it("does not wait for a paused video's frame: it is photographed as its poster", async () => {
+        const box = document.createElement("div");
+        const video = document.createElement("video");
+        video.setAttribute("src", "blob:clip");
+        video.setAttribute("poster", "blob:poster");
+        box.appendChild(video);
+        document.body.appendChild(box);
+        // jsdom never loads media, so readyState stays 0 - the case that used to stall to the deadline.
+        expect(video.paused).toBe(true);
+        const readiness = await waitForOffscreenPage(box, new OffscreenCapture(), { timeoutMs: 2000 });
+        expect(readiness.outstanding).toEqual([]);
+        expect(readiness.elapsedMs).toBeLessThan(1500);
+        box.remove();
+    });
+});
+
+describe("videoPlaceholderDataUrl", () => {
+    it("is an SVG the size of the video's box", () => {
+        const svg = decodeURIComponent(videoPlaceholderDataUrl(640, 360).split(",")[1]);
+        expect(svg).toMatch(/^<svg [^>]*width="640" height="360"/);
+        expect(svg).toContain("<polygon");
     });
 });

@@ -12,7 +12,6 @@ import {
     asText,
     defineStoryCommand,
     holdParam,
-    placementParam,
     secondsParam,
     targetParam,
     type StoryCommandValidateContext,
@@ -27,6 +26,7 @@ import {
     withTransitionRef,
 } from "../payloadHelpers";
 import { clipConcealOptions, transitionOptions } from "../transitions";
+import { PLACEMENT_PARAMS, positionFromArgs, positionIssues } from "../transformVocabulary";
 import { validateNameTarget } from "./character";
 
 /** Media objects: `/image`, `/text`, `/layer`, `/swap`, `/play`, `/front`, `/font`. */
@@ -37,11 +37,16 @@ export const image = defineStoryCommand({
     aliases: ["img"],
     category: "image",
     icon: Image,
-    examples: ["/image night", "/image night name=sky pos=center", "/image forest_day name=backdrop in=fade d=0.4"],
+    examples: ["/image night name=sky", "/image night name=sky pos=center", "/image forest_day name=backdrop in=fade d=0.4"],
+    sequence: {
+        note: "Declares an image object and does not display it. A later `/show <name>` reveals it; "
+            + "`/show <image asset> name=<name>` declares and reveals in one row.",
+        lines: ["/image night name=sky pos=center", "/show sky in=fade d=0.5"],
+    },
     params: {
         image: { aliases: ["src"], hint: "imageAsset", type: { kind: "asset", assetType: "image", allowSets: true }, positional: true, core: true },
         name: { hint: "objectName", type: { kind: "text" } },
-        pos: placementParam(),
+        ...PLACEMENT_PARAMS,
         // `in=`, the same rename `/show` carries: what this writes is the create's entrance TRANSFORM,
         // not a `StoryTransitionRef`. An image has no transition field at all.
         in: { aliases: ["reveal"], hint: "reveal", type: { kind: "enum", options: transitionOptions("reveal") } },
@@ -64,10 +69,11 @@ export const image = defineStoryCommand({
         // Placement wins when both are given - a create is placed; its entrance rides `t=` only when
         // no placement pins the preset (the transform holds one preset).
         const transform = args.pos
-            ? withPlacementTransform(payload.transform, args.pos, args.d)
+            ? withPlacementTransform(payload.transform, positionFromArgs(args), args.d)
             : withRevealTransform(payload.transform, "reveal", args.in, args.d);
         return { ...block, payload: { ...payload, ...(transform ? { transform } : {}) } };
     },
+    validate: (args, ctx) => positionIssues(args, ctx),
 });
 
 export const text = defineStoryCommand({
@@ -76,11 +82,16 @@ export const text = defineStoryCommand({
     aliases: ["txt"],
     category: "text",
     icon: Type,
-    examples: ["/text Welcome home", "/text name=title pos=center Chapter One"],
+    examples: ["/text name=title Welcome home", "/text name=title pos=center Chapter One"],
+    sequence: {
+        note: "Declares a text object and does not display it: nothing is on screen until a `/show <name>` row. "
+            + "Write `name=` (before the text) so the `/show` can address it.",
+        lines: ["/text name=title pos=center Chapter One", "/show title in=fade d=0.5"],
+    },
     params: {
         // `name=` must be typed before the greedy content - the one ordering rule greedy imposes.
         name: { hint: "objectName", type: { kind: "text" } },
-        pos: placementParam(),
+        ...PLACEMENT_PARAMS,
         content: { hint: "content", type: { kind: "text" }, positional: true, greedy: true, core: true },
     },
     deriveArgs: deriveObjectName("text", null, "text"),
@@ -97,9 +108,10 @@ export const text = defineStoryCommand({
         if (args.content?.kind === "text") {
             payload.text = args.content.value;
         }
-        const transform = withPlacementTransform(payload.transform, args.pos, undefined);
+        const transform = withPlacementTransform(payload.transform, positionFromArgs(args), undefined);
         return { ...block, payload: { ...payload, ...(transform ? { transform } : {}) } };
     },
+    validate: (args, ctx) => positionIssues(args, ctx),
 });
 
 export const layer = defineStoryCommand({

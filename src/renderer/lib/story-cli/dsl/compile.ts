@@ -328,7 +328,9 @@ export function buildLineBlock(line: StoryFileLine, ctx: LineContext): LineResul
                     diagnostics: [
                         errorAt(
                             `compile.${built.reason}`,
-                            `${built.detail}. Rename one of them, or write the line without a speaker binding.`,
+                            built.reason === "inlineMarkup"
+                                ? `${built.detail}. Inline styling is {b}…{/b}, {i}…{/i} and {color=#rrggbb}…{/color}, each closed in the same line; write \\{ for a literal brace that would read as a tag.`
+                                : `${built.detail}. Rename one of them, or write the line without a speaker binding.`,
                             line.lineNumber,
                         ),
                     ],

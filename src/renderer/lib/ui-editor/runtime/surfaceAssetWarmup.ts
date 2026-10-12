@@ -395,10 +395,46 @@ async function probePreloadKind(url: string): Promise<PreloadKind | null> {
     }
 }
 
+/**
+ * Decoded warm-up images, held so the decode survives until the page that needs it opens.
+ *
+ * An `Image` that is decoded and then dropped leaves its bitmap free to be evicted, and a large page
+ * background evicted that way is decoded again on first use - the black second a page showed on its
+ * first open although the warm-up had "loaded" it. Holding the element is what keeps it (the avatar
+ * cache in `characterAvatarAssets` does the same for the same reason). Bounded by pixels, oldest
+ * first, so a gallery's worth of pictures cannot pin unbounded memory: 48 megapixels is about a
+ * dozen 1920x1080 backgrounds, ~190 MB decoded.
+ */
+const RETAINED_IMAGE_PIXEL_BUDGET = 48_000_000;
+const retainedImages = new Map<string, { image: HTMLImageElement; pixels: number }>();
+let retainedPixels = 0;
+
+function retainDecodedImage(url: string, image: HTMLImageElement): void {
+    const pixels = Math.max(1, image.naturalWidth * image.naturalHeight);
+    if (pixels > RETAINED_IMAGE_PIXEL_BUDGET) {
+        return;
+    }
+    const previous = retainedImages.get(url);
+    if (previous) {
+        retainedPixels -= previous.pixels;
+        retainedImages.delete(url);
+    }
+    retainedImages.set(url, { image, pixels });
+    retainedPixels += pixels;
+    for (const [key, entry] of retainedImages) {
+        if (retainedPixels <= RETAINED_IMAGE_PIXEL_BUDGET) {
+            break;
+        }
+        retainedImages.delete(key);
+        retainedPixels -= entry.pixels;
+    }
+}
+
 function preloadImage(url: string): Promise<void> {
     return new Promise((resolve, reject) => {
         const image = new Image();
         image.onload = () => {
+            retainDecodedImage(url, image);
             // decode() pre-rasterizes so the reveal doesn't jank, but the
             // decode queue is tied to rendering: in a hidden page (a web
             // export opened in a background tab) it can stay pending until

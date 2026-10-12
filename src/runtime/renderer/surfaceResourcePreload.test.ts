@@ -520,7 +520,7 @@ describe("deciding what an asset is", () => {
         stubImages();
         vi.stubGlobal("fetch", (url: string) => {
             fetched.push(url);
-            return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) });
+            return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, arrayBuffer: () => Promise.resolve(new ArrayBuffer(4)) });
         });
         vi.stubGlobal("FontFace", class {
             constructor(public readonly family: string) {}
@@ -538,13 +538,15 @@ describe("deciding what an asset is", () => {
         });
 
         expect(result.failed).toEqual([]);
-        expect(fetched).toEqual([]);
+        // The font is read for its bytes (see `fontFaceFromUrl`); nothing else is asked about.
+        expect(fetched).toEqual(["nlgame://asset/component-font"]);
     });
 
     it("registers a warmed font where the widgets will look for it", async () => {
         const pack = makePack();
         const home = pack.bundle.ui.uidoc.surfaces.find(surface => surface.id === "home")!;
         stubImages();
+        vi.stubGlobal("fetch", () => Promise.resolve({ ok: true, status: 200, arrayBuffer: () => Promise.resolve(new ArrayBuffer(4)) }));
         vi.stubGlobal("FontFace", class {
             constructor(public readonly family: string) {}
             load(): Promise<unknown> {
@@ -764,7 +766,7 @@ describe("assets a blueprint names", () => {
         vi.stubGlobal("Image", FakeImage);
         vi.stubGlobal("fetch", (url: string) => {
             fetched.push(url);
-            return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) });
+            return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, arrayBuffer: () => Promise.resolve(new ArrayBuffer(4)) });
         });
         vi.stubGlobal("document", {
             fonts: { add: () => undefined },

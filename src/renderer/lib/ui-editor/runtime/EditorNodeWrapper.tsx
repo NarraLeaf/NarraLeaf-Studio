@@ -1178,6 +1178,9 @@ export function EditorNodeWrapper({
             ref={containerRef}
             {...navigationProps}
             data-ui-element-id={interactive ? element.id : undefined}
+            // A preview drawing (no editor chrome: thumbnails, an agent's screenshot) still says which
+            // element it is, under its own name so nothing that looks for an editable node finds it.
+            data-ui-preview-element-id={interactive ? undefined : element.id}
             // Which drawing this is, for measuring one row or one placement rather than whichever
             // copy of the element the page happens to hold first. See `surfaceMeasurement`.
             data-ui-drawing={interactive && instanceKey ? uiDrawingAttributeValue(instanceKey) : undefined}

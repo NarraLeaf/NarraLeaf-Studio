@@ -158,6 +158,17 @@ export type StoryCommandSpec<P extends StoryCommandParamsShape = StoryCommandPar
      * author a line that no longer works. Use the fixture's names (`Alice`, `forest_day`, `gold`, …).
      */
     examples?: readonly string[];
+    /**
+     * A worked sequence of rows, for a command whose row is not the whole story on its own.
+     *
+     * The case it exists for is a declaration: `/image`, `/text` and `/vfx` put an object on the
+     * stage's books without putting it on screen, and a single example line reads as though it
+     * displayed something. `note` says what the row does and does not do; `lines` are the rows that
+     * together do the thing, in order. English, like the examples - the command catalogue prints it
+     * for an agent; the editor does not. The story CLI's catalogue test applies every sequence as a
+     * scene, so a sequence that stopped working fails the suite.
+     */
+    sequence?: { readonly note: string; readonly lines: readonly string[] };
 };
 
 /**
@@ -317,23 +328,6 @@ export function audioTrackParam(): StoryCommandParamSpec {
  */
 export function appTagParam(hint = "appTag"): StoryCommandParamSpec {
     return { hint, type: { kind: "appTag" }, positional: true, core: true };
-}
-
-/**
- * `pos=` - a placement.
- *
- * `pos` is the canonical key since M2, and `at` stays as an alias. The two were always the same slot;
- * what changed is which of them the prop vocabulary spells, and a placement is a POSITION - the same
- * channel `/transform pos=` writes - so the two surfaces now say one word for one channel. `at` is
- * kept rather than burned because a param key is not a command token: an old `/image forest at=left`
- * re-parses to exactly the same row, so there is nothing for a rename to silently reinterpret.
- */
-export function placementParam(): StoryCommandParamSpec {
-    return {
-        aliases: ["at"],
-        hint: "placement",
-        type: { kind: "enum", options: PLACEMENT_OPTIONS },
-    };
 }
 
 /**

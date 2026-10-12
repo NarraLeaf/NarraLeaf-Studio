@@ -45,6 +45,8 @@ import {
     type PlayerPreferenceValue,
     type PlayerPreferences,
 } from "@shared/types/preference";
+import { AUDIO_TRACK_ID_BGM, AUDIO_TRACK_ID_SOUND, AUDIO_TRACK_ID_VOICE } from "@shared/types/audioTrack";
+import { AUDIO_BUS_VOLUMES_PERSISTENCE_KEY, readPersistedBusVolumes } from "./audioBusRuntime";
 
 /**
  * Where the player's preferences live in scope persistence.
@@ -287,4 +289,146 @@ function applyEngineConfig(
     } catch (error) {
         log?.("warning", `Auto forward wait could not be applied: ${String(error)}`);
     }
+}
+
+/**
+ * The volume preferences that are the player's half of a seeded audio bus, by preference.
+ *
+ * `bgmVolume`, `soundVolume` and `voiceVolume` are not copies of those buses' volumes in the engine,
+ * they *are* them: one storage, two names. So the player's choice is kept twice over - under this
+ * module's key and under the bus map's ({@link AUDIO_BUS_VOLUMES_PERSISTENCE_KEY}) - and the boot path
+ * restores the bus map second, which makes the bus map the answer a game starts with. The global
+ * volume has no bus of its own and is kept here only.
+ */
+const BUS_BACKED_PREFERENCES: Readonly<Partial<Record<PlayerPreferenceKey, string>>> = Object.freeze({
+    bgmVolume: AUDIO_TRACK_ID_BGM,
+    soundVolume: AUDIO_TRACK_ID_SOUND,
+    voiceVolume: AUDIO_TRACK_ID_VOICE,
+});
+
+export type DetachedPlayerPreferencesOptions = {
+    /** The project's authored defaults, read at call time so a hot reload is seen. */
+    getDefaults: () => PlayerPreferences | undefined;
+    /**
+     * This window's copy of the persistent store, read synchronously (`scopeBridge.persistenceGet`).
+     * A getter node answers in the same tick it is asked, so it cannot wait for a round trip.
+     */
+    read: (key: string) => unknown;
+    /** A durable write (`scopeBridge.persistenceSet`), awaited so a game started next reads it. */
+    write: (key: string, value: unknown) => Promise<void> | void;
+    /**
+     * The preference store of a game that has been constructed but is not live yet, or null.
+     *
+     * A title screen is often up while the game behind it is still mounting (the boot preload, the
+     * menu's session after a quit), and that game has already restored its preferences from the map
+     * by then - so a value written only to the map would be missing from it and read back as the old
+     * one once it goes live. A write is handed to this store as well, which is what the game then
+     * plays with and keeps writing back.
+     */
+    getBootingStore?: () => PreferenceStoreLike | null | undefined;
+    /** Told after a write that changed what a reader would see; the host fans it out as it does a live change. */
+    onChange?: (key: PlayerPreferenceKey, value: PlayerPreferenceValue, previousValue: PlayerPreferenceValue) => void;
+};
+
+export type DetachedPlayerPreferences = {
+    /**
+     * Whether this store answers for `key` while no game runs. The kept preferences do, and so does
+     * a playthrough preference for reading (a new game starts it at the author's value); writing a
+     * playthrough preference does not, because there is no playthrough for it to describe.
+     */
+    canRead: (key: string) => key is PlayerPreferenceKey;
+    canWrite: (key: string) => key is PlayerPreferenceKey;
+    /** The value the next game will start with. */
+    get: (key: PlayerPreferenceKey) => PlayerPreferenceValue;
+    /** Keep a new value for the next game to start with. */
+    set: (key: PlayerPreferenceKey, value: unknown) => Promise<void>;
+};
+
+/**
+ * The player's preferences while no game is running: a settings screen opened from the title.
+ *
+ * A game's preferences live in its engine store, which exists only from `new Game()` on, and the
+ * blueprint `Get`/`Set` nodes used to reach nothing else - so a settings screen opened before any
+ * game refused every row with "needs a running game" and showed the node defaults. Yet what such a
+ * screen edits is exactly what {@link attachPlayerPreferences} restores when a game does start, and
+ * what a running game keeps writing: the persisted map. This reads and writes that map directly, on
+ * the same terms as the boot path, so the two cannot disagree:
+ *
+ * - **Reading** answers what a game started now would hold - the author's default, under the
+ *   player's stored choice, under the bus map for the three bus-backed volumes - which is also what
+ *   a running game last wrote, so a value changed in game reads back on the title screen.
+ * - **Writing** keeps the map sparse - it adds the one key to what is stored rather than freezing
+ *   every author default - and writes the bus map too for a bus-backed volume, because the boot path
+ *   restores that second and would otherwise put an older bus value back over the player's choice.
+ *
+ * Never used while a game runs: the engine store is then the source of truth and writes the map on
+ * every change itself.
+ */
+export function createDetachedPlayerPreferences(
+    options: DetachedPlayerPreferencesOptions,
+): DetachedPlayerPreferences {
+    const { getDefaults, read, write, getBootingStore, onChange } = options;
+
+    const authoredValue = (key: PlayerPreferenceKey): PlayerPreferenceValue => normalizePlayerPreference(
+        key,
+        { ...DEFAULT_PLAYER_PREFERENCES, ...(getDefaults() ?? {}) }[key],
+    );
+
+    const storedBusVolumes = (): Record<string, number> => {
+        try {
+            return readPersistedBusVolumes(read(AUDIO_BUS_VOLUMES_PERSISTENCE_KEY));
+        } catch {
+            return {};
+        }
+    };
+
+    const storedPreferences = (): Partial<PlayerPreferences> => {
+        try {
+            return readPersistedPlayerPreferences(read(PLAYER_PREFERENCES_PERSISTENCE_KEY));
+        } catch {
+            return {};
+        }
+    };
+
+    const get = (key: PlayerPreferenceKey): PlayerPreferenceValue => {
+        if (isPlaythroughPreference(key)) {
+            return authoredValue(key);
+        }
+        const busId = BUS_BACKED_PREFERENCES[key];
+        if (busId) {
+            const busVolumes = storedBusVolumes();
+            if (Object.prototype.hasOwnProperty.call(busVolumes, busId)) {
+                return normalizePlayerPreference(key, busVolumes[busId]);
+            }
+        }
+        const stored = storedPreferences();
+        return Object.prototype.hasOwnProperty.call(stored, key)
+            ? stored[key] as PlayerPreferenceValue
+            : authoredValue(key);
+    };
+
+    return {
+        canRead: (key: string): key is PlayerPreferenceKey => isKnownPreference(key),
+        canWrite: (key: string): key is PlayerPreferenceKey => isKnownPreference(key) && !isPlaythroughPreference(key),
+        get,
+        set: async (key: PlayerPreferenceKey, value: unknown): Promise<void> => {
+            if (!isKnownPreference(key) || isPlaythroughPreference(key)) {
+                return;
+            }
+            const previousValue = get(key);
+            const next = normalizePlayerPreference(key, value);
+            await write(PLAYER_PREFERENCES_PERSISTENCE_KEY, { ...storedPreferences(), [key]: next });
+            const busId = BUS_BACKED_PREFERENCES[key];
+            if (busId && typeof next === "number") {
+                await write(AUDIO_BUS_VOLUMES_PERSISTENCE_KEY, { ...storedBusVolumes(), [busId]: next });
+            }
+            const booting = getBootingStore?.();
+            if (booting && typeof booting.importPreferences === "function") {
+                booting.importPreferences({ [key]: next });
+            }
+            if (previousValue !== next) {
+                onChange?.(key, next, previousValue);
+            }
+        },
+    };
 }

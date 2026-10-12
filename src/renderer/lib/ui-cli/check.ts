@@ -31,6 +31,7 @@ import { applyCompiled, findEntryTarget } from "./apply";
 import { compileUiFile, type UiCompileResult } from "./dsl/compile";
 import { parseUiFile, UiParseError } from "./dsl/parse";
 import { collectTree, elementPath, type BlueprintIndex, type TextKeys } from "./model";
+import { describeInvalidEnumProp, findInvalidEnumProps } from "./propValues";
 
 export { formatDiagnostics } from "../blueprint-cli/check";
 
@@ -351,6 +352,17 @@ function checkElement(
 ): BpDiagnostic[] {
     const out: BpDiagnostic[] = [];
     const where = `"${elementPath(pool, element)}"`;
+
+    // A word the prop's list does not have is drawn as the browser's default, silently - see
+    // `propValues`.
+    for (const problem of findInvalidEnumProps(element.props as Record<string, unknown> | undefined)) {
+        out.push({
+            severity: "error",
+            code: "ui.prop_value",
+            message: `${where}: ${describeInvalidEnumProp(problem)}.`,
+            hint: `Write one of the listed words, or leave ${problem.key} out for the widget's default.`,
+        });
+    }
 
     for (const [propPath, binding] of Object.entries(element.valueBindings ?? {})) {
         if (binding.kind !== "blueprintValue") {

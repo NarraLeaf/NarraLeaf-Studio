@@ -396,3 +396,38 @@ describe("importTemplateBundle: a surface copied from another project", () => {
         expect(service.getDocument().surfaces).toHaveLength(before);
     });
 });
+
+describe("importTemplateBundle: the input a surface answers", () => {
+    function withActions(): UIDocument {
+        const document = copiedGameUiDocument() as UIDocument & { actions?: unknown };
+        (document.surfaces[0] as UISurface).actions = [{ actionId: "advance" }, { actionId: "backlog", consume: false }];
+        document.actions = {
+            advance: { id: "advance", name: "Advance", bindings: [{ kind: "pointer", gesture: "click" }, { kind: "key", key: "Space" }] },
+            backlog: { id: "backlog", name: "Backlog", bindings: [{ kind: "pointer", gesture: "wheelUp" }] },
+            unused: { id: "unused", name: "Unused", bindings: [] },
+        };
+        return document;
+    }
+
+    it("comes along, with the actions it names adopted into the project's vocabulary", () => {
+        const { service } = createHarness();
+        const result = service.importTemplateBundle({ document: withActions(), graphs: copiedGameUiGraphs(), placement: IMPORT_PLACEMENT_FROM_SOURCE });
+
+        const imported = result.importedSurfaces[0];
+        expect(imported.actions).toEqual([{ actionId: "advance" }, { actionId: "backlog", consume: false }]);
+        expect(result.adoptedActionIds.sort()).toEqual(["advance", "backlog"]);
+        const vocabulary = service.getDocument().actions ?? {};
+        expect(Object.keys(vocabulary).sort()).toEqual(["advance", "backlog"]);
+        expect(vocabulary.advance.bindings).toHaveLength(2);
+        expect(result.surfaceIdMap).toEqual({ "src-dialog": imported.id });
+    });
+
+    it("keeps the project's own action of the same id, bindings and all", () => {
+        const { service } = createHarness();
+        (service as any).document.actions = { advance: { id: "advance", name: "Next", bindings: [{ kind: "key", key: "Enter" }] } };
+        const result = service.importTemplateBundle({ document: withActions(), graphs: copiedGameUiGraphs(), placement: IMPORT_PLACEMENT_FROM_SOURCE });
+
+        expect(result.adoptedActionIds).toEqual(["backlog"]);
+        expect(service.getDocument().actions?.advance).toEqual({ id: "advance", name: "Next", bindings: [{ kind: "key", key: "Enter" }] });
+    });
+});
