@@ -22,6 +22,18 @@ const DEFAULT_STATE: ProjectTrustState = {
     "project.trust.version": 0,
 };
 
+export type ProjectTrustManagerOptions = {
+    /**
+     * Asked about a project the ledger does not trust, and only then; `true` lets it run anyway.
+     *
+     * For the experimental `trust-all-projects` condition, which needs a test instance to open any
+     * project without anyone answering the trust question. It never writes the ledger, so the
+     * condition leaves no decision behind: a run without it meets the same projects exactly as
+     * waiting as they would have been.
+     */
+    trustUnvouched?: (projectPath: string) => boolean;
+};
+
 /** A row as the first version of the ledger wrote it, before it said who vouched or when it was met. */
 type LegacyProjectTrustRecord = Partial<ProjectTrustRecord> & { importedAt?: string };
 
@@ -78,8 +90,10 @@ function selfAndAncestors(key: string): string[] {
  */
 export class ProjectTrustManager {
     private readonly state: PersistentState<ProjectTrustState>;
+    private readonly trustUnvouched: (projectPath: string) => boolean;
 
-    constructor(userDataDir: string) {
+    constructor(userDataDir: string, options: ProjectTrustManagerOptions = {}) {
+        this.trustUnvouched = options.trustUnvouched ?? (() => false);
         const dbPath = path.join(userDataDir, UserDataNamespace.Authorization, "project-trust.config");
         const config: PersistentStateConfig<ProjectTrustState> = {
             dbPath,
@@ -163,10 +177,14 @@ export class ProjectTrustManager {
      * Whether this project may cause effects.
      *
      * The question every gate asks. A path that normalizes to nothing is not a project anybody
-     * vouched for, and answers no like any other absence.
+     * vouched for, and answers no like any other absence - with or without `trustUnvouched`, which
+     * is only consulted once the ledger has said no about a real path.
      */
     public isTrusted(projectPath: string): boolean {
-        return isProjectTrusted(this.getRecord(projectPath));
+        if (isProjectTrusted(this.getRecord(projectPath))) {
+            return true;
+        }
+        return normalizeProjectPath(projectPath) !== "" && this.trustUnvouched(projectPath);
     }
 
     /**

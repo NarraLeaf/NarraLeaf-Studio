@@ -330,3 +330,43 @@ describe("ProjectTrustManager migration", () => {
         expect(manager.isTrusted("D:/games/mine")).toBe(false);
     });
 });
+
+describe("ProjectTrustManager trustUnvouched", () => {
+    // The hook behind the experimental `trust-all-projects` condition: a test instance opens any
+    // project without anyone answering the trust question, and leaves no decision behind.
+
+    it("lets a project the ledger does not trust run, without writing the ledger", async () => {
+        const manager = new ProjectTrustManager("/tmp/userData", { trustUnvouched: () => true });
+        await manager.initialize(() => [], T1);
+        manager.recordArrival("D:/games/theirs", "package", T1);
+
+        expect(manager.isTrusted("D:/games/theirs")).toBe(true);
+        expect(manager.isTrusted("D:/games/unknown")).toBe(true);
+        // Still waiting, so a run without the condition meets it exactly as it would have.
+        expect(manager.getRecord("D:/games/theirs")).toMatchObject({ trustedAt: null, vouchedBy: null });
+        expect(manager.getRecord("D:/games/unknown")).toBeUndefined();
+        expect(manager.listDistrusted().map(r => r.displayPath)).toEqual(["D:/games/theirs"]);
+        expect(manager.listTrusted()).toEqual([]);
+    });
+
+    it("is asked only once the ledger has said no, and never about a path that is no project", async () => {
+        const trustUnvouched = vi.fn(() => true);
+        const manager = new ProjectTrustManager("/tmp/userData", { trustUnvouched });
+        await manager.initialize(() => [], T1);
+        manager.recordArrival("D:/games/mine", "created", T1);
+
+        expect(manager.isTrusted("D:/games/mine")).toBe(true);
+        expect(manager.isTrusted("")).toBe(false);
+        expect(trustUnvouched).not.toHaveBeenCalled();
+
+        expect(manager.isTrusted("D:/games/theirs")).toBe(true);
+        expect(trustUnvouched).toHaveBeenCalledWith("D:/games/theirs");
+    });
+
+    it("changes nothing when it answers no", async () => {
+        const manager = new ProjectTrustManager("/tmp/userData", { trustUnvouched: () => false });
+        await manager.initialize(() => [], T1);
+        manager.recordArrival("D:/games/theirs", "package", T1);
+        expect(manager.isTrusted("D:/games/theirs")).toBe(false);
+    });
+});
