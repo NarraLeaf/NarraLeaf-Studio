@@ -81,7 +81,7 @@ function blueprintDocument(blueprints: Blueprint[]): BlueprintDocument {
     } as BlueprintDocument;
 }
 
-type Tab = { id: string; payload?: unknown };
+type Tab = { id: string; payload?: unknown; title?: string };
 
 function createHarness(blueprints: Blueprint[] = [], options: { tabs?: Tab[] } = {}) {
     const history = new HistoryService();
@@ -108,7 +108,12 @@ function createHarness(blueprints: Blueprint[] = [], options: { tabs?: Tab[] } =
                     case Services.UI:
                         if (options.tabs) {
                             const tabs = options.tabs;
-                            return { editor: { getAll: () => [...tabs], close: (tabId: string) => tabs.splice(tabs.findIndex(tab => tab.id === tabId), 1) } };
+                            return {
+                                editor: { getAll: () => [...tabs], close: (tabId: string) => tabs.splice(tabs.findIndex(tab => tab.id === tabId), 1) },
+                                getStore: () => ({
+                                    updateEditorTab: (tabId: string, updates: Partial<Tab>) => Object.assign(tabs.find(tab => tab.id === tabId) ?? {}, updates),
+                                }),
+                            };
                         }
                         throw new Error("No editor layout");
                     default: throw new Error(`Unexpected service ${id}`);
@@ -175,6 +180,25 @@ describe("ui_page_rename", () => {
         expect(steps(uiSurfaceHistoryScope("spare"))).toBe(1);
         history.undo(uiSurfaceHistoryScope("spare"));
         expect(surfaceNames(uidoc)).toContain("Spare");
+    });
+
+    it("re-titles the page's open tab, as the pages panel's rename does", async () => {
+        const tabs: Tab[] = [
+            { id: "ui-editor:surface:spare", title: "Spare", payload: { surfaceId: "spare" } },
+            { id: "ui-editor:surface:extra", title: "Extra", payload: { surfaceId: "extra" } },
+        ];
+        const { run } = createHarness([], { tabs });
+        await run(uiPageRename, { page: "Spare", name: "Gallery" });
+        expect(tabs.map(tab => tab.title)).toEqual(["Gallery", "Extra"]);
+    });
+
+    it("is a step of its own, never folded into a rename the author just typed", async () => {
+        const { uidoc, history, steps, run } = createHarness();
+        uidoc.renameSurface("spare", "Typed");
+        await run(uiPageRename, { page: "Typed", name: "Gallery" });
+        expect(steps(uiSurfaceHistoryScope("spare"))).toBe(2);
+        history.undo(uiSurfaceHistoryScope("spare"));
+        expect(surfaceNames(uidoc)).toContain("Typed");
     });
 
     it("refuses a name another page has", async () => {

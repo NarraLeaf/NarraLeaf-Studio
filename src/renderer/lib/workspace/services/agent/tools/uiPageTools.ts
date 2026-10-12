@@ -13,6 +13,7 @@ import type { UISurface } from "@shared/types/ui-editor/document";
 import { isEntrySurface, resolveEntrySurface } from "@shared/types/ui-editor/entrySurface";
 import { Services } from "../../services";
 import type { UIService } from "../../core/UIService";
+import { syncEditorTabTitle } from "../../ui/editorTabTitle";
 import { answerJson, readString, refuse, type AgentToolHandler } from "../agentCall";
 import { assertAgentMayStillWrite } from "../agentCommitGate";
 import { AGENT_HISTORY_LABEL, resolveSurface } from "../agentLookups";
@@ -35,7 +36,11 @@ function requireSurface(ref: string, surface: UISurface | undefined): UISurface 
 
 export const uiPageRename: AgentToolHandler = async (args, { ctx, request, follow }) => {
     const ref = readString(args, "page");
-    const name = readString(args, "name");
+    // Trimmed as the editor's rename stores it, so the clash below is asked of the name that lands.
+    const name = readString(args, "name").trim();
+    if (!name) {
+        throw refuse("invalid_args", "`name` must not be empty.");
+    }
     const uidoc = uiDocumentService(ctx);
     const surface = requireSurface(ref, resolveSurface(uidoc.getDocument(), ref));
     follow.describeCall(request.callId, surface.name);
@@ -49,12 +54,14 @@ export const uiPageRename: AgentToolHandler = async (args, { ctx, request, follo
         throw refuse("invalid_args", `Another ${kindWord(clash)} is already called "${name}".`, "Pick a name no other page or Game UI has.");
     }
     const before = surface.name;
-    uidoc.applyAgentMutation({ surfaceId: surface.id }, AGENT_HISTORY_LABEL, document => {
-        const target = document.surfaces.find(item => item.id === surface.id);
-        if (target) {
-            target.name = name;
-        }
-    });
+    // The editor's own rename, as the pages panel makes it: a step on the page's stack, then the open
+    // tab re-titled - a tab's title is a snapshot taken when it opened, so nothing else updates it.
+    uidoc.renameSurface(surface.id, name, { label: AGENT_HISTORY_LABEL });
+    try {
+        syncEditorTabTitle(ctx.services.get<UIService>(Services.UI), `ui-editor:surface:${surface.id}`, name);
+    } catch {
+        // No editor layout behind this workspace (a background one): there is no tab to re-title.
+    }
     follow.noteWrite({ kind: "surface", surfaceId: surface.id, name });
     return answerJson(
         { surface: { id: surface.id, name, kind: surface.kind } },

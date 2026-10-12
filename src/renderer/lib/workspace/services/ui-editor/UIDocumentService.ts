@@ -3669,7 +3669,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
-    public renameSurface(surfaceId: string, name: string): void {
+    /**
+     * Rename a surface, as a step on its own undo stack.
+     *
+     * `label` is for a rename nobody typed - an agent's - and makes it a step of its own under that
+     * name. Merged into the author's typing, as a typed name is merged a keystroke at a time, one
+     * Ctrl+Z would take back the author's rename and the agent's together.
+     */
+    public renameSurface(surfaceId: string, name: string, options: { label?: HistoryLabel } = {}): void {
         const nextName = name.trim();
         if (!nextName) {
             return;
@@ -3685,8 +3692,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }
             surface.name = nextName;
         }, {
-            // Typed a character at a time, so one entry per name rather than per keystroke.
-            history: { surfaceId, mergeKey: `surface:${surfaceId}:name` },
+            history: options.label
+                ? { surfaceId, label: options.label }
+                // Typed a character at a time, so one entry per name rather than per keystroke.
+                : { surfaceId, mergeKey: `surface:${surfaceId}:name` },
         });
     }
 
