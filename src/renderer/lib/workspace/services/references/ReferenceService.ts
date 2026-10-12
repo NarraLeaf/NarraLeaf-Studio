@@ -970,7 +970,6 @@ export class ReferenceService extends Service<ReferenceService> {
                 return {
                     id: character.profile.getId(),
                     name: character.profile.getName(),
-                    thumbnailAssetId: character.profile.getThumbnail(),
                     appearanceAssets,
                 };
             });

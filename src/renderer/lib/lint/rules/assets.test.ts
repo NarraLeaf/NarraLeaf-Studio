@@ -206,11 +206,11 @@ describe("assets/missing", () => {
 
     it("locates a character reference through the context", async () => {
         const reference: AssetReference = {
-            id: "char:c1:thumbnail",
+            id: "char:c1:pose:p1",
             assetId: "gone",
             kind: "character",
             label: "Alice",
-            field: "profile.thumbnail",
+            field: "appearance",
         };
         const ctx = createTestLintContext({
             characters: [{ id: "c1", name: "Alice", assetIds: ["gone"] }],
@@ -221,7 +221,7 @@ describe("assets/missing", () => {
 
         expect(findings).toHaveLength(1);
         expect(findings[0].location).toEqual({ kind: "character", characterId: "c1", characterName: "Alice" });
-        expect(findings[0].messageParams).toEqual({ location: "Alice (profile.thumbnail)" });
+        expect(findings[0].messageParams).toEqual({ location: "Alice (appearance)" });
     });
 
     it("falls back to the project for a site with no location kind of its own", async () => {
