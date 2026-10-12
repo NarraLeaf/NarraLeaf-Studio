@@ -18,8 +18,7 @@
  * Comments in English per project convention.
  */
 
-import { loadFontFaceFromUrl, type LoadedFontFace } from "@/lib/ui-editor/fonts/fontFaceFromUrl";
-import { addFontFaceToDocument } from "@/lib/ui-editor/fonts/documentFontFaces";
+import { loadFontFaceFromUrl } from "@/lib/ui-editor/fonts/fontFaceFromUrl";
 import { getGameRuntimeBridge } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
 
 /** Asset ids whose face is registered on the document, and the family it went in under. */
@@ -83,18 +82,22 @@ async function registerFace(assetId: string, url: string): Promise<string | null
         return null;
     }
     const cssFamily = runtimeFontCssFamily(assetId);
-    let loaded: LoadedFontFace;
+    let face: FontFace;
     try {
         // From the bytes, not from `url(...)`: see `fontFaceFromUrl` for why the browser's font
         // loader is not handed an asset URL.
-        loaded = await loadFontFaceFromUrl(cssFamily, url);
+        face = await loadFontFaceFromUrl(cssFamily, url);
     } catch (error) {
         reportFontFailure(assetId, error);
         throw error;
     }
-    // With the stylesheet rule beside the face, so the engine's picture of the stage - what a save
-    // shows on its slot - is set in this font too. See `documentFontFaces`.
-    addFontFaceToDocument(cssFamily, loaded);
+    // On `document.fonts` only - never also as a stylesheet `@font-face` rule, so the engine's stage
+    // capture (a save's thumbnail, a page opened over the game) draws in the fallback face. A rule is
+    // what html-to-image embeds, the whole font into every capture: measured, one capture went from
+    // 102-143 ms to ~395 ms (858 ms with a 24 MB CJK font, the main thread blocked for 831 ms of it),
+    // and every page opened kept about a font's worth of native memory that nothing released - 89 to
+    // 458 MB after 20 saves with that font.
+    document.fonts.add(face);
     registered.set(assetId, cssFamily);
     return cssFamily;
 }
