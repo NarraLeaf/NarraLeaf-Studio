@@ -197,7 +197,9 @@ export const ASSETS_LINT_RULES: readonly LintRule[] = [
     {
         id: "assets/unused",
         category: "assets",
-        defaultSeverity: "warning",
+        // A minor warning: a build leaves out what nothing uses, so the game is the same either way;
+        // the file only takes up room in the project.
+        defaultSeverity: "minor",
         slug: "assetsUnused",
         /**
          * Library rows absent from the reference index.
