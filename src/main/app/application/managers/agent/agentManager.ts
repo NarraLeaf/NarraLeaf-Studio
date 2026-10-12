@@ -454,7 +454,8 @@ export class AgentManager implements AgentMainToolHost {
      * withdrawing access is always safe.
      *
      * The Settings window's switches go through `updateSettings` directly, unconfirmed: that window
-     * is Studio's own and runs no plugin code, so its switch is already the author's answer.
+     * is Studio's own and runs no plugin code, so its switch is already the author's answer. So do
+     * first-run setup's, for the same reason (`AgentQuickToggleHandler`).
      */
     public async quickToggle(window: AppWindow, patch: AgentQuickTogglePatch): Promise<AgentSettingsSnapshot> {
         const current = await this.store.load();

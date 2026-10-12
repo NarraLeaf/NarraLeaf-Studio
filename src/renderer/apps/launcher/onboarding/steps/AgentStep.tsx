@@ -34,8 +34,8 @@ export interface AgentStepProps {
  * **The same two switches as Settings, through the same narrow door as the workspace menu.** The
  * launcher is let through `agentQuickToggle` and `agentCopyConfig` only while setup is open, so this
  * screen never holds the token: the configuration is shown with the token masked, and the copy button
- * has main write the real one straight onto the clipboard. Turning writes on is confirmed in Studio's
- * agent access window, as it is from the menu.
+ * has main write the real one straight onto the clipboard. The switches are Studio's own, as in
+ * Settings, so main turns access and writes on without asking again.
  *
  * **One application at a time.** Each client takes its configuration in its own shape and its skill
  * in its own way (`@shared/agent/clients`), and a screen that listed all of them would be the README.

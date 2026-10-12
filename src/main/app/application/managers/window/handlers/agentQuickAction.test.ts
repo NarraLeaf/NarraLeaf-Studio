@@ -53,6 +53,7 @@ function makeWindow(
     const manager = {
         snapshot: vi.fn(async () => SNAPSHOT),
         quickToggle: vi.fn(async () => ({ ...SNAPSHOT, allowWrites: true })),
+        updateSettings: vi.fn(async () => ({ ...SNAPSHOT, allowWrites: true })),
         clientConfig: vi.fn(async () => `claude mcp add --header "Authorization: Bearer ${TOKEN}"`),
         acknowledgeMovedPort: vi.fn(async () => undefined),
         exportSkill: vi.fn(async () => ({ canceled: false as const, path: "/Users/author/Desktop/NarraLeaf-Skills" })),
@@ -161,6 +162,7 @@ describe("the Agent menu's narrow handlers", () => {
             expect((await new AgentExportSkillHandler().handle(window)).success).toBe(false);
             expect(manager.snapshot).not.toHaveBeenCalled();
             expect(manager.quickToggle).not.toHaveBeenCalled();
+            expect(manager.updateSettings).not.toHaveBeenCalled();
             expect(manager.exportSkill).not.toHaveBeenCalled();
         }
         expect(clipboardWrites).toHaveLength(0);
@@ -194,6 +196,22 @@ describe("first-run setup's hold on agent access", () => {
         expect((await new AgentQuickToggleHandler().handle(home.window, { enabled: true })).success).toBe(false);
         expect((await new AgentCopyConfigHandler().handle(home.window, { kind: "codex" })).success).toBe(false);
         expect(home.manager.quickToggle).not.toHaveBeenCalled();
+        expect(home.manager.updateSettings).not.toHaveBeenCalled();
+    });
+
+    it("switches access and writes from setup as Settings does, without a second confirmation", async () => {
+        const setup = makeWindow(WindowAppType.Launcher, { inSetup: true });
+        const result = await new AgentQuickToggleHandler().handle(setup.window, { enabled: true, allowWrites: true, removeImportRoot: "/" } as never);
+        expect(result).toEqual({ success: true, data: { enabled: true, allowWrites: true, fullAccess: false, running: true, movedToPort: null } });
+        expectNoSecret(result);
+        // The window goes along so that full access, were it asked for, is still confirmed over it.
+        expect(setup.manager.updateSettings).toHaveBeenCalledWith({ enabled: true, allowWrites: true }, setup.window);
+        expect(setup.manager.quickToggle).not.toHaveBeenCalled();
+
+        const workspace = makeWindow(WindowAppType.Workspace);
+        await new AgentQuickToggleHandler().handle(workspace.window, { enabled: true });
+        expect(workspace.manager.quickToggle).toHaveBeenCalledWith(workspace.window, { enabled: true });
+        expect(workspace.manager.updateSettings).not.toHaveBeenCalled();
     });
 
     it("lets through only the launcher main opened in setup, not another launcher open beside it", async () => {
