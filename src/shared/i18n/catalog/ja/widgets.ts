@@ -328,6 +328,7 @@ export const widgets = {
         previewPlay: "プレビューを再生",
         previewPause: "プレビューを一時停止",
         previewRestart: "先頭のコマに戻す",
+        playRefused: "動画「{name}」の再生が始まらなかった。音声のある動画はプレイヤーがクリックかキー入力をした後にだけ再生でき、消音の動画はすぐに再生できる",
     },
     /**
      * ウィジェットに保存される型は `nl.puppet` で、どの描画側の名前でもない。作者が読む文字列は

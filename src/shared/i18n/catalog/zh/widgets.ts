@@ -326,6 +326,7 @@ export const widgets = {
         previewPlay: "预览播放",
         previewPause: "暂停预览",
         previewRestart: "回到首帧",
+        playRefused: "视频「{name}」未能开始播放。有声视频需在玩家点击或按键后才能播放，静音视频可立即播放",
     },
     puppet: {
         title: "模型",
