@@ -15,6 +15,8 @@ import { SwitchRenderer } from "@/lib/ui-editor/widget-modules/builtin/switch/re
 import { TextInputRenderer } from "@/lib/ui-editor/widget-modules/builtin/textInput/renderer";
 import { DialogSentenceRenderer } from "@/lib/ui-editor/widget-modules/builtin/dialog/renderer";
 import { NvlTextsRenderer } from "@/lib/ui-editor/widget-modules/builtin/nvl/renderer";
+import { InputHintsRenderer } from "@/lib/ui-editor/widget-modules/builtin/inputHints/renderer";
+import { UI_INPUT_HINTS_ELEMENT_TYPE } from "@shared/types/ui-editor/inputHints";
 import { markTrustedElementRenderers, type ElementRendererDefinition } from "../ElementRendererRegistry";
 
 /**
@@ -51,6 +53,10 @@ export const BuiltinElementRenderers: ElementRendererDefinition[] = [
     {
         type: "nl.button",
         render: props => createElement(ButtonRenderer, props),
+    },
+    {
+        type: UI_INPUT_HINTS_ELEMENT_TYPE,
+        render: props => createElement(InputHintsRenderer, props),
     },
     {
         type: "nl.textInput",

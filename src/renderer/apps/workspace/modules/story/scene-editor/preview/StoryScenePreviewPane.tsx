@@ -1,12 +1,15 @@
 import { Loader2, MonitorPlay, PanelRight, PictureInPicture2, X, Zap } from "lucide-react";
-import { useRef, type PointerEvent as ReactPointerEvent } from "react";
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { NlrStageLayer } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
 import { GAME_STAGE_BASE_CLASS_NAME } from "@/lib/ui-editor/runtime/app/gameStageBase";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
+import { TabStrip } from "@/lib/components/elements/Tabs";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import type { StoryScenePreviewController } from "./useStoryScenePreviewController";
-import type { StoryScenePreviewPaneMode } from "./storyScenePreviewSessionStore";
+import type { StoryScenePreviewPaneMode, StoryScenePreviewView } from "./storyScenePreviewSessionStore";
+import { StoryLayerStackView, type StoryPreviewLayersApi } from "./StoryLayerStackView";
+import type { StoryPreviewCameraApi } from "./storyPreviewCameraModel";
 
 const NOOP = () => undefined;
 
@@ -58,9 +61,22 @@ export function StoryScenePreviewPane(props: {
     /** Lines appear in full rather than typed out; shared by the docked pane and the window. */
     skipTyping?: boolean;
     onToggleSkipTyping?: () => void;
+    /**
+     * The scene's layers, for the layer view: the shot taken apart into them. Absent where the pane
+     * has no scene editor behind it to change them, and then the pane shows only the shot.
+     */
+    layers?: StoryPreviewLayersApi;
+    /** The selected camera row, when it states a pose: the layer view's moving preview rests on its shot. */
+    camera?: StoryPreviewCameraApi | null;
+    /** Which of the two the pane shows: the shot, or the shot taken apart into its layers. */
+    view?: StoryScenePreviewView;
+    onSetView?: (view: StoryScenePreviewView) => void;
 }) {
     const { t } = useTranslation();
-    const { controller, onClose, mode = "dock", onToggleFloat, onHeaderPointerDown, sceneName, stageAspectRatio, skipTyping = false, onToggleSkipTyping } = props;
+    const { controller, onClose, mode = "dock", onToggleFloat, onHeaderPointerDown, sceneName, stageAspectRatio, skipTyping = false, onToggleSkipTyping, layers, onSetView } = props;
+    const view: StoryScenePreviewView = layers && props.view === "layers" ? "layers" : "stage";
+    // State rather than a ref: the layer view reads the stage's frames and has to be handed the element.
+    const [stageElement, setStageElement] = useState<HTMLDivElement | null>(null);
     const busy = controller.phase === "compiling" || controller.phase === "mounting" || controller.phase === "starting";
     /** Where the primary press on the stage went down, until it comes up. */
     const pressRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
@@ -106,6 +122,20 @@ export function StoryScenePreviewPane(props: {
                 {/* Refreshes keep the previous frame visible; the spinner is the only indicator. */}
                 {busy ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-fg-subtle" /> : null}
                 <div className="flex-1" />
+                {layers && onSetView ? (
+                    <div onPointerDown={stopPointerDown} className="-mb-px flex self-stretch" data-story-preview-view="">
+                        <TabStrip
+                            size="sm"
+                            className="border-b-0"
+                            activeId={view}
+                            onChange={id => onSetView(id === "layers" ? "layers" : "stage")}
+                            tabs={[
+                                { id: "stage", label: t("story.preview.viewStage") },
+                                { id: "layers", label: t("story.preview.viewLayers") },
+                            ]}
+                        />
+                    </div>
+                ) : null}
                 {onToggleSkipTyping ? (
                     <ToolbarButton
                         size="xs"
@@ -146,6 +176,7 @@ export function StoryScenePreviewPane(props: {
 
             {/* The stage inherits what a shipped game's does, never Studio's theme. */}
             <div
+                ref={setStageElement}
                 className={`relative min-h-0 ${stageAspectRatio ? "flex-initial" : "flex-1"} select-none overflow-hidden ${GAME_STAGE_BASE_CLASS_NAME}`}
                 style={stageAspectRatio ? { aspectRatio: stageAspectRatio } : undefined}
                 data-story-preview-stage=""
@@ -157,7 +188,7 @@ export function StoryScenePreviewPane(props: {
                     incoming session paints beneath the held frame; the controller unmounts the
                     old buffer only once the new one is pixel-ready, so switches never flash. */}
                 {controller.stageLayers.map(layer => (
-                    <div key={layer.session.id} ref={layer.setRootElement} className="absolute inset-0">
+                    <div key={layer.session.id} ref={layer.setRootElement} className="absolute inset-0" data-story-preview-frame="">
                         <NlrStageLayer
                             session={layer.session}
                             // The state preview is inert: the stage is a still of the selected row,
@@ -176,6 +207,19 @@ export function StoryScenePreviewPane(props: {
                     <div className="absolute inset-0 flex items-center justify-center p-4 text-center text-xs text-white/50">
                         {t("story.preview.selectRow")}
                     </div>
+                ) : null}
+                {view === "layers" && layers ? (
+                    <StoryLayerStackView
+                        api={layers}
+                        stageRoot={stageElement}
+                        frameKey={`${controller.phase}:${controller.stageLayers.map(layer => layer.session.id).join(",")}`}
+                        designSize={controller.designSize}
+                        camera={props.camera ?? null}
+                        cameraSettled={() => {
+                            const stage = controller.getStageContext();
+                            return stage && props.camera && stage.targetBlockId === props.camera.blockId ? stage.targetCamera : null;
+                        }}
+                    />
                 ) : null}
                 {controller.phase === "error" ? (
                     <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/70 p-4">

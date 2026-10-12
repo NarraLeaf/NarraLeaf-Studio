@@ -8,7 +8,10 @@ import type { AssetSet } from "@shared/types/assetSet";
 import type { Asset } from "../assets/types";
 import type { Character } from "../character/Character";
 import type { StoryBlockSelection } from "@/apps/workspace/modules/story/scene-editor/storySelection";
-import type { StoryMotionKeyframeSelection } from "@/apps/workspace/modules/story-motion/storyMotionTypes";
+import type {
+    StoryMotionAssetSelection,
+    StoryMotionKeyframeSelection,
+} from "@/apps/workspace/modules/story-motion/storyMotionTypes";
 import type { ComparisonElementSelection } from "@/lib/vcs/compare/comparisonSelection";
 import {
     Notification,
@@ -72,6 +75,7 @@ export type SelectionState =
     | { type: "element"; data: UIElementSelection }
     /** A surface id, or a component editor's pseudo-surface id (`component-editor:<id>`). */
     | { type: "scene"; data: UISurfaceId }
+    | { type: "storyMotion"; data: StoryMotionAssetSelection }
     | { type: "storyMotionKeyframe"; data: StoryMotionKeyframeSelection }
     | { type: "storyBlock"; data: StoryBlockSelection };
 

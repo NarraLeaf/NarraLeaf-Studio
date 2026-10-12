@@ -56,6 +56,10 @@ function contextOf(
 const LINE = "We should go home.";
 
 describe("voice/missing", () => {
+    it("is a minor warning by default: a voiced title mid-recording would otherwise bury every other finding", () => {
+        expect(VOICE_LINT_RULES.find(rule => rule.id === "voice/missing")?.defaultSeverity).toBe("minor");
+    });
+
     it("reports an unrecorded spoken line, once per voiced language", async () => {
         const findings = await run(
             "voice/missing",

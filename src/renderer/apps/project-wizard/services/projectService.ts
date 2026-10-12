@@ -16,28 +16,15 @@ import {
     type ProjectPluginDependency,
 } from "@shared/types/pluginDependencies";
 
-import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { BaseFileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { BaseProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { join } from "@shared/utils/path";
 import { VCS_PROJECT_CREATED_MESSAGE } from "@shared/vcs/systemRevisionMessage";
 import { WindowAppType } from "@shared/types/window";
 import { throwException } from "@shared/utils/error";
-import { EMPTY_ASSET_ORDER_TEXT } from "@/lib/workspace/services/assets/assetOrder";
-import { ASSET_CATEGORY_ORDER, AssetType } from "@/lib/workspace/services/assets/assetTypes";
-import {
-    DEFAULT_APP_SURFACE_NAME,
-    DEFAULT_UI_DOCUMENT_NAME,
-    DEFAULT_UI_ROOT_NAME,
-    DEFAULT_UI_SURFACE_SIZE,
-} from "@shared/constants/ui-editor";
-import type {
-    UIElement,
-    UIDocument,
-    UISurface,
-    UISurfaceDesignSize,
-} from "@shared/types/ui-editor/document";
-import { UI_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/document";
+import { DEFAULT_UI_SURFACE_SIZE } from "@shared/constants/ui-editor";
+import type { UISurfaceDesignSize } from "@shared/types/ui-editor/document";
+import { NEW_PROJECT_DIRECTORIES, newProjectFiles } from "@shared/project/newProject";
 
 /**
  * Service for handling project creation logic
@@ -87,43 +74,13 @@ export class ProjectService {
             const encoded = encodeProjectConfig(projectConfig);
             throwException(await BaseFileSystemService.writeRaw(projectConfigPath, encoded));
 
-            // Create directories
-            throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.NLCache)));
-            throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.Assets)));
-            throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.AssetsContent)));
-            throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.Scripts)));
-            throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.Editor)));
-            throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.EditorAssets)));
-            throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.EditorServices)));
-            throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.EditorUI)));
-            throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.EditorStory)));
-            throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.EditorStoryStories)));
-
-            // Write editor.json
-            const editorConfigPath = this.resolve(basePath, ProjectNameConvention.EditorConfig);
-            const editorConfig = BaseProjectService.getInitialEditorConfig();
-            throwException(await BaseFileSystemService.write(editorConfigPath, JSON.stringify(editorConfig), "utf-8"));
-
-            // Write default UI document so App Surface has a default page
-            const uiDocument = createDefaultUIDocument(designSize);
-            const uiDocumentPath = this.resolve(basePath, ProjectNameConvention.EditorUIDocument);
-            throwException(await BaseFileSystemService.write(uiDocumentPath, JSON.stringify(uiDocument, null, 2), "utf-8"));
-
-            // Initialize assets metadata files for all asset types
-            for (const type of Object.values(AssetType)) {
-                const metadataPath = this.resolve(basePath, ProjectNameConvention.AssetsMetadataShard(type));
-                throwException(await BaseFileSystemService.write(metadataPath, JSON.stringify({}), "utf-8"));
+            // The empty project both project writers start from - see `@shared/project/newProject`,
+            // which the agent endpoint's `project_create` writes from as well.
+            for (const directory of NEW_PROJECT_DIRECTORIES) {
+                throwException(await BaseFileSystemService.createDir(join(basePath, ...directory)));
             }
-
-            // Folders and row order are sharded one level up, by sidebar section.
-            for (const category of ASSET_CATEGORY_ORDER) {
-                const groupsPath = this.resolve(basePath, ProjectNameConvention.AssetsGroupsShard(category));
-                throwException(await BaseFileSystemService.write(groupsPath, JSON.stringify({}), "utf-8"));
-
-                // Created here as well as on open, so a new project's first commit already has the
-                // file rather than growing one in the second.
-                const orderPath = this.resolve(basePath, ProjectNameConvention.AssetsOrderShard(category));
-                throwException(await BaseFileSystemService.write(orderPath, EMPTY_ASSET_ORDER_TEXT, "utf-8"));
+            for (const file of newProjectFiles(designSize, createId)) {
+                throwException(await BaseFileSystemService.write(join(basePath, ...file.path), file.text, "utf-8"));
             }
 
             // A template's content goes on top of the skeleton, replacing the empty
@@ -477,53 +434,6 @@ function buildAppConfiguration(
                 },
             }
             : {}),
-    };
-}
-
-function createDefaultUIDocument(designSize: UISurfaceDesignSize): UIDocument {
-    const now = new Date().toISOString();
-    const documentId = createId();
-    const surfaceId = createId();
-    const rootElementId = createId();
-
-    const rootElement: UIElement = {
-        id: rootElementId,
-        type: "nl.root",
-        name: DEFAULT_UI_ROOT_NAME,
-        parentId: null,
-        childrenIds: [],
-        layout: {
-            x: 0,
-            y: 0,
-            width: designSize.width,
-            height: designSize.height,
-            visible: true,
-            opacity: 1,
-        },
-    };
-
-    const surface: UISurface = {
-        id: surfaceId,
-        name: DEFAULT_APP_SURFACE_NAME,
-        host: "app",
-        kind: "appSurface",
-        designSize,
-        rootElementId,
-    };
-
-    return {
-        schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-        id: documentId,
-        name: DEFAULT_UI_DOCUMENT_NAME,
-        surfaces: [surface],
-        components: [],
-        elements: {
-            [rootElementId]: rootElement,
-        },
-        meta: {
-            createdAt: now,
-            updatedAt: now,
-        },
     };
 }
 

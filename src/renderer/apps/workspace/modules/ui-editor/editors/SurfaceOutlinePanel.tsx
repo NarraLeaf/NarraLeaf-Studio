@@ -104,6 +104,9 @@ export const SurfaceOutlinePanel = memo(function SurfaceOutlinePanel({
     // A column, so the header keeps its height and the tree gets whatever is left - without this the
     // tree's own `h-full` measured the whole panel and pushed its tail out of view with no way back.
     // No right border: the resize seam on that edge is the line (see `EditorSidebarResizeHandle`).
+    // Solid under a wallpaper too, never a dock plate (`nl-sidebar-surface`): the panel floats over
+    // the canvas, so a thinned plate would show the page through the tree's names. Its title row is a
+    // header strip (`nl-frame-surface`) and lies over this solid paint like a dock's header does.
     const panelClasses = `absolute inset-y-0 left-0 z-10 flex flex-col bg-surface-sunken transition-transform duration-200 ease-out ${
         isCollapsed ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100 pointer-events-auto"
     }`;
@@ -117,7 +120,7 @@ export const SurfaceOutlinePanel = memo(function SurfaceOutlinePanel({
                 style={{ width: editorSidebarCssWidth("uiOutline", width) }}
                 onContextMenu={handlePanelContextMenu}
             >
-                <div className="shrink-0 px-3 py-2 border-b border-edge text-xs text-fg-subtle flex items-center justify-between">
+                <div className="nl-frame-surface shrink-0 bg-surface-sunken px-3 py-2 border-b border-edge text-xs text-fg-subtle flex items-center justify-between">
                     <span>{t("uiEditor.editor.outlineTitle")}</span>
                     <button
                         type="button"

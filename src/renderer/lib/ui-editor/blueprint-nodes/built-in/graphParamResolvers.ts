@@ -6,6 +6,8 @@
 import type { AssetVariantMap } from "@shared/types/assetSet";
 import { isUIListScrolledToEnd, isUIListScrolledToStart } from "@shared/types/ui-editor/list";
 import { isUIElementRefInScope } from "@shared/types/ui-editor/componentInstanceKey";
+import { UI_VIDEO_ELEMENT_TYPE } from "@shared/types/ui-editor/video";
+import type { BlueprintVideoProperties } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { addressWidgetFromExecution } from "./widgetTarget";
 import { resolveNodeStoredAssetSet } from "./nodeAssetSets";
 import {
@@ -329,6 +331,18 @@ import {
     BLUEPRINT_NODE_TYPE_SWITCH_TOGGLE,
     BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_GET_CHECKED,
     BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_TOGGLE,
+    BLUEPRINT_NODE_TYPE_VIDEO_GET_TIME,
+    BLUEPRINT_NODE_TYPE_VIDEO_GET_DURATION,
+    BLUEPRINT_NODE_TYPE_VIDEO_IS_PLAYING,
+    BLUEPRINT_NODE_TYPE_VIDEO_IS_ENDED,
+    BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_TIME,
+    BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_DURATION,
+    BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_PLAYING,
+    BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_ENDED,
+    BLUEPRINT_NODE_TYPE_VIDEO_GET_VOLUME,
+    BLUEPRINT_NODE_TYPE_VIDEO_IS_MUTED,
+    BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_VOLUME,
+    BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_MUTED,
     BLUEPRINT_NODE_TYPE_TEXT_INPUT_GET_VALUE,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_GET_VALUE,
     BLUEPRINT_NODE_TYPE_TEXT_GET_ALL_PROPERTIES,
@@ -393,6 +407,7 @@ import {
 } from "@shared/types/blueprint/valueTypes";
 import { blueprintCharacterColorOrDefault } from "@shared/types/blueprint/characterInfo";
 import { RELEASE_APP_TAG } from "@shared/types/appTag";
+import { splitJsonPath } from "@shared/blueprint/jsonPath";
 import { BLUEPRINT_APP_TAG_OUTPUT_PIN_ID } from "./appTagNodes";
 import type { BlueprintInputActionHostApi } from "./inputActionNodes";
 import type { BehaviorGraphValueExecution, BehaviorNodeExecutionContext } from "../../behavior-graph/BehaviorNodeRegistry";
@@ -1075,34 +1090,6 @@ function countOccurrences(value: string, search: string): number {
         cursor = next + search.length;
     }
     return count;
-}
-
-function splitJsonPath(path: string): string[] {
-    const out: string[] = [];
-    let current = "";
-    let escaping = false;
-    for (const ch of path) {
-        if (escaping) {
-            current += ch;
-            escaping = false;
-            continue;
-        }
-        if (ch === "\\") {
-            escaping = true;
-            continue;
-        }
-        if (ch === ".") {
-            out.push(current);
-            current = "";
-            continue;
-        }
-        current += ch;
-    }
-    if (escaping) {
-        current += "\\";
-    }
-    out.push(current);
-    return out.filter(segment => segment.length > 0);
 }
 
 function readJsonPath(value: unknown, path: string): { exists: boolean; value: unknown } {
@@ -2089,7 +2076,7 @@ function resolveGetCharacterNodeOutput(
         return character?.name ?? "";
     }
     if (portId === "characterColor") {
-        return blueprintCharacterColorOrDefault(character?.color);
+        return blueprintCharacterColorOrDefault(character);
     }
     if (portId === "characterAvatar") {
         return character?.avatar ?? null;
@@ -2680,6 +2667,66 @@ function resolveSwitchNodeOutput(
         trackElementDependency(runtime, ref, "props.checked");
     }
     return props.checked;
+}
+
+/**
+ * The video reads, self and Element twins: which reading each node gives on which pin. Each node
+ * has one output, so the pin is part of the key and a pin the node does not have reads nothing.
+ */
+const VIDEO_READ_OUTPUTS: Readonly<Record<string, { portId: string; element: boolean; read: (props: BlueprintVideoProperties) => unknown }>> = {
+    [BLUEPRINT_NODE_TYPE_VIDEO_GET_TIME]: { portId: "time", element: false, read: props => props.currentTime },
+    [BLUEPRINT_NODE_TYPE_VIDEO_GET_DURATION]: { portId: "duration", element: false, read: props => props.duration },
+    [BLUEPRINT_NODE_TYPE_VIDEO_IS_PLAYING]: { portId: "isPlaying", element: false, read: props => props.playing },
+    [BLUEPRINT_NODE_TYPE_VIDEO_IS_ENDED]: { portId: "isEnded", element: false, read: props => props.ended },
+    [BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_TIME]: { portId: "time", element: true, read: props => props.currentTime },
+    [BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_DURATION]: { portId: "duration", element: true, read: props => props.duration },
+    [BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_PLAYING]: { portId: "isPlaying", element: true, read: props => props.playing },
+    [BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_ENDED]: { portId: "isEnded", element: true, read: props => props.ended },
+    [BLUEPRINT_NODE_TYPE_VIDEO_GET_VOLUME]: { portId: "volume", element: false, read: props => props.volume },
+    [BLUEPRINT_NODE_TYPE_VIDEO_IS_MUTED]: { portId: "muted", element: false, read: props => props.muted },
+    [BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_VOLUME]: { portId: "volume", element: true, read: props => props.volume },
+    [BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_MUTED]: { portId: "muted", element: true, read: props => props.muted },
+};
+
+/**
+ * Where a video is, read from the drawn element at the moment the graph asks.
+ *
+ * Nothing is recorded as a dependency: the play head moves every frame and no change of it re-runs
+ * a Blueprint Value, so a binding that shows it is a reading taken when the binding last ran.
+ */
+function resolveVideoNodeOutput(
+    graph: DataPinGraph,
+    nodeId: string,
+    type: string,
+    portId: string,
+    params: Record<string, unknown>,
+    blueprintLocals: Record<string, unknown> | undefined,
+    depth: number,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    const output = VIDEO_READ_OUTPUTS[type];
+    if (!output || output.portId !== portId) {
+        return undefined;
+    }
+    const ref = output.element
+        ? sameSurfaceElementRef(
+            normalizeBlueprintElementRefValue(resolveInput(graph, nodeId, "video", params, blueprintLocals, depth, runtime)),
+            runtime,
+        )
+        : undefined;
+    if (output.element && ref?.elementType !== UI_VIDEO_ELEMENT_TYPE) {
+        return undefined;
+    }
+    const elementId = widgetReadAddress(output.element ? ref?.elementId : runtime?.executionOwner?.elementId, runtime);
+    const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
+    if (!elementId || !api) {
+        return undefined;
+    }
+    try {
+        return output.read(api.widget.getVideoProperties(elementId));
+    } catch {
+        return undefined;
+    }
 }
 
 function resolveListNodeOutput(
@@ -3969,6 +4016,19 @@ function resolveSelfOutput(
     );
     if (switchOutput !== undefined) {
         return switchOutput;
+    }
+    const videoOutput = resolveVideoNodeOutput(
+        graph,
+        nodeId,
+        selfNode.type,
+        portId,
+        selfNode.params ?? {},
+        blueprintLocals,
+        depth,
+        runtime,
+    );
+    if (videoOutput !== undefined) {
+        return videoOutput;
     }
     const textInputOutput = resolveTextInputNodeOutput(
         graph,

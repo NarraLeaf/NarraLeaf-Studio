@@ -21,6 +21,7 @@ export const placeholders = {
         assets: "アセット",
         console: "コンソール",
         problems: "問題",
+        agentLog: "エージェントログ",
         storyMotion: "ストーリーモーション",
         dashboard: "ダッシュボード",
         audioPreview: "音声プレビュー",

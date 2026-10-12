@@ -97,6 +97,8 @@ describe("SpellcheckManager", () => {
             cacheRoot: () => cacheRoot,
             readSetting: () => setting,
             readRegistryUrl: () => INDEX_URL,
+            // The registry named above, read as written: the custom store source.
+            readStoreSource: () => "custom",
         });
     }
 
@@ -282,6 +284,8 @@ describe("SpellcheckManager in Chinese and Japanese", () => {
             cacheRoot: () => cacheRoot,
             readSetting: () => undefined,
             readRegistryUrl: () => INDEX_URL,
+            // The registry named above, read as written: the custom store source.
+            readStoreSource: () => "custom",
         });
     }
 

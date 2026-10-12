@@ -187,6 +187,20 @@ describe("computeStoryStageSnapshot", () => {
         expect(snapshot(reset, "target").camera).toBeNull();
     });
 
+    it("works out the camera a camera target leaves, without moving the snapshot past it", () => {
+        const document = baseDocument({
+            pan: block("pan", "action", { action: "camera", operation: "transform", transform: { mode: "props", to: { position: { xalign: 0.25, yalign: 0.5 }, zoom: 2 } } }),
+            target: block("target", "action", { action: "camera", operation: "transform", transform: { mode: "props", to: { zoom: 3 } } }),
+            line: say("line"),
+        }, ["pan", "target", "line"]);
+        const result = snapshot(document, "target");
+        // Still the camera before the row: the preview plays the row's move from here.
+        expect(result.camera?.props.zoom).toBe(2);
+        // And the frame it ends on: the earlier pan, with the row's zoom over it.
+        expect(result.targetCamera).toEqual({ position: expect.objectContaining({ xalign: 0.25, yalign: 0.5 }), zoom: 3 });
+        expect(snapshot(document, "line").targetCamera).toBeNull();
+    });
+
     it("leaves the camera pose null when no /camera runs before the target", () => {
         const document = baseDocument({ target: say("target") }, ["target"]);
         expect(snapshot(document, "target").camera).toBeNull();
@@ -433,9 +447,8 @@ describe("computeStoryStageSnapshot", () => {
         expect(result.displayables).toEqual([]);
     });
 
-    it("flags nvl containers and layer records", () => {
+    it("flags nvl containers and layer records, with the scene's layers up from its first row", () => {
         const document = baseDocument({
-            layer: block("layer", "action", { action: "layer", operation: "create", objectName: "fg", zIndex: 5 }),
             "layer-move": block("layer-move", "action", {
                 action: "layer",
                 operation: "transform",
@@ -445,12 +458,14 @@ describe("computeStoryStageSnapshot", () => {
             }),
             nvl: block("nvl", "action", { action: "nvl" }, null, ["target"]),
             target: say("target", "nvl"),
-        }, ["layer", "layer-move", "nvl"]);
+        }, ["layer-move", "nvl"]);
+        // In front of the characters: the stack puts it at z-index 1.
+        document.scenes["scene-1"].layers = [{ kind: "custom", id: "layer", name: "fg" }, { kind: "displayable" }, { kind: "background" }];
         const result = snapshot(document, "target");
         expect(result.nvl).toBe(true);
         const layer = result.displayables[0];
         expect(layer.kind).toBe("layer");
-        expect(layer.zIndex).toBe(5);
+        expect(layer.zIndex).toBe(1);
         expect(layer.visible).toBe(true);
         expect(layer.props.position).toEqual(expect.objectContaining({ yoffset: -20 }));
     });
@@ -796,6 +811,50 @@ describe("computeStoryStageSnapshot and the sound at the target row", () => {
         const result = snapshot(document, "target");
         expect(result.music).toEqual({ playing: true, paused: false });
         expect(result.sounds).toEqual([]);
+    });
+});
+
+/**
+ * The speaker names the walked path's `/rename` rows left: a launch replaces those rows, so it has to
+ * replay the names they gave or open on the cast's names.
+ */
+describe("computeStoryStageSnapshot and /rename", () => {
+    const rename = (id: string, characterId: string, displayName: string, parentId: string | null = null) =>
+        block(id, "action", { action: "character", operation: "setName", characterId, displayName }, parentId);
+
+    it("records, for each character, the last /rename on the path before the target", () => {
+        const document = baseDocument({
+            hide: rename("hide", "char-alice", "？？？"),
+            bob: rename("bob", "char-bob", "Mr. B"),
+            reveal: rename("reveal", "char-alice", "Alice"),
+            target: say("target"),
+            later: rename("later", "char-alice", "Al"),
+        }, ["hide", "bob", "reveal", "target", "later"]);
+
+        expect(snapshot(document, "target").renames).toEqual([
+            { characterId: "char-alice", setBy: "reveal" },
+            { characterId: "char-bob", setBy: "bob" },
+        ]);
+        // A rename at the target row is the tail's to play, not the opening's.
+        expect(snapshot(document, "reveal").renames).toEqual([
+            { characterId: "char-alice", setBy: "hide" },
+            { characterId: "char-bob", setBy: "bob" },
+        ]);
+        expect(snapshot(document, null).renames).toEqual([]);
+    });
+
+    it("leaves out a /rename on an arm the path did not take, and a disabled one", () => {
+        const document = baseDocument({
+            cond: block("cond", "control", { control: "condition" }, null, ["yes", "otherwise"]),
+            yes: block("yes", "control", { control: "conditionBranch", branch: "if", condition: { kind: "variable", target: { scope: "scene", variableId: "flag" }, operator: "isTrue" } }, "cond", ["named"]),
+            named: rename("named", "char-alice", "Alice", "yes"),
+            otherwise: block("otherwise", "control", { control: "conditionBranch", branch: "else" }, "cond", ["hidden"]),
+            hidden: rename("hidden", "char-alice", "？？？", "otherwise"),
+            off: { ...rename("off", "char-bob", "Bob"), disabled: true } as StoryBlock,
+            target: say("target"),
+        }, ["cond", "off", "target"]);
+
+        expect(snapshot(document, "target").renames).toEqual([{ characterId: "char-alice", setBy: "hidden" }]);
     });
 });
 

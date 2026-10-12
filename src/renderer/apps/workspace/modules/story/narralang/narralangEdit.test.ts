@@ -203,6 +203,7 @@ const EVERY_PARSE_REASON: Record<NarralangParseReason, true> = {
     conflictingValues: true,
     badIndent: true,
     danglingBranch: true,
+    layerDeclaration: true,
     badTag: true,
     badExpression: true,
 };

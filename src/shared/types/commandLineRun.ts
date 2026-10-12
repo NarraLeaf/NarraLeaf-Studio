@@ -134,10 +134,16 @@ export type CommandLineRunLogLine = {
  * only the second is unusable.
  */
 export type CommandLineRunFinding = {
-    severity: "error" | "warning" | "info";
-    /** The rule id for lint. Absent for a test finding, which no registry names. */
+    /**
+     * `minor` is a lint finding the project files as a minor warning: a problem it never fails a run
+     * or a build on. Only `--lint` reports one; a test's findings use the other three.
+     */
+    severity: "error" | "warning" | "minor" | "info";
+    /** The rule id: a lint rule's, or the one a test finding names (project-diagnostics carries the lint rule's). */
     id?: string;
     message: string;
+    /** The message in English when the producer supplied one - what the agent connection reports. */
+    englishMessage?: string;
     /** Where it is, when the finding knows - a story name, a scene, an asset. */
     location?: string;
 };
@@ -166,7 +172,7 @@ export type CommandLineTestResult = {
 
 /** What a finished `--lint` sweep came to. */
 export type CommandLineLintResult = {
-    counts: { error: number; warning: number; info: number };
+    counts: { error: number; warning: number; minor: number; info: number };
     findings: CommandLineRunFinding[];
     /** Rule ids that ran, and the ones the project turned off. Both in registry order. */
     rulesRun: string[];

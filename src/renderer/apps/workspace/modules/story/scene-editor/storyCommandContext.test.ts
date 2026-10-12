@@ -30,11 +30,12 @@ describe("buildStoryCommandContext - stage objects", () => {
         const document = documentWith({
             b1: { action: "image", operation: "create", objectName: "hero", assetId: "img-1" },
             b2: { action: "text", operation: "create", objectName: "title", text: "Hi" },
-            b3: { action: "layer", operation: "create", objectName: "fx" },
             b4: { action: "video", operation: "play", objectName: "clip", assetId: "vid-1" },
             b5: { action: "audio", operation: "playSound", objectName: "music", assetId: "aud-1" },
             b6: { action: "vfx", operation: "create", objectName: "rain", assetId: "vid-2" },
         });
+        // A layer is declared by the scene, not by a row.
+        document.scenes["scene-1"].layers = [{ kind: "custom", id: "b3", name: "fx" }, { kind: "displayable" }, { kind: "background" }];
 
         const context = buildStoryCommandContext({
             assets: undefined,

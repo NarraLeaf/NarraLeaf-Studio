@@ -84,6 +84,8 @@ describe("sidecar preflight", () => {
                 network: [],
                 widgetText: {},
                 structs: [],
+                agentTools: [],
+                agentGuide: "",
                 sidecars: sidecars.map(sidecar => ({
                     kind: "executable",
                     transport: "stdio-jsonl",
@@ -578,6 +580,8 @@ describe("plugin build config preflight", () => {
                 network: [],
                 widgetText: {},
                 structs: [],
+                agentTools: [],
+                agentGuide: "",
             },
             permissions: [],
         };

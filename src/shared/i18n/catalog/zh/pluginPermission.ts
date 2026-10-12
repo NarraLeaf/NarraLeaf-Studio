@@ -61,8 +61,18 @@ export const pluginPermission = {
             network: "游戏会请求的数据",
             networkNote: "游戏运行时，此插件会从这些地址请求数据",
             studio: "Studio 权限",
+            agentTools: "AI Agent",
         },
         sidecarPlatforms: "运行平台：{platforms}",
+        agentToolsSummary: "{tools}（{writes}）",
+        agentTools: {
+            one: "向连接到 Studio 的 AI Agent 提供 {count} 个工具",
+            other: "向连接到 Studio 的 AI Agent 提供 {count} 个工具",
+        },
+        agentToolsWrites: {
+            one: "其中 {count} 个可修改项目",
+            other: "其中 {count} 个可修改项目",
+        },
         sidecarKind: {
             executable: "作为独立的程序运行",
             node: "插件自身的代码作为游戏的一部分运行",

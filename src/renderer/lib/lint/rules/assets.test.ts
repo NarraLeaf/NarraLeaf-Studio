@@ -44,6 +44,10 @@ const storyReference: AssetReference = {
 };
 
 describe("assets/unused", () => {
+    it("is a minor warning by default: a build leaves the file out and the game is unaffected", () => {
+        expect(ASSETS_LINT_RULES.find(rule => rule.id === "assets/unused")?.defaultSeverity).toBe("minor");
+    });
+
     it("reports a library asset nothing references", async () => {
         const ctx = createTestLintContext({
             assets: [asset("used"), asset("orphan")],

@@ -19,11 +19,12 @@
  * A brand new line mints a `textId` and takes the role its shape implies - which is exactly what
  * committing a new row in Studio does.
  *
- * ## Rich text is not spelled, deliberately
+ * ## Rich text: three marks are spelled, the rest is kept verbatim
  *
- * A segment carrying `rich` runs has styling this format has no syntax for, so it fails the echo
- * check and is preserved verbatim. That is a coverage limit rather than a loss: the row keeps every
- * mark, and the way to restyle it is Studio, which is the only surface that offers marks at all.
+ * Bold, italic and colour runs are written as inline tags (`{b}…{/b}`, `{i}…{/i}`,
+ * `{color #e04040}…{/color}`, the Script View's spelling; see `inlineMarkup.ts`). A segment carrying any other styling (ruby,
+ * size, typing speed, emphasis, an inline pause or variable) has no spelling, so the row stays an
+ * opaque `»` line and keeps every mark - restyle it in Studio. Notes are never styled.
  *
  * Comments in English per project convention.
  */
@@ -39,6 +40,7 @@ import {
     unescapeText,
     type StoryLineShape,
 } from "./shapes";
+import { escapePlainWithTags, readInlineMarkup, spellRichSegment } from "./inlineMarkup";
 
 /** Naming the things a prose line mentions. Only characters, since prose names nothing else. */
 export type ProseLookups = {
@@ -80,10 +82,14 @@ export function proseLineOf(block: StoryBlock, lookups: ProseLookups): ProseLine
     }
     const payload = block.payload;
     switch (payload.action) {
-        case "narration":
-            return { shape: "narration", text: escapeText(payload.text.value, { asProse: true }) };
-        case "choiceOption":
-            return { shape: "option", text: escapeText(payload.text.value, { asProse: true }) };
+        case "narration": {
+            const words = spokenWords(payload.text);
+            return words === null ? null : { shape: "narration", text: words };
+        }
+        case "choiceOption": {
+            const words = spokenWords(payload.text);
+            return words === null ? null : { shape: "option", text: words };
+        }
         case "dialogue": {
             const speaker = payload.characterId
                 ? lookups.characterName(payload.characterId)
@@ -93,7 +99,10 @@ export function proseLineOf(block: StoryBlock, lookups: ProseLookups): ProseLine
             }
             // The speaker is escaped as prose too: a name holding `: ` would otherwise split the
             // line in the wrong place on the way back in.
-            const words = escapeText(payload.text.value, { asProse: true });
+            const words = spokenWords(payload.text);
+            if (words === null) {
+                return null;
+            }
             return { shape: "dialogue", text: `${escapeText(speaker, { asProse: true })}: ${words}` };
         }
         default:
@@ -102,13 +111,21 @@ export function proseLineOf(block: StoryBlock, lookups: ProseLookups): ProseLine
     }
 }
 
+/**
+ * The words of a narration, dialogue or option segment as the line spells them: styled runs as inline
+ * tags, plain text with a literal tag shape escaped. Null when the styling has no spelling.
+ */
+function spokenWords(text: StoryTextSegment): string | null {
+    return text.rich ? spellRichSegment(text) : escapePlainWithTags(text.value);
+}
+
 // ---------------------------------------------------------------------------
 // Reading
 // ---------------------------------------------------------------------------
 
 export type ProseBuildResult =
     | { ok: true; block: StoryBlock }
-    | { ok: false; reason: "ambiguousSpeaker"; detail: string };
+    | { ok: false; reason: "ambiguousSpeaker" | "inlineMarkup"; detail: string };
 
 /**
  * A prose line as the block it means.
@@ -138,25 +155,33 @@ export function buildProseBlock(
         return { ok: true, block: { ...base, kind: "empty", payload: {} } };
     }
 
-    const text = unescapeText(line.text);
     if (line.shape === "note") {
+        const text = unescapeText(line.text);
         return {
             ok: true,
-            block: { ...base, kind: "note", payload: { text: segment(previous, "note", text, mintId) } },
+            block: { ...base, kind: "note", payload: { text: segment(previous, "note", { value: text }, mintId) } },
         };
     }
     if (line.shape === "narration") {
+        const words = readInlineMarkup(line.text);
+        if (!words.ok) {
+            return { ok: false, reason: "inlineMarkup", detail: words.detail };
+        }
         const payload: StoryNodeActionPayload = {
             action: "narration",
-            text: segment(previous, "narration", text, mintId),
+            text: segment(previous, "narration", words, mintId),
         };
         return { ok: true, block: { ...base, kind: "nodeAction", payload } };
     }
     if (line.shape === "option") {
+        const words = readInlineMarkup(line.text);
+        if (!words.ok) {
+            return { ok: false, reason: "inlineMarkup", detail: words.detail };
+        }
         const carried = previousNodeAction(previous, "choiceOption");
         const payload: StoryNodeActionPayload = {
             action: "choiceOption",
-            text: segment(previous, "choiceText", text, mintId),
+            text: segment(previous, "choiceText", words, mintId),
             // The two conditions an option may carry have no spelling on the line, so they ride on
             // the row: editing an option's words must not clear the check that hides it.
             ...(carried?.action === "choiceOption" && carried.hiddenWhen ? { hiddenWhen: carried.hiddenWhen } : {}),
@@ -168,7 +193,10 @@ export function buildProseBlock(
     // Dialogue.
     const split = speakerSplit(line.text);
     const speaker = unescapeText(split?.speaker ?? "").trim();
-    const words = unescapeText(split?.words ?? "");
+    const words = readInlineMarkup(split?.words ?? "");
+    if (!words.ok) {
+        return { ok: false, reason: "inlineMarkup", detail: words.detail };
+    }
     const matches = speaker ? lookups.charactersNamed(speaker) : [];
     if (matches.length > 1) {
         return {
@@ -202,7 +230,7 @@ export function buildProseBlock(
 function segment(
     previous: StoryBlock | null,
     role: StoryTextSegment["role"],
-    value: string,
+    words: { value: string; rich?: StoryTextSegment["rich"] },
     mintId: () => string,
 ): StoryTextSegment {
     const carried = previousSegment(previous);
@@ -211,7 +239,8 @@ function segment(
         // The stored role, not the shape's: `role` is authored data, and a narration row that was
         // given a different role keeps it rather than being normalised back on every read.
         role: carried?.role ?? role,
-        value,
+        value: words.value,
+        ...(words.rich ? { rich: words.rich } : {}),
     };
 }
 

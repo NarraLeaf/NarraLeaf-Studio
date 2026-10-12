@@ -31,8 +31,10 @@ import {
     Command,
     Copy,
     CopyPlus,
+    Diamond,
     Ear,
     Eraser,
+    FastForward,
     Flag,
     FlaskConical,
     Grid3x3,
@@ -58,6 +60,7 @@ import {
     Plus,
     Redo2,
     Repeat,
+    Rewind,
     Rows2,
     Scissors,
     Search,
@@ -306,11 +309,43 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     entry("story-motion.next-frames", "shift+arrowright", "workspace.shell.keybindings.catalog.storyMotion.nextFrames", CATEGORY.storyMotion, ChevronsRight),
     entry("story-motion.playhead-start", "home", "workspace.shell.keybindings.catalog.storyMotion.playheadStart", CATEGORY.storyMotion, SkipBack),
     entry("story-motion.playhead-end", "end", "workspace.shell.keybindings.catalog.storyMotion.playheadEnd", CATEGORY.storyMotion, SkipForward),
+    // Transport after Premiere: Space plays, J/K/L shuttle (a second J or L doubles the speed), R
+    // loops as in the audio and video previews. Up and Down go to the previous and next keyframe,
+    // the way they go to the previous and next edit in a sequence.
+    entry("story-motion.play-pause", "space", "workspace.shell.keybindings.catalog.storyMotion.playPause", CATEGORY.storyMotion, Play),
+    entry("story-motion.play-reverse", "j", "workspace.shell.keybindings.catalog.storyMotion.playReverse", CATEGORY.storyMotion, Rewind),
+    entry("story-motion.stop", "k", "workspace.shell.keybindings.catalog.storyMotion.stop", CATEGORY.storyMotion, Square),
+    entry("story-motion.play-forward", "l", "workspace.shell.keybindings.catalog.storyMotion.playForward", CATEGORY.storyMotion, FastForward),
+    entry("story-motion.loop", "r", "workspace.shell.keybindings.catalog.storyMotion.loop", CATEGORY.storyMotion, Repeat),
+    entry("story-motion.prev-keyframe", "arrowup", "workspace.shell.keybindings.catalog.storyMotion.prevKeyframe", CATEGORY.storyMotion, StepBack),
+    entry("story-motion.next-keyframe", "arrowdown", "workspace.shell.keybindings.catalog.storyMotion.nextKeyframe", CATEGORY.storyMotion, StepForward),
+    // Editing keyframes: I inserts at the playhead (Blender's key), Alt+arrows nudge by a frame
+    // and Alt+Shift by ten (After Effects), and the clipboard pastes at the playhead.
+    entry("story-motion.insert-keyframe", "i", "workspace.shell.keybindings.catalog.storyMotion.insertKeyframe", CATEGORY.storyMotion, Diamond),
+    entry("story-motion.select-all", "mod+a", "workspace.shell.keybindings.catalog.storyMotion.selectAll", CATEGORY.storyMotion, SquareDashedMousePointer),
+    entry("story-motion.clear-selection", "escape", "workspace.shell.keybindings.catalog.storyMotion.clearSelection", CATEGORY.storyMotion, SquareDashed),
+    entry("story-motion.copy", "mod+c", "workspace.shell.keybindings.catalog.storyMotion.copy", CATEGORY.storyMotion, Copy),
+    entry("story-motion.cut", "mod+x", "workspace.shell.keybindings.catalog.storyMotion.cut", CATEGORY.storyMotion, Scissors),
+    entry("story-motion.paste", "mod+v", "workspace.shell.keybindings.catalog.storyMotion.paste", CATEGORY.storyMotion, ClipboardPaste),
+    entry("story-motion.nudge-left", "alt+arrowleft", "workspace.shell.keybindings.catalog.storyMotion.nudgeLeft", CATEGORY.storyMotion, ArrowLeft),
+    entry("story-motion.nudge-right", "alt+arrowright", "workspace.shell.keybindings.catalog.storyMotion.nudgeRight", CATEGORY.storyMotion, ArrowRight),
+    entry("story-motion.nudge-left-large", "alt+shift+arrowleft", "workspace.shell.keybindings.catalog.storyMotion.nudgeLeftLarge", CATEGORY.storyMotion, ChevronsLeft),
+    entry("story-motion.nudge-right-large", "alt+shift+arrowright", "workspace.shell.keybindings.catalog.storyMotion.nudgeRightLarge", CATEGORY.storyMotion, ChevronsRight),
+    // The timeline's zoom keys are the audio and video previews' keys.
+    entry("story-motion.zoom-in", "=", "workspace.shell.keybindings.catalog.storyMotion.zoomIn", CATEGORY.storyMotion, ZoomIn),
+    entry("story-motion.zoom-out", "-", "workspace.shell.keybindings.catalog.storyMotion.zoomOut", CATEGORY.storyMotion, ZoomOut),
+    entry("story-motion.zoom-fit", "0", "workspace.shell.keybindings.catalog.storyMotion.zoomFit", CATEGORY.storyMotion, Maximize2),
+    // The motion library in the bottom tray: the asset panel's rename key, the interface editor's
+    // duplicate key, and Delete.
+    entry("story-motion.library.rename", "f2", "workspace.shell.keybindings.catalog.storyMotion.libraryRename", CATEGORY.storyMotion, PenLine),
+    entry("story-motion.library.duplicate", "mod+d", "workspace.shell.keybindings.catalog.storyMotion.libraryDuplicate", CATEGORY.storyMotion, Copy),
+    entry("story-motion.library.delete", "delete", "workspace.shell.keybindings.catalog.storyMotion.libraryDelete", CATEGORY.storyMotion, Trash2),
 
     // --- Assets panel --------------------------------------------------------
     entry("assets.copy", "mod+c", "assets.shortcuts.copy", CATEGORY.assets, Copy),
     entry("assets.cut", "mod+x", "assets.shortcuts.cut", CATEGORY.assets, Scissors),
     entry("assets.paste", "mod+v", "assets.shortcuts.paste", CATEGORY.assets, ClipboardPaste),
+    entry("assets.delete", "delete", "assets.shortcuts.delete", CATEGORY.assets, Trash2),
     entry("assets.rename", "f2", "assets.shortcuts.rename", CATEGORY.assets, PenLine),
 
     // --- Audio preview -------------------------------------------------------
@@ -364,6 +399,13 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     entry("assets.video.zoom-in", "=", "assets.video.keybindings.zoomIn", CATEGORY.assets, ZoomIn),
     entry("assets.video.zoom-out", "-", "assets.video.keybindings.zoomOut", CATEGORY.assets, ZoomOut),
     entry("assets.video.zoom-fit", "0", "assets.video.keybindings.zoomFit", CATEGORY.assets, Maximize2),
+
+    // --- Image preview -------------------------------------------------------
+    // The chords the preview has always answered, which are the ones image viewers share. Reset fits
+    // the picture to the tab, so it wears the fit glyph.
+    entry("assets.image.zoom-in", "mod+=", "assets.image.keybindings.zoomIn", CATEGORY.assets, ZoomIn),
+    entry("assets.image.zoom-out", "mod+-", "assets.image.keybindings.zoomOut", CATEGORY.assets, ZoomOut),
+    entry("assets.image.reset-view", "mod+0", "assets.image.keybindings.resetView", CATEGORY.assets, Maximize2),
 
     // --- Translation and voice tables ---------------------------------------
     // Two tables, one command, one chord. They are separate entries rather than one shared id

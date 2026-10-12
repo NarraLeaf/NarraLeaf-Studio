@@ -469,6 +469,11 @@ export const storyInspector = {
         returnable: "Return after the target scene",
     },
 
+    setVariable: {
+        // A /set value that names a scene which is no longer in the story.
+        missingScene: "Missing scene",
+    },
+
     note: {
         label: "Note",
     },
@@ -507,8 +512,8 @@ export const storyInspector = {
     },
 
     layer: {
-        layerName: "Layer name",
         zIndex: "Z-index",
+        zIndexRowHint: "A layer's starting order is set by the scene's layers.",
     },
 
     video: {
@@ -519,6 +524,22 @@ export const storyInspector = {
         leave: "Exit",
         waitForEnd: "Wait for the video",
         skipHint: "The player can end the video early by clicking or pressing the skip key.",
+    },
+
+    /** `/rumble`, `/input`, `/waitinput`, `/hold`, `/mash` - the player's-hands rows. */
+    input: {
+        shape: "Shape",
+        leftMotor: "Left motor (0-1)",
+        rightMotor: "Right motor (0-1)",
+        waitForRumble: "Wait for the rumble to end",
+        state: "State",
+        action: "Input action",
+        anyAction: "Any input action",
+        holdSeconds: "Hold (s)",
+        pressCount: "Presses",
+        timeout: "Time limit (s)",
+        result: "Result variable",
+        noResult: "None",
     },
 
     nvl: {

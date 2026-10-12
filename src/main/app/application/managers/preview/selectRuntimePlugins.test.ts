@@ -28,6 +28,8 @@ function manifest(id: string, version: string, blueprintNodes: string[] = [], wi
             network: [],
             widgetText: {},
             structs: [],
+            agentTools: [],
+            agentGuide: "",
         },
         permissions: [],
     };

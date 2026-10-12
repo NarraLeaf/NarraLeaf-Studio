@@ -17,6 +17,11 @@ import type { SearchSource } from "../searchSource";
  */
 export type SearchTagReader = (tag: string) => string | null;
 
+/** A detail line's parts, joined the way the interface language writes a list (`tag、tag` in Chinese). */
+function joinDetail(parts: string[]): string | undefined {
+    return parts.length > 0 ? i18nStore.getTranslator().formatList(parts, { style: "narrow" }) : undefined;
+}
+
 function readTags(tags: readonly string[] | undefined, readTag: SearchTagReader): string[] {
     return (tags ?? []).flatMap(tag => {
         const label = readTag(tag);
@@ -53,7 +58,7 @@ export function extractAssetEntries(
                 id: `asset:${asset.id}`,
                 group: "asset" as const,
                 text: asset.name,
-                detail: detailParts.length > 0 ? detailParts.join(", ") : undefined,
+                detail: joinDetail(detailParts),
                 fields: { assetType: asset.type },
                 target: { kind: "asset" as const, assetId: asset.id, assetType: asset.type },
             };
@@ -94,7 +99,7 @@ export function extractAssetSetEntries(
                 id: `assetSet:${set.id}`,
                 group: "asset" as const,
                 text: set.name,
-                detail: detailParts.length > 0 ? detailParts.join(", ") : undefined,
+                detail: joinDetail(detailParts),
                 fields: { assetType: set.type },
                 target: { kind: "assetSet" as const, assetSetId: set.id },
             };

@@ -7,7 +7,7 @@ import type {
     StoryScene,
     StorySceneId,
 } from "@shared/types/story";
-import { displayableSourceIdentity, resolveDisplayableTargetRef } from "@shared/types/story";
+import { displayableSourceIdentity, normalizeStageObjectName, resolveDisplayableTargetRef, sceneLayerStack } from "@shared/types/story";
 
 export type StoryMotionPreviewTarget = {
     kind: StoryMotionTargetKind;
@@ -367,6 +367,19 @@ export function listDisplayableTargetsInScene(scene: StoryScene, blockId: StoryB
 
     const order: string[] = [];
     const byKey = new Map<string, SceneDisplayableRef>();
+    // The scene's own layers come first and are there for every row: the scene puts them up before
+    // its first row runs. Front to back, the order the stack lists them in.
+    for (const layer of sceneLayerStack(scene)) {
+        const name = layer.kind === "custom" ? layer.name.trim() : "";
+        if (layer.kind !== "custom" || !name) {
+            continue;
+        }
+        const key = `layer\u0000${name.toLowerCase()}`;
+        if (!byKey.has(key)) {
+            order.push(key);
+            byKey.set(key, { kind: "layer", name: normalizeStageObjectName(name), label: name, sourceBlockId: layer.id });
+        }
+    }
     for (const block of priorBlocks) {
         const introduced = displayableRefFromBlock(block);
         if (!introduced) {

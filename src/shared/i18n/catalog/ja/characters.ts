@@ -40,6 +40,8 @@ export const characters = {
     history: {
         deleteCharacter: "キャラクター {name} の削除",
         renameCharacter: "キャラクター {name} の名前変更",
+        createCharacter: "キャラクター {name} の作成",
+        editCharacter: "キャラクター {name} の編集",
         deleteGroup: "グループ {name} の削除",
     },
     // 「新規キャラクター」で開くダイアログ。作成時に決まるものはすべてここで聞く。色も含む。

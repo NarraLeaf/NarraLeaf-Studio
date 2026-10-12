@@ -65,6 +65,7 @@ const SCENE_FIELDS = [
     "description",
     "defaultBackgroundAssetId",
     "bgm",
+    "layers",
     "sceneSnapshots",
 ] as const;
 

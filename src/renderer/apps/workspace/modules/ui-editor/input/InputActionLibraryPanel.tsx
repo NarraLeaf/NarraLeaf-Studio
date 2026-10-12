@@ -9,7 +9,10 @@ import {
     type UIInputActionDef,
     type UIInputBinding,
 } from "@shared/types/ui-editor/inputAction";
+import { UI_NAVIGATION_SLOTS, type UINavigationSlot } from "@shared/types/ui-editor/navigation";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import { navigationSlotName, navigationSlotNames } from "@/lib/ui-editor/inputActionNames";
+import { Select, type SelectOption } from "@/lib/components/elements/Select";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
@@ -96,6 +99,26 @@ export function InputActionLibraryPanel({ documentService, uiService, open, onOp
         refresh();
         return documentService.onDocumentChanged(refresh);
     }, [documentService]);
+
+    // Which intent fills each navigation slot. The slots are the focus system's and fixed; the
+    // intents are the project's, and any of them can fill one (see `navigation.ts`).
+    const slotActions = useMemo(() => {
+        const out: Partial<Record<UINavigationSlot, UIInputActionDef>> = {};
+        for (const action of actions) {
+            if (action.navigationSlot && !out[action.navigationSlot]) {
+                out[action.navigationSlot] = action;
+            }
+        }
+        return out;
+    }, [actions]);
+    const slotOptions = useMemo<SelectOption[]>(
+        () => [
+            { value: "", label: t("uiEditor.inputActions.navigationNone") },
+            ...actions.map(action => ({ value: action.id, label: action.name })),
+        ],
+        [actions, t],
+    );
+    const emptySlots = UI_NAVIGATION_SLOTS.filter(slot => !slotActions[slot]).length;
 
     // `actions` is a fresh array on every document change, so this recounts exactly as often as the
     // numbers can move and no more.
@@ -271,6 +294,71 @@ export function InputActionLibraryPanel({ documentService, uiService, open, onOp
         [documentService],
     );
 
+    const renderRow = (action: UIInputActionDef) => {
+        const name = action.name;
+        // The slot the intent fills, unless its own name already says it - the starter project names
+        // its navigation intents after their slots.
+        const slotName = action.navigationSlot ? navigationSlotName(action.navigationSlot, t) : null;
+        const slotTag = slotName && slotName !== action.name ? slotName : null;
+        return (
+            <div
+                key={action.id}
+                ref={node => {
+                    if (node) {
+                        rowRefs.current.set(action.id, node);
+                    } else {
+                        rowRefs.current.delete(action.id);
+                    }
+                }}
+                data-input-action-id={action.id}
+                data-canvas-highlight={answeredHere.has(action.id) ? "true" : undefined}
+                className={cn(
+                    "group rounded-md border border-edge bg-fill-subtle px-2 py-2 transition-colors",
+                    // The same frame the component library draws round the
+                    // definition behind a selected instance.
+                    answeredHere.has(action.id) && "border-primary ring-1 ring-inset ring-primary",
+                    flashId === action.id && "bg-primary/15",
+                )}
+                onContextMenu={event => openActionMenu(event, action)}
+            >
+                <div className="flex items-center gap-2">
+                    <div
+                        className="min-w-0 flex-1 truncate text-left text-xs font-medium text-fg"
+                        data-tip={name}
+                    >
+                        {name}
+                    </div>
+                    {slotTag && (
+                        <span
+                            className="shrink-0 truncate rounded-md bg-fill px-1.5 py-0.5 text-2xs text-fg-muted"
+                            data-tip={t("uiEditor.inputActions.navigationTag", { slot: slotTag })}
+                        >
+                            {slotTag}
+                        </span>
+                    )}
+                    <span className="shrink-0 text-2xs text-fg-subtle">
+                        {tn("uiEditor.inputActions.answered", answeredCounts[action.id] ?? 0)}
+                    </span>
+                    <button
+                        type="button"
+                        className="grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-fg"
+                        onClick={event => openActionMenu(event, action)}
+                        data-tip={t("uiEditor.inputActions.actionOptions")}
+                        aria-label={t("uiEditor.inputActions.actionOptions")}
+                    >
+                        <MoreVertical className="h-3.5 w-3.5" aria-hidden />
+                    </button>
+                </div>
+                <div className="mt-2">
+                    <InputBindingList
+                        bindings={action.bindings}
+                        onChange={bindings => setBindings(action, bindings)}
+                    />
+                </div>
+            </div>
+        );
+    };
+
     return (
         <StackSection
             sectionId="inputActions"
@@ -297,56 +385,55 @@ export function InputActionLibraryPanel({ documentService, uiService, open, onOp
                         {t("uiEditor.inputActions.empty")}
                     </div>
                 ) : (
-                    actions.map(action => (
-                        <div
-                            key={action.id}
-                            ref={node => {
-                                if (node) {
-                                    rowRefs.current.set(action.id, node);
-                                } else {
-                                    rowRefs.current.delete(action.id);
-                                }
-                            }}
-                            data-input-action-id={action.id}
-                            data-canvas-highlight={answeredHere.has(action.id) ? "true" : undefined}
-                            className={cn(
-                                "group rounded-md border border-edge bg-fill-subtle px-2 py-2 transition-colors",
-                                // The same frame the component library draws round the
-                                // definition behind a selected instance.
-                                answeredHere.has(action.id) && "border-primary ring-1 ring-inset ring-primary",
-                                flashId === action.id && "bg-primary/15",
-                            )}
-                            onContextMenu={event => openActionMenu(event, action)}
-                        >
-                            <div className="flex items-center gap-2">
-                                <div
-                                    className="min-w-0 flex-1 truncate text-left text-xs font-medium text-fg"
-                                    data-tip={action.name}
-                                >
-                                    {action.name}
+                    actions.map(renderRow)
+                )}
+                {/* The focus system's operations, in their fixed order, each filled by one of the
+                    intents above - or by none, and then the game has no such operation. */}
+                <div className="px-1 pt-2 text-2xs font-medium text-fg-subtle">
+                    {t("uiEditor.inputActions.navigationTitle")}
+                </div>
+                <div className="space-y-1 rounded-md border border-edge bg-fill-subtle px-2 py-2">
+                    {UI_NAVIGATION_SLOTS.map(slot => {
+                        const slotName = navigationSlotName(slot, t);
+                        const filledBy = slotActions[slot];
+                        return (
+                            <div key={slot} className="flex items-center gap-2" data-navigation-slot={slot}>
+                                <div className="min-w-0 flex-1 truncate text-xs text-fg" data-tip={slotName}>
+                                    {slotName}
                                 </div>
-                                <span className="shrink-0 text-2xs text-fg-subtle">
-                                    {tn("uiEditor.inputActions.answered", answeredCounts[action.id] ?? 0)}
-                                </span>
-                                <button
-                                    type="button"
-                                    className="grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-fg"
-                                    onClick={event => openActionMenu(event, action)}
-                                    data-tip={t("uiEditor.inputActions.actionOptions")}
-                                    aria-label={t("uiEditor.inputActions.actionOptions")}
-                                >
-                                    <MoreVertical className="h-3.5 w-3.5" aria-hidden />
-                                </button>
-                            </div>
-                            <div className="mt-2">
-                                <InputBindingList
-                                    bindings={action.bindings}
-                                    onChange={bindings => setBindings(action, bindings)}
+                                <Select
+                                    className="w-36 shrink-0"
+                                    fullWidth
+                                    size="sm"
+                                    options={slotOptions}
+                                    value={filledBy?.id ?? ""}
+                                    portalMenu
+                                    ariaLabel={slotName}
+                                    readOnly={!documentService || freeze.frozen}
+                                    onChange={value => {
+                                        const actionId = String(value);
+                                        if (actionId) {
+                                            documentService?.setInputActionNavigationSlot(actionId, slot);
+                                        } else if (filledBy) {
+                                            documentService?.setInputActionNavigationSlot(filledBy.id, null);
+                                        }
+                                    }}
                                 />
                             </div>
-                        </div>
-                    ))
-                )}
+                        );
+                    })}
+                    {emptySlots > 0 && (
+                        <ToolbarButton
+                            size="xs"
+                            className="mt-1 w-full justify-center"
+                            onClick={() => documentService?.fillEmptyNavigationSlots(navigationSlotNames(t))}
+                            {...freeze.writes(!documentService, t("uiEditor.inputActions.fillNavigationSlots"))}
+                            aria-label={t("uiEditor.inputActions.fillNavigationSlots")}
+                        >
+                            {t("uiEditor.inputActions.fillNavigationSlots")}
+                        </ToolbarButton>
+                    )}
+                </div>
             </div>
             <ContextMenu
                 items={menuItems}

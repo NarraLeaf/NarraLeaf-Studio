@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { STORY_DOCUMENT_SCHEMA_VERSION, type StoryBlock, type StoryDocument } from "@shared/types/story";
-import { migrateStoryDocumentToLatest } from "./migrateStoryDocument";
+import { migrateStoryDocumentToLatest, type StoryCommandSpelling } from "./migrateStoryDocument";
 
 /**
  * v26→v27: `play` becomes the only row that brings a clip on, and every play carries its file.
@@ -33,8 +33,8 @@ function v26(blocks: StoryBlock[], rootBlockIds: string[] = blocks.filter(block 
     } as unknown as StoryDocument;
 }
 
-function migrated(blocks: StoryBlock[], rootBlockIds?: string[]) {
-    const document = migrateStoryDocumentToLatest(v26(blocks, rootBlockIds));
+function migrated(blocks: StoryBlock[], rootBlockIds?: string[], commandSpelling?: StoryCommandSpelling) {
+    const document = migrateStoryDocumentToLatest(v26(blocks, rootBlockIds), { commandSpelling });
     const scene = document.scenes[SCENE_ID];
     return { document, scene, block: (id: string) => scene.blocks[id] as unknown as { kind: string; payload: Record<string, any> } | undefined };
 }
@@ -103,10 +103,33 @@ describe("v26 to v27: plays carry their clips", () => {
         };
         expect(note("never")).toBe("/video name='poster clip' muted");
         expect(note("never-show")).toBe("/show 'poster clip'");
-        expect(note("early")).toBe("/seek intro 1.5");
-        expect(note("ghost")).toBe("/hide ghost out=fade d=0.4");
+        // A time keeps its unit, as a row prints it.
+        expect(note("early")).toBe("/seek intro 1.5s");
+        expect(note("ghost")).toBe("/hide ghost out=fade d=0.4s");
         expect(note("ghost-play")).toBe("/play phantom");
         expect(block("intro")?.kind).toBe("action");
+    });
+
+    it("writes the notes in the command language it is handed", () => {
+        // A stand-in for the story editor's tables: every word marked so the test sees which one
+        // was asked for, and with which command.
+        const spelling: StoryCommandSpelling = {
+            command: (commandId, token) => `${commandId}~${token}`,
+            param: (commandId, param) => `${commandId}.${param}`,
+            enumValue: (commandId, param, value) => `${commandId}.${param}:${value}`,
+            unit: unit => `<${unit}>`,
+        };
+        const { block } = migrated([
+            row("never", { action: "video", operation: "create", objectName: "poster", muted: true }),
+            row("early", { action: "video", operation: "seek", objectName: "intro", timeMs: 1000 }),
+            row("ghost", { action: "video", operation: "hide", objectName: "ghost", durationMs: 500 }),
+            row("still", { action: "video", operation: "pause", objectName: "ghost" }),
+        ], undefined, spelling);
+        const note = (id: string) => block(id)?.payload.text.value;
+        expect(note("never")).toBe("/play~video play.name=poster play.muted");
+        expect(note("early")).toBe("/seek~seek intro 1<s>");
+        expect(note("ghost")).toBe("/hide~hide ghost hide.out=hide.out:fade hide.d=0.5<s>");
+        expect(note("still")).toBe("/pause~pause ghost");
     });
 
     it("gives every play the clip it played before the step", () => {
@@ -136,5 +159,70 @@ describe("v26 to v27: plays carry their clips", () => {
         const before = v26([row("bg", { action: "setBackground", assetId: "asset-bg" })]);
         const after = migrateStoryDocumentToLatest(before);
         expect(after.scenes[SCENE_ID]).toBe(before.scenes[SCENE_ID]);
+    });
+});
+
+describe("v29 to v30: a scene's layers become the scene's", () => {
+    function v29(blocks: StoryBlock[]): StoryDocument {
+        return { ...v26(blocks), schemaVersion: 29 } as unknown as StoryDocument;
+    }
+    function layersOf(document: StoryDocument) {
+        return document.scenes[SCENE_ID].layers;
+    }
+
+    it("turns each create row into a layer under the row's id, ordered by z, with the share its depth word stood for", () => {
+        const after = migrateStoryDocumentToLatest(v29([
+            row("hills", { action: "layer", operation: "create", objectName: "hills", zIndex: -1, depth: "far" }),
+            row("fog", { action: "layer", operation: "create", objectName: "fog", zIndex: 2, depth: "near" }),
+            row("street", { action: "layer", operation: "create", objectName: "street" }),
+            row("bgDepth", { action: "layer", operation: "setDepth", objectName: "", target: { kind: "default", layer: "background" }, depth: "farthest" }),
+            row("picture", { action: "image", operation: "create", objectName: "ridge", assetId: "a", layer: { kind: "custom", sourceBlockId: "hills" } }),
+        ]));
+        expect(layersOf(after)).toEqual([
+            { kind: "custom", id: "fog", name: "fog", follow: 1.4 },
+            // z 0 ties with the characters, and a layer of the scene's own drew in front of them.
+            { kind: "custom", id: "street", name: "street" },
+            { kind: "displayable" },
+            { kind: "custom", id: "hills", name: "hills", follow: 0.3 },
+            { kind: "background", follow: 0 },
+        ]);
+        expect(after.scenes[SCENE_ID].rootBlockIds).toEqual(["picture"]);
+        expect(Object.keys(after.scenes[SCENE_ID].blocks)).toEqual(["picture"]);
+        // The picture's reference is untouched: the layer answers to the id the row had.
+        expect((after.scenes[SCENE_ID].blocks.picture as unknown as { payload: { layer: unknown } }).payload.layer).toEqual({ kind: "custom", sourceBlockId: "hills" });
+    });
+
+    it("folds a second create of a name into the first and points what was bound to it there", () => {
+        const after = migrateStoryDocumentToLatest(v29([
+            row("first", { action: "layer", operation: "create", objectName: "fx", zIndex: 1 }),
+            row("second", { action: "layer", operation: "create", objectName: "fx", zIndex: 5 }),
+            row("hide", { action: "layer", operation: "hide", objectName: "fx", target: { kind: "custom", sourceBlockId: "second", name: "fx" } }),
+        ]));
+        expect(layersOf(after)?.filter(layer => layer.kind === "custom")).toEqual([{ kind: "custom", id: "first", name: "fx" }]);
+        expect((after.scenes[SCENE_ID].blocks.hide as unknown as { payload: { target: unknown } }).payload.target)
+            .toEqual({ kind: "custom", sourceBlockId: "first", name: "fx" });
+    });
+
+    it("keeps the order where the depth words contradicted it, and moves the share instead", () => {
+        const after = migrateStoryDocumentToLatest(v29([
+            row("leaves", { action: "layer", operation: "create", objectName: "leaves", zIndex: 4, depth: "far" }),
+        ]));
+        expect(layersOf(after)?.[0]).toEqual({ kind: "custom", id: "leaves", name: "leaves" });
+    });
+
+    it("makes a layer for a name a picture was placed on that no row declared", () => {
+        const after = migrateStoryDocumentToLatest(v29([
+            row("picture", { action: "image", operation: "create", objectName: "ridge", assetId: "a", layer: { kind: "custom", name: "mist" } }),
+        ]));
+        expect(layersOf(after)?.find(layer => layer.kind === "custom")).toEqual({ kind: "custom", id: "picture-layer", name: "mist" });
+        expect((after.scenes[SCENE_ID].blocks.picture as unknown as { payload: { layer: unknown } }).payload.layer)
+            .toEqual({ kind: "custom", sourceBlockId: "picture-layer", name: "mist" });
+    });
+
+    it("writes no stack for a scene that had no layers of its own, and leaves it the same object", () => {
+        const before = v29([row("bg", { action: "setBackground", assetId: "asset-bg" })]);
+        const after = migrateStoryDocumentToLatest(before);
+        expect(after.scenes[SCENE_ID]).toBe(before.scenes[SCENE_ID]);
+        expect(layersOf(after)).toBeUndefined();
     });
 });

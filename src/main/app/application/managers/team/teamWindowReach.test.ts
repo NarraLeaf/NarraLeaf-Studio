@@ -76,6 +76,7 @@ describe("where a window stands with a server", () => {
             WindowAppType.ServerTrustPrompt,
             WindowAppType.ProjectTrustPrompt,
             WindowAppType.ServerSessionPrompt,
+            WindowAppType.AgentAccessPrompt,
             WindowAppType.Raw,
         ]) {
             expect(reach(prompt, { projectPath: null })).toEqual({ kind: "none" });

@@ -22,6 +22,7 @@ import { TrayManager } from "./managers/trayManager";
 import { WINDOW_ICON_KEY, WindowIconEntry, resolveWindowIcon } from "@shared/constants/windowIcon";
 import { ONBOARDING_STATE_KEY, needsOnboarding } from "@shared/constants/onboarding";
 import { LAUNCHER_HOME_SIZE, applyLauncherWindowSize } from "./launcherWindow";
+import { FirstRunSetupGate } from "./firstRunSetupGate";
 import type { AppWindow } from "./managers/window/appWindow";
 import { ProtocolManager } from "./managers/protocolManager";
 import { StorageManager } from "./managers/storageManager";
@@ -30,6 +31,7 @@ import { GlobalStateManager } from "./managers/storage/globalState";
 import { DOWNLOAD_REWRITES_KEY, setDownloadRewriteSource } from "./managers/downloadRewrites";
 import { setUseSystemProxySource } from "./managers/downloadProxy";
 import { USE_SYSTEM_PROXY_KEY } from "@shared/types/downloadSource";
+import { storeSourceMigration } from "@shared/constants/storeSource";
 import { sweepPsdTempDirectories } from "./managers/storage/cacheInventory";
 import {
     describeCacheRoot,
@@ -126,6 +128,11 @@ export class BaseApp {
     protected appInfo: AppInfo | null = null;
     private readonly commandLine = parseMainCommandLine(process.argv);
     /**
+     * The launcher windows main opened in first-run setup. Marked by `App.launchLauncher`, cleared by
+     * the marker (see {@link runGlobalStateSideEffects}); read through {@link isFirstRunSetupWindow}.
+     */
+    protected readonly firstRunSetupGate = new FirstRunSetupGate();
+    /**
      * The fatal error being handled, if one is. Non-null is the whole of the re-entrancy guard in
      * {@link crash}: the failure that got here is usually still happening, and the handling is now
      * asynchronous, so more of them arrive while the first is still writing the windows out.
@@ -187,6 +194,18 @@ export class BaseApp {
         const sweptKeys = this.globalState.sweepRetiredKeys();
         if (sweptKeys.length > 0) {
             this.logger.info(`[App] Removed ${sweptKeys.length} retired setting(s): ${sweptKeys.join(", ")}`);
+        }
+        // A profile from before the store source choice: the retired "China mirror" address goes,
+        // and a typed registry address becomes the `custom` choice. A no-op once the choice exists.
+        const storeMigration = storeSourceMigration(this.globalState.raw());
+        for (const key of storeMigration.remove) {
+            this.globalState.delete(key as GlobalStateKeys);
+        }
+        for (const [key, value] of Object.entries(storeMigration.set)) {
+            this.globalState.set(key as GlobalStateKeys, value as GlobalStateValue<GlobalStateKeys>);
+        }
+        if (storeMigration.remove.length > 0 || Object.keys(storeMigration.set).length > 0) {
+            this.logger.info(`[App] Store source: removed ${storeMigration.remove.join(", ") || "nothing"}, set ${JSON.stringify(storeMigration.set)}`);
         }
         // Read through on every download rather than snapshotted: a mirror typed in the Settings
         // window has to apply to the next fetch, not the next launch.
@@ -349,6 +368,10 @@ export class BaseApp {
         // screen it is about to show. Hooked to the marker rather than to a channel of its own
         // because the marker IS the end of the flow; a second signal could only ever disagree with
         // it. Idempotent, so a profile that writes it again costs nothing.
+        if (key === ONBOARDING_STATE_KEY) {
+            // The agent handlers that let setup through stop doing so here, with the same signal.
+            this.firstRunSetupGate.noteMarker(value);
+        }
         if (key === ONBOARDING_STATE_KEY && !needsOnboarding(value)) {
             for (const window of this.windowManager.getWindows()) {
                 if (window.isClosed() || window.getWindowType() !== WindowAppType.Launcher) {
@@ -593,6 +616,26 @@ export class BaseApp {
         return this.cacheRootResolution;
     }
 
+    /**
+     * The loopback ports Studio itself is serving on at this moment: the dev debug server, and the
+     * Chromium remote-debugging port when Studio was started with one. Request proxies that run in
+     * main for a renderer refuse these (`utils/ownLoopbackGuard`), because a main-process request
+     * carries no origin for those servers to turn away. Read on every call rather than cached: a
+     * server that stopped or moved is not one to protect, and one that started is.
+     */
+    public ownLoopbackPorts(): number[] {
+        const ports: number[] = [];
+        const debugPort = this.debugServer?.listeningPort ?? null;
+        if (debugPort !== null) {
+            ports.push(debugPort);
+        }
+        const remoteDebugging = Number(this.electronApp?.commandLine?.getSwitchValue("remote-debugging-port") ?? "");
+        if (Number.isInteger(remoteDebugging) && remoteDebugging > 0) {
+            ports.push(remoteDebugging);
+        }
+        return ports;
+    }
+
     public getPreloadScript(): string {
         return path.resolve(this.getDistDir(), "main", "preload.js");
     }
@@ -819,6 +862,15 @@ export class BaseApp {
         }
         this.experimentalNoticePending = false;
         return true;
+    }
+
+    /**
+     * Whether `window` is the launcher main opened to show first-run setup, and setup is not over.
+     * Setup's agent access screen is let through a few agent handlers on this answer alone; nothing
+     * a renderer writes can make it true. See {@link FirstRunSetupGate}.
+     */
+    public isFirstRunSetupWindow(window: AppWindow): boolean {
+        return this.firstRunSetupGate.passes(window);
     }
 
     /**

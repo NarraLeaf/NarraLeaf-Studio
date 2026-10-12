@@ -58,6 +58,7 @@ import {
     savedVariableDefs,
     sceneVariableDefs,
     storyPersistentDefs,
+    storyRowAssignedVariable,
     storyVariableRefKey,
 } from "@shared/types/story";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
@@ -107,6 +108,23 @@ export type SceneFlowNumericVariable = {
 };
 
 const UNKNOWN_RANGE: SceneFlowRange = { kind: "unknown" };
+
+/**
+ * The number a variable holds when a run begins, or null when nobody can say.
+ *
+ * The declared default, with two exceptions. A declaration that states no number has none - a
+ * number the author never stated is not zero. And a `persistent` variable does not start a run from
+ * its default at all: it outlives the run, so each one begins with whatever the runs before it left
+ * there - a play count, a flag an ending set - and the default is only what the very first run on a
+ * player's machine sees. Seeded with it, `plays > 0` was judged against a player who has never
+ * finished the game, and content meant for a second run was reported as never reachable.
+ *
+ * Every walk here seeds from this one answer - the arrival ranges, a route's final value and the
+ * coverage solver - so the map, the route rail and the checks cannot disagree about it.
+ */
+export function startOfRunValue(variable: Pick<SceneFlowNumericVariable, "scope" | "defaultValue">): number | null {
+    return variable.scope === "persistent" ? null : variable.defaultValue;
+}
 
 type SetVariablePayload = Extract<StoryActionPayload, { action: "setVariable" }>;
 
@@ -281,7 +299,10 @@ export function collectBlueprintVariableWrites(
     return { byBlueprintId, ambient };
 }
 
-/** One write site, placed in the scene's fork structure. A `setVariable` row, or a row running a graph. */
+/**
+ * One write site, placed in the scene's fork structure. A `setVariable` row, a row running a graph, or
+ * a wait writing its outcome.
+ */
 type SceneFlowWrite = {
     blockId: StoryBlockId;
     variableKey: string;
@@ -360,6 +381,23 @@ function collectSceneWrites(scene: StoryScene, blueprintWrites: SceneFlowBluepri
             const ancestry = readAncestry(scene, block);
             for (const variableKey of keys) {
                 writes.push({ blockId: block.id, variableKey, delta: { op: "unknown" }, armChain: ancestry.armChain });
+            }
+            continue;
+        }
+        if (block.payload.action === "input") {
+            // A wait naming a result variable (`into=`) writes `true` or `false` into it, and which
+            // one is the player's doing - so the honest delta is `unknown`, on this row's arm, like a
+            // graph's. The row writes a boolean, which no range here is about; the write is still
+            // recorded so a variable later re-declared as a number does not keep a range this row
+            // contradicts, and so the call absorption below sees the key as written.
+            const target = storyRowAssignedVariable(block);
+            if (target) {
+                writes.push({
+                    blockId: block.id,
+                    variableKey: storyVariableRefKey(target),
+                    delta: { op: "unknown" },
+                    armChain: readAncestry(scene, block).armChain,
+                });
             }
             continue;
         }
@@ -1118,6 +1156,8 @@ function findCyclicScenes(sceneIds: readonly StorySceneId[], links: readonly Sce
  * - A missing default is **not** zero. The compiler seeds a saved variable to `null` and skips a
  *   scene-local with no default entirely, so a number the author never stated is a number nobody
  *   knows — `unknown`, not `0`.
+ * - A persistent variable's default is not where a run starts either: it carries over from the runs
+ *   before ({@link startOfRunValue}), so every scene is `unknown` for it.
  * - A cycle whose body moves the counter grows without bound. Cyclic scenes carry an update budget
  *   (enough for every distinct way in, plus one lap); a scene that keeps changing past it widens to
  *   `unknown`. That is the difference between reporting a bound and reporting the value after N laps
@@ -1145,12 +1185,14 @@ export function computeVariableRanges(
     }
 
     const declaration = findNumericDeclaration(document, variableKey, registry);
-    if (!declaration || declaration.defaultValue === null) {
-        // Either the key names nothing numeric in this document (a deleted row, a blueprint-declared
-        // persistent) or the row states no starting number. Both leave the walk with nothing to seed.
+    const startValue = declaration ? startOfRunValue(declaration) : null;
+    if (!declaration || startValue === null) {
+        // The key names nothing numeric in this document (a deleted row, a blueprint-declared
+        // persistent), the row states no starting number, or the variable is persistent and starts
+        // each run where the last one left it. All three leave the walk with nothing to seed.
         return ranges;
     }
-    const seed: SceneFlowRange = { kind: "known", min: declaration.defaultValue, max: declaration.defaultValue };
+    const seed: SceneFlowRange = { kind: "known", min: startValue, max: startValue };
 
     if (declaration.scope === "scene") {
         // A scene-local is re-seeded on every entry to its scene and does not exist anywhere else, so
@@ -1421,7 +1463,8 @@ export function widenRangeAcrossScene(
  *
  * Honesty rules, all absorbing — one `?` anywhere on the path is the whole answer:
  *
- * - No declared default is no answer. A number the author never stated is not zero.
+ * - No declared default is no answer. A number the author never stated is not zero. Nor is a
+ *   persistent variable's default, which the route does not start from ({@link startOfRunValue}).
  * - An unreadable write makes the route unreadable. The fold does not resume at the next legible one.
  * - **An uncertain write counts as unreadable.** Unlike a range, which widens to hold both worlds, a
  *   single final value cannot say "0 or 5", and picking one would be guessing at the deeper fork.
@@ -1441,7 +1484,8 @@ export function foldRouteVariableValue(
 ): SceneFlowRange {
     const { writesByScene } = documentIndex(document, blueprintWrites);
     const declaration = findNumericDeclaration(document, variableKey, registry);
-    if (!declaration || declaration.defaultValue === null || blueprintWrites.ambient.has(variableKey)) {
+    const startValue = declaration ? startOfRunValue(declaration) : null;
+    if (startValue === null || blueprintWrites.ambient.has(variableKey)) {
         return UNKNOWN_RANGE;
     }
     const callAbsorbed = callAbsorbedEffects(graph, writesByScene);
@@ -1460,7 +1504,7 @@ export function foldRouteVariableValue(
     }
 
     const sceneEffects = collectSceneEffects(document, blueprintWrites);
-    let value = declaration.defaultValue;
+    let value = startValue;
     let armsApplied = 0;
     const apply = (effects: readonly SceneFlowVariableEffect[]): boolean => {
         for (const effect of effects) {

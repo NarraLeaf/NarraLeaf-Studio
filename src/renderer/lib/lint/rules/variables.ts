@@ -8,6 +8,7 @@ import {
     savedVariableDefs,
     sceneVariableDefs,
     storyPersistentDefs,
+    storyRowAssignedVariable,
     storyVariableRefKey,
     type StoryBlock,
     type StoryBlockId,
@@ -295,6 +296,13 @@ function collectVariableUses(scene: StoryScene, blocks: readonly StoryBlock[]): 
                     if (block.payload.expression) {
                         pushExpression(block.payload.expression.ast, block.id);
                     }
+                } else {
+                    // A wait's `into=` variable is written like a `/set` target, so deleting it is
+                    // the same `undeclared` error and naming it is the same `unused` reprieve.
+                    const target = storyRowAssignedVariable(block);
+                    if (target) {
+                        push(target, block.id);
+                    }
                 }
                 break;
             case "nodeAction":
@@ -526,7 +534,9 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
     {
         id: "variables/unused",
         category: "variables",
-        defaultSeverity: "warning",
+        // A minor warning: nothing in the game reads or sets the variable, so the game is the same
+        // with or without its declaration.
+        defaultSeverity: "minor",
         slug: "variablesUnused",
         run(ctx) {
             const blueprintUses = collectBlueprintVariableUses(ctx.blueprintDocument);
@@ -920,7 +930,9 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
          *    playthrough nobody has. Per key, so a story with its own counters is still checked.
          *  - Nothing writes the variable at all - `variables/read-never-written` owns that case and
          *    says something more useful about it than a bound would.
-         *  - The bound is `unknown`, which is most of the time and by design.
+         *  - The bound is `unknown`, which is most of the time and by design. A persistent variable
+         *    is always `unknown`: a run starts it where the previous run left it, not at its
+         *    default, so `plays > 0` gating second-run content is a condition that holds.
          */
         async run(ctx) {
             if (!ctx.storiesComplete || hasUnreadableWriter(ctx)) {

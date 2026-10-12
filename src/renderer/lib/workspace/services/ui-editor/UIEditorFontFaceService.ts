@@ -28,7 +28,8 @@ type FontEntry = {
  */
 const UNSUPPORTED_FORMATS = new Set(Object.keys(UNRENDERABLE_FONT_FORMATS));
 
-function cssFamilyForAssetId(assetId: string): string {
+/** The family a font asset is registered under; also how a page screenshot finds the font's bytes. */
+export function cssFamilyForAssetId(assetId: string): string {
     return `nlEditorFont_${assetId.replace(/[^a-zA-Z0-9]/g, "_")}`;
 }
 

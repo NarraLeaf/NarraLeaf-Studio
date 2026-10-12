@@ -38,6 +38,7 @@ import {
 import { UI_GRAPH_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/graph";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
 import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
+import { GAME_ROOT_ATTRIBUTE } from "@/lib/ui-editor/runtime/input/keyboardFocusHandover";
 import { BuiltinElementRenderers } from "@/lib/ui-editor/runtime/builtin";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import { createRecordingCore, ensureAnimationFramePolyfill } from "@/lib/ui-editor/runtime/testing/lifecycleTestKit";
@@ -315,6 +316,7 @@ function runningGame(options: { learnFrom?: string } = {}) {
         core,
         globalHost: titleHost,
         readKeyboardOwner,
+        readGameRoot: () => window.document.querySelector(`[${GAME_ROOT_ATTRIBUTE}]`),
         onError: error => errors.push(String(error)),
     }));
 
@@ -355,7 +357,15 @@ function runningGame(options: { learnFrom?: string } = {}) {
 function SlotDrawing(props: { options: GameUiSlotHostOptions; surfaceId: string; slotId: UIStageSlotId; passive?: boolean }) {
     const surface = surfaceById(props.surfaceId) as UIStageSurface;
     const runtime = useStageSlotSurfaceRuntime({ options: props.options, surface, slotId: props.slotId });
-    return <StageSlotSurfaceBody options={props.options} surface={surface} runtime={runtime} passive={props.passive} />;
+    return (
+        <StageSlotSurfaceBody
+            options={props.options}
+            surface={surface}
+            runtime={runtime}
+            passive={props.passive}
+            navigable={props.slotId === "choice"}
+        />
+    );
 }
 
 /**
@@ -365,9 +375,11 @@ function SlotDrawing(props: { options: GameUiSlotHostOptions; surfaceId: string;
 function Stage(props: { options: GameUiSlotHostOptions; menu?: boolean; covered?: boolean }) {
     return (
         <StageCoveredContext.Provider value={props.covered === true}>
-            <SlotDrawing options={props.options} surfaceId={DIALOGUE} slotId="dialog" />
-            {props.menu ? <SlotDrawing options={props.options} surfaceId={CHOICE} slotId="choice" /> : null}
-            <SlotDrawing options={props.options} surfaceId={NOTIFICATIONS} slotId="notification" passive />
+            <div {...{ [GAME_ROOT_ATTRIBUTE]: "" }}>
+                <SlotDrawing options={props.options} surfaceId={DIALOGUE} slotId="dialog" />
+                {props.menu ? <SlotDrawing options={props.options} surfaceId={CHOICE} slotId="choice" /> : null}
+                <SlotDrawing options={props.options} surfaceId={NOTIFICATIONS} slotId="notification" passive />
+            </div>
         </StageCoveredContext.Provider>
     );
 }
@@ -545,6 +557,15 @@ describe("the keys on the stage", () => {
 
         // One stop on Tab for the whole menu: the first option.
         expect([0, 1, 2].map(index => rowAt(index).tabIndex)).toEqual([0, -1, -1]);
+        // jsdom lays nothing out. This project fills no navigation slot, so the arrows are the list's
+        // own; with navigation they would move between rows by where they are drawn, one under the
+        // other, and this is how they would be drawn.
+        for (const index of [0, 1, 2]) {
+            rowAt(index).getBoundingClientRect = () => ({
+                left: 0, top: index * 60, right: 600, bottom: index * 60 + 60, width: 600, height: 60,
+                x: 0, y: index * 60, toJSON: () => ({}),
+            }) as DOMRect;
+        }
 
         act(() => rowAt(0).focus());
         await game.press("ArrowDown", { target: rowAt(0) });

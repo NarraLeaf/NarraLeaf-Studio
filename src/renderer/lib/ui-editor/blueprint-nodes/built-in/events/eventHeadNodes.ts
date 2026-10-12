@@ -56,6 +56,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_ON,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_OFF,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_VIDEO_ENDED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT,
@@ -320,11 +321,13 @@ function widgetEventHead(input: {
     listRowTypes?: BlueprintNodeDef["listRowTypes"];
     /** See `BlueprintNodeDeclaration.assetNames`. */
     assetNames?: BlueprintAssetNameFlow;
+    description?: BlueprintNodeDef["description"];
 }): BlueprintNodeDef {
     return {
         type: input.type,
         ...(input.assetNames ? { assetNames: input.assetNames } : {}),
         displayName: input.displayName,
+        ...(input.description ? { description: input.description } : {}),
         category: "Events",
         keywords: input.keywords,
         graphKinds: ["event"],
@@ -790,6 +793,13 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_OFF,
         displayName: "Turned Off",
         keywords: ["switch", "toggle", "off", "disable", "unchecked"],
+        pins: [THEN_PIN],
+    }),
+    widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_VIDEO_ENDED,
+        displayName: "Playback Ended",
+        description: "blueprint.nodeDescription.playbackEnded",
+        keywords: ["video", "movie", "clip", "ended", "end", "finished", "complete", "done", "playback"],
         pins: [THEN_PIN],
     }),
     widgetEventHead({

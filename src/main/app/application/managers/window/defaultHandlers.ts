@@ -53,7 +53,7 @@ import {
     WorkspaceExportProjectPackageHandler,
     WorkspaceImportProjectPackageHandler,
 } from "./handlers/projectPackageAction";
-import { PsdBakeHandler, PsdOpenHandler } from "./handlers/psdImport";
+import { PsdBakeHandler, PsdOpenHandler, PsdReadHandler } from "./handlers/psdImport";
 import {
     MediaConvertCancelHandler,
     MediaConvertGetStatusHandler,
@@ -77,6 +77,7 @@ import {
     DevModeWindowFocusGetHandler,
     DevModeProcessMemoryHandler,
     DevModeScreenshotSaveHandler,
+    DevModeAgentControlHandler,
     DevModeScreenshotOpenFolderHandler,
     DevModeWindowScaleOptionsHandler,
     DevModeWindowSetStageSizeHandler,
@@ -195,6 +196,23 @@ import {
     PrivilegedPermissionRevokePluginHandler,
     PrivilegedPermissionRequestHandler,
 } from "./handlers/privilegedAction";
+import {
+    AgentSettingsAddImportRootHandler,
+    AgentSettingsGetHandler,
+    AgentSettingsRegenerateTokenHandler,
+    AgentSettingsUpdateHandler,
+} from "./handlers/agentSettingsAction";
+import {
+    AgentCopyConfigHandler,
+    AgentExportSkillHandler,
+    AgentClientSetupHandler,
+    AgentInstallSkillHandler,
+    AgentQuickStateHandler,
+    AgentReportPluginToolsHandler,
+    AgentQuickToggleHandler,
+    AgentRequestFolderAccessHandler,
+    AgentRevealExportedSkillHandler,
+} from "./handlers/agentQuickAction";
 
 /**
  * All default IPC handlers. Handlers are stateless - they receive the target
@@ -279,6 +297,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new WorkspaceIsProjectOpenHandler(),
         new WorkspaceSelectFolderHandler(),
         new PsdOpenHandler(),
+        new PsdReadHandler(),
         new PsdBakeHandler(),
         new MediaProbeHandler(),
         new FontCoverageProbeHandler(),
@@ -301,6 +320,19 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new ProjectTrustRevokeHandler(),
         new ProjectTrustListHandler(),
         new ProjectTrustPromptHandler(),
+        new AgentSettingsGetHandler(),
+        new AgentSettingsUpdateHandler(),
+        new AgentSettingsRegenerateTokenHandler(),
+        new AgentSettingsAddImportRootHandler(),
+        new AgentQuickStateHandler(),
+        new AgentReportPluginToolsHandler(),
+        new AgentQuickToggleHandler(),
+        new AgentCopyConfigHandler(),
+        new AgentExportSkillHandler(),
+        new AgentClientSetupHandler(),
+        new AgentInstallSkillHandler(),
+        new AgentRevealExportedSkillHandler(),
+        new AgentRequestFolderAccessHandler(),
         new WorkspaceLiveIntentTakenHandler(),
         new AppClaimExperimentalNoticeHandler(),
         new WorkspaceOpenProjectFolderHandler(),
@@ -318,6 +350,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new DevModeWindowFocusGetHandler(),
         new DevModeProcessMemoryHandler(),
         new DevModeScreenshotSaveHandler(),
+        new DevModeAgentControlHandler(),
         new DevModeScreenshotOpenFolderHandler(),
         new DevModeWindowScaleOptionsHandler(),
         new DevModeWindowSetStageSizeHandler(),

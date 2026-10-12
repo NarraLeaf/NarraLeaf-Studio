@@ -19,6 +19,7 @@ const WIDGET_KIND_KEYS: Readonly<Record<string, TranslationKey>> = {
     "nl.switch": "blueprint.category.switch",
     "nl.text": "blueprint.category.text",
     "nl.textInput": "blueprint.category.textInput",
+    "nl.video": "blueprint.category.video",
 };
 
 /** A widget kind in the author's language, for a runtime error; "Widget" for any other type. */

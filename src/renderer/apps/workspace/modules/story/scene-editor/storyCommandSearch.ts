@@ -156,3 +156,23 @@ export function findPluginActionsByCommandWord(
         .sort((left, right) => right.score - left.score || left.index - right.index)
         .map(entry => entry.command);
 }
+
+/**
+ * The command a finished command word names, or null: a spelling the parser reads as one command
+ * (canonical token, English alias, the command language's own word - `bg`, `char`, 背景, 表示), else
+ * one of the author's abbreviations. A built-in spelling comes first, as it does on the line.
+ *
+ * This is what the line becomes once it is committed, so the menu puts its highlight there: Enter
+ * then takes the command the author has already written out, instead of whatever row was lit when
+ * the word was still a prefix (`/show` still matches "b" and "bg").
+ */
+export function commandNamedByWord(
+    rawWord: string,
+    abbreviations: StoryCommandAbbreviations = NO_ABBREVIATIONS,
+): string | null {
+    const word = rawWord.trim().toLowerCase();
+    if (!word) {
+        return null;
+    }
+    return getCommandDef(word)?.commandId ?? abbreviations.get(word) ?? null;
+}

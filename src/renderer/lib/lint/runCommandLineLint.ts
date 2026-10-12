@@ -16,10 +16,17 @@ import { describeLintLocation } from "./locationText";
 import { tallyLintFindingsByRule } from "./ruleTally";
 import { resolveLintMessageParams, type LintReport, type LintSeverity } from "./types";
 
-/** Each severity's console level. The one place a finding's level is decided for this stream. */
+/**
+ * Each severity's console level. The one place a finding's level is decided for this stream.
+ *
+ * A minor warning is printed at `info`: the console has no level between the two, and a `[warning]`
+ * line would claim a warning the summary line does not count. The report file carries the
+ * finding's own severity, `minor`, for a job that wants to tell them apart.
+ */
 const CONSOLE_LEVELS: Record<LintSeverity, DevModeConsoleLogLevel> = {
     error: "error",
     warning: "warning",
+    minor: "info",
     info: "info",
 };
 
@@ -39,9 +46,10 @@ const CONSOLE_LEVELS: Record<LintSeverity, DevModeConsoleLogLevel> = {
  * ## What counts as a failure
  *
  * The build gate's own predicate, `countBlockingLintFindings`, over the project's `failBuildOn`. So
- * an error always fails the run, and a warning fails it exactly on the projects that have said
- * warnings should stop a build. Inventing a second threshold here would give an operator a green
- * sweep and a refused build from one project on one day.
+ * an error always fails the run, a warning fails it exactly on the projects that have said
+ * warnings should stop a build, and a minor warning or an info never does. Inventing a second
+ * threshold here would give an operator a green sweep and a refused build from one project on one
+ * day.
  *
  * `runOnBuild` is deliberately not consulted: that setting says whether a *build* stops to lint, and
  * this launch asked for a sweep outright.

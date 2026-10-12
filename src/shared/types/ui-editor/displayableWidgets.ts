@@ -30,6 +30,7 @@ export const UI_DISPLAYABLE_WIDGET_TYPES = [
     "nl.slider",
     "nl.list",
     "nl.frame",
+    "nl.inputHints",
 ] as const;
 
 export type UIDisplayableWidgetType = (typeof UI_DISPLAYABLE_WIDGET_TYPES)[number];

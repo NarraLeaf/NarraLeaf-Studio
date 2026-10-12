@@ -235,6 +235,11 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
     "blueprint.time.formatLocalized", "blueprint.time.formatRelative", "blueprint.time.isSameDay",
     "blueprint.time.make", "blueprint.time.now", "blueprint.time.parse", "blueprint.time.parts",
     "blueprint.time.startOfDay", "blueprint.time.toIsoString", "blueprint.time.zoneOffset",
+    "blueprint.video.getDuration", "blueprint.video.getTime", "blueprint.video.isEnded",
+    "blueprint.video.isPlaying", "blueprint.element.video.getDuration", "blueprint.element.video.getTime",
+    "blueprint.element.video.isEnded", "blueprint.element.video.isPlaying",
+    "blueprint.video.getVolume", "blueprint.video.isMuted", "blueprint.element.video.getVolume",
+    "blueprint.element.video.isMuted",
 ];
 
 /**
@@ -293,7 +298,8 @@ const STEP_NODE_TYPES: readonly string[] = [
     "blueprint.game.clearEndingState", "blueprint.game.clearEndings",
     "blueprint.game.hideDialog", "blueprint.game.history.get", "blueprint.game.history.getFuture",
     "blueprint.game.history.redoNext", "blueprint.game.history.restore",
-    "blueprint.game.history.undoLast", "blueprint.game.next", "blueprint.game.save.delete",
+    "blueprint.game.history.undoLast", "blueprint.game.next", "blueprint.game.postNotification",
+    "blueprint.game.save.delete",
     "blueprint.game.save.getMetadata", "blueprint.game.save.getPreview",
     "blueprint.game.save.getLine", "blueprint.game.save.getPlaytime",
     "blueprint.game.save.getStory",
@@ -338,6 +344,12 @@ const STEP_NODE_TYPES: readonly string[] = [
     "blueprint.textInput.clear", "blueprint.textInput.setValue", "blueprint.voice.getAvailableLanguages",
     "blueprint.voice.getLanguage", "blueprint.voice.play", "blueprint.voice.playChoice",
     "blueprint.voice.setLanguage",
+    "blueprint.video.pause", "blueprint.video.play", "blueprint.video.seek", "blueprint.video.stop",
+    "blueprint.element.video.pause", "blueprint.element.video.play", "blueprint.element.video.seek",
+    "blueprint.element.video.stop",
+    "blueprint.video.setLoop", "blueprint.video.setMuted", "blueprint.video.setPlaybackRate",
+    "blueprint.video.setVolume", "blueprint.element.video.setLoop", "blueprint.element.video.setMuted",
+    "blueprint.element.video.setPlaybackRate", "blueprint.element.video.setVolume",
 ];
 
 /**
@@ -368,6 +380,7 @@ const EVENT_HEAD_NODE_TYPES: readonly string[] = [
     "blueprint.event.head.switchChanged", "blueprint.event.head.switchTurnedOff",
     "blueprint.event.head.switchTurnedOn", "blueprint.event.head.textInputSubmit",
     "blueprint.event.head.textInputValueChanged", "blueprint.event.head.unmount",
+    "blueprint.event.head.videoEnded",
     "blueprint.event.head.windowCloseRequested", "blueprint.fn.head",
 ];
 

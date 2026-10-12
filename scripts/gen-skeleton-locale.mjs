@@ -903,7 +903,9 @@ function listFiles(dir, prefix = "") {
 // out of the shipped variants and fails where the word is still the English one.
 if (process.argv.includes("--graph-text")) {
     const { graphText } = buildVariant(TABLES[0]);
-    process.stdout.write(JSON.stringify({ file: "editor/ui/uigraphs.json", slots: graphText }) + "\n");
+    // Exit only once the write has drained: a pipe is asynchronous on macOS, and exiting straight
+    // after `write` cut the listing off at the first 8 KiB there, which the test reads as bad JSON.
+    await new Promise(resolve => process.stdout.write(JSON.stringify({ file: "editor/ui/uigraphs.json", slots: graphText }) + "\n", resolve));
     process.exit(0);
 }
 

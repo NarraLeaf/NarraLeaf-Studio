@@ -62,7 +62,8 @@ import { describeAssetNameGap } from "../references/assetNameGapText";
 // Type-only, like `LintService` above: the gate needs `getIndexResult()` and nothing else, and a
 // value import would drag every extractor into the build path and its tests.
 import type { ReferenceService } from "../references/ReferenceService";
-import { translate, translateN } from "@/lib/i18n";
+import type { TranslationKey } from "@shared/i18n";
+import { i18nStore, translate, translateN } from "@/lib/i18n";
 import { isProjectTrusted } from "@/lib/workspace/projectTrust";
 import { UIDocumentService } from "../ui-editor/UIDocumentService";
 import { UIGraphService } from "../ui-editor/UIGraphService";
@@ -201,10 +202,15 @@ const APP_TAG_GRAPH_MESSAGE_KEYS: Record<AppTagGraphRefusalReason, "build.appTag
     fnHeadRemoved: "build.appTagGraphFnHead",
 };
 
-/** Finding severity -> the console level it is logged at. */
+/**
+ * Finding severity -> the console level it is logged at. A minor warning is logged at `info`, as it
+ * is by `--lint`: the console has no level between the two, and a line in the warning colour is
+ * exactly the attention a minor warning is defined not to ask for.
+ */
 const LINT_CONSOLE_LEVELS: Record<LintSeverity, ConsoleLogLevel> = {
     error: "error",
     warning: "warning",
+    minor: "info",
     info: "info",
 };
 
@@ -1240,7 +1246,13 @@ export class BuildService extends Service<BuildService> {
                 consoleService?.log(
                     BUILD_CONSOLE_CHANNEL,
                     "warning",
-                    translate(key, { blueprint, platforms: nonDesktop.join(", ") }),
+                    translate(key, {
+                        blueprint,
+                        platforms: i18nStore.getTranslator().formatList(
+                            nonDesktop.map(platform => translate(`build.platform.${platform}` as TranslationKey)),
+                            { style: "narrow" },
+                        ),
+                    }),
                     { source: BUILD_CONSOLE_SOURCE },
                 );
             }
@@ -1833,7 +1845,8 @@ function isActiveStatus(status: GameBuildStatus): boolean {
 
 /**
  * How many findings refuse the build: errors always, warnings too when `failBuildOn` is "warning".
- * `info` never blocks under either setting - there is no configuration in which it does.
+ * A minor warning and an info never block under either setting - there is no configuration in which
+ * they do, and `failBuildOn` deliberately has no value that would make a minor warning count.
  *
  * Counted off `entries` rather than `report.counts` so the number in the refusal can never disagree
  * with the lines just printed on the console: both are that one list.

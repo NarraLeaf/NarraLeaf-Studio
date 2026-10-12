@@ -18,6 +18,7 @@
 import type { UIInputActionDef } from "@shared/types/ui-editor/inputAction";
 import type { UIStructDef, UIStructFieldType } from "@shared/types/ui-editor/struct";
 import { UI_STRUCT_FIELD_TYPES } from "@shared/types/ui-editor/struct";
+import { isUINavigationSlot } from "@shared/types/ui-editor/navigation";
 import { UI_STAGE_SLOT_IDS } from "@shared/types/ui-editor/stageSlots";
 import {
     isUIPageParamId,
@@ -49,9 +50,10 @@ import {
 } from "@shared/types/ui-editor/document";
 import type { BpDiagnostic } from "../../blueprint-cli/dsl/ast";
 import { describeWidget, listWidgetModules, nearestWidgetTypes } from "../catalog";
-import { collectTree, deriveElementId, elementPathSegments, findComponent, findSurface, type TextKeys } from "../project";
+import { collectTree, deriveElementId, elementPathSegments, findComponent, findSurface, type TextKeys } from "../model";
 import type { UiAssignment, UiElementNode, UiFile, UiStatement } from "./ast";
 import { PARAM_KEY_SUFFIX } from "./parse";
+import { compactBase, expandAppearanceGroups } from "./compact";
 
 export type CompiledSurface = {
     surface: UISurface;
@@ -120,6 +122,15 @@ class CompileContext {
         private readonly textKeys: TextKeys | null = null,
     ) {
         this.knownTypes = new Set(listWidgetModules().map(module => module.type));
+    }
+
+    /** Whether the document being edited holds an element with this id, on a page or in a definition. */
+    private existingElement(id: string): boolean {
+        if (!this.existing) {
+            return false;
+        }
+        return Boolean(this.existing.elements?.[id])
+            || (this.existing.components ?? []).some(component => Boolean(component.elements?.[id]));
     }
 
     public declareFileComponent(componentId: string, params: readonly DeclaredParam[]): void {
@@ -211,6 +222,7 @@ class CompileContext {
                       ? { kind: "gamepad", button: binding.button }
                       : { kind: "key", key: binding.key },
             ),
+            ...(isUINavigationSlot(statement.navigationSlot) ? { navigationSlot: statement.navigationSlot } : {}),
         };
     }
 
@@ -535,11 +547,50 @@ class CompileContext {
         }
 
 
-        const layout = applyAssignments({ x: 0, y: 0, width: 0, height: 0 }, node.assignments.filter(a => a.target === "layout")) as UILayout;
-        const props = applyAssignments({}, node.assignments.filter(a => a.target === "props"));
+        // A `+defaults` element (the short form, see `compact.ts`) starts from its widget's defaults.
+        // So does an element the document being edited does not have yet: nothing is stored for it, so
+        // there is no record whose exact keys the text must reproduce, and an element made in the
+        // editor starts from those same defaults. Without them a new image written with only its
+        // picture draws a white box, because `fillType` is not `image` until something says so. An
+        // element that exists is written exactly as its lines say - the long form's promise - and a
+        // file compiled with no document behind it cannot tell new from old, so it is left alone.
+        const isNew = this.existing !== null && !this.existingElement(id);
+        const base = node.fillDefaults || isNew
+            ? compactBase(node.type, node.fillDefaults ? node.withoutDefaults?.keys ?? [] : [])
+            : { props: {}, layout: {}, unknownWithout: [] };
+        if (node.withoutDefaults && !node.fillDefaults) {
+            this.report(
+                "warning",
+                "ui.without_needs_defaults",
+                `"${label}" has a \`without\` line but no \`+defaults\` on its header, so there are no defaults to leave out: the line does nothing.`,
+                node.withoutDefaults.line,
+            );
+        } else if (base.unknownWithout.length > 0) {
+            this.report(
+                "warning",
+                "ui.without_unknown",
+                `${node.type} has no default ${base.unknownWithout.map(key => `"${key}"`).join(", ")} to leave out.`,
+                node.withoutDefaults?.line ?? node.line,
+            );
+        }
+        const layout = applyAssignments({ x: 0, y: 0, width: 0, height: 0, ...base.layout }, node.assignments.filter(a => a.target === "layout")) as UILayout;
+        const props = applyAssignments(base.props, node.assignments.filter(a => a.target === "props"));
         const style = applyAssignments({}, node.assignments.filter(a => a.target === "style"));
         const extra = applyAssignments({}, node.assignments.filter(a => a.target === "extra"));
         const elementKeys = applyAssignments({}, node.assignments.filter(a => a.target === "element"));
+
+        // Appearance groups the short form wrote as a bare key are rebuilt before anything reads the
+        // props, so the checks below see the element the long form would have written.
+        const unresolvedGroups = expandAppearanceGroups(node.type, props);
+        if (unresolvedGroups.length > 0) {
+            this.report(
+                "error",
+                "ui.appearance_group_without_prop",
+                `"${label}" lists appearance group(s) ${unresolvedGroups.map(key => `"${key}"`).join(", ")} by key alone, which repeats the prop of that name - but the element has no such prop.`,
+                node.line,
+                "Write the prop, or write the group out in full: {\"key\": ..., \"rows\": [{\"conditions\": null, \"value\": ...}]}.",
+            );
+        }
 
         this.settleTextSource(node, props);
 

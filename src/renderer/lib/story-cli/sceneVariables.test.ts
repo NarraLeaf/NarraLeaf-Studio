@@ -179,7 +179,8 @@ describe("a /local line in a file", () => {
     it("refuses a declaration of a name the scene already has", async () => {
         writeScene([declaration(STORED_HP_ID, "hp")]);
         const shown = await show();
-        const result = await check(storyFile(`${shown.split("\n").slice(4).join("\n").trim()}\n/local hp 1`));
+        // The rows `show` printed, without its header: five directives and a blank line.
+        const result = await check(storyFile(`${shown.split("\n").slice(6).join("\n").trim()}\n/local hp 1`));
 
         expect(result.code).toBe(1);
         const reported = result.out.split("\n").filter(line => line.startsWith("error"));

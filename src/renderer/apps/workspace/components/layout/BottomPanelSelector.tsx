@@ -44,7 +44,7 @@ export function BottomPanelSelector({
         <TooltipGroup
             side="top"
             data-workspace-sidebar-rail=""
-            className="bg-surface-sunken border-t border-edge flex flex-col items-center py-2 px-1 gap-1"
+            className="nl-frame-surface bg-surface-sunken border-t border-edge flex flex-col items-center py-2 px-1 gap-1"
             onContextMenu={(event) => openMenu(event)}
         >
             <SidebarPanelRail

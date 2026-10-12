@@ -46,7 +46,8 @@ import { BlueprintDebuggerProvider } from "./debugger/BlueprintDebuggerContext";
 import { BlueprintDebuggerOverlay } from "./debugger/BlueprintDebuggerOverlay";
 import { BlueprintDebuggerPanel } from "./debugger/BlueprintDebuggerPanel";
 import type { DevModePanelChrome } from "./DevModePanelChrome";
-import { GameApp } from "@/lib/ui-editor/runtime/app/GameApp";
+import { GameApp, type GameAppTestControls } from "@/lib/ui-editor/runtime/app/GameApp";
+import { browserPlaytestClock, runAgentDriveAction } from "../agentPlaytestDrive";
 import type {
     GameAppBootAction,
     GameAppCompositeView,
@@ -64,6 +65,7 @@ import { RuntimeIssueStrip } from "./RuntimeIssueStrip";
 import { RuntimeIssuesPanel } from "./RuntimeIssuesPanel";
 import {
     appendRuntimeIssue,
+    runtimeIssueForAgent,
     assetResolutionIssues,
     blueprintDebugEventIssue,
     locateRuntimeIssue,
@@ -986,6 +988,9 @@ export function DevModeContent(props: DevModeContentProps) {
      * the previous revision is worse than no line at all.
      */
     const [runtimeIssues, setRuntimeIssues] = useState<readonly LocatedRuntimeIssue[]>([]);
+    /** The same list, for an agent's play-test, which reads it from outside a render. */
+    const runtimeIssuesRef = useRef<readonly LocatedRuntimeIssue[]>([]);
+    runtimeIssuesRef.current = runtimeIssues;
     /**
      * What the strip has already announced.
      *
@@ -1583,6 +1588,25 @@ export function DevModeContent(props: DevModeContentProps) {
             }));
             return { success: true, data: { allow: allows.every(allow => allow !== false) } };
         });
+        return () => token.cancel();
+    }, []);
+
+    // An agent's play-test drives this game the way a test harness drives a standalone run: through
+    // the test controls GameApp publishes once a story could be started (`GameAppTestControls`), so
+    // every advance is the click a player makes. Registered on mount; what it does between the
+    // clicks - one step is one line, every wait bounded - is `agentPlaytestDrive`.
+    const testControlsRef = useRef<GameAppTestControls | null>(null);
+    const onTestControlsChanged = useCallback((controls: GameAppTestControls | null) => {
+        testControlsRef.current = controls;
+    }, []);
+    useEffect(() => {
+        const token = getInterface().devMode.onAgentDrive(({ action }) =>
+            runAgentDriveAction(() => testControlsRef.current, action, browserPlaytestClock, undefined, {
+                // What the issue strip counts, so an agent hears about the warnings the author sees.
+                readIssues: () => runtimeIssuesRef.current.map(runtimeIssueForAgent),
+                // The title page before any story ran: no controls yet, but the game box is there.
+                findGameRoot: () => document.querySelector("[data-nl-game-root]"),
+            }));
         return () => token.cancel();
     }, []);
 
@@ -2220,6 +2244,7 @@ export function DevModeContent(props: DevModeContentProps) {
                     renderPlaceholder={renderPlaceholder}
                     renderOverlays={renderOverlays}
                     pluginHost={pluginHost}
+                    onTestControlsChanged={onTestControlsChanged}
                 />
                 {/* Over the stage and nothing else: the strip above stays readable, because a session
                     that fails while it warms has to be able to say so. The interface mounts under it

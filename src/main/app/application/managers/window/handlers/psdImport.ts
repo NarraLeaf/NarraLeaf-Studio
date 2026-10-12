@@ -9,6 +9,7 @@ import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 import type { PsdBakedLayer, PsdDocument } from "@shared/types/psdImport";
 import { bakePsdLayers, readPsdDocument } from "@/app/application/managers/psdImportManager";
+import { FsRejectErrorCode } from "@shared/types/os";
 
 /**
  * Pick a PSD and read its layer tree.
@@ -35,6 +36,39 @@ export class PsdOpenHandler extends IPCHandler<IPCEventType.psdOpen> {
         try {
             const document = await readPsdDocument(window.getApp(), filePath);
             return this.success({ filePath, document });
+        } catch (error: unknown) {
+            return this.failed(error);
+        }
+    }
+}
+
+/**
+ * Read the layer tree of a PSD the renderer names by path, without a dialog.
+ *
+ * For an agent laying out a layered character from a PSD the author put in the project or in a
+ * directory they allowed agents to read: there is nobody at a dialog to pick it. The renderer's own
+ * check against those directories is not what protects the file system - a renderer can say anything
+ * - so the path goes through the same window grant every path-taking handler does, and a path the
+ * window could not already read is refused here.
+ */
+export class PsdReadHandler extends IPCHandler<IPCEventType.psdRead> {
+    readonly name = IPCEventType.psdRead;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { filePath }: IPCEvents[IPCEventType.psdRead]["data"],
+    ): Promise<RequestStatus<{ document: PsdDocument }>> {
+        if (typeof filePath !== "string" || !/\.(psd|psb)$/i.test(filePath)) {
+            return this.failed(new Error("Not a Photoshop document (.psd or .psb)."));
+        }
+        if (!(await window.app.storageManager.isPathAllowed(window, filePath, "read"))) {
+            return this.failed(
+                new Error(`${FsRejectErrorCode.PERMISSION_DENIED}: file system access is not allowed for path: ${filePath}`),
+            );
+        }
+        try {
+            return this.success({ document: await readPsdDocument(window.getApp(), filePath) });
         } catch (error: unknown) {
             return this.failed(error);
         }

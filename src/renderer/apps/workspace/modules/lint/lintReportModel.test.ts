@@ -15,6 +15,7 @@ import {
     lintSeverityLabelKey,
     showGroupsWholeForHits,
     unfoldGroupsWithHits,
+    LINT_SEVERITY_FILTERS,
     type LintGroupLabels,
 } from "./lintReportModel";
 
@@ -183,8 +184,9 @@ describe("i18n keys", () => {
         expect(lintRuleDescriptionKey("story/dead-end")).toBe("lint.rule.storyDeadEnd.description");
     });
 
-    it("names the three severities", () => {
+    it("names the severities", () => {
         expect(lintSeverityLabelKey("error")).toBe("lint.severity.error");
+        expect(lintSeverityLabelKey("minor")).toBe("lint.severity.minor");
         expect(lintSeverityLabelKey("info")).toBe("lint.severity.info");
     });
 });
@@ -194,17 +196,28 @@ describe("filterLintEntries", () => {
         entry("assets/unused", "warning", { kind: "project" }),
         entry("story/goto-missing", "error", storyLocation("sc1")),
         entry("story/empty-scene", "info", storyLocation("sc2")),
+        entry("localization/missing", "minor", storyLocation("sc1")),
+        entry("localization/missing", "minor", storyLocation("sc2")),
     ];
 
     it("passes everything through on 'all', as a copy", () => {
         const all = filterLintEntries(entries, "all");
-        expect(all).toHaveLength(3);
+        expect(all).toHaveLength(5);
         expect(all).not.toBe(entries);
     });
 
     it("keeps only the chosen severity", () => {
         expect(filterLintEntries(entries, "error").map(e => e.ruleId)).toEqual(["story/goto-missing"]);
         expect(filterLintEntries(entries, "info")).toHaveLength(1);
+    });
+
+    it("gives minor warnings a filter of their own, and keeps them out of the warnings", () => {
+        expect(filterLintEntries(entries, "minor").map(e => e.ruleId)).toEqual(["localization/missing", "localization/missing"]);
+        expect(filterLintEntries(entries, "warning").map(e => e.ruleId)).toEqual(["assets/unused"]);
+    });
+
+    it("offers every severity in its order, minor warnings between warnings and info", () => {
+        expect(LINT_SEVERITY_FILTERS).toEqual(["all", "error", "warning", "minor", "info"]);
     });
 });
 
@@ -221,6 +234,20 @@ describe("groupLintEntries", () => {
         expect(groups.map(g => g.key)).toEqual(["story/goto-missing", "assets/unused", "story/empty-scene"]);
         expect(groups[0].entries).toHaveLength(2);
         expect(groups[0].title).toBe("title:story/goto-missing");
+    });
+
+    it("sorts a rule of minor warnings after every warning and before every info, however many it has", () => {
+        const groups = groupLintEntries([
+            entry("story/empty-scene", "info", storyLocation("sc1")),
+            ...Array.from({ length: 50 }, () => entry("localization/missing", "minor", storyLocation("sc1"))),
+            entry("assets/unused", "warning", { kind: "project" }),
+        ], "rule", labels);
+
+        expect(groups.map(group => [group.key, group.severity])).toEqual([
+            ["assets/unused", "warning"],
+            ["localization/missing", "minor"],
+            ["story/empty-scene", "info"],
+        ]);
     });
 
     it("buckets by location, taking the worst severity in the bucket", () => {

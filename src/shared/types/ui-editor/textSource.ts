@@ -18,7 +18,7 @@ import { resolveLocalizationKeyWords, resolveLocalizedUnitText, type GameLocaliz
 import type { PluginWidgetTextContribution } from "../plugins";
 import { getContributedWidget } from "./contributedWidgets";
 import type { UIElement, UIElementValueBinding } from "./document";
-import { UI_TEXT_SITES, type UITextSite } from "./textSites";
+import { UI_MULTI_TEXT_SITES, UI_TEXT_SITES, type UITextSite } from "./textSites";
 import { resolveByWidgetType } from "./widgetInheritance";
 
 export type { UITextSite, UITextSiteRole, UITextSiteValueBinding } from "./textSites";
@@ -52,6 +52,10 @@ export function uiTextSitesOf(type: string | null | undefined): readonly UITextS
     const own = uiTextSiteOf(type);
     if (own) {
         return [own];
+    }
+    const several = type ? UI_MULTI_TEXT_SITES[type] : undefined;
+    if (several) {
+        return several;
     }
     return getContributedWidget(type)?.textSites ?? [];
 }

@@ -15,33 +15,32 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { listScriptLayers } from "@shared/blueprint/blueprintLayers";
-import type { Blueprint } from "@shared/types/blueprint/document";
-import type { UIElement } from "@shared/types/ui-editor/document";
-import { getUIPageParams } from "@shared/types/ui-editor/pageParams";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes";
 import { builtInPluginOwnerOf, registerBuiltInPluginBlueprintNodes } from "./builtinPluginNodes";
-import { ownerRefToIndexKey } from "@services/ui-editor/blueprint/ownerKeys";
+import { emitCommandResult, emitPartialOutput } from "../agent-core/commandResult";
+import { BLUEPRINT_GRAPH_KINDS, BLUEPRINT_OWNER_KINDS, listNodeCategories } from "./catalog";
+import { formatDiagnostics } from "./check";
 import {
-    BLUEPRINT_GRAPH_KINDS,
-    BLUEPRINT_OWNER_KINDS,
-    describeNode,
-    formatNodeDetail,
-    formatNodeList,
-    formatStructList,
-    knownWidgetElementTypes,
-    listBuiltinStructs,
-    listNodeCategories,
-    queryNodes,
-    resolveNodeType,
-} from "./catalog";
-import { checkBlueprintSource, checkProjectDocument, formatDiagnostics } from "./check";
+    blueprintApplyCommand,
+    blueprintCategoriesCommand,
+    blueprintCheckProjectCommand,
+    blueprintCheckSourceCommand,
+    blueprintListCommand,
+    blueprintNodeCommand,
+    blueprintNodesCommand,
+    blueprintShowCommand,
+    blueprintStructsCommand,
+    blueprintTargetsCommand,
+    unscopedWidgetWarning,
+    type BlueprintProjectInput,
+} from "./core";
+import { ownerRefToIndexKey } from "@services/ui-editor/blueprint/ownerKeys";
+import type { UIElement } from "@shared/types/ui-editor/document";
 import { readAssetNameContext } from "./project";
 import { planBlueprintRemoval, removeBlueprint, type RemovalElement } from "./remove";
-import { printBlueprint, printBlueprints } from "./dsl/print";
+import { printBlueprint } from "./dsl/print";
 import { formatBlueprintSource } from "./format";
 import {
-    applyBlueprints,
     assertWritableSchema,
     loadSaveSchema,
     loadPageParams,
@@ -55,8 +54,6 @@ import {
     SCRATCH_DIR_NAME,
     scratchDir,
     scratchFileNameFor,
-    widgetElementResolver,
-    widgetElementTypeResolver,
     writeUiGraphs,
 } from "./project";
 
@@ -64,9 +61,6 @@ export type CliIo = {
     out: (text: string) => void;
     err: (text: string) => void;
 };
-
-/** How many nodes a bare `nodes` prints before it says only how many more there are. */
-const DEFAULT_NODE_LIST_LIMIT = 60;
 
 const USAGE = `blueprint - query the node catalogue, write blueprints as text, check them.
 
@@ -167,6 +161,8 @@ export function runCli(argv: readonly string[], io: CliIo): number {
         validateFlags(args, spec);
         return spec.run(args, io);
     } catch (error) {
+        // What the command had said before it was stopped comes first, as when it printed as it went.
+        emitPartialOutput(error, io);
         if (error instanceof ProjectIoError || error instanceof UsageError) {
             io.err(error.message);
             return 2;
@@ -181,13 +177,12 @@ export function runCli(argv: readonly string[], io: CliIo): number {
 
 function commandNodes(args: Args, io: CliIo): number {
     const widget = stringFlag(args, "widget");
-    if (widget && !knownWidgetElementTypes().includes(widget)) {
-        io.err(
-            `No node in the catalogue is scoped to "${widget}". Widget types that scope one: `
-                + `${knownWidgetElementTypes().join(", ")}.`,
-        );
+    // Said before the other flags are judged, so a bad `--category` beside it does not hide it.
+    const warning = unscopedWidgetWarning(widget);
+    if (warning) {
+        io.err(warning);
     }
-    const all = queryNodes({
+    const query = {
         search: args.positional.join(" ") || undefined,
         category: enumFlag(
             args,
@@ -198,17 +193,11 @@ function commandNodes(args: Args, io: CliIo): number {
         ownerKind: enumFlag(args, "owner", BLUEPRINT_OWNER_KINDS),
         widgetElementType: widget,
         includeHidden: args.flags.all === true,
-    });
-    const limit = numberFlag(args, "limit");
-    if (args.flags.json === true) {
-        io.out(JSON.stringify(limit ? all.slice(0, limit) : all, null, 2));
-        return 0;
-    }
-    // A bare `nodes` matches 600-odd of them, and a wall of those answers no question worth asking.
-    // The total and the way to lift the cap go in the trailer, so nothing is quietly dropped.
-    const effective = limit ?? DEFAULT_NODE_LIST_LIMIT;
-    io.out(formatNodeList(effective > 0 ? all.slice(0, effective) : all, { total: all.length }));
-    return 0;
+    };
+    return emitCommandResult(
+        blueprintNodesCommand({ ...query, limit: numberFlag(args, "limit"), json: args.flags.json === true, skipWidgetWarning: true }),
+        io,
+    );
 }
 
 function commandNode(args: Args, io: CliIo): number {
@@ -216,187 +205,56 @@ function commandNode(args: Args, io: CliIo): number {
     if (!wanted) {
         throw new UsageError("Which node type? `blueprint node <type>`.");
     }
-    const resolved = resolveNodeType(wanted);
-    if (!resolved) {
-        io.err(`No node type "${wanted}".`);
-        const near = queryNodes({ search: wanted, includeHidden: true, limit: 8 });
-        if (near.length > 0) {
-            io.err(`Close by: ${near.map(node => node.type).join(", ")}`);
-        }
-        return 2;
-    }
-    if (resolved !== wanted) {
-        io.err(`"${wanted}" -> ${resolved}`);
-    }
-    const detail = describeNode(resolved);
-    if (!detail) {
-        io.err(`No node type "${resolved}".`);
-        return 2;
-    }
-    const plugin = builtInPluginOwnerOf(resolved);
-    if (args.flags.json === true) {
-        io.out(JSON.stringify(plugin ? { ...detail, plugin } : detail, null, 2));
-        return 0;
-    }
-    io.out(formatNodeDetail(detail));
-    if (plugin) {
-        // Said rather than left to the category name: a project using this node needs that plugin
-        // installed and switched on, and the bundled ones do not all ship switched on.
-        io.out(`  plugin     ${plugin} (bundled with Studio; a project using it depends on it)`);
-    }
-    return 0;
+    return emitCommandResult(
+        blueprintNodeCommand(wanted, { json: args.flags.json === true, nodeOwnerOf: builtInPluginOwnerOf }),
+        io,
+    );
 }
 
 function commandCategories(args: Args, io: CliIo): number {
-    const categories = listNodeCategories();
-    if (args.flags.json === true) {
-        io.out(JSON.stringify(categories, null, 2));
-        return 0;
-    }
-    const width = Math.max(...categories.map(item => item.category.length));
-    io.out(categories.map(item => `${item.category.padEnd(width)}  ${item.count}`).join("\n"));
-    return 0;
+    return emitCommandResult(blueprintCategoriesCommand({ json: args.flags.json === true }), io);
 }
 
 function commandStructs(args: Args, io: CliIo): number {
-    const structs = listBuiltinStructs();
-    if (args.flags.json === true) {
-        io.out(JSON.stringify(structs, null, 2));
-        return 0;
-    }
-    io.out(formatStructList(structs).join("\n"));
-    return 0;
+    return emitCommandResult(blueprintStructsCommand({ json: args.flags.json === true }), io);
 }
 
 // ---------------------------------------------------------------------------
 // Project
 // ---------------------------------------------------------------------------
 
+/** Everything a graph is judged against, read off disk. */
+function readProjectInput(projectDir: string, blueprintDocument = readUiGraphs(projectDir).blueprintDocument): BlueprintProjectInput {
+    return {
+        blueprintDocument,
+        targets: readUiDocumentTargets(projectDir),
+        variables: readVariableRegistry(projectDir),
+        assetNameContext: readAssetNameContext(projectDir),
+    };
+}
+
 function commandTargets(args: Args, io: CliIo): number {
     const projectDir = requireProject(args);
-    const targets = readUiDocumentTargets(projectDir);
-    if (args.flags.json === true) {
-        io.out(JSON.stringify(targets, null, 2));
-        return 0;
-    }
-    // A project of any size holds hundreds of elements, and the id being looked for is nearly always
-    // the one whose name is already known.
-    const search = args.positional.join(" ");
-    const needle = search.toLowerCase();
-    const wanted = (text: string) => !needle || text.toLowerCase().includes(needle);
-    const lines: string[] = [];
-    let shown = 0;
-    for (const surface of targets.surfaces) {
-        const elements = targets.elements.filter(
-            item =>
-                item.surfaceId === surface.id
-                && (wanted(surface.name) || wanted(`${item.path} ${item.type}`)),
-        );
-        if (!wanted(surface.name) && elements.length === 0) {
-            continue;
-        }
-        // A page's declared parameters, as a node that opens it names its inputs (`param_<id>`) and
-        // `Get Page Param` names the one it reads (`paramId = <id>`).
-        const pageParams = getUIPageParams({ kind: surface.kind === "stageSurface" ? "stageSurface" : "appSurface", params: surface.params })
-            .map(param => `${param.id}${param.name === param.id ? "" : ` "${param.name}"`}:${param.type}`
-                + (param.struct ? `<${param.struct}>` : ""));
-        lines.push(
-            `${surface.name}  owner=surfaceMain surface=${surface.id}`
-                // After a `#`, as a label: what follows the owner fields is copied into a `.bp` file without it.
-                + (pageParams.length > 0 ? `  # params: ${pageParams.join(", ")}` : ""),
-        );
-        for (const element of elements) {
-            lines.push(
-                `    ${element.path}  [${element.type}]  owner=widgetMain surface=${surface.id} `
-                    + `element=${element.id}`,
-            );
-        }
-        shown += elements.length;
-        lines.push("");
-    }
-    // Components after the surfaces, and with their params listed: a component blueprint's whole
-    // reason to exist is that the instances differ, and the param ids are what says how.
-    for (const component of targets.components) {
-        const elements = targets.elements.filter(
-            item =>
-                item.componentId === component.id
-                && (wanted(component.name) || wanted(`${item.path} ${item.type}`)),
-        );
-        if (!wanted(component.name) && elements.length === 0) {
-            continue;
-        }
-        const params = component.params.length
-            ? component.params.map(param => `${param.id}="${param.defaultValue}"`).join(" ")
-            : "no params";
-        lines.push(`${component.name}  component=${component.id}  (${params})`);
-        for (const element of elements) {
-            lines.push(
-                `    ${element.path}  [${element.type}]  owner=componentWidgetMain `
-                    + `component=${component.id} element=${element.id}`,
-            );
-        }
-        shown += elements.length;
-        lines.push("");
-    }
-    if (lines.length === 0) {
-        io.out(search ? `Nothing here matches "${search}".` : "This project declares no surfaces.");
-        return 0;
-    }
-    lines.push(
-        search
-            ? `${shown} of ${targets.elements.length} elements match "${search}".`
-            : `${targets.surfaces.length} surface(s), ${targets.components.length} component(s), `
-                  + `${targets.elements.length} element(s).`,
+    return emitCommandResult(
+        blueprintTargetsCommand(readUiDocumentTargets(projectDir), {
+            search: args.positional.join(" "),
+            json: args.flags.json === true,
+        }),
+        io,
     );
-    io.out(lines.join("\n"));
-    return 0;
 }
 
 function commandList(args: Args, io: CliIo): number {
     const projectDir = requireProject(args);
     const file = readUiGraphs(projectDir);
-    const all = Object.values(file.blueprintDocument.blueprints).map(blueprint => ({
-        id: blueprint.id,
-        name: blueprint.name,
-        ownerKey: ownerRefToIndexKey(blueprint.owner),
-        scripts: listScriptLayers(blueprint.graphs).length,
-        events: countGraphs(blueprint, "events"),
-        functions: countGraphs(blueprint, "functions"),
-        nodes: countNodes(blueprint),
-    }));
-    all.sort((a, b) => a.ownerKey.localeCompare(b.ownerKey));
-    const search = args.positional.join(" ");
-    const needle = search.toLowerCase();
-    let rows = needle
-        ? all.filter(row => `${row.name} ${row.ownerKey} ${row.id}`.toLowerCase().includes(needle))
-        : all;
-    // Most owners hold an empty blueprint: a widget gets one the moment anyone opens its graph, and
-    // it stays whether or not a node was ever dropped into it. They are noise to everything but a
-    // census, and they outnumber the rest six to one in the shipped skeleton.
-    if (args.flags["with-graphs"] === true) {
-        rows = rows.filter(row => row.nodes > 0);
-    }
-    if (args.flags.json === true) {
-        io.out(JSON.stringify(rows, null, 2));
-        return 0;
-    }
-    if (rows.length === 0) {
-        io.out(search ? `No blueprint matches "${search}".` : "This project holds no blueprints.");
-        return 0;
-    }
-    const nameWidth = Math.max(...rows.map(row => row.name.length));
-    const table = rows
-        .map(
-            row =>
-                `${row.name.padEnd(nameWidth)}  ${String(row.nodes).padStart(4)} nodes  `
-                + `${row.events} event(s)  ${row.ownerKey}`,
-        )
-        .join("\n");
-    io.out(
-        `${table}\n\n${rows.length} shown of ${all.length}; `
-            + `${all.filter(row => row.nodes > 0).length} carry a graph (--with-graphs).`,
+    return emitCommandResult(
+        blueprintListCommand(file.blueprintDocument, {
+            search: args.positional.join(" "),
+            withGraphs: args.flags["with-graphs"] === true,
+            json: args.flags.json === true,
+        }),
+        io,
     );
-    return 0;
 }
 
 function commandShow(args: Args, io: CliIo): number {
@@ -405,37 +263,22 @@ function commandShow(args: Args, io: CliIo): number {
     loadPageParams(projectDir);
     const file = readUiGraphs(projectDir);
     const wanted = stringFlag(args, "blueprint");
-    const ownerKey = stringFlag(args, "owner");
-    let blueprints = Object.values(file.blueprintDocument.blueprints);
-    if (wanted) {
-        blueprints = matchBlueprints(blueprints, wanted);
-    }
-    if (ownerKey) {
-        const needle = ownerKey.toLowerCase();
-        blueprints = blueprints.filter(item =>
-            ownerRefToIndexKey(item.owner).toLowerCase().includes(needle),
-        );
-    }
-    if (blueprints.length === 0) {
-        io.err("No blueprint matches. Run `blueprint list --project <dir>` to see what is there.");
-        return 2;
-    }
-    const printed = printBlueprints(blueprints);
-    for (const diagnostic of printed.diagnostics) {
-        io.err(`${diagnostic.severity}  ${diagnostic.code}  ${diagnostic.message}`);
-    }
+    const shown = blueprintShowCommand(file.blueprintDocument, { blueprint: wanted, owner: stringFlag(args, "owner") });
     const out = args.flags.out;
-    if (out === undefined) {
-        io.out(printed.text.trimEnd());
-        return 0;
+    if (shown.text === undefined || out === undefined) {
+        return emitCommandResult(shown, io);
     }
+    for (const text of shown.err) {
+        io.err(text);
+    }
+    const blueprints = shown.blueprints;
     const fileName =
         typeof out === "string" && out.length > 0
             ? out
             : scratchFileNameFor(blueprints.length === 1 ? blueprints[0].name : (wanted ?? "blueprints"));
     const outPath = resolveBlueprintFile(fileName, { forWriting: true });
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
-    fs.writeFileSync(outPath, printed.text, "utf8");
+    fs.writeFileSync(outPath, shown.text, "utf8");
     io.out(
         `Wrote ${blueprints.length} blueprint(s) to ${outPath}.\n`
             + `Edit it, then: blueprint check ${path.basename(outPath)} --project <dir>`,
@@ -450,55 +293,30 @@ function commandCheck(args: Args, io: CliIo): number {
         loadSaveSchema(projectDir);
         loadPageParams(projectDir);
     }
-    const variables = projectDir ? readVariableRegistry(projectDir) : { persistent: [], saved: [] };
 
     if (!given) {
         if (!projectDir) {
             throw new UsageError("Give a file to check, or --project <dir> to check a whole project.");
         }
         const file = readUiGraphs(projectDir);
-        const targets = readUiDocumentTargets(projectDir);
-        const diagnostics = checkProjectDocument(file.blueprintDocument, {
-            persistentVariables: variables.persistent,
-            savedVariables: variables.saved,
-            resolveWidgetElement: widgetElementResolver(targets),
-            uiElements: targets.raw as Readonly<Record<string, UIElement>>,
-            uiStructs: targets.structs,
-            assetNameContext: readAssetNameContext(projectDir),
-        });
-        io.out(
-            args.flags.json === true
-                ? JSON.stringify(diagnostics, null, 2)
-                : formatDiagnostics(diagnostics, { fileName: file.filePath }),
+        return emitCommandResult(
+            blueprintCheckProjectCommand(readProjectInput(projectDir, file.blueprintDocument), {
+                fileName: file.filePath,
+                json: args.flags.json === true,
+            }),
+            io,
         );
-        return diagnostics.some(item => item.severity === "error") ? 1 : 0;
     }
 
     const resolved = resolveBlueprintFile(given, { forWriting: false });
     const source = readTextFile(resolved);
-    const result = checkBlueprintSource(source, {
-        existing: projectDir ? readUiGraphs(projectDir).blueprintDocument : null,
-        persistentVariables: variables.persistent,
-        savedVariables: variables.saved,
-        resolveWidgetElementType: projectDir
-            ? widgetElementTypeResolver(readUiDocumentTargets(projectDir))
-            : undefined,
-        resolveElementType: projectDir ? elementTypeResolver(readUiDocumentTargets(projectDir)) : undefined,
-        resolveWidgetElement: projectDir
-            ? widgetElementResolver(readUiDocumentTargets(projectDir))
-            : undefined,
-        uiElements: projectDir
-            ? readUiDocumentTargets(projectDir).raw as Readonly<Record<string, UIElement>>
-            : undefined,
-        uiStructs: projectDir ? readUiDocumentTargets(projectDir).structs : undefined,
-        assetNameContext: projectDir ? readAssetNameContext(projectDir) : undefined,
-    });
-    io.out(
-        args.flags.json === true
-            ? JSON.stringify(result.diagnostics, null, 2)
-            : formatDiagnostics(result.diagnostics, { fileName: reportPath(resolved), source }),
+    return emitCommandResult(
+        blueprintCheckSourceCommand(source, projectDir ? readProjectInput(projectDir) : null, {
+            fileName: reportPath(resolved),
+            json: args.flags.json === true,
+        }),
+        io,
     );
-    return result.ok ? 0 : 1;
 }
 
 function commandFormat(args: Args, io: CliIo): number {
@@ -571,57 +389,32 @@ function commandApply(args: Args, io: CliIo): number {
     const resolved = resolveBlueprintFile(given, { forWriting: false });
     const source = readTextFile(resolved);
     const file = readUiGraphs(projectDir);
-    const variables = readVariableRegistry(projectDir);
-    const result = checkBlueprintSource(source, {
-        existing: file.blueprintDocument,
-        persistentVariables: variables.persistent,
-        savedVariables: variables.saved,
-        resolveWidgetElementType: widgetElementTypeResolver(readUiDocumentTargets(projectDir)),
-        resolveElementType: elementTypeResolver(readUiDocumentTargets(projectDir)),
-        resolveWidgetElement: widgetElementResolver(readUiDocumentTargets(projectDir)),
-        uiElements: readUiDocumentTargets(projectDir).raw as Readonly<Record<string, UIElement>>,
-        uiStructs: readUiDocumentTargets(projectDir).structs,
-        assetNameContext: readAssetNameContext(projectDir),
-    });
-    const report = formatDiagnostics(result.diagnostics, {
+    const write = args.flags.write === true;
+    const result = blueprintApplyCommand(source, readProjectInput(projectDir, file.blueprintDocument), {
         fileName: reportPath(resolved),
-        source,
-    });
-    if (!result.ok) {
-        io.err(report);
-        io.err("Nothing was written.");
-        return 1;
-    }
-    if (result.diagnostics.length > 0) {
-        io.err(report);
-    }
-
-    assertWritableSchema(file);
-    const applied = applyBlueprints(file, result.blueprints, {
-        ...Object.fromEntries(
-            result.blueprints.map(blueprint => [
-                ownerRefToIndexKey(blueprint.owner),
-                { blueprintId: blueprint.id },
-            ]),
-        ),
-    });
-    const what = [
-        applied.added.length > 0 ? `add ${quoteAll(applied.added)}` : null,
-        applied.replaced.length > 0 ? `replace ${quoteAll(applied.replaced)}` : null,
-    ]
-        .filter(Boolean)
-        .join(", and ");
-    if (args.flags.write !== true) {
-        io.out(`Would ${what || "change nothing"} in ${file.filePath}. Pass --write to do it.`);
-        return 0;
-    }
-    writeUiGraphs(file);
-    io.out(
-        `Wrote ${file.filePath}: ${what || "no change"}.\n`
-            + "Studio does not reload this file on its own - if the project is open, close and reopen it, "
+        documentLabel: file.filePath,
+        write,
+        writtenNote:
+            "Studio does not reload this file on its own - if the project is open, close and reopen it, "
             + "and do not write while it is open or the next save will overwrite this.",
-    );
-    return 0;
+        beforeApply: () => {
+            try {
+                assertWritableSchema(file);
+                return null;
+            } catch (error) {
+                if (error instanceof ProjectIoError) {
+                    return error.message;
+                }
+                throw error;
+            }
+        },
+        // Before "Wrote ...", so it never says so for a file that was not.
+        commit: () => {
+            writeUiGraphs(file);
+            return null;
+        },
+    });
+    return emitCommandResult(result, io);
 }
 
 function commandRemove(args: Args, io: CliIo): number {
@@ -672,41 +465,6 @@ function commandRemove(args: Args, io: CliIo): number {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/**
- * The blueprints a `--blueprint` value names.
- *
- * An id or a whole name first, so an exact answer is never widened. Falling back to a
- * case-insensitive part of a name is what makes `--blueprint quit` work, and printing both
- * blueprints when two matched is more use than printing neither.
- */
-function matchBlueprints(blueprints: readonly Blueprint[], wanted: string): Blueprint[] {
-    const exact = blueprints.filter(item => item.id === wanted || item.name === wanted);
-    if (exact.length > 0) {
-        return exact;
-    }
-    const needle = wanted.toLowerCase();
-    return blueprints.filter(item => item.name.toLowerCase().includes(needle));
-}
-
-function quoteAll(names: readonly string[]): string {
-    return names.map(name => `"${name}"`).join(", ");
-}
-
-function countGraphs(blueprint: Blueprint, kind: "events" | "functions"): number {
-    return Object.keys(blueprint.graphs[kind] ?? {}).length;
-}
-
-function countNodes(blueprint: Blueprint): number {
-    const graphs = blueprint.graphs;
-    let total = 0;
-    for (const pool of [graphs.events, graphs.functions]) {
-        for (const graph of Object.values(pool ?? {})) {
-            total += Object.keys(graph.graph?.nodes ?? {}).length;
-        }
-    }
-    return total;
-}
 
 /** A path as it should read in a report: short when it is nearby, absolute when it is not. */
 function reportPath(filePath: string): string {

@@ -8,6 +8,14 @@
  * otherwise.
  */
 export const game = {
+    // The hint bar's own words for the moves Studio names, read by the player (`playerWords.ts`).
+    inputHints: {
+        select: "Select",
+        confirm: "Confirm",
+        back: "Back",
+        advance: "Next",
+        stageControls: "Menu",
+    },
     saveLoad: {
         refused: "This save could not be loaded. The game continues from the current point.",
         refusedOtherStory:

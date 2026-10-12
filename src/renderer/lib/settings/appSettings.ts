@@ -74,8 +74,9 @@ import {
 } from "@shared/constants/update";
 import { KEYBINDING_OVERRIDES_SETTINGS_KEY } from "@/lib/workspace/services/ui/KeybindingService";
 import { DOWNLOAD_REWRITES_KEY, USE_SYSTEM_PROXY_KEY } from "@shared/types/downloadSource";
+import { AGENT_FOLLOW_DEFAULT, AGENT_FOLLOW_KEY } from "@shared/agent/follow";
 import { OFFICIAL_SOURCE_VALUE } from "@/lib/settings/sourceSelection";
-import { MIRROR_PLUGIN_REGISTRY_URL } from "@shared/constants/pluginRegistry";
+import { readStoreSourcePreference, STORE_SOURCE_KEY, STORE_SOURCE_PREFERENCES } from "@shared/constants/storeSource";
 import {
     MIRROR_ELECTRON_BUILDER_BINARIES_URL,
     MIRROR_ELECTRON_URL,
@@ -211,14 +212,38 @@ export const AppSettingCategories: SettingCategory[] = [
         order: 8,
     },
     {
+        // The MCP endpoint an author's own AI agent connects to. Its own category rather than a
+        // corner of Network: what it decides is who may change a project, not where Studio
+        // downloads from.
+        key: "agent",
+        label: "Agent access",
+        labelKey: "settings.categories.agent.label",
+        description: "Let AI agents connect to Studio over MCP and work on the open project.",
+        descriptionKey: "settings.categories.agent.description",
+        order: 9,
+    },
+    {
         key: "data",
         label: "Data",
         labelKey: "settings.categories.data.label",
         description: "Cached files, resetting preferences, and moving them between machines.",
         descriptionKey: "settings.categories.data.description",
-        order: 9,
+        order: 10,
     },
 ];
+
+/**
+ * The typed registry addresses are read only under the Custom store source. Under any other choice
+ * their rows stay in place, closed, with the reason - an address typed there is kept, and the author
+ * can see it is not the one in use.
+ */
+async function customStoreSourceAvailability(): Promise<{ enabled: boolean; reasonKey?: "settings.items.storeSource.customOnly" }> {
+    const { getInterface } = await import("@/lib/app/bridge");
+    const result = await getInterface().app.state.getGlobalState(STORE_SOURCE_KEY);
+    return readStoreSourcePreference(result.success ? result.data.value : undefined) === "custom"
+        ? { enabled: true }
+        : { enabled: false, reasonKey: "settings.items.storeSource.customOnly" };
+}
 
 /**
  * Implemented application-wide settings.
@@ -1006,6 +1031,36 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: "",
     },
     {
+        // Rendered by `SETTING_PANELS.agentAccess`. Nothing is stored under this key: agent access
+        // lives in main (`<userData>/agent-mcp.json`, owner-only), because it holds the token and
+        // decides whether an outside program may change a project - and every renderer can write
+        // the settings store. The panel reads and writes it over a Settings-only channel.
+        key: "agent.access",
+        category: "agent",
+        scope: SettingScope.Global,
+        type: SettingValueType.Custom,
+        panel: "agentAccess",
+        label: "MCP endpoint",
+        labelKey: "settings.items.agentAccess.label",
+        description: "",
+        defaultValue: null,
+    },
+    {
+        // Follow mode, read by each workspace's `AgentFollowService` and switched from there by the
+        // Agent menu and the status bar cell - one value for every project and window. An ordinary
+        // preference in the settings store, unlike the endpoint above: it grants an agent nothing,
+        // it only decides whether the author is taken to what the agent changed.
+        key: AGENT_FOLLOW_KEY,
+        category: "agent",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Follow the agent's edits",
+        labelKey: "settings.items.agentFollow.label",
+        description: "Open each page, scene or blueprint an agent changes, bring it to the front and outline the change.",
+        descriptionKey: "settings.items.agentFollow.description",
+        defaultValue: AGENT_FOLLOW_DEFAULT,
+    },
+    {
         // Rendered by `SETTING_PANELS.projectTrust`. Nothing is stored under this key; the ledger
         // lives in main, under `authorization/`, where no renderer can reach it.
         key: "data.projectTrust",
@@ -1237,22 +1292,53 @@ export const AppSettings: AppSettingDefinition[] = [
     },
     {
         // Read by the main process (downloadProxy) on every Studio download. Off is
-        // direct, as today. On, those downloads follow this computer's proxy. There is
-        // no address to type: the operating system already has one.
+        // direct, as today. On, those downloads follow the proxy set in the operating
+        // system. There is no address to type: the operating system already has one.
         key: USE_SYSTEM_PROXY_KEY,
         category: "network",
         scope: SettingScope.Global,
         type: SettingValueType.Boolean,
-        label: "Use this computer's proxy",
+        label: "Use system proxy settings",
         labelKey: "settings.items.useSystemProxy.label",
-        description: "Studio downloads follow the proxy this computer already uses.",
+        description: "Studio downloads connect through the proxy set in the operating system.",
         descriptionKey: "settings.items.useSystemProxy.description",
         defaultValue: false,
     },
     {
-        // Read by the main process (pluginRegistryClient.resolveRegistryUrl) when the
-        // launcher's Plugins store fetches the index or installs a plugin. Empty = the
-        // official NarraLeaf/Plugins registry index.
+        // Read by the main process (`storeSource.ts`) whenever the plugin store, the template store
+        // or the dictionary panel reads its catalogue. GitHub and GitCode hold the same three
+        // repositories; Automatic asks both and keeps the first to answer, and that host serves the
+        // files with the other as the fallback. Custom reads the two addresses below. Shaped after
+        // the update download source, which makes the same choice for Studio's own updates.
+        //
+        // Absent from GLOBAL_STATE_DEFAULTS on purpose (see `storeSourceMigration`); an absent
+        // value reads as Automatic, which is this default.
+        key: STORE_SOURCE_KEY,
+        category: "network",
+        scope: SettingScope.Global,
+        type: SettingValueType.Enum,
+        label: "Store download source",
+        labelKey: "settings.items.storeSource.label",
+        description: "Where the plugin store, the template store and spelling dictionaries are downloaded from. Automatic connects to GitHub and GitCode at once and uses the first to respond.",
+        descriptionKey: "settings.items.storeSource.description",
+        defaultValue: "auto",
+        options: [...STORE_SOURCE_PREFERENCES],
+        optionLabels: {
+            auto: "Automatic",
+            github: "GitHub",
+            gitcode: "GitCode (mainland China)",
+            custom: "Custom",
+        },
+        optionLabelKeys: {
+            auto: "settings.items.storeSource.options.auto",
+            gitcode: "settings.items.storeSource.options.gitcode",
+            custom: "settings.items.storeSource.options.custom",
+        },
+    },
+    {
+        // Read by the main process (pluginRegistryClient.fetchPluginCatalogue) under the Custom
+        // store source, when the launcher's Plugins store fetches the index or installs a plugin.
+        // Empty = the official NarraLeaf/Plugins registry index.
         //
         // Note what this does NOT cover, and why the rewrite table below exists: the index
         // it fetches carries an absolute `release.download` URL per plugin, so pointing
@@ -1268,19 +1354,18 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: "",
         // The official entry stores "", which is what makes it the default without this list
         // having to name the official address; see `OFFICIAL_SOURCE_VALUE`.
-        options: [OFFICIAL_SOURCE_VALUE, MIRROR_PLUGIN_REGISTRY_URL],
+        options: [OFFICIAL_SOURCE_VALUE],
         optionLabelKeys: {
             [OFFICIAL_SOURCE_VALUE]: "settings.source.official",
-            [MIRROR_PLUGIN_REGISTRY_URL]: "settings.source.chinaMirror",
         },
+        availability: customStoreSourceAvailability,
     },
     {
-        // Read by the main process (uiTemplateRegistryClient.resolveTemplateRegistryUrl)
-        // when the UI editor's template store fetches the index or a template bundle.
-        // Empty = the official NarraLeaf/UI-Templates registry index. This key reaches
+        // Read by the main process (uiTemplateRegistryClient.fetchTemplateCatalogue) under the
+        // Custom store source, when the UI editor's template store fetches the index or a template
+        // bundle. Empty = the official NarraLeaf/UI-Templates registry index. This key reaches
         // further than the plugin one: a template's files resolve against the index's own
-        // directory (registryBaseDir), so they follow it wherever it points - which is why
-        // no mirror is offered by name here. See uiTemplateRegistry.ts for the measurement.
+        // directory (registryBaseDir), so they follow it wherever it points.
         key: "uiTemplates.registryUrl",
         category: "network",
         scope: SettingScope.Global,
@@ -1294,6 +1379,7 @@ export const AppSettings: AppSettingDefinition[] = [
         optionLabelKeys: {
             [OFFICIAL_SOURCE_VALUE]: "settings.source.official",
         },
+        availability: customStoreSourceAvailability,
     },
     {
         // Read by the main-process GameBuildManager (readElectronMirror) and

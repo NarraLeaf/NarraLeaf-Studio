@@ -15,6 +15,7 @@
  */
 
 import type { UIInputActionSource } from "@shared/types/ui-editor/inputActionEvent";
+import { isSyntheticKeyPress } from "./syntheticKeyPress";
 
 /**
  * The media query that decides the answer before anybody has touched anything.
@@ -97,7 +98,12 @@ export function createInputDeviceTracker(host: UIInputDeviceHost | null | undefi
         device = readPointerTypeDevice((event as PointerEvent).pointerType);
     };
 
-    const onKeyDown = (): void => {
+    const onKeyDown = (event: Event): void => {
+        // A pad's Confirm presses a control the way Enter does (`syntheticKeyPress`); the player is
+        // still holding the pad.
+        if (isSyntheticKeyPress(event)) {
+            return;
+        }
         device = "key";
     };
 

@@ -1,4 +1,5 @@
 import type { StoryExpression } from "./expression";
+import type { StoryInputActionPayload } from "./input";
 import { resolveAssetVariantMember, type AssetVariantMap } from "../assetSet";
 import type { WeatherSeedRef } from "../../weather/model";
 
@@ -256,7 +257,37 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 2 as const;
 // reason is what a v26 Studio would *play*: a `play` that no longer has a `create` above it, and does
 // not carry `hideOnEnd`, would be read as the bare transport verb and leave its last frame over every
 // scene after it, and a non-waiting play would hold the story for the length of the clip.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 27 as const;
+// v28 adds the `input` action payload: the rows that address the player's hands rather than the
+// stage - `/rumble` shakes the pad, `/input lock` takes the story out of the player's hands for a
+// passage, and `/waitinput`, `/hold` and `/mash` wait for one gesture (optionally against a deadline,
+// writing whether the player made it into a boolean variable). None of it could be written before:
+// the closest a story came was `/wait click`, which takes any click and cannot fail.
+// No migration. A v27 document cannot contain one, so the ladder gets no new step. The bump is not
+// optional, and the reason is what a v27 Studio would *play*: `compileStoryAction` ends in an
+// unconditional `return []`, so every waiting row would compile to nothing - a QTE the story runs
+// straight through, its result variable never written, and the branch after it always taking the
+// same arm. Refusing the document is the point.
+// v29 lets a layer sit at a distance from the camera: `depth` on a `layer` row - on the `create`
+// row of a custom layer, or on a new `setDepth` row for the scene's built-in background layer, which
+// has no `create` row - and the camera's pans and zooms are shared out among the layers by it, so a
+// flat stage reads as deep (the engine's layer `parallax`, narraleaf-react 1.4.0).
+// No migration: a v28 document cannot carry the field or the op, and absent reads as `follow`, which
+// is how every layer has always moved. The bump is not optional, and the reason is what a v28 Studio
+// would *play*: it would ignore `depth` and move every layer with the camera, and treat a `setDepth`
+// row as an operation it does not know - the scene the author built in depth would play flat, with
+// nothing anywhere saying why. Refusing the document is the point.
+// v30 makes a scene's layers part of the scene, not rows in its story: `scene.layers`, the scene's
+// layer stack front to back, where each layer has one value - how much of the camera's movement it
+// follows - and the order the stage draws them in is the stack's order, which that value can never
+// contradict. The `create` and `setDepth` layer rows are gone, and so are the five depth words: a
+// layer is declared once for the whole scene (which is what a `create` row always meant, wherever it
+// stood), and what used to take a z number, a depth word and a warning when the two disagreed is one
+// place in one list. Migrated: every `create` row becomes a layer of its scene under the row's own
+// id, so every reference bound to the row is bound to the layer without being touched; its z number
+// becomes its place in the stack and its depth word the share the word stood for, and the scene's
+// `setDepth` row becomes the background layer's share. The bump is not optional: a v29 Studio would
+// find no `create` row for a layer every picture names, and build none of them.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 30 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -373,6 +404,19 @@ export type StoryScene = {
      * playing, which is how a story that changes music with `/bgm` rows has always behaved.
      */
     bgm?: StorySceneBgm;
+    /**
+     * The layers this scene's stage is built from, front to back (schema v30).
+     *
+     * Part of the scene rather than rows in its story, because that is what a layer is: the engine
+     * builds every layer a scene has when the scene starts and takes them all down when it ends, so a
+     * layer is never a step the story takes. Read it through `sceneLayerStack`, which always answers a
+     * well-formed stack - both built-in layers present, the background behind the characters, and
+     * each layer following no more of the camera than the one in front of it.
+     *
+     * Absent is the stack every scene had before custom layers: the characters' layer in front of the
+     * background layer, both moving exactly with the camera.
+     */
+    layers?: StorySceneLayer[];
     rootBlockIds: StoryBlockId[];
     blocks: Record<StoryBlockId, StoryBlock>;
     /**
@@ -836,7 +880,8 @@ export type StoryActionPayload =
           value: StoryLiteralValue;
           /**
            * A computed right-hand side (`/set gold gold + 1`). **When present it wins**, and `value`
-           * is only the last literal the row held - never read by the compiler.
+           * is never read by the compiler. A row written with an expression stores `null` there;
+           * older rows may hold the `true` a new assignment block starts with.
            *
            * Why not fold the literal case in here too: `/set gold 100` is the overwhelmingly common
            * row, `value` is what the inspector's literal editor binds to, and every document written
@@ -954,12 +999,18 @@ export type StoryActionPayload =
       }
     | {
           action: "layer";
-          operation: "create" | "setZIndex" | "show" | "hide" | "transform";
-          objectName: string;
           /**
-           * Which layer non-`create` ops act on - a built-in (`background`/`displayable`) or a custom
-           * layer bound by its create block. `create` names a new custom layer via `objectName`.
+           * A step the story takes with one of the scene's layers. Declaring a layer is not one: the
+           * scene's layers are `StoryScene.layers` (v30), and `create` / `setDepth` are gone with it.
+           *
+           * `setZIndex` is kept for the rows that hold it and is no longer offered: it moves a layer in
+           * the stacking order part way through a scene, which the scene's stack - one order, the same
+           * as the layers' distances - has no way to say. A row that holds it still plays as it did.
            */
+          operation: "setZIndex" | "show" | "hide" | "transform";
+          /** The layer's name as the row was written, the fallback when {@link target} does not resolve. */
+          objectName: string;
+          /** Which layer the row acts on - a built-in (`background` / `displayable`) or one of the scene's own. */
           target?: StoryLayerRef;
           zIndex?: number;
           transform?: StoryTransformRef;
@@ -1187,7 +1238,9 @@ export type StoryActionPayload =
            * JSON, which is what makes the row survive a round trip through the project file.
            */
           params: Record<string, StoryPluginActionParamValue>;
-      };
+      }
+    /** The player's hands: a pad that shakes, a locked passage, a row that waits for a gesture. */
+    | StoryInputActionPayload;
 
 /** A JSON-serializable parameter value carried by a `{action:"plugin"}` block. */
 export type StoryPluginActionParamValue =
@@ -1518,9 +1571,10 @@ export type StoryDisplayableTargetRef = {
     label?: string;
     /**
      * Stable identity of the displayable: the id of the action block that introduced it
-     * (character enter / image / text / layer). Displayables can only be declared statically,
-     * so this always points at a real creator block. When present it is the source of truth -
-     * the current stage name is resolved from that block, so the reference survives renames.
+     * (character enter / image / text), or for a layer the id of the scene layer (v30: a layer is
+     * declared by the scene, under the id its `create` row had). Displayables can only be declared
+     * statically, so this always points at a real declaration. When present it is the source of
+     * truth - the current stage name is resolved from it, so the reference survives renames.
      * `name` remains as a legacy fallback and last-known label when the source is unresolvable.
      */
     sourceBlockId?: StoryBlockId;
@@ -1532,19 +1586,39 @@ export type StoryDisplayableTargetRef = {
 };
 
 /**
- * Reference to the render layer an image/text is placed on. Layers can only be declared statically
- * (by a `layer` create block) or be one of NarraLeaf-React's two built-in scene layers, so every
- * valid target is discoverable by scanning the scene - never free-text.
- *  - "default": one of NLR `Scene.backgroundLayer` (z-index -1) / `Scene.displayableLayer` (z-index
- *    0, the default). An absent ref is equivalent to `{ kind: "default", layer: "displayable" }`.
- *  - "custom": a user-declared layer, bound to the stable id of the `layer` create block. The
- *    block's current name is resolved at every read site so the reference survives renames; `name`
- *    is only a legacy fallback / last-known label (also the sole binding for pre-v3 documents whose
- *    layer name never matched a create block).
+ * Reference to the render layer an image/text is placed on: one of the layers of the scene's stack
+ * ({@link StoryScene.layers}), so every valid target is discoverable from the scene - never free-text.
+ *  - "default": one of NLR `Scene.backgroundLayer` / `Scene.displayableLayer` (the characters' layer,
+ *    and the default). An absent ref is equivalent to `{ kind: "default", layer: "displayable" }`.
+ *  - "custom": one of the scene's own layers, bound to its id - which for a layer migrated from a v29
+ *    `create` row is that row's id, hence the field's name. The layer's current name is resolved at
+ *    every read site so the reference survives renames; `name` is only a fallback / last-known label.
  */
 export type StoryLayerRef =
     | { kind: "default"; layer: "background" | "displayable" }
-    | { kind: "custom"; sourceBlockId?: StoryBlockId; name?: string };
+    | { kind: "custom"; sourceBlockId?: StorySceneLayerId; name?: string };
+
+/** A scene layer's id: minted with the layer, and the one thing a {@link StoryLayerRef} binds to. */
+export type StorySceneLayerId = string;
+
+/**
+ * One layer of a scene's stack ({@link StoryScene.layers}).
+ *
+ * A layer has one setting beside its name: `follow`, how much of the camera's movement it follows.
+ * `1` moves with the camera exactly, as the characters do; `0` does not move at all, like a sky at
+ * infinity; between the two the layer is behind the characters and moves less, above 1 it is in front
+ * of them and moves more. It is the share the engine's layer `parallax` takes, and it is also the
+ * layer's place in the stack: a layer never follows more of the camera than the one in front of it,
+ * so the order the stage draws them in and how far away each one is are the same answer.
+ *
+ * The two built-ins are in every stack exactly once. The characters' layer (`displayable`) is the
+ * stage the camera is aimed at, so it follows the camera exactly and has no setting; the background
+ * layer, where the scene's background picture is, is always behind it.
+ */
+export type StorySceneLayer =
+    | { kind: "custom"; id: StorySceneLayerId; name: string; follow?: number }
+    | { kind: "background"; follow?: number }
+    | { kind: "displayable" };
 
 /** The three stage objects that are `Actionable`s rather than Displayables, and so cannot use {@link StoryDisplayableTargetRef}. */
 export type StoryActionableKind = "video" | "vfx" | "audio";

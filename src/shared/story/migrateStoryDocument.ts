@@ -28,15 +28,53 @@
  */
 
 import {
+    isDefaultSceneLayerStack,
     listSceneBlocksInDocumentOrder,
+    normalizeSceneLayerStack,
     normalizeStageObjectName,
+    rebindSceneLayerIds,
     STORY_DOCUMENT_SCHEMA_VERSION,
     StoryBlock,
     StoryBlockId,
     StoryDocument,
     StoryScene,
     StorySceneId,
+    StorySceneLayer,
 } from "@shared/types/story";
+import { formatStorySecondsValue } from "@shared/utils/storyTime";
+
+/**
+ * How a migration writes a command line into a note: the words of the author's command language.
+ *
+ * Each method takes the canonical (English) word and returns the word the story editor would print
+ * for it - the same tables a committed row is printed from, so a note reads like the rows around
+ * it. The command language belongs to the renderer (`commandI18nStore`), so a caller there passes
+ * one; everything else - Dev Mode and builds reading a document off disk, the command line, the
+ * document spec - migrates with {@link CANONICAL_STORY_COMMAND_SPELLING}, which writes the
+ * canonical words. A note is text and is never parsed back, so the two never have to agree.
+ */
+export type StoryCommandSpelling = {
+    /** The verb of the command `commandId`, for a line written as `/token`. */
+    command(commandId: string, token: string): string;
+    /** The key one of the command's params is written with (`name`, `out`, `d`). */
+    param(commandId: string, param: string): string;
+    /** The word for one value of one of the command's enum params (`fade`). */
+    enumValue(commandId: string, param: string, value: string): string;
+    /** The word a number in this unit is suffixed with (`s`). */
+    unit(unit: string): string;
+};
+
+export const CANONICAL_STORY_COMMAND_SPELLING: StoryCommandSpelling = {
+    command: (_commandId, token) => token,
+    param: (_commandId, param) => param,
+    enumValue: (_commandId, _param, value) => value,
+    unit: unit => unit,
+};
+
+export type StoryMigrationOptions = {
+    /** The words a note quoting a row is written in; canonical when omitted. */
+    commandSpelling?: StoryCommandSpelling;
+};
 
 /**
  * The oldest document version this build can read.
@@ -129,7 +167,7 @@ function findInCauseChain<T>(error: unknown, matches: (candidate: unknown) => ca
     return null;
 }
 
-export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocument {
+export function migrateStoryDocumentToLatest(document: StoryDocument, options: StoryMigrationOptions = {}): StoryDocument {
     const version = typeof document.schemaVersion === "number" ? document.schemaVersion : 1;
     // Strictly newer is refused, never passed through: "at least current" used to be the test here,
     // and it let a document from a future Studio reach the compiler and the normalize pass as if it
@@ -149,7 +187,10 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
         migrated = migrateStoryDocumentV21toV22(migrated);
     }
     if (version < 27) {
-        migrated = migrateStoryDocumentV26toV27(migrated);
+        migrated = migrateStoryDocumentV26toV27(migrated, options.commandSpelling ?? CANONICAL_STORY_COMMAND_SPELLING);
+    }
+    if (version < 30) {
+        migrated = migrateStoryDocumentV29toV30(migrated);
     }
     // The stamp is unconditional, and has to be. Most bumps are additive - a document at the
     // version below is already valid at the new one, because it cannot contain a field that did not
@@ -225,10 +266,10 @@ function migrateStoryDocumentV21toV22(document: StoryDocument): StoryDocument {
  * The rows that address a clip afterwards are pointed at the play that now defines it, because the row
  * their reference was bound to may be one of the rows that went.
  */
-function migrateStoryDocumentV26toV27(document: StoryDocument): StoryDocument {
+function migrateStoryDocumentV26toV27(document: StoryDocument, spelling: StoryCommandSpelling): StoryDocument {
     const scenes: Record<StorySceneId, StoryScene> = {};
     for (const [sceneId, scene] of Object.entries(document.scenes ?? {})) {
-        scenes[sceneId] = migrateSceneClips(scene);
+        scenes[sceneId] = migrateSceneClips(scene, spelling);
     }
     return { ...document, scenes };
 }
@@ -267,7 +308,7 @@ function legacyDeclares(payload: LegacyVideoPayload): boolean {
     return (payload.operation === "show" || payload.operation === "play") && Boolean(payload.assetId?.trim());
 }
 
-function migrateSceneClips(scene: StoryScene): StoryScene {
+function migrateSceneClips(scene: StoryScene, spelling: StoryCommandSpelling): StoryScene {
     const ordered = listSceneBlocksInDocumentOrder(scene);
     if (!ordered.some(block => legacyVideoPayload(block))) {
         return scene;
@@ -318,7 +359,7 @@ function migrateSceneClips(scene: StoryScene): StoryScene {
             if (live) {
                 pending.set(key, [...(pending.get(key) ?? []), block.id]);
             } else {
-                blocks[block.id] = noteQuoting(block, payload);
+                blocks[block.id] = noteQuoting(block, payload, spelling);
             }
             continue;
         }
@@ -327,7 +368,7 @@ function migrateSceneClips(scene: StoryScene): StoryScene {
             // none to give it.
             const file = clip ?? (!live && ownFile ? { name: payload.objectName?.trim() || key, assetId: ownFile, muted: payload.muted } : undefined);
             if (!file) {
-                blocks[block.id] = noteQuoting(block, payload);
+                blocks[block.id] = noteQuoting(block, payload, spelling);
                 continue;
             }
             const { target: _target, assetId: _assetId, muted: _muted, ...rest } = payload;
@@ -352,7 +393,7 @@ function migrateSceneClips(scene: StoryScene): StoryScene {
         // `pause`, `resume`, `seek`, `stop`, `hide`: a row addressing a clip.
         const definingPlay = firstPlay.get(key);
         if (!definingPlay) {
-            blocks[block.id] = noteQuoting(block, payload);
+            blocks[block.id] = noteQuoting(block, payload, spelling);
             continue;
         }
         const name = legacyVideoPayload(blocks[definingPlay])?.objectName ?? key;
@@ -373,7 +414,7 @@ function migrateSceneClips(scene: StoryScene): StoryScene {
         for (const id of ids) {
             const payload = legacyVideoPayload(blocks[id]);
             if (payload) {
-                blocks[id] = noteQuoting(blocks[id], payload);
+                blocks[id] = noteQuoting(blocks[id], payload, spelling);
             }
         }
     }
@@ -392,36 +433,231 @@ function migrateSceneClips(scene: StoryScene): StoryScene {
     return { ...scene, blocks, rootBlockIds: scene.rootBlockIds.filter(id => !removed.has(id)) };
 }
 
+/**
+ * v29→v30: a scene's layers become part of the scene (`StoryScene.layers`), and the rows that declared
+ * them go.
+ *
+ * Each scene, read in document order:
+ *  - Every `create` row becomes a layer of the scene **under the row's own id**, so every reference
+ *    bound to the row - a picture placed on the layer, a row moving it - is bound to the layer
+ *    without being touched. A second `create` of a name the scene already has was the same layer to
+ *    the compiler (it built the first and handed it to the second), so it folds into the first and
+ *    the references bound to it follow.
+ *  - The stack's order is the order the stage drew the layers in: by z number, nearest first, and a
+ *    tie as the engine broke it - the two built-ins behind any layer of the scene's own at the same
+ *    number, and of the scene's own the later-declared in front.
+ *  - Each layer's share of the camera's movement is the share its depth word stood for; the
+ *    background layer's is its `setDepth` row's. A row the compiler skipped (disabled, or under a
+ *    disabled row) said no depth. Where the order and the words disagreed - which v29 allowed and
+ *    flagged - the order stands and the share moves to its neighbour's (`normalizeSceneLayerStack`):
+ *    the order is what every still shows, the share only what a moving camera does.
+ *  - A layer a picture or text was placed on by name with no `create` row anywhere was built on the
+ *    spot by the compiler, at z 0; it becomes a layer of the scene too, so it still exists when
+ *    nothing builds layers from mentions any more.
+ *
+ * A create row's own transform is dropped with it: a `create` only ever set the z number at run time.
+ */
+function migrateStoryDocumentV29toV30(document: StoryDocument): StoryDocument {
+    const scenes: Record<StorySceneId, StoryScene> = {};
+    for (const [sceneId, scene] of Object.entries(document.scenes ?? {})) {
+        scenes[sceneId] = migrateSceneLayers(scene);
+    }
+    return { ...document, scenes };
+}
+
+/** A v29 layer row, read loosely: `create`, `setDepth` and `depth` are what the v30 type no longer has. */
+type LegacyLayerPayload = {
+    action: "layer";
+    operation: string;
+    objectName?: string;
+    target?: { kind?: string; layer?: string; sourceBlockId?: string; name?: string };
+    zIndex?: number;
+    depth?: string;
+    [key: string]: unknown;
+};
+
+/** The share of the camera's movement each v29 depth word stood for (`layerDepth.ts`, removed with them). */
+const LEGACY_DEPTH_FOLLOW: Record<string, number> = { near: 1.4, follow: 1, mid: 0.6, far: 0.3, farthest: 0 };
+
+function legacyDepthFollow(depth: unknown): number {
+    return typeof depth === "string" && Object.prototype.hasOwnProperty.call(LEGACY_DEPTH_FOLLOW, depth)
+        ? LEGACY_DEPTH_FOLLOW[depth]
+        : 1;
+}
+
+function legacyLayerPayload(block: StoryBlock | undefined): LegacyLayerPayload | null {
+    if (!block || block.kind !== "action") {
+        return null;
+    }
+    const payload = block.payload as unknown as LegacyLayerPayload;
+    return payload.action === "layer" ? payload : null;
+}
+
+type LegacyPlacement = { kind?: string; sourceBlockId?: string; name?: string };
+
+/** A picture's or text's `layer` when it names one of the scene's own layers, read loosely. */
+function legacyPlacement(block: StoryBlock): LegacyPlacement | null {
+    if (block.kind !== "action" || (block.payload.action !== "image" && block.payload.action !== "text")) {
+        return null;
+    }
+    const layer = (block.payload as { layer?: LegacyPlacement }).layer;
+    return layer && layer.kind === "custom" ? layer : null;
+}
+
+function migrateSceneLayers(scene: StoryScene): StoryScene {
+    const ordered = listSceneBlocksInDocumentOrder(scene);
+    const disabled = new Set<StoryBlockId>();
+    for (const block of ordered) {
+        if (block.disabled || (block.parentId !== null && disabled.has(block.parentId))) {
+            disabled.add(block.id);
+        }
+    }
+
+    type Draft = { id: string; name: string; z: number; follow: number; order: number };
+    const drafts: Draft[] = [];
+    const byKey = new Map<string, Draft>();
+    const byId = new Map<string, Draft>();
+    // A folded `create` row's id, and the layer that answers to it now.
+    const rebind = new Map<string, string>();
+    const removed = new Set<StoryBlockId>();
+    let backgroundFollow = 1;
+
+    for (const block of ordered) {
+        const payload = legacyLayerPayload(block);
+        if (!payload) {
+            continue;
+        }
+        if (payload.operation === "create") {
+            removed.add(block.id);
+            const key = normalizeStageObjectName(payload.objectName);
+            const existing = byKey.get(key);
+            if (existing) {
+                rebind.set(block.id, existing.id);
+                continue;
+            }
+            const draft: Draft = {
+                id: block.id,
+                name: payload.objectName?.trim() || key,
+                z: typeof payload.zIndex === "number" && Number.isFinite(payload.zIndex) ? payload.zIndex : 0,
+                follow: disabled.has(block.id) ? 1 : legacyDepthFollow(payload.depth),
+                order: drafts.length,
+            };
+            drafts.push(draft);
+            byKey.set(key, draft);
+            byId.set(draft.id, draft);
+        } else if (payload.operation === "setDepth") {
+            removed.add(block.id);
+            if (!disabled.has(block.id) && payload.target?.kind === "default" && payload.target.layer === "background") {
+                backgroundFollow = legacyDepthFollow(payload.depth);
+            }
+        }
+    }
+
+    // Layers a placement named that no row declared: the compiler built them where they were named.
+    for (const block of ordered) {
+        const placement = legacyPlacement(block);
+        if (!placement) {
+            continue;
+        }
+        const boundId = placement.sourceBlockId ? rebind.get(placement.sourceBlockId) ?? placement.sourceBlockId : undefined;
+        if (boundId && byId.has(boundId)) {
+            continue;
+        }
+        const name = placement.name?.trim();
+        if (!name || byKey.has(normalizeStageObjectName(name))) {
+            continue;
+        }
+        const draft: Draft = { id: `${block.id}-layer`, name, z: 0, follow: 1, order: drafts.length };
+        drafts.push(draft);
+        byKey.set(normalizeStageObjectName(name), draft);
+        byId.set(draft.id, draft);
+    }
+
+    if (removed.size === 0 && drafts.length === 0) {
+        return scene;
+    }
+
+    // Nearest first. The built-ins rank behind the scene's own layers at the same number, because the
+    // engine made them first and draws a tie in the order it made the layers.
+    const entries: { layer: StorySceneLayer; z: number; rank: number }[] = [
+        { layer: { kind: "displayable" }, z: 0, rank: -1 },
+        { layer: { kind: "background", follow: backgroundFollow }, z: -1, rank: -1 },
+        ...drafts.map(draft => ({
+            layer: { kind: "custom" as const, id: draft.id, name: draft.name, follow: draft.follow },
+            z: draft.z,
+            rank: draft.order,
+        })),
+    ];
+    entries.sort((a, b) => b.z - a.z || b.rank - a.rank);
+    const stack = normalizeSceneLayerStack(entries.map(entry => entry.layer));
+
+    const blocks: Record<StoryBlockId, StoryBlock> = {};
+    for (const [id, block] of Object.entries(scene.blocks)) {
+        if (removed.has(id)) {
+            continue;
+        }
+        let next = rebindSceneLayerIds(block, rebind);
+        const placement = legacyPlacement(next);
+        const boundId = placement?.sourceBlockId ? rebind.get(placement.sourceBlockId) ?? placement.sourceBlockId : undefined;
+        if (placement && !(boundId && byId.has(boundId))) {
+            // Bound by a name, or to a row that is gone: bound to the layer by id from here, so a
+            // rename of the layer carries the placement along.
+            const draft = placement.name?.trim() ? byKey.get(normalizeStageObjectName(placement.name)) : undefined;
+            if (draft) {
+                next = { ...next, payload: { ...next.payload, layer: { kind: "custom", sourceBlockId: draft.id, name: draft.name } } } as StoryBlock;
+            }
+        }
+        if (next.childrenIds.some(childId => removed.has(childId))) {
+            next = { ...next, childrenIds: next.childrenIds.filter(childId => !removed.has(childId)) };
+        }
+        blocks[id] = next;
+    }
+    const { layers: _layers, ...rest } = scene;
+    return {
+        ...rest,
+        ...(isDefaultSceneLayerStack(stack) ? {} : { layers: stack }),
+        blocks,
+        rootBlockIds: scene.rootBlockIds.filter(id => !removed.has(id)),
+    };
+}
+
 type StoryActionPayloadOf<A extends string> = Extract<Extract<StoryBlock, { kind: "action" }>["payload"], { action: A }>;
 
 /**
- * A note in the row's place, quoting what the row said in the command line's canonical spelling.
+ * A note in the row's place, quoting what the row said the way the story editor prints a row: in the
+ * command language `spelling` writes, and with the unit on every time, so `/seek clip 1s` keeps the
+ * second it meant rather than reading as a bare number.
  *
  * The file a row named is left out: the document holds its asset id, which is not a word an author
  * can read, and the asset library that would name it is not part of a story document.
  */
-function noteQuoting(block: StoryBlock, payload: LegacyVideoPayload): StoryBlock {
+function noteQuoting(block: StoryBlock, payload: LegacyVideoPayload, spelling: StoryCommandSpelling): StoryBlock {
     const word = (value: string | undefined): string => {
         const text = (value ?? "").trim();
         return /\s/.test(text) ? `'${text}'` : text;
     };
     const name = word(payload.target?.label || payload.objectName || payload.target?.name);
-    const seconds = (ms: number | undefined): string => `${Math.max(0, ms ?? 0) / 1000}`;
+    const verb = (commandId: string, token: string = commandId): string => `/${spelling.command(commandId, token)}`;
+    const key = (commandId: string, param: string): string => spelling.param(commandId, param);
+    const seconds = (ms: number | undefined): string =>
+        `${formatStorySecondsValue(Math.max(0, ms ?? 0))}${spelling.unit("s")}`;
     let line: string;
     switch (payload.operation) {
         case "create":
-            line = `/video name=${name}${payload.muted ? " muted" : ""}`;
+            // Typed as `/video`, which is an alias of `/play` now: canonically it keeps the word the
+            // author wrote, and in a command language it takes the verb `play` is spelled with.
+            line = `${verb("play", "video")} ${key("play", "name")}=${name}${payload.muted ? ` ${key("play", "muted")}` : ""}`;
             break;
         case "seek":
-            line = `/seek ${name} ${seconds(payload.timeMs)}`;
+            line = `${verb("seek")} ${name} ${seconds(payload.timeMs)}`;
             break;
         case "hide":
             line = typeof payload.durationMs === "number" && payload.durationMs > 0
-                ? `/hide ${name} out=fade d=${seconds(payload.durationMs)}`
-                : `/hide ${name}`;
+                ? `${verb("hide")} ${name} ${key("hide", "out")}=${spelling.enumValue("hide", "out", "fade")} ${key("hide", "d")}=${seconds(payload.durationMs)}`
+                : `${verb("hide")} ${name}`;
             break;
         default:
-            line = `/${payload.operation} ${name}`;
+            line = `${verb(payload.operation)} ${name}`;
             break;
     }
     return {

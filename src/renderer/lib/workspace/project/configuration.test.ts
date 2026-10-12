@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+    lintingConfigurationForWrite,
     normalizeBuildConfiguration,
     normalizeCrashConfiguration,
+    normalizeLintingConfiguration,
     normalizePatchConfiguration,
 } from "./configuration";
 
@@ -188,5 +190,52 @@ describe("normalizeCrashConfiguration", () => {
 
     it("falls back rather than carrying a value it does not recognize", () => {
         expect(normalizeCrashConfiguration({ policy: "email-me" }).policy).toBe("details");
+    });
+});
+
+describe("normalizeLintingConfiguration", () => {
+    it("keeps a rule the author set to minor", () => {
+        const linting = normalizeLintingConfiguration({ severities: { "localization/missing": "minor", "text/empty": "error" } });
+        expect(linting.severities).toEqual({ "localization/missing": "minor", "text/empty": "error" });
+    });
+
+    it("reads a level it does not know as no choice at all, so the rule runs at its own default", () => {
+        const linting = normalizeLintingConfiguration({ severities: { "localization/missing": "trivial", "text/empty": 3 } });
+        expect(linting.severities).toEqual({});
+    });
+
+    it("has no threshold that stops a build on minor warnings, and falls back to errors for one that claims to", () => {
+        expect(normalizeLintingConfiguration({ failBuildOn: "minor" }).failBuildOn).toBe("error");
+        expect(normalizeLintingConfiguration({ failBuildOn: "warning" }).failBuildOn).toBe("warning");
+    });
+});
+
+describe("lintingConfigurationForWrite", () => {
+    // A project last saved by a newer Studio, with a level this one does not know.
+    const stored = {
+        runOnBuild: true,
+        failBuildOn: "error",
+        severities: { "localization/missing": "trivial", "text/empty": "error" },
+        options: {},
+    };
+
+    it("writes a level it cannot read back as it was, when another setting changes", () => {
+        const written = lintingConfigurationForWrite(stored, { runOnBuild: false });
+        expect(written.runOnBuild).toBe(false);
+        expect(written.severities).toEqual({ "localization/missing": "trivial", "text/empty": "error" });
+    });
+
+    it("keeps it when another rule's level changes", () => {
+        const written = lintingConfigurationForWrite(stored, { severities: { "text/empty": "minor" } });
+        expect(written.severities).toEqual({ "localization/missing": "trivial", "text/empty": "minor" });
+    });
+
+    it("lets the author's new choice for that rule replace it", () => {
+        const written = lintingConfigurationForWrite(stored, { severities: { "localization/missing": "warning", "text/empty": "error" } });
+        expect(written.severities).toEqual({ "localization/missing": "warning", "text/empty": "error" });
+    });
+
+    it("never runs a rule at the level it cannot read", () => {
+        expect(normalizeLintingConfiguration(lintingConfigurationForWrite(stored, {})).severities).toEqual({ "text/empty": "error" });
     });
 });

@@ -14,6 +14,7 @@
  */
 
 import { BpValueError, indexOfTopLevel, parseValue, splitTokens, valueToJs } from "../../blueprint-cli/dsl/values";
+import { isUINavigationSlot, UI_NAVIGATION_SLOTS } from "@shared/types/ui-editor/navigation";
 import type {
     UiAssignTarget,
     UiAssignment,
@@ -25,6 +26,7 @@ import type {
     UiStructStatement,
     UiSurfaceStatement,
 } from "./ast";
+import { COMPACT_DEFAULTS_FLAG, COMPACT_WITHOUT_KEYWORD } from "./ast";
 
 export class UiParseError extends Error {
     public constructor(
@@ -341,6 +343,7 @@ function parseAction(line: SourceLine, tokens: string[], body: SourceLine[]): Ui
     }
     const name = tokens[2] ? readString(tokens[2], line) : id;
     const bindings: ({ kind: "pointer"; gesture: string } | { kind: "key"; key: string } | { kind: "gamepad"; button: string })[] = [];
+    let navigationSlot: string | undefined;
     for (const item of blockItems(body)) {
         const itemTokens = tokensOf(item.line);
         if (itemTokens[0] === "pointer") {
@@ -355,9 +358,20 @@ function parseAction(line: SourceLine, tokens: string[], body: SourceLine[]): Ui
             bindings.push({ kind: "gamepad", button: readString(itemTokens[1] ?? "", item.line) });
             continue;
         }
-        throw new UiParseError("an action holds `pointer <gesture>`, `key <Key>` and `gamepad <Button>` lines.", item.line.number);
+        if (itemTokens[0] === "navigation") {
+            const slot = readString(itemTokens[1] ?? "", item.line);
+            if (!isUINavigationSlot(slot)) {
+                throw new UiParseError(`\`navigation\` names one of the slots: ${UI_NAVIGATION_SLOTS.join(", ")}.`, item.line.number);
+            }
+            navigationSlot = slot;
+            continue;
+        }
+        throw new UiParseError(
+            "an action holds `pointer <gesture>`, `key <Key>`, `gamepad <Button>` and `navigation <slot>` lines.",
+            item.line.number,
+        );
     }
-    return { kind: "action", line: line.number, id, name, bindings };
+    return { kind: "action", line: line.number, id, name, bindings, ...(navigationSlot ? { navigationSlot } : {}) };
 }
 
 // ---------------------------------------------------------------------------
@@ -398,6 +412,10 @@ function parseElement(line: SourceLine, tokens: string[], body: SourceLine[]): U
             node.assignments.push(assign(line, "layout", ["height"], Number(size[2])));
             continue;
         }
+        if (token === COMPACT_DEFAULTS_FLAG) {
+            node.fillDefaults = true;
+            continue;
+        }
         const eq = token.indexOf("=");
         if (eq > 0) {
             const key = token.slice(0, eq);
@@ -417,6 +435,19 @@ function parseElement(line: SourceLine, tokens: string[], body: SourceLine[]): U
         }
         if (itemTokens[0] === "bind") {
             node.bindings.push(readBinding(item.line, itemTokens));
+            continue;
+        }
+        // Not an element that happens to be named "without": that one's header has a colon.
+        if (itemTokens[0] === COMPACT_WITHOUT_KEYWORD && !itemTokens.includes(":")) {
+            // `without effects layout.opacity` - defaults a `+defaults` element does not hold.
+            const keys = itemTokens.slice(1).map(token => readString(token, item.line));
+            if (keys.length === 0) {
+                throw new UiParseError("`without` names the defaults the element does not hold, e.g. `without stackWrap`.", item.line.number);
+            }
+            node.withoutDefaults = {
+                line: item.line.number,
+                keys: [...(node.withoutDefaults?.keys ?? []), ...keys],
+            };
             continue;
         }
         if (itemTokens[0] === "component") {

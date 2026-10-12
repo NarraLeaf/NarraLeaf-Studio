@@ -19,6 +19,7 @@ import { DEFAULT_UI_PAGE_ANIMATION_SETTINGS, type UIPageAnimationSettings } from
 import { compileUiFile } from "./compile";
 import { parseUiFile } from "./parse";
 import { printUiDocument } from "./print";
+import { applyCompiled } from "../apply";
 
 const SKELETON = path.resolve(
     __dirname,
@@ -126,6 +127,98 @@ describe("the .ui text format", () => {
         for (const [id, element] of Object.entries(written)) {
             expect(element, `element ${id}`).toEqual(document.elements[id]);
         }
+    });
+
+    describe("the short form", () => {
+        // The claim the short form makes is the long form's, on the same evidence: everything that
+        // exists, printed short, compiled and applied onto a copy, is the document it came from - not
+        // one that renders the same. A field that could not survive is one the short form keeps.
+        function applyShort(document: UIDocument, text: string): UIDocument {
+            const compiled = compileUiFile(parseUiFile(text), { existing: document });
+            const errors = compiled.diagnostics
+                .filter(item => item.severity === "error")
+                .map(item => `${item.line ?? "?"}: ${item.code} ${item.message}`);
+            expect(errors).toEqual([]);
+            const copy = structuredClone(document);
+            applyCompiled(copy, compiled);
+            return copy;
+        }
+
+        it("prints the shipped skeleton short and applies back into the same document", () => {
+            const document = loadSkeleton();
+            const short = printUiDocument(document, { compact: true });
+            const long = printUiDocument(document);
+            expect(short.length).toBeLessThan(long.length / 2);
+            expect(short).toContain(" +defaults");
+
+            const applied = applyShort(document, short);
+            expect(applied.surfaces).toEqual(document.surfaces);
+            expect(applied.components).toEqual(document.components);
+            expect(Object.keys(applied.elements).sort()).toEqual(Object.keys(document.elements).sort());
+            for (const [id, element] of Object.entries(document.elements)) {
+                expect(applied.elements[id], `element ${id}`).toEqual(element);
+            }
+            expect(applied).toEqual(document);
+        }, 60_000);
+
+        it("does the same one page and one component at a time", () => {
+            const document = loadSkeleton();
+            for (const surface of document.surfaces) {
+                const short = printUiDocument(document, { surfaceIds: [surface.id], componentIds: [], includeSharedTables: false, compact: true });
+                expect(applyShort(document, short), surface.name).toEqual(document);
+            }
+            for (const component of document.components ?? []) {
+                const short = printUiDocument(document, { surfaceIds: [], componentIds: [component.id], includeSharedTables: false, compact: true });
+                expect(applyShort(document, short), component.name).toEqual(document);
+            }
+        }, 60_000);
+
+        it("names a default the element does not hold on a without line, since filling it in would add a key", () => {
+            const document = loadSkeleton();
+            const surface = document.surfaces[0];
+            const root = document.elements[surface.rootElementId];
+            const victimId = root.childrenIds.find(id => Object.keys(document.elements[id].props ?? {}).length > 3)!;
+            const victim = document.elements[victimId];
+            const dropped = "transformScale";
+            expect(victim.props).toHaveProperty(dropped);
+            delete (victim.props as Record<string, unknown>)[dropped];
+
+            const short = printUiDocument(document, { surfaceIds: [surface.id], componentIds: [], includeSharedTables: false, compact: true });
+            const lines = short.split("\n");
+            const at = lines.findIndex(line => line.includes(`id=${victimId}`));
+            expect(lines[at]).toContain("+defaults");
+            expect(lines[at + 1].trim().split(" ")).toContain(dropped);
+            expect(lines[at + 1].trim().startsWith("without ")).toBe(true);
+            expect(applyShort(document, short)).toEqual(document);
+        });
+
+        it("starts a +defaults element from its defaults, so a dotted line changes one field of a default record", () => {
+            const source = [
+                'surface "S" id=s kind=appSurface size=800x600',
+                "    Root: nl.root id=root @0,0 800x600",
+                "        Art: nl.image id=art @0,0 800x600 +defaults",
+                "            imageFill.assetId = a4d2552e-a1db-4226-b224-e88d072f57b0",
+                "",
+            ].join("\n");
+            const compiled = compileUiFile(parseUiFile(source));
+            expect(compiled.diagnostics.filter(item => item.severity === "error")).toEqual([]);
+            const art = compiled.surfaces[0].elements.art;
+            expect(art.layout).toMatchObject({ visible: true, opacity: 1 });
+            expect(art.props).toMatchObject({ borderStyle: expect.any(String), fillType: expect.any(String) });
+            expect((art.props as { imageFill: Record<string, unknown> }).imageFill.assetId).toBe("a4d2552e-a1db-4226-b224-e88d072f57b0");
+        });
+
+        it("refuses an appearance group named by a prop the element does not have", () => {
+            const source = [
+                'surface "S" id=s kind=appSurface size=800x600',
+                "    Root: nl.root id=root @0,0 800x600",
+                "        Box: nl.container id=box @0,0 80x60",
+                '            appearance = {"defaultVariantId":"default","variants":[{"id":"default","name":"Default","propertyGroups":["notAProp"]}]}',
+                "",
+            ].join("\n");
+            const codes = compileUiFile(parseUiFile(source)).diagnostics.map(item => item.code);
+            expect(codes).toContain("ui.appearance_group_without_prop");
+        });
     });
 
     it("drops nothing when a surface is printed and compiled on its own", () => {

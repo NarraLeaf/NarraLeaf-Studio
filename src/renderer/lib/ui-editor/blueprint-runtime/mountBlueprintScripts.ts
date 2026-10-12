@@ -12,7 +12,12 @@ import {
     resolveScriptHandler,
 } from "./script/scriptRuntime";
 import { parseScriptLayerKey } from "@shared/blueprint/blueprintLayers";
-import { translate } from "@/lib/i18n";
+import { i18nStore, translate } from "@/lib/i18n";
+
+/** Names in a sentence, joined the way the author's language writes a list (`a、b` in Chinese). */
+function joinNames(names: readonly string[]): string {
+    return i18nStore.getTranslator().formatList([...names], { style: "narrow" });
+}
 
 /**
  * Something wrong with one script layer, in words that name the author's file.
@@ -132,7 +137,7 @@ function reportScriptsWithNothingToCall(
             continue;
         }
         const exported = listScriptExportedFunctionNames(layerKey);
-        const names = scriptEventExportNamesForOwner(blueprint.owner, widgetType).join(", ");
+        const names = joinNames(scriptEventExportNamesForOwner(blueprint.owner, widgetType));
         onIssue({
             scriptRef: entry.scriptRef,
             blueprintId,
@@ -141,7 +146,7 @@ function reportScriptsWithNothingToCall(
             message: exported.length > 0
                 ? translate("blueprint.runtimeError.scriptExportsUncalled", {
                     file: entry.scriptRef,
-                    exported: exported.join(", "),
+                    exported: joinNames(exported),
                     names,
                 })
                 : translate("blueprint.runtimeError.scriptExportsNoHandler", { file: entry.scriptRef, names }),

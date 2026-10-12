@@ -18,7 +18,7 @@ export type PluginFileSystemPermissionMode = "read" | "write" | "readwrite";
  * - **Author-declared** (`filesystem`, `api`) — privileged Studio controls the
  *   plugin asks for explicitly in `permissions[]`.
  * - **Derived** (`runtime`, `sidecar`, `buildDependency`, `externalLink`,
- *   `network`) — computed from `contributes` by {@link validatePluginManifest}
+ *   `network`, `agentTools`) — computed from `contributes` by {@link validatePluginManifest}
  *   and *rejected* if written by
  *   hand. A capability is declared in exactly one place, so what the prompt shows
  *   and what the plugin can actually reach cannot drift apart. Adding a
@@ -98,6 +98,22 @@ export type PluginInstallPermission =
          */
         kind: "network";
         patterns: string[];
+    }
+    | {
+        /**
+         * Derived from `contributes.agentTools`: tools this plugin offers the AI agents an author
+         * connects to Studio. Informational more than it is a power - every call still passes the
+         * author's own switches (agent access, write access, pause) - but it is code an outside
+         * program can start, and the author hears about it here, by count, before it can happen.
+         *
+         * Names rather than a count, so a later version that adds a tool, or turns a reading tool
+         * into one that changes the project, widens the set and asks again.
+         */
+        kind: "agentTools";
+        /** Every declared tool. */
+        tools: string[];
+        /** The ones that change the project; a subset of `tools`. */
+        writeTools: string[];
     };
 
 /**

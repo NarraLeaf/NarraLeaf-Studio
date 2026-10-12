@@ -169,7 +169,9 @@ export const VOICE_LINT_RULES: readonly LintRule[] = [
     {
         id: "voice/missing",
         category: "voice",
-        defaultSeverity: "warning",
+        // A minor warning: it fires once per spoken line per voiced language, so a voiced title still
+        // being recorded holds thousands of these, and the line still plays as text without its voice.
+        defaultSeverity: "minor",
         slug: "voiceMissing",
         run: ctx => runMissing(ctx),
     },

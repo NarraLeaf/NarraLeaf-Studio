@@ -29,6 +29,71 @@ type UIListRuntimeScrollRequestInput = UIListRuntimeScrollRequest extends infer 
         : never
     : never;
 
+/**
+ * What graphs have asked of one video widget's playback, as its renderer reads it.
+ *
+ * Kept as the request rather than carried out at the request, because the `<video>` it is about may
+ * not exist yet: its clip resolves after the widget mounts, so a Play from the widget's own Init
+ * reaches a widget with nothing to play. The renderer carries the request out whenever it has an
+ * element - now, or once the clip arrives.
+ */
+export type UIVideoRuntimePlayback = {
+    /**
+     * Play or not, as the last Play, Pause or Stop said; null until one has, which leaves the
+     * authored Autoplay in charge.
+     */
+    playing: boolean | null;
+    /**
+     * Counts Play, Pause and Stop. Saying the same thing twice still has to be seen: a second Play
+     * after the clip has ended starts it again, though `playing` was already true.
+     */
+    playVersion: number;
+    /**
+     * Where the last Seek or Stop put the play head, in seconds, with a count of its own: a Seek is
+     * not a Play, and a Seek on an ended clip that Autoplay started must not start it again.
+     */
+    seek: { seconds: number; version: number } | null;
+};
+
+/** A change to {@link UIVideoRuntimePlayback}: what Play, Pause, Stop and Seek each ask for. */
+export type UIVideoRuntimePlaybackRequest = {
+    playing?: boolean;
+    seekSeconds?: number;
+};
+
+/** What a drawn video reports about itself when a graph asks. */
+export type UIVideoPlaybackReading = {
+    /** Seconds from the start of the clip. */
+    currentTime: number;
+    /** Length of the clip in seconds; 0 until it is known. */
+    duration: number;
+    /** Neither paused nor at its end. */
+    playing: boolean;
+    /** Played to its end and still there. Never true for a looping clip. */
+    ended: boolean;
+};
+
+/** Which halves of a {@link UIVideoRuntimePlayback} one request changed. */
+export type UIVideoRuntimePlaybackChange = { play: boolean; seek: boolean };
+
+/**
+ * A drawn video, as the store reaches it: asked where it is, and handed each request as it is made
+ * so that it is carried out at once. A graph that seeks and then reads the time reads the time it
+ * asked for, which a request carried out on the next render would not give it.
+ */
+export type UIVideoPlayer = {
+    read: () => UIVideoPlaybackReading;
+    carryOut: (playback: UIVideoRuntimePlayback, change: UIVideoRuntimePlaybackChange) => void;
+};
+
+/** The reading of a video with nothing drawn: no clip, no time, not playing. */
+export const UI_VIDEO_PLAYBACK_AT_REST: UIVideoPlaybackReading = Object.freeze({
+    currentTime: 0,
+    duration: 0,
+    playing: false,
+    ended: false,
+});
+
 export type UIDisplayableMotionFromCurrentValue = {
     from: "current";
     to: number;
@@ -142,6 +207,9 @@ export class WidgetRuntimeStateStore {
     private readonly hoverTargetIds = new Set<string>();
     private activePointerId: string | null = null;
     private focusedId: string | null = null;
+    private pointerHoverSuppressed = false;
+    /** Every element the focus is on or inside, by runtime key: what a pointer on it would hover. */
+    private readonly focusWithinIds = new Set<string>();
     private readonly variantOverrides = new Map<string, string>();
     private readonly sliderProperties = new Map<string, UISliderRuntimeValue>();
     private readonly switchProperties = new Map<string, UISwitchRuntimeValue>();
@@ -159,6 +227,16 @@ export class WidgetRuntimeStateStore {
      * blueprint can ask a list where it is, which happens when an author's graph runs, not per frame.
      */
     private readonly listScrollMetrics = new Map<string, UIListScrollMetrics>();
+    /** What graphs asked of each video widget's playback, by runtime key. See {@link UIVideoRuntimePlayback}. */
+    private readonly videoPlayback = new Map<string, UIVideoRuntimePlayback>();
+    /**
+     * Each drawn video, by runtime key: how to ask it where it is, and how to hand it a request.
+     *
+     * Asked rather than told, for the reason the list scroll metrics are kept out of the snapshot:
+     * the play head moves every frame and nothing draws from it. A graph reads it when it runs, and
+     * the element is the only place the answer is current.
+     */
+    private readonly videoPlayers = new Map<string, UIVideoPlayer>();
     private readonly displayableMotions = new Map<string, UIDisplayableMotionOverride>();
     /**
      * Who is waiting on each motion, by motion id.
@@ -195,6 +273,7 @@ export class WidgetRuntimeStateStore {
     private readonly runtimePatchListeners = new Set<() => void>();
     private snapshot: WidgetRuntimeSnapshot;
     private listScrollRequestVersion = 0;
+    private videoPlaybackVersion = 0;
     private displayableMotionVersion = 0;
 
     constructor() {
@@ -303,6 +382,12 @@ export class WidgetRuntimeStateStore {
                 changed = true;
             }
         }
+        for (const id of [...this.focusWithinIds]) {
+            if (belongsToScope(id)) {
+                this.focusWithinIds.delete(id);
+                changed = true;
+            }
+        }
 
         if (belongsToScope(this.activePointerId)) {
             this.activePointerId = null;
@@ -394,6 +479,43 @@ export class WidgetRuntimeStateStore {
         }
         this.activePointerId = id;
         this.emit();
+    }
+
+    /**
+     * While the player moves by keys or a pad, the pointer resting somewhere is not pointing at
+     * anything: the focus is what is selected, and a second control drawn hovered under a mouse
+     * nobody is holding would look selected too. The hover is kept, not cleared - it comes back the
+     * moment the pointer moves and the game says so.
+     */
+    setPointerHoverSuppressed(suppressed: boolean): void {
+        if (this.pointerHoverSuppressed === suppressed) {
+            return;
+        }
+        this.pointerHoverSuppressed = suppressed;
+        this.emit();
+    }
+
+    /**
+     * Whether the focus is on this element or on something inside it.
+     *
+     * A pointer resting on a save slot's hit area is resting on the slot as well, and the slot draws
+     * its hover look; the focus on that hit area has to light the slot the same way. Each element's
+     * box says so for itself as the focus enters and leaves it (`EditorNodeWrapper`).
+     */
+    setFocusWithin(id: string, within: boolean): void {
+        if (within ? this.focusWithinIds.has(id) : !this.focusWithinIds.has(id)) {
+            return;
+        }
+        if (within) {
+            this.focusWithinIds.add(id);
+        } else {
+            this.focusWithinIds.delete(id);
+        }
+        this.emit();
+    }
+
+    isFocusWithin(id: string): boolean {
+        return this.focusWithinIds.has(id);
     }
 
     setFocusedTarget(id: string | null): void {
@@ -548,6 +670,56 @@ export class WidgetRuntimeStateStore {
         this.emit();
     }
 
+    /** What graphs have asked of this video's playback, or undefined while none has asked anything. */
+    getVideoPlayback(elementId: string): UIVideoRuntimePlayback | undefined {
+        return this.videoPlayback.get(elementId);
+    }
+
+    /**
+     * Ask a video widget to play, pause or move its play head. Replaces the record rather than editing
+     * it, so a renderer reading it through {@link useWidgetRuntimeStoreValue} sees the change.
+     */
+    requestVideoPlayback(elementId: string, request: UIVideoRuntimePlaybackRequest): void {
+        const current = this.videoPlayback.get(elementId);
+        let next: UIVideoRuntimePlayback = current ?? { playing: null, playVersion: 0, seek: null };
+        if (request.playing !== undefined) {
+            this.videoPlaybackVersion += 1;
+            next = { ...next, playing: request.playing, playVersion: this.videoPlaybackVersion };
+        }
+        if (request.seekSeconds !== undefined) {
+            this.videoPlaybackVersion += 1;
+            next = { ...next, seek: { seconds: request.seekSeconds, version: this.videoPlaybackVersion } };
+        }
+        if (next === current) {
+            return;
+        }
+        this.videoPlayback.set(elementId, next);
+        this.emit();
+        this.videoPlayers.get(elementId)?.carryOut(next, {
+            play: request.playing !== undefined,
+            seek: request.seekSeconds !== undefined,
+        });
+    }
+
+    /**
+     * Let a drawn video answer {@link readVideoPlayback} and carry out requests as they are made;
+     * returns the call that takes it away. Only the drawing that registered can take itself away, so
+     * a remount that registers first is kept.
+     */
+    registerVideoPlayer(elementId: string, player: UIVideoPlayer): () => void {
+        this.videoPlayers.set(elementId, player);
+        return () => {
+            if (this.videoPlayers.get(elementId) === player) {
+                this.videoPlayers.delete(elementId);
+            }
+        };
+    }
+
+    /** Where this video is now, or the at-rest reading when nothing is drawn for it. */
+    readVideoPlayback(elementId: string): UIVideoPlaybackReading {
+        return this.videoPlayers.get(elementId)?.read() ?? UI_VIDEO_PLAYBACK_AT_REST;
+    }
+
     /**
      * Returns the persistent base transform pose for an element (stable reference; the shared
      * default object is returned while the element sits at the authored pose).
@@ -694,7 +866,7 @@ export class WidgetRuntimeStateStore {
 
     getSignalsForElement(elementId: string, interactionDisabled: boolean | undefined): SystemInteractionSignals {
         return {
-            hovered: this.hoverTargetIds.has(elementId),
+            hovered: !this.pointerHoverSuppressed && this.hoverTargetIds.has(elementId),
             // The store never sets this: selection belongs to the row a list is drawing, which this
             // store has no dimension for. `useWidgetRuntimeElementState` merges it in from the row
             // context, so the default here is the honest answer for anything outside a list.

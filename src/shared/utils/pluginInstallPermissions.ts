@@ -73,6 +73,12 @@ function covers(granted: PluginInstallPermission, requested: PluginInstallPermis
     if (granted.kind === "network" && requested.kind === "network") {
         return requested.patterns.every(pattern => granted.patterns.includes(pattern));
     }
+    // A tool the author was not told about, or a tool that now changes the project where it only
+    // read before, is a widening; dropping either is not.
+    if (granted.kind === "agentTools" && requested.kind === "agentTools") {
+        return requested.tools.every(tool => granted.tools.includes(tool))
+            && requested.writeTools.every(tool => granted.writeTools.includes(tool));
+    }
     return false;
 }
 

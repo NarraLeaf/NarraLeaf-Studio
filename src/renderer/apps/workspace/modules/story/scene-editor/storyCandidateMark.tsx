@@ -24,6 +24,7 @@ import {
     Fan,
     Film,
     Flag,
+    Gamepad2,
     Grip,
     Hash,
     Image as ImageIcon,
@@ -229,6 +230,8 @@ function markGlyph(mark: StoryCandidateMark): typeof Hash {
             return Package;
         case "surface":
             return AppWindow;
+        case "inputAction":
+            return Gamepad2;
         case "variable":
             switch (mark.valueType) {
                 case "boolean":

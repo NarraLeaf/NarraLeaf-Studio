@@ -115,4 +115,22 @@ describe("BlueprintNodeCatalogService", () => {
         });
         expect(malformed.pins.map(p => p.id)).toEqual(["in", "next"]);
     });
+
+    it("tells its listeners when node types are registered, once per batch", () => {
+        const service = new BlueprintNodeCatalogService();
+        const plugin = `test.catalog.${crypto.randomUUID().slice(0, 8)}`;
+        const heard: number[] = [];
+        const stop = service.onCatalogChanged(() => heard.push(service.getCatalogRevision()));
+        const before = service.getCatalogRevision();
+
+        service.registerMany([nodeDef(`${plugin}.a`), nodeDef(`${plugin}.b`)], { ownerPluginId: plugin, replaceExisting: true });
+        service.register(nodeDef(`${plugin}.c`), { ownerPluginId: plugin, replaceExisting: true });
+        expect(heard).toEqual([before + 1, before + 2]);
+        expect(service.get(`${plugin}.a`)).toBeDefined();
+
+        stop();
+        service.register(nodeDef(`${plugin}.d`), { ownerPluginId: plugin, replaceExisting: true });
+        expect(heard).toHaveLength(2);
+        expect(service.getCatalogRevision()).toBe(before + 3);
+    });
 });

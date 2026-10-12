@@ -67,6 +67,13 @@ export type CommandDetail = {
     aliases: readonly string[];
     params: readonly CommandParamDetail[];
     examples: readonly string[];
+    /** A worked sequence of rows, when one row is not the whole story (see the spec's `sequence`). */
+    sequence: { readonly note: string; readonly lines: readonly string[] } | null;
+    /**
+     * The scene header lines a file writes instead, for a command that is not a row (see the spec's
+     * `header`). `examples` is then empty: the command line's examples are rows a file refuses.
+     */
+    header: { readonly note: string; readonly lines: readonly string[] } | null;
     /** `kind/action` of the block a bare invocation builds, or null when the spec builds nothing. */
     builds: string | null;
     /** What the command scaffolds after commit: a condition's branch, or a choice's first option. */
@@ -86,7 +93,7 @@ export type CommandDetail = {
  */
 function searchWordsOf(spec: AnyStoryCommandSpec): string {
     const params = Object.entries(spec.params).map(([name, param]) => `${name} ${param.hint ?? ""}`);
-    return [spec.token, spec.id, ...(spec.aliases ?? []), spec.category, ...params, ...(spec.examples ?? [])]
+    return [spec.token, spec.id, ...(spec.aliases ?? []), spec.category, ...params, ...(spec.examples ?? []), ...(spec.header?.lines ?? [])]
         .join(" ")
         .toLowerCase();
 }
@@ -101,7 +108,7 @@ export function queryCommands(options: { search?: string; category?: string } = 
             id: spec.id,
             category: spec.category,
             aliases: spec.aliases ?? [],
-            example: spec.examples?.[0] ?? null,
+            example: spec.header ? spec.header.lines.join(" | ") : spec.examples?.[0] ?? null,
         }))
         .sort((a, b) => a.category.localeCompare(b.category) || a.token.localeCompare(b.token));
 }
@@ -149,7 +156,9 @@ function detailOf(def: StoryCommandDef): CommandDetail {
         category: spec?.category ?? "",
         aliases: def.aliases ?? [],
         params: def.params.map(paramDetail),
-        examples: spec?.examples ?? [],
+        examples: spec?.header ? [] : spec?.examples ?? [],
+        sequence: spec?.sequence ?? null,
+        header: spec?.header ?? null,
         builds: spec ? blockShapeOf(spec) : null,
         scaffold: spec?.scaffold ?? null,
     };
@@ -256,7 +265,8 @@ export function describeParamType(type: StoryCommandParamType): string {
                 type.integer ? "integer" : null,
                 type.unit ? `may be written with "${type.unit}"` : null,
             ].filter(Boolean);
-            return bounds.length > 0 ? `number, ${bounds.join(", ")}` : "number";
+            const number = bounds.length > 0 ? `number, ${bounds.join(", ")}` : "number";
+            return type.format ? `${number}: ${type.format}` : number;
         }
         case "boolean":
             return "boolean";
@@ -267,7 +277,7 @@ export function describeParamType(type: StoryCommandParamType): string {
         case "constant":
             return "constant";
         case "text":
-            return "text";
+            return type.format ? `text: ${type.format}` : "text";
         case "expression":
             return "expression";
         default: {
@@ -331,9 +341,23 @@ export function formatCommandDetail(detail: CommandDetail): string {
         lines.push("", "  named (key=value, any order)");
         lines.push(...named.map(param => formatParam(param, true)));
     }
+    if (detail.sequence) {
+        lines.push("", `  note       ${detail.sequence.note}`);
+    }
+    if (detail.header) {
+        lines.push("", `  in a file  ${detail.header.note}`);
+    }
     if (detail.examples.length > 0) {
         lines.push("", "  examples");
         lines.push(...detail.examples.map(example => `    ${example}`));
+    }
+    if (detail.sequence) {
+        lines.push("", "  together");
+        lines.push(...detail.sequence.lines.map(line => `    ${line}`));
+    }
+    if (detail.header) {
+        lines.push("", "  in the scene header");
+        lines.push(...detail.header.lines.map(line => `    ${line}`));
     }
     return lines.join("\n");
 }

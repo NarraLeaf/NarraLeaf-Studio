@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { resolveAvatarBakePortrait, shouldBakeCharacterAvatars } from "./useCharacterAvatarBake";
+import { Character } from "@/lib/workspace/services/character/Character";
+import { avatarBakeInputs, resolveAvatarBakePortrait, shouldBakeCharacterAvatars } from "./useCharacterAvatarBake";
 
 describe("shouldBakeCharacterAvatars", () => {
     it("bakes when the panel is open and the workspace is writable", () => {
@@ -40,5 +41,48 @@ describe("resolveAvatarBakePortrait", () => {
         // `getAvatarPortrait` answers `null`, not `undefined`; a nullish chain that stopped at the
         // first `null` would pin every differential to the automatic crop.
         expect(resolveAvatarBakePortrait({ entry: null, pose: null, profile })).toBe(profile);
+    });
+});
+
+describe("avatarBakeInputs", () => {
+    function narra(): Character {
+        return Character.fromJSON({
+            profile: {
+                id: "c1",
+                name: "Narra",
+                description: "",
+                tags: [],
+                attributes: {},
+                nicknames: [],
+                thumbnail: null,
+                appearance: { kind: "preset", defaultPoseId: "p1", poses: [{ id: "p1", name: "Default", assetId: "a1" }], avatars: {} },
+            },
+        } as never);
+    }
+
+    it("does not move when a bake records its own stamp, so a bake never schedules the next one", () => {
+        const character = narra();
+        const before = avatarBakeInputs([character]);
+        character.profile.appearance.setAvatar("p1", { baked: "fe5f2877" });
+        expect(avatarBakeInputs([character])).toBe(before);
+        character.profile.appearance.setAvatar("p1", null);
+        expect(avatarBakeInputs([character])).toBe(before);
+    });
+
+    it("moves for every edit that changes what a bake draws or how it is framed", () => {
+        const character = narra();
+        const seen = new Set([avatarBakeInputs([character])]);
+        const appearance = character.profile.appearance;
+        const pose = appearance.createPose("Smile")!;
+        seen.add(avatarBakeInputs([character]));
+        appearance.setPoseAsset(pose.id, "a2");
+        seen.add(avatarBakeInputs([character]));
+        appearance.setPosePortrait(pose.id, { x: 0.4, y: 0, w: 0.3, h: 0.3 });
+        seen.add(avatarBakeInputs([character]));
+        character.profile.setPortrait({ x: 0.45, y: 0.01, w: 0.38, h: 0.35 });
+        seen.add(avatarBakeInputs([character]));
+        appearance.setAvatarPortrait("p1", { x: 0.5, y: 0, w: 0.2, h: 0.2 });
+        seen.add(avatarBakeInputs([character]));
+        expect(seen.size).toBe(6);
     });
 });

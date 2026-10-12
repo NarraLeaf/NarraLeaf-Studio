@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { commandI18nStore, i18nStore } from "@/lib/i18n";
+import { LOCALIZED_COMMANDS_DEFAULT } from "@/lib/settings/commandLanguageOptions";
 import type { PaletteActionCommand } from "./storyActionCommands";
 import { specPaletteCommands } from "./commands/specPalette";
-import { searchActionCommands, findPluginActionsByCommandWord } from "./storyCommandSearch";
+import { commandNamedByWord, searchActionCommands, findPluginActionsByCommandWord } from "./storyCommandSearch";
 
 /**
  * The matcher runs over the spec palette - the one catalogue since A1, shared by the `/` creator and
@@ -118,5 +120,57 @@ describe("findPluginActionsByCommandWord", () => {
     it("does not match on a loose subsequence or an empty word", () => {
         expect(ids("rps")).toEqual([]);
         expect(ids("  ")).toEqual([]);
+    });
+});
+
+/**
+ * The command a finished command word names - where the menu puts its highlight, so Enter takes the
+ * command the author has written out. The bug it closes: the menu opens on Show, Show still matches
+ * "b" and "bg" by its description, so `/bg` + Enter wrote `/show`.
+ */
+describe("commandNamedByWord", () => {
+    afterEach(() => {
+        commandI18nStore.setPreference(LOCALIZED_COMMANDS_DEFAULT);
+        i18nStore.setLocale("en");
+    });
+
+    it("names the command an English token or alias spells, in any command language", () => {
+        i18nStore.setLocale("en");
+        expect(commandNamedByWord("bg")).toBe("background");
+        expect(commandNamedByWord("char")).toBe("face");
+        expect(commandNamedByWord("face")).toBe("face");
+        expect(commandNamedByWord("show")).toBe("show");
+        expect(commandNamedByWord(" hide ")).toBe("hide");
+        i18nStore.setLocale("zh");
+        expect(commandNamedByWord("bg")).toBe("background");
+    });
+
+    it("names the command the command language's own word spells", () => {
+        i18nStore.setLocale("zh");
+        expect(commandNamedByWord("背景")).toBe("background");
+        expect(commandNamedByWord("显示")).toBe("show");
+        expect(commandNamedByWord("外观")).toBe("face");
+        expect(commandNamedByWord("隐藏")).toBe("hide");
+        i18nStore.setLocale("ja");
+        expect(commandNamedByWord("背景")).toBe("background");
+        expect(commandNamedByWord("表示")).toBe("show");
+        expect(commandNamedByWord("見た目")).toBe("face");
+        expect(commandNamedByWord("非表示")).toBe("hide");
+    });
+
+    it("names nothing for a word still on its way to a command", () => {
+        i18nStore.setLocale("en");
+        expect(commandNamedByWord("b")).toBeNull();
+        expect(commandNamedByWord("sho")).toBeNull();
+        expect(commandNamedByWord("")).toBeNull();
+        i18nStore.setLocale("zh");
+        expect(commandNamedByWord("显")).toBeNull();
+    });
+
+    it("falls back to the author's abbreviation, after the built-in spellings", () => {
+        const abbreviations = new Map([["c", "face"], ["bg", "show"]]);
+        expect(commandNamedByWord("c", abbreviations)).toBe("face");
+        // A built-in spelling wins, as it does on the line.
+        expect(commandNamedByWord("bg", abbreviations)).toBe("background");
     });
 });

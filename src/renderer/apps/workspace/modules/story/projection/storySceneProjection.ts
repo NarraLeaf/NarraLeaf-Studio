@@ -338,9 +338,7 @@ function formatAction(
         return `/text ${payload.operation} ${payload.objectName}${payload.text ? ` ${payload.text}` : ""}`.trimEnd();
     }
     if (payload.action === "layer") {
-        const name = payload.operation === "create"
-            ? payload.objectName
-            : resolveStoryLayerRef(scene, layerActionTargetRef(payload.target, payload.objectName)).name;
+        const name = resolveStoryLayerRef(scene, layerActionTargetRef(payload.target, payload.objectName)).name;
         return `/layer ${payload.operation} ${name}`.trimEnd();
     }
     if (payload.action === "video") {
@@ -360,6 +358,25 @@ function formatAction(
         // itself is not spelled here: this projection is a one-line summary, and the command line is
         // where a row prints the channels it states.
         return payload.operation === "reset" ? "/reset camera" : "/transform camera";
+    }
+    if (payload.action === "input") {
+        // A summary, as the camera's is: the verb and its one deciding word. The action is named by
+        // its id because this projection has no project to look the name up in.
+        switch (payload.operation) {
+            case "rumble":
+                return `/rumble${payload.preset ? ` ${payload.preset}` : ""}`;
+            case "stopRumble":
+                return "/rumble stop";
+            case "lock":
+            case "unlock":
+                return `/input ${payload.operation}`;
+            case "wait":
+                return `/waitinput${payload.actionId ? ` ${payload.actionId}` : ""}`;
+            case "hold":
+                return `/hold${payload.actionId ? ` ${payload.actionId}` : ""} ${formatStorySecondsLabel(payload.holdMs)}`;
+            case "mash":
+                return `/mash${payload.actionId ? ` ${payload.actionId}` : ""} ${payload.count}`;
+        }
     }
     if (payload.action === "plugin") {
         // The action id, not the plugin's label: this projection is the exported script, which has to

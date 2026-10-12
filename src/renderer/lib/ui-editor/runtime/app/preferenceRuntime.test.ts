@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_PLAYER_PREFERENCES, normalizePlayerPreferences } from "@shared/types/preference";
+import { AUDIO_BUS_VOLUMES_PERSISTENCE_KEY } from "./audioBusRuntime";
 import {
     PLAYER_PREFERENCES_PERSISTENCE_KEY,
     attachPlayerPreferences,
+    createDetachedPlayerPreferences,
     readPersistedPlayerPreferences,
     startPlaythroughPreferences,
     type PreferenceStoreLike,
@@ -237,5 +239,143 @@ describe("startPlaythroughPreferences", () => {
 
     it("is a no-op against an engine build with no preference store", () => {
         expect(() => startPlaythroughPreferences(undefined)).not.toThrow();
+    });
+});
+
+/** A synchronous key-value store standing in for the window's copy of scope persistence. */
+function memoryStore(initial: Record<string, unknown> = {}) {
+    const values: Record<string, unknown> = { ...initial };
+    return {
+        values,
+        read: (key: string) => values[key],
+        write: vi.fn(async (key: string, value: unknown) => {
+            values[key] = value;
+        }),
+    };
+}
+
+describe("createDetachedPlayerPreferences", () => {
+    // What a settings screen opened from the title reads: the value a game started now would hold.
+    it("reads the player's stored choice over the author's default, and the default where none is stored", () => {
+        const store = memoryStore({ [PLAYER_PREFERENCES_PERSISTENCE_KEY]: { cps: 42, skipReadText: true } });
+        const kept = createDetachedPlayerPreferences({
+            getDefaults: () => ({ ...DEFAULT_PLAYER_PREFERENCES, cps: 20, autoForwardDelay: 1800 }),
+            read: store.read,
+            write: store.write,
+        });
+
+        expect(kept.get("cps")).toBe(42);
+        expect(kept.get("skipReadText")).toBe(true);
+        expect(kept.get("autoForwardDelay")).toBe(1800);
+        expect(kept.get("gameSpeed")).toBe(DEFAULT_PLAYER_PREFERENCES.gameSpeed);
+    });
+
+    it("falls back to the engine's defaults when the bundle carries none", () => {
+        const store = memoryStore();
+        const kept = createDetachedPlayerPreferences({ getDefaults: () => undefined, read: store.read, write: store.write });
+        expect(kept.get("autoForwardDelay")).toBe(DEFAULT_PLAYER_PREFERENCES.autoForwardDelay);
+    });
+
+    // The boot path restores the bus map after the preference map, so for the three bus-backed
+    // volumes the bus map is what a game starts with - and what the title screen has to show.
+    it("answers a bus-backed volume from the bus map, which the boot path restores last", () => {
+        const store = memoryStore({
+            [PLAYER_PREFERENCES_PERSISTENCE_KEY]: { bgmVolume: 0.9, globalVolume: 0.7 },
+            [AUDIO_BUS_VOLUMES_PERSISTENCE_KEY]: { bgm: 0.3 },
+        });
+        const kept = createDetachedPlayerPreferences({ getDefaults: () => undefined, read: store.read, write: store.write });
+        expect(kept.get("bgmVolume")).toBe(0.3);
+        expect(kept.get("globalVolume")).toBe(0.7);
+    });
+
+    // Sparse, like the boot path reads it: freezing every author default into the store would stop
+    // a later change to a default from reaching this player.
+    it("writes only the preference that moved on top of what is stored", async () => {
+        const store = memoryStore({ [PLAYER_PREFERENCES_PERSISTENCE_KEY]: { cps: 42 } });
+        const kept = createDetachedPlayerPreferences({ getDefaults: () => undefined, read: store.read, write: store.write });
+
+        await kept.set("autoForwardDelay", 1200);
+
+        expect(store.values[PLAYER_PREFERENCES_PERSISTENCE_KEY]).toEqual({ cps: 42, autoForwardDelay: 1200 });
+        expect(store.values[AUDIO_BUS_VOLUMES_PERSISTENCE_KEY]).toBeUndefined();
+    });
+
+    it("normalises what it writes, as the boot path would on reading it", async () => {
+        const store = memoryStore();
+        const kept = createDetachedPlayerPreferences({ getDefaults: () => undefined, read: store.read, write: store.write });
+        await kept.set("bgmVolume", 7);
+        expect(store.values[PLAYER_PREFERENCES_PERSISTENCE_KEY]).toEqual({ bgmVolume: 1 });
+    });
+
+    it("writes a bus-backed volume to the bus map as well, so an older bus value cannot win at boot", async () => {
+        const store = memoryStore({ [AUDIO_BUS_VOLUMES_PERSISTENCE_KEY]: { bgm: 0.3, "voice/narrator": 0.5 } });
+        const kept = createDetachedPlayerPreferences({ getDefaults: () => undefined, read: store.read, write: store.write });
+
+        await kept.set("bgmVolume", 0.8);
+
+        expect(store.values[PLAYER_PREFERENCES_PERSISTENCE_KEY]).toEqual({ bgmVolume: 0.8 });
+        expect(store.values[AUDIO_BUS_VOLUMES_PERSISTENCE_KEY]).toEqual({ bgm: 0.8, "voice/narrator": 0.5 });
+        expect(kept.get("bgmVolume")).toBe(0.8);
+    });
+
+    it("hands a write to a game that is still mounting, which has already restored the old value", async () => {
+        const store = memoryStore();
+        const booting = fakePreferenceStore({ ...DEFAULT_PLAYER_PREFERENCES });
+        const kept = createDetachedPlayerPreferences({
+            getDefaults: () => undefined,
+            read: store.read,
+            write: store.write,
+            getBootingStore: () => booting,
+        });
+
+        await kept.set("cps", 33);
+
+        expect(booting.values.cps).toBe(33);
+    });
+
+    it("announces a change, and stays quiet for a write that changes nothing", async () => {
+        const store = memoryStore({ [PLAYER_PREFERENCES_PERSISTENCE_KEY]: { cps: 30 } });
+        const onChange = vi.fn();
+        const kept = createDetachedPlayerPreferences({ getDefaults: () => undefined, read: store.read, write: store.write, onChange });
+
+        await kept.set("cps", 30);
+        expect(onChange).not.toHaveBeenCalled();
+        await kept.set("cps", 45);
+        expect(onChange).toHaveBeenCalledWith("cps", 45, 30);
+    });
+
+    // A playthrough preference describes a game on screen; with none there is nothing to keep.
+    it("reads the box's starting state but keeps no write to it", async () => {
+        const store = memoryStore();
+        const kept = createDetachedPlayerPreferences({
+            getDefaults: () => ({ ...DEFAULT_PLAYER_PREFERENCES, showDialog: false }),
+            read: store.read,
+            write: store.write,
+        });
+
+        expect(kept.canRead("showDialog")).toBe(true);
+        expect(kept.canWrite("showDialog")).toBe(false);
+        expect(kept.get("showDialog")).toBe(false);
+        await kept.set("showDialog", true);
+        expect(store.write).not.toHaveBeenCalled();
+        expect(kept.canRead("skipping")).toBe(false);
+    });
+
+    // The round trip both ways through the one store the boot path uses.
+    it("is what a game starts with, and reads back what a game wrote", async () => {
+        const store = memoryStore();
+        const kept = createDetachedPlayerPreferences({ getDefaults: () => undefined, read: store.read, write: store.write });
+        await kept.set("cps", 36);
+        await kept.set("autoForwardDelay", 900);
+
+        const game = fakePreferenceStore();
+        const configureEngine = vi.fn();
+        await attachPlayerPreferences({ preference: game, read: store.read, write: store.write, configureEngine });
+        expect(game.values.cps).toBe(36);
+        expect(configureEngine).toHaveBeenLastCalledWith({ autoForwardDelay: 900 });
+
+        game.set("skipReadText", true);
+        expect(kept.get("skipReadText")).toBe(true);
+        expect(kept.get("cps")).toBe(36);
     });
 });

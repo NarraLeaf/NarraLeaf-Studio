@@ -5,6 +5,16 @@ export interface UseMultiSelectionParams {
 }
 
 /**
+ * What a selection gesture is read by: the modifiers held with it. A mouse event is one; so is a key
+ * that moves the selection, which has no pointer to report.
+ */
+export interface SelectionModifiers {
+    ctrlKey: boolean;
+    metaKey: boolean;
+    shiftKey: boolean;
+}
+
+/**
  * The library's marked rows.
  *
  * The hook holds no picture of the library. What a shift range covers is decided by the row order
@@ -30,7 +40,7 @@ export function useMultiSelection({ onSelectionChange }: UseMultiSelectionParams
         rowOrder.current = keys;
     }, []);
 
-    const handleItemSelect = useCallback((itemId: string, isGroup: boolean, event: React.MouseEvent) => {
+    const handleItemSelect = useCallback((itemId: string, isGroup: boolean, event: SelectionModifiers) => {
         const itemKey = isGroup ? `group:${itemId}` : `asset:${itemId}`;
 
         let newSelection: Set<string>;

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
-import type { TranslationKey } from "@shared/i18n";
 import { useTextEditorViewOptions } from "../../assets/editors/text/useTextEditorViewOptions";
 // Type-only, and it has to stay that way: the module it names loads Monaco, whose own body reads
 // `window` while it runs. A value import here fails every node-environment suite that can reach the
@@ -13,7 +12,7 @@ import {
     narralangDiagnosticMarks,
     shouldAdoptNarralangPrint,
 } from "./narralangEdit";
-import type { NarralangIssueRow } from "./narralangIo";
+import { narralangReasonText, type NarralangIssueRow } from "./narralangIo";
 import type { NarralangCommitOutcome } from "./useNarralangCommit";
 
 /**
@@ -387,7 +386,7 @@ export function NarralangScriptView(props: NarralangScriptViewProps) {
                                 key={row.blockId}
                                 className="truncate text-2xs text-fg-muted"
                                 data-tip={row.reasons
-                                    .map(reason => t(`story.narralang.reason.${reason}` as TranslationKey))
+                                    .map(entry => narralangReasonText(entry, t))
                                     .join("\n")}
                             >
                                 {row.description}

@@ -24,6 +24,9 @@ export type StoryScenePreviewFloatRect = {
  */
 export type StoryScenePreviewFloatFrame = "workspace" | "editorBody";
 
+/** What the pane shows: the shot, or the shot taken apart into the scene's layers. */
+export type StoryScenePreviewView = "stage" | "layers";
+
 /**
  * Persisted layout of the story editor's live-preview pane. One per-project key (not per-scene):
  * pane visibility, docked width, and picture-in-picture placement are a workbench preference that
@@ -38,6 +41,11 @@ export type StoryScenePreviewPaneState = {
     floatFrame: StoryScenePreviewFloatFrame;
     /** Lines appear on the stage in full rather than typed out (see `useStoryScenePreviewController`). */
     skipTyping: boolean;
+    /**
+     * Shot or layers. Not read back from the stored record: the pane opens on the shot every time,
+     * which is what a preview is for, and the layer view is a place the author goes to on purpose.
+     */
+    view: StoryScenePreviewView;
 };
 
 const STORY_PREVIEW_PANE_STATE_KEY = "story:editor:preview";
@@ -59,6 +67,7 @@ export const DEFAULT_STORY_SCENE_PREVIEW_PANE_STATE: StoryScenePreviewPaneState 
     float: null,
     floatFrame: "workspace",
     skipTyping: false,
+    view: "stage",
 };
 
 function parseFloatRect(value: unknown): StoryScenePreviewFloatRect | null {
@@ -91,6 +100,7 @@ export function parseStoryScenePreviewPaneState(stored: Partial<StoryScenePrevie
         // Only a rect has a frame to be read in; with none there is nothing to carry over.
         floatFrame: float === null || stored?.floatFrame === "workspace" ? "workspace" : "editorBody",
         skipTyping: stored?.skipTyping === true,
+        view: "stage",
     };
 }
 

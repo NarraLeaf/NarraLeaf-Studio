@@ -442,6 +442,31 @@ export const lint = {
                 + "- Choose a page in the row's Page shown afterwards field.\n"
                 + "- To end the story with an ending recorded, use an /ending row instead.",
         },
+        storyInputActionMissing: {
+            title: "Wait for a missing input action",
+            description: "A /waitinput, /hold or /mash row naming an input action the project no longer has",
+            message: "The input action this row waits for is no longer in the project, so the story stops here for good",
+            timed: "The input action this row waits for is no longer in the project, so the row always fails when its time limit ends",
+            help:
+                "A /waitinput, /hold or /mash row names an input action that has been deleted from the project's input settings.\n"
+                + "\n"
+                + "No input can perform the action. With no time limit the story stops at this row. With a time limit the row always fails.\n"
+                + "\n"
+                + "- Choose an existing action in the row's Input action field.\n"
+                + "- Clear the field to accept any input action.",
+        },
+        storyInputLockedDialogue: {
+            title: "Line inside a locked passage",
+            description: "A line or /wait click after /input lock with no /input unlock before it",
+            message: "Player input is locked here, so this row cannot be advanced. Add /input unlock before it",
+            help:
+                "/input lock stops clicking to advance, the advance key, auto-forward and skipping until an /input unlock row runs. Choices can still be picked.\n"
+                + "\n"
+                + "A dialogue line or a /wait click inside a locked passage waits for an advance the player cannot give, and the story stops there.\n"
+                + "\n"
+                + "- Add an /input unlock row before the line.\n"
+                + "- Branches are not checked one at a time: a lock or unlock inside one branch also counts for the rows written after it. A passage that locks or unlocks inside a branch can be reported when it is fine, or missed.",
+        },
         storyEndingNameDuplicate: {
             title: "Two endings with one name",
             description: "More than one ending sharing a display name",
@@ -495,6 +520,7 @@ export const lint = {
             message: "No row in this scene creates {object}, so this row has nothing to act on",
             // A character is not created, it walks on - so the remedy is the one word that changes.
             messageCharacter: "No row in this scene brings {object} on stage, so this row has nothing to act on",
+            messageLayer: "This scene has no layer {object}, so this row has nothing to act on",
             help:
                 "The row acts on a stage object that no row in this scene creates. Only rows in the same "
                 + "scene count, since stage objects do not carry over from another scene, and names must match "
@@ -502,8 +528,9 @@ export const lint = {
                 + "\n"
                 + "In the game the row has nothing to act on and does nothing.\n"
                 + "\n"
-                + "- Add the row that creates it in this scene, above this one: /image, /text, /layer, /vfx, "
+                + "- Add the row that creates it in this scene, above this one: /image, /text, /vfx, "
                 + "/play or /sound, or /show for a character.\n"
+                + "- For a layer, add it to the scene's layers in the live preview's Layers view.\n"
                 + "- If the row should act on an object that exists, choose that object in the row's inspector.\n"
                 + "- Correct the name if it is misspelled.",
         },
@@ -769,7 +796,9 @@ export const lint = {
             message: "Nothing opens this page",
             help:
                 "A page nothing opens: it is not the entry page, no blueprint node picks it (Go Page, Show "
-                + "Layer and Quit Game are examples), and no Page widget shows it. Game UI is not checked.\n"
+                + "Layer and Quit Game are examples), no Page widget shows it, no /quit or /ending row names it, "
+                + "and neither the project nor a build variant shows it when the story ends. Game UI is not "
+                + "checked.\n"
                 + "\n"
                 + "No player can open the page.\n"
                 + "\n"
@@ -1152,7 +1181,8 @@ export const lint = {
             messageUnnamed: "A variable with no declaration is always within {bound} here, so this condition cannot hold",
             help:
                 "No value the variable can have at this row makes the condition true. Only comparisons of a "
-                + "number variable with a written number are checked, such as affection >= 50. The range in the "
+                + "number variable with a written number are checked, such as affection >= 50. Persistent variables "
+                + "carry their value over from the previous run and are not checked. The range in the "
                 + "finding counts the variable's default and every change the story can make before this row.\n"
                 + "\n"
                 + "In the game the condition is always false: an /if branch never runs, an /until never ends "
@@ -1514,6 +1544,8 @@ export const lint = {
     severity: {
         error: "Error",
         warning: "Warning",
+        // A problem the project never stops a build on and never counts with the warnings.
+        minor: "Minor warning",
         info: "Info",
         off: "Off",
     },
@@ -1523,7 +1555,7 @@ export const lint = {
         running: "Checking…",
         // Each slot is one whole count with its noun, from `common.count.*`, so a count of one
         // reads in the singular.
-        counts: "{errors}, {warnings}, {infos}",
+        counts: "{errors}, {warnings}, {minorWarnings}, {infos}",
         filtered: "{shown} of {total}",
         rerun: "Run again",
         filterAll: "All",
@@ -1561,7 +1593,7 @@ export const lint = {
     },
     // The status bar cell's hover and spoken label. The cell itself shows the two numbers.
     statusBar: {
-        counts: "Problems: {errors}, {warnings}, {infos}",
+        counts: "Problems: {errors}, {warnings}, {minorWarnings}, {infos}",
     },
     command: {
         runProject: "Check project",

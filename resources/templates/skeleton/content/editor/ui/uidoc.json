@@ -734,16 +734,12 @@
             "opacity": 1
           },
           "props": {
-            "fitMode": "cover",
-            "flipX": false,
-            "flipY": false,
             "backgroundColor": "nlbrand:pageBackground",
             "fillVisible": true,
             "fillOpacity": 1,
             "borderRadius": 0,
             "borderWidth": 0,
-            "borderStyle": "none",
-            "clipContent": true
+            "borderStyle": "none"
           }
         },
         "889d58ef-100b-4b3c-9d59-3825cf3b50d0": {
@@ -1319,7 +1315,7 @@
           "layout": {
             "x": 16,
             "y": 300,
-            "width": 110,
+            "width": 200,
             "height": 24,
             "visible": true,
             "opacity": 1
@@ -1505,9 +1501,9 @@
           "parentId": "5107c0a1-0000-4000-8000-000000000001",
           "childrenIds": [],
           "layout": {
-            "x": 132,
+            "x": 222,
             "y": 300,
-            "width": 204,
+            "width": 136,
             "height": 24,
             "visible": true,
             "opacity": 1
@@ -2255,9 +2251,9 @@
           "parentId": "5107c0a1-0000-4000-8000-000000000001",
           "childrenIds": [],
           "layout": {
-            "x": 340,
+            "x": 364,
             "y": 300,
-            "width": 100,
+            "width": 76,
             "height": 24,
             "visible": true,
             "opacity": 1
@@ -9934,6 +9930,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -9947,6 +9949,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -9967,6 +9975,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -10005,6 +10019,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -10054,6 +10074,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -10160,6 +10186,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -10173,6 +10205,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -10193,6 +10231,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -10231,6 +10275,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -10280,6 +10330,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -17021,6 +17077,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -17034,6 +17096,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -17054,6 +17122,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -17092,6 +17166,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -17141,6 +17221,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -17247,6 +17333,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -17260,6 +17352,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -17280,6 +17378,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -17318,6 +17422,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -17367,6 +17477,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -18408,6 +18524,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -18421,6 +18543,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -18441,6 +18569,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -18479,6 +18613,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -18528,6 +18668,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -18634,6 +18780,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -18647,6 +18799,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -18667,6 +18825,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -18705,6 +18869,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -18754,6 +18924,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -29336,16 +29512,12 @@
         "opacity": 1
       },
       "props": {
-        "fitMode": "cover",
-        "flipX": false,
-        "flipY": false,
         "backgroundColor": "transparent",
         "fillVisible": true,
         "fillOpacity": 0.3,
         "borderRadius": 0,
         "borderWidth": 0,
         "borderStyle": "none",
-        "clipContent": true,
         "fillType": "image",
         "imageFill": {
           "mode": "cover",
@@ -29975,6 +30147,21 @@
                           "color": "nlbrand:primary"
                         }
                       }
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": {
+                        "storage": "layer",
+                        "layer": {
+                          "offsetX": 0,
+                          "offsetY": 0,
+                          "blur": 18,
+                          "spread": 0,
+                          "color": "nlbrand:primary"
+                        }
+                      }
                     }
                   ],
                   "transition": {
@@ -29993,6 +30180,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": -8
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": -8
                     }
@@ -30079,6 +30272,21 @@
                           "color": "nlbrand:primary"
                         }
                       }
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": {
+                        "storage": "layer",
+                        "layer": {
+                          "offsetX": 0,
+                          "offsetY": 0,
+                          "blur": 18,
+                          "spread": 0,
+                          "color": "nlbrand:primary"
+                        }
+                      }
                     }
                   ],
                   "transition": {
@@ -30097,6 +30305,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": -8
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": -8
                     }
@@ -30183,6 +30397,21 @@
                           "color": "nlbrand:primary"
                         }
                       }
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": {
+                        "storage": "layer",
+                        "layer": {
+                          "offsetX": 0,
+                          "offsetY": 0,
+                          "blur": 18,
+                          "spread": 0,
+                          "color": "nlbrand:primary"
+                        }
+                      }
                     }
                   ],
                   "transition": {
@@ -30201,6 +30430,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": -8
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": -8
                     }
@@ -30287,6 +30522,21 @@
                           "color": "nlbrand:primary"
                         }
                       }
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": {
+                        "storage": "layer",
+                        "layer": {
+                          "offsetX": 0,
+                          "offsetY": 0,
+                          "blur": 18,
+                          "spread": 0,
+                          "color": "nlbrand:primary"
+                        }
+                      }
                     }
                   ],
                   "transition": {
@@ -30305,6 +30555,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": -8
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": -8
                     }
@@ -30391,6 +30647,21 @@
                           "color": "nlbrand:primary"
                         }
                       }
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": {
+                        "storage": "layer",
+                        "layer": {
+                          "offsetX": 0,
+                          "offsetY": 0,
+                          "blur": 18,
+                          "spread": 0,
+                          "color": "nlbrand:primary"
+                        }
+                      }
                     }
                   ],
                   "transition": {
@@ -30409,6 +30680,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": -8
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": -8
                     }
@@ -30601,8 +30878,25 @@
                     {
                       "conditions": null,
                       "value": "nlbrand:pageBackground"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:raisedFill"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": "nlbrand:raisedFill"
                     }
-                  ]
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
                 },
                 {
                   "key": "borderRadius",
@@ -34848,6 +35142,18 @@
                     {
                       "conditions": null,
                       "value": "nlbrand:pageBackground"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:raisedFill"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": "nlbrand:raisedFill"
                     }
                   ],
                   "transition": {
@@ -34967,6 +35273,18 @@
                     {
                       "conditions": null,
                       "value": "nlbrand:pageBackground"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:raisedFill"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": "nlbrand:raisedFill"
                     }
                   ],
                   "transition": {
@@ -35072,7 +35390,62 @@
         "paddingX": 0,
         "paddingY": 0,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "Default",
+              "propertyGroups": [
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:pageBackground"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:raisedFill"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": "nlbrand:raisedFill"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
       }
     },
     "689bbcf1-237c-4d9c-b78b-0c68f4a70b8c": {
@@ -35110,7 +35483,62 @@
         "paddingX": 0,
         "paddingY": 0,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "Default",
+              "propertyGroups": [
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:pageBackground"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:raisedFill"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": "nlbrand:raisedFill"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
       }
     },
     "62765948-305a-4320-8276-7ba2ea9e5fd0": {
@@ -35148,7 +35576,62 @@
         "paddingX": 0,
         "paddingY": 0,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "Default",
+              "propertyGroups": [
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:pageBackground"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:raisedFill"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": "nlbrand:raisedFill"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
       }
     },
     "f099e023-88ca-4998-9387-b213df1f41ba": {
@@ -35186,7 +35669,62 @@
         "paddingX": 0,
         "paddingY": 0,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "Default",
+              "propertyGroups": [
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:pageBackground"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:raisedFill"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": "nlbrand:raisedFill"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
       }
     },
     "04bf9d9c-d215-4f75-98c2-a4e461f2db4b": {
@@ -42591,7 +43129,62 @@
         "paddingX": 0,
         "paddingY": 0,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "Default",
+              "propertyGroups": [
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:pageBackground"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:raisedFill"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": "nlbrand:raisedFill"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
       }
     },
     "2475e4b4-922a-42be-86a8-3bf2309116aa": {
@@ -44361,6 +44954,21 @@
                           "color": "nlbrand:primary"
                         }
                       }
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": {
+                        "storage": "layer",
+                        "layer": {
+                          "offsetX": 0,
+                          "offsetY": 0,
+                          "blur": 18,
+                          "spread": 0,
+                          "color": "nlbrand:primary"
+                        }
+                      }
                     }
                   ],
                   "transition": {
@@ -44379,6 +44987,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": -8
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": -8
                     }
@@ -45020,6 +45634,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -45033,6 +45653,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -45053,6 +45679,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -45091,6 +45723,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -45140,6 +45778,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -45246,6 +45890,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -45259,6 +45909,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -45279,6 +45935,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -45317,6 +45979,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -45366,6 +46034,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -45883,6 +46557,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -45896,6 +46576,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -45916,6 +46602,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -45954,6 +46646,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -46003,6 +46701,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -46103,6 +46807,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -46116,6 +46826,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -46136,6 +46852,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -46174,6 +46896,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -46223,6 +46951,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -46323,6 +47057,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -46336,6 +47076,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -46356,6 +47102,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -46394,6 +47146,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -46443,6 +47201,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -46543,6 +47307,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -46556,6 +47326,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -46576,6 +47352,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -46614,6 +47396,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -46663,6 +47451,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -46824,13 +47618,11 @@
         "visible": true
       },
       "props": {
-        "fitMode": "cover",
         "backgroundColor": "nlbrand:pageBackground",
         "fillType": "image",
         "fillVisible": true,
         "borderWidth": 0,
         "borderStyle": "none",
-        "clipContent": true,
         "imageFill": {
           "mode": "cover"
         }
@@ -46998,13 +47790,11 @@
         "visible": true
       },
       "props": {
-        "fitMode": "cover",
         "backgroundColor": "nlbrand:pageBackground",
         "fillType": "image",
         "fillVisible": true,
         "borderWidth": 0,
         "borderStyle": "none",
-        "clipContent": true,
         "imageFill": {
           "mode": "cover"
         }
@@ -47911,6 +48701,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -47924,6 +48720,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -47944,6 +48746,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -47982,6 +48790,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -48048,6 +48862,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -48061,6 +48881,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -48081,6 +48907,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -48119,6 +48951,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -49728,6 +50566,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -49741,6 +50585,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -49761,6 +50611,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -49799,6 +50655,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -49877,7 +50739,8 @@
           "kind": "gamepad",
           "button": "B"
         }
-      ]
+      ],
+      "navigationSlot": "cancel"
     },
     "closeLog": {
       "id": "closeLog",
@@ -49906,11 +50769,139 @@
           "gesture": "longPress"
         }
       ]
+    },
+    "navUp": {
+      "id": "navUp",
+      "name": "Move up",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Arrow Up"
+        },
+        {
+          "kind": "gamepad",
+          "button": "D-pad Up"
+        },
+        {
+          "kind": "gamepad",
+          "button": "Left Stick Up"
+        }
+      ],
+      "navigationSlot": "up"
+    },
+    "navDown": {
+      "id": "navDown",
+      "name": "Move down",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Arrow Down"
+        },
+        {
+          "kind": "gamepad",
+          "button": "D-pad Down"
+        },
+        {
+          "kind": "gamepad",
+          "button": "Left Stick Down"
+        }
+      ],
+      "navigationSlot": "down"
+    },
+    "navLeft": {
+      "id": "navLeft",
+      "name": "Move left",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Arrow Left"
+        },
+        {
+          "kind": "gamepad",
+          "button": "D-pad Left"
+        },
+        {
+          "kind": "gamepad",
+          "button": "Left Stick Left"
+        }
+      ],
+      "navigationSlot": "left"
+    },
+    "navRight": {
+      "id": "navRight",
+      "name": "Move right",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Arrow Right"
+        },
+        {
+          "kind": "gamepad",
+          "button": "D-pad Right"
+        },
+        {
+          "kind": "gamepad",
+          "button": "Left Stick Right"
+        }
+      ],
+      "navigationSlot": "right"
+    },
+    "navNext": {
+      "id": "navNext",
+      "name": "Next control",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Tab"
+        }
+      ],
+      "navigationSlot": "next"
+    },
+    "navPrevious": {
+      "id": "navPrevious",
+      "name": "Previous control",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Shift+Tab"
+        }
+      ],
+      "navigationSlot": "previous"
+    },
+    "navConfirm": {
+      "id": "navConfirm",
+      "name": "Confirm",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Enter"
+        },
+        {
+          "kind": "key",
+          "key": "Space"
+        },
+        {
+          "kind": "gamepad",
+          "button": "A"
+        }
+      ],
+      "navigationSlot": "confirm"
+    },
+    "navMenu": {
+      "id": "navMenu",
+      "name": "Quick menu",
+      "bindings": [
+        {
+          "kind": "gamepad",
+          "button": "Y"
+        }
+      ],
+      "navigationSlot": "menu"
     }
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-10-07T00:59:53.063Z"
+    "updatedAt": "2026-10-11T01:02:35.591Z"
   },
   "structs": {},
   "entrySurfaceId": "5107c0a1-0000-4000-8000-000000000500"

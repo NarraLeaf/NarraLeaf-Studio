@@ -4,6 +4,7 @@
 import type { LintService } from "@/lib/workspace/services/core/LintService";
 import { resolveLintMessageParams, type LintReportEntry } from "@/lib/lint/types";
 import { translate, translateN } from "@/lib/i18n";
+import { createTranslator } from "@shared/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import type { TestDefinition, TestFinding } from "../types";
 import type { BuiltInTestHost } from "./index";
@@ -87,17 +88,32 @@ export function createProjectDiagnosticsTest(host: BuiltInTestHost): TestDefinit
  * One lint entry as one finding.
  *
  * Straight through in every field that exists on both sides. `severity` in particular is *not*
- * re-derived: the engine already resolved it against the project's config table, and the ladders are
- * the same three words. `target` is passed on untouched because it is a `SearchJumpTarget` on both
+ * re-derived: the engine already resolved it against the project's config table. The one step the
+ * two ladders do not share is the lint's minor warning, which a test finding cannot carry - the test
+ * ladder is part of the plugin protocol - so it is reported as `info`, the level that, like it, never
+ * decides a verdict and is never counted with the warnings; `ruleId` still says which rule it was.
+ * `target` is passed on untouched because it is a `SearchJumpTarget` on both
  * sides, so the report tab's click-to-jump is existing machinery rather than a second navigation
  * layer that could disagree with the lint report's.
  */
-function toFinding(entry: LintReportEntry): TestFinding {
+export function toFinding(entry: LintReportEntry): TestFinding {
     return {
-        severity: entry.severity,
+        severity: entry.severity === "minor" ? "info" : entry.severity,
         // Resolved here rather than carried: a test finding's params are words, and a catalogue key
         // among them would print as the key.
         message: { key: entry.messageKey, params: resolveLintMessageParams(entry, translate, translateN) },
         target: entry.target,
+        ruleId: entry.ruleId,
+        // The same words in English for machine readers: the params above are already in the editor
+        // language, so rendering the key in English afterwards would mix the two.
+        englishMessage: english().t(entry.messageKey, resolveLintMessageParams(entry, key => english().t(key), (base, count, params) => english().tn(base, count, params))),
     };
+}
+
+let englishTranslator: ReturnType<typeof createTranslator> | null = null;
+
+/** Built on first use: most runs are read in the editor and never need it before a finding exists. */
+function english(): ReturnType<typeof createTranslator> {
+    englishTranslator ??= createTranslator("en");
+    return englishTranslator;
 }

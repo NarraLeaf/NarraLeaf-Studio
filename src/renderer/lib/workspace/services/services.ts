@@ -165,6 +165,7 @@ import type {
     StoryLiteralValue,
     StoryScene,
     StorySceneId,
+    StorySceneLayer,
     StorySceneUpdate,
     StoryTransformRef,
     StoryVariableValueType,
@@ -289,6 +290,10 @@ enum Services {
     WorkspaceReload = "workspaceReload",
     /** Recovery mode's own state: which subsystems have been tried, and what they said */
     Recovery = "recovery",
+    /** What the author sees of a connected AI agent, and the pause and follow switches over it */
+    AgentFollow = "agentFollow",
+    /** Carries out the calls an AI agent makes over Studio's MCP endpoint; see `agent/AgentBridgeService` */
+    AgentBridge = "agentBridge",
     // Plugin = "plugin",
 }
 
@@ -1054,6 +1059,10 @@ interface IBlueprintNodeCatalogService extends IService {
     ensureBuiltinsRegistered(): void;
     register(def: BlueprintNodeDef, options?: { ownerPluginId?: string; replaceExisting?: boolean }): void;
     registerMany(defs: BlueprintNodeDef[], options?: { ownerPluginId?: string; replaceExisting?: boolean }): void;
+    /** Goes up with every registration; see {@link onCatalogChanged}. */
+    getCatalogRevision(): number;
+    /** Called after node types are registered - a plugin's arrive after the editors have drawn. */
+    onCatalogChanged(handler: () => void): () => void;
     registerDynamicSelectOptionsSource(
         sourceId: string,
         provider: () => BlueprintInspectorParamSelectOption[],
@@ -1245,6 +1254,8 @@ interface IStoryService extends IService {
     createScene(storyId: StoryId, input: { chapterId?: string; name: string }): StoryScene;
     renameScene(storyId: StoryId, sceneId: StorySceneId, name: string): boolean;
     updateScene(storyId: StoryId, sceneId: StorySceneId, patch: StorySceneUpdate): boolean;
+    /** The scene's layer stack, front to back - see `StoryScene.layers`. */
+    setSceneLayers(storyId: StoryId, sceneId: StorySceneId, layers: readonly StorySceneLayer[]): boolean;
     deleteScene(storyId: StoryId, sceneId: StorySceneId): boolean;
     moveScene(storyId: StoryId, sceneId: StorySceneId, target: { chapterId: string; beforeSceneId?: string | null }): boolean;
     setEntryScene(storyId: StoryId, sceneId: StorySceneId | undefined): void;

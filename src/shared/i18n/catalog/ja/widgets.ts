@@ -68,7 +68,7 @@ export const widgets = {
     sampleText: {
         label: "サンプルテキスト",
         hint: "エディタでのみ表示。ゲームでは物語の現在の行を表示する",
-        bindingNoEffect: "このバインドは{slot}スロットでは効かない",
+        bindingNoEffect: "このバインドは{slot}スロットでは無効",
         removeBinding: "解除",
         hintBlueprintValue: "エディタでのみ表示。ゲームではブループリント値の結果を表示する",
         hintComponentParam: "コンポーネントの編集中のみ表示。置いたものでは、それぞれがパラメータに設定した値を表示する",
@@ -261,6 +261,37 @@ export const widgets = {
     image: {
         title: "画像",
     },
+    inputHints: {
+        title: "操作ヒント",
+        sectionContent: "内容",
+        sectionStyle: "スタイル",
+        sectionWords: "文言",
+        showFor: "表示する入力",
+        showForKeysAndGamepad: "キーボードとゲームパッド",
+        showForGamepad: "ゲームパッドのみ",
+        showForAlways: "すべての入力",
+        showForTip: "ヒントを表示する入力。ほかの入力の使用中は何も表示しない",
+        glyphStyle: "ボタンの表記",
+        glyphAuto: "接続中のコントローラーに合わせる",
+        glyphXbox: "Xbox",
+        glyphPlayStation: "PlayStation",
+        glyphNintendo: "Nintendo",
+        align: "配置",
+        alignStart: "先頭",
+        alignCenter: "中央",
+        alignEnd: "末尾",
+        fontSize: "文字サイズ",
+        color: "文字色",
+        glyphBackground: "アイコンの塗り",
+        glyphColor: "アイコンの文字",
+        gap: "間隔",
+        wordsTip: "空欄の場合は Studio の文言をプレイヤーの言語で表示する。プロジェクトで宣言したアクションはその名前で表示する",
+        wordSelect: "選択",
+        wordConfirm: "決定",
+        wordBack: "戻る",
+        wordAdvance: "送り",
+        wordStageControls: "クイックメニュー",
+    },
     video: {
         title: "動画",
         sectionSource: "ソース",
@@ -279,7 +310,7 @@ export const widgets = {
         loop: "ループ",
         muted: "消音",
         autoplay: "自動再生",
-        autoplayHint: "ゲームで効く。エディタのキャンバスは止まったまま。プレビューはドッカーバーから行う",
+        autoplayHint: "ゲーム内でのみ有効。エディタのキャンバスは停止したまま。プレビューはツールバーから行う",
         volume: "音量",
         volumeHint: "0 から 1 まで。実行時はブループリントの音量ピンが優先される",
         audioTrack: "オーディオトラック",
@@ -297,6 +328,7 @@ export const widgets = {
         previewPlay: "プレビューを再生",
         previewPause: "プレビューを一時停止",
         previewRestart: "先頭のコマに戻す",
+        playRefused: "動画「{name}」の再生が始まらなかった。音声のある動画はプレイヤーがクリックかキー入力をした後にだけ再生でき、消音の動画はすぐに再生できる",
     },
     /**
      * ウィジェットに保存される型は `nl.puppet` で、どの描画側の名前でもない。作者が読む文字列は
@@ -388,6 +420,7 @@ export const widgets = {
      * エディタの言語がそのまま焼き込まれる。
      */
     defaults: {
+        inputHints: { name: "操作ヒント" },
         button: { name: "ボタン", label: "ボタン" },
         choiceList: { name: "選択肢リスト", choiceA: "選択肢 A", choiceB: "選択肢 B", choiceC: "選択肢 C" },
         container: { name: "コンテナ" },
