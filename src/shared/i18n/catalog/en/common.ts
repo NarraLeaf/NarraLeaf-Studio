@@ -140,5 +140,13 @@ export const common = {
         arrowRight: "Arrow Right",
         space: "Space",
         plus: "Plus",
+        dpadUp: "D-pad Up",
+        dpadDown: "D-pad Down",
+        dpadLeft: "D-pad Left",
+        dpadRight: "D-pad Right",
+        leftStickUp: "Left Stick Up",
+        leftStickDown: "Left Stick Down",
+        leftStickLeft: "Left Stick Left",
+        leftStickRight: "Left Stick Right",
     },
 } as const;

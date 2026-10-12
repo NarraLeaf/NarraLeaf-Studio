@@ -16,6 +16,7 @@ import {
     getInputBindingDeviceActs,
     getInputBindingDevices,
     getInputBindingDevicesLabel,
+    getGamepadButtonLabel,
     getInputBindingLabel,
     getInputDeviceLabel,
     getInputPointerGestureLabel,
@@ -209,5 +210,23 @@ describe("what a key binding is called", () => {
         expect(normalizeUIInputBinding({ kind: "key", key: "Arrow Up" })).toEqual({ kind: "key", key: "Arrow Up" });
         expect(normalizeUIInputBinding({ kind: "key", key: "esc" })).toEqual({ kind: "key", key: "Escape" });
         expect(normalizeUIInputBinding({ kind: "key", key: "pageup" })).toEqual({ kind: "key", key: "pageup" });
+    });
+});
+
+describe("what a gamepad binding is called", () => {
+    const zhT = createTranslator("zh").t;
+    const enT = createTranslator("en").t;
+
+    it("names the pad's directions in the author's language and keeps printed buttons as printed", () => {
+        expect(getInputBindingLabel({ kind: "gamepad", button: "D-pad Up" }, zhT)).toBe("十字键上");
+        expect(getInputBindingLabel({ kind: "gamepad", button: "Left Stick Right" }, zhT)).toBe("左摇杆右");
+        expect(getInputBindingLabel({ kind: "gamepad", button: "A" }, zhT)).toBe("A");
+        expect(getInputBindingLabel({ kind: "gamepad", button: "Start" }, zhT)).toBe("Start");
+        expect(getInputBindingLabel({ kind: "gamepad", button: "D-pad Up" }, enT)).toBe("D-pad Up");
+    });
+
+    it("reads an alias through the stored name", () => {
+        // An alias a binding may be read in is named as the canonical button it stands for.
+        expect(getGamepadButtonLabel("lb", zhT)).toBe("LB");
     });
 });

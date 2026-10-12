@@ -24,6 +24,7 @@ import {
     getInputBindingDevicesLabel,
     getInputBindingLabel,
     GAMEPAD_BINDING_BUTTONS,
+    getGamepadButtonLabel,
     getInputDeviceLabel,
     type InputBindingDevice,
     type TranslateFn,
@@ -222,7 +223,7 @@ export function InputBindingList({ bindings, onChange, emptyLabel }: InputBindin
                     ...row,
                     submenu: GAMEPAD_BINDING_BUTTONS.map(button => ({
                         id: `gamepad:${button}`,
-                        label: button,
+                        label: getGamepadButtonLabel(button, t),
                         disabled: taken.has(`gamepad:${button}`),
                         onClick: () => {
                             hideMenu();

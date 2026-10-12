@@ -108,5 +108,13 @@ export const common = {
         arrowRight: "右矢印キー",
         space: "スペースキー",
         plus: "プラスキー",
+        dpadUp: "十字キー上",
+        dpadDown: "十字キー下",
+        dpadLeft: "十字キー左",
+        dpadRight: "十字キー右",
+        leftStickUp: "左スティック上",
+        leftStickDown: "左スティック下",
+        leftStickLeft: "左スティック左",
+        leftStickRight: "左スティック右",
     },
 } satisfies LocaleNamespace<"common">;

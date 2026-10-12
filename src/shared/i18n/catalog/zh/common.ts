@@ -102,5 +102,13 @@ export const common = {
         arrowRight: "右方向键",
         space: "空格键",
         plus: "加号键",
+        dpadUp: "十字键上",
+        dpadDown: "十字键下",
+        dpadLeft: "十字键左",
+        dpadRight: "十字键右",
+        leftStickUp: "左摇杆上",
+        leftStickDown: "左摇杆下",
+        leftStickLeft: "左摇杆左",
+        leftStickRight: "左摇杆右",
     },
 } satisfies LocaleNamespace<"common">;

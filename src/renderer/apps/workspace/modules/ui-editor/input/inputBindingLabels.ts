@@ -25,12 +25,34 @@ export function getInputPointerGestureLabel(gesture: UIInputPointerGesture, t: T
     return t(`uiEditor.inputActions.gesture.${gesture}`);
 }
 
+/**
+ * The pad's directions, which carry no word on the pad, named in the author's language. Every other
+ * button is named by what is printed on it (A, LB, Start), the same in every language, as a key is.
+ */
+const GAMEPAD_DIRECTION_NAMES: ReadonlyMap<string, TranslationKey> = new Map<string, TranslationKey>([
+    ["D-pad Up", "common.keys.dpadUp"],
+    ["D-pad Down", "common.keys.dpadDown"],
+    ["D-pad Left", "common.keys.dpadLeft"],
+    ["D-pad Right", "common.keys.dpadRight"],
+    ["Left Stick Up", "common.keys.leftStickUp"],
+    ["Left Stick Down", "common.keys.leftStickDown"],
+    ["Left Stick Left", "common.keys.leftStickLeft"],
+    ["Left Stick Right", "common.keys.leftStickRight"],
+]);
+
+/** A gamepad button as the author reads it. Display only: the binding keeps its stored name. */
+export function getGamepadButtonLabel(button: string, t: TranslateFn): string {
+    const name = formatBlueprintGamepadButton(button) || button;
+    const translated = GAMEPAD_DIRECTION_NAMES.get(name);
+    return translated ? t(translated) : name;
+}
+
 export function getInputBindingLabel(binding: UIInputBinding, t: TranslateFn): string {
     if (binding.kind === "pointer") {
         return getInputPointerGestureLabel(binding.gesture, t);
     }
     if (binding.kind === "gamepad") {
-        return formatBlueprintGamepadButton(binding.button) || binding.button;
+        return getGamepadButtonLabel(binding.button, t);
     }
     return getKeyboardBindingLabel(binding.key, t) || binding.key;
 }
@@ -174,5 +196,8 @@ export function getInputBindingRoutingDevices(binding: UIInputBinding): Readonly
     return inputBindingDevices(binding) as ReadonlySet<string>;
 }
 
-/** The 17 standard buttons and the left stick's four directions the add-menu lists. Hardware names, not localised. */
+/**
+ * The 17 standard buttons and the left stick's four directions the add-menu lists, in their stored
+ * names; the menu shows each through {@link getGamepadButtonLabel}.
+ */
 export const GAMEPAD_BINDING_BUTTONS = BLUEPRINT_GAMEPAD_BUTTONS;
