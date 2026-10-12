@@ -127,4 +127,26 @@ export const common = {
         // The name of the small overview map in a graph's corner, which the library otherwise calls "Mini Map".
         overview: "Overview",
     },
+    /**
+     * The keys whose keycap carries no word to show: the four arrows, the space bar, and the plus
+     * key, whose "+" would read as the joint in "Ctrl+…". Every other key is shown by the name printed
+     * on it ("Enter", "Esc", "PageUp", "F5"), the same in every language. A binding is stored in its
+     * English spelling whatever these say.
+     */
+    keys: {
+        arrowUp: "Arrow Up",
+        arrowDown: "Arrow Down",
+        arrowLeft: "Arrow Left",
+        arrowRight: "Arrow Right",
+        space: "Space",
+        plus: "Plus",
+        dpadUp: "D-pad Up",
+        dpadDown: "D-pad Down",
+        dpadLeft: "D-pad Left",
+        dpadRight: "D-pad Right",
+        leftStickUp: "Left Stick Up",
+        leftStickDown: "Left Stick Down",
+        leftStickLeft: "Left Stick Left",
+        leftStickRight: "Left Stick Right",
+    },
 } as const;

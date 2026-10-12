@@ -1,17 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { en } from "@shared/i18n/catalog/en";
 import { flattenCatalog } from "@shared/i18n/flatten";
-import type { InterpolationParams, TranslationKey } from "@shared/i18n";
+import { createTranslator, type InterpolationParams, type TranslationKey } from "@shared/i18n";
+import { formatBlueprintKeyboardBindingFromEvent } from "@shared/types/blueprint/graph";
 import {
     UI_INPUT_POINTER_GESTURES,
     inputBindingDevices,
+    normalizeUIInputBinding,
 } from "@shared/types/ui-editor/inputAction";
+import { UI_NAVIGATION_SLOT_PRESET_BINDINGS } from "@shared/types/ui-editor/navigation";
+import { getKeyboardBindingLabel } from "@/lib/ui-editor/keyboardBindingLabel";
 import {
     INPUT_BINDING_DEVICES,
     INPUT_DEVICE_GESTURE_OFFERS,
     getInputBindingDeviceActs,
     getInputBindingDevices,
     getInputBindingDevicesLabel,
+    getGamepadButtonLabel,
+    getInputBindingLabel,
     getInputDeviceLabel,
     getInputPointerGestureLabel,
 } from "./inputBindingLabels";
@@ -138,5 +144,89 @@ describe("what each device offers", () => {
                 "uiEditor.inputActions.device.touch uiEditor.inputActions.menu.touchSlideDown",
             ].join("\n"),
         );
+    });
+});
+
+describe("what a key binding is called", () => {
+    const enT = createTranslator("en").t;
+    const zhT = createTranslator("zh").t;
+    const jaT = createTranslator("ja").t;
+    const keyLabel = (key: string, t: typeof enT) => getInputBindingLabel({ kind: "key", key }, t);
+
+    it("names a key with no word on its keycap in the author's language", () => {
+        // The reported defect: the arrows the navigation intents start bound to read in English
+        // under a Chinese interface.
+        expect(keyLabel("Arrow Up", zhT)).toBe("上方向键");
+        expect(keyLabel("Arrow Left", zhT)).toBe("左方向键");
+        expect(keyLabel("Space", zhT)).toBe("空格键");
+        expect(keyLabel("Ctrl+Plus", zhT)).toBe("Ctrl+加号键");
+        expect(keyLabel("Arrow Down", jaT)).toBe("下矢印キー");
+        expect(keyLabel("Arrow Up", enT)).toBe("Arrow Up");
+        expect(keyLabel("Space", enT)).toBe("Space");
+    });
+
+    it("keeps the modifiers by their keycap names in front of a translated key", () => {
+        expect(keyLabel("Shift+Space", zhT)).toBe("Shift+空格键");
+        expect(keyLabel("ctrl+alt+arrowright", zhT)).toBe("Ctrl+Alt+右方向键");
+        expect(keyLabel("Shift", zhT)).toBe("Shift");
+    });
+
+    it("names every other key by its keycap, spelled as the keycap spells it", () => {
+        for (const t of [enT, zhT]) {
+            expect(keyLabel("Escape", t)).toBe("Esc");
+            expect(keyLabel("Enter", t)).toBe("Enter");
+            expect(keyLabel("Shift+Tab", t)).toBe("Shift+Tab");
+            expect(keyLabel("pageup", t)).toBe("PageUp");
+            expect(keyLabel("pagedown", t)).toBe("PageDown");
+            expect(keyLabel("home", t)).toBe("Home");
+            expect(keyLabel("backspace", t)).toBe("Backspace");
+            expect(keyLabel("f5", t)).toBe("F5");
+            expect(keyLabel("Ctrl+s", t)).toBe("Ctrl+S");
+        }
+    });
+
+    it("names a key being captured the way the chip will name it", () => {
+        // The capture preview holds the stored spelling and is shown through the same helper.
+        const pressed = formatBlueprintKeyboardBindingFromEvent({ key: "ArrowUp", ctrlKey: true });
+        expect(pressed).toBe("Ctrl+Arrow Up");
+        expect(getKeyboardBindingLabel(pressed, zhT)).toBe("Ctrl+上方向键");
+        expect(getKeyboardBindingLabel(formatBlueprintKeyboardBindingFromEvent({ key: " " }), zhT)).toBe("空格键");
+    });
+
+    it("leaves a binding it cannot read as written, and every preset readable", () => {
+        expect(keyLabel("+++", zhT)).toBe("+++");
+        for (const bindings of Object.values(UI_NAVIGATION_SLOT_PRESET_BINDINGS)) {
+            for (const binding of bindings) {
+                if (binding.kind === "key") {
+                    expect(getKeyboardBindingLabel(binding.key, zhT), binding.key).not.toBe("");
+                }
+            }
+        }
+    });
+
+    it("never changes what is stored", () => {
+        // Display is drawn from the stored spelling and never written back into it.
+        keyLabel("Arrow Up", zhT);
+        expect(normalizeUIInputBinding({ kind: "key", key: "Arrow Up" })).toEqual({ kind: "key", key: "Arrow Up" });
+        expect(normalizeUIInputBinding({ kind: "key", key: "esc" })).toEqual({ kind: "key", key: "Escape" });
+        expect(normalizeUIInputBinding({ kind: "key", key: "pageup" })).toEqual({ kind: "key", key: "pageup" });
+    });
+});
+
+describe("what a gamepad binding is called", () => {
+    const zhT = createTranslator("zh").t;
+    const enT = createTranslator("en").t;
+
+    it("names the pad's directions in the author's language and keeps printed buttons as printed", () => {
+        expect(getInputBindingLabel({ kind: "gamepad", button: "D-pad Up" }, zhT)).toBe("十字键上");
+        expect(getInputBindingLabel({ kind: "gamepad", button: "Left Stick Right" }, zhT)).toBe("左摇杆右");
+        expect(getInputBindingLabel({ kind: "gamepad", button: "A" }, zhT)).toBe("A");
+        expect(getInputBindingLabel({ kind: "gamepad", button: "Start" }, zhT)).toBe("Start");
+        expect(getInputBindingLabel({ kind: "gamepad", button: "D-pad Up" }, enT)).toBe("D-pad Up");
+    });
+
+    it("reads an alias through the stored name", () => {
+        // An alias a binding may be read in is named as the canonical button it stands for.
+        expect(getGamepadButtonLabel("lb", zhT)).toBe("LB");
     });
 });

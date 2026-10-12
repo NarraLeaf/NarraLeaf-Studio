@@ -34,9 +34,10 @@ const PREVIEW_FRAME_CLASS = "overflow-hidden rounded-md border border-edge bg-su
  * It takes what the Interfaces section has left under the switch and the create row, and nothing
  * else: the section's height is the rail's to give (see `SectionStack`), and the floor that keeps a
  * row of cards in view is the section's minimum. `overscroll-contain`, so a wheel that reaches the
- * end of the list stops there instead of moving whatever is around it.
+ * end of the list stops there instead of moving whatever is around it. `nl-scroll-lane` puts the
+ * scrollbar in the right padding, so the cards keep their width when the list starts to overflow.
  */
-const LIST_SCROLLER_CLASS = "min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2";
+const LIST_SCROLLER_CLASS = "nl-scroll-lane min-h-0 flex-1 overflow-y-auto overscroll-contain py-2 pl-2";
 
 type SurfaceListProps = {
     surfaces: UISurface[];
@@ -318,6 +319,11 @@ function useListContentWidth(): [number, (node: HTMLDivElement | null) => void] 
             const padding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
             // `clientWidth` leaves the scrollbar's lane out, which is the width the cards really get.
             const next = Math.max(0, node.clientWidth - (Number.isFinite(padding) ? padding : 0));
+            // Zero is the panel hidden behind another one, not a list with no room. Keeping the last
+            // width means the list comes back in the shape it left, not as rows that snap to tiles.
+            if (next <= 0) {
+                return;
+            }
             setWidth(current => (Math.abs(current - next) < 0.5 ? current : next));
         };
         measure();

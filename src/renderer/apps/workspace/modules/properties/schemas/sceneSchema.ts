@@ -228,6 +228,8 @@ export const scenePropertySchema = (t: TranslateFn) =>
             title: t("properties.scene.navigation.title"),
             collapsible: true,
             defaultCollapsed: true,
+            // The same topic as an element's Navigation section: the two decide one thing together.
+            helpTopic: "focusNavigationSettings",
             hidden: data => !isNavigable(data.surface),
             fields: [
                 defineField<SceneEditorContext, SelectFieldDefinition<SceneEditorContext>>({

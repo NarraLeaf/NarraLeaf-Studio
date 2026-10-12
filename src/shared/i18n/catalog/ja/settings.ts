@@ -93,7 +93,7 @@ export const settings = {
         },
         developerMode: {
             label: "開発者オプション",
-            description: "右クリックのメニューに、クリックした項目の ID をコピーする節が加わる",
+            description: "右クリックのメニューに、クリックした項目の ID をコピーする節が加わり、ノード追加のメニューに各ノードの種類の ID が出る",
         },
         screenEffectThreads: {
             label: "画面エフェクトのスレッド数",
@@ -536,11 +536,13 @@ export const settings = {
     data: {
         projectTrust: {
             loading: "読み込み中…",
-            empty: "これまでに開いたプロジェクトはすべて Studio が作成したもの。",
+            empty: "プロジェクトはない",
             waiting: "未処理",
             granted: "信頼済み",
             trust: "信頼する",
-            remove: "解除",
+            revoke: "解除",
+            delete: "一覧から削除",
+            deleteCovered: "信頼済みのプロジェクト内にあるため削除できない",
             reloadNote: "開いているプロジェクトは、信頼の状態が変わると読み込み直される。",
             origin: {
                 package: "パッケージから",

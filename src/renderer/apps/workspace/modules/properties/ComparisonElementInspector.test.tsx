@@ -102,8 +102,9 @@ describe("ComparisonElementInspector", () => {
             />,
         );
 
+        // A section's `?` opens help and writes nothing, so it stays.
         const controls = Array.from(
-            window.document.querySelectorAll<HTMLElement>("input, select, textarea, button"),
+            window.document.querySelectorAll<HTMLElement>("input, select, textarea, button:not([data-help-trigger])"),
         );
         // A panel with no controls at all would pass the assertion below without meaning anything.
         expect(controls.length).toBeGreaterThan(0);

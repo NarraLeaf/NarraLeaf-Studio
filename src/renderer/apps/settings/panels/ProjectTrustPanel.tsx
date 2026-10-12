@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
+import { Trash2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
-import { Button, FieldLabel } from "@/lib/components/elements";
+import { Button, FieldLabel, IconButton } from "@/lib/components/elements";
 import { PROJECT_TRUST_ORIGIN_LABEL } from "@/lib/app/projectTrustOriginLabel";
 import type { ProjectTrustRecord } from "@shared/types/projectTrust";
 
@@ -16,6 +17,10 @@ import type { ProjectTrustRecord } from "@shared/types/projectTrust";
  * A decision reaches a window already open on that project: the host reloads it, so its run
  * controls and status bar read the ledger again, and stops what the project was running when trust
  * is withdrawn. The note under the lists says so rather than leaving the author to discover it.
+ *
+ * Every row can also be removed outright. A removed project is one Studio never met: it does not
+ * run, and opening it again asks again. The one row that stays is a waiting project inside a
+ * trusted one, which says so on the row instead.
  */
 export function ProjectTrustPanel() {
     const { t } = useTranslation();
@@ -23,6 +28,7 @@ export function ProjectTrustPanel() {
     const [distrusted, setDistrusted] = useState<ProjectTrustRecord[]>([]);
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState<string | null>(null);
+    const [covered, setCovered] = useState<string | null>(null);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -40,9 +46,22 @@ export function ProjectTrustPanel() {
 
     const act = useCallback(async (record: ProjectTrustRecord, grant: boolean) => {
         setBusy(record.path);
+        setCovered(null);
         const api = getInterface().projectTrust;
         await (grant ? api.grant(record.displayPath) : api.revoke(record.displayPath));
         setBusy(null);
+        await load();
+    }, [load]);
+
+    const forget = useCallback(async (record: ProjectTrustRecord) => {
+        setBusy(record.path);
+        setCovered(null);
+        const result = await getInterface().projectTrust.forget(record.displayPath);
+        setBusy(null);
+        if (result.success && result.data.result === "covered") {
+            setCovered(record.path);
+            return;
+        }
         await load();
     }, [load]);
 
@@ -51,7 +70,9 @@ export function ProjectTrustPanel() {
             <p className="min-w-0 flex-1 truncate text-sm text-fg-muted" data-tip={record.displayPath}>
                 {record.displayPath}
             </p>
-            <span className="shrink-0 text-2xs text-fg-subtle">{t(PROJECT_TRUST_ORIGIN_LABEL[record.origin])}</span>
+            <span className="shrink-0 text-2xs text-fg-subtle">
+                {t(covered === record.path ? "settings.data.projectTrust.deleteCovered" : PROJECT_TRUST_ORIGIN_LABEL[record.origin])}
+            </span>
             <Button
                 size="sm"
                 variant="ghost"
@@ -59,8 +80,18 @@ export function ProjectTrustPanel() {
                 disabled={busy !== null}
                 onClick={() => void act(record, grant)}
             >
-                {t(grant ? "settings.data.projectTrust.trust" : "settings.data.projectTrust.remove")}
+                {t(grant ? "settings.data.projectTrust.trust" : "settings.data.projectTrust.revoke")}
             </Button>
+            <IconButton
+                size="sm"
+                variant="ghost"
+                aria-label={t("settings.data.projectTrust.delete")}
+                data-tip={t("settings.data.projectTrust.delete")}
+                disabled={busy !== null}
+                onClick={() => void forget(record)}
+            >
+                <Trash2 className="h-3.5 w-3.5" />
+            </IconButton>
         </div>
     );
 

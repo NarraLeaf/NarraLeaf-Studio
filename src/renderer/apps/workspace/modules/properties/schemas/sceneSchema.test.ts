@@ -36,3 +36,12 @@ describe("surface background swatch", () => {
         expect(backgroundSwatch(surface("appSurface", "#112233"))).toMatchObject({ hex: "#112233", alpha: 1 });
     });
 });
+
+describe("surface navigation section", () => {
+    it("carries the navigation settings topic, as an element's Navigation section does", () => {
+        const schema = scenePropertySchema((key: string) => key) as unknown as {
+            fields: Array<{ id: string; helpTopic?: string }>;
+        };
+        expect(schema.fields.find(item => item.id === "scene.navigation")?.helpTopic).toBe("focusNavigationSettings");
+    });
+});

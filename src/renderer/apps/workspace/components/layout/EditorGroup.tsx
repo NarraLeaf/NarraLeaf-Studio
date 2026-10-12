@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef } from "react";
-import { X, Circle, Plus } from "lucide-react";
+import { X, Circle, Plus, Search } from "lucide-react";
 import { useRegistry } from "../../registry";
 import { useWorkspace } from "../../context";
 import { EditorGroup as EditorGroupType } from "../../registry/types";
@@ -12,7 +12,6 @@ import { useContextMenu, type ContextMenuDef } from "@/lib/components/elements/C
 import { ShortcutContextMenu } from "../ui/ShortcutContextMenu";
 import { HostVisibility } from "@/lib/components/layout";
 import { hasClosedTabs, reopenLastClosedTab } from "../../session/workspaceClosedTabsStore";
-import { openNewTab } from "../../modules/new-tab/openNewTab";
 import { useEditorGroupDrop } from "./useEditorGroupDrop";
 import { EditorGroupDropOverlay } from "./EditorGroupDropOverlay";
 import { tabStripRevealScrollLeft } from "./tabStripReveal";
@@ -27,6 +26,8 @@ import { WorkspacePanelErrorBoundary } from "../WorkspacePanelErrorBoundary";
 import { useWorkspaceReloadGeneration } from "@/lib/workspace/hooks/useWorkspaceReloadGeneration";
 import { useTranslation } from "@/lib/i18n";
 import { EDITOR_TAB_BODY_ATTRIBUTE } from "../../hooks/previewTabPromotion";
+import { useShortcutLabels } from "../../hooks/useShortcutLabels";
+import { QUICK_OPEN_BINDING_ID } from "./QuickOpenPicker";
 
 /** The tab menu's rows that a key also runs, by row id, so each row prints its chord. */
 const TAB_MENU_SHORTCUTS: Readonly<Record<string, string>> = {
@@ -51,7 +52,8 @@ interface EditorGroupProps {
 export function EditorGroup({ group }: EditorGroupProps) {
     const { t } = useTranslation();
     const { closeEditorTab, closeEditorTabs, setActiveEditorTab, editorLayout } = useRegistry();
-    const { context } = useWorkspace();
+    const { context, recovery } = useWorkspace();
+    const shortcuts = useShortcutLabels();
     // True when THIS group owns the active editor focus — either the editor body (a tab is
     // focused) or its tab strip. Drives the accent edge on this group's active tab so the whole
     // workspace shows exactly one "globally active" tab.
@@ -215,13 +217,15 @@ export function EditorGroup({ group }: EditorGroupProps) {
         uiService.focus.setFocus(FocusArea.EditorTabs, group.id);
     }, [context, group.id]);
 
-    // The "+" at the end of the strip works like a browser's: it opens a fresh blank tab in this
-    // group, showing the same idle canvas as an empty editor pane.
-    const handleNewTab = useCallback(() => {
+    // The "+" at the end of the strip opens Quick Open, which is where anything that has a tab is
+    // picked by name. A recovery window has no Quick Open, and draws no "+".
+    const openQuickOpen = useCallback(() => {
         if (!context) return;
-        openNewTab(context, group.id);
         focusTabStrip();
-    }, [context, focusTabStrip, group.id]);
+        context.services.get<UIService>(Services.UI).keybindings.trigger(QUICK_OPEN_BINDING_ID);
+    }, [context, focusTabStrip]);
+    const quickOpenLabel = t("workspace.shell.quickOpen.title");
+    const quickOpenShortcut = shortcuts.forBinding(QUICK_OPEN_BINDING_ID);
 
     const handleCloseTab = (tabId: string, e: React.MouseEvent) => {
         e.stopPropagation();
@@ -640,18 +644,21 @@ export function EditorGroup({ group }: EditorGroupProps) {
                                     </div>
                                 );
                             })}
-                            <button
-                                type="button"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleNewTab();
-                                }}
-                                className="flex cursor-default items-center justify-center w-9 h-9 flex-shrink-0 text-fg-subtle hover:text-fg hover:bg-surface transition-colors"
-                                aria-label={t("workspace.shell.newTab")}
-                                data-tip={t("workspace.shell.newTab")}
-                            >
-                                <Plus className="w-4 h-4" />
-                            </button>
+                            {recovery ? null : (
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        openQuickOpen();
+                                    }}
+                                    className="flex cursor-default items-center justify-center w-9 h-9 flex-shrink-0 text-fg-subtle hover:text-fg hover:bg-surface transition-colors"
+                                    aria-label={quickOpenLabel}
+                                    data-tip={quickOpenLabel}
+                                    data-tip-shortcut={quickOpenShortcut}
+                                >
+                                    <Plus className="w-4 h-4" />
+                                </button>
+                            )}
                         </div>
                     </div>
                     <ShortcutContextMenu
@@ -707,17 +714,21 @@ export function EditorGroup({ group }: EditorGroupProps) {
                 {!activeTab && (
                     <div className="h-full flex flex-col items-center justify-center gap-3 text-fg-subtle">
                         <p>{t("workspace.shell.noActiveEditor")}</p>
-                        <button
-                            type="button"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                handleNewTab();
-                            }}
-                            className="flex items-center gap-2 px-3 h-9 rounded-md border border-edge text-sm text-fg-muted hover:text-fg hover:bg-surface transition-colors"
-                        >
-                            <Plus className="w-4 h-4" />
-                            <span>{t("workspace.shell.newTab")}</span>
-                        </button>
+                        {recovery ? null : (
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    openQuickOpen();
+                                }}
+                                className="flex items-center gap-2 px-3 h-9 rounded-md border border-edge text-sm text-fg-muted hover:text-fg hover:bg-surface transition-colors"
+                                data-tip={quickOpenLabel}
+                                data-tip-shortcut={quickOpenShortcut}
+                            >
+                                <Search className="w-4 h-4" />
+                                <span>{quickOpenLabel}</span>
+                            </button>
+                        )}
                     </div>
                 )}
             </div>

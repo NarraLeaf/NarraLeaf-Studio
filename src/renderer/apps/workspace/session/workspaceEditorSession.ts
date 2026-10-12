@@ -4,8 +4,6 @@ import type { EditorGroup, EditorLayout, EditorTabDefinition } from "@/apps/work
 import { createWelcomeTab } from "@/apps/workspace/modules/welcome/openWelcomeTab";
 import { createHelpTab, HELP_TAB_ID } from "@/apps/workspace/modules/help/openHelpTab";
 import { isHelpTopicId } from "@/lib/help";
-import { createNewTabTab } from "@/apps/workspace/modules/new-tab/openNewTab";
-import { NEW_TAB_ID_PREFIX } from "@/apps/workspace/modules/new-tab/newTabId";
 import { BlueprintEntryTab } from "@/apps/workspace/modules/blueprint-lite/editors/BlueprintEntryTab";
 import { blueprintEntryTabIcon } from "@/apps/workspace/modules/blueprint-lite/openBlueprintEditorTab";
 import {
@@ -90,7 +88,6 @@ export type SerializedTabContent =
     | { kind: "help"; topicId?: string }
     | { kind: "dashboard" }
     | { kind: "blueprintOverview" }
-    | { kind: "newTab"; token: string }
     | { kind: "surface"; surfaceId: string }
     | { kind: "blueprint"; title: string; payload: BlueprintEntryTabPayload }
     | { kind: "character"; characterId: string }
@@ -260,13 +257,6 @@ function serializeTabContent(tab: EditorTabDefinition): SerializedTabContent | n
     if (tab.id === BLUEPRINT_WALL_TAB_ID) {
         return { kind: "blueprintOverview" };
     }
-    if (tab.id.startsWith(NEW_TAB_ID_PREFIX)) {
-        const token = tab.id.slice(NEW_TAB_ID_PREFIX.length);
-        if (!token) {
-            return null;
-        }
-        return { kind: "newTab", token };
-    }
     if (tab.id.startsWith(SURFACE_TAB_PREFIX)) {
         const surfaceId = tab.id.slice(SURFACE_TAB_PREFIX.length);
         if (!surfaceId) {
@@ -373,9 +363,6 @@ function isSerializedTab(value: unknown): value is SerializedTab {
     const o = value as Record<string, unknown>;
     const kind = o.kind;
     if (kind === "welcome" || kind === "dashboard" || kind === "blueprintOverview") {
-        return true;
-    }
-    if (kind === "newTab" && typeof o.token === "string" && o.token.length > 0) {
         return true;
     }
     if (kind === "surface" && typeof o.surfaceId === "string" && o.surfaceId.length > 0) {
@@ -598,9 +585,6 @@ function buildTabDefinitionContent(ctx: WorkspaceContext, entry: SerializedTab):
     }
     if (entry.kind === "blueprintOverview") {
         return createBlueprintWallTab();
-    }
-    if (entry.kind === "newTab") {
-        return createNewTabTab(entry.token);
     }
     if (entry.kind === "surface") {
         const documentService = ctx.services.get<UIDocumentService>(Services.UIDocument);

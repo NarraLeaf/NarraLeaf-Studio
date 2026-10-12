@@ -23,6 +23,7 @@ export const EXPERIMENTAL_CONDITION_IDS = [
     "narralang",
     "scripted-file-dialog",
     "slow-live-transfer",
+    "trust-all-projects",
     "unscoped-file-access",
 ] as const;
 
@@ -72,6 +73,14 @@ export const EXPERIMENTAL_CONDITIONS: readonly ExperimentalConditionDescriptor[]
         flag: `${EXPERIMENTAL_CONDITION_FLAG_PREFIX}slow-live-transfer`,
         summary: "A file carried into a live session goes out slowly enough to watch, so the state "
             + "between a transfer starting and finishing can be looked at rather than inferred.",
+    },
+    {
+        id: "trust-all-projects",
+        flag: `${EXPERIMENTAL_CONDITION_FLAG_PREFIX}trust-all-projects`,
+        summary: "Every project counts as trusted: none is asked about when it opens, and its "
+            + "runtimes, scripts, Dev Mode, previews and builds run as if the author had vouched for "
+            + "it. The trust ledger is not written, so Settings still lists what Studio would have "
+            + "asked about, and every project this trusts is named in the log.",
     },
     {
         id: "unscoped-file-access",

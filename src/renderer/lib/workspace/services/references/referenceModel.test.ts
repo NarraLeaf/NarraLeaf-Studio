@@ -525,20 +525,20 @@ describe("extractVoiceAssetReferences", () => {
 });
 
 describe("extractCharacterAssetReferences", () => {
-    it("covers the profile thumbnail and every appearance image", () => {
+    it("covers every appearance image", () => {
         const references = extractCharacterAssetReferences([
             {
                 id: "c1",
                 name: "Inko",
-                thumbnailAssetId: "thumb-1",
                 appearanceAssets: [
                     { slot: "pose:p1", detail: "Happy", assetId: "happy-1" },
                     { slot: "pose:p2", detail: "Sad", assetId: null },
+                    { slot: "pose:p3", detail: "Calm", assetId: "calm-1" },
                 ],
             },
         ]);
 
-        expect(references.map(reference => reference.assetId).sort()).toEqual(["happy-1", "thumb-1"]);
+        expect(references.map(reference => reference.assetId).sort()).toEqual(["calm-1", "happy-1"]);
         expect(references.find(reference => reference.assetId === "happy-1")?.detail).toBe("Happy");
         // Every picture is chosen in the character's own editor.
         expect(references.map(reference => reference.target))

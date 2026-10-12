@@ -17,6 +17,8 @@
  * Comments in English per project convention.
  */
 
+import { normalizeBlueprintKeyboardEventKeyName } from "../blueprint/graph";
+
 export const UI_INPUT_HINTS_ELEMENT_TYPE = "nl.inputHints";
 
 /** The moves Studio names itself. Everything else in the bar is named by the project's own actions. */
@@ -172,15 +174,23 @@ export function uiInputHintDirectionsGlyph(device: "gamepad" | "key"): UIInputHi
     return { text: device === "gamepad" ? "✚" : "↑↓", shape: device === "gamepad" ? "round" : "bar" };
 }
 
-const KEY_GLYPHS: Readonly<Record<string, string>> = {
-    ArrowUp: "↑", ArrowDown: "↓", ArrowLeft: "←", ArrowRight: "→",
-    Escape: "Esc", Space: "Space", Enter: "Enter", Backspace: "⌫", Tab: "Tab",
-};
+/**
+ * Keys drawn as printed on the keyboard, under the names the key parser gives them
+ * (`normalizeBlueprintKeyboardEventKeyName`). A binding is stored as "Arrow Up" and an event names
+ * the same key "ArrowUp"; both, and "up", reach the one arrow here.
+ */
+const KEY_GLYPHS: ReadonlyMap<string, string> = new Map([
+    ["arrowup", "↑"], ["arrowdown", "↓"], ["arrowleft", "←"], ["arrowright", "→"],
+    ["escape", "Esc"], ["space", "Space"], ["enter", "Enter"], ["backspace", "⌫"], ["tab", "Tab"],
+]);
 
-/** A keyboard binding as printed on its key: `Shift+Tab` keeps its modifier, `Escape` is `Esc`. */
+/**
+ * A keyboard binding as printed on its key: `Shift+Tab` keeps its modifier, `Escape` is `Esc`,
+ * `Arrow Up` is `↑`. A key with no glyph, or a pointer gesture shown in the same row, keeps its text.
+ */
 export function uiInputHintKeyGlyph(binding: string): UIInputHintGlyph {
     const parts = binding.split("+");
     const key = parts.pop() ?? binding;
-    const text = [...parts, KEY_GLYPHS[key] ?? key].join("+");
+    const text = [...parts, KEY_GLYPHS.get(normalizeBlueprintKeyboardEventKeyName(key)) ?? key].join("+");
     return { text, shape: "bar" };
 }

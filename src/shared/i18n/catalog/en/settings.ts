@@ -94,7 +94,7 @@ export const settings = {
         },
         developerMode: {
             label: "Developer options",
-            description: "Right-click menus gain a section for copying the ID of the item clicked.",
+            description: "Right-click menus gain a section for copying the ID of the item clicked, and the blueprint add-node menu shows each node's type ID.",
         },
         screenEffectThreads: {
             label: "Threads for screen effects",
@@ -589,11 +589,13 @@ export const settings = {
     data: {
         projectTrust: {
             loading: "Reading…",
-            empty: "Every project opened so far was created by Studio.",
+            empty: "No projects.",
             waiting: "Waiting for a decision",
             granted: "Trusted",
             trust: "Trust",
-            remove: "Remove",
+            revoke: "Revoke",
+            delete: "Remove from list",
+            deleteCovered: "Inside a trusted project and cannot be removed",
             reloadNote: "A project that is open reloads when its trust changes.",
             origin: {
                 package: "From a package",

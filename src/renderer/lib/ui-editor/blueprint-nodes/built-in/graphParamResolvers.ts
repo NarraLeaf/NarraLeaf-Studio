@@ -4,6 +4,7 @@
  */
 
 import type { AssetVariantMap } from "@shared/types/assetSet";
+import { blueprintValuesEqual } from "@shared/blueprint/blueprintValueEquality";
 import { isUIListScrolledToEnd, isUIListScrolledToStart } from "@shared/types/ui-editor/list";
 import { isUIElementRefInScope } from "@shared/types/ui-editor/componentInstanceKey";
 import { UI_VIDEO_ELEMENT_TYPE } from "@shared/types/ui-editor/video";
@@ -1037,10 +1038,10 @@ function resolveCompareNodeResult(
     const a = resolveInput(graph, nodeId, "a", params, blueprintLocals, depth, runtime);
     const b = resolveInput(graph, nodeId, "b", params, blueprintLocals, depth, runtime);
     if (op === "eq") {
-        return a === b;
+        return blueprintValuesEqual(a, b);
     }
     if (op === "ne") {
-        return a !== b;
+        return !blueprintValuesEqual(a, b);
     }
     const na = toFiniteNumber(a);
     const nb = toFiniteNumber(b);
@@ -1265,14 +1266,9 @@ function normalizeArrayValue(value: unknown): unknown[] {
     return Array.isArray(safe) ? safe : [];
 }
 
+/** The array nodes' "same value": the rule Equal answers with too (`blueprintValueEquality.ts`). */
 function jsonValueEquals(a: unknown, b: unknown): boolean {
-    const left = toJsonSafeValue(a);
-    const right = toJsonSafeValue(b);
-    try {
-        return JSON.stringify(left) === JSON.stringify(right);
-    } catch {
-        return left === right;
-    }
+    return blueprintValuesEqual(a, b);
 }
 
 function setObjectFieldValue(value: unknown, field: string, nextValue: unknown): Record<string, unknown> {

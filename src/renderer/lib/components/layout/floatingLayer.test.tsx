@@ -19,6 +19,7 @@ function Popover(props: {
     initiallyOpen?: boolean;
     children?: React.ReactNode;
     portal?: boolean;
+    closeOnOutsideWheel?: boolean;
 }) {
     const [open, setOpen] = useState(props.initiallyOpen ?? false);
     const panelRef = useRef<HTMLDivElement | null>(null);
@@ -34,6 +35,7 @@ function Popover(props: {
         ownerRefs: [triggerRef],
         scope: props.scope,
         itemSelector: "[data-item]",
+        closeOnOutsideWheel: props.closeOnOutsideWheel,
     });
     const panel = open ? (
         <div ref={panelRef} data-testid="panel">
@@ -184,6 +186,29 @@ describe("a popover", () => {
         expect(openFloatingLayerCount(document)).toBe(1);
         press("Escape");
         expect(openFloatingLayerCount(document)).toBe(0);
+    });
+});
+
+describe("a popover that closes on the wheel", () => {
+    it("closes when the wheel turns outside it, and not inside it", () => {
+        const onClose = vi.fn();
+        const view = render(<Popover closeOnOutsideWheel onClose={onClose} />);
+        openFromTrigger(view);
+
+        fireEvent.wheel(view.getByTestId("a"), { deltaY: 40 });
+        expect(view.queryByTestId("panel")).not.toBeNull();
+
+        fireEvent.wheel(view.getByTestId("after"), { deltaY: 40 });
+        expect(onClose).toHaveBeenCalledOnce();
+        expect(view.queryByTestId("panel")).toBeNull();
+    });
+
+    it("stays open under the wheel unless it asks", () => {
+        const view = render(<Popover />);
+        openFromTrigger(view);
+
+        fireEvent.wheel(view.getByTestId("after"), { deltaY: 40 });
+        expect(view.queryByTestId("panel")).not.toBeNull();
     });
 });
 

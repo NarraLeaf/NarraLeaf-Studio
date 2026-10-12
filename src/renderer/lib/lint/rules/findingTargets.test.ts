@@ -340,7 +340,7 @@ function referencesToGone(): LintContext {
     interfaceDocument.surfaces[0]!.settings = { backgroundImage: { assetId: GONE } } as never;
     const references = [
         ...scanStoryAssetReferences(sceneStory.document, sceneStory.name).references,
-        ...extractCharacterAssetReferences([{ id: "aoi", name: "Aoi", thumbnailAssetId: GONE, appearanceAssets: [] }]),
+        ...extractCharacterAssetReferences([{ id: "aoi", name: "Aoi", appearanceAssets: [{ slot: "pose:p1", detail: "Smile", assetId: GONE }] }]),
         ...extractUIDocumentAssetReferences(interfaceDocument).references,
         ...extractVoiceAssetReferences({ schemaVersion: VOICE_DOCUMENT_SCHEMA_VERSION, locale: "ja", units: { "text-line": voiceUnit(GONE, "Hello") } }),
         ...extractProjectFontReferences([{ assetId: GONE }], "Default fonts"),

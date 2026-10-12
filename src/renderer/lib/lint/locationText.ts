@@ -97,7 +97,7 @@ export function describeLintLocation(location: LintLocation, translate?: LintLoc
  * ones the message already said are dropped.
  *
  * Substring matching, deliberately: what makes a segment redundant is that the reader has already
- * read it, not that the message equals it. `{location}` params like "Narra (profile.thumbnail)"
+ * read it, not that the message equals it. `{location}` params like "Narra (appearance)"
  * carry the site with a suffix, and that is still a repeat of "Narra".
  */
 export function nonRedundantLintLocation(location: string, message: string): string {

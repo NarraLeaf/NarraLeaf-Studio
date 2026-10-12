@@ -4,6 +4,7 @@ import { WindowAppType } from "@shared/types/window";
 vi.mock("electron", () => ({}));
 
 const {
+    ProjectTrustForgetHandler,
     ProjectTrustGrantHandler,
     ProjectTrustListHandler,
     ProjectTrustPromptHandler,
@@ -22,6 +23,7 @@ function makeWindow(type: WindowAppType, options: { projectPath?: string; truste
         getRecord: vi.fn(() => null),
         grantTrust: vi.fn(() => true),
         revokeTrust: vi.fn(() => true),
+        forgetRecord: vi.fn((): "forgotten" | "unknown" | "covered" => "forgotten"),
         listTrusted: vi.fn(() => []),
         listDistrusted: vi.fn(() => []),
     };
@@ -100,6 +102,40 @@ describe("project trust handlers", () => {
         expect(app.applyProjectTrustChange).toHaveBeenLastCalledWith(THEIRS, false);
 
         expect((await new ProjectTrustListHandler().handle(window)).success).toBe(true);
+    });
+
+    it.each(everyOtherWindow)("refuses to delete a row for a %s window", async type => {
+        const { window, manager } = makeWindow(type);
+
+        const result = await new ProjectTrustForgetHandler().handle(window, { projectPath: THEIRS });
+
+        expect(result.success).toBe(false);
+        expect(manager.forgetRecord).not.toHaveBeenCalled();
+    });
+
+    it("reloads an open window when deleting a row takes its trust away", async () => {
+        const { window, manager, app } = makeWindow(WindowAppType.Settings);
+        manager.isTrusted.mockReturnValueOnce(true).mockReturnValueOnce(false);
+
+        expect(await new ProjectTrustForgetHandler().handle(window, { projectPath: THEIRS })).toEqual({
+            success: true,
+            data: { result: "forgotten" },
+        });
+        expect(manager.forgetRecord).toHaveBeenCalledWith(THEIRS);
+        expect(app.applyProjectTrustChange).toHaveBeenCalledWith(THEIRS, false);
+    });
+
+    it("leaves open windows alone when the deleted row was only waiting, or was refused", async () => {
+        const { window, manager, app } = makeWindow(WindowAppType.Settings);
+
+        await new ProjectTrustForgetHandler().handle(window, { projectPath: THEIRS });
+        manager.forgetRecord.mockReturnValue("covered");
+        expect(await new ProjectTrustForgetHandler().handle(window, { projectPath: THEIRS })).toEqual({
+            success: true,
+            data: { result: "covered" },
+        });
+
+        expect(app.applyProjectTrustChange).not.toHaveBeenCalled();
     });
 
     it("carries nothing when the ledger did not change", async () => {

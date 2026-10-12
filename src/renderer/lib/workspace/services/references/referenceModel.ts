@@ -1265,7 +1265,6 @@ export function extractVoiceAssetReferences(document: VoiceDocument): AssetRefer
 export interface ReferenceScannableCharacter {
     id: string;
     name: string;
-    thumbnailAssetId?: string | null;
     /**
      * Every image the appearance uses, with a slot key that stays stable across renames and a
      * human-readable detail. Flattened by the caller because the two appearance kinds address their
@@ -1275,7 +1274,13 @@ export interface ReferenceScannableCharacter {
     appearanceAssets: ReadonlyArray<{ slot: string; detail: string; assetId: string | null | undefined }>;
 }
 
-/** Character slice: profile thumbnail plus every image the appearance uses. */
+/**
+ * Character slice: every image the appearance uses.
+ *
+ * The profile thumbnail is not one of them. It is a crop Studio writes to the editor's own files,
+ * not an asset in the library, so it has no library entry to find and nothing an asset rename or
+ * delete could break.
+ */
 export function extractCharacterAssetReferences(
     characters: readonly ReferenceScannableCharacter[],
 ): AssetReference[] {
@@ -1284,16 +1289,6 @@ export function extractCharacterAssetReferences(
     for (const character of characters) {
         // The character's own editor, which is where every one of these pictures is chosen.
         const target: SearchJumpTarget = { kind: "character", characterId: character.id };
-        if (isLibraryAssetId(character.thumbnailAssetId)) {
-            references.push({
-                id: `char:${character.id}:thumbnail`,
-                assetId: character.thumbnailAssetId.trim(),
-                kind: "character",
-                label: character.name,
-                field: "profile.thumbnail",
-                target,
-            });
-        }
         for (const entry of character.appearanceAssets) {
             if (!isLibraryAssetId(entry.assetId)) {
                 continue;

@@ -601,7 +601,6 @@ export class LintService extends Service<LintService> implements ILintService {
                         ids.add(value.trim());
                     }
                 };
-                add(character.profile.getThumbnail());
                 if (appearance.getKind() === "preset") {
                     for (const pose of appearance.getPoses()) {
                         add(pose.assetId);
