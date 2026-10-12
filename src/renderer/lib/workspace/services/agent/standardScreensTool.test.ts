@@ -155,7 +155,7 @@ function createHarness() {
 
     const tool: AgentToolContext = {
         ctx: context,
-        request: { callId: "call-1", tool: "ui_install_standard_screens", args: {}, clientName: null, policy: { writesEnabled: true, allowedImportRoots: [] } },
+        request: { callId: "call-1", tool: "ui_install_standard_screens", args: {}, clientName: null, policy: { writesEnabled: true, allowedImportRoots: [] }, deadline: Date.now() + 60_000 },
         follow: new AgentFollowService(),
         offscreen: null as never,
         log: () => undefined,

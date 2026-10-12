@@ -11,6 +11,7 @@ import {
     type CacheClearResult,
     type CacheInventoryReport,
 } from "@shared/types/cacheInventory";
+import { payloadReaderCopiesRoot } from "../build/payloadReaderCopies";
 
 /**
  * Measuring and clearing the caches Studio leaves on disk.
@@ -49,7 +50,6 @@ export const PSD_TEMP_DIR_NAME = "narraleaf-psd";
 export function psdTempRoot(tempDir: string = os.tmpdir()): string {
     return path.join(tempDir, PSD_TEMP_DIR_NAME);
 }
-
 /**
  * electron-builder's download cache: winCodeSign, NSIS, AppImage, and the Electron distribution a
  * cross-platform target needs.
@@ -155,6 +155,13 @@ function bucketDefinitions({ userDataDir, cacheRoot }: CacheLocations): BucketDe
             id: "psdImports",
             dirs: [psdTempRoot()],
             displayPath: psdTempRoot(),
+        },
+        {
+            // A copy this process has loaded is held by Windows until it exits, so clearing skips
+            // it (see `removeChildren`); the export that needs one copies it again.
+            id: "payloadReaders",
+            dirs: [payloadReaderCopiesRoot()],
+            displayPath: payloadReaderCopiesRoot(),
         },
         {
             id: "logs",

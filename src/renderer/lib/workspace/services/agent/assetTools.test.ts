@@ -46,8 +46,8 @@ function harness(existing: FakeAsset[] = []) {
     };
     const tool = {
         ctx: { services: { get: (name: string) => (name === Services.Assets ? service : undefined) }, project: { getConfig: () => ({ projectPath: "/project" }) } },
-        request: { callId: "call", policy: { allowedImportRoots: [] } },
-        follow: { describeCall: vi.fn() },
+        request: { callId: "call", policy: { writesEnabled: true, allowedImportRoots: [] } },
+        follow: { describeCall: vi.fn(), getState: () => ({ paused: false }) },
         log: vi.fn(),
     } as unknown as AgentToolContext;
     const run = async (args: Record<string, unknown>) => {

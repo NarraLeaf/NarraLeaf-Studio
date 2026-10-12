@@ -31,6 +31,8 @@ import {
     BLUEPRINT_NODE_TYPE_MATH_ADD,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_SAVED_GET,
+    BLUEPRINT_NODE_TYPE_SCENE_GET,
+    BLUEPRINT_NODE_TYPE_SCENE_SET,
     BLUEPRINT_NODE_TYPE_STRING_SPLIT,
     BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_ITEM_AT,
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
@@ -487,6 +489,70 @@ describe("saved variables", () => {
                 targetParams: {},
             }),
         ).toBe(true);
+    });
+});
+
+describe("scene variables", () => {
+    const SCENE = [{ id: "hp", valueType: "number" }, { id: "mood", valueType: "string" }];
+
+    it("types Get and Set Scene Var by the declaration row of the variable they name", () => {
+        const ir = graph(
+            {
+                get: { type: BLUEPRINT_NODE_TYPE_SCENE_GET, params: { sceneVariableId: "hp" } },
+                set: { type: BLUEPRINT_NODE_TYPE_SCENE_SET, params: { sceneVariableId: "mood" } },
+                unknown: { type: BLUEPRINT_NODE_TYPE_SCENE_GET, params: { sceneVariableId: "gone" } },
+                unpicked: { type: BLUEPRINT_NODE_TYPE_SCENE_GET },
+            },
+            [],
+        );
+        const typed = withInferredBlueprintStructTypes(ir, buildBlueprintStructTypeContext({ sceneVariables: SCENE }));
+        const pin = (nodeId: string) => {
+            const node = typed.nodes![nodeId]!;
+            return blueprintNodeRegistry.resolveCatalogEntryForNode(node.type, node.params).pins.find(p => p.id === "value")?.valueType;
+        };
+        expect(pin("get")).toBe("float");
+        expect(pin("set")).toBe("string");
+        expect(pin("unknown")).toBe("any");
+        expect(pin("unpicked")).toBe("any");
+    });
+
+    it("does not read a scene variable's type from the saved variables, or the other way round", () => {
+        const ir = graph(
+            {
+                scene: { type: BLUEPRINT_NODE_TYPE_SCENE_GET, params: { sceneVariableId: "hp" } },
+                saved: { type: BLUEPRINT_NODE_TYPE_SAVED_GET, params: { savedVariableId: "hp" } },
+            },
+            [],
+        );
+        const typed = withInferredBlueprintStructTypes(
+            ir,
+            buildBlueprintStructTypeContext({ savedVariables: [{ id: "hp", valueType: "boolean" }], sceneVariables: SCENE }),
+        );
+        const pin = (nodeId: string) => {
+            const node = typed.nodes![nodeId]!;
+            return blueprintNodeRegistry.resolveCatalogEntryForNode(node.type, node.params).pins.find(p => p.id === "value")?.valueType;
+        };
+        expect(pin("scene")).toBe("float");
+        expect(pin("saved")).toBe("boolean");
+    });
+
+    it("keeps a wire that the declared any accepted, whatever the variable's type", () => {
+        const ir = graph(
+            {
+                get: { type: BLUEPRINT_NODE_TYPE_SCENE_GET, params: { sceneVariableId: "mood" } },
+                ret: { type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE },
+            },
+            ["get.value -> ret.value"],
+        );
+        const findings = validateBlueprintGraphIr(ir, {
+            blueprintId: "bp",
+            graphKind: "event",
+            graphId: "main",
+            blueprintOwner: { kind: "storyAction", blueprintId: "bp", mode: "condition" },
+            sceneVariables: SCENE,
+        });
+        expect(findings.map(finding => finding.code)).not.toContain("edge.connection_invalid");
+        expect(findings.map(finding => finding.code)).not.toContain("condition.return_not_boolean");
     });
 });
 

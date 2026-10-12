@@ -4,7 +4,9 @@
  *
  * Everything an agent reads here is rendered in English whatever language the author's Studio is
  * in: the model reads it, and an answer in the author's language would be a second thing for it to
- * translate before it could act.
+ * translate before it could act. What the author reads of a call - the Agent log's target column and
+ * the status bar, through `describeCall` - is the other way round: in the author's language, and
+ * only the thing's own name.
  *
  * Comments in English per project convention.
  */
@@ -21,6 +23,7 @@ import {
 } from "@shared/types/devMode";
 import type { GameBuildPlatform, GameBuildStateSnapshot } from "@shared/types/gameBuild";
 import { getInterface } from "@/lib/app/bridge";
+import { translate as translateForAuthor } from "@/lib/i18n";
 import { describeLintLocation, LINT_LOCATION_SEPARATOR } from "@/lib/lint/locationText";
 import { createStoryRowLocator, type StoryRowLocator } from "@/lib/lint/storyLocator";
 import type { SearchJumpTarget } from "@/lib/workspace/services/search/searchJumpTarget";
@@ -153,7 +156,10 @@ export const playtestStart: AgentToolHandler = async (args, { ctx, request, foll
     await requireTrusted(ctx);
 
     let entry: DevModeEntry = { kind: "surface" };
+    // `from` is the agent's English; `shown` is what the author's log names - the scene by its own
+    // name, as the story tools do, or the entry page.
     let from = "the title page";
+    let shown = translateForAuthor("uiEditor.surfaceKind.mainPage");
     if (sceneRef) {
         const { entry: story, document } = await resolveStory(ctx, undefined);
         const scene = resolveScene(document, sceneRef);
@@ -167,10 +173,11 @@ export const playtestStart: AgentToolHandler = async (args, { ctx, request, foll
         }
         entry = { kind: "story", storyId: story.id, sceneId: scene.id, ...(blockId ? { blockId } : {}) };
         from = row !== undefined ? `row ${row} of "${scene.name}"` : `scene "${scene.name}"`;
+        shown = scene.name;
     } else if (row !== undefined) {
         throw refuse("invalid_args", "`row` needs a `scene`.");
     }
-    follow.describeCall(request.callId, from);
+    follow.describeCall(request.callId, shown);
 
     const service = devMode(ctx);
     const projectPath = ctx.project.getConfig().projectPath;
@@ -399,6 +406,14 @@ function testFindingLocator(ctx: WorkspaceContext): (target: SearchJumpTarget | 
     };
 }
 
+/** {@link testText} in the author's language, for what the author reads of the call. */
+function testTextForAuthor(text: TestText | undefined): string {
+    if (!text) {
+        return "";
+    }
+    return text.key ? translateForAuthor(text.key, text.params) : text.text;
+}
+
 function waitFor<T>(subscribe: (listener: () => void) => () => void, read: () => T | null, timeoutMs: number): Promise<T | null> {
     return new Promise(resolve => {
         const immediate = read();
@@ -431,7 +446,8 @@ export const internalTest: AgentToolHandler = async (args, { ctx, request, follo
     const id = readString(args, "id");
     const parameters = readOptionalRecord(args, "parameters") as Record<string, string> | undefined;
     const tests = ctx.services.get<TestRunService>(Services.TestRun);
-    if (!tests.listTests().some(test => test.definition.id === id)) {
+    const definition = tests.listTests().find(test => test.definition.id === id)?.definition;
+    if (!definition) {
         throw refuse("not_found", `No test "${id}".`, `Tests: ${tests.listTests().map(test => test.definition.id).join(", ")}.`);
     }
     await tests.prepareAvailability();
@@ -439,7 +455,8 @@ export const internalTest: AgentToolHandler = async (args, { ctx, request, follo
     if (!availability.available) {
         throw refuse("unavailable", `Test "${id}" cannot run now: ${testText(availability.reason)}`);
     }
-    follow.describeCall(request.callId, id);
+    // The test's title, as Studio's test list shows it: the id is internal.
+    follow.describeCall(request.callId, testTextForAuthor(definition.title));
     let runId: string;
     try {
         runId = await tests.start(id, parameters);
@@ -496,7 +513,8 @@ export const internalBuild: AgentToolHandler = async (args, { ctx, request, foll
     if (build.isBuilding()) {
         throw refuse("unavailable", "A build is already running in Studio.", "Wait for it to finish, then try again.");
     }
-    follow.describeCall(request.callId, platform);
+    // The platform as the build dialog names it, not its id.
+    follow.describeCall(request.callId, translateForAuthor(`build.platform.${platform}`));
     let state = await build.start({ targets: [{ platform, formats: ["dir"] }], ...(output ? { outputDir: output } : {}) });
     const finished = (snapshot: GameBuildStateSnapshot) => snapshot.status === "done" || snapshot.status === "error" || snapshot.status === "idle";
     if (!finished(state)) {

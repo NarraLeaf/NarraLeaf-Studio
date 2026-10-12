@@ -13,6 +13,7 @@ import {
 import { ZOOM_PERCENT_DEFAULT } from "@shared/constants/zoom";
 import { WINDOW_ICON_DEFAULT } from "@shared/constants/windowIcon";
 import { DownloadRewriteRule, USE_SYSTEM_PROXY_KEY } from "@shared/types/downloadSource";
+import { AGENT_FOLLOW_DEFAULT, AGENT_FOLLOW_KEY } from "@shared/agent/follow";
 import { SPELLCHECK_LANGUAGE_DEFAULT } from "@shared/types/spellcheck";
 import { PersistentState } from "@shared/utils/persistentState";
 import type { VcsServerSession, VcsSessionUse } from "@shared/types/vcs";
@@ -545,6 +546,12 @@ export interface GlobalStateType extends Record<string, any> {
      * workspace opening on it must not start a room around an author who came back tomorrow.
      */
     "team.hostedLiveSessions": Record<string, { story: string; at: number }>;
+    /**
+     * Follow mode: each write an agent makes opens the tab it landed in, brings it to the front and
+     * outlines the change. Studio-wide rather than per project, and on by default - see
+     * `@shared/agent/follow`. Not in main's `agent-mcp.json`: it grants nothing.
+     */
+    "agent.follow": boolean;
 }
 
 export type GlobalStateKeys = string;
@@ -621,6 +628,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     // be calling itself the same thing.
     "team.machineLabel": "",
     "team.hostedLiveSessions": {},
+    [AGENT_FOLLOW_KEY]: AGENT_FOLLOW_DEFAULT,
 };
 
 /**

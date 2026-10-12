@@ -21,7 +21,16 @@
 // Results
 // ---------------------------------------------------------------------------
 
-export { commandText, commandWriter, emitCommandResult, type CommandIo, type CommandResult } from "./commandResult";
+export {
+    commandText,
+    commandWriter,
+    emitCommandResult,
+    emitPartialOutput,
+    type CommandIo,
+    type CommandResult,
+    type CommandWrite,
+    type CommandWriter,
+} from "./commandResult";
 
 // ---------------------------------------------------------------------------
 // Interface (.ui)

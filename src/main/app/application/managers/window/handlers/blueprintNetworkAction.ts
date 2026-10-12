@@ -28,6 +28,7 @@ import type { BlueprintNetworkFetchResult } from "@shared/types/blueprint/networ
 import { executeBlueprintNetworkFetch } from "@shared/utils/blueprintNetworkFetch";
 import { readProjectNetworkSettings } from "../../devMode/devModeNetworkPolicy";
 import { refuseDistrustedWindow } from "../../../utils/projectTrustGate";
+import { refuseOwnLoopbackDestination } from "../../../utils/ownLoopbackDestination";
 import { requireWindowProject } from "../../../utils/windowProject";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
@@ -55,13 +56,22 @@ export class BlueprintNetworkFetchHandler extends IPCHandler<IPCEventType.bluepr
                 throw new Error(distrusted);
             }
             const { allowHttp, allowlist } = await readProjectNetworkSettings(projectPath);
+            const app = window.getApp();
             // `check` because this process can follow the chain itself, which is what makes the
             // allowlist a statement about where the bytes came from rather than about what was
             // typed. Dev Mode has to answer the way the packaged game does or it is not a preview.
+            //
+            // `refuseDestination` keeps the request - every hop of it - off the loopback services
+            // Studio is serving right now (the agent MCP endpoint, the dev debug server). This
+            // channel sends whatever method, headers and body the renderer names, from a process
+            // with no origin, and the MCP endpoint's defence against web pages is refusing an
+            // origin; without this a plugin holding the token could drive the endpoint from here.
+            // Every other address, the author's own `localhost:3000` included, is unaffected.
             const result = await executeBlueprintNetworkFetch(data.request, {
                 allowHttp,
                 allowlist,
                 redirects: "check",
+                refuseDestination: url => refuseOwnLoopbackDestination(app, url),
             });
             // A request that was performed always answers with a success envelope: refused by the
             // allowlist, timed out or answered 500, all of it is a result the node branches on

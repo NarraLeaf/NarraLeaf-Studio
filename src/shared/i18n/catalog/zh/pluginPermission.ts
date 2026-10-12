@@ -70,8 +70,8 @@ export const pluginPermission = {
             other: "向连接到 Studio 的 AI Agent 提供 {count} 个工具",
         },
         agentToolsWrites: {
-            one: "其中 {count} 个可修改工程",
-            other: "其中 {count} 个可修改工程",
+            one: "其中 {count} 个可修改项目",
+            other: "其中 {count} 个可修改项目",
         },
         sidecarKind: {
             executable: "作为独立的程序运行",

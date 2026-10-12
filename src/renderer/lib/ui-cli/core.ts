@@ -352,6 +352,12 @@ export type UiApplyOptions = {
      * The command line uses it for the schema-version gate, which must not pre-empt those diagnostics.
      */
     beforeApply?: () => string | null;
+    /**
+     * Keep the change, when `write`: called once the document is changed and before the summary is
+     * printed. A message refuses (said on stderr, leaving with 2). The command line writes the file
+     * here, so a write that fails never prints "Written." and the diagnostics before it stay said.
+     */
+    commit?: () => string | null;
     /** Words to add after the summary when written - the command line's "close the project" note. */
     writtenNote?: string;
     widgets?: WidgetModuleSource;
@@ -382,12 +388,21 @@ export function uiApplyCommand(source: string, input: UiProjectInput, options: U
             io.err("Nothing written.");
             return { ...io.finish(1), check };
         }
-        const refusal = options.beforeApply?.() ?? null;
+        const beforeApply = options.beforeApply;
+        const refusal = beforeApply ? io.guard(beforeApply) : null;
         if (refusal !== null) {
             io.err(refusal);
             return { ...io.finish(2), check };
         }
         const applied = applyCompiled(input.document, check.compiled);
+        const commit = options.commit;
+        if (options.write === true && commit) {
+            const refused = io.guard(commit);
+            if (refused !== null) {
+                io.err(refused);
+                return { ...io.finish(2), check };
+            }
+        }
         io.out("");
         io.out(formatApplyResult(applied, options.write === true));
         if (options.write === true && options.writtenNote) {

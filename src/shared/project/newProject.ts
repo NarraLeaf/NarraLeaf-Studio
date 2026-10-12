@@ -12,8 +12,9 @@ import { UI_DOCUMENT_SCHEMA_VERSION } from "../types/ui-editor/document";
  *
  * Paths are segment lists relative to the project root, the shape `ProjectNameConvention` uses.
  * They are spelled out rather than imported because that table lives under `renderer/lib`, where
- * neither shared code nor the main process may reach; `projectService.newProject.test.ts` holds the
- * two to the same answer, so they cannot drift apart without a red test.
+ * neither shared code nor the main process may reach;
+ * `src/renderer/apps/project-wizard/services/newProjectLayout.test.ts` holds the two to the same
+ * answer, so they cannot drift apart without a red test.
  *
  * The project config (`.nlproj`) is not in the list: it is named after the project and encoded as
  * MessagePack, so each writer builds it with `encodeProjectConfig` itself.

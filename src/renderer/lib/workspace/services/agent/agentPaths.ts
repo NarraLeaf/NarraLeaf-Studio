@@ -76,7 +76,10 @@ export async function ensureAgentMayRead(paths: readonly string[], check: AgentR
     if (relative.length > 0) {
         throw refuse("path_not_allowed", `Paths must be absolute: ${relative.slice(0, 5).join(", ")}.`);
     }
-    const outside = paths.filter(path => !findAllowedImportRoot(path, check.projectPath, check.policy.allowedImportRoots, check.caseInsensitive));
+    // An untrusted project's window is given no folders outside it, so the allowed folders do not
+    // count for it; main answers why when it is asked about them.
+    const allowedRoots = check.policy.projectTrusted === false ? [] : check.policy.allowedImportRoots;
+    const outside = paths.filter(path => !findAllowedImportRoot(path, check.projectPath, allowedRoots, check.caseInsensitive));
     if (outside.length === 0) {
         return;
     }

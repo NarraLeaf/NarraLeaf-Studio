@@ -22,6 +22,8 @@ const fakeGameState = {
         }),
     },
     logger: { warn: () => undefined },
+    // A run waiting on its handler listens for the player skipping.
+    events: { on: () => ({ cancel: () => undefined }) },
 };
 
 function execute(input: StoryAwaitedActionInput): EngineAwaitable {

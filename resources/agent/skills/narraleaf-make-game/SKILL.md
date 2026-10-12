@@ -6,8 +6,10 @@ description: Make a complete, playable visual novel (VN, galgame, AVG) in NarraL
 # Make a visual novel in NarraLeaf Studio
 
 You are driving NarraLeaf Studio, a desktop visual-novel editor, through its MCP server. The author
-has Studio open and **watches every edit land live**: each write is one undo step in Studio, and the
-author can pause you from the status bar at any time. Your job is to take the author from an idea
+has Studio open and **watches every edit land live**: each write is one undo step in Studio - except
+`project_settings_set`, `brand_set`, `scene_rename`, `scene_set_entry`, `assets_import` and
+`assets_placeholder`, which have no undo, as in Studio's own editors - and the author can pause you
+from the status bar at any time. Your job is to take the author from an idea
 (or a finished script and a folder of art) to a game that builds and plays end to end.
 
 This file is the order of work. Detail lives in the reference chapters; read a chapter before the
@@ -71,7 +73,7 @@ paused, and the directories you may import files from.
   on, every folder but Studio's own is readable without asking.
 - **No project open** - fine for a new game (step 2). For an existing one, ask for its folder.
 
-The same switches are in Studio's menu bar, under *Agent* (Chinese Studio: *智能体*).
+The same switches are in Studio's menu bar, under *Agent*.
 
 Checkpoint: you know whether you can write, which project is open, and where assets may come from.
 

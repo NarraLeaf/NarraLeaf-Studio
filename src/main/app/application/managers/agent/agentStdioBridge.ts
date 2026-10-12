@@ -67,7 +67,15 @@ export interface AgentStdioBridgeIo {
     writeLine(line: string): void;
     /** Diagnostics, for standard error. Never standard output. */
     log(message: string): void;
+    /** For the short requests: the `ping`, the notification stream (kept alive by Studio), the closing DELETE. */
     fetch: typeof fetch;
+    /**
+     * For the client's own messages. The endpoint answers a tool call when the tool has finished,
+     * headers and all, and a build can take twenty minutes, so this must not give up on its own -
+     * Node's global `fetch` stops waiting for headers after five minutes. Studio still ends a call
+     * that outlasts its own limit, with an answer. Defaults to {@link fetch}.
+     */
+    fetchUntimed?: (url: string, init: RequestInit) => Promise<Response>;
     /** `agent-mcp.json` parsed, or null when it is missing or unreadable. */
     readSettings(): Promise<unknown>;
     /**
@@ -388,7 +396,8 @@ class AgentStdioBridge {
         if (this.session) {
             headers["Mcp-Session-Id"] = this.session;
         }
-        return this.io.fetch(endpoint.url, { method: "POST", headers, body });
+        const send = this.io.fetchUntimed ?? this.io.fetch;
+        return send(endpoint.url, { method: "POST", headers, body });
     }
 
     /** Drop an endpoint that stopped answering, unless a concurrent message already replaced it. */

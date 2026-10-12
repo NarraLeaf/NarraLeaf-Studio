@@ -100,7 +100,9 @@ import {
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
     revealCreates,
+    sceneLayerDepths,
     sceneVariableDefs,
+    storyLayerDepthParallax,
     soundStageObjectName,
     storyPersistentDefs,
     storyTransitionKindOf,
@@ -167,6 +169,7 @@ import type {
     StageSnapshotDisplayable,
     StageSnapshotEffects,
     StageSnapshotMusic,
+    StageSnapshotRename,
     StageSnapshotSound,
     StageSnapshotSoundState,
     StoryStageSnapshot,
@@ -1670,7 +1673,8 @@ async function buildLaunchEntryScene(params: {
             // down, pause it or swap it for the one a `/bgm` row put on.
             ...(sceneMusic ? { backgroundMusicFade: sceneMusic.fadeMs } : {}),
             ...(voices ? { voices } : {}),
-        },
+            ...sceneBackgroundLayerConfig(scene),
+        } as any,
     ));
     const launchIdPrefix = launchSceneIdPrefix(scene.id, launch.targetBlockId ?? "");
     setSceneOwnElementIds(params.elementIdBindings, launchScene, `${launchIdPrefix}:scene`);
@@ -1792,6 +1796,9 @@ async function buildLaunchEntryScene(params: {
         const value = snapshot.sceneVariables[def.storageKey] ?? def.defaultValue ?? null;
         statements.push(launchScene.local.set(def.storageKey, value as any));
     }
+    // The names the walked path's `/rename` rows left, so the first line of the tail is spoken under
+    // the name a playthrough shows there rather than the one the cast gives.
+    statements.push(...compileSnapshotRenames(ctx, snapshot.renames));
 
     // One synchronous injection step: register the pre-posed elements and apply built-in-singleton props.
     const backgroundProps = snapshot.backgroundProps;
@@ -2005,9 +2012,10 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         })
         : snapshot.background?.color
             ?? await resolveSceneInitialBackground({ scene, resolveAssetUrl, assetUrlCache, diagnostics });
+    const previewSceneConfig = { ...(backgroundSrc ? { background: backgroundSrc } : {}), ...sceneBackgroundLayerConfig(scene) };
     const previewScene = new Scene(
         sceneRuntimeName(scene),
-        backgroundSrc ? { background: backgroundSrc } : undefined,
+        Object.keys(previewSceneConfig).length > 0 ? previewSceneConfig as any : undefined,
     );
 
     const previewPersistentView = collectPersistentView(input.document, input.persistentVariables);
@@ -2112,14 +2120,22 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         const value = snapshot.sceneVariables[def.storageKey] ?? def.defaultValue ?? null;
         statements.push(previewScene.local.set(def.storageKey, value as any));
     }
+    // And the speaker names the path left, so a previewed line shows the name it is played under.
+    statements.push(...compileSnapshotRenames(ctx, snapshot.renames));
 
     // One synchronous injection step: register pre-posed elements into the render tree and apply
     // props accumulated against the built-in singletons (scene background / built-in layers).
     const backgroundProps = snapshot.backgroundProps;
     const builtinLayerProps = snapshot.builtinLayerProps;
+    // The camera too, as a launch poses it: a still of a row after a pan is a still of the panned
+    // shot - and of the layers at their distances inside it - not of a camera that never moved.
+    const cameraProps = snapshot.camera?.props ?? {};
     statements.push(Script.execute(((scriptCtx: ScriptCtx) => {
         for (const registration of registrations) {
             DevTools.registerDisplayable(scriptCtx.gameState, registration.element as any, previewScene, registration.layer ?? null);
+        }
+        if (Object.keys(cameraProps).length > 0) {
+            DevTools.setDisplayableTransformProps(scriptCtx.gameState, nlrStory.camera as any, cameraProps);
         }
         if (Object.keys(backgroundProps).length > 0) {
             DevTools.setDisplayableTransformProps(scriptCtx.gameState, previewScene.background as any, backgroundProps);
@@ -2144,6 +2160,9 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         }
     }
     statements.push(...await compileSnapshotEffects(ctx, previewScene.background, snapshot.backgroundEffects));
+    if (snapshot.camera) {
+        statements.push(...await compileSnapshotEffects(ctx, nlrStory.camera, snapshot.camera.effects));
+    }
 
     // The stage is now a faithful still of the snapshot; hold here until the host reveals the
     // buffer so the target's own action plays entirely on a visible stage.
@@ -2531,6 +2550,7 @@ async function createNlrScenes(input: {
             voices?: Record<string, string | Sound>;
             backgroundMusic?: Sound;
             backgroundMusicFade?: number;
+            backgroundLayerParallax?: number;
         } = {};
         if (background) {
             config.background = background;
@@ -2558,9 +2578,10 @@ async function createNlrScenes(input: {
             // whole story moved whenever another scene gained or lost music.
             setStableElementId(input.elementIdBindings, music.sound, sceneMusicElementId(`nl:scene:${scene.id}`));
         }
+        Object.assign(config, sceneBackgroundLayerConfig(scene));
         const built = new Scene(
             runtimeName,
-            Object.keys(config).length > 0 ? config : undefined,
+            Object.keys(config).length > 0 ? config as any : undefined,
         );
         setStableSceneElementIds(input.elementIdBindings, built, scene.id);
         scenes[scene.id] = built;
@@ -4467,6 +4488,26 @@ function registerMusicHandle(ctx: SceneCompileContext, music: MusicHandle): void
 }
 
 /**
+ * The speaker names the walked path's `/rename` rows left, replayed from those rows.
+ *
+ * Each is the row's own call - `Character.setName` with the row's words, on the character the row
+ * names - so the name a launch opens on is the one the row gives in a playthrough, and the words the
+ * game looks its translation up by are the row's words too. A record whose row is no longer a
+ * `/rename` (the document changed under a stored snapshot) replays nothing.
+ */
+function compileSnapshotRenames(ctx: SceneCompileContext, renames: readonly StageSnapshotRename[]): NlrStatement[] {
+    const statements: NlrStatement[] = [];
+    for (const rename of renames) {
+        const row = ctx.scene.blocks[rename.setBy];
+        if (row?.kind !== "action" || row.payload.action !== "character" || row.payload.operation !== "setName") {
+            continue;
+        }
+        statements.push(getCharacter(ctx, row.payload.characterId).setName(row.payload.displayName ?? ""));
+    }
+    return statements;
+}
+
+/**
  * The music a row-precise launch opens with: the track on the channel at the target row, registered
  * so the tail's rows find it, and started the way the walk left it.
  *
@@ -4827,6 +4868,17 @@ async function compileLayerAction(
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "layer" }>,
 ): Promise<NlrStatement[]> {
+    if (payload.operation === "setDepth") {
+        // Not a step in time: the scene was built with its background layer at this distance (see
+        // `sceneBackgroundLayerConfig`), so there is nothing for the row to do when the story gets to
+        // it. Only the background layer takes one - a custom layer's depth is on its own `create`
+        // row, and the displayable layer is where the characters stand, which is what the camera is
+        // aimed at by definition.
+        if (payload.target?.kind !== "default" || payload.target.layer !== "background") {
+            diagnostic(ctx, "warning", block.id, say("story.compile.layer.depthBackgroundOnly"));
+        }
+        return [];
+    }
     // `create` names a new custom layer; every other op resolves an existing layer - a built-in
     // (background / displayable) or a custom one - via the target ref (falling back to the default
     // displayable layer), so a transform can now target the background instead of only named layers.
@@ -5694,11 +5746,26 @@ function getLayer(ctx: SceneCompileContext, objectName: string, zIndex = 0, init
     if (existing) {
         return existing;
     }
-    const layer = new Layer(name, { zIndex, ...(initialProps ?? {}) } as any);
+    // A layer's distance from the camera is stated once for the whole scene (its `create` row), and
+    // every path that builds the layer - the row itself, a picture placed on it first, a launch's
+    // replay - builds it here, so they all build it at the same distance.
+    // Read fresh each time, never cached on the scene: the story service edits a scene in place, so a
+    // cache keyed on it would keep the first compile's depths and the preview would ignore every edit.
+    const parallax = storyLayerDepthParallax(sceneLayerDepths(ctx.scene).custom.get(name));
+    const layer = new Layer(name, { zIndex, ...(parallax !== 1 ? { parallax } : {}), ...(initialProps ?? {}) } as any);
     setStableElementId(ctx.elementIdBindings, layer, sceneElementStaticId(ctx, "layer", name));
     ((ctx.nlrScene as unknown as { config: { layers: Layer[] } }).config.layers).push(layer);
     ctx.layers.set(name, layer);
     return layer;
+}
+
+/**
+ * The scene config that puts the scene's own background layer at the distance its `setDepth` row
+ * names. Empty when the scene names none, so a scene without depth builds exactly as it always did.
+ */
+function sceneBackgroundLayerConfig(scene: StoryScene): { backgroundLayerParallax?: number } {
+    const parallax = storyLayerDepthParallax(sceneLayerDepths(scene).background);
+    return parallax !== 1 ? { backgroundLayerParallax: parallax } : {};
 }
 
 /**

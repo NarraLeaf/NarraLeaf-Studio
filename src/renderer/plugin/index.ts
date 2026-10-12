@@ -637,7 +637,10 @@ export type PluginLocalizationService = {
  *    session runs. The author can also switch a plugin's tools off in Settings > Agent access.
  *  - **Checks the arguments** against `inputSchema` before the handler runs, and removes `project`
  *    (the host's routing argument).
- *  - **Keeps a reading tool reading:** while a `write: false` tool runs, `storage.writeJson` throws.
+ *  - **Holds a reading tool to its plugin storage:** while a `write: false` tool runs,
+ *    `storage.writeJson` throws. That is the whole of it - a `write: false` tool is not gated by the
+ *    author's write switch, and anything else your `app` can do, its handler can do too. Declare a
+ *    tool `write: true` if it changes the project by any route.
  *  - **Makes a writing tool's edit one undo step:** every `storage.writeJson` it does is captured,
  *    and Ctrl+Z puts every namespace back as it was, then calls the reloader you registered with
  *    `workspace.registerReloader` - so register one, or undo will change the file and not your

@@ -6,12 +6,13 @@ import {
     agentText,
     type AgentCallResult,
     type AgentFolderAccessAnswer,
+    type AgentFolderRefusalReason,
     type AgentSessionPolicy,
     type AgentWorkspaceState,
 } from "@shared/agent/protocol";
 import { AGENT_GUIDE_CHAPTERS, type AgentGuideChapter } from "@shared/agent/tools";
 import { AGENT_PLUGIN_GUIDE_CHAPTER_PREFIX } from "@shared/agent/pluginTools";
-import { describeAgentFolderAccess } from "@shared/agent/folderAccess";
+import { describeAgentFolderAccess, describeAgentFolderRefusal } from "@shared/agent/folderAccess";
 import type { AgentCallContext } from "./agentMcpServer";
 import type { AgentRoutingChoice } from "./agentRouting";
 import type { AgentProjectCreateInput } from "./agentProjectCreate";
@@ -53,6 +54,12 @@ export interface AgentMainToolHost {
     forward(handle: AgentWorkspaceHandle, tool: string, args: Record<string, unknown>, context: AgentCallContext): Promise<AgentCallResult>;
     isProjectDirectory(directory: string): Promise<boolean>;
     isTrusted(projectPath: string): boolean;
+    /**
+     * Why an agent may never be handed `folder` (absolute, resolved) - Studio's own folders, the home
+     * folder itself, a file-system root or a folder holding the home folder - or null. The rule
+     * folder reads are held to (`agentFolderRefusal`), applied here to the folders a tool writes into.
+     */
+    folderRefusal(folder: string): AgentFolderRefusalReason | null;
     defaultProjectsDir(): string;
     /** Open (or find) a project's workspace and wait until it answers `__state`. */
     openProject(projectPath: string): Promise<AgentOpenProjectOutcome>;
@@ -98,6 +105,7 @@ async function agentStatus(host: AgentMainToolHost): Promise<AgentCallResult> {
         return {
             path: handle.projectPath,
             name: handle.name,
+            trusted: host.isTrusted(handle.projectPath),
             responding: state !== null,
             paused: state?.paused ?? null,
             follow: state?.follow ?? null,
@@ -115,12 +123,15 @@ async function agentStatus(host: AgentMainToolHost): Promise<AgentCallResult> {
             const tools = project.pluginTools.length > 0
                 ? `\n  Plugin tools here: ${project.pluginTools.join(", ")}. If your tool list lacks them, list tools again (your client may cache the list).`
                 : "";
-            return `- ${project.name ?? path.basename(project.path)} (${project.path}): ${flags}${tools}`;
+            const trust = project.trusted
+                ? ""
+                : "\n  NOT TRUSTED by the author: you may read it, but changes, folder access outside it and imports are refused until they trust it.";
+            return `- ${project.name ?? path.basename(project.path)} (${project.path}): ${flags}${trust}${tools}`;
         }),
         projects.length > 1 ? "More than one project is open: pass `project` (its path) to every workspace tool." : "",
         policy.writesEnabled
             ? "Write access: on."
-            : "Write access: OFF. Read tools work; every write is refused until the author turns on \"Allow agents to make changes\" in Studio's Settings > Agent access.",
+            : "Write access: OFF. Read tools work; every write is refused until the author turns on \"Allow agents to change projects\" in Studio's Settings > Agent access.",
         policy.fullAccess
             ? "Full access: on. You may read files in any folder without asking, except Studio's own folders, the home folder as a whole and file-system roots."
             : policy.allowedImportRoots.length > 0
@@ -200,6 +211,14 @@ async function requestFolderAccess(host: AgentMainToolHost, args: Record<string,
     if (!choice.ok) {
         return noWorkspace(choice);
     }
+    if (!host.isTrusted(choice.window.projectPath)) {
+        // Refused before the author is asked: a dialog whose "Allow" main would not act on is noise.
+        return agentRefusal(
+            "untrusted",
+            `${choice.window.projectPath} is not trusted in Studio, so agents are given no folders outside it.`,
+            "Ask the author to trust the project (Studio's status bar, or Settings > Data > Trusted projects), or to copy the files into the project directory.",
+        );
+    }
     const reason = typeof args.reason === "string" ? oneLine(args.reason).slice(0, FOLDER_REASON_MAX) : "";
     const answer = await host.requestFolderAccess(choice.window, paths, context, reason || undefined);
     return agentText(describeAgentFolderAccess(answer).join("\n") || "Nothing to ask about.", { ...answer, project: choice.window.projectPath });
@@ -211,10 +230,50 @@ function oneLine(value: string): string {
     return value.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
+/**
+ * The refusal for a folder a tool would write into that agents may never be handed. Writing is not
+ * narrower than reading here: `project_create` makes every folder down to the one it names, and a
+ * web build clears a folder inside its output before writing it, so `/`, the home folder or Studio's
+ * settings folder named as either is a request to write - or delete - where nothing of a game belongs.
+ */
+function writeFolderRefused(argument: string, folder: string, reason: AgentFolderRefusalReason, hint: string): AgentCallResult {
+    return agentRefusal(
+        "path_not_allowed",
+        `\`${argument}\` cannot be ${folder}, which is ${whatTheFolderIs(reason)}: agents are never handed that folder to read, and Studio does not write into it for them either.`,
+        hint,
+    );
+}
+
+function whatTheFolderIs(reason: AgentFolderRefusalReason): string {
+    switch (reason) {
+        case "root":
+            return "a file-system root, or a folder holding the home folder";
+        case "home":
+            return "the home folder itself";
+        case "studio":
+            return "one of Studio's own folders (its settings or the application), or a folder holding one";
+        default:
+            return describeAgentFolderRefusal(reason);
+    }
+}
+
 async function projectCreate(host: AgentMainToolHost, args: Record<string, unknown>): Promise<AgentCallResult> {
+    const dir = typeof args.dir === "string" && args.dir.trim() ? args.dir : null;
+    if (dir && path.isAbsolute(dir)) {
+        // Only a folder the agent named: the default is Studio's own choice of projects folder.
+        const refused = host.folderRefusal(path.resolve(dir));
+        if (refused) {
+            return writeFolderRefused(
+                "dir",
+                path.resolve(dir),
+                refused,
+                "Name a folder of its own for projects (for example one inside Documents), or leave `dir` out to use Studio's projects folder.",
+            );
+        }
+    }
     return host.createProject({
         name: String(args.name),
-        parentDir: typeof args.dir === "string" && args.dir.trim() ? args.dir : host.defaultProjectsDir(),
+        parentDir: dir ?? host.defaultProjectsDir(),
         template: args.template === "empty" ? "empty" : "skeleton",
         language: typeof args.language === "string" && args.language.trim() ? args.language : "en",
         languages: Array.isArray(args.languages) ? args.languages.filter((code): code is string => typeof code === "string") : [],
@@ -291,6 +350,17 @@ async function runBuild(host: AgentMainToolHost, args: Record<string, unknown>, 
     if (typeof args.output === "string" && !path.isAbsolute(args.output)) {
         return agentRefusal("invalid_args", `output must be an absolute directory: ${args.output}`);
     }
+    if (typeof args.output === "string") {
+        const refused = host.folderRefusal(path.resolve(args.output));
+        if (refused) {
+            return writeFolderRefused(
+                "output",
+                path.resolve(args.output),
+                refused,
+                "Name a folder of its own for the build, or leave `output` out to build into the project's usual output folder.",
+            );
+        }
+    }
     return translateUnsupported(
         await host.forward(
             choice.window,
@@ -327,6 +397,18 @@ export function noWorkspace(choice: Extract<AgentRoutingChoice<unknown>, { ok: f
                 `Pass \`project\` with one of: ${choice.openProjects.join(", ")}.`,
             );
     }
+}
+
+/**
+ * The refusal for a change to a project that is not trusted. Reading it stays open: looking at a
+ * project is what an author does before deciding to trust it, and an agent can help with that.
+ */
+export function untrustedForChanges(projectPath: string): AgentCallResult {
+    return agentRefusal(
+        "untrusted",
+        `${projectPath} is not trusted in Studio, so agents may read it but not change it.`,
+        "Ask the author to trust the project (Studio's status bar, or Settings > Data > Trusted projects), then try again. Read tools keep working meanwhile.",
+    );
 }
 
 function untrusted(projectPath: string): AgentCallResult {

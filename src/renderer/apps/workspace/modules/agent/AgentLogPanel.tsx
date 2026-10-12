@@ -20,6 +20,8 @@ import {
 import type { AgentErrorCode } from "@shared/agent/protocol";
 import { AGENT_TOOLS_BY_NAME } from "@shared/agent/tools";
 import type { Translator, TranslationKey } from "@shared/i18n";
+import type { PluginListItem } from "@shared/types/plugins";
+import { pluginDisplayName } from "@shared/utils/pluginDisplayText";
 import { useWorkspace } from "../../context";
 import type { PanelComponentProps } from "../types";
 import { revealAgentWrite } from "./revealAgentWrite";
@@ -89,6 +91,35 @@ function exportFileName(): string {
 const NO_ENTRIES: readonly AgentActivityEntry[] = [];
 const NO_SUBSCRIPTION = () => () => {};
 
+/**
+ * The installed plugins' manifests by id, for naming a plugin tool's row in the plugin's own words
+ * rather than by its id. Read once a row names a plugin, and again whenever a row names one the last
+ * read did not have; a plugin uninstalled since its call simply goes unnamed.
+ */
+function usePluginManifests(entries: readonly AgentActivityEntry[]): ReadonlyMap<string, PluginListItem["manifest"]> {
+    const [manifests, setManifests] = useState<ReadonlyMap<string, PluginListItem["manifest"]>>(() => new Map());
+    const named = useMemo(
+        () => [...new Set(entries.flatMap(entry => (entry.pluginId ? [entry.pluginId] : [])))].sort().join("\n"),
+        [entries],
+    );
+    const unknown = named !== "" && named.split("\n").some(id => !manifests.has(id));
+    useEffect(() => {
+        if (!unknown) {
+            return;
+        }
+        let alive = true;
+        void getInterface().plugins.list().then(result => {
+            if (alive && result.success && result.data) {
+                setManifests(new Map(result.data.plugins.map(plugin => [plugin.pluginId, plugin.manifest])));
+            }
+        }).catch(() => undefined);
+        return () => {
+            alive = false;
+        };
+    }, [named, unknown]);
+    return manifests;
+}
+
 export function AgentLogPanel({ panelId }: PanelComponentProps) {
     const translator = useTranslation();
     const { t } = translator;
@@ -136,6 +167,11 @@ export function AgentLogPanel({ panelId }: PanelComponentProps) {
     }, []);
 
     const visible = useMemo(() => filterAgentActivity(entries, filter), [entries, filter]);
+    const pluginManifests = usePluginManifests(entries);
+    const pluginName = useCallback((pluginId: string | undefined): string | null => {
+        const manifest = pluginId ? pluginManifests.get(pluginId) : undefined;
+        return manifest ? pluginDisplayName(manifest, translator.locale) || null : null;
+    }, [pluginManifests, translator.locale]);
 
     // Follow the newest call while the list is scrolled to its end; leave it alone once the author
     // has scrolled up to read something.
@@ -261,6 +297,7 @@ export function AgentLogPanel({ panelId }: PanelComponentProps) {
                         <AgentLogRow
                             key={entry.id}
                             entry={entry}
+                            pluginName={pluginName(entry.pluginId)}
                             translator={translator}
                             expanded={expanded.has(entry.id)}
                             onToggle={toggleExpanded}
@@ -287,12 +324,15 @@ function formatDuration(translator: Pick<Translator, "t" | "formatNumber">, dura
 
 function AgentLogRow({
     entry,
+    pluginName,
     translator,
     expanded,
     onToggle,
     onReveal,
 }: {
     entry: AgentActivityEntry;
+    /** The display name of the plugin whose tool this was; null for Studio's own tools or a plugin no longer installed. */
+    pluginName: string | null;
     translator: Translator;
     expanded: boolean;
     onToggle: (id: number) => void;
@@ -322,9 +362,9 @@ function AgentLogRow({
             <time className="w-16 shrink-0 tabular-nums text-2xs text-fg-subtle">{formatTime(entry.startedAt)}</time>
             <span className="w-28 shrink-0 truncate text-2xs text-fg-subtle">{client}</span>
             <span className={cn("shrink-0 text-xs", entry.write ? "text-fg" : "text-fg-muted")}>{title}</span>
-            {entry.pluginId ? (
-                <span className="max-w-[24%] shrink-0 truncate font-mono text-2xs text-fg-subtle" data-tip={t("workspace.agent.log.pluginTool", { plugin: entry.pluginId })}>
-                    {entry.pluginId}
+            {pluginName ? (
+                <span className="max-w-[24%] shrink-0 truncate text-2xs text-fg-subtle" data-tip={t("workspace.agent.log.pluginTool", { plugin: pluginName })}>
+                    {pluginName}
                 </span>
             ) : null}
             <span className="min-w-0 flex-1 truncate text-2xs text-fg-subtle">{entry.target ?? ""}</span>
@@ -347,9 +387,16 @@ function AgentLogRow({
             ) : (
                 <div className={rowClass}>{cells}</div>
             )}
+            {/* What the agent was told, in its words: labelled as such, so it does not read as a step for the author. */}
             {refused && expanded ? (
                 <div className="nl-selectable-text cursor-text space-y-0.5 pb-1 pl-7 pr-2 text-2xs">
-                    {entry.message ? <p className="whitespace-pre-wrap break-words text-fg-muted">{entry.message}</p> : null}
+                    {entry.message ? (
+                        <p className="whitespace-pre-wrap break-words text-fg-subtle">
+                            <span className="text-fg-muted">{t("workspace.agent.log.message")}</span>
+                            {" "}
+                            {entry.message}
+                        </p>
+                    ) : null}
                     {entry.hint ? (
                         <p className="whitespace-pre-wrap break-words text-fg-subtle">
                             <span className="text-fg-muted">{t("workspace.agent.log.hint")}</span>

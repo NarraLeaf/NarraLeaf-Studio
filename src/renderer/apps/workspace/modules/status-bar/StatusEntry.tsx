@@ -19,7 +19,7 @@ export const StatusBarExperimentalContext = createContext(false);
  * True while an agent connected over MCP is at work in this project, i.e. the whole status bar is
  * washed in the success colour - the author watching the agent sees at a glance that edits are not
  * theirs. Provided by {@link StatusBar}; the experimental and running washes both win over it, so a
- * play-test the agent starts still reads as a run.
+ * play-test the agent starts still reads as a run. False while the author has the agent paused.
  */
 export const StatusBarAgentContext = createContext(false);
 

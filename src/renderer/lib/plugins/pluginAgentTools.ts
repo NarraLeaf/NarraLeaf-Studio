@@ -13,8 +13,10 @@
  *    given the arguments and the client's name and nothing else, and whatever it returns held to
  *    the answer limits (`normalizePluginAgentToolResult`). The gate - write access, pause, freeze,
  *    a live session - is the bridge's, before any of this, and a plugin cannot opt out of it.
- *  - **Watches the plugin's storage** for the length of the call. A reading tool that writes is
- *    refused at `writeJson`. A writing tool's writes are captured - the store as it was before the
+ *  - **Watches the plugin's storage** for the length of the call. A reading tool that writes its
+ *    plugin's storage is refused at `writeJson` - and that is all a reading tool is held to: the
+ *    host sees no other route a plugin has to the project, and the author's write switch gates only
+ *    tools declared `write: true`. A writing tool's writes are captured - the store as it was before the
  *    first write to each namespace, and as the last write left it - and pushed as one command on
  *    the project's undo stack, labelled with the tool's title. Undo and redo write the snapshots
  *    back through the same store and then run the plugin's reloader, the hook it already has for
@@ -25,6 +27,10 @@
  * call" is a single flag rather than something that has to follow async work around. The cost of
  * that simplicity: a write the author makes in the plugin's own panel while one of its tools is
  * running is treated as the tool's - refused if the tool reads, part of the step if it writes.
+ * Scoping it to the tool's own writes would take either an async context the renderer does not
+ * have, or a writer handed to the handler - and plugins (the Gallery among them) write through
+ * `services.storage` from code shared with their panels, so that would be an API change for every
+ * plugin with a tool, not a fix inside the host.
  *
  * Comments in English per project convention.
  */

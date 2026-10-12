@@ -99,4 +99,14 @@ describe("ensureAgentMayRead", () => {
         expect(ask).not.toHaveBeenCalled();
         expect((await refusal(ensureAgentMayRead(["/kit/c.png"], check(ask)))).hint).toContain("could not ask");
     });
+
+    it("does not count the allowed folders for an untrusted project, and passes on main's reason", async () => {
+        const ask = vi.fn(async () => answer({ refused: [{ folder: "/art", reason: "untrusted" }] }));
+        const untrusted: AgentReadCheck = { ...check(ask), policy: { ...check(ask).policy, projectTrusted: false } };
+        const error = await refusal(ensureAgentMayRead(["/project/a.png", "/art/b.png"], untrusted));
+        expect(ask).toHaveBeenCalledWith({ callId: "call-1", paths: ["/art/b.png"] });
+        expect(error.message).toContain("not trusted");
+        expect(error.hint).toContain("trust the project");
+        await ensureAgentMayRead(["/project/a.png"], untrusted);
+    });
 });

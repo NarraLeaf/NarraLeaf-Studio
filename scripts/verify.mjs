@@ -143,10 +143,15 @@ async function runChecks() {
     // Cores alone overcommit memory: the renderer, runtime and builtin-plugins programs and the
     // plugin API build each hold most of the renderer tree, a few gigabytes apiece, and eight of
     // them side by side on an 8 GB machine spend the run swapping. A CI runner (16 GB, 4 cores)
-    // is still limited by its cores.
+    // is still limited by its cores. The budget is the memory free now, not the machine's total:
+    // on a workstation running several Studio instances and other runs, sizing by the total
+    // started ten typechecks on 31 GB with 7 GB free and exhausted it. NLS_VERIFY_LANES caps the
+    // count further for a caller that shares the machine with other runs.
     const cores = os.availableParallelism?.() ?? os.cpus().length;
-    const byMemory = Math.max(1, Math.floor(os.totalmem() / (CHECK_MEMORY_MB * 1024 * 1024)));
-    const lanes = Math.min(checks.length, cores, byMemory);
+    const byMemory = Math.max(1, Math.floor(os.freemem() / (CHECK_MEMORY_MB * 1024 * 1024)));
+    const requested = Number.parseInt(process.env.NLS_VERIFY_LANES ?? "", 10);
+    const byRequest = Number.isInteger(requested) && requested > 0 ? requested : Infinity;
+    const lanes = Math.min(checks.length, cores, byMemory, byRequest);
     console.log(`verify: ${checks.length} checks, ${lanes} at a time`);
     const failed = [];
     const started = performance.now();

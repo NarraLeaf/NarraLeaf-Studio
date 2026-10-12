@@ -1,4 +1,4 @@
-import { agentRefusal, type AgentCallResult, type AgentContent, type AgentErrorCode } from "./protocol";
+import { agentRefusal, isAgentInternalToolName, type AgentCallResult, type AgentContent, type AgentErrorCode } from "./protocol";
 import { AGENT_TOOLS_BY_NAME, type AgentJsonSchema, type AgentToolDescriptor } from "./tools";
 
 /**
@@ -84,8 +84,14 @@ export function isAgentPluginToolDescriptor(tool: AgentToolDescriptor): tool is 
  * `narraleaf.gallery.add_entries` becomes `narraleaf_gallery__add_entries`: the plugin id and the
  * tool part each with every `.` and `-` turned into `_`, joined by {@link AGENT_PLUGIN_TOOL_SEPARATOR}.
  * Dots are what some model APIs silently drop a tool for, which is the whole reason for the mapping.
+ *
+ * An empty plugin id has no name: `.build` would map to `__build`, the name of an internal call. Nor
+ * does any id that maps to a name starting with `__` (see `AGENT_INTERNAL_TOOL_PREFIX`).
  */
 export function agentPluginToolMcpName(pluginId: string, name: string): string | null {
+    if (typeof pluginId !== "string" || !pluginId) {
+        return null;
+    }
     if (typeof name !== "string" || !AGENT_PLUGIN_TOOL_NAME_PATTERN.test(name) || !name.startsWith(`${pluginId}.`)) {
         return null;
     }
@@ -94,7 +100,7 @@ export function agentPluginToolMcpName(pluginId: string, name: string): string |
         return null;
     }
     const mapped = `${flatten(pluginId)}${AGENT_PLUGIN_TOOL_SEPARATOR}${flatten(local)}`;
-    return AGENT_MCP_TOOL_NAME_PATTERN.test(mapped) ? mapped : null;
+    return AGENT_MCP_TOOL_NAME_PATTERN.test(mapped) && !isAgentInternalToolName(mapped) ? mapped : null;
 }
 
 function flatten(part: string): string {
@@ -254,8 +260,10 @@ export function readAgentPluginToolDescriptor(value: unknown): AgentPluginToolDe
     const { name, title, description, write, inputSchema, pluginId, pluginName, pluginToolName } = value;
     if (
         typeof pluginId !== "string"
+        || !pluginId
         || typeof pluginToolName !== "string"
         || typeof name !== "string"
+        || isAgentInternalToolName(name)
         || agentPluginToolMcpName(pluginId, pluginToolName) !== name
         || AGENT_TOOLS_BY_NAME.has(name)
         || typeof title !== "string" || !title.trim() || title.length > AGENT_PLUGIN_TOOL_TITLE_MAX
@@ -283,6 +291,41 @@ export function readAgentPluginToolDescriptor(value: unknown): AgentPluginToolDe
         pluginName: pluginName.slice(0, 120),
         pluginToolName,
     };
+}
+
+/** An installed plugin as main's plugin list gives it: enough to hold a report to its manifest. */
+export type AgentPluginToolSource = {
+    pluginId: string;
+    enabled: boolean;
+    manifest: { name: string; contributes: { agentTools?: readonly AgentPluginToolDeclaration[] } };
+};
+
+/**
+ * Keep a reported tool only if an installed, enabled plugin declares it: the same plugin id, the
+ * plugin's own name in `contributes.agentTools`, the same `write`. Answers the descriptor with the
+ * plugin's name as its manifest gives it (not as the report did), or null.
+ *
+ * {@link readAgentPluginToolDescriptor} checks a report's shape; this checks its claims. A workspace
+ * runs plugin code, and the manifest is what the author agreed to when the plugin was installed - a
+ * tool it does not declare, or declares as reading while the report says writing (or the reverse),
+ * is not one the author was told about.
+ */
+export function checkReportedAgentPluginTool(
+    tool: AgentPluginToolDescriptor,
+    plugins: readonly AgentPluginToolSource[],
+): AgentPluginToolDescriptor | null {
+    if (!tool.pluginId || isAgentInternalToolName(tool.name)) {
+        return null;
+    }
+    const plugin = plugins.find(entry => entry.pluginId === tool.pluginId);
+    if (!plugin || !plugin.enabled) {
+        return null;
+    }
+    const declared = (plugin.manifest.contributes.agentTools ?? []).find(entry => entry.name === tool.pluginToolName);
+    if (!declared || declared.write !== tool.write) {
+        return null;
+    }
+    return { ...tool, pluginName: plugin.manifest.name.slice(0, 120) };
 }
 
 // ── What a plugin's handler answers ──────────────────────────────────────────────────────────────
@@ -329,9 +372,11 @@ export type PluginAgentToolDef = {
     /** The arguments, checked before the handler runs. Studio adds `project` itself. */
     inputSchema: PluginAgentJsonSchema & { type: "object" };
     /**
-     * Changes the project. Refused unless the author allowed agent writes, and while paused, frozen
-     * or in a live session. While a tool marked `false` runs, `services.storage.writeJson` refuses.
-     * While one marked `true` runs, every `writeJson` is captured into one step of undo.
+     * Changes the project. Marked `true`: refused unless the author allowed agent writes, and while
+     * paused, frozen or in a live session; while it runs, every `writeJson` is captured into one step
+     * of undo. Marked `false`: none of that gating applies, and the only thing refused while it runs
+     * is `services.storage.writeJson` - the host cannot see the plugin's other routes to the project,
+     * so a tool that changes it by any of them must be marked `true`.
      */
     write: boolean;
     handler(args: Record<string, unknown>, context: PluginAgentToolContext): PluginAgentToolResult | Promise<PluginAgentToolResult>;

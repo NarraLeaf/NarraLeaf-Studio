@@ -807,6 +807,18 @@ describe("variables", () => {
         expect(build("/reset gold")).toMatchObject({ payload: { value: 10, expression: undefined } });
     });
 
+    it("an assignment written with an expression stores no literal beside it", () => {
+        // Every new assignment block starts as `value: true`; the sugars used to spread it into the
+        // saved row next to the expression that replaces it.
+        for (const line of ["/inc gold", "/dec gold 2", "/toggle met", "/set gold gold + 1"]) {
+            const block = build(line) as Extract<StoryBlock, { kind: "action" }>;
+            expect(block.payload).toMatchObject({ action: "setVariable", value: null });
+            expect((block.payload as { expression?: unknown }).expression).toBeDefined();
+        }
+        // A literal keeps its value, as it always has.
+        expect(build("/set gold 100")).toMatchObject({ payload: { value: 100 } });
+    });
+
     it("declarationFromArgs pins the whole line to the declaration it produces", () => {
         // The bug class this guards: a default read under the wrong kind silently declaring the
         // wrong type. `/local gold 100` must be a NUMBER with default 100, never a boolean.

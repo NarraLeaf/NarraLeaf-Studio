@@ -25,6 +25,7 @@ import { assetLibraryFreezeScope } from "../assetLiveSession";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
 import { TooltipGroup } from "@/lib/tooltip";
+import { useShortcutLabels } from "@/apps/workspace/hooks/useShortcutLabels";
 import { Select } from "@/lib/components/elements";
 import { ASSET_UNDECODABLE } from "@/lib/workspace/services/assets/assetReadFailure";
 import { openAssetPreviewTabsInEditor } from "../dnd/openDraggedAssetsInEditor";
@@ -429,6 +430,9 @@ export function VideoPreviewEditor({ tabId, payload, active }: EditorComponentPr
         idPrefix: `video-preview-${tabId}`,
         catalogPrefix: "assets.video.",
     });
+    // The toolbar names the key each of its buttons shares with the keyboard, as rebound in Settings.
+    const shortcuts = useShortcutLabels();
+    const key = (id: string) => shortcuts.forBinding(`assets.video.${id}`);
 
     // ---- zoom menu -----------------------------------------------------------
 
@@ -492,6 +496,7 @@ export function VideoPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     disabled={!ready}
                     className={ICON_BUTTON_CLASS}
                     data-tip={playing ? t("assets.audio.pause") : t("assets.audio.play")}
+                    data-tip-shortcut={key("play-pause")}
                     aria-label={playing ? t("assets.audio.pause") : t("assets.audio.play")}
                 >
                     {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
@@ -502,6 +507,7 @@ export function VideoPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     disabled={!ready}
                     className={ICON_BUTTON_CLASS}
                     data-tip={t("assets.audio.editor.toStart")}
+                    data-tip-shortcut={key("to-start")}
                     aria-label={t("assets.audio.editor.toStart")}
                 >
                     <SkipBack className="h-4 w-4" />
@@ -512,6 +518,7 @@ export function VideoPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     disabled={!ready}
                     className={ICON_BUTTON_CLASS}
                     data-tip={t("assets.video.editor.previousFrame")}
+                    data-tip-shortcut={key("previous-frame")}
                     aria-label={t("assets.video.editor.previousFrame")}
                 >
                     <StepBack className="h-4 w-4" />
@@ -522,6 +529,7 @@ export function VideoPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     disabled={!ready}
                     className={ICON_BUTTON_CLASS}
                     data-tip={t("assets.video.editor.nextFrame")}
+                    data-tip-shortcut={key("next-frame")}
                     aria-label={t("assets.video.editor.nextFrame")}
                 >
                     <StepForward className="h-4 w-4" />
@@ -531,6 +539,7 @@ export function VideoPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     onClick={() => setLoop(value => !value)}
                     className={controlButtonClass(loop)}
                     data-tip={t("assets.audio.editor.loop")}
+                    data-tip-shortcut={key("loop")}
                     aria-label={t("assets.audio.editor.loop")}
                     aria-pressed={loop}
                 >

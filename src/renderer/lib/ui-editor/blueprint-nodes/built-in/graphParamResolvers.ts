@@ -2089,7 +2089,7 @@ function resolveGetCharacterNodeOutput(
         return character?.name ?? "";
     }
     if (portId === "characterColor") {
-        return blueprintCharacterColorOrDefault(character?.color);
+        return blueprintCharacterColorOrDefault(character);
     }
     if (portId === "characterAvatar") {
         return character?.avatar ?? null;

@@ -90,5 +90,6 @@ export const common = {
         down: "下",
         left: "左",
         right: "右",
+        overview: "概览",
     },
 } satisfies LocaleNamespace<"common">;

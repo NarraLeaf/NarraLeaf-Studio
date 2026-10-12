@@ -12,11 +12,17 @@ import {
     canvasFromSizes,
     characterLayeredSet,
     characterLayersImport,
+    characterLabel,
     characterPreview,
     specFromPsdPlan,
 } from "./tools/layeredTools";
 
 vi.mock("@/lib/app/writeFreeze", () => ({ getProjectWriteFreeze: () => null }));
+
+// A PSD import reads and bakes through main; what is recorded is whether it got as far as baking.
+const bridge = vi.hoisted(() => ({ readPsd: vi.fn(), bakePsd: vi.fn() }));
+vi.mock("@/lib/app/bridge", () => ({ getInterface: () => bridge }));
+vi.mock("./agentFolderRequest", () => ({ ensureAgentMayReadPaths: async () => undefined }));
 
 // The compositor draws on an OffscreenCanvas, which node has not got. What it is handed - which
 // bitmaps, in which order, at which size - is what the preview decides, so that is what is recorded.
@@ -102,7 +108,7 @@ function harness(init: { images?: Record<string, Uint8Array>; blocks?: Record<st
     const tool = {
         ctx: { services: { get: (name: string) => services[name] } },
         request: { callId: "call", policy: { writesEnabled: true, allowedImportRoots: [] } },
-        follow: { describeCall: vi.fn() },
+        follow: { describeCall: vi.fn(), getState: () => ({ paused: false }) },
         log: vi.fn(),
     } as unknown as AgentToolContext;
     const call = (handler: AgentToolHandler, args: Record<string, unknown>) => handler(args, tool);
@@ -120,7 +126,7 @@ function harness(init: { images?: Record<string, Uint8Array>; blocks?: Record<st
         throw new Error("expected a refusal");
     };
     const undoDepth = () => history.describe().find(entry => entry.scopeId === projectHistoryScope())?.undo ?? 0;
-    return { cast, history, run, call, refusal, undoDepth };
+    return { cast, history, run, call, refusal, undoDepth, follow: tool.follow as unknown as { describeCall: ReturnType<typeof vi.fn> } };
 }
 
 const MEI_SET = {
@@ -258,7 +264,53 @@ describe("cold switch", () => {
     });
 });
 
+describe("what the interface calls the character", () => {
+    it("names it by its name in the status bar and the Agent log when the call names it by id", async () => {
+        const id = "6f1c2b9e-0d3a-4c5b-9e7f-1a2b3c4d5e6f";
+        const h = harness({ preset: { id, name: "Mei", poses: ["normal"] } });
+        await h.refusal(characterLayeredSet, { ...MEI_SET, character: id });
+        expect(h.follow.describeCall).toHaveBeenCalledWith("call", "Mei");
+        expect(h.follow.describeCall.mock.calls.flat().join(" ")).not.toContain(id);
+        await h.refusal(characterLayersImport, { character: id, prefix: "nobody" });
+        expect(h.follow.describeCall).toHaveBeenLastCalledWith("call", "Mei");
+    });
+
+    it("never quotes an id for a character that does not exist, but does quote the name a new one will get", () => {
+        const h = harness();
+        const ctx = (h.cast as unknown as { getContext(): never }).getContext();
+        expect(characterLabel(ctx, "0d6e8c1a-2b3f-4a5d-8e9f-0a1b2c3d4e5f")).toBe("");
+        expect(characterLabel(ctx, "Aoi")).toBe("Aoi");
+    });
+});
+
 describe("character_layers_import", () => {
+    it("refuses a PSD import before baking or importing anything", async () => {
+        const h = harness({ preset: { id: "mei-id", name: "Mei", poses: ["normal"] } });
+        const layer = (path: string[]) => ({ path, name: path[path.length - 1], blendMode: "normal", opacity: 1, hidden: false, clipping: false });
+        bridge.readPsd.mockResolvedValue({
+            success: true,
+            data: {
+                document: {
+                    fileName: "mei.psd",
+                    width: 1000,
+                    height: 1800,
+                    layers: [
+                        layer(["body"]),
+                        { ...layer(["expression"]), children: [layer(["expression", "normal"]), layer(["expression", "smile"])] },
+                    ],
+                },
+            },
+        });
+        bridge.bakePsd.mockReset();
+        // Mei is a preset character: making her layered is a cold switch the agent has not confirmed.
+        const refused = await h.refusal(characterLayersImport, { character: "Mei", psd: "D:/art/mei.psd" });
+        expect(refused.code).toBe("unavailable");
+        expect(refused.hint).toMatch(/confirmSwitch: true/);
+        expect(bridge.bakePsd).not.toHaveBeenCalled();
+        expect(h.cast.getCharacter("mei-id")!.profile.appearance.getKind()).toBe("preset");
+        expect(h.undoDepth()).toBe(0);
+    });
+
     it("builds the stack from files named <character>_<layer>_<tag> and writes it as one step", async () => {
         const { cast, run, undoDepth } = harness({ images: { lin_body: png(1000, 1800) } });
         const out = await run(characterLayersImport, {

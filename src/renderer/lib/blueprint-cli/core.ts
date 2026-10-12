@@ -146,7 +146,8 @@ export function blueprintNodeCommand(wanted: string, options: BlueprintNodeOptio
         io.err(`No node type "${resolved}".`);
         return io.finish(2);
     }
-    const plugin = options.nodeOwnerOf?.(resolved);
+    const nodeOwnerOf = options.nodeOwnerOf;
+    const plugin = nodeOwnerOf ? io.guard(() => nodeOwnerOf(resolved)) : undefined;
     if (options.json === true) {
         io.out(JSON.stringify(plugin ? { ...detail, plugin } : detail, null, 2));
         return io.finish(0);
@@ -155,7 +156,8 @@ export function blueprintNodeCommand(wanted: string, options: BlueprintNodeOptio
     if (plugin) {
         // Said rather than left to the category name: a project using this node needs that plugin
         // installed and switched on, and the bundled ones do not all ship switched on.
-        const bundled = options.isBundledPlugin?.(plugin) ?? true;
+        const isBundledPlugin = options.isBundledPlugin;
+        const bundled = isBundledPlugin ? io.guard(() => isBundledPlugin(plugin)) : true;
         io.out(
             bundled
                 ? `  plugin     ${plugin} (bundled with Studio; a project using it depends on it)`
@@ -417,6 +419,12 @@ export type BlueprintApplyOptions = {
      * said on stderr and the command leaves with 2.
      */
     beforeApply?: () => string | null;
+    /**
+     * Keep the change, when `write`: called once the blueprints are in the document and before
+     * "Wrote ..." is said. A message refuses (said on stderr, leaving with 2). The command line writes
+     * the file here, so a write that fails never claims it wrote, and the warnings before it stay said.
+     */
+    commit?: () => string | null;
 };
 
 export type BlueprintApplyResult = CommandResult & {
@@ -447,7 +455,8 @@ export function blueprintApplyCommand(
     if (check.diagnostics.length > 0) {
         io.err(report);
     }
-    const refusal = options.beforeApply?.() ?? null;
+    const beforeApply = options.beforeApply;
+    const refusal = beforeApply ? io.guard(beforeApply) : null;
     if (refusal !== null) {
         io.err(refusal);
         return { ...io.finish(2), check };
@@ -467,6 +476,12 @@ export function blueprintApplyCommand(
     if (options.write !== true) {
         io.out(`Would ${what || "change nothing"} in ${label}. Pass --write to do it.`);
         return { ...io.finish(0), check, applied };
+    }
+    const commit = options.commit;
+    const refused = commit ? io.guard(commit) : null;
+    if (refused !== null) {
+        io.err(refused);
+        return { ...io.finish(2), check };
     }
     io.out(`Wrote ${label}: ${what || "no change"}.${options.writtenNote ? `\n${options.writtenNote}` : ""}`);
     return { ...io.finish(0), check, applied };

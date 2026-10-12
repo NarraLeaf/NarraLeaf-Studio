@@ -593,6 +593,26 @@ export class BaseApp {
         return this.cacheRootResolution;
     }
 
+    /**
+     * The loopback ports Studio itself is serving on at this moment: the dev debug server, and the
+     * Chromium remote-debugging port when Studio was started with one. Request proxies that run in
+     * main for a renderer refuse these (`utils/ownLoopbackGuard`), because a main-process request
+     * carries no origin for those servers to turn away. Read on every call rather than cached: a
+     * server that stopped or moved is not one to protect, and one that started is.
+     */
+    public ownLoopbackPorts(): number[] {
+        const ports: number[] = [];
+        const debugPort = this.debugServer?.listeningPort ?? null;
+        if (debugPort !== null) {
+            ports.push(debugPort);
+        }
+        const remoteDebugging = Number(this.electronApp?.commandLine?.getSwitchValue("remote-debugging-port") ?? "");
+        if (Number.isInteger(remoteDebugging) && remoteDebugging > 0) {
+            ports.push(remoteDebugging);
+        }
+        return ports;
+    }
+
     public getPreloadScript(): string {
         return path.resolve(this.getDistDir(), "main", "preload.js");
     }

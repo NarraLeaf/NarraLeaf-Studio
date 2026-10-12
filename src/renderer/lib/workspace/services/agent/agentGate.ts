@@ -39,6 +39,14 @@ export function gateAgentCall(input: AgentGateInput): AgentCallResult | null {
             "Ask the author to turn on \"Allow agents to change projects\" in Studio's settings, then try again. Read tools keep working meanwhile.",
         );
     }
+    // Main refuses this before the call is sent; held here too, as the plugin and write switches are.
+    if (input.policy.projectTrusted === false) {
+        return agentRefusal(
+            "untrusted",
+            "This project is not trusted in Studio, so agents may read it but not change it.",
+            "Ask the author to trust the project (Studio's status bar, or Settings > Data > Trusted projects), then try again. Read tools keep working meanwhile.",
+        );
+    }
     if (input.paused) {
         return agentRefusal(
             "paused",

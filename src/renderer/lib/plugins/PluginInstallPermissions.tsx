@@ -155,18 +155,6 @@ export function studioPermissionLabel(
         : t("pluginPermission.filesystem.permissionSingle", { mode, path: permission.path });
 }
 
-export interface PluginInstallPermissionSectionsProps {
-    permissions: readonly PluginInstallPermission[] | undefined;
-    /** Rounded boxes for card-like surfaces; square to match the consent dialog's chrome. */
-    rounded?: boolean;
-    className?: string;
-}
-
-/**
- * Renders {@link groupInstallPermissions} heaviest-first. Empty groups render
- * nothing at all - a heading with no rows under it reads as a capability the
- * plugin has, which is exactly backwards.
- */
 /** "Offers 3 tools to AI agents connected to Studio (1 can change the project)". */
 export function agentToolsPermissionLabel(permission: PermissionOf<"agentTools">, translator: Pick<Translator, "t" | "tn">): string {
     const tools = translator.tn("pluginPermission.permissions.agentTools", permission.tools.length);
@@ -179,6 +167,18 @@ export function agentToolsPermissionLabel(permission: PermissionOf<"agentTools">
     });
 }
 
+export interface PluginInstallPermissionSectionsProps {
+    permissions: readonly PluginInstallPermission[] | undefined;
+    /** Rounded boxes for card-like surfaces; square to match the consent dialog's chrome. */
+    rounded?: boolean;
+    className?: string;
+}
+
+/**
+ * Renders {@link groupInstallPermissions} heaviest-first. Empty groups render
+ * nothing at all - a heading with no rows under it reads as a capability the
+ * plugin has, which is exactly backwards.
+ */
 export function PluginInstallPermissionSections({
     permissions,
     rounded = true,

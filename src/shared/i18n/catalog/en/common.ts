@@ -120,5 +120,7 @@ export const common = {
         down: "down",
         left: "left",
         right: "right",
+        // The name of the small overview map in a graph's corner, which the library otherwise calls "Mini Map".
+        overview: "Overview",
     },
 } as const;

@@ -392,7 +392,7 @@ export const documentDiff = {
         plugins: "プラグインの設定",
         assetAxes: "ビルドが使うアセット",
         scenes: "開始できるシーン",
-        ending: "ストーリーが終わったときに出すページ",
+        ending: "ストーリー終了時に表示するページ",
         order: "バリアントの並び",
     },
     /**
@@ -408,7 +408,7 @@ export const documentDiff = {
         added: "トラックを追加",
         removed: "トラックを削除",
         renamed: "名前を変更",
-        rerouted: "別のトラックへ出力するようになった",
+        rerouted: "出力先を別のトラックに変更",
         reroutedToMaster: "マスター出力へ直接出すようになった",
         /** 値の組はつまみ自身の数（100 分率）。保存されている 0 から 1 ではない。 */
         volume: "音量を変更",
@@ -433,7 +433,7 @@ export const documentDiff = {
         defaultValue: "既定値を変更",
         valueType: "型を変更",
         scopeSaved: "セーブ変数になった",
-        scopeGlobal: "永続変数になった",
+        scopeGlobal: "永続変数に変更",
         /** 値を入れておくキー。名前の変更では決して動かさないように作ってある。 */
         storageKey: "すでに保存された値はもう読み出せない",
         description: "備考を変更",
@@ -593,7 +593,7 @@ export const documentDiff = {
         signing: "署名",
         build: "ビルドの設定",
         patch: "パッチ書き出しの設定",
-        linting: "プロジェクトチェック",
+        linting: "プロジェクトの検査",
         dependencies: "依存関係",
         dependencyPlugins: "プラグインの一覧",
     },

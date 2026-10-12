@@ -7,6 +7,7 @@
 
 import { createElement, type ReactElement } from "react";
 import { getInterface } from "@/lib/app/bridge";
+import { translate } from "@/lib/i18n";
 import { anchorComponentId, anchorSurfaceId } from "@shared/blueprint/ownerShape";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIGraphService } from "../../ui-editor/UIGraphService";
@@ -478,8 +479,8 @@ export function countWiring(
 }
 
 export const uiTemplateApply: AgentToolHandler = async (args, { ctx, request, follow }) => {
+    // Named by the page it adds once it has, never by the template's id: the interface shows no ids.
     const templateId = readString(args, "template");
-    follow.describeCall(request.callId, templateId);
     const uidoc = uiDocumentService(ctx);
     const result = await applyUITemplate(templateId, uidoc);
     if (!result.ok) {
@@ -487,6 +488,7 @@ export const uiTemplateApply: AgentToolHandler = async (args, { ctx, request, fo
     }
     const first = result.surfaces[0];
     if (first) {
+        follow.describeCall(request.callId, first.name);
         follow.noteWrite({ kind: "surface", surfaceId: first.id, name: first.name });
     }
     const document = uidoc.getDocument();
@@ -562,7 +564,8 @@ export const brandSet: AgentToolHandler = async (args, { ctx, request, follow })
     if (!colors && !fonts) {
         throw refuse("invalid_args", "Give `colors`, `fonts` or both.");
     }
-    follow.describeCall(request.callId, "brand");
+    // The palette has no name of its own; the log names it the way a comparison does.
+    follow.describeCall(request.callId, translate("documentDiff.name.brand"));
     const brand = ctx.services.get<BrandService>(Services.Brand);
 
     // Checked whole before anything is written.

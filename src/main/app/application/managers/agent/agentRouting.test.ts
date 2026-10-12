@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { projectPathIdentity } from "@shared/utils/recentProject";
-import { chooseAgentWorkspace, type AgentRoutingCandidate } from "./agentRouting";
+import { chooseAgentWorkspace, writeNeedsNamedProject, type AgentRoutingCandidate } from "./agentRouting";
 
 const posix = (value: string) => projectPathIdentity(value, false);
 const windows = (value: string) => projectPathIdentity(value, true);
@@ -47,5 +47,18 @@ describe("chooseAgentWorkspace", () => {
 
     it("refuses when nothing is open", () => {
         expect(chooseAgentWorkspace(null, [], posix)).toEqual({ ok: false, reason: "none-open", openProjects: [] });
+    });
+});
+
+describe("writeNeedsNamedProject", () => {
+    it("asks a write to name its project once more than one is open", () => {
+        expect(writeNeedsNamedProject(true, null, 2)).toBe(true);
+        expect(writeNeedsNamedProject(true, "/games/a", 2)).toBe(false);
+    });
+
+    it("leaves reads, and a write with one project open, to the ordinary routing", () => {
+        expect(writeNeedsNamedProject(false, null, 3)).toBe(false);
+        expect(writeNeedsNamedProject(true, null, 1)).toBe(false);
+        expect(writeNeedsNamedProject(true, null, 0)).toBe(false);
     });
 });

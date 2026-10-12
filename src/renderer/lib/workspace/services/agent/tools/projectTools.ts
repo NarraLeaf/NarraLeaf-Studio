@@ -16,14 +16,15 @@
 import { resolveEntrySurface } from "@shared/types/ui-editor/entrySurface";
 import { isValidLocaleCode, localeAutonym } from "@shared/types/localization";
 import { PLAYER_PREFERENCE_KEYS, PLAYER_PREFERENCE_SPECS, type PlayerPreferenceKey, type PlayerPreferences } from "@shared/types/preference";
-import { Services, type WorkspaceContext } from "../../services";
+import { Services } from "../../services";
 import type { ProjectService } from "../../core/ProjectService";
 import type { UIDocumentService } from "../../ui-editor/UIDocumentService";
 import type { LocalizationService } from "../../localization/LocalizationService";
 import type { CharacterService } from "../../core/CharacterService";
 import type { VariableRegistryService } from "../../variables/VariableRegistryService";
-import { answerJson, readOptionalInteger, readOptionalString, readOptionalStringArray, refuse, type AgentToolHandler } from "../agentCall";
+import { answerJson, readOptionalInteger, readOptionalString, readOptionalStringArray, refuse, type AgentToolContext, type AgentToolHandler } from "../agentCall";
 import { AGENT_ASSET_TYPES, assetsService, storyService } from "../agentLookups";
+import { assertAgentMayStillWrite } from "../agentCommitGate";
 
 const DEFAULT_RESOLUTION = { width: 1920, height: 1080 };
 
@@ -134,10 +135,11 @@ export function planLanguageChange(
 }
 
 async function changeLanguages(
-    ctx: WorkspaceContext,
+    tool: Pick<AgentToolContext, "ctx" | "request" | "follow">,
     wanted: readonly string[] | undefined,
     removals: readonly string[],
 ): Promise<LanguagePlan> {
+    const { ctx } = tool;
     const localization = ctx.services.get<LocalizationService>(Services.Localization);
     const config = localization.getConfiguration();
     const counts = new Map<string, number>();
@@ -154,6 +156,8 @@ async function changeLanguages(
         removals,
         code => counts.get(code) ?? 0,
     );
+    // Counting each language's translations read its document; the author may have paused meanwhile.
+    assertAgentMayStillWrite(tool);
     for (const code of plan.add) {
         await localization.addLocale({ code, displayName: localeAutonym(code) });
     }
@@ -197,7 +201,7 @@ export function readPlayerDefaults(args: Record<string, unknown>): Partial<Playe
     return patch as Partial<PlayerPreferences>;
 }
 
-export const projectSettingsSet: AgentToolHandler = async (args, { ctx, log }) => {
+export const projectSettingsSet: AgentToolHandler = async (args, { ctx, request, follow, log }) => {
     const name = readOptionalString(args, "name");
     const width = readOptionalInteger(args, "width", { min: 16, max: 16384 });
     const height = readOptionalInteger(args, "height", { min: 16, max: 16384 });
@@ -211,7 +215,7 @@ export const projectSettingsSet: AgentToolHandler = async (args, { ctx, log }) =
     const changed: string[] = [];
     let languagePlan: LanguagePlan | null = null;
     if (languages !== undefined || removeLanguages.length > 0) {
-        languagePlan = await changeLanguages(ctx, languages?.map(code => code.trim()), removeLanguages.map(code => code.trim()));
+        languagePlan = await changeLanguages({ ctx, request, follow }, languages?.map(code => code.trim()), removeLanguages.map(code => code.trim()));
         if (languagePlan.add.length > 0 || languagePlan.remove.length > 0) {
             changed.push("languages");
             log("info", `languages +[${languagePlan.add.join(", ")}] -[${languagePlan.remove.join(", ")}]`);

@@ -590,7 +590,7 @@ app.services.agent.registerTools([{
 - 对外名字是插件 ID 和工具名各自把 `.`、`-` 换成 `_`，中间用 `__` 连接：`acme.notes.add_note` → `acme_notes__add_note`（最长 64 字符）。
 - `inputSchema` 只能用 `type / description / properties / required / items / enum / additionalProperties / minimum / maximum / default / oneOf`，参数在 handler 之前按它校验；`project` 由宿主添加并用于路由，handler 拿不到。
 - 宿主对插件工具与内建工具一视同仁地把关：`write: true` 的工具在作者未允许写入、暂停 Agent、工程冻结或 Live 会话时被拒绝，插件无法绕过。作者还可以在设置里关掉某个插件的工具。
-- `write: false` 的工具运行期间，`storage.writeJson` 会抛错。
+- `write: false` 的工具运行期间，`storage.writeJson` 会抛错——宿主对只读工具的约束仅此而已：它不受作者的写入开关把关，你的 `app` 能做的事它的 handler 都能做。只要工具会以任何方式修改项目，就必须声明为 `write: true`。
 - `write: true` 的工具运行期间，所有 `storage.writeJson` 被记录为**一步撤销**（「Agent：<标题>」）。撤销/重做会把各命名空间写回，然后调用你用 `workspace.registerReloader` 注册的重载函数——不注册的话，撤销改了文件却没改你内存里的数据。
 - 返回值上限：文本 60 000 字符（超出截断）、`data` 60 000 字符 JSON（超出丢弃）、最多一张 PNG/JPEG。
 - 工具随插件卸载而撤销；工具列表变化时，已连接的客户端会收到 `notifications/tools/list_changed`（打开了通知流的客户端），其余客户端下次 `tools/list` 时看到。

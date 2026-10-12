@@ -15,7 +15,7 @@ import type {
     StoryVariableValueType,
 } from "@shared/types/story";
 import { characterStageName, listSceneIdsInDocumentOrder } from "@shared/types/story";
-import { translate, translateN } from "@/lib/i18n";
+import { i18nStore, translate, translateN } from "@/lib/i18n";
 import { useWorkspace } from "../../../context";
 import { useHistoryScope } from "@/apps/workspace/hooks/useHistoryScope";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
@@ -1569,7 +1569,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         return block;
     }, [document, uuidService]);
 
-    const insertBlock = useCallback((block: StoryBlock, afterBlockId: StoryBlockId | null, openInspector = false, options?: { recordHistory?: boolean; target?: StoryBlockTarget; replaceBlockId?: StoryBlockId }) => {
+    const insertBlock = useCallback((block: StoryBlock, afterBlockId: StoryBlockId | null, openInspector = false, options?: { recordHistory?: boolean; target?: StoryBlockTarget; replaceBlockId?: StoryBlockId; keepSelection?: boolean }) => {
         if (!storyService || !storyId || !sceneId || !scene) {
             return;
         }
@@ -1589,6 +1589,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // mounts and the author is left with no caret at all. Both symptoms read as "the editor
         // refused to write my line", which is the one thing it did not do.
         revealRowInFilter(block);
+        // A row written on the author's behalf from elsewhere (the layer panel) leaves the row they
+        // were on selected, and with it the shot the preview is showing.
+        if (options?.keepSelection) {
+            return;
+        }
         setActiveBlockId(block.id);
         setSelectedBlockIds(new Set([block.id]));
         setEditorMode(openInspector ? { kind: "inspector", blockId: block.id } : { kind: "idle" });
@@ -3613,7 +3618,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             await uiService.showAlert(
                 translate("story.structuralOps.splitScene.refused"),
                 translate("story.structuralOps.splitScene.refusedDetail", {
-                    names: plan.ties.map(tie => describeCutTie(tie, characters)).join(", "),
+                    // Joined the way the interface language writes a list: 、 in Chinese and Japanese.
+                    names: i18nStore.getTranslator().formatList(plan.ties.map(tie => describeCutTie(tie, characters)), { style: "narrow" }),
                 }),
             );
             return;
@@ -3745,7 +3751,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         pasteWizard, pasteMemory, cancelPasteWizard, confirmPasteWizard, savePasteSeparator, forgetPasteSeparator,
         deleteRows, deleteSelection, replaceRowWithBlankLine, startInsertAfter, startInsertBefore, startJumpDraft, selectRow, beginDragSelection, selectRowFromClick,
         selectionRootIds, toggleDisableSelection,
-        extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateBlockPayloads, updateSceneMetadata,
+        extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateBlockPayloads, updateSceneMetadata, insertBlock,
         setDialogueSpeaker, setDialogueGroupPosition, createCharacterFromSpeaker, commitTextEdit, handleInsertValueChange, updateTextDraft,
         unresolvedSpeakerRowIds, bindSpeakerForRows, setSpeakerForRows,
         cutSelectionToClipboard: handleCut, moveSelectionToScene, splitSceneAtRow,

@@ -17,7 +17,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes";
 import { builtInPluginOwnerOf, registerBuiltInPluginBlueprintNodes } from "./builtinPluginNodes";
-import { emitCommandResult } from "../agent-core/commandResult";
+import { emitCommandResult, emitPartialOutput } from "../agent-core/commandResult";
 import { BLUEPRINT_GRAPH_KINDS, BLUEPRINT_OWNER_KINDS, listNodeCategories } from "./catalog";
 import { formatDiagnostics } from "./check";
 import {
@@ -161,6 +161,8 @@ export function runCli(argv: readonly string[], io: CliIo): number {
         validateFlags(args, spec);
         return spec.run(args, io);
     } catch (error) {
+        // What the command had said before it was stopped comes first, as when it printed as it went.
+        emitPartialOutput(error, io);
         if (error instanceof ProjectIoError || error instanceof UsageError) {
             io.err(error.message);
             return 2;
@@ -406,10 +408,12 @@ function commandApply(args: Args, io: CliIo): number {
                 throw error;
             }
         },
+        // Before "Wrote ...", so it never says so for a file that was not.
+        commit: () => {
+            writeUiGraphs(file);
+            return null;
+        },
     });
-    if (result.applied && write) {
-        writeUiGraphs(file);
-    }
     return emitCommandResult(result, io);
 }
 

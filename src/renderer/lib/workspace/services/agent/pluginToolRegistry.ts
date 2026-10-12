@@ -9,7 +9,7 @@
  * Comments in English per project convention.
  */
 
-import type { AgentCallResult } from "@shared/agent/protocol";
+import { isAgentInternalToolName, type AgentCallResult } from "@shared/agent/protocol";
 import type { AgentPluginToolDescriptor } from "@shared/agent/pluginTools";
 
 /** Runs one call to the tool: arguments already checked, `project` already removed. Always resolves. */
@@ -31,6 +31,11 @@ export class PluginAgentToolRegistry {
      * plugin ids can flatten to the same advertised name.
      */
     public register(tool: RegisteredPluginAgentTool): () => void {
+        if (!tool.descriptor.pluginId || isAgentInternalToolName(tool.descriptor.name)) {
+            // `agentPluginToolMcpName` never produces such a name; held here as well because the
+            // bridge reads a `__` name as an internal call and must never find a plugin under it.
+            throw new Error(`Agent tool ${tool.descriptor.pluginToolName} cannot be offered as ${tool.descriptor.name}: names starting with "__" are Studio's own.`);
+        }
         const existing = this.tools.get(tool.descriptor.name);
         if (existing && existing.descriptor.pluginId !== tool.descriptor.pluginId) {
             throw new Error(

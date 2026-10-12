@@ -511,7 +511,9 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                     </span>
                 ) : null}
             </div>
-            <div className="relative min-w-0 py-1">
+            {/* `nl-story-row-content` is the container a narrow row's action cluster is laid out
+                against (styles.css). */}
+            <div className="nl-story-row-content relative min-w-0 py-1">
                 <RowNesting
                     depth={row.depth}
                     nextDepth={row.nextRowDepth ?? 0}
@@ -675,8 +677,11 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                     )}
                     <div
                         aria-hidden={!showRowActions}
+                        // Who the cluster is showing for. In a narrow group it floats over the words
+                        // (`.nl-story-row-actions`), and there it shows for the pointer only.
+                        data-shown-for={hovered || actionsFocused ? "pointer" : active ? "active" : undefined}
                         className={[
-                            "flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1 transition-opacity",
+                            "nl-story-row-actions flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1 transition-opacity",
                             containerInfo ? "ml-auto" : "",
                             showRowActions ? "opacity-100" : "pointer-events-none opacity-0",
                             controlsOverArtwork ? "nl-on-media" : "",
@@ -1162,8 +1167,8 @@ function TextEditBox(props: {
  * Shown on hover *and* on the active row: the editor is keyboard-first, and a control that only
  * exists under a pointer is a control a keyboard author never learns about. They stay `tabIndex={-1}`
  * on purpose — `Tab` indents the row (see the interaction model), so it is not a focus-traversal key
- * here and these must not swallow it. The keyboard path is the shortcut, which is why the shortcut is
- * on the `title`: that is the whole point of showing them on the active row.
+ * here and these must not swallow it. The keyboard path is the shortcut, which is why the tooltip
+ * names it: that is the whole point of showing them on the active row.
  */
 function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; active: boolean }) {
     const { t } = useTranslation();
@@ -1174,8 +1179,9 @@ function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; ac
     // Rendered from the catalog entries the two keys are bound under, so a key rebound in Settings
     // shows rebound here too; a hint that prints the default is how it drifts from the key it names.
     const shortcuts = useShortcutLabels();
-    const insertKeys = shortcuts.forBinding("story.insert-blank-after-selection") ?? "";
-    const deleteKeys = shortcuts.forBinding("story.delete") ?? "";
+    // A frozen button's tooltip is the freeze reason, which no key follows.
+    const insertKeys = freeze.frozen ? undefined : shortcuts.forBinding("story.insert-blank-after-selection");
+    const deleteKeys = freeze.frozen ? undefined : shortcuts.forBinding("story.delete");
     return (
         <div
             className={[
@@ -1188,11 +1194,12 @@ function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; ac
                 What the accessible names must NOT do is inherit the old visible text: "Insert" and
                 "Delete" were fine as words next to each other in a row's context, and are a verb with
                 no object once they are the only thing a screen reader gets. They now carry the same
-                sentence as the tooltip, minus the keybinding. */}
+                sentence as the tooltip, which prints the key after it. */}
             <button
                 type="button"
                 tabIndex={-1}
-                {...freeze.writes(false, t("story.rows.insertTitle", { keys: insertKeys }))}
+                {...freeze.writes(false, t("story.rows.insert"))}
+                data-tip-shortcut={insertKeys}
                 aria-label={t("story.rows.insert")}
                 className="grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-muted"
                 onClick={event => {
@@ -1205,7 +1212,8 @@ function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; ac
             <button
                 type="button"
                 tabIndex={-1}
-                {...freeze.writes(false, t("story.rows.deleteTitle", { keys: deleteKeys }))}
+                {...freeze.writes(false, t("story.rows.delete"))}
+                data-tip-shortcut={deleteKeys}
                 aria-label={t("story.rows.delete")}
                 className="grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-danger/10 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-muted"
                 onClick={event => {

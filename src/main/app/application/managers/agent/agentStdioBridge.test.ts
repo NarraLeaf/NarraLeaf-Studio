@@ -10,7 +10,7 @@ import {
 } from "./agentStdioBridge";
 
 const TOKEN = "t".repeat(43);
-const URL_A = "http://127.0.0.1:54080/mcp";
+const URL_A = "http://127.0.0.1:47219/mcp";
 
 type Posted = { url: string; method: string; headers: Record<string, string>; body: unknown };
 
@@ -438,13 +438,34 @@ describe("runAgentStdioBridge", () => {
         expect(out[0]).toMatchObject({ id: 3, error: { code: AGENT_BRIDGE_UNAVAILABLE_CODE } });
         expect(out[0].error.message).toContain("Lost the connection");
     });
+
+    it("sends the client's messages through the untimed fetch, and the ping, the stream and the goodbye through fetch", async () => {
+        const studio = fakeStudio();
+        const methodOf = (init?: RequestInit) => typeof init?.body === "string"
+            ? (JSON.parse(init.body) as { method?: string }).method
+            : init?.method;
+        const timed = vi.fn((input: string | URL | Request, init?: RequestInit) => studio.fetchImpl(input, init));
+        const untimed = vi.fn((url: string, init: RequestInit) => studio.fetchImpl(url, init));
+        const { out } = await run(chunks(
+            line({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }),
+            line({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "build" } }),
+        ), { fetch: timed as unknown as typeof fetch, fetchUntimed: untimed });
+        expect(out.map(entry => entry.id).sort()).toEqual([1, 2]);
+        expect(untimed.mock.calls.map(([, init]) => methodOf(init))).toEqual(["initialize", "tools/call"]);
+        expect(timed.mock.calls.map(([, init]) => methodOf(init))).toEqual(["ping", "GET", "DELETE"]);
+    });
 });
 
 describe("runAgentStdioBridge against the real endpoint", () => {
-    it("initializes, lists tools and calls one over real HTTP", async () => {
+    it("initializes, lists tools and calls one over real HTTP, messages going the untimed way the process sends them", async () => {
         const { AgentMcpServer } = await import("./agentMcpServer");
         const { agentText } = await import("@shared/agent/protocol");
-        const callTool = vi.fn(async () => agentText("done", { value: 1 }));
+        const { fetchWithoutTimeouts } = await import("./agentStdioMain");
+        // A tool that answers late: the headers of its POST come only once it has.
+        const callTool = vi.fn(async () => {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            return agentText("done", { value: 1 });
+        });
         const server = new AgentMcpServer({
             port: 0,
             token: () => TOKEN,
@@ -478,6 +499,7 @@ describe("runAgentStdioBridge against the real endpoint", () => {
                 },
                 log: () => undefined,
                 fetch,
+                fetchUntimed: fetchWithoutTimeouts,
                 readSettings: async () => ({ enabled: true, token: TOKEN, url }),
                 launchStudio: null,
                 sleep: async () => undefined,

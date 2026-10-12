@@ -72,6 +72,14 @@ function describePrompt(prompt: AgentAccessPromptProps, t: Translate): PromptVie
                 confirm: t("workspace.agent.confirm.fullAccess.allow"),
                 cancel: t("common.cancel"),
             };
+        case "enable":
+            return {
+                title: t("workspace.agent.confirm.enable.message"),
+                warning: false,
+                consequence: t("workspace.agent.confirm.enable.detail"),
+                confirm: t("workspace.agent.confirm.enable.allow"),
+                cancel: t("common.cancel"),
+            };
         case "allowWrites":
             return {
                 title: t("workspace.agent.confirm.allowWrites.message"),
@@ -101,8 +109,8 @@ function describePrompt(prompt: AgentAccessPromptProps, t: Translate): PromptVie
 
 /**
  * The questions agent access puts to the author, each in a window of its own: may an agent read
- * these folders, may agents change projects, may they have full access, may the skill export
- * replace what a folder already holds.
+ * these folders, may agent access be switched on, may agents change projects, may they have full
+ * access, may the skill export replace what a folder already holds.
  *
  * A window rather than a sheet inside the workspace, for the project-trust window's reason: a
  * workspace runs plugin code, and an answer that widens what an outside program may do must come
