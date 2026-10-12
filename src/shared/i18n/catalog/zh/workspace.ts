@@ -789,11 +789,6 @@ export const workspace = {
         noActiveEditor: "没有活动的编辑器",
         closePanel: "关闭面板",
         closeTab: "关闭 {name}",
-        newTab: "新建标签页",
-        // 标签条"+"打开的浏览器式空白标签页。
-        newTabPage: {
-            title: "新标签页",
-        },
         tabMenu: {
             keepOpen: "保留标签页",
             close: "关闭",

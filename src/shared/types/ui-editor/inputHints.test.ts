@@ -5,7 +5,7 @@ import {
     uiInputHintGamepadGlyph,
     uiInputHintKeyGlyph,
 } from "./inputHints";
-import { uiElementHasFocusLook } from "./navigation";
+import { UI_NAVIGATION_SLOT_PRESET_BINDINGS, uiElementHasFocusLook } from "./navigation";
 
 describe("the hint bar's glyphs", () => {
     it("reads the pad family off the controller's id", () => {
@@ -27,6 +27,23 @@ describe("the hint bar's glyphs", () => {
         expect(uiInputHintKeyGlyph("Escape").text).toBe("Esc");
         expect(uiInputHintKeyGlyph("Shift+Tab").text).toBe("Shift+Tab");
         expect(uiInputHintKeyGlyph("ArrowUp").text).toBe("↑");
+    });
+
+    it("finds the glyph for a key in the spelling bindings are stored in", () => {
+        // Saved bindings and the navigation presets read "Arrow Up", not the event's "ArrowUp"; the
+        // bar printed the words until the lookup went through the key parser's names.
+        for (const binding of UI_NAVIGATION_SLOT_PRESET_BINDINGS.up) {
+            if (binding.kind === "key") {
+                expect(uiInputHintKeyGlyph(binding.key).text).toBe("↑");
+            }
+        }
+        expect(uiInputHintKeyGlyph("Arrow Left").text).toBe("←");
+        expect(uiInputHintKeyGlyph("Shift+Arrow Down").text).toBe("Shift+↓");
+        expect(uiInputHintKeyGlyph("esc").text).toBe("Esc");
+        expect(uiInputHintKeyGlyph("backspace").text).toBe("⌫");
+        expect(uiInputHintKeyGlyph("Space").text).toBe("Space");
+        // A pointer gesture shares the row and keeps its own text.
+        expect(uiInputHintKeyGlyph("doubleClick").text).toBe("doubleClick");
     });
 
     it("keeps the author's words and drops what is not a setting", () => {

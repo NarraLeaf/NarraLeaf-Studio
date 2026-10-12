@@ -462,6 +462,10 @@ export const storyInspector = {
         name: "ブループリント名",
     },
 
+    plugin: {
+        missingOption: "{value}（見つからない）",
+    },
+
     audio: {
         track: "トラック",
         // 指定の無い参照が落ちるトラックの名前。空の選択肢が空白にならないようにする。

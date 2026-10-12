@@ -4,6 +4,7 @@ import type { PanelDefinition, ActionDefinition, ActionGroup, EditorTabDefinitio
 import type { Keybinding } from "@/lib/workspace/services/ui/types";
 import type {
     StoryPluginActionCreateInput,
+    StoryPluginActionParamDef,
     StoryPluginActionRegistration,
 } from "@/lib/workspace/services/services";
 import type { PluginIdentity } from "@shared/types/pluginPermissions";
@@ -186,6 +187,7 @@ export type {
 } from "@/apps/workspace/components/ui/freezeGuard";
 export type {
     StoryPluginActionCreateInput,
+    StoryPluginActionParamDef,
     StoryPluginActionRegistration,
 };
 export type {
@@ -730,11 +732,14 @@ export type PluginServices = {
         listScenes(storyId: string): Promise<PluginSceneEntry[]>;
         actions: {
             /**
-             * Register a scene-editor palette action (shown under the Plugin
-             * category) that creates story blocks. The blocks it returns are
-             * standard story blocks - the document does not depend on the
-             * plugin after creation. Action ids must be prefixed with the
+             * Register a scene-editor palette action (shown under Tools)
+             * that creates story blocks. Action ids must be prefixed with the
              * plugin id.
+             *
+             * A standard story block owes the plugin nothing once inserted. A
+             * `{action:"plugin"}` row is the plugin's own: the runtime entry's
+             * `app.game.storyActions` runs it, and the fields in `params` are
+             * what the scene inspector lets the author change on it.
              */
             register(registration: StoryPluginActionRegistration): PluginCleanup;
             registerMany(registrations: StoryPluginActionRegistration[]): PluginCleanup;

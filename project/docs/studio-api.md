@@ -312,7 +312,7 @@ app.services.blueprintNodes.register({
 
 ### actions
 
-场景编辑器 Action Creator palette 的插件动作（显示在 Plugin 分类下）。
+场景编辑器 Action Creator palette 的插件动作（显示在「工具」分类下）。
 
 ```ts
 const dispose = app.services.story.actions.register({
@@ -337,6 +337,18 @@ type StoryPluginActionRegistration = {
   group?: string;
   createBlock: (input: { generateId: () => string; initialText?: string }) => StoryBlock;
   describe?: (params: Record<string, unknown>) => string | null | undefined;  // 行的显示文字，缺省为 label
+  keywords?: readonly string[];                   // 命令词，任何界面语言下都能直接敲，单个词
+  params?: readonly StoryPluginActionParamDef[];  // 场景检视器里可改的字段，每项改 params 的一个键
+};
+
+// 与蓝图节点 inspectorParams 同一种描述，收窄到三种
+type StoryPluginActionParamDef = {
+  key: string;
+  label: string;
+  kind: "select" | "string" | "number";
+  options?: { value: string; label: string }[];  // select 的固定选项
+  dynamicOptionsSource?: string;                   // 或 blueprintNodes.registerDynamicSelectOptionsSource 注册的选项源
+  emptyOptionLabel?: string;                       // 空选项的文字，默认 "-"
 };
 ```
 
@@ -345,7 +357,13 @@ type StoryPluginActionRegistration = {
 - `createBlock` 可以返回**标准故事块**（`StoryBlock`），插入后与手工创建的块无异——文档不因此依赖插件，块的编译与执行走既有链路。
 - 也可以返回插件自己的行 `{ kind: "action", payload: { action: "plugin", pluginId, actionId, params } }`：游戏里由 runtime entry 在
   `app.game.storyActions` 用同一个 id 注册的 `run` 执行，故事等它结束（见 [runtime-api.md](./runtime-api.md#gamestoryactions)）。这种行让工程硬依赖插件。
-  `initialText` 是作者在命令后面打的字，是这种行拿参数的唯一入口；`describe(params)` 让行在场景编辑器里显示参数（抛错或返回空时退回 `label`）。
+  `initialText` 是作者在命令后面打的字（`/rock rpsResult` 的 `rpsResult`）；`describe(params)` 让行在场景编辑器里显示参数（抛错或返回空时退回 `label`）。
+- 敲出来的命令词要么是 `keywords` 里的一个词（或它的开头），要么是 `label`、`id` 的开头。`label` 随界面语言变，
+  所以要让 `/unlock ACH_WIN` 在中文界面下也能直接成行，就把 `unlock` 写进 `keywords`。与内建命令同名的词仍归内建命令；含空格的关键词注册时报错。
+- `params` 声明的字段在选中这种行时出现在场景检视器里，作者改一项就写回 `params` 的对应键（清空即删除该键），可撤销。
+  `select` 的选项与蓝图节点共用：节点和行传同一个描述对象，两处列出同样的选项；行上存着但选项里已没有的值显示为「…（缺失）」。
+  本版 Studio 不认识的 `kind` 不显示，注册照常成功；`params` 不是数组、缺 `key`/`label`、键重复时注册时报错。
+  不声明 `params` 的动作，行插入后保持 `createBlock` 写下的参数，要改只能重新插入。
 - 宿主对返回值做防御性归一（顶层 `parentId`/`childrenIds` 重置），并把 `createBlock` 抛错转为 workspace 通知。
 - 需要组合多个游戏侧步骤时，也可以生成 Blueprint 块并在其中使用插件蓝图节点；蓝图行同样等整张图跑完再继续（运行时模式见 [runtime-api.md](./runtime-api.md)）。
 - 注册由宿主追踪，插件卸载时自动回收。

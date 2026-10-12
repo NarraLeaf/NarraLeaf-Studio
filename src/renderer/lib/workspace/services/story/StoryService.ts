@@ -57,6 +57,7 @@ import {
     findStoryDocumentTooNewError,
     findStoryDocumentTooOldError,
 } from "@shared/story/migrateStoryDocument";
+import { storyPluginActionKeywordsProblem, storyPluginActionParamsProblem } from "@/lib/story/pluginActionParams";
 import { findDeclarationBlock } from "@shared/types/story/declarations";
 import { listSceneIdsInDocumentOrder } from "@shared/types/story/order";
 import { mintSceneRuntimeName, sceneRuntimeName } from "@shared/types/story/sceneRuntimeName";
@@ -944,6 +945,14 @@ export class StoryService extends Service<StoryService> implements IStoryService
             // palette and fails only when an author picks it - an error in their hands, about a
             // plugin they did not write, at the one moment they were trying to write a line.
             throw new RendererError(`Plugin action must supply createBlock: ${actionId}`);
+        }
+        // Refused here for the same reason: a malformed field list would otherwise surface only when
+        // the author selects one of the action's rows, as an inspector that fails to draw, and a
+        // keyword with a space in it would simply never match.
+        const declarationProblem = storyPluginActionParamsProblem(registration.params)
+            ?? storyPluginActionKeywordsProblem(registration.keywords);
+        if (declarationProblem) {
+            throw new RendererError(`Plugin action ${actionId}: ${declarationProblem}`);
         }
         const normalized = { ...registration, id: actionId };
         this.pluginActions.set(actionId, normalized);

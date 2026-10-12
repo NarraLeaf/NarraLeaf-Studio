@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { TranslationKey } from "@shared/i18n";
 import { flattenCatalog } from "@shared/i18n/flatten";
 import { en } from "@shared/i18n/catalog/en";
+import { i18nStore } from "@/lib/i18n/store";
 import {
     buildFocusedGroup,
     buildSheetGroups,
@@ -173,6 +174,19 @@ describe("compileSheetQuery and filterSheetGroups", () => {
         const ids = filterSheetGroups(sheet(), compileSheetQuery("arrowup")).flatMap(rowIds);
         expect(ids).toContain("story.move-selection-up");
         expect(ids).toContain("ui-editor.nudge-up");
+    });
+
+    describe("with the key names in the author's language", () => {
+        afterEach(() => i18nStore.setLocale("en"));
+
+        it("finds a translated key by the name it is drawn with and by the name it is declared under", () => {
+            i18nStore.setLocale("zh");
+            const groups = sheet();
+            const playPause = groups.flatMap(found => found.rows).find(row => row.id === "assets.audio.play-pause");
+            expect(playPause?.inputs).toEqual(["空格键"]);
+            expect(filterSheetGroups(groups, compileSheetQuery("空格")).flatMap(rowIds)).toContain("assets.audio.play-pause");
+            expect(filterSheetGroups(groups, compileSheetQuery("space")).flatMap(rowIds)).toContain("assets.audio.play-pause");
+        });
     });
 
     it("lists a whole group by its title, and narrows it with a second term", () => {

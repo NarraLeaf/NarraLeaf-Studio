@@ -810,11 +810,6 @@ export const workspace = {
         noActiveEditor: "エディタが開いていない",
         closePanel: "パネルを閉じる",
         closeTab: "{name} を閉じる",
-        newTab: "新しいタブ",
-        // タブ列の「+」で開く、ブラウザ風の空のタブ。
-        newTabPage: {
-            title: "新しいタブ",
-        },
         tabMenu: {
             keepOpen: "タブとして残す",
             close: "閉じる",

@@ -120,6 +120,31 @@ Grep for that line at the end of a run. If a path you accepted something on is i
 not show what it looks like it showed — go back and get the grant the product would have required,
 which with the condition above is one `resolve` call.
 
+## Opening a project nobody vouched for
+
+A project Studio did not create waits on the trust ledger: opening it puts the trust question up in a
+window of its own, and until somebody answers yes its runtimes, scripts, Dev Mode, previews and
+builds are all refused. A copied fixture, a clone or an unpacked package is exactly that kind of
+project, and a run that has to click through the question first — or that misses it and goes on to
+accept a workspace where nothing runs — is accepting the wrong thing.
+
+```sh
+yarn dev:verify --experimental --x-trust-all-projects
+```
+
+With `--x-trust-all-projects` on, every project counts as trusted: the question never appears and
+nothing is refused for want of a grant. The ledger is **not written**, so Settings still lists the
+project as waiting and a run without the flag meets it exactly as before. Each project it lets through
+is named once in `main.log`:
+
+```text
+[Experimental] trust-all-projects treated D:\Temp\fixture as trusted. The author never vouched for
+it; Studio as shipped does not run it.
+```
+
+Leave it off when the trust boundary is what you are accepting — the question, the status bar entry,
+anything a distrusted project shows instead of running.
+
 ## Four traps, each of which has cost an acceptance here
 
 **1. The stale bundle — check it before believing anything.** The launcher rebuilds `dist` only after

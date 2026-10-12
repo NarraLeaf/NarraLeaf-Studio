@@ -483,6 +483,11 @@ export const storyInspector = {
         name: "Blueprint name",
     },
 
+    plugin: {
+        // A pick on a plugin row whose stored value the plugin no longer lists: the row still holds it.
+        missingOption: "{value} (missing)",
+    },
+
     audio: {
         track: "Track",
         // The name of the track an unset reference lands on, so the empty choice is not a blank.

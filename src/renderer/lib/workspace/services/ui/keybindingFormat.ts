@@ -7,6 +7,9 @@
  * `KeybindingService` re-exports `formatKeybinding`, so every existing import still resolves.
  */
 
+import { getKeyName } from "@/lib/i18n/keyNames";
+import { translate } from "@/lib/i18n/store";
+
 const MAC_MODIFIER_SYMBOLS: Record<string, string> = {
     mod: "⌘",
     cmd: "⌘",
@@ -31,11 +34,12 @@ const MODIFIER_LABELS: Record<string, string> = {
     shift: "Shift",
 };
 
-/** Key tokens whose name reads better than the raw string once capitalized. */
-const KEY_LABELS: Record<string, string> = {
-    " ": "Space",
-    space: "Space",
-    escape: "Esc",
+/**
+ * Key tokens a shortcut draws as a symbol. Every other key is named by `getKeyName`: by its keycap
+ * ("Esc", "PageDown", "F5"), or in the author's language where the keycap carries no word (the
+ * space bar).
+ */
+const KEY_GLYPHS: Record<string, string> = {
     arrowup: "↑",
     arrowdown: "↓",
     arrowleft: "←",
@@ -50,6 +54,9 @@ const KEY_LABELS: Record<string, string> = {
  * `mod` binding must not be displayed verbatim - and hardcoding "ctrl" in the
  * label is how it silently drifts from what the key actually does on macOS.
  *
+ * A translated key name is read in the window's language when this is called, so a caller that
+ * keeps the result should re-render on a language change (`useTranslation` does).
+ *
  * Exported for tests (the platform flag is injected there).
  */
 export function formatKeybinding(binding: string, isMac: boolean): string {
@@ -59,8 +66,7 @@ export function formatKeybinding(binding: string, isMac: boolean): string {
         if (modifier) {
             return modifier;
         }
-        const key = KEY_LABELS[part] ?? part;
-        return key.length === 1 ? key.toUpperCase() : key.charAt(0).toUpperCase() + key.slice(1);
+        return KEY_GLYPHS[part] ?? getKeyName(part, translate);
     });
     // macOS convention runs the symbols together (⇧⌘P); elsewhere they are joined.
     return isMac ? rendered.join("") : rendered.join("+");

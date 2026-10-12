@@ -101,6 +101,31 @@ export class ProjectTrustRevokeHandler extends IPCHandler<IPCEventType.projectTr
     }
 }
 
+export class ProjectTrustForgetHandler extends IPCHandler<IPCEventType.projectTrustForget> {
+    readonly name = IPCEventType.projectTrustForget;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.projectTrustForget]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.projectTrustForget]["response"]>> {
+        const refused = refuseOutsideSettings(window, "delete a trust row");
+        if (refused) {
+            return this.failed(refused);
+        }
+        const manager = window.app.projectTrustManager;
+        const wasTrusted = manager.isTrusted(projectPath);
+        const result = manager.forgetRecord(projectPath);
+        if (result === "forgotten") {
+            window.app.logger.info("[Trust] Row deleted for", projectPath);
+            if (wasTrusted && !manager.isTrusted(projectPath)) {
+                await window.getApp().applyProjectTrustChange(projectPath, false);
+            }
+        }
+        return this.success({ result });
+    }
+}
+
 export class ProjectTrustListHandler extends IPCHandler<IPCEventType.projectTrustList> {
     readonly name = IPCEventType.projectTrustList;
     readonly type = IPCMessageType.request;

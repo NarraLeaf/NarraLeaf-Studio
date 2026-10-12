@@ -184,13 +184,15 @@ export function Select({
     const dropdownRef = useRef<HTMLDivElement | null>(null);
     // Opening moves focus onto the current option, the arrows walk the list, Escape closes the
     // menu and not the dialog or inspector it sits in, and focus comes back to the trigger. Also
-    // puts the menu away when its kept-alive tab or panel is hidden.
+    // puts the menu away when its kept-alive tab or panel is hidden, and when the wheel turns
+    // outside it: the panel or canvas under the wheel is about to move the trigger.
     useFloatingLayer({
         open: isOpen,
         onClose: () => setIsOpen(false),
         panelRef: dropdownRef,
         ownerRefs: [selectRef],
         itemSelector: SELECT_OPTION_SELECTOR,
+        closeOnOutsideWheel: true,
     });
     const [dropdownDirection, setDropdownDirection] = useState<"down" | "up">("down");
     const [portalMenuStyle, setPortalMenuStyle] = useState<React.CSSProperties>({});
@@ -216,8 +218,14 @@ export function Select({
             setIsOpen(false);
         };
 
+        // `pointerdown` as well: a press whose `pointerdown` is cancelled never produces a
+        // `mousedown`, and the blueprint canvas cancels it to pan on Ctrl+drag.
+        hostWindow.document.addEventListener("pointerdown", handleClickOutside, true);
         hostWindow.document.addEventListener("mousedown", handleClickOutside, true);
-        return () => hostWindow.document.removeEventListener("mousedown", handleClickOutside, true);
+        return () => {
+            hostWindow.document.removeEventListener("pointerdown", handleClickOutside, true);
+            hostWindow.document.removeEventListener("mousedown", handleClickOutside, true);
+        };
     }, []);
 
     useEffect(() => {

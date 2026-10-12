@@ -85,7 +85,7 @@ export const settings = {
         },
         developerMode: {
             label: "开发者选项",
-            description: "右键菜单中增加一组操作，用于复制所选对象的 ID",
+            description: "右键菜单中增加一组操作，用于复制所选对象的 ID；蓝图的添加节点菜单显示每个节点的类型 ID",
         },
         screenEffectThreads: {
             label: "屏幕效果的线程数",
@@ -517,11 +517,13 @@ export const settings = {
     data: {
         projectTrust: {
             loading: "读取中…",
-            empty: "目前打开过的项目均由 Studio 创建。",
+            empty: "暂无项目",
             waiting: "等待处理",
             granted: "已信任",
             trust: "信任",
-            remove: "移除",
+            revoke: "取消信任",
+            delete: "从列表中移除",
+            deleteCovered: "位于已信任的项目内，无法移除",
             reloadNote: "已打开的项目在信任状态变更时重新载入。",
             origin: {
                 package: "来自项目包",

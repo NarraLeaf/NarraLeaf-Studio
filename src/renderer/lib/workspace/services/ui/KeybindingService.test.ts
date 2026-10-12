@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { i18nStore } from "@/lib/i18n/store";
 import {
     formatKeybinding,
     keybindingFromKeyboardEvent,
@@ -74,6 +75,34 @@ describe("formatKeybinding", () => {
         expect(formatKeybinding("delete", false)).toBe("Delete");
         expect(formatKeybinding("mod+=", true)).toBe("⌘+");
         expect(formatKeybinding("escape", false)).toBe("Esc");
+    });
+
+    it("spells a two-word key the way its keycap does", () => {
+        expect(formatKeybinding("pagedown", false)).toBe("PageDown");
+        expect(formatKeybinding("shift+pageup", false)).toBe("Shift+PageUp");
+        expect(formatKeybinding("home", false)).toBe("Home");
+        expect(formatKeybinding("f5", false)).toBe("F5");
+    });
+
+    describe("in the author's language", () => {
+        afterEach(() => i18nStore.setLocale("en"));
+
+        it("names the space bar in the window's language", () => {
+            expect(formatKeybinding("space", false)).toBe("Space");
+            expect(formatKeybinding("shift+space", false)).toBe("Shift+Space");
+            i18nStore.setLocale("zh");
+            expect(formatKeybinding("space", false)).toBe("空格键");
+            expect(formatKeybinding("shift+space", false)).toBe("Shift+空格键");
+            expect(formatKeybinding("shift+space", true)).toBe("⇧空格键");
+        });
+
+        it("keeps the arrows as glyphs and every keycap name as printed", () => {
+            i18nStore.setLocale("zh");
+            expect(formatKeybinding("alt+arrowup", false)).toBe("Alt+↑");
+            expect(formatKeybinding("escape", false)).toBe("Esc");
+            expect(formatKeybinding("pagedown", false)).toBe("PageDown");
+            expect(formatKeybinding("mod+shift+z", false)).toBe("Ctrl+Shift+Z");
+        });
     });
 });
 
