@@ -8,7 +8,8 @@ import {
     type ReactNode,
 } from "react";
 import { Handle, Position, useReactFlow, type NodeProps } from "@xyflow/react";
-import { AlertTriangle, Image as ImageIcon, Keyboard as KeyboardIcon, Link2, Music, Plus, Shrink, X, SlidersHorizontal } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Image as ImageIcon, Keyboard as KeyboardIcon, Link2, Music, Plus, Shrink, X, SlidersHorizontal } from "lucide-react";
+import { ContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import type { BlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { useBlueprintBreakpointForNode } from "@/lib/ui-editor/blueprint-debug/BlueprintBreakpointsContext";
 import {
@@ -185,6 +186,15 @@ export type BlueprintFlowNodeData = {
     };
     /** Starts the temporary same-Surface element binding flow for Element Literal nodes. */
     onBindElementLiteral?: (nodeId: string) => void;
+    /** The other members of the card's node family it can become (`blueprintNodeFamilies.ts`). */
+    familyChoice?: BlueprintFlowNodeFamilyChoice;
+    /** Turns this node into another member of its family, in place. */
+    onRetypeNode?: (nodeId: string, type: string) => void;
+};
+
+/** What a card's title menu lists: its family's members that may be placed here, its own type among them. */
+export type BlueprintFlowNodeFamilyChoice = {
+    members: ReadonlyArray<{ type: string; displayName: string }>;
 };
 
 const EXEC_HANDLE_CLASS = "!h-2 !w-2 !border border-edge-strong !bg-primary";
@@ -1300,6 +1310,66 @@ function KeyboardBindingCardControl({
                 </button>
             ) : null}
         </div>
+    );
+}
+
+/**
+ * The control beside a family card's title that turns the card into another member of its node
+ * family (`blueprintNodeFamilies.ts`): a menu of the members, the card's own one checked.
+ *
+ * Beside the title rather than in a row of its own, so a card is the height it always was and a
+ * graph laid out before families existed does not grow into its neighbours. The button's negative
+ * margin is part of that: without it the 20px button makes the title line a pixel taller than the
+ * text, and every card the CLI's `cardGeometry.ts` sizes would be a pixel short.
+ */
+function NodeFamilySwitch({
+    nodeId,
+    currentType,
+    choice,
+    onRetypeNode,
+}: {
+    nodeId: string;
+    currentType: string;
+    choice: BlueprintFlowNodeFamilyChoice;
+    onRetypeNode: (nodeId: string, type: string) => void;
+}) {
+    const { t } = useTranslation();
+    const buttonRef = useRef<HTMLButtonElement | null>(null);
+    const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null);
+    const label = t("blueprint.family.switchLabel");
+    const items: ContextMenuDef = choice.members.map(member => ({
+        id: member.type,
+        label: resolveBlueprintNodeTitle(member.displayName, t),
+        icon: member.type === currentType ? <Check className="h-3.5 w-3.5" aria-hidden /> : undefined,
+        onClick: () => {
+            if (member.type !== currentType) {
+                onRetypeNode(nodeId, member.type);
+            }
+        },
+    }));
+    return (
+        <>
+            <button
+                ref={buttonRef}
+                type="button"
+                className="nodrag -my-1 grid h-5 w-5 shrink-0 place-items-center rounded-md text-fg-subtle hover:bg-fill hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
+                aria-label={label}
+                aria-haspopup="menu"
+                aria-expanded={menuAt !== null}
+                data-tip={label}
+                data-bp-family-switch={currentType}
+                onMouseDown={stopFlowNodePointerBubble}
+                onPointerDown={stopFlowNodePointerBubble}
+                onClick={event => {
+                    event.stopPropagation();
+                    const box = buttonRef.current?.getBoundingClientRect();
+                    setMenuAt(open => (open || !box ? null : { x: box.left, y: box.bottom + 4 }));
+                }}
+            >
+                <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+            </button>
+            {menuAt ? <ContextMenu items={items} position={menuAt} onClose={() => setMenuAt(null)} iconsEnabled /> : null}
+        </>
     );
 }
 
@@ -2633,6 +2703,8 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
         elementPreview,
         displayableTargetVariants,
         onBindElementLiteral,
+        familyChoice,
+        onRetypeNode,
     } = data as BlueprintFlowNodeData;
     const wired = wiredInputPortIds ?? new Set<string>();
     const execIns = catalog.pins.filter(p => p.kind === "input" && p.semantic === "exec");
@@ -2909,6 +2981,14 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
                         >
                             {isUnknown ? catalog.type : resolveBlueprintNodeTitle(catalog.displayName, t)}
                         </div>
+                        {familyChoice && onRetypeNode && !isUnknown ? (
+                            <NodeFamilySwitch
+                                nodeId={nodeId}
+                                currentType={catalog.type}
+                                choice={familyChoice}
+                                onRetypeNode={onRetypeNode}
+                            />
+                        ) : null}
                         {claimedBy === null ? null : <UINodeClaimMark account={claimedBy} />}
                     </div>
                 </div>

@@ -72,6 +72,7 @@ import {
     isValidBlueprintIrExecConnection,
     writeNodeEditorLayout,
 } from "@/lib/workspace/services/ui-editor/blueprint/graphEditing";
+import { retypeBlueprintNodeInIr } from "@/lib/workspace/services/ui-editor/blueprint/graphNodeRetype";
 import {
     pickBlueprintDragConnectTargetPin,
     resolveBlueprintDragConnectSource,
@@ -819,6 +820,33 @@ function BlueprintFlowCanvasInner({
         [blueprintMemberVariables, blueprintPersistentVariables, commitBlueprintIr, resolveCallableFnSignature],
     );
 
+    /** Turns a card into another member of its node family, as one undo step. */
+    const retypeNode = useCallback(
+        (nodeId: string, nextType: string) => {
+            const snap = cloneBlueprintIr(irRef.current);
+            if (!retypeBlueprintNodeInIr(snap, nodeId, nextType, variableTypeContextRef.current)) {
+                return;
+            }
+            commitBlueprintIr(snap);
+        },
+        [commitBlueprintIr],
+    );
+    const retypeNodeRef = useRef(retypeNode);
+    retypeNodeRef.current = retypeNode;
+    const stableRetypeNode = useCallback((nodeId: string, nextType: string) => {
+        retypeNodeRef.current(nodeId, nextType);
+    }, []);
+    // What this graph may hold, which is what a card's family menu may switch it to: the palette's
+    // own answer, so a member the add-node menu would not offer here is not offered on a card either.
+    const paletteTypes = useMemo(
+        () => new Set(nodeCatalog.listPaletteEntries(paletteContext).map(entry => entry.type)),
+        // The revision is the catalogue changing under the same service: a plugin's nodes arriving.
+        [nodeCatalog, nodeCatalogRevision, paletteContext],
+    );
+    const paletteTypesRef = useRef(paletteTypes);
+    paletteTypesRef.current = paletteTypes;
+    const isFamilyMemberAllowed = useCallback((type: string) => paletteTypesRef.current.has(type), []);
+
     const patchNodeParamRef = useRef(patchNodeParam);
     patchNodeParamRef.current = patchNodeParam;
     /** Stable identity so IR sync effect does not re-run on every parent render (reduces jank). */
@@ -1254,6 +1282,8 @@ function BlueprintFlowCanvasInner({
                 onBindElementLiteral,
                 openSaveSchemaEditor,
                 fitGroupFrame,
+                stableRetypeNode,
+                isFamilyMemberAllowed,
             );
             setNodes(prevNodes => {
                 const withSel = applyBlueprintFlowNodeSelection(base, selectedNodeIdsRef.current);

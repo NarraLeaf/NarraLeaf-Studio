@@ -1,4 +1,5 @@
 import type { BlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/blueprint-nodes/types";
+import { blueprintNodeFamilyOf } from "@/lib/ui-editor/blueprint-nodes/blueprintNodeFamilies";
 
 export const BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID = "all";
 /**
@@ -62,6 +63,56 @@ export function buildBlueprintAddNodeCategories(
     ];
 }
 
+/**
+ * The palette as it is browsed: every node family with two or more members here drawn as one row.
+ *
+ * The row is the family's first member in the family's own order, carrying the family, so picking it
+ * places that member, and the card it lands as offers the rest from beside its title. It stands where
+ * the first of its members stood in the list. Entries made for one field of a struct or for one bound
+ * element are left as they are: they are already one particular node with particular settings. A
+ * search is answered from the unfolded list instead - a query names a node, and `>=` should land on
+ * Greater Than Or Equal, not on a row the author then has to open.
+ */
+export function foldBlueprintAddNodeFamilies(
+    entries: readonly BlueprintNodeEditorCatalogEntry[],
+): BlueprintNodeEditorCatalogEntry[] {
+    const groups = new Map<string, BlueprintNodeEditorCatalogEntry[]>();
+    for (const entry of entries) {
+        const family = foldableFamilyOf(entry);
+        if (family) {
+            groups.set(family.id, [...(groups.get(family.id) ?? []), entry]);
+        }
+    }
+    const placed = new Set<string>();
+    const out: BlueprintNodeEditorCatalogEntry[] = [];
+    for (const entry of entries) {
+        const family = foldableFamilyOf(entry);
+        const group = family ? groups.get(family.id) : undefined;
+        if (!family || !group || group.length < 2) {
+            out.push(entry);
+            continue;
+        }
+        if (placed.has(family.id)) {
+            continue;
+        }
+        placed.add(family.id);
+        const members = family.members.flatMap(type => group.filter(candidate => candidate.type === type));
+        out.push({
+            ...members[0]!,
+            family: {
+                id: family.id,
+                title: family.title,
+                members: members.map(member => ({ type: member.type, displayName: member.displayName })),
+            },
+        });
+    }
+    return out;
+}
+
+function foldableFamilyOf(entry: BlueprintNodeEditorCatalogEntry) {
+    return entry.preset || entry.magicElementRef ? undefined : blueprintNodeFamilyOf(entry.type);
+}
+
 export function blueprintAddNodeEntryKey(entry: BlueprintNodeEditorCatalogEntry): string {
     if (entry.preset) {
         return `${entry.type}\0${entry.preset.key}`;
@@ -90,6 +141,8 @@ export type BlueprintAddNodeLocalizer = {
     category: (category: string) => string;
     /** Words the category was once shown as, which a search still answers to. */
     categoryAliases?: (category: string) => readonly string[];
+    /** The name of the family a node type is shown under while browsing, so a search for it finds the members. */
+    familyTitle?: (type: string) => string | undefined;
 };
 
 /**
@@ -209,6 +262,7 @@ function searchFieldsFor(
 ): BlueprintAddNodeSearchField[] {
     const localizedTitle = localizer?.title(entry.displayName);
     const localizedCategory = localizer?.category(entry.category);
+    const familyTitle = localizer?.familyTitle?.(entry.type);
     return [
         { text: entry.displayName, weight: FIELD_WEIGHTS.displayName },
         ...(localizedTitle && localizedTitle !== entry.displayName
@@ -220,6 +274,9 @@ function searchFieldsFor(
                   { text: entry.magicElementRef.elementType, weight: FIELD_WEIGHTS.keyword },
               ]
             : []),
+        // Behind the node's own name: a search for Compare lists the comparisons, a search for Greater
+        // Than puts Greater Than first.
+        ...(familyTitle ? [{ text: familyTitle, weight: FIELD_WEIGHTS.displayName + 2 }] : []),
         { text: entry.type, weight: FIELD_WEIGHTS.type },
         { text: entry.category, weight: FIELD_WEIGHTS.category },
         ...(localizedCategory && localizedCategory !== entry.category
