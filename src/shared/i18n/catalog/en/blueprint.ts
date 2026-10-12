@@ -232,7 +232,10 @@ export const blueprint = {
         node: {
             contextInvalid: "Node \"{name}\" is not allowed in {owner}.{hint}",
             contextValueReturnHint: " Return Value only belongs in Blueprint Value graphs.",
-            elementOtherSurface: "\"{node}\" names an element of another page or Game UI ({element}). A blueprint can only reach the elements of its own page or component: at run time this node is refused (or, for a read, gives nothing). Put the change in a blueprint on that page instead - it can read the game state there (Get Dialog Text, Get Choice Count) or a variable this blueprint sets.",
+            elementOtherSurface: "\"{node}\" refers to {element} on another page or Game UI. A blueprint reaches only the elements of its own page or component, and at run time this node is refused. Move the change to a blueprint on that page.",
+            // `{element}` in the sentence above: the element's name, quoted, or this when it has none.
+            elementNamed: "\"{name}\"",
+            elementUnnamed: "an unnamed element",
             contextListItemHint: " It reads the list row it runs for, and nothing here draws one.",
             noRuntime: "Node \"{node}\" has no runtime.",
             inputMissing: "\"{node}\" has nothing connected to \"{pin}\".",

@@ -209,7 +209,9 @@ export const blueprint = {
         node: {
             contextInvalid: "节点“{name}”不能用于{owner}{hint}",
             contextValueReturnHint: "：返回值仅属于蓝图值图",
-            elementOtherSurface: "「{node}」引用了其他页面或游戏界面中的元素（{element}）。蓝图只能访问所属页面或组件中的元素，运行时该节点会被拒绝执行（读取类节点则得不到任何值）。请改在该页面自己的蓝图中实现：可在那里读取游戏状态（获取对话框文本、获取选项数量），或读取本蓝图写入的变量",
+            elementOtherSurface: "“{node}”引用了其他页面或游戏 UI 中的{element}。蓝图只能访问所属页面或组件中的元素，运行时该节点会被拒绝执行。将该操作移到该页面的蓝图中",
+            elementNamed: "“{name}”",
+            elementUnnamed: "未命名元素",
             contextListItemHint: "：该节点读取它所在的列表行，而此处没有任何列表行",
             noRuntime: "节点“{node}”没有运行时",
             inputMissing: "“{node}”的“{pin}”没有连接任何东西",
