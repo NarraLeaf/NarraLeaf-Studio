@@ -6,7 +6,7 @@ import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "@sh
 import { resolveEntrySurfaceId } from "@shared/types/ui-editor/entrySurface";
 import { ensureWidgetModulesRegistered } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { HistoryService } from "../history/HistoryService";
-import { projectHistoryScope, uiSurfaceHistoryScope } from "../history/historyScopes";
+import { blueprintHistoryScope, projectHistoryScope, uiComponentHistoryScope, uiSurfaceHistoryScope } from "../history/historyScopes";
 import { Services } from "../services";
 import { StoryService } from "../story/StoryService";
 import { UIDocumentService } from "../ui-editor/UIDocumentService";
@@ -81,7 +81,9 @@ function blueprintDocument(blueprints: Blueprint[]): BlueprintDocument {
     } as BlueprintDocument;
 }
 
-function createHarness(blueprints: Blueprint[] = []) {
+type Tab = { id: string; payload?: unknown };
+
+function createHarness(blueprints: Blueprint[] = [], options: { tabs?: Tab[] } = {}) {
     const history = new HistoryService();
     const story = new StoryService();
     const uidoc = new UIDocumentService();
@@ -103,6 +105,12 @@ function createHarness(blueprints: Blueprint[] = []) {
                     case Services.LocalBlueprint:
                         return { applyBlueprintMutation: () => undefined, getBlueprintDocument: () => graphDocument.blueprintDocument };
                     case Services.UIBlueprintLifecycle: return { syncFromUidoc: () => undefined };
+                    case Services.UI:
+                        if (options.tabs) {
+                            const tabs = options.tabs;
+                            return { editor: { getAll: () => [...tabs], close: (tabId: string) => tabs.splice(tabs.findIndex(tab => tab.id === tabId), 1) } };
+                        }
+                        throw new Error("No editor layout");
                     default: throw new Error(`Unexpected service ${id}`);
                 }
             },
@@ -238,20 +246,56 @@ describe("ui_page_delete", () => {
 });
 
 describe("blueprint_remove", () => {
-    it("removes a blueprint whose element is gone as one project step, and undo puts it back", async () => {
+    it("removes a blueprint as one step on its page's stack, as Studio records it, and undo there puts it back", async () => {
         const orphan = widgetBlueprint("bp-orphan", "Orphan", "title", "goneButton", { surfaceId: "extra" });
         const { history, graphDocument, steps, run } = createHarness([orphan]);
         expect(textOf(await run(blueprintRemove, { blueprint: "Orphan", dryRun: true }))).toContain("dry run: nothing written");
         expect(graphDocument.blueprintDocument.blueprints["bp-orphan"]).toBeDefined();
 
-        expect(textOf(await run(blueprintRemove, { blueprint: "Orphan" }))).toContain('Removed "Orphan"');
+        expect(textOf(await run(blueprintRemove, { blueprint: "Orphan" }))).toContain("One step of undo in its page's editor.");
         expect(graphDocument.blueprintDocument.blueprints["bp-orphan"]).toBeUndefined();
         expect(Object.keys(graphDocument.blueprintDocument.ownerRecords)).toEqual([]);
-        expect(steps(projectHistoryScope())).toBe(1);
+        expect(steps(uiSurfaceHistoryScope("title"))).toBe(1);
+        expect(steps(projectHistoryScope())).toBe(0);
+        expect(steps(blueprintHistoryScope("bp-orphan"))).toBe(0);
 
-        history.undo(projectHistoryScope());
+        history.undo(uiSurfaceHistoryScope("title"));
         expect(graphDocument.blueprintDocument.blueprints["bp-orphan"]).toBeDefined();
         expect(graphDocument.blueprintDocument.ownerRecords[ownerRefToIndexKey(orphan.owner)]).toEqual({ blueprintId: "bp-orphan" });
+        history.redo(uiSurfaceHistoryScope("title"));
+        expect(graphDocument.blueprintDocument.blueprints["bp-orphan"]).toBeUndefined();
+    });
+
+    it("closes every tab still showing the blueprint, and nothing else", async () => {
+        const orphan = widgetBlueprint("bp-orphan", "Orphan", "title", "goneButton", {});
+        const tabs: Tab[] = [
+            { id: "blueprint-entry:bp-orphan:title:goneButton:~", payload: { blueprintId: "bp-orphan" } },
+            { id: "blueprint-entry:bp-orphan:~:~:~", payload: { blueprintId: "bp-orphan" } },
+            { id: "blueprint-entry:bp-other:~:~:~", payload: { blueprintId: "bp-other" } },
+            { id: "ui-editor:surface:title", payload: { surfaceId: "title" } },
+        ];
+        const { run } = createHarness([orphan], { tabs });
+        await run(blueprintRemove, { blueprint: "bp-orphan" });
+        expect(tabs.map(tab => tab.id)).toEqual(["blueprint-entry:bp-other:~:~:~", "ui-editor:surface:title"]);
+    });
+
+    it("records a component element's blueprint on its component's stack", async () => {
+        const card = {
+            id: "bp-card",
+            name: "Card button",
+            owner: { kind: "componentWidgetMain", componentId: "card", elementId: "goneInCard" },
+            graphs: { eventIds: [], events: {}, functions: {}, macros: {} },
+        } as never as Blueprint;
+        const { uidoc, history, graphDocument, steps, run } = createHarness([card]);
+        (uidoc.getDocument() as UIDocument).components = [
+            { id: "card", name: "Card", rootElementId: "cardRoot", elements: { cardRoot: element("cardRoot", "nl.root", null) } },
+        ];
+        expect(textOf(await run(blueprintRemove, { blueprint: "bp-card" }))).toContain("One step of undo in its component's editor.");
+        const scope = uiComponentHistoryScope("card");
+        expect(steps(scope)).toBe(1);
+        expect(steps(projectHistoryScope())).toBe(0);
+        history.undo(scope);
+        expect(graphDocument.blueprintDocument.blueprints["bp-card"]).toBeDefined();
     });
 
     it("refuses a page's own blueprint, which Studio puts back, and a name two blueprints share", async () => {
