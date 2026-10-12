@@ -92,6 +92,68 @@ function levelKey(stack: readonly StorySceneLayer[], level: SceneLayerLevel): st
 }
 
 /**
+ * Follow one press to its end, and return what ends it early (`false`: nothing is kept).
+ *
+ * The moves and the release are read off the window, in the capture phase, rather than off the
+ * element pressed: a drag that listened on the element alone stopped dead the moment the element
+ * lost its pointer capture - which a drag here causes itself, because the stack's new order moves
+ * elements in the page, and a moved element loses its capture - and then never ended, so the next
+ * time the pointer merely passed over that element the old drag moved its layer again. The view's
+ * root stops pointerup from bubbling, hence the capture phase.
+ *
+ * A move with the button no longer down ends the press as a release the window did not see (one
+ * outside the window), and the window losing focus ends it with nothing kept.
+ */
+function followPress(
+    event: ReactPointerEvent,
+    onMove: (move: PointerEvent) => void,
+    onEnd: (released: boolean) => void,
+): () => void {
+    const pointerId = event.pointerId;
+    (event.currentTarget as HTMLElement).setPointerCapture?.(pointerId);
+    let ended = false;
+    const finish = (released: boolean) => {
+        if (ended) {
+            return;
+        }
+        ended = true;
+        window.removeEventListener("pointermove", handleMove, true);
+        window.removeEventListener("pointerup", handleUp, true);
+        window.removeEventListener("pointercancel", handleCancel, true);
+        window.removeEventListener("blur", handleBlur);
+        onEnd(released);
+    };
+    function handleMove(move: PointerEvent) {
+        if (move.pointerId !== pointerId) {
+            return;
+        }
+        if ((move.buttons & 1) === 0) {
+            finish(true);
+            return;
+        }
+        onMove(move);
+    }
+    function handleUp(up: PointerEvent) {
+        if (up.pointerId === pointerId) {
+            finish(true);
+        }
+    }
+    function handleCancel(cancel: PointerEvent) {
+        if (cancel.pointerId === pointerId) {
+            finish(false);
+        }
+    }
+    function handleBlur() {
+        finish(false);
+    }
+    window.addEventListener("pointermove", handleMove, true);
+    window.addEventListener("pointerup", handleUp, true);
+    window.addEventListener("pointercancel", handleCancel, true);
+    window.addEventListener("blur", handleBlur);
+    return () => finish(false);
+}
+
+/**
  * The live preview's layer view: the shot the preview shows, taken apart into the scene's layers.
  *
  * Three parts, one stack:
@@ -120,11 +182,14 @@ export function StoryLayerStackView(props: {
     const stored = sceneLayerStack(api.scene);
     // The stack as a drag leaves it, until the drag ends and writes it.
     const [draft, setDraft] = useState<StorySceneLayer[] | null>(null);
-    const stack = draft ?? stored;
+    const [draggingKey, setDraggingKey] = useState<string | null>(null);
+    const stack = draft && draggingKey !== null ? draft : stored;
+    // The press being followed, ended with nothing kept if the view goes away first.
+    const endPressRef = useRef<(() => void) | null>(null);
+    useEffect(() => () => endPressRef.current?.(), []);
     const levels = useMemo(() => sceneLayerLevels(stack), [stack]);
     const [selectedKey, setSelectedKey] = useState<string | null>(null);
     const [hoveredKey, setHoveredKey] = useState<string | null>(null);
-    const [draggingKey, setDraggingKey] = useState<string | null>(null);
     const [renamingId, setRenamingId] = useState<string | null>(null);
     // Drawn flat for one frame, then taken apart: the turn is the view saying the shot is these layers.
     const [exploded, setExploded] = useState(false);
@@ -301,8 +366,6 @@ export function StoryLayerStackView(props: {
         const startY = event.clientY;
         let moved = false;
         let latest: StorySceneLayer[] | null = null;
-        const target = event.currentTarget as HTMLElement;
-        target.setPointerCapture?.(event.pointerId);
         const handleMove = (move: PointerEvent) => {
             const dx = move.clientX - startX;
             const dy = move.clientY - startY;
@@ -341,21 +404,18 @@ export function StoryLayerStackView(props: {
             setDraft(latest);
             setDragDepth({ key, depth: drawn });
         };
-        const handleUp = () => {
-            target.removeEventListener("pointermove", handleMove);
-            target.removeEventListener("pointerup", handleUp);
-            target.removeEventListener("pointercancel", handleUp);
+        const handleEnd = (released: boolean) => {
+            endPressRef.current = null;
             setDraggingKey(null);
             setDragDepth(null);
             setHeldStack(null);
-            if (moved && latest && !sameSceneLayerStack(latest, base)) {
+            setDraft(null);
+            if (released && moved && latest && !sameSceneLayerStack(latest, base)) {
                 api.setSceneLayers(latest);
             }
-            setDraft(null);
         };
-        target.addEventListener("pointermove", handleMove);
-        target.addEventListener("pointerup", handleUp);
-        target.addEventListener("pointercancel", handleUp);
+        endPressRef.current?.();
+        endPressRef.current = followPress(event, handleMove, handleEnd);
     };
 
     // The list: a row dragged onto a level joins it; dragged between two levels it becomes a level of
@@ -375,8 +435,6 @@ export function StoryLayerStackView(props: {
         const startY = event.clientY;
         let moved = false;
         let drop: RowDrop | null = null;
-        const target = event.currentTarget as HTMLElement;
-        target.setPointerCapture?.(event.pointerId);
         const landed = (next: StorySceneLayer[] | null): StorySceneLayer[] | null => (next && !sameSceneLayerStack(next, base) ? next : null);
         const onLevel = (level: SceneLayerLevel): RowDrop | null => {
             // Onto the edge of the level nearest where the row came from.
@@ -444,21 +502,18 @@ export function StoryLayerStackView(props: {
             drop = dropAt(move.clientY);
             setRowDrop(drop);
         };
-        const handleUp = () => {
-            target.removeEventListener("pointermove", handleMove);
-            target.removeEventListener("pointerup", handleUp);
-            target.removeEventListener("pointercancel", handleUp);
+        const handleEnd = (released: boolean) => {
+            endPressRef.current = null;
             setDraggingKey(null);
             setRowDrop(null);
-            if (moved && drop) {
+            if (released && moved && drop) {
                 api.setSceneLayers(drop.next);
-            } else if (!moved) {
+            } else if (released && !moved) {
                 setSelectedKey(key);
             }
         };
-        target.addEventListener("pointermove", handleMove);
-        target.addEventListener("pointerup", handleUp);
-        target.addEventListener("pointercancel", handleUp);
+        endPressRef.current?.();
+        endPressRef.current = followPress(event, handleMove, handleEnd);
     };
 
     /** A level at a typed distance: its layers go together, the characters' layer staying where it is. */
@@ -606,9 +661,11 @@ export function StoryLayerStackView(props: {
                 })}
             </div>
 
-            {/* Each layer's name, over its plane: drag it along the stack to move the layer. */}
+            {/* Each layer's name, over its plane: drag it along the stack to move the layer. In one
+                fixed order in the page whatever the stack's, so a drag that reorders the stack never
+                moves the element under the pointer. */}
             <div className={cn("pointer-events-none absolute inset-0 transition-opacity duration-300", exploded ? "opacity-100" : "opacity-0")}>
-                {stack.map(layer => {
+                {[...stack].sort((a, b) => sceneLayerKey(a).localeCompare(sceneLayerKey(b))).map(layer => {
                     const key = sceneLayerKey(layer);
                     const fixed = layer.kind === "displayable";
                     return (
@@ -737,7 +794,7 @@ export function StoryLayerStackView(props: {
                                 <LevelDistance
                                     distance={level.follow === 0 ? Infinity : 1 / level.follow}
                                     span={members.length}
-                                    editable={!readOnly && movable && draft === null}
+                                    editable={!readOnly && movable && draggingKey === null}
                                     tip={!movable
                                         ? t("story.sceneLayers.fixedTip")
                                         : readOnly
