@@ -27,8 +27,8 @@ import type { RequestStatus } from "@shared/types/ipcEvents";
 import {
     actOnElement,
     browserInputEnvironment,
-    describeDrawnElement,
     describeKnownKeys,
+    describePointerAct,
     gameCentre,
     isPointerKey,
     keyEventInit,
@@ -736,8 +736,7 @@ async function runInputAction(
         if (outcome.kind === "refused") {
             return refuse(outcome.message);
         }
-        const verb = action.gesture === "click" ? "Clicked" : "Pointed at";
-        did = `${verb} ${describeDrawnElement(outcome.target)}.`;
+        did = describePointerAct(action.gesture, outcome);
     } else if (isPointerKey(action.key)) {
         const centre = gameCentre(env);
         if (!centre) {
