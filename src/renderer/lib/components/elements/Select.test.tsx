@@ -120,3 +120,39 @@ describe("Select keyboard", () => {
         expect(document.activeElement?.textContent).toBe("Gamma");
     });
 });
+
+/**
+ * A menu portalled out of a blueprint node stayed where it opened when the canvas panned: the wheel
+ * moves the node by a transform, which fires no scroll event for the menu to follow. It closes now,
+ * on the wheel and on a press its `mousedown` never arrives for (a Ctrl+drag pan cancels it).
+ */
+describe("Select closing on outside input", () => {
+    it("closes when the wheel turns outside it, and stays open while its own list scrolls", () => {
+        render(
+            <>
+                <Select options={OPTIONS} value="a" onChange={() => undefined} portalMenu />
+                <div data-testid="canvas" />
+            </>,
+        );
+        openMenu();
+
+        fireEvent.wheel(screen.getByText("Beta"), { deltaY: 40 });
+        expect(screen.queryByText("Beta")).not.toBeNull();
+
+        fireEvent.wheel(screen.getByTestId("canvas"), { deltaY: 40 });
+        expect(screen.queryByText("Beta")).toBeNull();
+    });
+
+    it("closes on a pointer press outside it that never becomes a mousedown", () => {
+        render(
+            <>
+                <Select options={OPTIONS} value="a" onChange={() => undefined} portalMenu />
+                <div data-testid="canvas" />
+            </>,
+        );
+        openMenu();
+
+        fireEvent.pointerDown(screen.getByTestId("canvas"));
+        expect(screen.queryByText("Beta")).toBeNull();
+    });
+});

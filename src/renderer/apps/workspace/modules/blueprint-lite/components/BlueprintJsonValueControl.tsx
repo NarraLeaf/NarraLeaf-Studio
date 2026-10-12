@@ -662,7 +662,8 @@ function JsonEditorPortal({
     // A popover that is mounted only while it is open. Focus moves onto the panel when it opens (Tab
     // goes on into its controls), Escape closes it - only it: a type menu open inside it closes
     // first, and the node and inspector it was portalled out of never hear the key - Tab out of it
-    // closes it, and closing gives focus back to its edit button. Every way out commits a raw draft
+    // closes it, and closing gives focus back to its edit button. The wheel turning outside it
+    // closes it too, since it pans the canvas the node sits on. Every way out commits a raw draft
     // first, and a draft that does not parse keeps the editor open with its error showing.
     useFloatingLayer({
         open: true,
@@ -670,6 +671,7 @@ function JsonEditorPortal({
         panelRef,
         ownerRefs: [triggerRef],
         initialFocus: panelRef,
+        closeOnOutsideWheel: true,
     });
 
     useEffect(() => {
