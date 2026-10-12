@@ -393,6 +393,7 @@ import {
 } from "@shared/types/blueprint/valueTypes";
 import { blueprintCharacterColorOrDefault } from "@shared/types/blueprint/characterInfo";
 import { RELEASE_APP_TAG } from "@shared/types/appTag";
+import { splitJsonPath } from "@shared/blueprint/jsonPath";
 import { BLUEPRINT_APP_TAG_OUTPUT_PIN_ID } from "./appTagNodes";
 import type { BlueprintInputActionHostApi } from "./inputActionNodes";
 import type { BehaviorGraphValueExecution, BehaviorNodeExecutionContext } from "../../behavior-graph/BehaviorNodeRegistry";
@@ -1075,34 +1076,6 @@ function countOccurrences(value: string, search: string): number {
         cursor = next + search.length;
     }
     return count;
-}
-
-function splitJsonPath(path: string): string[] {
-    const out: string[] = [];
-    let current = "";
-    let escaping = false;
-    for (const ch of path) {
-        if (escaping) {
-            current += ch;
-            escaping = false;
-            continue;
-        }
-        if (ch === "\\") {
-            escaping = true;
-            continue;
-        }
-        if (ch === ".") {
-            out.push(current);
-            current = "";
-            continue;
-        }
-        current += ch;
-    }
-    if (escaping) {
-        current += "\\";
-    }
-    out.push(current);
-    return out.filter(segment => segment.length > 0);
 }
 
 function readJsonPath(value: unknown, path: string): { exists: boolean; value: unknown } {

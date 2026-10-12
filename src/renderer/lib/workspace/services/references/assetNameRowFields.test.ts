@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
     BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_PUSH,
     BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_MERGE,
+    BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_SET_FIELD,
     BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT,
+    BLUEPRINT_NODE_TYPE_DATA_JSON_SET,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
@@ -11,6 +13,7 @@ import {
     BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
+    BLUEPRINT_NODE_TYPE_STRING_FORMAT,
     BLUEPRINT_NODE_TYPE_TIME_FORMAT,
 } from "@shared/types/blueprint/graph";
 import type { UIDocument } from "@shared/types/ui-editor/document";
@@ -159,5 +162,73 @@ describe("a picture bound to one field of a list's rows", () => {
         const list = ui.elements[LIST];
         const shapeless = { ...ui, elements: { ...ui.elements, [LIST]: { ...list, props: {} } } } as UIDocument;
         expect(gapsOf({ ...project, uiDocument: shapeless })).toHaveLength(1);
+    });
+});
+
+/**
+ * A row put together with `Set JSON Field`, whose picture name is assembled (`Format "save_{n}"`).
+ *
+ * The node reads its path the way `splitJsonPath` does: an empty path replaces the whole value, and
+ * `.preview` is `preview`. The walk compared the raw text with the field's key, so both shapes lost
+ * the assembled name and a shipped package could lack the picture it names.
+ */
+function setRow(path: string, value: "object" | "name", setter: "json" | "object" = "json"): AssetNameProject {
+    const isJson = setter === "json";
+    const nodes: NodeSpec[] = [
+        { id: "init", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT },
+        { id: "base", type: BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT, params: { __jsonObjectInputPins: ["field_1_name", "field_1_value"], field_1_name: "date", field_1_value: "today" } },
+        { id: "name", type: BLUEPRINT_NODE_TYPE_STRING_FORMAT, params: { template: "save_{n}" } },
+        makeObject("withShot", "preview"),
+        isJson
+            ? { id: "set", type: BLUEPRINT_NODE_TYPE_DATA_JSON_SET, params: { path } }
+            : { id: "set", type: BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_SET_FIELD, params: { field: path } },
+        { id: "append", type: BLUEPRINT_NODE_TYPE_LIST_APPEND_ITEM },
+    ];
+    const edges: EdgeSpec[] = [
+        ["init", "then", "append", "in"],
+        ["name", "result", "withShot", "field_1_value"],
+        ["base", "result", "set", isJson ? "json" : "object"],
+        value === "object" ? ["withShot", "result", "set", "value"] : ["name", "result", "set", "value"],
+        ["set", "result", "append", "item"],
+    ];
+    return {
+        blueprintDocument: document(blueprint("bp-slots", "Slots", { kind: "widgetMain", surfaceId: SURFACE, elementId: LIST }, { init: graph(nodes, edges) })),
+        uiDocument: interfaceWith("f-preview"),
+    };
+}
+
+const assembledName = [
+    expect.objectContaining({
+        sink: expect.objectContaining({ kind: "binding", elementId: PREVIEW }),
+        origin: expect.objectContaining({ kind: "node", nodeId: "name" }),
+    }),
+];
+
+describe("a row put together with Set JSON Field", () => {
+    it("is the value itself when the path is empty, so a name assembled in the value is found", () => {
+        expect(gapsOf(setRow("", "object"))).toEqual(assembledName);
+        expect(gapsOf(setRow("  ", "object"))).toEqual(assembledName);
+        expect(gapsOf(setRow(".", "object"))).toEqual(assembledName);
+    });
+
+    it("reads `.preview` and `preview.` as the field `preview`", () => {
+        expect(gapsOf(setRow("preview", "name"))).toEqual(assembledName);
+        expect(gapsOf(setRow(".preview", "name"))).toEqual(assembledName);
+        expect(gapsOf(setRow("preview.", "name"))).toEqual(assembledName);
+    });
+
+    it("still follows only the field written, and an escaped dot is part of a name", () => {
+        // Another field written: the picture comes from `json`, which has none put together.
+        expect(gapsOf(setRow("date", "name"))).toEqual([]);
+        // `preview\.x` is the one field `preview.x`, not `x` inside `preview`.
+        expect(gapsOf(setRow(String.raw`preview\.x`, "name"))).toEqual([]);
+        // Written inside `preview`: the assembled name may be what the picture reads.
+        expect(gapsOf(setRow("preview.x", "name"))).toEqual(assembledName);
+    });
+
+    it("takes Set Field's key whole, with no path", () => {
+        expect(gapsOf(setRow("preview", "name", "object"))).toEqual(assembledName);
+        expect(gapsOf(setRow("preview.x", "name", "object"))).toEqual([]);
+        expect(gapsOf(setRow("", "name", "object"))).toEqual([]);
     });
 });
