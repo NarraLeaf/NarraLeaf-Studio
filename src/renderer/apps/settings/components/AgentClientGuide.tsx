@@ -7,14 +7,12 @@ import { cn } from "@/lib/utils/cn";
 import {
     AGENT_CLIENTS,
     AGENT_MASKED_TOKEN,
-    AGENT_SKILL_NPX_COMMAND,
     findAgentClient,
     type AgentClientDescriptor,
     type AgentClientId,
     type AgentClientSetupInfo,
 } from "@shared/agent/clients";
 import { buildAgentClientConfig } from "@shared/agent/settings";
-import { copyTextToClipboard } from "@shared/utils/copyText";
 
 /** How long a copy button says it copied. The same as the Settings panel's other copy buttons. */
 const COPIED_FLASH_MS = 1500;
@@ -57,6 +55,7 @@ export function AgentClientGuide({ client: clientId, enabled, endpointKey }: Age
     const [busy, setBusy] = useState(false);
     const [copied, setCopied] = useState(false);
     const [installedPath, setInstalledPath] = useState<Partial<Record<AgentClientId, string>>>({});
+    const [exportedPath, setExportedPath] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -115,6 +114,22 @@ export function AgentClientGuide({ client: clientId, enabled, endpointKey }: Age
         }
     }, [client.id, readInfo]);
 
+    // The Agent menu's export, for an application Studio does not know the skill folder of.
+    const exportSkill = useCallback(async () => {
+        setBusy(true);
+        setError(null);
+        try {
+            const result = await getInterface().agent.exportSkill();
+            if (!result.success) {
+                setError(result.error ?? null);
+            } else if (!result.data.canceled) {
+                setExportedPath(result.data.path);
+            }
+        } finally {
+            setBusy(false);
+        }
+    }, []);
+
     return (
         <div className="space-y-5">
             <div className={cn("transition-opacity duration-150", !enabled && "opacity-50")}>
@@ -136,8 +151,10 @@ export function AgentClientGuide({ client: clientId, enabled, endpointKey }: Age
                     client={client}
                     info={info}
                     written={installedPath[client.id] ?? null}
+                    exported={exportedPath}
                     busy={busy}
                     onInstall={() => void install()}
+                    onExport={() => void exportSkill()}
                 />
             </div>
 
@@ -202,39 +219,35 @@ function SkillSection({
     client,
     info,
     written,
+    exported,
     busy,
     onInstall,
+    onExport,
 }: {
     client: AgentClientDescriptor;
     info: AgentClientSetupInfo | null;
     /** What an install from this guide wrote, which says more than the folder it went into. */
     written: string | null;
+    /** The folder an export from this guide wrote. */
+    exported: string | null;
     busy: boolean;
     onInstall: () => void;
+    onExport: () => void;
 }) {
     const { t } = useTranslation();
-    const [npxCopied, setNpxCopied] = useState(false);
-    const npxTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    useEffect(() => () => {
-        if (npxTimer.current) {
-            clearTimeout(npxTimer.current);
-        }
-    }, []);
-    // Nothing secret in it, so it is copied here rather than by main.
-    const copyNpx = useCallback(async () => {
-        await copyTextToClipboard(AGENT_SKILL_NPX_COMMAND);
-        setNpxCopied(true);
-        if (npxTimer.current) {
-            clearTimeout(npxTimer.current);
-        }
-        npxTimer.current = setTimeout(() => setNpxCopied(false), COPIED_FLASH_MS);
-    }, []);
 
+    // Studio does not know where this application keeps skills. It reads the same guide from the
+    // MCP server, and the Agent Skill this Studio ships can be exported for the author to put where
+    // the application reads skills - the same export as the Agent menu's.
     if (client.skill === "served") {
         return (
-            <div>
-                <p className="mb-1.5 text-xs text-fg-subtle">{t("settings.agent.guide.skillServed")}</p>
-                <CodeBox text={AGENT_SKILL_NPX_COMMAND} copied={npxCopied} disabled={false} onCopy={() => void copyNpx()} />
+            <div className="space-y-2">
+                <p className="text-xs text-fg-subtle">
+                    {exported ? t("settings.agent.guide.skillExported", { path: exported }) : t("settings.agent.guide.skillServed")}
+                </p>
+                <Button size="sm" variant="secondary" disabled={busy} onClick={onExport}>
+                    {t("settings.agent.guide.skillExport")}
+                </Button>
             </div>
         );
     }

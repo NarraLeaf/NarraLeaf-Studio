@@ -585,7 +585,9 @@ export const settings = {
             skillUpload: "Saved as a zip file to upload in Claude under Settings > Capabilities > Skills.",
             skillSave: "Save zip file…",
             skillSaved: "Saved to {path}.",
-            skillServed: "Other applications read the same guide from Studio's MCP server. One that supports skills can install them with this command.",
+            skillServed: "Other applications read the same guide from Studio's MCP server.",
+            skillExport: "Export Agent Skill…",
+            skillExported: "Exported to {path}.",
         },
     },
     data: {

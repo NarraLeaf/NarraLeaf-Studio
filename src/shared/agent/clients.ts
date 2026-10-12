@@ -22,8 +22,10 @@ export type AgentClientId = "claudeCode" | "codex" | "opencode" | "claudeDesktop
  * - `folder`: it reads skill folders from a directory in the home folder, and Studio copies the
  *   bundled skills there.
  * - `upload`: it takes a skill as a zip uploaded in its own settings, and Studio writes that zip.
- * - `served`: Studio does not know where it keeps skills (the catch-all row), and it reads the same
- *   guide from Studio's MCP server instead (the `make_game` prompt, `agent_guide`, `narraleaf://guide/*`).
+ * - `served`: Studio does not know where it keeps skills (the catch-all row). It reads the same guide
+ *   from Studio's MCP server instead (the `make_game` prompt, `agent_guide`, `narraleaf://guide/*`),
+ *   and the author can export the Agent Skill this Studio ships and put it where the application
+ *   reads skills.
  */
 export type AgentSkillMode = "folder" | "upload" | "served";
 
@@ -53,12 +55,6 @@ export type AgentClientDescriptor = {
  * the first, so the two go together.
  */
 export const AGENT_INSTALLED_SKILLS = ["narraleaf-make-game", "narraleaf-port-renpy"] as const;
-
-/**
- * Installing the skills from the published repository with the `skills` command (Vercel Labs),
- * which knows the skill folders of many more agents than this table. Offered for the catch-all row.
- */
-export const AGENT_SKILL_NPX_COMMAND = "npx skills add NarraLeaf/Skills -g";
 
 /** The file name of the zip written for clients that take an uploaded skill. */
 export const AGENT_SKILL_ZIP_NAME = "narraleaf-make-game.zip";

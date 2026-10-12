@@ -533,7 +533,9 @@ export const settings = {
             skillUpload: "zip として保存し、Claude の 設定 > 機能 > スキル でアップロード",
             skillSave: "zip を保存…",
             skillSaved: "{path} に保存済み",
-            skillServed: "ほかのアプリは Studio の MCP サーバーから同じガイドを読む。スキルに対応したアプリは次のコマンドでインストールできる",
+            skillServed: "ほかのアプリは Studio の MCP サーバーから同じガイドを読む",
+            skillExport: "Agent Skill を書き出す…",
+            skillExported: "{path} に書き出し済み",
         },
     },
     data: {
