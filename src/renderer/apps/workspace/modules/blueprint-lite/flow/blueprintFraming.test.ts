@@ -1,6 +1,7 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import type { ReactFlowState } from "@xyflow/react";
-import { frameBlueprintNode } from "./blueprintFraming";
+import { frameBlueprintNode, measureVisiblePane } from "./blueprintFraming";
 
 type Card = { x: number; y: number; width?: number; height?: number };
 
@@ -72,5 +73,55 @@ describe("frameBlueprintNode", () => {
         expect(frameBlueprintNode(canvas({ fresh: { x: 10, y: 10 } }), "fresh", current)).toBeNull();
         expect(frameBlueprintNode(state, "gone", current)).toBeNull();
         expect(frameBlueprintNode(canvas({ target }, { width: 0, height: 0 }), "target", current)).toBeNull();
+    });
+});
+
+describe("measureVisiblePane", () => {
+    /** An element laid out at `rect` (viewport pixels), clipping what overflows it when `clip` says so. */
+    function box(rect: { left: number; top: number; width: number; height: number }, clip = false): HTMLElement {
+        const element = document.createElement("div");
+        if (clip) {
+            element.style.overflowX = "hidden";
+            element.style.overflowY = "hidden";
+        }
+        element.getBoundingClientRect = () => ({
+            ...rect,
+            x: rect.left,
+            y: rect.top,
+            right: rect.left + rect.width,
+            bottom: rect.top + rect.height,
+            toJSON: () => rect,
+        });
+        return element;
+    }
+
+    it("is the part of the pane its clipping ancestors leave on screen", () => {
+        // The editor area as the workspace lays it out between two docks: 300 wide on screen, its
+        // content floored at 480 and cropped.
+        const area = box({ left: 100, top: 40, width: 300, height: 500 }, true);
+        const floor = box({ left: 100, top: 40, width: 480, height: 500 });
+        const pane = box({ left: 100, top: 80, width: 480, height: 460 });
+        area.appendChild(floor);
+        floor.appendChild(pane);
+        document.body.appendChild(area);
+        try {
+            expect(measureVisiblePane(pane)).toEqual({ x: 0, y: 0, width: 300, height: 460 });
+        } finally {
+            area.remove();
+        }
+    });
+
+    it("says nothing when the whole pane is on screen, or when none of it is", () => {
+        const area = box({ left: 0, top: 0, width: 800, height: 600 }, true);
+        const pane = box({ left: 0, top: 0, width: 800, height: 600 });
+        area.appendChild(pane);
+        document.body.appendChild(area);
+        try {
+            expect(measureVisiblePane(pane)).toBeUndefined();
+            expect(measureVisiblePane(box({ left: 0, top: 0, width: 0, height: 0 }))).toBeUndefined();
+            expect(measureVisiblePane(null)).toBeUndefined();
+        } finally {
+            area.remove();
+        }
     });
 });

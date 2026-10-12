@@ -287,9 +287,10 @@ function runOrphan(ctx: LintContext): LintFinding[] {
  * player of that language simply never sees the stress the author put on the word. This rule is
  * where it leaves a trace.
  *
- * Reported at `info`, not `warning`: dropping a mark is a decision a translator is entitled to make
- * (a phrase that wants emphasis in Japanese may want none in English), and a line that renders
- * plainly still renders. It is a list to read through, not a queue to clear.
+ * Reported at `warning`. A mark is not only styling: a pause, an expression change or a sound is an
+ * inline tag too, and the compiler drops a token the translation does not carry - so players of that
+ * language lose the pause, the expression or the sound, not merely the emphasis. A translator who
+ * leaves styling out on purpose still may; the help says the rule can be switched off.
  *
  * A tag naming a run the line does not have is in the same finding rather than its own rule - both
  * are answered by opening that unit and looking at the source beside it.
@@ -360,7 +361,7 @@ export const LOCALIZATION_LINT_RULES: readonly LintRule[] = [
     {
         id: "localization/markup",
         category: "localization",
-        defaultSeverity: "info",
+        defaultSeverity: "warning",
         slug: "localizationMarkup",
         run: ctx => runMarkup(ctx),
     },

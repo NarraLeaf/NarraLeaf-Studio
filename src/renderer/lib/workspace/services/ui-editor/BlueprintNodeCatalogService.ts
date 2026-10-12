@@ -32,6 +32,8 @@ export class BlueprintNodeCatalogService
     private readonly dynamicSelectOptionsSources = new Map<string, DynamicSelectOptionsSourceRecord>();
     private readonly dynamicSelectOptionsListeners = new Set<() => void>();
     private readonly pluginNodeOwners = new Map<string, string>();
+    private readonly catalogListeners = new Set<() => void>();
+    private catalogRevision = 0;
 
     protected init(_ctx: WorkspaceContext): void {
         this.ensureBuiltinsRegistered();
@@ -42,6 +44,57 @@ export class BlueprintNodeCatalogService
     }
 
     public register(def: BlueprintNodeDef, options?: PluginRegistrationOptions): void {
+        try {
+            this.registerOne(def, options);
+        } finally {
+            this.notifyCatalogChanged();
+        }
+    }
+
+    public registerMany(defs: BlueprintNodeDef[], options?: PluginRegistrationOptions): void {
+        this.ensureBuiltinsRegistered();
+        try {
+            if (!options?.ownerPluginId) {
+                defineBlueprintNodes(defs);
+                return;
+            }
+            for (const def of defs) {
+                this.registerOne(def, options);
+            }
+        } finally {
+            // Once for the batch: a plugin hands its nodes over together, and an open editor redraws
+            // its cards once for them.
+            this.notifyCatalogChanged();
+        }
+    }
+
+    /**
+     * Counts the registrations made through this service, so that something drawn from the catalogue
+     * can tell it has changed underneath it.
+     *
+     * A plugin registers its nodes when it loads, which is after the workspace has restored its tabs
+     * and can be long after - the author enabling the plugin with the editor open. A blueprint drawn
+     * before then shows those nodes as unknown, and has to draw them again once they are known.
+     */
+    public getCatalogRevision(): number {
+        return this.catalogRevision;
+    }
+
+    public onCatalogChanged(handler: () => void): () => void {
+        this.catalogListeners.add(handler);
+        return () => {
+            this.catalogListeners.delete(handler);
+        };
+    }
+
+    private notifyCatalogChanged(): void {
+        this.catalogRevision += 1;
+        for (const listener of [...this.catalogListeners]) {
+            listener();
+        }
+    }
+
+    private registerOne(def: BlueprintNodeDef, options?: PluginRegistrationOptions): void {
         this.ensureBuiltinsRegistered();
         this.validatePluginOwnedNode(def, options);
         const existingOwner = this.pluginNodeOwners.get(def.type);
@@ -60,17 +113,6 @@ export class BlueprintNodeCatalogService
         }
         if (options?.ownerPluginId) {
             this.pluginNodeOwners.set(def.type, options.ownerPluginId);
-        }
-    }
-
-    public registerMany(defs: BlueprintNodeDef[], options?: PluginRegistrationOptions): void {
-        this.ensureBuiltinsRegistered();
-        if (!options?.ownerPluginId) {
-            defineBlueprintNodes(defs);
-            return;
-        }
-        for (const def of defs) {
-            this.register(def, options);
         }
     }
 

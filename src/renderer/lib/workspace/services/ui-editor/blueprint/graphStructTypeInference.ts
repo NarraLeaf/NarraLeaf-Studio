@@ -13,7 +13,8 @@
  *    unwired inside a list row - the row's own shape.
  *  - **Nodes typed by their own select** (`paramPinTypes`): Get Property set to Position answers a
  *    Vector2D, On Preference Changed for the music volume a number.
- *  - **Get / Set Saved Var**, typed by the variable's declaration in the project's variable table.
+ *  - **Get / Set Saved Var** and **Get / Set Scene Var**, typed by the variable's declaration: the
+ *    project's variable table for a saved one, the declaration row in the scene for a scene one.
  *  - **The list nodes and item heads** (`listRowTypes`), whose rows are the rows of the list they act
  *    on: Item Click on an ending list hands out an ending. Rows wired in are compared with that shape.
  *
@@ -41,6 +42,8 @@ import {
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_SAVED_GET,
     BLUEPRINT_NODE_TYPE_SAVED_SET,
+    BLUEPRINT_NODE_TYPE_SCENE_GET,
+    BLUEPRINT_NODE_TYPE_SCENE_SET,
 } from "@shared/types/blueprint/graph";
 import { getActiveUIPageParam, getActiveUIPageParams, uiPageParamPinType } from "@shared/types/ui-editor/pageParams";
 import { blueprintArrayElementType, blueprintArrayValueType } from "@shared/types/blueprint/valueTypes";
@@ -76,6 +79,8 @@ export type BlueprintStructTypeInferenceContext = {
     rowStruct?: UIStructDef | null;
     /** A saved variable's declared type as a pin type, by variable id; unknown ids answer nothing. */
     savedVariableType?: (variableId: string) => string | undefined;
+    /** The same for a scene variable, by the id of its declaration row. */
+    sceneVariableType?: (variableId: string) => string | undefined;
     /**
      * A parameter of the page this graph belongs to, by id, as a pin type - what `Get Page Param`
      * reads. Unknown ids, and a graph that belongs to no page, answer nothing.
@@ -132,8 +137,16 @@ function defaultResolveStruct(structId: string): UIStructDef | null {
     return resolveUIStruct(null, structId);
 }
 
-function isSavedVariableNodeType(type: string): boolean {
-    return type === BLUEPRINT_NODE_TYPE_SAVED_GET || type === BLUEPRINT_NODE_TYPE_SAVED_SET;
+/** The story variable nodes, by the param that names their variable. */
+const STORY_VARIABLE_NODE_PARAMS: Readonly<Record<string, "savedVariableId" | "sceneVariableId">> = {
+    [BLUEPRINT_NODE_TYPE_SAVED_GET]: "savedVariableId",
+    [BLUEPRINT_NODE_TYPE_SAVED_SET]: "savedVariableId",
+    [BLUEPRINT_NODE_TYPE_SCENE_GET]: "sceneVariableId",
+    [BLUEPRINT_NODE_TYPE_SCENE_SET]: "sceneVariableId",
+};
+
+function isStoryVariableNodeType(type: string): boolean {
+    return Object.hasOwn(STORY_VARIABLE_NODE_PARAMS, type);
 }
 
 /** True for the node types this pass has an opinion about. */
@@ -141,7 +154,7 @@ export function isBlueprintStructTypedNodeType(type: string): boolean {
     if (
         type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD
         || type === BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM
-        || isSavedVariableNodeType(type)
+        || isStoryVariableNodeType(type)
     ) {
         return true;
     }
@@ -311,9 +324,11 @@ export function analyzeBlueprintStructTypes(
         };
     };
 
-    const analyzeSavedVariableNode = (node: BlueprintGraphNode): BlueprintNodeStructTypes => {
-        const variableId = readParamString(node.params, "savedVariableId");
-        const valueType = variableId ? ctx.savedVariableType?.(variableId) : undefined;
+    const analyzeStoryVariableNode = (node: BlueprintGraphNode): BlueprintNodeStructTypes => {
+        const paramKey = STORY_VARIABLE_NODE_PARAMS[node.type];
+        const variableId = readParamString(node.params, paramKey);
+        const typeOf = paramKey === "sceneVariableId" ? ctx.sceneVariableType : ctx.savedVariableType;
+        const valueType = variableId ? typeOf?.(variableId) : undefined;
         return valueType ? { pinTypes: { value: valueType }, struct: null, structId: null } : EMPTY_INFO;
     };
 
@@ -389,8 +404,8 @@ export function analyzeBlueprintStructTypes(
         if (node.type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD) {
             return analyzeFieldReader(node);
         }
-        if (isSavedVariableNodeType(node.type)) {
-            return analyzeSavedVariableNode(node);
+        if (isStoryVariableNodeType(node.type)) {
+            return analyzeStoryVariableNode(node);
         }
         if (node.type === BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM) {
             return analyzePageParamReader(node);
@@ -485,10 +500,18 @@ export function buildBlueprintStructTypeContext(input: {
     isComponentDefinitionGraph?: boolean;
     /** The project's saved variables; their declared types type Get / Set Saved Var. */
     savedVariables?: readonly { id: string; valueType?: string }[];
+    /**
+     * The scene variables the graph can reach - those of the scenes whose rows run it; their declared
+     * types type Get / Set Scene Var.
+     */
+    sceneVariables?: readonly { id: string; valueType?: string }[];
 }): BlueprintStructTypeInferenceContext {
     const document = input.uiDocument ?? null;
     const savedTypes = new Map(
         (input.savedVariables ?? []).map(variable => [variable.id, blueprintValueTypeForVariable(variable.valueType)]),
+    );
+    const sceneTypes = new Map(
+        (input.sceneVariables ?? []).map(variable => [variable.id, blueprintValueTypeForVariable(variable.valueType)]),
     );
     // The graph's own list: the list it is attached to, or the list whose item template it is in -
     // the same answer the field pickers give.
@@ -526,6 +549,7 @@ export function buildBlueprintStructTypeContext(input: {
             : document ? row !== null : true,
         rowStruct: row?.structId ? resolveStruct(row.structId) : null,
         savedVariableType: variableId => savedTypes.get(variableId),
+        sceneVariableType: variableId => sceneTypes.get(variableId),
         pageParamType: paramId => {
             const param = getActiveUIPageParam(pageSurfaceIdOf(input.owner), paramId);
             return param ? uiPageParamPinType(param) : undefined;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryDocument, StoryScene } from "@shared/types/story/document";
 import { blueprintIdsNamedByScene, scenesNamingBlueprint } from "@/lib/story/sceneBlueprintRefs";
-import { buildSceneVariableOptions } from "./sceneVariableOptions";
+import { buildSceneVariableOptions, sceneVariablesRunningBlueprint } from "./sceneVariableOptions";
 
 function declaration(id: string, name: string): StoryBlock {
     return {
@@ -77,6 +77,19 @@ describe("the scene variable picker", () => {
             "Rooftop / hp",
             "Rooftop / Mood",
         ]);
+    });
+
+    it("types the same variables the picker offers by their declarations", () => {
+        const flag: StoryBlock = {
+            ...declaration("seen", "Seen"),
+            payload: { scope: "scene", name: "Seen", valueType: "boolean", storageKey: "seen" },
+        } as StoryBlock;
+        const document = story([hallway, scene("roof", "Roof", [declaration("hp", "hp"), flag, blueprintRow("row", "bp")])]);
+        expect(sceneVariablesRunningBlueprint([{ id: "story", document }], "bp")).toEqual([
+            { id: "hp", valueType: "number" },
+            { id: "seen", valueType: "boolean" },
+        ]);
+        expect(sceneVariablesRunningBlueprint([{ id: "story", document }], "other")).toEqual([]);
     });
 
     it("lists nothing for a blueprint no row runs", () => {

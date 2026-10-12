@@ -794,7 +794,9 @@ export const lint = {
             message: "Nothing opens this page",
             help:
                 "A page nothing opens: it is not the entry page, no blueprint node picks it (Go Page, Show "
-                + "Layer and Quit Game are examples), and no Page widget shows it. Game UI is not checked.\n"
+                + "Layer and Quit Game are examples), no Page widget shows it, no /quit or /ending row names it, "
+                + "and neither the project nor a build variant shows it when the story ends. Game UI is not "
+                + "checked.\n"
                 + "\n"
                 + "No player can open the page.\n"
                 + "\n"
@@ -1177,7 +1179,8 @@ export const lint = {
             messageUnnamed: "A variable with no declaration is always within {bound} here, so this condition cannot hold",
             help:
                 "No value the variable can have at this row makes the condition true. Only comparisons of a "
-                + "number variable with a written number are checked, such as affection >= 50. The range in the "
+                + "number variable with a written number are checked, such as affection >= 50. Persistent variables "
+                + "carry their value over from the previous run and are not checked. The range in the "
                 + "finding counts the variable's default and every change the story can make before this row.\n"
                 + "\n"
                 + "In the game the condition is always false: an /if branch never runs, an /until never ends "
