@@ -1708,7 +1708,7 @@ export const blueprint = {
         playVideo: "Starts the video, or resumes it from where it was paused. After the clip has ended, plays it again from the start. Plays at the volume the player has set, as Autoplay does. A clip that has not loaded yet starts once it has.",
         pauseVideo: "Pauses the video where it is. Play Video resumes it from there.",
         stopVideo: "Pauses the video and returns it to the start of the clip.",
-        seekVideo: "Moves the video to Time, in seconds from the start of the clip. A time past the end moves it to the end, and a negative time to the start. Playing or paused stays as it was: a playing video moved to its end runs Playback Ended, and a paused one stays paused there.",
+        seekVideo: "Moves the video to Time, in seconds from the start of the clip. A time past the end moves it to the end, and a negative time to the start. A playing video keeps playing and a paused one stays paused. A playing video moved to its end runs Playback Ended.",
         getVideoTime: "Where the video is, in seconds from the start of the clip. 0 while there is no clip on screen.",
         getVideoDuration: "How long the clip is, in seconds. 0 until the clip has loaded.",
         isVideoPlaying: "True while the video is playing. False while it is paused, stopped or at its end, and while there is no clip on screen.",

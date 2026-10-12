@@ -1564,7 +1564,7 @@ export const blueprint = {
         playVideo: "動画を再生",
         pauseVideo: "動画を一時停止",
         stopVideo: "動画を停止",
-        seekVideo: "動画の再生位置を移す",
+        seekVideo: "動画の再生位置を移動",
         getVideoTime: "動画の再生位置を取得",
         getVideoDuration: "動画の長さを取得",
         isVideoPlaying: "動画が再生中か",

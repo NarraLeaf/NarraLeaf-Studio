@@ -310,7 +310,7 @@ export const widgets = {
         loop: "ループ",
         muted: "消音",
         autoplay: "自動再生",
-        autoplayHint: "ゲームで効く。エディタのキャンバスは止まったまま。プレビューはドッカーバーから行う",
+        autoplayHint: "ゲーム内でのみ有効。エディタのキャンバスは停止したまま。プレビューはツールバーから行う",
         volume: "音量",
         volumeHint: "0 から 1 まで。実行時はブループリントの音量ピンが優先される",
         audioTrack: "オーディオトラック",

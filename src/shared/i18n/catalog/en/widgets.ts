@@ -313,7 +313,7 @@ export const widgets = {
         loop: "Loop",
         muted: "Muted",
         autoplay: "Autoplay",
-        autoplayHint: "Applies in the game. The editor canvas stays paused; use the docker bar to preview.",
+        autoplayHint: "Applies in the game. The editor canvas stays paused; use the toolbar to preview.",
         volume: "Volume",
         volumeHint: "0 to 1. A blueprint volume pin overrides this at runtime.",
         audioTrack: "Audio Track",
