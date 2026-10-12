@@ -1303,6 +1303,7 @@ export const lint = {
     severity: {
         error: "错误",
         warning: "警告",
+        minor: "次要警告",
         info: "提示",
         off: "关闭",
     },
@@ -1310,7 +1311,7 @@ export const lint = {
         title: "问题",
         empty: "未发现问题",
         running: "检查中…",
-        counts: "{errors}，{warnings}，{infos}",
+        counts: "{errors}，{warnings}，{minorWarnings}，{infos}",
         filtered: "显示 {shown} / {total}",
         rerun: "重新检查",
         filterAll: "全部",
@@ -1343,7 +1344,7 @@ export const lint = {
         jumpFailed: "该位置已无法打开",
     },
     statusBar: {
-        counts: "问题：{errors}，{warnings}，{infos}",
+        counts: "问题：{errors}，{warnings}，{minorWarnings}，{infos}",
     },
     command: {
         runProject: "检查项目",

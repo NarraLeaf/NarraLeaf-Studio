@@ -99,7 +99,7 @@ function mount(options: {
         startedAt: 0,
         finishedAt: 1,
         entries: [],
-        counts: { error: 0, warning: 0, info: 0 },
+        counts: { error: 0, warning: 0, minor: 0, info: 0 },
         rulesRun: [],
         skipped: [],
     }));

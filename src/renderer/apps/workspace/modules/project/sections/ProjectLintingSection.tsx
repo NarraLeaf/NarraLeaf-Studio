@@ -81,7 +81,7 @@ function LintRow({
 }
 
 /** Worst first; `off` last, because it is the absence of a severity rather than a lighter one. */
-const SEVERITY_CHOICES: readonly LintRuleSeverity[] = ["error", "warning", "info", "off"];
+const SEVERITY_CHOICES: readonly LintRuleSeverity[] = ["error", "warning", "minor", "info", "off"];
 
 type FailBuildOn = LintingConfiguration["failBuildOn"];
 
@@ -112,11 +112,12 @@ const NUMBER_OPTION_MAX = Number.MAX_SAFE_INTEGER;
  *
  * The rule and threshold selects keep `shrink-0` so the severity column stays one width down the
  * whole list - ragged control widths are what would make a flat list look untidy, and their labels
- * are single words ("Warning", "Errors") with nothing to ellipse anyway. The row's title gives
- * instead, by truncating. The option select also gives: it sits inset under its rule, so it has the
- * least room and the longest labels, and an option value is the one label here that reads half-shown.
+ * are short ("Warning", "Errors") with nothing to ellipse. The rule select is sized for its longest
+ * label, "Minor warning", rather than for the common one. The row's title gives instead, by
+ * truncating. The option select also gives: it sits inset under its rule, so it has the least room
+ * and the longest labels, and an option value is the one label here that reads half-shown.
  */
-const RULE_SELECT_CLASS = "w-24 shrink-0";
+const RULE_SELECT_CLASS = "w-32 shrink-0";
 // w-36, not w-40: at w-40 the threshold row's own title ("Stop the build on") missed fitting by two
 // pixels and ellipsed, which is a poor look for one of only two settings at the top of the page.
 const THRESHOLD_SELECT_CLASS = "w-36 shrink-0";
@@ -294,6 +295,9 @@ export function ProjectLintingSection({ projectService, uiService, config, onCon
             </LintRow>
             <LintRow
                 title={t("lint.settings.failBuildOn")}
+                // No hint here, though "Warnings and errors" does not say that minor warnings never stop
+                // a build: the title only just fits beside the select, and a hint icon pushed it into
+                // an ellipsis in English and Japanese. The page's own `?` opens the topic that says it.
                 // Disabled rather than hidden while the check is off, the same bargain the auto-save
                 // interval makes with its own switch: the threshold is still what this project would
                 // fail on, and a row that vanishes reads as a missing setting.

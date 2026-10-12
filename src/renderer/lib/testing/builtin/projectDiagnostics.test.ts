@@ -22,4 +22,16 @@ describe("project-diagnostics findings", () => {
         expect(finding.englishMessage).toBe("Play runs off the end of the scene here");
         expect(finding.message).toEqual({ key: "lint.rule.storyDeadEnd.message", params: undefined });
     });
+
+    it("report a minor warning as info, the test level that is never counted with the warnings", () => {
+        const finding = toFinding({
+            ruleId: "localization/missing",
+            severity: "minor",
+            messageKey: "lint.rule.localizationMissing.message",
+            messageParams: { locale: "ko" },
+            location: { kind: "project" },
+        } as never);
+        expect(finding.severity).toBe("info");
+        expect(finding.ruleId).toBe("localization/missing");
+    });
 });

@@ -938,9 +938,8 @@ function mergeContextFindings(report: LintReport, contextFindings: readonly Lint
         ...report,
         entries: [...contextFindings, ...report.entries],
         counts: {
+            ...report.counts,
             error: report.counts.error + contextFindings.length,
-            warning: report.counts.warning,
-            info: report.counts.info,
         },
     };
 }

@@ -213,7 +213,10 @@ export type SecurityConfiguration = {
 export type LintingConfiguration = {
     /** Sweep the project as part of a production build (ruling R3: on by default). */
     runOnBuild: boolean;
-    /** Lowest severity that refuses the build. */
+    /**
+     * Lowest severity that refuses the build. There is deliberately no `minor` here: a minor
+     * warning never refuses a build, whatever this says.
+     */
     failBuildOn: "error" | "warning";
     /** ruleId -> severity, only where it differs from the rule's default. */
     severities: Record<string, LintRuleSeverity>;
@@ -608,7 +611,7 @@ export const DEFAULT_LINTING_CONFIGURATION: LintingConfiguration = {
     options: {},
 };
 
-const LINT_RULE_SEVERITIES: readonly LintRuleSeverity[] = ["error", "warning", "info", "off"];
+const LINT_RULE_SEVERITIES: readonly LintRuleSeverity[] = ["error", "warning", "minor", "info", "off"];
 
 /**
  * Coerce an unknown persisted value into a complete LintingConfiguration.

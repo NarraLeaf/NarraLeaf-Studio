@@ -1,4 +1,3 @@
-import { CircleX, Info, TriangleAlert } from "lucide-react";
 import type { TranslationKey } from "@shared/i18n";
 import { useTranslation } from "@/lib/i18n";
 import { deriveLintRuleSlug, LINT_SEVERITY_ORDER, resolveLintMessageParams, type LintReportEntry, type LintSeverity } from "@/lib/lint";
@@ -6,18 +5,14 @@ import { getHelpTopic, lintRuleHelpTopicId } from "@/lib/help";
 import { cn } from "@/lib/utils/cn";
 import { lintRuleTitleKey } from "../../lint/lintReportModel";
 import { openProblemsPanel } from "../../lint/rowProblems";
+import { LINT_SEVERITY_ICON, LINT_SEVERITY_TEXT_CLASS } from "../../lint/severityStyle";
 import type { StoryRowDiagnosticCode } from "./storyRowDiagnostics";
-
-const SEVERITY_ICON = { error: CircleX, warning: TriangleAlert, info: Info } as const;
-const SEVERITY_TEXT_CLASS: Record<LintSeverity, string> = {
-    error: "text-danger",
-    warning: "text-warning",
-    info: "text-primary",
-};
 
 /**
  * The mark beside a row that something is wrong with: one glyph in the colour of the worst finding,
- * every finding on hover, and the Problems panel on a click.
+ * every finding on hover, and the Problems panel on a click. A row whose findings are all minor
+ * warnings gets the warning's glyph without its colour, so it is there for an author who looks and
+ * does not pull the eye down a scene the way a warning does.
  *
  * It carries the row's own two checks too (a missing asset, a name the puppet's model does not
  * have), so a row never wears two marks side by side. The missing-asset check and the project check
@@ -41,11 +36,13 @@ export function RowProblemMark({
         return null;
     }
 
+    // The row's own two checks are warnings, so a row that carries one is marked at least as one,
+    // however quiet the project's findings beside it are.
     const severity: LintSeverity = findings.reduce<LintSeverity>(
         (worst, entry) => (LINT_SEVERITY_ORDER[entry.severity] < LINT_SEVERITY_ORDER[worst] ? entry.severity : worst),
-        findings.length > 0 ? findings[0].severity : "warning",
+        legacy || findings.length === 0 ? "warning" : findings[0].severity,
     );
-    const Icon = SEVERITY_ICON[severity];
+    const Icon = LINT_SEVERITY_ICON[severity];
     const lines = findings.map(entry =>
         t("story.rows.problem", {
             message: t(entry.messageKey, resolveLintMessageParams(entry, t, tn)),
@@ -62,7 +59,7 @@ export function RowProblemMark({
     if (findings.length === 0) {
         return (
             <span
-                className={cn("grid h-5 w-5 shrink-0 place-items-center", SEVERITY_TEXT_CLASS[severity])}
+                className={cn("grid h-5 w-5 shrink-0 place-items-center", LINT_SEVERITY_TEXT_CLASS[severity])}
                 data-tip={label}
                 aria-label={label}
                 role="img"
@@ -76,7 +73,7 @@ export function RowProblemMark({
             type="button"
             className={cn(
                 "grid h-5 w-5 shrink-0 cursor-default place-items-center rounded-md hover:bg-fill",
-                SEVERITY_TEXT_CLASS[severity],
+                LINT_SEVERITY_TEXT_CLASS[severity],
             )}
             data-tip={label}
             aria-label={label}
