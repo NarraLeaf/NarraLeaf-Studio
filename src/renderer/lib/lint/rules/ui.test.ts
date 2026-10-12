@@ -14,6 +14,7 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_GO,
 } from "@shared/types/blueprint/graph";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
+import { RELEASE_APP_TAG } from "@shared/types/appTag";
 import { STORY_DOCUMENT_SCHEMA_VERSION, type StoryDocument } from "@shared/types/story";
 import type { UIInputActionDef, UISurfaceActionEnablement } from "@shared/types/ui-editor/inputAction";
 import { UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
@@ -281,6 +282,55 @@ describe("ui/page-unreachable", () => {
                 storiesComplete: false,
             })),
         ).toEqual([]);
+    });
+
+    it("says nothing about a page a story's end lands on, wherever that page is chosen", async () => {
+        // An ending page is entered by the run running out, never by anything in the interface. Three
+        // places choose one: the project, a variant (a demo's thank-you page the full game never
+        // shows), and an /ending row. Each was reported as a page nobody can reach.
+        const base = { uiDocument: twoPages(), blueprintDocument: NO_GRAPHS };
+        expect(await run("ui/page-unreachable", createTestLintContext(base))).toHaveLength(1);
+
+        expect(await run("ui/page-unreachable", createTestLintContext({
+            ...base,
+            projectEndingSurfaceId: "settings",
+        }))).toEqual([]);
+
+        expect(await run("ui/page-unreachable", createTestLintContext({
+            ...base,
+            appTags: [RELEASE_APP_TAG, { id: "demo", name: "Demo", overrides: {}, endingSurfaceId: "settings" }],
+        }))).toEqual([]);
+
+        const endingStory = (page: Record<string, string>) => ({
+            id: "s1",
+            name: "Main",
+            document: {
+                schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+                id: "s1",
+                name: "Main",
+                chapters: [{ id: "c1", name: "Chapter", sceneIds: ["sc1"] }],
+                scenes: {
+                    sc1: {
+                        id: "sc1",
+                        name: "Ending",
+                        runtimeName: "Ending",
+                        rootBlockIds: ["e1"],
+                        blocks: {
+                            e1: { id: "e1", kind: "control", parentId: null, childrenIds: [], payload: { control: "ending", name: "True End", page } },
+                        },
+                    },
+                },
+            } as unknown as StoryDocument,
+        });
+        expect(await run("ui/page-unreachable", createTestLintContext({
+            ...base,
+            stories: [endingStory({ kind: "surface", surfaceId: "settings" })],
+        }))).toEqual([]);
+        // An ending that shows no page names none, so the page is still unreached.
+        expect(await run("ui/page-unreachable", createTestLintContext({
+            ...base,
+            stories: [endingStory({ kind: "none" })],
+        }))).toHaveLength(1);
     });
 
     it("says nothing about a page a component placement names in its params", async () => {

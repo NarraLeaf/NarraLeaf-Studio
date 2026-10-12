@@ -293,9 +293,11 @@ export function ServersTab({ onForget }: ServersTabProps = {}) {
             // `lore://host:port/<name>`, which has no room for a space, and a server refuses
             // one that carries anything but letters, digits and separators - so a project
             // called "My Game" would be refused and one called in Chinese would be refused
-            // twice over. The app id is `[a-z0-9-]+` by construction, it is required, and it
-            // is already what this project is called wherever a machine has to say it. The
-            // review page names it, so it is not a substitution made behind the author.
+            // twice over. The app id is lowercase letters, digits and hyphens, with dots only
+            // between the parts of a reverse-domain id, by construction - all of which a
+            // repository name may carry. It is required, and it is already what this project
+            // is called wherever a machine has to say it. The review page names it, so it is
+            // not a substitution made behind the author.
             const repository = (appId ?? "").trim();
             const sent = repository === "" ? null : await getInterface().vcs
                 .publishProject(projectPath, session.remoteOrigin, repository)

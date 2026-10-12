@@ -359,7 +359,17 @@ function buildOpaque(line: StoryFileLine, ctx: LineContext): LineResult {
             ],
         };
     }
-    const stored = ctx.data[line.anchorId] ?? ctx.previous;
+    const fromData = ctx.data[line.anchorId];
+    const kindProblem = fromData ? storedRowKindProblem(fromData) : null;
+    if (kindProblem) {
+        return {
+            ok: false,
+            diagnostics: [
+                errorAt("compile.opaque_wrong_kind", `#data "${line.anchorId}": ${kindProblem}`, line.lineNumber),
+            ],
+        };
+    }
+    const stored = fromData ?? ctx.previous;
     if (!stored) {
         return {
             ok: false,
@@ -374,6 +384,41 @@ function buildOpaque(line: StoryFileLine, ctx: LineContext): LineResult {
         };
     }
     return { ok: true, block: stored };
+}
+
+/**
+ * The actions a `nodeAction` row carries: the lines a player reads, and the menus they pick from.
+ * Every other action is an `action` row. A record over the payload union rather than a list, so a
+ * node action added to the document type does not compile until it is added here.
+ */
+const NODE_ACTIONS: Record<Extract<StoryBlock, { kind: "nodeAction" }>["payload"]["action"], true> = {
+    narration: true,
+    dialogue: true,
+    choice: true,
+    choiceOption: true,
+};
+
+/**
+ * Why a row taken from `#data` has a `kind` its own `action` does not belong to, or null.
+ *
+ * The payload is copied verbatim, so a mismatch applied cleanly and then misbehaved: a narration
+ * stored as `kind: "action"` showed in the editor as an effect row and the game skipped it. Said
+ * here, on the line that names the row, rather than discovered by playing the scene.
+ */
+function storedRowKindProblem(block: StoryBlock): string | null {
+    const action = (block.payload as { action?: unknown } | null | undefined)?.action;
+    if (typeof action !== "string" || (block.kind !== "action" && block.kind !== "nodeAction")) {
+        return null;
+    }
+    const expected = Object.hasOwn(NODE_ACTIONS, action) ? "nodeAction" : "action";
+    if (block.kind === expected) {
+        return null;
+    }
+    return `a "${action}" row has kind "${expected}", not "${block.kind}". With any other kind it does not `
+        + `play. Change "kind" to "${expected}"`
+        + (expected === "nodeAction" && (action === "narration" || action === "dialogue")
+            ? ", or write the line as prose and let the file build the row."
+            : ".");
 }
 
 function buildBranch(line: StoryFileLine, ctx: LineContext): LineResult {

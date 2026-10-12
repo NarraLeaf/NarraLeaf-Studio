@@ -8,11 +8,13 @@ import {
     assetBrowserLocationItems,
     assetBrowserResultItems,
     assetBrowserRowOrder,
+    assetBrowserStepTarget,
     groupPath,
     nextAssetBrowserSort,
     parentAssetBrowserLocation,
     resolveAssetBrowserLocation,
     sortAssetBrowserItems,
+    type AssetBrowserItem,
     type AssetBrowserLibrary,
     type AssetBrowserMeasures,
 } from "./assetBrowserModel";
@@ -191,5 +193,56 @@ describe("sorting the contents", () => {
     it("slices shift ranges out of the order the items are drawn in", () => {
         const sorted = sortAssetBrowserItems(items, { key: "name", direction: "asc" }, NO_MEASURES);
         expect(assetBrowserRowOrder(sorted)).toEqual(["group:g-bg", "asset:a-2", "asset:a-1", "asset:a-3"]);
+    });
+});
+
+describe("moving the selection with the keys", () => {
+    const set = (id: string): AssetBrowserItem => ({
+        key: "set:" + id,
+        kind: "set",
+        category: AssetCategory.Image,
+        entry: { set: { id } } as unknown as ResolvedAssetSet,
+        movable: true,
+    });
+    const file = (id: string): AssetBrowserItem => ({ key: "asset:" + id, kind: "asset", category: AssetCategory.Image, asset: image(id, id) });
+    // Drawn three to a row:  s1 s2 f1 / f2 f3 f4 / f5
+    const items = [set("s1"), set("s2"), file("f1"), file("f2"), file("f3"), file("f4"), file("f5")];
+    const grid = { view: "grid" as const, columns: 3 };
+    const details = { view: "details" as const, columns: 3 };
+
+    it("steps sideways in the grid and over what cannot be selected", () => {
+        expect(assetBrowserStepTarget(items, 2, "right", grid)).toBe(3);
+        expect(assetBrowserStepTarget(items, 3, "left", grid)).toBe(2);
+        // Nothing selectable before the first file.
+        expect(assetBrowserStepTarget(items, 2, "left", grid)).toBeNull();
+        expect(assetBrowserStepTarget(items, 6, "right", grid)).toBeNull();
+    });
+
+    it("steps a row in the grid, to the last item when the row below is shorter", () => {
+        expect(assetBrowserStepTarget(items, 3, "down", grid)).toBe(6);
+        expect(assetBrowserStepTarget(items, 5, "down", grid)).toBe(6);
+        expect(assetBrowserStepTarget(items, 6, "down", grid)).toBeNull();
+        expect(assetBrowserStepTarget(items, 5, "up", grid)).toBe(2);
+        // Above f2 is a set: the nearest selectable item before it in that direction is taken, and
+        // there is none, so the selection goes forward to the first file instead.
+        expect(assetBrowserStepTarget(items, 3, "up", grid)).toBe(2);
+        expect(assetBrowserStepTarget(items, 2, "up", grid)).toBeNull();
+    });
+
+    it("steps one row at a time in the table, where left and right do nothing", () => {
+        expect(assetBrowserStepTarget(items, 3, "down", details)).toBe(4);
+        expect(assetBrowserStepTarget(items, 3, "up", details)).toBe(2);
+        expect(assetBrowserStepTarget(items, 2, "up", details)).toBeNull();
+        expect(assetBrowserStepTarget(items, 3, "right", details)).toBeNull();
+        expect(assetBrowserStepTarget(items, 3, "left", details)).toBeNull();
+    });
+
+    it("starts from the first item when nothing is selected, and goes to either end", () => {
+        expect(assetBrowserStepTarget(items, -1, "down", grid)).toBe(2);
+        expect(assetBrowserStepTarget(items, -1, "up", details)).toBe(2);
+        expect(assetBrowserStepTarget(items, 5, "first", grid)).toBe(2);
+        expect(assetBrowserStepTarget(items, 2, "last", grid)).toBe(6);
+        expect(assetBrowserStepTarget([set("s1")], -1, "down", grid)).toBeNull();
+        expect(assetBrowserStepTarget([], -1, "last", grid)).toBeNull();
     });
 });

@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, FolderPlus, LayoutGrid, Link, List, Upload, AlertCircle } from "lucide-react";
 import type { AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import type { AssetGroup } from "@/lib/workspace/services/assets/types";
@@ -28,6 +28,8 @@ import {
     assetBrowserLocationItems,
     assetBrowserResultItems,
     assetBrowserRowOrder,
+    assetBrowserSelectionKey,
+    assetBrowserStepTarget,
     groupPath,
     nextAssetBrowserSort,
     parentAssetBrowserLocation,
@@ -37,6 +39,7 @@ import {
     type AssetBrowserMeasures,
     type AssetBrowserSort,
     type AssetBrowserSortKey,
+    type AssetBrowserStep,
 } from "./assetBrowserModel";
 import { BrowserFolderTree } from "./BrowserFolderTree";
 import { BrowserGrid } from "./BrowserGrid";
@@ -50,6 +53,16 @@ const NO_SETS: string[] = [];
 
 /** The narrowest tray that still draws the folder tree beside the contents. */
 const TREE_MIN_TRAY_WIDTH_PX = 520;
+
+/** The keys that move the selection through the contents, and where each one steps. */
+const STEP_KEYS: Partial<Record<string, AssetBrowserStep>> = {
+    ArrowLeft: "left",
+    ArrowRight: "right",
+    ArrowUp: "up",
+    ArrowDown: "down",
+    Home: "first",
+    End: "last",
+};
 
 /** Tile sizes Ctrl+wheel moves between. Smaller than the sidebar's grid: the tray is short. */
 export const ASSET_BROWSER_TILE_SIZE = { min: 64, max: 192, step: 8, default: 96 } as const;
@@ -142,7 +155,11 @@ export function AssetBrowserView({
         isNarrowed,
         assetSetNaming,
         selectedItems,
+        focusedItemId,
         publishRowOrder,
+        handleItemSelect,
+        handleAssetClick,
+        handleGroupFocus,
         handleAssetOpen,
         handleDropOnItem,
         unreadableCategories,
@@ -309,8 +326,50 @@ export function AssetBrowserView({
         }
     }, [enterGroup, handleAssetOpen, items, selectedItems]);
 
+    /** How many tiles the grid draws to a row, which is how far up and down step. Reported by the grid. */
+    const gridColumns = useRef(1);
+    const reportGridColumns = useCallback((columns: number) => {
+        gridColumns.current = columns;
+    }, []);
+    /** The item a key just moved the selection to, for the grid or the table to scroll to. */
+    const [stepReveal, setStepReveal] = useState<{ key: string; nonce: number } | null>(null);
+
+    /**
+     * Move the selection the way the arrow keys do in a file browser: a plain step marks the item it
+     * lands on and nothing else - shown in the preview tab, as a click shows it - and a step with
+     * Shift widens the range from where it started.
+     *
+     * The step starts from the item last marked, while it is still marked; from the first marked one
+     * when that one is not; and from nothing when nothing is.
+     */
+    const stepSelection = (step: AssetBrowserStep, extend: boolean): boolean => {
+        const keyAt = (index: number) => assetBrowserSelectionKey(items[index]);
+        const lead = focusedItemId !== null && selectedItems.has(focusedItemId)
+            ? focusedItemId
+            : rowOrder.find(key => selectedItems.has(key)) ?? null;
+        const from = lead === null ? -1 : items.findIndex((_, index) => keyAt(index) === lead);
+        const target = assetBrowserStepTarget(items, from, step, { view, columns: gridColumns.current });
+        if (target === null) {
+            return false;
+        }
+        const item = items[target];
+        const modifiers = { ctrlKey: false, metaKey: false, shiftKey: extend };
+        if (item.kind === "group") {
+            handleItemSelect(item.group.id, true, modifiers);
+            handleGroupFocus(item.group.id);
+        } else if (item.kind === "asset") {
+            handleItemSelect(item.asset.id, false, modifiers);
+            handleAssetClick(item.asset, extend);
+        } else {
+            return false;
+        }
+        setStepReveal(previous => ({ key: item.key, nonce: (previous?.nonce ?? 0) + 1 }));
+        return true;
+    };
+
     const onContentKeyDown = (event: React.KeyboardEvent) => {
         const mod = event.ctrlKey || event.metaKey;
+        const step = STEP_KEYS[event.key];
         if (event.key === "Backspace" || (event.altKey && event.key === "ArrowUp")) {
             event.preventDefault();
             event.stopPropagation();
@@ -322,6 +381,12 @@ export function AssetBrowserView({
             event.preventDefault();
             event.stopPropagation();
             onSelectKeys(rowOrder);
+        } else if (step && !mod && !event.altKey) {
+            // Taken whether or not the selection moved, so a key pressed at the edge of the contents
+            // does not fall through to a shortcut of the panel behind them.
+            event.preventDefault();
+            event.stopPropagation();
+            stepSelection(step, event.shiftKey);
         }
     };
 
@@ -381,6 +446,7 @@ export function AssetBrowserView({
                 onEnterGroup={enterGroup}
                 onEnterSet={enterSet}
                 onDropOnGroup={dropOnPlace}
+                stepReveal={stepReveal}
             />
         );
     } else {
@@ -393,6 +459,8 @@ export function AssetBrowserView({
                 onEnterGroup={enterGroup}
                 onEnterSet={enterSet}
                 onDropOnGroup={dropOnPlace}
+                stepReveal={stepReveal}
+                onColumnsChange={reportGridColumns}
             />
         );
     }

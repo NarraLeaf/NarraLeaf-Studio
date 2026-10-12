@@ -42,6 +42,44 @@ describe("computeBlueprintRevealViewport", () => {
     it("has nothing to answer for a pane that has not been laid out", () => {
         expect(computeBlueprintRevealViewport({ node, current: { x: 0, y: 0, zoom: 1 }, container: { width: 0, height: 0 }, range })).toBeNull();
     });
+
+    // The editor area crops a canvas squeezed below its minimum width: laid out 1300 wide, only its
+    // first 700 pixels are on screen, and the rest sits under the dock beside it.
+    const cropped = { x: 0, y: 0, width: 700, height: 700 };
+
+    it("centres in the part of the pane that is on screen", () => {
+        const v = computeBlueprintRevealViewport({ node, current: { x: 0, y: 0, zoom: 1 }, container, range, visible: cropped })!;
+        expect(centreOnScreen(v)).toEqual({ x: 350, y: 350 });
+    });
+
+    it("keeps clear of the layer panel inside the part on screen", () => {
+        const v = computeBlueprintRevealViewport({
+            node,
+            current: { x: 0, y: 0, zoom: 1 },
+            container,
+            range,
+            inset: 200,
+            visible: cropped,
+        })!;
+        expect(centreOnScreen(v)).toEqual({ x: 200 + 500 / 2, y: 350 });
+    });
+
+    it("zooms out for a card wider than the part on screen, not wider than the pane", () => {
+        const wide = { ...node, width: 1000 };
+        const v = computeBlueprintRevealViewport({ node: wide, current: { x: 0, y: 0, zoom: 1 }, container, range, visible: cropped })!;
+        expect(v.zoom).toBeCloseTo(700 / (1.18 * 1000), 6);
+    });
+
+    it("frames against the whole pane when none of it is reported on screen", () => {
+        const v = computeBlueprintRevealViewport({
+            node,
+            current: { x: 0, y: 0, zoom: 1 },
+            container,
+            range,
+            visible: { x: 0, y: 0, width: 0, height: 0 },
+        })!;
+        expect(centreOnScreen(v)).toEqual({ x: 650, y: 350 });
+    });
 });
 
 /** React Flow's own default range, which this canvas does not override. */
@@ -134,6 +172,16 @@ describe("computeBlueprintZoomViewport", () => {
         // Sized to the free width, and every card clear of the panel.
         expect(contain.zoom).toBeCloseTo(700 / ((1 + BLUEPRINT_FIT_PADDING) * 800), 5);
         expect(BOUNDS.x * contain.zoom + contain.x).toBeGreaterThan(inset);
+    });
+
+    it("frames the graph in the part of the pane on screen when the pane is cropped", () => {
+        // Laid out 1000x600; the right 400 and the bottom 200 are cut off by the editor area.
+        const visible = { x: 0, y: 0, width: 600, height: 400 };
+        const contain = computeBlueprintZoomViewport({ mode: "contain", bounds: BOUNDS, container: CONTAINER, range: OPEN, inset: 200, visible })!;
+        expect(boundsCentreOnScreen(contain).x).toBeCloseTo(200 + 400 / 2, 5);
+        expect(boundsCentreOnScreen(contain).y).toBeCloseTo(200, 5);
+        expect(contain.zoom).toBeCloseTo(400 / ((1 + BLUEPRINT_FIT_PADDING) * 800), 5);
+        expect((BOUNDS.x + BOUNDS.width) * contain.zoom + contain.x).toBeLessThan(600);
     });
 
     it("lets a panel wider than most of the pane overlap rather than shrink the graph to nothing", () => {

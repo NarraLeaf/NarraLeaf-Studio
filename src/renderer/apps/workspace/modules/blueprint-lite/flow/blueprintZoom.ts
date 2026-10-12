@@ -76,7 +76,30 @@ export type ComputeBlueprintZoomParams = {
      * what the panel leaves instead.
      */
     inset?: number;
+    /**
+     * The part of the pane that is on screen, in pane pixels; the whole pane when absent. The editor
+     * area crops a canvas squeezed narrower than its minimum size, and a graph framed against the
+     * whole pane then lands in the part that is cut off.
+     */
+    visible?: FlowRect;
 };
+
+/**
+ * Where a framing aims, in pane pixels: the part of the pane on screen, less what the layer panel
+ * covers of its left edge.
+ */
+function framingArea(
+    container: { width: number; height: number },
+    inset: number,
+    visible: FlowRect | undefined,
+): FlowRect {
+    const area = visible && visible.width > 0 && visible.height > 0
+        ? visible
+        : { x: 0, y: 0, width: container.width, height: container.height };
+    // The panel covers the pane from its left edge, so only the part of that strip on screen counts.
+    const left = area.x + usableBlueprintInset(area.width, inset - area.x);
+    return { x: left, y: area.y, width: area.x + area.width - left, height: area.height };
+}
 
 /**
  * The viewport that answers `mode` for a graph, centred on its nodes.
@@ -91,6 +114,7 @@ export function computeBlueprintZoomViewport({
     range,
     padding = BLUEPRINT_FIT_PADDING,
     inset = 0,
+    visible,
 }: ComputeBlueprintZoomParams): FlowViewport | null {
     if (
         !Number.isFinite(container.width) ||
@@ -113,10 +137,9 @@ export function computeBlueprintZoomViewport({
     // Padding is breathing room, and a mode whose whole point is to leave no empty side must not
     // have any: "fill" that stopped short of the edges would be answering a different question.
     const padded = mode === "cover" ? 1 : 1 + padding;
-    const left = usableBlueprintInset(container.width, inset);
-    const freeWidth = container.width - left;
-    const byWidth = freeWidth / (padded * bounds.width);
-    const byHeight = container.height / (padded * bounds.height);
+    const area = framingArea(container, inset, visible);
+    const byWidth = area.width / (padded * bounds.width);
+    const byHeight = area.height / (padded * bounds.height);
     const rawZoom =
         mode === "actual" ? 1
             : mode === "width" ? byWidth
@@ -126,8 +149,8 @@ export function computeBlueprintZoomViewport({
 
     return {
         zoom,
-        x: left + freeWidth / 2 - (bounds.x + bounds.width / 2) * zoom,
-        y: container.height / 2 - (bounds.y + bounds.height / 2) * zoom,
+        x: area.x + area.width / 2 - (bounds.x + bounds.width / 2) * zoom,
+        y: area.y + area.height / 2 - (bounds.y + bounds.height / 2) * zoom,
     };
 }
 
@@ -142,10 +165,13 @@ export type ComputeBlueprintRevealParams = {
     padding?: number;
     /** Screen pixels at the pane's left edge the layer panel covers; see {@link ComputeBlueprintZoomParams}. */
     inset?: number;
+    /** The part of the pane that is on screen; see {@link ComputeBlueprintZoomParams}. */
+    visible?: FlowRect;
 };
 
 /**
- * The viewport that puts one node in the middle of what the layer panel leaves of the pane.
+ * The viewport that puts one node in the middle of what the layer panel leaves of the pane's
+ * visible part.
  *
  * The author's zoom is kept, the same bargain the diagnostics list and the overview strike when they
  * take the author somewhere: arriving at a different scale from the one they left reads as the
@@ -159,6 +185,7 @@ export function computeBlueprintRevealViewport({
     range,
     padding = BLUEPRINT_FIT_PADDING,
     inset = 0,
+    visible,
 }: ComputeBlueprintRevealParams): FlowViewport | null {
     if (
         !Number.isFinite(container.width) ||
@@ -172,17 +199,16 @@ export function computeBlueprintRevealViewport({
     }
     const width = Number.isFinite(node.width) && node.width > 0 ? node.width : 0;
     const height = Number.isFinite(node.height) && node.height > 0 ? node.height : 0;
-    const left = usableBlueprintInset(container.width, inset);
-    const freeWidth = container.width - left;
+    const area = framingArea(container, inset, visible);
     const fits = Math.min(
-        width > 0 ? freeWidth / ((1 + padding) * width) : Infinity,
-        height > 0 ? container.height / ((1 + padding) * height) : Infinity,
+        width > 0 ? area.width / ((1 + padding) * width) : Infinity,
+        height > 0 ? area.height / ((1 + padding) * height) : Infinity,
     );
     const zoom = clampBlueprintZoom(Math.min(current.zoom, fits), range);
     return {
         zoom,
-        x: left + freeWidth / 2 - (node.x + width / 2) * zoom,
-        y: container.height / 2 - (node.y + height / 2) * zoom,
+        x: area.x + area.width / 2 - (node.x + width / 2) * zoom,
+        y: area.y + area.height / 2 - (node.y + height / 2) * zoom,
     };
 }
 

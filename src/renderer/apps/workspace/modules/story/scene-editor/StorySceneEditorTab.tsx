@@ -1828,7 +1828,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             return;
         }
         // The background layer had no depth row yet. The new one goes at the top of the scene, where
-        // a reader meets it first, and is selected so the row that just appeared is the one in view.
+        // a reader meets it first. The selection stays put: the author is tuning depth against the
+        // shot the preview shows, and selecting the new row would move the preview to the scene's start.
         const block = createBlockForCommand("layerDepth", () => editor.uuidService?.generate() ?? crypto.randomUUID());
         if (block.kind !== "action" || block.payload.action !== "layer") {
             return;
@@ -1837,7 +1838,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             { ...block, payload: { ...block.payload, depth: edit.depth } },
             null,
             false,
-            { target: { parentId: null, beforeBlockId: scene.rootBlockIds[0] ?? null } },
+            { target: { parentId: null, beforeBlockId: scene.rootBlockIds[0] ?? null }, keepSelection: true },
         );
     }, [editor, freeze.frozen]);
     const [menuTargetId, setMenuTargetId] = useState<StoryBlockId | null>(null);

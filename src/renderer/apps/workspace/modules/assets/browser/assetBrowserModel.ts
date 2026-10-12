@@ -419,11 +419,93 @@ export function nextAssetBrowserSort(current: AssetBrowserSort, key: AssetBrowse
 export function assetBrowserRowOrder(items: readonly AssetBrowserItem[]): string[] {
     const keys: string[] = [];
     for (const item of items) {
-        if (item.kind === "group") {
-            keys.push(assetSelectionKey(item.group.id, true));
-        } else if (item.kind === "asset") {
-            keys.push(assetSelectionKey(item.asset.id, false));
+        const key = assetBrowserSelectionKey(item);
+        if (key !== null) {
+            keys.push(key);
         }
     }
     return keys;
+}
+
+/** The key an item is marked under in the multi-selection, or null for one that is never marked. */
+export function assetBrowserSelectionKey(item: AssetBrowserItem): string | null {
+    if (item.kind === "group") {
+        return assetSelectionKey(item.group.id, true);
+    }
+    if (item.kind === "asset") {
+        return assetSelectionKey(item.asset.id, false);
+    }
+    return null;
+}
+
+/** A key that moves the selection through the contents. */
+export type AssetBrowserStep = "left" | "right" | "up" | "down" | "first" | "last";
+
+/**
+ * Where a key moves the selection from the item at `from`, as an index into `items`; null when it
+ * stays where it is.
+ *
+ * The keys follow the drawing. In the grid, left and right step to the item beside, up and down to
+ * the one in the same column a row away - or the last item, when the row below is shorter. The table
+ * is one column, so up and down step a row and left and right do nothing. Only what the selection can
+ * hold is landed on (folders and files, as {@link assetBrowserRowOrder} lists them): a set, a value
+ * the fallback answers and a hole are stepped over, toward the direction of the key first.
+ *
+ * With nothing to start from (`from` is -1), every key but `last` goes to the first item.
+ */
+export function assetBrowserStepTarget(
+    items: readonly AssetBrowserItem[],
+    from: number,
+    step: AssetBrowserStep,
+    layout: { view: "grid" | "details"; columns: number },
+): number | null {
+    const selectable = (index: number) => assetBrowserSelectionKey(items[index]) !== null;
+    /** The first selectable index walking from `start` toward `end`, both included; null for none. */
+    const forward = (start: number, end: number): number | null => {
+        for (let index = Math.max(0, start); index <= Math.min(end, items.length - 1); index++) {
+            if (selectable(index)) {
+                return index;
+            }
+        }
+        return null;
+    };
+    const backward = (start: number, end: number): number | null => {
+        for (let index = Math.min(items.length - 1, start); index >= Math.max(0, end); index--) {
+            if (selectable(index)) {
+                return index;
+            }
+        }
+        return null;
+    };
+    const last = items.length - 1;
+    if (step === "last") {
+        return backward(last, 0);
+    }
+    if (step === "first" || from < 0 || from > last) {
+        return forward(0, last);
+    }
+
+    const columns = layout.view === "grid" ? Math.max(1, Math.floor(layout.columns)) : 1;
+    switch (step) {
+        case "right":
+            return layout.view === "grid" ? forward(from + 1, last) : null;
+        case "left":
+            return layout.view === "grid" ? backward(from - 1, 0) : null;
+        case "down": {
+            if (Math.floor(from / columns) >= Math.floor(last / columns)) {
+                return null;
+            }
+            const target = Math.min(from + columns, last);
+            return forward(target, last) ?? backward(target - 1, from + 1);
+        }
+        case "up": {
+            if (from - columns < 0) {
+                return null;
+            }
+            const target = from - columns;
+            return backward(target, 0) ?? forward(target + 1, from - 1);
+        }
+        default:
+            return null;
+    }
 }

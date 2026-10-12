@@ -450,6 +450,9 @@ export const storyInspector = {
         targetScene: "行き先のシーン",
         returnable: "行き先のシーンのあとで戻る",
     },
+    setVariable: {
+        missingScene: "シーンが見つからない",
+    },
 
     note: {
         label: "メモ",

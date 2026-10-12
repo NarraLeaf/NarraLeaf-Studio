@@ -34,7 +34,7 @@ import { translate, translateCommand } from "@/lib/i18n";
 import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformProps";
 import { getStoryCameraLookPreset } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import { getQuickParams, quickParamText, type QuickParam } from "./storyQuickParamsModel";
-import { storyVerbLabelKey } from "./storyVerbVocabulary";
+import { storyVerbCommandId, storyVerbLabelKey } from "./storyVerbVocabulary";
 import { storyLayerDepthLabel, storyLayerLabel } from "./storyLayerLabel";
 // Two pure tables that happen to live under the story editor: the command taxonomy (the colour unit)
 // and the rich-run model (the one description of what an inline chip reads as). Both are data /
@@ -914,7 +914,11 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
             const layerName = payload.operation === "create"
                 ? (payload.objectName || translate("story.describe.unnamed"))
                 : storyLayerLabel(resolveStoryLayerRef(scene, layerActionTargetRef(payload.target, payload.objectName)));
-            const described = translate("story.describe.layer", { operation: verbWord(payload, payload.operation), name: layerName });
+            const operation = verbWord(payload, payload.operation);
+            // `/layer`'s own rows (create, `z=`, `depth=`) already say "layer" in their verb.
+            const described = storyVerbCommandId(payload) === "layer"
+                ? `${operation} ${layerName}`
+                : translate("story.describe.layer", { operation, name: layerName });
             // The rows that state a depth say it; a layer that moves with the camera, as every layer
             // used to, reads as it always has.
             return (payload.operation === "create" || payload.operation === "setDepth") && payload.depth

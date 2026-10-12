@@ -124,6 +124,11 @@ export type ValidateBlueprintDocumentGraphsOptions = {
     /** M-VAR: saved variable definitions - the `saved` scope of the same project-level registry. */
     savedVariables?: readonly VariableRegistryEntry[];
     /**
+     * The scene variables a story blueprint can reach - those of the scenes whose rows run it - which
+     * type Get / Set Scene Var.
+     */
+    sceneVariables?: readonly { id: string; valueType?: string }[];
+    /**
      * The project's asset-name gaps (`findAssetNameGaps`), for the ones in this blueprint to be
      * reported against their nodes.
      *
@@ -570,6 +575,8 @@ export function validateBlueprintGraphIr(
         persistentVariableValueTypes?: readonly BlueprintVariableTypeOption[];
         /** The project's saved variables, which type Get / Set Saved Var. */
         savedVariables?: readonly { id: string; valueType?: string }[];
+        /** The scene variables the graph can reach, which type Get / Set Scene Var. */
+        sceneVariables?: readonly { id: string; valueType?: string }[];
         widgetElement?: UIElement | null;
         widgetElementType?: string;
         /** The interface document the widget element lives in; see `BlueprintGraphContextInput`. */
@@ -592,6 +599,7 @@ export function validateBlueprintGraphIr(
             owner: ctx.blueprintOwner,
             isComponentDefinitionGraph: ctx.isComponentDefinitionGraph,
             savedVariables: ctx.savedVariables,
+            sceneVariables: ctx.sceneVariables,
         }),
     );
     ir = applyBlueprintStructTypes(ir, structTypes);
@@ -1092,6 +1100,7 @@ export function validateBlueprintDocumentGraphs(
                 variableValueTypes,
                 persistentVariableValueTypes,
                 savedVariables: options?.savedVariables,
+                sceneVariables: options?.sceneVariables,
                 widgetElement: options?.widgetElement,
                 widgetElementType: options?.widgetElement?.type,
                 uiDocument: options?.uiDocument,
@@ -1114,6 +1123,7 @@ export function validateBlueprintDocumentGraphs(
                 variableValueTypes,
                 persistentVariableValueTypes,
                 savedVariables: options?.savedVariables,
+                sceneVariables: options?.sceneVariables,
                 widgetElement: options?.widgetElement,
                 widgetElementType: options?.widgetElement?.type,
                 uiDocument: options?.uiDocument,
