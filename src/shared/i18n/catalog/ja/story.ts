@@ -485,7 +485,7 @@ export const story = {
         nameReserved: "この名前は組み込みレイヤーを指す",
         swayCaption: "カメラ移動",
         framingCaption: "この行のショット",
-        framingSelectRow: "カメラの位置を設定するカメラ行を選ぶと、ここでフレーミングできる",
+        lookHint: "カメラはポインターに追従し、ホイールでズームする",
     },
     appearance: {
         noPoses: "このキャラクターにはまだポーズがない",
@@ -1069,8 +1069,6 @@ export const story = {
         skipTyping: "文字表示アニメーションをスキップ",
         viewStage: "画面",
         viewLayers: "レイヤー",
-        cameraHint: "ドラッグでカメラを移動、ホイールでズーム",
-        cameraPose: "位置 {x}, {y} · ズーム {zoom}",
         selectRow: "舞台の状態を見るには、ストーリーの行を選ぶ",
         failed: "プレビューに失敗",
         settleTimeout: "ステージの準備が時間内に完了しなかった",

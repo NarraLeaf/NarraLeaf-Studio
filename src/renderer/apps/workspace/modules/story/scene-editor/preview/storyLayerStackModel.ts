@@ -69,13 +69,3 @@ export function layerStackDepths(stack: readonly StorySceneLayer[]): number[] {
 export function layerSwayOffset(timeMs: number, periodMs = 4200, amplitude = 0.05): number {
     return Math.sin((timeMs / periodMs) * Math.PI * 2) * amplitude;
 }
-
-/**
- * Where a layer of the moving preview sits for a camera at `offset` (a share of the stage's width) and
- * `zoom`: the engine's parallax, which moves a layer by its share of the camera's movement and zooms it
- * by its share of the camera's zoom (narraleaf-react `cameraParallax.ts`).
- */
-export function layerSwayTransform(follow: number, offset: number, zoom: number, stageWidth: number): string {
-    const scale = Math.max(0.05, 1 + follow * (zoom - 1));
-    return `translate3d(${(-offset * follow * stageWidth).toFixed(2)}px, 0, 0) scale(${scale.toFixed(4)})`;
-}

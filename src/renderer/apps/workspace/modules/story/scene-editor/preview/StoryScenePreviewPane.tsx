@@ -66,10 +66,7 @@ export function StoryScenePreviewPane(props: {
      * has no scene editor behind it to change them, and then the pane shows only the shot.
      */
     layers?: StoryPreviewLayersApi;
-    /**
-     * The selected camera row, when it states a pose: the layer view's moving preview frames it.
-     * The shot itself takes no part in it - a press there is the reader's "next", as always.
-     */
+    /** The selected camera row, when it states a pose: the layer view's moving preview rests on its shot. */
     camera?: StoryPreviewCameraApi | null;
     /** Which of the two the pane shows: the shot, or the shot taken apart into its layers. */
     view?: StoryScenePreviewView;
