@@ -4,8 +4,10 @@ import type { AgentClientConfigKind } from "./settings";
  * The agent applications Studio knows how to connect, and for each one where its MCP configuration
  * goes and how it is given the skill.
  *
- * One table, read by first-run setup (which walks an author through connecting the one they use)
- * and by the main process (which installs the skill into the folder named here). Kept apart from
+ * One table, read by first-run setup and the Settings panel (which walk an author through
+ * connecting the one they use), by the Settings panel's copy buttons and the Agent menu's copy
+ * submenu (`AGENT_COPY_CONFIGS`), and by the main process (which installs the skill into the folder
+ * named here). Kept apart from
  * `./settings.ts` because nothing here is a setting: it is a fact about other programs, and it
  * changes when they change.
  *
@@ -62,9 +64,11 @@ export const AGENT_SKILL_NPX_COMMAND = "npx skills add NarraLeaf/Skills -g";
 export const AGENT_SKILL_ZIP_NAME = "narraleaf-make-game.zip";
 
 /**
- * In the order setup lists them. Codex, opencode, Cursor and Gemini CLI all read `~/.agents/skills`,
- * so the four share it; Cursor and opencode also read `~/.claude/skills`, and may list a skill twice
- * when it is in both - one copy of the same text either way.
+ * In the one order every list of them takes: the application list in setup and Settings, and the
+ * configurations to copy derived from it ({@link AGENT_COPY_CONFIGS}). Codex, opencode, Cursor and
+ * Gemini CLI all read `~/.agents/skills`, so the four share it; Cursor and opencode also read
+ * `~/.claude/skills`, and may list a skill twice when it is in both - one copy of the same text
+ * either way.
  */
 export const AGENT_CLIENTS: readonly AgentClientDescriptor[] = [
     {
@@ -75,6 +79,14 @@ export const AGENT_CLIENTS: readonly AgentClientDescriptor[] = [
         configFile: null,
         skill: "folder",
         skillDir: [".claude", "skills"],
+    },
+    {
+        id: "claudeDesktop",
+        name: "Claude Desktop",
+        configKind: "stdio",
+        configIsCommand: false,
+        configFile: "claude_desktop_config.json",
+        skill: "upload",
     },
     {
         id: "codex",
@@ -95,12 +107,13 @@ export const AGENT_CLIENTS: readonly AgentClientDescriptor[] = [
         skillDir: [".agents", "skills"],
     },
     {
-        id: "claudeDesktop",
-        name: "Claude Desktop",
-        configKind: "stdio",
+        id: "geminiCli",
+        name: "Gemini CLI",
+        configKind: "gemini",
         configIsCommand: false,
-        configFile: "claude_desktop_config.json",
-        skill: "upload",
+        configFile: "~/.gemini/settings.json",
+        skill: "folder",
+        skillDir: [".agents", "skills"],
     },
     {
         id: "cursor",
@@ -108,15 +121,6 @@ export const AGENT_CLIENTS: readonly AgentClientDescriptor[] = [
         configKind: "json",
         configIsCommand: false,
         configFile: "~/.cursor/mcp.json",
-        skill: "folder",
-        skillDir: [".agents", "skills"],
-    },
-    {
-        id: "geminiCli",
-        name: "Gemini CLI",
-        configKind: "gemini",
-        configIsCommand: false,
-        configFile: "~/.gemini/settings.json",
         skill: "folder",
         skillDir: [".agents", "skills"],
     },
@@ -133,6 +137,25 @@ export const AGENT_CLIENTS: readonly AgentClientDescriptor[] = [
 export function findAgentClient(id: unknown): AgentClientDescriptor | null {
     return AGENT_CLIENTS.find(client => client.id === id) ?? null;
 }
+
+/** One configuration the Settings panel's copy buttons and the Agent menu's copy submenu offer. */
+export type AgentCopyConfigEntry = {
+    kind: AgentClientConfigKind;
+    /** A product name or the name of a format, the same in every language. */
+    label: string;
+};
+
+/**
+ * The configurations to copy, one per kind, in the order of {@link AGENT_CLIENTS}: each named for
+ * the first application that reads it - the stdio bridge for Claude Desktop - except the generic
+ * `mcpServers` JSON, which Cursor and any other client read and which is named for its format.
+ */
+export const AGENT_COPY_CONFIGS: readonly AgentCopyConfigEntry[] = AGENT_CLIENTS.reduce<AgentCopyConfigEntry[]>((entries, client) => {
+    if (!entries.some(entry => entry.kind === client.configKind)) {
+        entries.push({ kind: client.configKind, label: client.configKind === "json" ? "JSON" : client.name ?? "JSON" });
+    }
+    return entries;
+}, []);
 
 /** Where one client's skills are installed, and whether the main skill is already there. */
 export type AgentSkillTarget = {

@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createTranslator } from "@shared/i18n";
+import { AGENT_CLIENTS } from "@shared/agent/clients";
+import { AGENT_COPY_CONFIG_KINDS } from "@shared/agent/workspaceAccess";
 import { isActionMenuAction, isActionMenuSeparator } from "../../components/ui/actionMenuModel";
 import type { ActionDefinition, ActionMenuItem, ActionSubmenu } from "../../registry/types";
 import {
@@ -157,6 +159,15 @@ describe("the Agent menu's rows", () => {
         expect(model.run.toggleFullAccess).toHaveBeenCalled();
     });
 
+    it("takes its order from the application list in setup and Settings, one row per configuration", () => {
+        const kinds = AGENT_CLIENTS.map(client => client.configKind).filter((kind, index, all) => all.indexOf(kind) === index);
+        expect(AGENT_MENU_COPY_KINDS.map(entry => entry.kind)).toEqual(kinds);
+        // Every application's configuration can be copied from the menu.
+        for (const client of AGENT_CLIENTS) {
+            expect(AGENT_COPY_CONFIG_KINDS).toContain(client.configKind);
+        }
+    });
+
     it("offers every configuration by client, in the Settings panel's order, and copies the one picked", () => {
         const model = input();
         const copy = buildAgentMenuItems(model).find(item => !isActionMenuSeparator(item) && item.id === AGENT_MENU_ACTIONS.copyConfig) as ActionSubmenu;
@@ -169,11 +180,12 @@ describe("the Agent menu's rows", () => {
         const keys = {
             claudeCode: "settings.agent.copyClaudeCode",
             stdio: "settings.agent.copyStdio",
+            codex: "settings.agent.copyCodex",
             opencode: "settings.agent.copyOpencode",
+            gemini: "settings.agent.copyGemini",
             json: "settings.agent.copyJson",
         } as const;
-        // Codex and Gemini CLI have no copy button in Settings yet.
-        const shared = AGENT_MENU_COPY_KINDS.flatMap(entry => entry.kind in keys ? [{ ...entry, key: keys[entry.kind as keyof typeof keys] }] : []);
+        const shared = AGENT_MENU_COPY_KINDS.map(entry => ({ ...entry, key: keys[entry.kind] }));
         for (const t of [en, zh, createTranslator("ja").t]) {
             expect(shared.map(entry => t(entry.key))).toEqual(shared.map(entry => entry.label));
         }

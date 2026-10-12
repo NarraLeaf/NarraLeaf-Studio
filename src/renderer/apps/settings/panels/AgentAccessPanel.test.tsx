@@ -127,7 +127,9 @@ describe("the agent access panel", () => {
         expect(labels).toEqual([
             "settings.agent.copyClaudeCode",
             "settings.agent.copyStdio",
+            "settings.agent.copyCodex",
             "settings.agent.copyOpencode",
+            "settings.agent.copyGemini",
             "settings.agent.copyJson",
         ]);
     });

@@ -479,6 +479,8 @@ export const settings = {
         copyConfig: "复制连接配置",
         copyConfigHint: "可直接粘贴到 Agent 的配置中，已填入端点地址与令牌",
         copyClaudeCode: "Claude Code",
+        copyCodex: "Codex",
+        copyGemini: "Gemini CLI",
         copyJson: "JSON",
         copyOpencode: "opencode",
         copyStdio: "Claude Desktop",

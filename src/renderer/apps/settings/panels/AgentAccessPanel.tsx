@@ -12,20 +12,30 @@ import {
     type AgentSettingsPatch,
     type AgentSettingsSnapshot,
 } from "@shared/agent/settings";
+import { AGENT_COPY_CONFIGS } from "@shared/agent/clients";
+import type { TranslationKey } from "@shared/i18n";
 import { SETTING_CONTROL_WIDTH } from "../components/settingControlWidth";
 
-/** The copy buttons, in the order and with the names the Agent menu's copy submenu uses (`AGENT_MENU_COPY_KINDS`). */
-const CONFIG_KINDS: {
-    kind: AgentClientConfigKind;
-    labelKey: "settings.agent.copyClaudeCode" | "settings.agent.copyJson" | "settings.agent.copyOpencode" | "settings.agent.copyStdio";
-    tipKey?: "settings.agent.copyStdioHint";
-}[] = [
-    { kind: "claudeCode", labelKey: "settings.agent.copyClaudeCode" },
-    // For clients that only launch local programs: Studio's own executable as a stdio bridge.
-    { kind: "stdio", labelKey: "settings.agent.copyStdio", tipKey: "settings.agent.copyStdioHint" },
-    { kind: "opencode", labelKey: "settings.agent.copyOpencode" },
-    { kind: "json", labelKey: "settings.agent.copyJson" },
-];
+/** Each copy button's label, by configuration. Every kind has one, so a kind added later gets a button. */
+const CONFIG_LABEL_KEYS: Record<AgentClientConfigKind, TranslationKey> = {
+    claudeCode: "settings.agent.copyClaudeCode",
+    stdio: "settings.agent.copyStdio",
+    codex: "settings.agent.copyCodex",
+    opencode: "settings.agent.copyOpencode",
+    gemini: "settings.agent.copyGemini",
+    json: "settings.agent.copyJson",
+};
+
+/**
+ * The copy buttons, in the order the Agent menu's copy submenu and the application list use
+ * (`AGENT_COPY_CONFIGS`). The stdio one is for clients that only launch local programs: Studio's own
+ * executable as a bridge, which its tip says.
+ */
+const CONFIG_KINDS: { kind: AgentClientConfigKind; labelKey: TranslationKey; tipKey?: TranslationKey }[] = AGENT_COPY_CONFIGS.map(({ kind }) => ({
+    kind,
+    labelKey: CONFIG_LABEL_KEYS[kind],
+    ...(kind === "stdio" ? { tipKey: "settings.agent.copyStdioHint" as const } : {}),
+}));
 
 /**
  * Agent access: the MCP endpoint an author's own AI agent connects to, and the switches that decide

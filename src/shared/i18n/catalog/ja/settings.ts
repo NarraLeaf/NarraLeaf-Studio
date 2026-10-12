@@ -498,6 +498,8 @@ export const settings = {
         copyConfig: "接続設定をコピー",
         copyConfigHint: "エンドポイントとトークンを入れた状態で、エージェントの設定にそのまま貼り付けられる",
         copyClaudeCode: "Claude Code",
+        copyCodex: "Codex",
+        copyGemini: "Gemini CLI",
         copyJson: "JSON",
         copyOpencode: "opencode",
         copyStdio: "Claude Desktop",

@@ -542,6 +542,8 @@ export const settings = {
         copyConfig: "Copy connection configuration",
         copyConfigHint: "Ready to paste into the agent's settings, with the endpoint and token filled in.",
         copyClaudeCode: "Claude Code",
+        copyCodex: "Codex",
+        copyGemini: "Gemini CLI",
         copyJson: "JSON",
         copyOpencode: "opencode",
         copyStdio: "Claude Desktop",
