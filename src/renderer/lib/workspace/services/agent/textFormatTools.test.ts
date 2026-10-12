@@ -278,6 +278,28 @@ describe("scene_create in a story it creates, and the chapter tools", () => {
         expect(document.entrySceneId).toBe(document.chapters[0].sceneIds[0]);
     }, 60_000);
 
+    it("makes the names it gave one step of undo, which leaves the story it made as it was made", async () => {
+        const { story, history, steps, run } = createHarness();
+        const fresh = story.getStoryDocument(story.createStory("Fresh").id);
+        const madeWith = { chapter: fresh.chapters[0].name, scene: fresh.scenes[fresh.chapters[0].sceneIds[0]].name };
+        const projectSteps = steps(projectHistoryScope());
+
+        const result = await run(sceneCreate, { name: "Arrival", story: "Side", chapter: "Prologue" });
+        expect(textOf(result)).toContain(`one step of undo in Studio gives back the names the new story made them with ("${madeWith.chapter}" and "${madeWith.scene}")`);
+        expect(steps(projectHistoryScope())).toBe(projectSteps + 1);
+        const storyId = story.listStories().find(entry => entry.name === "Side")!.id;
+        const names = () => {
+            const document = story.getStoryDocument(storyId);
+            return { chapter: document.chapters[0].name, scene: document.scenes[document.chapters[0].sceneIds[0]].name };
+        };
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(names()).toEqual(madeWith);
+        expect(story.listStories().some(entry => entry.id === storyId)).toBe(true);
+        expect(history.redo(projectHistoryScope())).toBe(true);
+        expect(names()).toEqual({ chapter: "Prologue", scene: "Arrival" });
+    }, 60_000);
+
     it("adds a scene to a story that exists as before, creating the chapter it names", async () => {
         const { story, storyId, run } = createHarness();
         await run(sceneCreate, { name: "Later", story: "Tale", chapter: "Two" });

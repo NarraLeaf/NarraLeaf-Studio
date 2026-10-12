@@ -134,11 +134,20 @@ export const sceneCreate: AgentToolHandler = async (args, tool) => {
     if (madeStory && !afterRef) {
         const defaultChapter = document.chapters[0];
         const defaultSceneId = defaultChapter?.sceneIds.length === 1 ? defaultChapter.sceneIds[0] : undefined;
-        if (defaultChapter && defaultSceneId && document.scenes[defaultSceneId]?.rootBlockIds.length === 0) {
-            if (chapterName) {
-                story.renameChapter(entry.id, defaultChapter.id, chapterName);
-            }
-            story.renameScene(entry.id, defaultSceneId, name);
+        const defaultScene = defaultSceneId ? document.scenes[defaultSceneId] : undefined;
+        if (defaultChapter && defaultSceneId && defaultScene?.rootBlockIds.length === 0) {
+            const madeWith = chapterName ? `"${defaultChapter.name}" and "${defaultScene.name}"` : `"${defaultScene.name}"`;
+            // Loading the new story awaited; the author may have paused meanwhile.
+            assertAgentMayStillWrite(tool, `Story "${entry.name}" was created (it stays, with its first chapter and scene); nothing else was written.`);
+            // The renames are this call's write, so they are one step of undo like any other: it gives
+            // the chapter and scene back the names the new story made them with. The story stays, as it
+            // does when a scene made inside it is taken back.
+            story.runAgentOutlineStep(entry.id, AGENT_HISTORY_LABEL, () => {
+                if (chapterName) {
+                    story.renameChapter(entry.id, defaultChapter.id, chapterName);
+                }
+                story.renameScene(entry.id, defaultSceneId, name);
+            });
             const created = story.getStoryDocument(entry.id).scenes[defaultSceneId];
             follow.noteWrite({ kind: "scene", storyId: entry.id, sceneId: defaultSceneId, name: created?.name ?? name });
             return answerJson(
@@ -148,7 +157,9 @@ export const sceneCreate: AgentToolHandler = async (args, tool) => {
                     entry: story.getStoryDocument(entry.id).entrySceneId === defaultSceneId,
                     revision: story.getSceneContentRevision(entry.id, defaultSceneId),
                 },
-                `Created story "${entry.name}" with scene "${created?.name ?? name}"${chapterName ? ` in chapter "${chapterName}"` : ""}. Write its rows with story_apply.`,
+                `Created story "${entry.name}" with scene "${created?.name ?? name}"${chapterName ? ` in chapter "${chapterName}"` : ""}; `
+                    + `one step of undo in Studio gives back the names the new story made them with (${madeWith}) - the story itself, made for it, stays. `
+                    + "Write its rows with story_apply.",
             );
         }
     }
