@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils/cn";
 import type { BlueprintInspectorParamDef } from "@/lib/ui-editor/blueprint-nodes/types";
 import { resolveBlueprintLabel, resolveBlueprintNodeTitle } from "../blueprintNodeI18n";
 import { formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
+import { getKeyboardBindingLabel } from "@/lib/ui-editor/keyboardBindingLabel";
 
 type PreviewPin = { id: string; label: string; exec: boolean; value?: string };
 
@@ -124,7 +125,11 @@ function displayValue(value: unknown, param: BlueprintInspectorParamDef | undefi
             ? formatBlueprintValueTypeLabel(option.value, t, "option")
             : resolveBlueprintLabel(option.label, t);
     }
-    if (param && !["string", "number", "color", "keyboardBinding", "literal"].includes(param.kind)) {
+    if (param?.kind === "keyboardBinding") {
+        // Stored in its English spelling; named the way the key card on the canvas names it.
+        return getKeyboardBindingLabel(value, t) || String(value);
+    }
+    if (param && !["string", "number", "color", "literal"].includes(param.kind)) {
         return undefined;
     }
     return String(value);

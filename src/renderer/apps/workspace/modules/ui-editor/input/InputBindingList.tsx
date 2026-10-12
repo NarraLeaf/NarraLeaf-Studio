@@ -14,6 +14,7 @@ import {
     type ContextMenuItemDef,
 } from "@/lib/components/elements/ContextMenu";
 import { useTranslation } from "@/lib/i18n";
+import { getKeyboardBindingLabel } from "@/lib/ui-editor/keyboardBindingLabel";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import {
     INPUT_BINDING_DEVICES,
@@ -103,6 +104,7 @@ export function InputBindingList({ bindings, onChange, emptyLabel }: InputBindin
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
     const [listening, setListening] = useState(false);
+    /** The keys held so far, in the stored spelling; shown through `getKeyboardBindingLabel`. */
     const [preview, setPreview] = useState("");
     const pendingModifierRef = useRef("");
 
@@ -288,7 +290,9 @@ export function InputBindingList({ bindings, onChange, emptyLabel }: InputBindin
             >
                 {listening ? <Keyboard className="h-3 w-3" aria-hidden /> : <Plus className="h-3 w-3" aria-hidden />}
                 <span>
-                    {listening ? preview || t("blueprint.keyboard.pressKey") : t("uiEditor.inputActions.addBinding")}
+                    {listening
+                        ? (preview && getKeyboardBindingLabel(preview, t)) || t("blueprint.keyboard.pressKey")
+                        : t("uiEditor.inputActions.addBinding")}
                 </span>
             </button>
             <ContextMenu

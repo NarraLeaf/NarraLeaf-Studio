@@ -259,13 +259,6 @@ const BLUEPRINT_KEYBOARD_MODIFIER_ORDER: BlueprintKeyboardModifierFlag[] = [
     "metaKey",
 ];
 
-const BLUEPRINT_KEYBOARD_MODIFIER_LABELS: Record<BlueprintKeyboardModifierFlag, string> = {
-    altKey: "Alt",
-    ctrlKey: "Ctrl",
-    shiftKey: "Shift",
-    metaKey: "Meta",
-};
-
 const BLUEPRINT_KEYBOARD_MODIFIER_ALIASES: Record<string, BlueprintKeyboardModifierFlag> = {
     alt: "altKey",
     option: "altKey",
@@ -306,6 +299,12 @@ const BLUEPRINT_KEYBOARD_KEY_ALIASES: Record<string, string> = {
     "arrow down": "arrowdown",
 };
 
+/**
+ * How a binding is stored, key by key: the spelling written into a project and matched back through
+ * the aliases above. English in every language, and never changed lightly, since every saved binding
+ * is written in it. What an author reads is drawn from the same keys in their own language by the
+ * renderer (`getKeyboardBindingLabel`), not from this table.
+ */
 const BLUEPRINT_KEYBOARD_KEY_LABELS: Record<string, string> = {
     "+": "Plus",
     " ": "Space",
@@ -357,7 +356,7 @@ function keyboardModifierKeyForFlag(flag: BlueprintKeyboardModifierFlag): string
     }
 }
 
-function keyboardBindingDisplayLabelForKey(key: string): string {
+function keyboardBindingStoredSpellingForKey(key: string): string {
     const label = BLUEPRINT_KEYBOARD_KEY_LABELS[key];
     if (label) {
         return label;
@@ -427,19 +426,35 @@ export function parseBlueprintKeyboardBinding(raw: unknown): BlueprintKeyboardBi
     };
 }
 
-export function formatBlueprintKeyboardBinding(raw: unknown): string {
+/**
+ * The keys a binding is written with, in the order it is written: the held modifiers (Ctrl, Alt,
+ * Shift, Meta), then the key - unless the key is itself one of them, so Shift held alone is one key
+ * and not "Shift+Shift".
+ */
+function keyboardBindingKeys(held: (flag: BlueprintKeyboardModifierFlag) => boolean, key: string): string[] {
+    const keyModifier = readKeyboardModifierFlagForKey(key);
+    const keys = BLUEPRINT_KEYBOARD_MODIFIER_ORDER.filter(held).map(keyboardModifierKeyForFlag);
+    if (!keyModifier || !held(keyModifier)) {
+        keys.push(key);
+    }
+    return keys;
+}
+
+/**
+ * A binding's keys, each spelled as {@link normalizeBlueprintKeyboardEventKeyName} spells it
+ * ("control", "arrowup", "space", "+"), in the order the binding is written. Empty when the binding
+ * cannot be read.
+ *
+ * The one reading both the stored spelling ({@link formatBlueprintKeyboardBinding}) and every display
+ * of a binding start from, so the two cannot disagree about which keys a binding holds.
+ */
+export function listBlueprintKeyboardBindingKeys(raw: unknown): string[] {
     const binding = parseBlueprintKeyboardBinding(raw);
-    if (!binding) {
-        return "";
-    }
-    const keyModifier = readKeyboardModifierFlagForKey(binding.key);
-    const parts = BLUEPRINT_KEYBOARD_MODIFIER_ORDER
-        .filter(flag => binding[flag])
-        .map(flag => BLUEPRINT_KEYBOARD_MODIFIER_LABELS[flag]);
-    if (!keyModifier || !binding[keyModifier]) {
-        parts.push(keyboardBindingDisplayLabelForKey(binding.key));
-    }
-    return parts.join("+");
+    return binding ? keyboardBindingKeys(flag => binding[flag], binding.key) : [];
+}
+
+export function formatBlueprintKeyboardBinding(raw: unknown): string {
+    return listBlueprintKeyboardBindingKeys(raw).map(keyboardBindingStoredSpellingForKey).join("+");
 }
 
 export function formatBlueprintKeyboardBindingFromEvent(event: BlueprintKeyboardEventLike): string {
@@ -447,14 +462,9 @@ export function formatBlueprintKeyboardBindingFromEvent(event: BlueprintKeyboard
     if (!key) {
         return "";
     }
-    const keyModifier = readKeyboardModifierFlagForKey(key);
-    const parts = BLUEPRINT_KEYBOARD_MODIFIER_ORDER
-        .filter(flag => Boolean(event[flag]))
-        .map(flag => BLUEPRINT_KEYBOARD_MODIFIER_LABELS[flag]);
-    if (!keyModifier || !Boolean(event[keyModifier])) {
-        parts.push(keyboardBindingDisplayLabelForKey(key));
-    }
-    return parts.join("+");
+    return keyboardBindingKeys(flag => Boolean(event[flag]), key)
+        .map(keyboardBindingStoredSpellingForKey)
+        .join("+");
 }
 
 export function blueprintKeyboardBindingMatchesEvent(raw: unknown, eventPayload?: BlueprintKeyboardEventLike): boolean {

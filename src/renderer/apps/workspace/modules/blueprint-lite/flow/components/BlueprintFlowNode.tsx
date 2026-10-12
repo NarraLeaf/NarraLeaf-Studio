@@ -20,6 +20,7 @@ import {
 } from "@/lib/ui-editor/blueprint-nodes/types";
 import { BLUEPRINT_FIELD_READER_INPUT_PIN } from "@/lib/ui-editor/blueprint-nodes/effectivePins";
 import { formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
+import { getKeyboardBindingLabel } from "@/lib/ui-editor/keyboardBindingLabel";
 import { BLUEPRINT_SCENE_VARIABLE_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/storyVariableNodes";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { BlueprintLiteralValueControl, type LiteralEditMode } from "../../components/BlueprintLiteralValueControl";
@@ -1162,7 +1163,9 @@ function KeyboardBindingCardControl({
     const [listening, setListening] = useState(false);
     const [preview, setPreview] = useState("");
     const pendingModifierBindingRef = useRef("");
-    const displayValue = formatBlueprintKeyboardBinding(value);
+    // The binding is stored in its English spelling (`formatBlueprintKeyboardBinding`); the card
+    // names its keys in the author's language.
+    const displayValue = getKeyboardBindingLabel(value, t);
 
     const stopKeyboardCapture = (event: KeyboardEvent) => {
         event.preventDefault();
@@ -1244,7 +1247,7 @@ function KeyboardBindingCardControl({
             {listening ? (
                 <div className="absolute bottom-full left-0 z-[60] mb-1 w-full rounded-lg border border-primary/35 bg-surface-overlay px-2 py-1.5 text-left shadow-lg ring-1 ring-black/35">
                     <div className="truncate font-mono text-2xs text-primary">
-                        {preview || t("blueprint.keyboard.pressKey")}
+                        {(preview && getKeyboardBindingLabel(preview, t)) || t("blueprint.keyboard.pressKey")}
                     </div>
                     <div className="mt-0.5 truncate text-2xs text-fg-muted">{t("blueprint.keyboard.anyCombo")}</div>
                 </div>
