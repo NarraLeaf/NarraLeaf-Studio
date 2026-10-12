@@ -670,6 +670,39 @@ export function normalizeLintingConfiguration(value: unknown): LintingConfigurat
     };
 }
 
+/**
+ * The lint config to write back after `patch`, given what the project file holds now.
+ *
+ * Reading drops a level this Studio does not know (see {@link normalizeLintingConfiguration}): it
+ * cannot run a rule at it, so the rule runs at its own default. Writing must not drop it too, or the
+ * first lint setting anyone changes here erases a choice made in a newer Studio - which is what every
+ * Studio before the minor warning does to a rule set to `minor`. So a stored entry this Studio cannot
+ * read is written back as it was, unless the patch names that rule, in which case the author has just
+ * chosen again.
+ *
+ * The carried entries are outside `LintRuleSeverity`; they only ever travel to disk; every read
+ * of the config normalizes them away again.
+ */
+export function lintingConfigurationForWrite(stored: unknown, patch: Partial<LintingConfiguration>): LintingConfiguration {
+    const next: LintingConfiguration = { ...normalizeLintingConfiguration(stored), ...patch };
+    const storedSeverities = stored && typeof stored === "object"
+        ? (stored as Record<string, unknown>).severities
+        : undefined;
+    if (!storedSeverities || typeof storedSeverities !== "object") {
+        return next;
+    }
+    let severities: Record<string, LintRuleSeverity> | null = null;
+    for (const [ruleId, value] of Object.entries(storedSeverities as Record<string, unknown>)) {
+        const unreadable = typeof value === "string" && !LINT_RULE_SEVERITIES.includes(value as LintRuleSeverity);
+        if (!ruleId || !unreadable || ruleId in next.severities) {
+            continue;
+        }
+        severities = severities ?? { ...next.severities };
+        severities[ruleId] = value as LintRuleSeverity;
+    }
+    return severities ? { ...next, severities } : next;
+}
+
 /** Platforms a stored selection may name. */
 const ALL_BUILD_PLATFORMS: GameBuildPlatform[] = ["windows", "macos", "linux", "web", "android", "ios"];
 
