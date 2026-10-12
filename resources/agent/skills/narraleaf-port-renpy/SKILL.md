@@ -9,7 +9,8 @@ description: Port a finished Ren'Py visual novel, with its source, into NarraLea
 > the start, and list every difference from the original game you could not resolve in the hand-over.
 
 You are moving a finished Ren'Py game into NarraLeaf Studio. Studio is open on the author's machine
-and you drive it through its MCP server; every write lands live and is one undo step. This skill is
+and you drive it through its MCP server; every write lands live, and most are one undo step (the
+make-game `SKILL.md` names the few that are not). This skill is
 the porting method. It sits on top of **`narraleaf-make-game`**, which explains the tools, the text
 formats and the order of work for any game - read its `SKILL.md` first (or `agent_guide
 {chapter:"workflow"}`), and read its chapters when a step below sends you there.
@@ -26,6 +27,22 @@ formats and the order of work for any game - read its `SKILL.md` first (or `agen
 The ported game plays from the first line to every ending, looks like the Ren'Py game on every
 screen the player can reach, and builds. Fidelity is judged against the **running Ren'Py game**, not
 against your reading of its code: run it (step 7) and compare screenshots.
+
+## Safety: the game is a program
+
+A Ren'Py game's `.rpy` scripts and `python` blocks are code, and they run with the author's own
+permissions the moment the game starts: the game can read and change their files and reach the
+network like any program they install. Reading the scripts as text is safe; running the game is not.
+
+- **Run a game only when the author made it or trusts where it came from.** Ask before the first run
+  (step 7) and say what you will run. If they do not own or trust the game, do not run it: trace the
+  interface from `screens.rpy` and from screenshots the author gives you, and say so in the hand-over.
+- **Ask the author before you download or install anything** - the Ren'Py SDK, an unpacker or
+  decompiler (unrpa, unrpyc), ffmpeg, fonttools, any package. Name the tool and where it comes from
+  (its official site or repository) and wait for a yes. Use the author's own copy when they have one.
+- **Never disable or work around a security protection** to get something to run or read: antivirus,
+  SmartScreen or Gatekeeper prompts, macOS quarantine flags, file permissions, code-signing or sandbox
+  settings. If one stops you, stop, tell the author what it said, and let them decide.
 
 ## Ground rules
 
@@ -81,7 +98,9 @@ Read, in this order, and write the facts into `port-log.md`:
 
 **Source availability.** `.rpy` files are what you parse. A shipped game may contain only `.rpyc`
 (compiled) or `.rpa` archives; those must be unpacked/decompiled first (e.g. unrpa, unrpyc) - only
-with the author's rights to the game, and say so in the log.
+with the author's rights to the game, and say so in the log. These are third-party tools: ask the
+author before you download or install one (see *Safety* above), and run it on a copy in your
+working folder.
 
 ## Step 2 - Mapping plan
 
@@ -146,7 +165,8 @@ that nothing came back as an opaque `»` row you did not expect. Then:
 
 Working the layout out from `screens.rpy` alone is unreliable (nested boxes, style inheritance,
 `gui.*` indirection). **Run the Ren'Py game and screenshot every screen**, then rebuild each one in
-Studio against the picture. The full method, how to write the capture script and the Ren'Py layout rules for the
+Studio against the picture - once the author has agreed to the run and to any SDK download (see
+*Safety* above). The full method, how to write the capture script and the Ren'Py layout rules for the
 parts you still compute are in `references/interface.md`. Per screen:
 
 1. Capture it in Ren'Py at the project's resolution.
