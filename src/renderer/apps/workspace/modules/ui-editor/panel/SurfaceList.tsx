@@ -318,6 +318,11 @@ function useListContentWidth(): [number, (node: HTMLDivElement | null) => void] 
             const padding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
             // `clientWidth` leaves the scrollbar's lane out, which is the width the cards really get.
             const next = Math.max(0, node.clientWidth - (Number.isFinite(padding) ? padding : 0));
+            // Zero is the panel hidden behind another one, not a list with no room. Keeping the last
+            // width means the list comes back in the shape it left, not as rows that snap to tiles.
+            if (next <= 0) {
+                return;
+            }
             setWidth(current => (Math.abs(current - next) < 0.5 ? current : next));
         };
         measure();
