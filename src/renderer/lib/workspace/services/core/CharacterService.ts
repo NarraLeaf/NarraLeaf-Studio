@@ -104,6 +104,12 @@ export class CharacterService extends Service<CharacterService> implements IChar
      */
     private unreadable: DocumentCorruptError | null = null;
     private listeners: Set<() => void> = new Set();
+    /**
+     * Work derived from the cast that is still owed when the cast is written out - the dialog avatar
+     * bake, which writes its PNGs and then records them on the characters. See
+     * {@link registerPendingDerivedWork}.
+     */
+    private pendingDerivedWork: Set<() => Promise<void>> = new Set();
     /** Where cast edits go instead of into the store, when something else owns them. */
     private opSink: CharacterOpSink | null = null;
     /**
@@ -572,7 +578,33 @@ export class CharacterService extends Service<CharacterService> implements IChar
         return this.dirty;
     }
 
+    /**
+     * Register work that has to land on the cast before a flush writes it out, and return the
+     * deregistration.
+     *
+     * A flush is what Dev Mode, Preview and a closing window wait on before they read the project
+     * from disk. Something derived from the cast that runs a moment after an edit - the dialog
+     * avatars, baked once the author stops changing a pose - would otherwise miss a launch that
+     * follows the edit straight away, and the game would show the line without the avatar the editor
+     * already shows. `run` does the owed work now (and nothing when nothing is owed).
+     */
+    public registerPendingDerivedWork(run: () => Promise<void>): () => void {
+        this.pendingDerivedWork.add(run);
+        return () => {
+            this.pendingDerivedWork.delete(run);
+        };
+    }
+
     public async flushPendingChanges(): Promise<void> {
+        // First, so whatever it records on the characters goes out with this write. One that fails
+        // must not stop the cast itself from being saved.
+        for (const run of [...this.pendingDerivedWork]) {
+            try {
+                await run();
+            } catch (error) {
+                console.warn("[characters] derived work before a flush failed:", error);
+            }
+        }
         if (this.saveTimer) {
             clearTimeout(this.saveTimer);
             this.saveTimer = null;
