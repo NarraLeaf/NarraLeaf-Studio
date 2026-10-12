@@ -17,6 +17,7 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { useTranslation } from "@/lib/i18n";
+import { HelpTrigger } from "@/lib/help";
 import { useFreezeGuard } from "../../../components/ui/freezeGuard";
 import { StackSection } from "../../../components/ui/SectionStack";
 import { InputBindingList } from "./InputBindingList";
@@ -388,51 +389,58 @@ export function InputActionLibraryPanel({ documentService, uiService, open, onOp
                     actions.map(renderRow)
                 )}
                 {/* The focus system's operations, in their fixed order, each filled by one of the
-                    intents above - or by none, and then the game has no such operation. */}
-                <div className="px-1 pt-2 text-2xs font-medium text-fg-subtle">
-                    {t("uiEditor.inputActions.navigationTitle")}
-                </div>
-                <div className="space-y-1 rounded-md border border-edge bg-fill-subtle px-2 py-2">
-                    {UI_NAVIGATION_SLOTS.map(slot => {
-                        const slotName = navigationSlotName(slot, t);
-                        const filledBy = slotActions[slot];
-                        return (
-                            <div key={slot} className="flex items-center gap-2" data-navigation-slot={slot}>
-                                <div className="min-w-0 flex-1 truncate text-xs text-fg" data-tip={slotName}>
-                                    {slotName}
+                    intents above - or by none, and then the game has no such operation. Its own
+                    topic and `?`: whether the game can be played without a mouse is decided here,
+                    and nothing in the rows says so. */}
+                <div className="space-y-2" data-help-topic="focusNavigation">
+                    <div className="group/help flex items-center justify-between gap-2 px-1 pt-2">
+                        <span className="min-w-0 truncate text-2xs font-medium text-fg-subtle">
+                            {t("uiEditor.inputActions.navigationTitle")}
+                        </span>
+                        <HelpTrigger topic="focusNavigation" className="-my-1 h-5 w-5" />
+                    </div>
+                    <div className="space-y-1 rounded-md border border-edge bg-fill-subtle px-2 py-2">
+                        {UI_NAVIGATION_SLOTS.map(slot => {
+                            const slotName = navigationSlotName(slot, t);
+                            const filledBy = slotActions[slot];
+                            return (
+                                <div key={slot} className="flex items-center gap-2" data-navigation-slot={slot}>
+                                    <div className="min-w-0 flex-1 truncate text-xs text-fg" data-tip={slotName}>
+                                        {slotName}
+                                    </div>
+                                    <Select
+                                        className="w-36 shrink-0"
+                                        fullWidth
+                                        size="sm"
+                                        options={slotOptions}
+                                        value={filledBy?.id ?? ""}
+                                        portalMenu
+                                        ariaLabel={slotName}
+                                        readOnly={!documentService || freeze.frozen}
+                                        onChange={value => {
+                                            const actionId = String(value);
+                                            if (actionId) {
+                                                documentService?.setInputActionNavigationSlot(actionId, slot);
+                                            } else if (filledBy) {
+                                                documentService?.setInputActionNavigationSlot(filledBy.id, null);
+                                            }
+                                        }}
+                                    />
                                 </div>
-                                <Select
-                                    className="w-36 shrink-0"
-                                    fullWidth
-                                    size="sm"
-                                    options={slotOptions}
-                                    value={filledBy?.id ?? ""}
-                                    portalMenu
-                                    ariaLabel={slotName}
-                                    readOnly={!documentService || freeze.frozen}
-                                    onChange={value => {
-                                        const actionId = String(value);
-                                        if (actionId) {
-                                            documentService?.setInputActionNavigationSlot(actionId, slot);
-                                        } else if (filledBy) {
-                                            documentService?.setInputActionNavigationSlot(filledBy.id, null);
-                                        }
-                                    }}
-                                />
-                            </div>
-                        );
-                    })}
-                    {emptySlots > 0 && (
-                        <ToolbarButton
-                            size="xs"
-                            className="mt-1 w-full justify-center"
-                            onClick={() => documentService?.fillEmptyNavigationSlots(navigationSlotNames(t))}
-                            {...freeze.writes(!documentService, t("uiEditor.inputActions.fillNavigationSlots"))}
-                            aria-label={t("uiEditor.inputActions.fillNavigationSlots")}
-                        >
-                            {t("uiEditor.inputActions.fillNavigationSlots")}
-                        </ToolbarButton>
-                    )}
+                            );
+                        })}
+                        {emptySlots > 0 && (
+                            <ToolbarButton
+                                size="xs"
+                                className="mt-1 w-full justify-center"
+                                onClick={() => documentService?.fillEmptyNavigationSlots(navigationSlotNames(t))}
+                                {...freeze.writes(!documentService, t("uiEditor.inputActions.fillNavigationSlots"))}
+                                aria-label={t("uiEditor.inputActions.fillNavigationSlots")}
+                            >
+                                {t("uiEditor.inputActions.fillNavigationSlots")}
+                            </ToolbarButton>
+                        )}
+                    </div>
                 </div>
             </div>
             <ContextMenu
