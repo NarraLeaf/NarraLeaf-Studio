@@ -211,7 +211,7 @@ export const story = {
             effectProps: "この効果は、スクリプトが名前を持たないプロパティを含む",
             unresolvedRef: "この行が指しているものはもう無い",
             endingPage: "このエンディングは自分のページを指定しており、スクリプトはそれを持ち運ばない",
-            unknownPayload: "この種類の行はスクリプトがまだ扱わない",
+            unknownPayload: "この種類の行はスクリプトが扱わない",
         },
         parse: {
             unknownStatement: "この行はキーワードで始まっているが、その文の書き方になっていない",

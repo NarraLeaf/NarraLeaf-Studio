@@ -186,7 +186,7 @@ export const story = {
         },
         reason: {
             blueprintAction: "该行由蓝图执行，蓝图没有对应的脚本写法",
-            inputAction: "该行涉及玩家输入或手柄振动，暂无对应的脚本写法",
+            inputAction: "该行涉及玩家输入或手柄振动，没有对应的脚本写法",
             blueprintCondition: "该条件由蓝图判定",
             blueprintInterpolation: "正文中有一处取值由蓝图计算",
             inlineEvent: "正文中带有逐字显示过程中触发的事件",
@@ -196,7 +196,7 @@ export const story = {
             effectProps: "该效果带有脚本未命名的属性",
             unresolvedRef: "该行指向的对象已不存在",
             endingPage: "该结局指定了自己的页面，脚本不携带这一项",
-            unknownPayload: "脚本尚未覆盖此类行",
+            unknownPayload: "脚本不涵盖此类行",
         },
         parse: {
             unknownStatement: "该行以关键词开头，但不符合该语句的写法",

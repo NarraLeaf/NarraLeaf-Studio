@@ -239,7 +239,7 @@ export const story = {
         },
         reason: {
             blueprintAction: "A blueprint runs this row, and a blueprint has no script form.",
-            inputAction: "This row waits for or responds to the player's controls, and has no script form yet.",
+            inputAction: "This row works with the player's input or the controller's rumble, and has no script form.",
             blueprintCondition: "A blueprint decides this condition.",
             blueprintInterpolation: "A blueprint computes a value inside this text.",
             inlineEvent: "The text carries an event that fires while it is being typed out.",
