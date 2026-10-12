@@ -338,9 +338,7 @@ function formatAction(
         return `/text ${payload.operation} ${payload.objectName}${payload.text ? ` ${payload.text}` : ""}`.trimEnd();
     }
     if (payload.action === "layer") {
-        const name = payload.operation === "create"
-            ? payload.objectName
-            : resolveStoryLayerRef(scene, layerActionTargetRef(payload.target, payload.objectName)).name;
+        const name = resolveStoryLayerRef(scene, layerActionTargetRef(payload.target, payload.objectName)).name;
         return `/layer ${payload.operation} ${name}`.trimEnd();
     }
     if (payload.action === "video") {

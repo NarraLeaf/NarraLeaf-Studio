@@ -35,6 +35,11 @@ function text(value: string, role: StoryTextSegment["role"], rich?: StoryTextSeg
     return rich === undefined ? { textId: `t-${value}`, value, role } : { textId: `t-${value}`, value, role, rich };
 }
 
+/** A scene with layers of its own, which a script names and never declares. */
+function withLayers(layers: StoryScene["layers"], built: StoryScene): StoryScene {
+    return { ...built, layers };
+}
+
 function scene(blocks: (Omit<StoryBlock, "parentId" | "childrenIds"> & { children?: string[] })[]): StoryScene {
     const byId: Record<string, StoryBlock> = {};
     const claimed = new Set<string>();
@@ -245,7 +250,7 @@ function roundTrip(fixture: StoryScene, dialect: NarralangDialect): string {
     // scene's declaration rows, so a scene missing from the table cannot name its own variables.
     const printed = printNarralangSceneWithDialect(fixture, { ...lookups, scenes: { ...SCENE_TABLE, "scene-1": fixture } }, dialect);
     expect(printed.issues).toEqual([]);
-    const parsed = parseNarralangSceneWithDialect(printed.text, parseLookups, dialect);
+    const parsed = parseNarralangSceneWithDialect(printed.text, parseLookups, dialect, { sceneLayers: fixture.layers });
     expect(parsed.diagnostics).toEqual([]);
     expect(parsed.name).toBe(fixture.name);
     expect(canonicalize(parsed.rootBlockIds, parsed.blocks)).toEqual(canonicalize(fixture.rootBlockIds, fixture.blocks));
@@ -359,8 +364,8 @@ const corpus: Record<string, StoryScene> = {
         { id: "a11", kind: "action", payload: { action: "audio", operation: "stopSound", target: BGM, fadeMs: 500 } },
     ] as never),
 
-    "stage objects": scene([
-        { id: "s1", kind: "action", payload: { action: "layer", operation: "create", objectName: "sky", zIndex: 5 } },
+    // The layer is the scene's, under the id every row below is bound to.
+    "stage objects": withLayers([{ kind: "custom", id: "s1", name: "sky", follow: 0.6 }, { kind: "displayable" }, { kind: "background" }], scene([
         { id: "s2", kind: "action", payload: { action: "image", operation: "create", objectName: "bird", assetId: "asset-bird", layer: { kind: "custom", sourceBlockId: "s1", name: "sky" }, autoFit: true, transform: { to: { position: { xalign: 0.75, yalign: 0.5 } } } } },
         { id: "s3", kind: "action", payload: { action: "image", operation: "setSource", objectName: "bird", target: BIRD, color: "#101018" } },
         // A source swap is the stage object's portrait swap - `char(src, transition)` on both - so it
@@ -390,7 +395,7 @@ const corpus: Record<string, StoryScene> = {
         { id: "s23", kind: "action", payload: { action: "vfx", operation: "hide", objectName: "petals", target: PETALS, durationMs: 500 } },
         { id: "s24", kind: "action", payload: { action: "vfx", operation: "pause", objectName: "petals", target: PETALS } },
         { id: "s25", kind: "action", payload: { action: "vfx", operation: "resume", objectName: "petals", target: PETALS } },
-    ] as never),
+    ] as never)),
 
     "the raw effect channel": scene([
         { id: "d1", kind: "action", payload: { action: "image", operation: "create", objectName: "bird", assetId: "asset-bird" } },
@@ -586,7 +591,7 @@ describe("print, parse, print", () => {
                 { ...lookups, scenes: { ...SCENE_TABLE, "scene-1": fixture } },
                 NARRALANG_DEFAULT_DIALECT,
             ).text;
-            const parsed = parseNarralangSceneWithDialect(first, parseLookups, NARRALANG_DEFAULT_DIALECT);
+            const parsed = parseNarralangSceneWithDialect(first, parseLookups, NARRALANG_DEFAULT_DIALECT, { sceneLayers: fixture.layers });
             // The reparsed scene is what the second print reads its own names out of - a persistent
             // variable is named by scanning the scenes it is declared in, and those rows are new.
             const reparsed = { ...fixture, rootBlockIds: parsed.rootBlockIds, blocks: parsed.blocks };

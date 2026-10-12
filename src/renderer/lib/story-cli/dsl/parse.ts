@@ -34,6 +34,7 @@ import {
     STORY_FILE_FORMAT_VERSION,
 } from "./shapes";
 import { DIRECTIVE_BACKGROUND, DIRECTIVE_MUSIC } from "./sceneSettings";
+import { DIRECTIVE_LAYER } from "./sceneLayers";
 
 export type StoryFileParse = {
     ast: StoryFileAst;
@@ -141,7 +142,7 @@ function readDirective(
         ast.sceneId = id;
         return false;
     }
-    if (name === DIRECTIVE_BACKGROUND || name === DIRECTIVE_MUSIC) {
+    if (name === DIRECTIVE_BACKGROUND || name === DIRECTIVE_MUSIC || name === DIRECTIVE_LAYER) {
         if (!inHeader) {
             // Only the header sets a scene setting. Every `#` line further down was a comment before
             // these directives existed, and has to stay one: a note reading "#music swells here"
@@ -155,6 +156,11 @@ function readDirective(
                     lineNumber,
                 ),
             );
+            return false;
+        }
+        if (name === DIRECTIVE_LAYER) {
+            // One line per layer, in the stack's order.
+            ast.settings.layers = [...(ast.settings.layers ?? []), { value: rest, line: lineNumber }];
             return false;
         }
         const key = name === DIRECTIVE_BACKGROUND ? "background" : "music";

@@ -520,6 +520,7 @@ export const lint = {
             message: "No row in this scene creates {object}, so this row has nothing to act on",
             // A character is not created, it walks on - so the remedy is the one word that changes.
             messageCharacter: "No row in this scene brings {object} on stage, so this row has nothing to act on",
+            messageLayer: "This scene has no layer {object}, so this row has nothing to act on",
             help:
                 "The row acts on a stage object that no row in this scene creates. Only rows in the same "
                 + "scene count, since stage objects do not carry over from another scene, and names must match "
@@ -527,8 +528,9 @@ export const lint = {
                 + "\n"
                 + "In the game the row has nothing to act on and does nothing.\n"
                 + "\n"
-                + "- Add the row that creates it in this scene, above this one: /image, /text, /layer, /vfx, "
+                + "- Add the row that creates it in this scene, above this one: /image, /text, /vfx, "
                 + "/play or /sound, or /show for a character.\n"
+                + "- For a layer, add it to the scene's layers in the live preview's Layers view.\n"
                 + "- If the row should act on an object that exists, choose that object in the row's inspector.\n"
                 + "- Correct the name if it is misspelled.",
         },

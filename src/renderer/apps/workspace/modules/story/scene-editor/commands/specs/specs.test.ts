@@ -88,6 +88,20 @@ function buildIn(source: string, context: StoryCommandContext): StoryBlock {
     return spec.build(args, { generateId, context });
 }
 
+/** Parse, resolve and commit a scene-changing line against an empty scene; the change it makes. */
+function editSceneWith(source: string): unknown {
+    const line = parseCommandLine(source);
+    if (line.kind !== "command" || !line.def) {
+        throw new Error(`not a command: ${source}`);
+    }
+    expect(line.issues).toEqual([]);
+    const { args, issues } = resolveCommandLine(line, CONTEXT);
+    expect(issues).toEqual([]);
+    const spec = getCommandSpec(line.def.commandId);
+    const scene = { id: "s", name: "Scene", runtimeName: "scene", rootBlockIds: [], blocks: {} };
+    return spec?.editScene?.(args, { generateId, context: CONTEXT, scene }) ?? null;
+}
+
 /** Resolution issues for a line - for asserting what must NOT commit. */
 /** What the PARSE rejected, before any target is resolved - an unknown word for the command. */
 function commandLineIssues(source: string): string[] {
@@ -1381,6 +1395,11 @@ describe("manual examples", () => {
     it("parses, resolves and builds every one of them", () => {
         for (const spec of specs) {
             for (const example of spec.examples ?? []) {
+                if (spec.editScene) {
+                    // A command that changes the scene writes no row: what it commits is the change.
+                    expect(editSceneWith(example), example).not.toBeNull();
+                    continue;
+                }
                 // `build` asserts zero parse and zero resolution issues on the way through.
                 expect(build(example), example).toBeTruthy();
             }

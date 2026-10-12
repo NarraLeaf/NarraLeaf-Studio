@@ -14,7 +14,17 @@ import type {
     StoryVariableScope,
     StoryVariableValueType,
 } from "@shared/types/story";
-import { characterStageName, listSceneIdsInDocumentOrder } from "@shared/types/story";
+import {
+    addSceneLayer,
+    characterStageName,
+    listSceneIdsInDocumentOrder,
+    normalizeSceneLayerStack,
+    sameSceneLayerStack,
+    sceneLayerNameProblem,
+    sceneLayerStack,
+    type StorySceneLayer,
+    type StorySceneLayerId,
+} from "@shared/types/story";
 import { i18nStore, translate, translateN } from "@/lib/i18n";
 import { useWorkspace } from "../../../context";
 import { useHistoryScope } from "@/apps/workspace/hooks/useHistoryScope";
@@ -1599,25 +1609,44 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setEditorMode(openInspector ? { kind: "inspector", blockId: block.id } : { kind: "idle" });
     }, [recordHistory, revealRowInFilter, scene, sceneId, storyId, storyService]);
 
-    // Insert a `layer` create block immediately before `beforeBlockId` at the same nesting level and
-    // return its id, without stealing focus from the currently-open inspector. Used by the Layer
-    // picker's "Create new layer" action so an image/text can bind to a fresh layer inline.
-    const createLayerBeforeBlock = useCallback((beforeBlockId: StoryBlockId): StoryBlockId | null => {
-        if (!storyService || !storyId || !sceneId || !scene || !uuidService) {
-            return null;
+    /**
+     * How many times a command has changed the scene's layers - `/layer` writes no row, so the tab
+     * shows the scene's layers when this moves, as the answer to the line the author just committed.
+     */
+    const [sceneLayersCommitted, setSceneLayersCommitted] = useState(0);
+
+    /**
+     * Put the scene's layer stack as `layers` states it, as one undo step. The one write path for the
+     * stack: the preview's layer view, the layer picker's "new layer" and `/layer` all commit here.
+     */
+    const setSceneLayers = useCallback((layers: readonly StorySceneLayer[]): boolean => {
+        if (!storyService || !storyId || !sceneId || !scene) {
+            return false;
         }
-        const target = scene.blocks[beforeBlockId];
-        if (!target) {
-            return null;
-        }
-        const block = createBlockForCommand("layerCreate", () => uuidService.generate());
-        if (block.kind === "action" && block.payload.action === "layer") {
-            block.payload.objectName = nextLayerName(scene);
+        if (sameSceneLayerStack(normalizeSceneLayerStack(layers), sceneLayerStack(scene))) {
+            return false;
         }
         recordHistory();
-        storyService.insertBlock(storyId, sceneId, block, { parentId: target.parentId, beforeBlockId });
-        return block.id;
-    }, [recordHistory, scene, sceneId, storyId, storyService, uuidService]);
+        return storyService.setSceneLayers(storyId, sceneId, layers);
+    }, [recordHistory, scene, sceneId, storyId, storyService]);
+
+    /**
+     * Add a layer of the scene's own and return its id - just behind the characters unless `at` says
+     * where in the stack, and under the next free default name unless `name` gives one. Null when it
+     * could not be added, a taken name included.
+     */
+    const createSceneLayer = useCallback((options?: { name?: string; at?: number }): StorySceneLayerId | null => {
+        if (!scene || !uuidService) {
+            return null;
+        }
+        const stack = sceneLayerStack(scene);
+        const name = options?.name?.trim() || nextSceneLayerName(stack);
+        if (sceneLayerNameProblem(stack, name) !== null) {
+            return null;
+        }
+        const id = uuidService.generate();
+        return setSceneLayers(addSceneLayer(stack, { id, name }, options?.at)) ? id : null;
+    }, [scene, setSceneLayers, uuidService]);
 
     // `confirmation` is the just-declared line's ghost receipt: the slot that opens after a
     // declaration commits carries it so `✓ Var gold: number = 0` greets the caret, then the next edit
@@ -2508,6 +2537,25 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!spec) {
             return false;
         }
+        // A command that changes the scene writes no row (`/layer`): the scene takes the change, and
+        // the line it was typed on closes behind it - a draft row it was typed over included.
+        if (spec.editScene) {
+            if (!scene || !uuidService) {
+                return false;
+            }
+            const edit = spec.editScene(args, { generateId: () => uuidService.generate(), context: commandContext, scene });
+            if (!edit || !setSceneLayers(edit.layers)) {
+                return false;
+            }
+            const replacedId = editorMode.slot.replaceBlockId;
+            if (replacedId && storyService && storyId && sceneId && scene.blocks[replacedId]) {
+                storyService.deleteBlock(storyId, sceneId, replacedId);
+            }
+            setSceneLayersCommitted(count => count + 1);
+            setEditorMode({ kind: "idle" });
+            focusRoot();
+            return true;
+        }
         // v6: a declaration builds a ROW like everything else - the row is the variable, so Enter's
         // visible result is the line itself, and the ordinary insert path (undo included) covers it.
         if (!spec.build || !uuidService) {
@@ -2577,7 +2625,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             ? `✓ ${toDisplayedCommandLine(confirmation.source, slashAtAlias ? ALT_ACTION_TRIGGER : ACTION_TRIGGER)}`
             : undefined);
         return true;
-    }, [commandContext, createBlock, editorMode, insertBlock, scaffoldContainer, scene, sceneId, slashAtAlias, startInsertAfter, storyId, storyService, uuidService]);
+    }, [commandContext, createBlock, editorMode, focusRoot, insertBlock, scaffoldContainer, scene, sceneId, setSceneLayers, slashAtAlias, startInsertAfter, storyId, storyService, uuidService]);
 
     /**
      * A pick from the slash menu. A spec command routes through the same commit path a typed line
@@ -2718,6 +2766,13 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      */
     const createActionFromSidebar = useCallback((commandId: string) => {
         const spec = getCommandSpec(commandId);
+        // `/layer` from the sidebar: a layer under the next free name, placed where the scene shows it.
+        if (spec?.editScene) {
+            if (commandId === "layer" && createSceneLayer()) {
+                setSceneLayersCommitted(count => count + 1);
+            }
+            return;
+        }
         if (!spec?.build || !uuidService) {
             const block = createPluginActionBlock(commandId);
             if (block) {
@@ -2735,7 +2790,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!openInspector && isTextEditableBlock(block)) {
             setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
         }
-    }, [activeBlockId, commandContext, createPluginActionBlock, insertBlock, scaffoldContainer, uuidService]);
+    }, [activeBlockId, commandContext, createPluginActionBlock, createSceneLayer, insertBlock, scaffoldContainer, uuidService]);
 
     /**
      * Point a dialogue row at a speaker: a real character, a bare name, or nobody.
@@ -3766,7 +3821,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         activateBlockForInspectorOrOp, closeInspector, revealInspectorPanel,
         extendRowSelection, moveSelectedRows, duplicateSelection, jumpRowSelection, pageRowSelection,
         beginBlockDrag, endBlockDrag, moveDraggedBlocksToSortablePosition,
-        createLayerBeforeBlock, slashAtAlias,
+        setSceneLayers, createSceneLayer, sceneLayersCommitted, slashAtAlias,
     };
 }
 
@@ -3853,17 +3908,12 @@ function nextSceneName(document: StoryDocument, baseName: string): string {
     return candidate;
 }
 
-/** Pick a unique default name ("Layer 1", "Layer 2", …) for a freshly-created layer in a scene. */
-function nextLayerName(scene: StoryScene): string {
-    const existing = new Set<string>();
-    for (const block of Object.values(scene.blocks)) {
-        if (block.kind === "action" && block.payload.action === "layer" && block.payload.operation === "create") {
-            existing.add(block.payload.objectName.trim().toLowerCase());
+/** The first default name ("Layer 1", "Layer 2", …) no layer of the stack has yet. */
+function nextSceneLayerName(stack: readonly StorySceneLayer[]): string {
+    for (let index = 1; ; index += 1) {
+        const candidate = translate("story.sceneLayers.defaultName", { index: String(index) });
+        if (sceneLayerNameProblem(stack, candidate) === null) {
+            return candidate;
         }
     }
-    let index = 1;
-    while (existing.has(`layer ${index}`)) {
-        index += 1;
-    }
-    return `Layer ${index}`;
 }

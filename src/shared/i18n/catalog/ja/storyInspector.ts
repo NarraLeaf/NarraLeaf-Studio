@@ -397,7 +397,6 @@ export const storyInspector = {
 
     layerOperation: {
         setZIndex: "重ね順を決める",
-        setDepth: "奥行きを決める",
     },
 
     videoOperation: {
@@ -489,10 +488,8 @@ export const storyInspector = {
     },
 
     layer: {
-        layerName: "レイヤーの名前",
         zIndex: "重ね順",
-        depth: "奥行き",
-        setDepthHint: "シーン全体の背景レイヤーの奥行きを決める",
+        zIndexRowHint: "レイヤーの最初の重ね順はシーンのレイヤーで決まる",
     },
 
     video: {

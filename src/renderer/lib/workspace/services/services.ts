@@ -165,6 +165,7 @@ import type {
     StoryLiteralValue,
     StoryScene,
     StorySceneId,
+    StorySceneLayer,
     StorySceneUpdate,
     StoryTransformRef,
     StoryVariableValueType,
@@ -1253,6 +1254,8 @@ interface IStoryService extends IService {
     createScene(storyId: StoryId, input: { chapterId?: string; name: string }): StoryScene;
     renameScene(storyId: StoryId, sceneId: StorySceneId, name: string): boolean;
     updateScene(storyId: StoryId, sceneId: StorySceneId, patch: StorySceneUpdate): boolean;
+    /** The scene's layer stack, front to back - see `StoryScene.layers`. */
+    setSceneLayers(storyId: StoryId, sceneId: StorySceneId, layers: readonly StorySceneLayer[]): boolean;
     deleteScene(storyId: StoryId, sceneId: StorySceneId): boolean;
     moveScene(storyId: StoryId, sceneId: StorySceneId, target: { chapterId: string; beforeSceneId?: string | null }): boolean;
     setEntryScene(storyId: StoryId, sceneId: StorySceneId | undefined): void;

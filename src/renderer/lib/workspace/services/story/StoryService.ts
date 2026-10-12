@@ -22,6 +22,7 @@ import {
     StorySavedVariableDefinition,
     StoryScene,
     StorySceneId,
+    StorySceneLayer,
     StorySceneSnapshot,
     StorySceneUpdate,
     StorySceneVariableDefinition,
@@ -29,6 +30,10 @@ import {
     StoryDeclarationBlock,
     StoryDeclarationPayload,
     StoryVariableScope,
+    isDefaultSceneLayerStack,
+    normalizeSceneLayerStack,
+    sameSceneLayerStack,
+    sceneLayerStack,
 } from "@shared/types/story";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
@@ -1563,6 +1568,50 @@ export class StoryService extends Service<StoryService> implements IStoryService
         return changed;
     }
 
+    // -----------------------------------------------------------------------
+    // The scene's layer stack (v30): which layers its stage is built from, front to back, and how
+    // much of the camera's movement each follows. One mutator over the whole stack, for the reason
+    // `set-scene-snapshots` has one: every gesture on the stack is a new stack.
+    // -----------------------------------------------------------------------
+
+    /**
+     * Put the scene's layer stack as `layers` states it, normalized - the stack the stage can have, and
+     * none at all when that is the stack every scene starts with. False when the scene is gone or the
+     * stack is the one it already has.
+     */
+    public setSceneLayers(storyId: StoryId, sceneId: StorySceneId, layers: readonly StorySceneLayer[]): boolean {
+        const held = this.getStoryDocument(storyId).scenes[sceneId];
+        if (!held) {
+            return false;
+        }
+        const next = normalizeSceneLayerStack(layers);
+        if (sameSceneLayerStack(next, sceneLayerStack(held))) {
+            return false;
+        }
+        const stated = isDefaultSceneLayerStack(next) ? [] : next;
+        if (this.handedToSink(storyId, { op: "set-scene-layers", sceneId, layers: stated })) {
+            return true;
+        }
+        return this.applySceneLayers(storyId, sceneId, stated);
+    }
+
+    private applySceneLayers(storyId: StoryId, sceneId: StorySceneId, layers: readonly StorySceneLayer[]): boolean {
+        let changed = false;
+        this.mutateDocument(storyId, document => {
+            const scene = document.scenes[sceneId];
+            if (!scene) return;
+            // Copies, because the stack may have arrived inside a message the sender still holds.
+            const next = normalizeSceneLayerStack(structuredClone(layers) as StorySceneLayer[]);
+            if (isDefaultSceneLayerStack(next)) {
+                delete scene.layers;
+            } else {
+                scene.layers = next;
+            }
+            changed = true;
+        });
+        return changed;
+    }
+
     public renameSceneSnapshot(storyId: StoryId, sceneId: StorySceneId, snapshotId: string, name: string): boolean {
         const trimmed = name.trim();
         if (!trimmed) return false;
@@ -2304,7 +2353,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
      * Cut a scene in two at one of its top-level rows: the rows from there on become a new scene
      * filed straight after this one.
      *
-     * The new scene inherits the original's background and music, and the original gets a jump to it
+     * The new scene inherits the original's background, music and layers, and the original gets a jump to it
      * appended when it would otherwise have run off its own end - the engine has no scene successor,
      * so a scene that stops stops the game. Both are what keeps the split playing the way the one
      * scene did.
@@ -2360,6 +2409,8 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 ...created,
                 ...(scene.defaultBackgroundAssetId ? { defaultBackgroundAssetId: scene.defaultBackgroundAssetId } : {}),
                 ...(scene.bgm ? { bgm: JSON.parse(JSON.stringify(scene.bgm)) as StoryScene["bgm"] } : {}),
+                // The layers too, under their own ids, so every row that moves finds its layer as it was.
+                ...(scene.layers ? { layers: structuredClone(scene.layers) } : {}),
             };
             const chapter = chapterId ? target.chapters.find(item => item.id === chapterId) : undefined;
             if (chapter) {
@@ -2530,6 +2581,9 @@ export class StoryService extends Service<StoryService> implements IStoryService
                     return;
                 case "set-scene-snapshots":
                     this.applySceneSnapshots(storyId, op.sceneId, op.snapshots);
+                    return;
+                case "set-scene-layers":
+                    this.applySceneLayers(storyId, op.sceneId, op.layers);
                     return;
                 case "create-chapter":
                     this.applyChapterCreate(storyId, op.chapter, op.beforeChapterId, op.scenes, op.entry);

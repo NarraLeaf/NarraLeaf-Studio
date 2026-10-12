@@ -205,6 +205,8 @@ function resolutionReason(issue: StoryCommandResolutionIssue, token: string): St
         case "unknownVariable":
         case "duplicateVariable":
         case "reservedVariableName":
+        case "duplicateLayer":
+        case "reservedLayerName":
             return { key: reasonKey(issue.code), params: { value: issue.value } };
         case "unknownForm":
             return { key: reasonKey(issue.code), params: { value: issue.value, characterName: issue.characterName } };

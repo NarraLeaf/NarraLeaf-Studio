@@ -71,6 +71,8 @@ export const storyExpr = {
         expressionTypeMismatch: "\"{variable}\" の型は{expected}で、{received}は代入できない",
         duplicateVariable: "\"{value}\" はすでにある。別の名前にするか、/set で値を変える",
         reservedVariableName: "\"{value}\" は式の中でビルドバリアントを指す。別の名前にする",
+        duplicateLayer: "\"{value}\" はこのシーンのレイヤーにすでにある。別の名前にする",
+        reservedLayerName: "\"{value}\" は組み込みレイヤーを指す。別の名前にする",
         unknownTarget: "\"{value}\" という名前のものは舞台に出ていない",
         unsupportedTarget: "/{token} は {kind} の \"{value}\" には効かない。show / hide / play / rate を使う",
         unsupportedTargetLayer: "/{token} はレイヤーの \"{value}\" には効かない。レイヤーの前後は /layer z= で指定する",

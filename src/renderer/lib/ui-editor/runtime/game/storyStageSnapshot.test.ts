@@ -433,9 +433,8 @@ describe("computeStoryStageSnapshot", () => {
         expect(result.displayables).toEqual([]);
     });
 
-    it("flags nvl containers and layer records", () => {
+    it("flags nvl containers and layer records, with the scene's layers up from its first row", () => {
         const document = baseDocument({
-            layer: block("layer", "action", { action: "layer", operation: "create", objectName: "fg", zIndex: 5 }),
             "layer-move": block("layer-move", "action", {
                 action: "layer",
                 operation: "transform",
@@ -445,12 +444,14 @@ describe("computeStoryStageSnapshot", () => {
             }),
             nvl: block("nvl", "action", { action: "nvl" }, null, ["target"]),
             target: say("target", "nvl"),
-        }, ["layer", "layer-move", "nvl"]);
+        }, ["layer-move", "nvl"]);
+        // In front of the characters: the stack puts it at z-index 1.
+        document.scenes["scene-1"].layers = [{ kind: "custom", id: "layer", name: "fg" }, { kind: "displayable" }, { kind: "background" }];
         const result = snapshot(document, "target");
         expect(result.nvl).toBe(true);
         const layer = result.displayables[0];
         expect(layer.kind).toBe("layer");
-        expect(layer.zIndex).toBe(5);
+        expect(layer.zIndex).toBe(1);
         expect(layer.visible).toBe(true);
         expect(layer.props.position).toEqual(expect.objectContaining({ yoffset: -20 }));
     });

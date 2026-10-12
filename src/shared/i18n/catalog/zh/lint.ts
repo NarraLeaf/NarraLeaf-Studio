@@ -450,14 +450,16 @@ export const lint = {
             // 一贯说法（`story.enterExit.enter`、`story.empty.emptyExampleShow`、动效的 `entrance`），
             // 同一件事换个说法就是命令词汇那轮消灭掉的东西。
             messageCharacter: "本场景中没有任何行让 {object} 登场，该行没有可操作的对象",
+            messageLayer: "本场景的图层中没有 {object}，该行没有可操作的对象",
             help:
                 "该行操作的舞台对象，在本场景中没有任何行创建。只计算同一场景中的行，舞台对象不会从其他场景延续过来；"
                 + "名称须完全一致\n"
                 + "\n"
                 + "游戏中该行没有可操作的对象，不起作用\n"
                 + "\n"
-                + "- 在本场景中、该行之前添加创建它的行：/image、/text、/layer、/vfx、"
+                + "- 在本场景中、该行之前添加创建它的行：/image、/text、/vfx、"
                 + "/play 或 /sound；角色用 /show 让其登场\n"
+                + "- 图层在实时预览的「图层」视图中添加到场景的图层\n"
                 + "- 该行本应操作已有的对象时，在检查器中改选该对象\n"
                 + "- 名称拼写有误时改正",
         },

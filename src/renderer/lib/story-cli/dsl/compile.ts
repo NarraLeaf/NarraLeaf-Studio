@@ -77,6 +77,7 @@ import { conditionFromSource, type ConditionLookups } from "./condition";
 import { sameRowContent } from "./equal";
 import { buildProseBlock, type ProseLookups } from "./prose";
 import { applySceneSettings } from "./sceneSettings";
+import { applySceneLayerDirectives } from "./sceneLayers";
 import { BRANCH_ELSE, unescapeText } from "./shapes";
 
 export type CompileInput = {
@@ -97,6 +98,19 @@ export type CompileResult = {
 };
 
 export function compileStoryFile(input: CompileInput): CompileResult {
+    // The header's layers first: they are the scene's from its first row, so every row of the file
+    // names them, and a layer the header adds is one a row below can name.
+    const layered = input.existing
+        ? applySceneLayerDirectives(input.existing, input.ast.settings.layers, input.mintId)
+        : { scene: null, diagnostics: [] as StoryFileDiagnostic[] };
+    if (layered.diagnostics.some(diagnostic => diagnostic.severity === "error")) {
+        return { scene: null, diagnostics: layered.diagnostics };
+    }
+    const result = compileStoryRows({ ...input, existing: layered.scene });
+    return { ...result, diagnostics: [...layered.diagnostics, ...result.diagnostics] };
+}
+
+function compileStoryRows(input: CompileInput): CompileResult {
     // First pass against the stored scene, discarded except for the scene it produces; second pass
     // against that, which is the one whose diagnostics an author reads. See the note above.
     const minted = new Map<number, string[]>();
@@ -470,6 +484,20 @@ function buildCommand(line: StoryFileLine, ctx: LineContext): LineResult {
     }
     if (diagnostics.length > 0) {
         return { ok: false, diagnostics };
+    }
+    if (spec?.editScene) {
+        // `/layer` adds a layer to the scene rather than a row to its story; a file states the
+        // scene's layers in its header.
+        return {
+            ok: false,
+            diagnostics: [
+                errorAt(
+                    "compile.scene_command",
+                    `/${parsed.token} adds a layer to the scene, not a row: write it in the header as "#layer ${source.replace(/^\/\S+\s*/, "")}".`,
+                    line.lineNumber,
+                ),
+            ],
+        };
     }
     if (!spec?.build) {
         return {

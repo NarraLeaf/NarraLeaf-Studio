@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import type { StoryBlock } from "@shared/types/story";
+import type { StoryBlock, StoryScene, StorySceneLayer } from "@shared/types/story";
 import { storySecondsToMs } from "@shared/utils/storyTime";
 import type { StoryCommandParam, StoryCommandParamType } from "../storyCommandGrammar";
 import type {
@@ -47,6 +47,19 @@ export type StoryCommandBuildContext = {
     /** The rest of the line for text-bearing blocks created without their text arg. */
     initialText?: string;
     context: StoryCommandContext;
+};
+
+/** What a spec that changes the scene rather than adding a row to it is handed. */
+export type StoryCommandSceneEditContext = {
+    generateId: () => string;
+    context: StoryCommandContext;
+    /** The scene the line was written in, as it stands. */
+    scene: StoryScene;
+};
+
+/** The change to the scene a scene-editing command makes - for now, the scene's layer stack as it will stand. */
+export type StoryCommandSceneEdit = {
+    layers: StorySceneLayer[];
 };
 
 /** Validation helpers handed to a spec's `validate` - spans come from the parsed line, not the spec. */
@@ -103,6 +116,13 @@ export type StoryCommandSpec<P extends StoryCommandParamsShape = StoryCommandPar
      * is what decides whether an unfilled line commits.
      */
     build?: (args: ResolvedArgsOf<P>, ctx: StoryCommandBuildContext) => StoryBlock;
+    /**
+     * Change the scene instead of adding a row to it - `/layer`, which adds a layer to the scene's
+     * stack, because a layer belongs to its scene rather than to a step of its story. A spec has this or
+     * {@link build}, never both, and committing it leaves no row behind. Null when the args do not
+     * make a change (an unfinished line is held back by the core gating and `validate` first).
+     */
+    editScene?: (args: ResolvedArgsOf<P>, ctx: StoryCommandSceneEditContext) => StoryCommandSceneEdit | null;
     /** Cross-param checks the generic resolver cannot know (`/font` size XOR color, `/set` type fit). */
     validate?: (args: ResolvedArgsOf<P>, ctx: StoryCommandValidateContext) => StoryCommandResolutionIssue[];
     /**

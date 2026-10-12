@@ -73,6 +73,8 @@ export const storyExpr = {
         expressionTypeMismatch: "\"{variable}\" holds a {expected}, so it cannot take a {received}.",
         duplicateVariable: "\"{value}\" already exists. Choose another name, or use /set to change its value.",
         reservedVariableName: "\"{value}\" is the build variant in an expression. Choose another name.",
+        duplicateLayer: "\"{value}\" is already a layer of this scene. Choose another name.",
+        reservedLayerName: "\"{value}\" names a built-in layer. Choose another name.",
         unknownTarget: "Nothing on stage is named \"{value}\".",
         // The name was right and the verb is wrong. Both messages name the verb the author wrote,
         // because every slot that resolves a kind in order to refuse it reports through these two -

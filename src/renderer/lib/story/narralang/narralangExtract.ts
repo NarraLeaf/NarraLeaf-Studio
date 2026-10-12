@@ -851,12 +851,6 @@ function layerShape(
 ): NarralangShape {
     const target = layerValue(ctx, payload.target) ?? asName(payload.objectName);
     switch (payload.operation) {
-        case "create":
-            return {
-                form: "statement",
-                verb: "layerCreate",
-                slots: { subject: asName(payload.objectName), zIndex: optNumber(payload.zIndex) },
-            };
         case "setZIndex":
             return {
                 form: "statement",

@@ -5,7 +5,6 @@ import type {
     StoryDeclarationPayload,
     StoryDisplayableTargetRef,
     StoryJumpPayload,
-    StoryLayerDepth,
     StoryLiteralValue,
     StoryTransformRef,
     StoryTransitionRef,
@@ -1263,45 +1262,15 @@ function layerSentence(
     lookups: StoryCommandLineLookups,
     commandId: string,
 ): Sentence | null {
-    const resolved = payload.operation === "create"
-        ? null
-        : resolveStoryLayerRef(lookups.scene, layerActionTargetRef(payload.target, payload.objectName));
-    const name = payload.operation === "create"
-        ? payload.objectName?.trim() || undefined
-        : resolved?.name || undefined;
-    // A depth the row does not state is `follow` and prints as nothing, so a row from before depth
-    // existed reads exactly as it did.
-    const depthArg = arg("depth", payload.depth, {
-        enum: true,
-        apply: next => ({ ...payload, depth: next as StoryLayerDepth }),
-    });
-    if (payload.operation === "setDepth") {
-        // The reserved word the command line takes for the scene's own background layer.
-        return { commandId, args: [positional("name", "backgroundLayer"), depthArg] };
-    }
-    if (payload.operation === "create" || payload.operation === "setZIndex") {
-        return {
-            commandId,
-            args: [
-                positional("name", name),
-                arg("z", numberValue(payload.zIndex), { apply: next => ({ ...payload, zIndex: Number(next) }) }),
-                ...(payload.operation === "create" ? [depthArg] : []),
-            ],
-        };
-    }
-    // The declaring `/layer` row, on the same terms as every other stage object: the ref's anchor
-    // first, then the name against the declaration index for a document written before anchors. A
-    // DEFAULT layer resolves to neither, and rightly — `backgroundLayer` is a reserved word for a
-    // layer the engine ships, so there is no row anywhere that made it.
-    const link = resolved?.kind === "custom"
-        ? stageObjectLink(lookups, "layer", { ...(resolved.sourceBlockId ? { sourceBlockId: resolved.sourceBlockId } : {}) }, name)
-        : {};
-    // A layer reference stores a stable `sourceBlockId` binding that follows renames; re-pointing it
-    // by name would drop that anchor, so a layer target is read here and re-bound in the inspector.
+    const resolved = resolveStoryLayerRef(lookups.scene, layerActionTargetRef(payload.target, payload.objectName));
+    const name = resolved.name || undefined;
+    // No link: a layer is declared by its scene, not by a row the author could be taken to. A layer
+    // reference stores a stable `sourceBlockId` binding that follows renames; re-pointing it by name
+    // would drop that anchor, so a layer target is read here and re-bound in the inspector.
     if (payload.operation === "transform") {
-        return { commandId, args: [positional("target", name, link), ...transformArgs(payload, lookups)] };
+        return { commandId, args: [positional("target", name), ...transformArgs(payload, lookups)] };
     }
-    return { commandId, args: [positional("target", name, link)] };
+    return { commandId, args: [positional("target", name)] };
 }
 
 function videoSentence(

@@ -476,6 +476,10 @@ export type StoryCommandResolutionIssue =
      */
     | { code: "unknownAsset"; span: StoryCommandSpan; value: string; assetType: "image" | "audio" | "video"; allowSets?: true }
     | { code: "unknownCharacter"; span: StoryCommandSpan; value: string }
+    /** `/layer hills` in a scene that already has a layer called `hills`. */
+    | { code: "duplicateLayer"; span: StoryCommandSpan; value: string }
+    /** `/layer backgroundLayer` - a word the built-in layers are written with. */
+    | { code: "reservedLayerName"; span: StoryCommandSpan; value: string }
     | { code: "unknownScene"; span: StoryCommandSpan; value: string }
     /** `/bgm theme track=Ambience` with no `Ambience` track - it would silently land on Music instead. */
     | { code: "unknownAudioTrack"; span: StoryCommandSpan; value: string }

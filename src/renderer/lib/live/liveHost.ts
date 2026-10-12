@@ -280,6 +280,7 @@ const KNOWN_OPS: Readonly<Record<LiveOpKind, true>> = {
     "update-scene": true,
     "move-scene": true,
     "set-scene-snapshots": true,
+    "set-scene-layers": true,
     "create-chapter": true,
     "rename-chapter": true,
     "delete-chapter": true,
@@ -643,7 +644,8 @@ export class LiveHost {
 
             case "delete-scene":
             case "update-scene":
-            case "set-scene-snapshots": {
+            case "set-scene-snapshots":
+            case "set-scene-layers": {
                 if (!this.deps.readScene(storyId, op.sceneId)) {
                     return { refuse: "scene-gone" };
                 }

@@ -296,8 +296,12 @@ function stageObjectLabel(ctx: LintContext, reference: StageObjectReference): st
  * remedies on `reportMissingStageObject`, so a preview and a build give one answer.
  */
 function stageObjectMessageKey(reference: StageObjectReference): TranslationKey {
-    return reference.subject === "character"
-        ? "lint.rule.storyStageObjectMissing.messageCharacter"
+    if (reference.subject === "character") {
+        return "lint.rule.storyStageObjectMissing.messageCharacter";
+    }
+    // A layer is not created by a row either: the scene has it or does not.
+    return reference.subject === "layer"
+        ? "lint.rule.storyStageObjectMissing.messageLayer"
         : "lint.rule.storyStageObjectMissing.message";
 }
 

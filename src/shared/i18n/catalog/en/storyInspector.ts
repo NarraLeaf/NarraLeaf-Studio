@@ -416,7 +416,6 @@ export const storyInspector = {
 
     layerOperation: {
         setZIndex: "Set z-index",
-        setDepth: "Set depth",
     },
 
     videoOperation: {
@@ -508,10 +507,8 @@ export const storyInspector = {
     },
 
     layer: {
-        layerName: "Layer name",
         zIndex: "Z-index",
-        depth: "Depth",
-        setDepthHint: "Sets the depth of the background layer for the whole scene",
+        zIndexRowHint: "A layer's starting order is set by the scene's layers.",
     },
 
     video: {

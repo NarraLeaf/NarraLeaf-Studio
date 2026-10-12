@@ -53,6 +53,8 @@ export const storyExpr = {
         expressionTypeMismatch: "「{variable}」存放的是{expected}，无法存入{received}",
         duplicateVariable: "「{value}」已存在；改用其他名称，或用 /set 修改其值",
         reservedVariableName: "「{value}」在表达式中表示变体，改用其他名称",
+        duplicateLayer: "本场景已有图层「{value}」，改用其他名称",
+        reservedLayerName: "「{value}」表示内置图层，改用其他名称",
         unknownTarget: "舞台上没有名为「{value}」的对象",
         unsupportedTarget: "/{token} 不适用于「{value}」，它是 {kind}。使用 show / hide / play / rate",
         unsupportedTargetLayer: "/{token} 不适用于图层「{value}」。图层的前后顺序用 /layer z= 设置",

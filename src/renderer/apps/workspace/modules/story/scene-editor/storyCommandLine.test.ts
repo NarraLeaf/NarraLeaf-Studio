@@ -678,10 +678,6 @@ describe("projectStoryCommandLine", () => {
             "/font title color=#ffcc00",
             "/video intro name=cutscene muted",
             "/play clip",
-            "/layer overlay z=10",
-            // A depth on the create row, and the background layer's own depth row under its reserved word.
-            "/layer hills z=-1 depth=far",
-            "/layer backgroundLayer depth=mid",
             "/vfx intro name=petals opacity=0.5",
             // A weather seed: the word IS the source, so the line has to print it.
             "/vfx snow",
@@ -751,8 +747,6 @@ describe("projectStoryCommandLine", () => {
             "/bg forest_day t=fade d=0.5",
             "/transform camera pan=left",
             "/bgm theme vol=0.6 loop",
-            "/layer hills depth=far",
-            "/layer backgroundLayer depth=farthest",
             "/local hp 100 desc='生命值 上限'",
             "/local inv \"[1, 2]\" type=json",
         ]) {
@@ -919,7 +913,9 @@ describe("projectStoryCommandLine — what a word points at", () => {
     const LINK_SCENE = {
         id: "s1",
         name: "Chapter 2",
-        rootBlockIds: ["d_char", "d_img", "d_text", "d_layer", "d_video", "d_snd", "d_vfx", "l_intro", "var_gold"],
+        rootBlockIds: ["d_char", "d_img", "d_text", "d_video", "d_snd", "d_vfx", "l_intro", "var_gold"],
+        // The layer is the scene's own, under the id the references below are bound to.
+        layers: [{ kind: "custom", id: "d_layer", name: "overlay" }, { kind: "displayable" }, { kind: "background" }],
         blocks: {
             d_char: {
                 id: "d_char", parentId: null, childrenIds: [], kind: "action",
@@ -932,10 +928,6 @@ describe("projectStoryCommandLine — what a word points at", () => {
             d_text: {
                 id: "d_text", parentId: null, childrenIds: [], kind: "action",
                 payload: { action: "text", operation: "create", objectName: "title", text: { value: "Chapter One", textId: "t1" } },
-            },
-            d_layer: {
-                id: "d_layer", parentId: null, childrenIds: [], kind: "action",
-                payload: { action: "layer", operation: "create", objectName: "overlay", zIndex: 10 },
             },
             d_video: {
                 id: "d_video", parentId: null, childrenIds: [], kind: "action",
@@ -1037,11 +1029,12 @@ describe("projectStoryCommandLine — what a word points at", () => {
         expect(typed("/seek clip 12")).toContainEqual({ text: "clip", ref: { kind: "block", blockId: "d_video" } });
         expect(typed("/stop keys")).toContainEqual({ text: "keys", ref: { kind: "block", blockId: "d_snd" } });
         expect(typed("/hide petals")).toContainEqual({ text: "petals", ref: { kind: "block", blockId: "d_vfx" } });
-        // The layer, through both of its rows: the `layer` action the inspector writes, and the
-        // `displayable` one a `/transform` line builds.
+        // The layer is declared by the scene, not by a row, so through neither of its rows - the
+        // `layer` action the inspector writes, or the `displayable` one a `/transform` line builds -
+        // is there a row to take the reader to.
         expect(links(row({ action: "layer", operation: "show", objectName: "overlay", target: { kind: "custom", name: "overlay", sourceBlockId: "d_layer" } })))
-            .toEqual([{ text: "overlay", ref: { kind: "block", blockId: "d_layer" } }]);
-        expect(typed("/transform overlay opacity=0.4")).toContainEqual({ text: "overlay", ref: { kind: "block", blockId: "d_layer" } });
+            .toEqual([]);
+        expect(typed("/transform overlay opacity=0.4")).not.toContainEqual(expect.objectContaining({ text: "overlay" }));
     });
 
     it("leaves an overlay another scene started unlinked, like any other object of another scene", () => {
@@ -1091,7 +1084,6 @@ describe("projectStoryCommandLine — what a word points at", () => {
         // The name a create row DEFINES is the row the reader is already looking at. Its asset is a
         // reference and does link; its own name does not.
         expect(typed("/image night name=sky")).toEqual([{ text: "night", ref: { kind: "asset", assetId: "i2" } }]);
-        expect(typed("/layer sky z=4")).toEqual([]);
         expect(typed("/label chorus")).toEqual([]);
     });
 

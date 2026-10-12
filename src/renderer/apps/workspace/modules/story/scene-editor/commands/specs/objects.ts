@@ -1,6 +1,6 @@
 import { ALargeSmall, BringToFront, Image, Layers, Play, Replace, Type } from "lucide-react";
-import type { StoryBlock, StoryLayerDepth } from "@shared/types/story";
-import { STORY_LAYER_DEPTHS } from "@shared/types/story";
+import type { StoryBlock } from "@shared/types/story";
+import { addSceneLayer, sceneLayerNameProblem, sceneLayerStack } from "@shared/types/story";
 import { createBlockForCommand } from "../../storyActionCommands";
 import type { StoryCommandResolutionIssue, StoryCommandValue } from "../../storyCommandValues";
 import {
@@ -102,45 +102,48 @@ export const text = defineStoryCommand({
     },
 });
 
+/**
+ * `/layer` - add a layer to the scene.
+ *
+ * It writes no row. A layer belongs to its scene, which puts up every layer it has as it starts, so
+ * the command adds one to the scene's stack: just behind the characters and moving exactly with the
+ * camera, which is how every layer has always moved until the author places it in the live preview's
+ * layer view. A name the scene's layers already use, or one a built-in layer is written with, is
+ * refused on the line.
+ */
 export const layer = defineStoryCommand({
     id: "layer",
     token: "layer",
     category: "layer",
     icon: Layers,
-    examples: ["/layer overlay", "/layer overlay z=10", "/layer hills z=-1 depth=far", "/layer backgroundLayer depth=mid"],
+    examples: ["/layer hills"],
     params: {
         name: { hint: "objectName", type: { kind: "text" }, positional: true, core: true },
-        z: { aliases: ["zindex"], hint: "z", type: { kind: "number", integer: true } },
-        depth: { hint: "depth", type: { kind: "enum", options: STORY_LAYER_DEPTHS.map(value => ({ value })) } },
     },
-    build(args, ctx) {
-        const depth = asEnum(args.depth) as StoryLayerDepth | undefined;
-        // The scene's own background layer has no `create` row to carry a depth - the engine builds
-        // it - so naming it by its reserved word writes the one row that says how far away it sits.
-        if (asText(args.name)?.toLowerCase() === "backgroundlayer") {
-            const row = createBlockForCommand("layerDepth", ctx.generateId);
-            if (row.kind !== "action" || row.payload.action !== "layer" || !depth) {
-                return row;
-            }
-            return { ...row, payload: { ...row.payload, depth } };
+    editScene(args, ctx) {
+        const stack = sceneLayerStack(ctx.scene);
+        const name = asText(args.name)?.trim() ?? "";
+        if (sceneLayerNameProblem(stack, name) !== null) {
+            return null;
         }
-        const block = createBlockForCommand("layerCreate", ctx.generateId);
-        if (block.kind !== "action" || block.payload.action !== "layer") {
-            return block;
+        return { layers: addSceneLayer(stack, { id: ctx.generateId(), name }) };
+    },
+    validate(args, ctx) {
+        const name = asText(args.name)?.trim();
+        const span = name ? ctx.spanOf("name") : undefined;
+        if (!name || !span) {
+            return [];
         }
-        const payload = { ...block.payload };
-        if (depth) {
-            payload.depth = depth;
+        // The stage objects the line sees are the scene's layers as the context read them.
+        const stack = ctx.context.stageObjects.layer.map((existing, index) => ({ kind: "custom" as const, id: `existing-${index}`, name: existing }));
+        const problem = sceneLayerNameProblem(stack, name);
+        if (problem === "taken") {
+            return [{ code: "duplicateLayer", span, value: name }];
         }
-        const name = asText(args.name);
-        if (name !== undefined) {
-            payload.objectName = name;
+        if (problem === "reserved") {
+            return [{ code: "reservedLayerName", span, value: name }];
         }
-        const zIndex = asNumber(args.z);
-        if (zIndex !== undefined) {
-            payload.zIndex = zIndex;
-        }
-        return { ...block, payload };
+        return [];
     },
 });
 

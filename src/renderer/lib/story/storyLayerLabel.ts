@@ -1,11 +1,10 @@
-import type { ResolvedStoryLayer, StoryLayerDepth } from "@shared/types/story";
-import { DEFAULT_STORY_LAYER_DEPTH } from "@shared/types/story";
+import type { ResolvedStoryLayer, StorySceneLayer } from "@shared/types/story";
+import { sceneLayerFollow } from "@shared/types/story";
 import { translate } from "@/lib/i18n";
-import type { TranslationKey } from "@shared/i18n";
 
 /**
  * A resolved layer as the author reads it: the two built-in layers by their names in the interface
- * language, a custom layer by the name its `create` row gives it.
+ * language, one of the scene's own by the name the scene gives it.
  *
  * `resolveStoryLayerRef` answers a fixed English word for the built-ins because it lives in shared
  * code that has no language; every surface that shows one to the author goes through here instead.
@@ -16,10 +15,25 @@ export function storyLayerLabel(resolved: ResolvedStoryLayer): string {
             ? translate("story.layerField.backgroundName")
             : translate("story.layerField.defaultName");
     }
-    return resolved.name || translate("story.layerPanel.unnamed");
+    return resolved.name || translate("story.sceneLayers.unnamed");
 }
 
-/** A depth by its name in the interface language; an absent one is the default. */
-export function storyLayerDepthLabel(depth: StoryLayerDepth | undefined): string {
-    return translate(`story.layerDepth.${depth ?? DEFAULT_STORY_LAYER_DEPTH}` as TranslationKey);
+/** A layer of the scene's stack as the author reads it. */
+export function storySceneLayerLabel(layer: StorySceneLayer): string {
+    if (layer.kind === "custom") {
+        return layer.name || translate("story.sceneLayers.unnamed");
+    }
+    return layer.kind === "background"
+        ? translate("story.layerField.backgroundName")
+        : translate("story.layerField.defaultName");
+}
+
+/** How much of the camera's movement a layer follows, as a whole percentage. */
+export function storyLayerFollowPercent(layer: StorySceneLayer): number {
+    return Math.round(sceneLayerFollow(layer) * 100);
+}
+
+/** "Follows 30% of the camera", in the interface language. */
+export function storyLayerFollowLabel(layer: StorySceneLayer): string {
+    return translate("story.sceneLayers.follow", { percent: String(storyLayerFollowPercent(layer)) });
 }

@@ -183,6 +183,11 @@ export const help = {
                 + "- In picture-in-picture, the live preview stays on screen over the other editors and shows the scene "
                 + "of the scene editor used last.\n"
                 + "- Edits to the Game UI appear in the live preview as they are made.\n"
+                + "- Layers, at the top of the live preview, shows the scene's layers. The list on the left runs front to back; "
+                + "drag a row to change the stacking order. Drag the name on a layer to move it nearer or farther: "
+                + "a farther layer moves less with the camera, a nearer one more, and the small view in the corner shows the "
+                + "camera moving. The Layers button in the scene's title bar opens the same view, and /layer name adds a layer "
+                + "to the scene.\n"
                 + "- The ▶ on a row, Play from this row, runs the scene in Dev Mode starting at that row.",
         },
         storyCommands: {

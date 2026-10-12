@@ -22,8 +22,11 @@ import {
     declaresStageObject,
     isStoryExpressionEvaluable,
     resolveDisplayableTargetRef,
+    resolveStoryLayerRef,
     revealCreates,
     savedVariableDefs,
+    sceneLayerStack,
+    sceneLayerZIndex,
     sceneVariableDefs,
     soundStageObjectName,
     storyPersistentDefs,
@@ -581,6 +584,13 @@ class SnapshotWalker {
 
     run(): StoryStageSnapshot {
         this.scanCompileOrder(this.scene.rootBlockIds);
+        // The scene's own layers are up before its first row runs, visible and where its stack puts them.
+        const layers = sceneLayerStack(this.scene);
+        layers.forEach((layer, index) => {
+            if (layer.kind === "custom") {
+                this.ensure("layer", layer.name, layer.id).zIndex = sceneLayerZIndex(layers, index);
+            }
+        });
         if (this.targetBlockId === null) {
             // Scene start: nothing has executed yet.
         } else if (!this.pathBlockIds.has(this.targetBlockId)) {
@@ -629,8 +639,7 @@ class SnapshotWalker {
      * table they land in changes. What is dropped afterwards is being SEEN: a `/character enter` is
      * a declaration and an entrance at once, and the entrance belongs to the arm that runs.
      *
-     * Layers keep their own default, because a declared layer really is visible and hiding one
-     * would take everything a later row puts on it down with it.
+     * Layers are not in it: the scene declares its layers, and {@link run} puts them up before any row.
      */
     private collectDeclarations(blockIds: readonly string[]): void {
         for (const blockId of blockIds) {
@@ -647,9 +656,6 @@ class SnapshotWalker {
                         break;
                     case "text":
                         this.applyText(block, block.payload);
-                        break;
-                    case "layer":
-                        this.applyLayer(block, block.payload);
                         break;
                     case "character":
                         this.applyCharacter(block, block.payload);
@@ -677,9 +683,6 @@ class SnapshotWalker {
     /** Strip the "and it is seen" half off every declaration; see {@link collectDeclarations}. */
     private hideDeclarations(): void {
         for (const record of this.declared.values()) {
-            if (record.kind === "layer") {
-                continue;
-            }
             record.visible = false;
             delete record.props.opacity;
         }
@@ -1363,14 +1366,7 @@ class SnapshotWalker {
     }
 
     private applyLayer(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "layer" }>): void {
-        if (payload.operation === "create") {
-            const record = this.ensure("layer", payload.objectName, block.id);
-            if (payload.zIndex !== undefined) {
-                record.zIndex = payload.zIndex;
-            }
-            return;
-        }
-        // Non-create layer ops address an existing target (built-in fallback: displayable layer).
+        // Every layer op addresses one of the scene's layers (built-in fallback: displayable layer).
         const targetProps = this.resolveLayerTargetProps(payload);
         if (payload.operation === "setZIndex") {
             if (targetProps.record) {
@@ -1440,11 +1436,7 @@ class SnapshotWalker {
             return { builtin: target.layer === "background" ? "backgroundLayer" : "displayableLayer" };
         }
         if (target?.kind === "custom") {
-            const source = target.sourceBlockId ? this.scene.blocks[target.sourceBlockId] : undefined;
-            const name = source?.kind === "action" && source.payload.action === "layer"
-                ? source.payload.objectName
-                : target.name;
-            const record = this.displayables.get(this.key("layer", name ?? ""));
+            const record = this.displayables.get(this.key("layer", resolveStoryLayerRef(this.scene, target).name));
             return record ? { record } : { builtin: "displayableLayer" };
         }
         const record = this.displayables.get(this.key("layer", payload.objectName));

@@ -3,7 +3,7 @@ import { audioTrackDisplayName } from "@shared/types/audioTrack";
 import { translateCommand } from "@/lib/i18n";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { StoryDocument, StoryScene, StorySceneId } from "@shared/types/story";
-import { actionableSourceIdentity, displayableCreatorIdentity } from "@shared/types/story";
+import { actionableSourceIdentity, displayableCreatorIdentity, sceneLayerStack } from "@shared/types/story";
 import { savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story/declarations";
 import { sceneLabelNames } from "@shared/types/story/labels";
 import { listSceneBlocksInDocumentOrder } from "@shared/types/story/order";
@@ -216,6 +216,13 @@ function collectStageObjectSources(scene: StoryScene | null): StoryCommandStageO
     const sources: Record<StoryCommandStageObjectKind, Record<string, string>> = {
         image: {}, text: {}, layer: {}, video: {}, audio: {}, vfx: {},
     };
+    // The scene declares its layers itself; a reference to one binds to the layer's id.
+    for (const layer of sceneLayerStack(scene)) {
+        const key = layer.kind === "custom" ? layer.name.trim().toLowerCase() : "";
+        if (layer.kind === "custom" && key && !(key in sources.layer)) {
+            sources.layer[key] = layer.id;
+        }
+    }
     for (const block of listSceneBlocksInDocumentOrder(scene)) {
         const identity = displayableCreatorIdentity(block) ?? actionableSourceIdentity(block);
         // `character` is the one declaring kind with no stage-object arm. It is not skipped - see

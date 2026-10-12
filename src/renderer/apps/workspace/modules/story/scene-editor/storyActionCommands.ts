@@ -65,9 +65,6 @@ export type ActionCommandId =
     | "textShow"
     | "textHide"
     | "textFont"
-    | "layerCreate"
-    | "layerDepth"
-    | "layerZIndex"
     | "videoHide"
     | "videoPlay"
     | "nvl"
@@ -231,13 +228,6 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
             return { ...base, kind: "action", payload: { action: "text", operation: "hide", objectName: "text", transform: { to: { opacity: 0 }, durationMs: 250 } } };
         case "textFont":
             return { ...base, kind: "action", payload: { action: "text", operation: "setFontSize", objectName: "text", fontSize: 32 } };
-        case "layerCreate":
-            return { ...base, kind: "action", payload: { action: "layer", operation: "create", objectName: "layer", zIndex: 1 } };
-        case "layerDepth":
-            // The scene's built-in background layer - the only layer whose depth is not on a `create` row.
-            return { ...base, kind: "action", payload: { action: "layer", operation: "setDepth", objectName: "", target: { kind: "default", layer: "background" }, depth: "mid" } };
-        case "layerZIndex":
-            return { ...base, kind: "action", payload: { action: "layer", operation: "setZIndex", objectName: "", target: { kind: "default", layer: "displayable" }, zIndex: 1 } };
         case "videoHide":
             return { ...base, kind: "action", payload: { action: "video", operation: "hide", objectName: "video" } };
         case "videoPlay":

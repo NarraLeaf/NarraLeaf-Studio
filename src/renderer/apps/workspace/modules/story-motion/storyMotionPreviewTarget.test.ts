@@ -258,7 +258,8 @@ describe("resolved target name matches the stage name the compiler registers", (
         // "object" on both sides - not the display word "Image" / "Text" / "Layer".
         expect(resolvedNameFor({ action: "image", operation: "create", objectName: "" }, "Image")).toBe("object");
         expect(resolvedNameFor({ action: "text", operation: "create", objectName: "  ", text: "hi" }, "Text")).toBe("object");
-        expect(resolvedNameFor({ action: "layer", operation: "create", objectName: "" }, "Layer")).toBe("object");
+        const scene = { ...documentWith({}, []).scenes["scene-1"], layers: [{ kind: "custom" as const, id: "unnamed", name: "" }] };
+        expect(resolveDisplayableTargetRef(scene, { name: "Layer", sourceBlockId: "unnamed" }).name).toBe("object");
     });
 });
 
