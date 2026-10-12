@@ -1,7 +1,8 @@
 import type { BlueprintGraphEditorDiagnostic } from "@/lib/workspace/services/ui-editor/blueprint/graphValidation";
 import { useTranslation } from "@/lib/i18n";
-import { resolveLintMessageParams, type LintReportEntry, type LintSeverity } from "@/lib/lint";
+import { LINT_SEVERITY_ORDER, resolveLintMessageParams, type LintReportEntry, type LintSeverity } from "@/lib/lint";
 import { lintRuleTitleKey, lintSeverityLabelKey } from "../../lint/lintReportModel";
+import { LINT_SEVERITY_TEXT_CLASS } from "../../lint/severityStyle";
 
 type Props = {
     diagnostics: BlueprintGraphEditorDiagnostic[];
@@ -18,14 +19,6 @@ type Props = {
     onPickProblem?: (entry: LintReportEntry) => void;
 };
 
-const SEVERITY_TEXT_CLASS: Record<LintSeverity, string> = {
-    error: "text-danger",
-    warning: "text-warning",
-    info: "text-primary",
-};
-
-const SEVERITY_ORDER: Record<LintSeverity, number> = { error: 0, warning: 1, info: 2 };
-
 export function BlueprintDiagnosticsPanel({ diagnostics, onPick, problems = [], onPickProblem }: Props) {
     const { t, tn } = useTranslation();
     const flaggedNodes = new Set(
@@ -34,7 +27,7 @@ export function BlueprintDiagnosticsPanel({ diagnostics, onPick, problems = [], 
     const checks = problems
         .filter(entry => !(entry.location.kind === "blueprint" && entry.location.nodeId && flaggedNodes.has(entry.location.nodeId)))
         .slice()
-        .sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
+        .sort((a, b) => LINT_SEVERITY_ORDER[a.severity] - LINT_SEVERITY_ORDER[b.severity]);
 
     const errors = diagnostics.filter(d => d.severity === "error");
     const warnings = diagnostics.filter(d => d.severity === "warning");
@@ -56,7 +49,7 @@ export function BlueprintDiagnosticsPanel({ diagnostics, onPick, problems = [], 
         // tools which rule spoke, and nothing an author reads.
         const body = (
             <>
-                <span className={SEVERITY_TEXT_CLASS[d.severity]}>{t(lintSeverityLabelKey(d.severity))}</span>
+                <span className={LINT_SEVERITY_TEXT_CLASS[d.severity]}>{t(lintSeverityLabelKey(d.severity))}</span>
                 <span className="flex-1 text-fg-muted">{d.message}</span>
             </>
         );
@@ -79,7 +72,7 @@ export function BlueprintDiagnosticsPanel({ diagnostics, onPick, problems = [], 
     const CheckRow = ({ entry }: { entry: LintReportEntry }) => {
         const body = (
             <>
-                <span className={SEVERITY_TEXT_CLASS[entry.severity]}>{t(lintSeverityLabelKey(entry.severity))}</span>
+                <span className={LINT_SEVERITY_TEXT_CLASS[entry.severity]}>{t(lintSeverityLabelKey(entry.severity))}</span>
                 <span className="flex-1 text-fg-muted">{t(entry.messageKey, resolveLintMessageParams(entry, t, tn))}</span>
                 <span className="text-2xs text-fg-subtle">{t(lintRuleTitleKey(entry.ruleId))}</span>
             </>
@@ -108,6 +101,7 @@ export function BlueprintDiagnosticsPanel({ diagnostics, onPick, problems = [], 
                 {t("lint.report.counts", {
                     errors: tn("common.count.errors", count("error")),
                     warnings: tn("common.count.warnings", count("warning")),
+                    minorWarnings: tn("common.count.minorWarnings", count("minor")),
                     infos: tn("common.count.infos", count("info")),
                 })}
             </p>

@@ -61,9 +61,10 @@ Call `agent_status`. It reports the open projects, whether write access is on, w
 paused, and the directories you may import files from.
 
 - **No answer at all / tools missing** - the MCP server is not connected. Tell the author: open
-  NarraLeaf Studio, *Settings -> Agent access*, switch on agent access, copy the configuration for
-  their agent, and reconnect (the README next to this skill folder has every agent's recipe).
-- **Writes off** - tell the author: *Settings -> Agent access -> allow agents to make changes*.
+  NarraLeaf Studio, *Settings -> Agent access*, switch on *Allow agents to connect*, use *Copy
+  connection configuration* for their agent, and reconnect (the README next to this skill folder has
+  every agent's recipe).
+- **Writes off** - tell the author: *Settings -> Agent access -> Allow agents to change projects*.
 - **Paused** - the author paused you from the status bar. Wait for them to resume.
 - **Import directories** - files outside the project and the listed directories are not refused at
   once: Studio asks the author to allow their folder in a dialog. For a big import, call

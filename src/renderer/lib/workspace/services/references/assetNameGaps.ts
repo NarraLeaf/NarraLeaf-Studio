@@ -93,6 +93,7 @@ import {
 } from "@shared/types/blueprint/graph";
 import type { BlueprintAssetPinKind, BlueprintAssetPinRef } from "@shared/types/blueprint/valueTypes";
 import { hasScriptLayer } from "@shared/blueprint/blueprintLayers";
+import { splitJsonPath } from "@shared/blueprint/jsonPath";
 import { anchorElementId, anchorSurfaceId } from "@shared/blueprint/ownerShape";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
@@ -1476,17 +1477,31 @@ class AssetNameWalk {
                 return [fieldOf("value")];
             case BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH:
                 return pinId === "item" ? [fieldOf("items")] : null;
-            case BLUEPRINT_NODE_TYPE_DATA_JSON_SET:
+            case BLUEPRINT_NODE_TYPE_DATA_JSON_SET: {
+                const path = literal("path");
+                if (path === null) {
+                    return [wholeOf("value"), fieldOf("json")];
+                }
+                // Read the way the node reads it (`splitJsonPath`): `.screenshot` is `screenshot`, and
+                // a path with no segment left replaces the whole value - the result IS `value`, so
+                // field F of it is field F of `value`, and nothing of `json` survives.
+                const segments = splitJsonPath(path);
+                if (segments.length === 0) {
+                    return [fieldOf("value")];
+                }
+                if (segments[0] !== field) {
+                    return [fieldOf("json")];
+                }
+                // Field F set whole, or written somewhere inside the F that `json` already had.
+                return segments.length === 1 ? [wholeOf("value")] : [wholeOf("value"), fieldOf("json")];
+            }
             case BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_SET_FIELD: {
-                const objectPin = node.type === BLUEPRINT_NODE_TYPE_DATA_JSON_SET ? "json" : "object";
-                const path = literal(node.type === BLUEPRINT_NODE_TYPE_DATA_JSON_SET ? "path" : "field");
-                if (path === field) {
+                // One key, taken whole - no path, no dots - and an empty one sets nothing.
+                const key = literal("field");
+                if (key === field) {
                     return [wholeOf("value")];
                 }
-                if (path !== null && !path.startsWith(`${field}.`)) {
-                    return [fieldOf(objectPin)];
-                }
-                return [wholeOf("value"), fieldOf(objectPin)];
+                return key === null ? [wholeOf("value"), fieldOf("object")] : [fieldOf("object")];
             }
             default:
                 break;

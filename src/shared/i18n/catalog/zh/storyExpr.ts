@@ -25,6 +25,11 @@ export const storyExpr = {
         duplicateVariable: "该作用域下已存在同名变量",
         compoundWithoutTarget: "此处没有可供累加的变量",
     },
+    assetType: {
+        image: "图片",
+        audio: "音频",
+        video: "视频",
+    },
     reason: {
         unknownCommand: "不存在 /{token} 命令",
         unknownCommandNear: "不存在 /{token} 命令，最接近的是 /{suggestion}",
@@ -33,8 +38,8 @@ export const storyExpr = {
         extraPositional: "「{value}」多出了一个参数",
         badValue: "「{value}」不适用于此位置",
         unterminatedQuote: "引号没有闭合",
-        unknownAsset: "没有名为「{value}」的 {assetType} 资产",
-        unknownAssetOrSet: "没有名为「{value}」的 {assetType} 资产或资产集",
+        unknownAsset: "没有名为「{value}」的{assetType}资产",
+        unknownAssetOrSet: "没有名为「{value}」的{assetType}资产或资产集",
         unknownCharacter: "没有名为「{value}」的角色",
         unknownScene: "没有名为「{value}」的场景",
         unknownAudioTrack: "没有名为「{value}」的音轨",

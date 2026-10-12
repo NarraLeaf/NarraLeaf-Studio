@@ -127,21 +127,19 @@ describe("runtime font faces", () => {
         expect(face.source).toBeInstanceOf(ArrayBuffer);
     });
 
-    it("publishes the face as a stylesheet rule as well, so the engine's picture of the stage is set in it", async () => {
-        // The engine's stage capture reads `@font-face` rules out of the document's style sheets and
-        // nothing else; a face only in `document.fonts` left every save thumbnail in the fallback face.
-        const written: string[] = [];
-        const sheet = {
-            setAttribute: () => undefined,
-            appendChild: (node: { text: string }) => written.push(node.text),
-        };
+    it("puts the face on the document for drawing and writes no stylesheet rule a stage capture would embed", async () => {
+        // The engine's stage capture (html-to-image) embeds the font of every `@font-face` rule in the
+        // document's style sheets into every capture it takes - hundreds of milliseconds per capture
+        // and native memory that was never released. A face on `document.fonts` alone it leaves out.
+        const createElement = vi.fn();
+        const createObjectURL = vi.fn(() => "blob:nlgame://runtime/1");
         vi.stubGlobal("document", {
             fonts: { add: (face: unknown) => added.push(face) },
-            head: { querySelector: () => null, appendChild: () => undefined },
-            createElement: () => sheet,
-            createTextNode: (text: string) => ({ text }),
+            head: { querySelector: () => null, appendChild: vi.fn() },
+            createElement,
+            createTextNode: vi.fn(),
         });
-        vi.stubGlobal("URL", { createObjectURL: () => "blob:nlgame://runtime/1" });
+        vi.stubGlobal("URL", { createObjectURL });
 
         const load = loadRuntimeFontFace("body", "nlgame://asset/body");
         await vi.waitFor(() => expect(resolveLoads).toHaveLength(1));
@@ -149,9 +147,8 @@ describe("runtime font faces", () => {
         await load;
 
         expect(added).toHaveLength(1);
-        expect(written).toHaveLength(1);
-        expect(written[0]).toContain(`font-family: "${runtimeFontCssFamily("body")}"`);
-        expect(written[0]).toContain('src: url("blob:nlgame://runtime/1")');
+        expect(createElement).not.toHaveBeenCalled();
+        expect(createObjectURL).not.toHaveBeenCalled();
     });
 
     it("says in the game's log once when a font's bytes cannot be read, and draws nothing from it", async () => {

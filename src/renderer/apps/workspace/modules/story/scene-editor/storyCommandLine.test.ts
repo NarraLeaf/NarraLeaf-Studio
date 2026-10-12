@@ -1221,7 +1221,7 @@ describe("pixel offsets beside a position", () => {
 
     it("takes the offsets in the command language too", () => {
         i18nStore.setLocale("zh");
-        expect(build("/transform hero pos=0.5,0.5 横向偏移=40 纵向偏移=-12").payload)
+        expect(build("/transform hero pos=0.5,0.5 横向偏移像素=40 纵向偏移像素=-12").payload)
             .toEqual(build("/transform hero pos=0.5,0.5 xoffset=40 yoffset=-12").payload);
         expect(build(project("/show Alice pos=0.25,0.5 xoffset=-40")).payload)
             .toEqual(build("/show Alice pos=0.25,0.5 xoffset=-40").payload);

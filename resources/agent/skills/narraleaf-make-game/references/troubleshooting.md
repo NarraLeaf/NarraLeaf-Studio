@@ -11,7 +11,7 @@ traps that do not produce a refusal at all.
 | `invalid_args` | The arguments do not fit the tool's schema | Re-read the tool's input schema; fix names and types |
 | `unknown_tool` | No tool by that name | Names use underscores (`story_apply`, not `story.apply`); list tools again |
 | `no_workspace` | No Studio window has a project open, or several do and you did not say which | `agent_status`; open one with `project_open`, or pass `project` (the project's absolute path) |
-| `writes_disabled` | The author has not allowed changes | Ask them: *Settings -> Agent access -> allow agents to make changes*. Keep reading and planning meanwhile |
+| `writes_disabled` | The author has not allowed changes | Ask them: *Settings -> Agent access -> Allow agents to change projects*. Keep reading and planning meanwhile |
 | `paused` | The author paused you from the status bar | Stop. Tell them where you are; continue when they resume |
 | `frozen` | The project is busy (version control, recovery, reload) | Wait a moment and retry once; if it persists, ask the author |
 | `live_session` | A Team live session is running | Writes would race the room; ask the author to end the session or to write themselves |

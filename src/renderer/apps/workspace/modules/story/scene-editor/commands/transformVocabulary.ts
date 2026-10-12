@@ -1,6 +1,7 @@
 import type {
     StoryAlignPositionValue,
     StoryFilterFunction,
+    StoryScene,
     StoryFilterProps,
     StoryTransformProps,
     StoryTransformRef,
@@ -369,6 +370,10 @@ export function parsePositionValue(raw: string | undefined): StoryAlignPositionV
  * start of a slide-in - so the bound is not the stage itself. It is "too far for any picture to be
  * partly on screen or about to be": a pair beyond it is pixels typed where shares belong
  * (`pos=100,200`), which the engine would read as a hundred stage widths to the right.
+ *
+ * The one bound for every surface that writes a share: the command line refuses a pair beyond it,
+ * and the inspector's share fields are held to it ({@link clampToAlignReach}), so neither can store
+ * a position the other will not take.
  */
 export const ALIGN_REACH = { min: -1, max: 2 } as const;
 
@@ -379,6 +384,62 @@ export function positionBeyondReach(position: StoryAlignPositionValue | null | u
     }
     return [position.xalign, position.yalign].some(value =>
         value !== undefined && (value < ALIGN_REACH.min || value > ALIGN_REACH.max));
+}
+
+/** Whether a line may state `position`: within {@link ALIGN_REACH}, or a far pair the scene already stores. */
+export function withinReachOrStored(position: StoryAlignPositionValue, storedFar: readonly string[] | undefined): boolean {
+    return !positionBeyondReach(position) || Boolean(storedFar?.includes(alignPairKey(position) ?? ""));
+}
+
+/** A share held to {@link ALIGN_REACH} - what an inspector field stores for whatever was typed in it. */
+export function clampToAlignReach(value: number): number {
+    return Math.min(ALIGN_REACH.max, Math.max(ALIGN_REACH.min, value));
+}
+
+/** A pair as its line prints it (`3,0.5`), or null for a half-stated one, which prints no pair. */
+export function alignPairKey(position: StoryAlignPositionValue): string | null {
+    const xalign = numberWord(position.xalign);
+    const yalign = numberWord(position.yalign);
+    return xalign === undefined || yalign === undefined ? null : `${xalign},${yalign}`;
+}
+
+/**
+ * The pairs beyond {@link ALIGN_REACH} that rows of `scene` already store, as {@link alignPairKey}
+ * prints them - the ones {@link positionIssues} lets a line state again.
+ *
+ * Such a row was written before the command line held pairs to the reach, or through a surface that
+ * did not (the inspector's share fields, until they were held to it too). Its pair is the author's
+ * own, not pixels typed by mistake, and refusing it meant the row's own printed line could not be
+ * committed again - an edit to its duration was refused for a position it already had - and the
+ * story file wrote the row as an opaque `»` line. So a pair the scene already holds reads back; a
+ * new far-out pair is still refused. Read off every row payload, wherever its position sits.
+ */
+export function storedFarPositions(scene: StoryScene | null | undefined): string[] {
+    const found = new Set<string>();
+    const visit = (value: unknown, depth: number): void => {
+        if (depth > 12 || value === null || typeof value !== "object") {
+            return;
+        }
+        if (Array.isArray(value)) {
+            value.forEach(item => visit(item, depth + 1));
+            return;
+        }
+        const record = value as Record<string, unknown>;
+        if (typeof record.xalign === "number" && typeof record.yalign === "number") {
+            const position = record as StoryAlignPositionValue;
+            const key = positionBeyondReach(position) ? alignPairKey(position) : null;
+            if (key) {
+                found.add(key);
+            }
+        }
+        for (const child of Object.values(record)) {
+            visit(child, depth + 1);
+        }
+    };
+    for (const block of Object.values(scene?.blocks ?? {})) {
+        visit(block, 0);
+    }
+    return [...found];
 }
 
 /** The position a `pos=` arg states, whichever of its two branches the value took. */
@@ -442,9 +503,10 @@ export function positionIssues(args: TransformArgs, ctx: StoryCommandValidateCon
         const position = parsePositionValue(args.pos.value);
         if (position === null) {
             issues.push({ code: "unsupportedOption", span: posSpan, value: args.pos.value, allowed: ["left", "center", "right", "x,y"] });
-        } else if (positionBeyondReach(position)) {
+        } else if (!withinReachOrStored(position, ctx.context.storedFarPositions)) {
             // Shares, not pixels: `pos=100,200` parses, and would send the object a hundred stage
-            // widths off to the right. Refused rather than stored, since no picture is visible there.
+            // widths off to the right. Refused rather than stored, since no picture is visible there -
+            // unless a row of this scene already stores that pair (see `storedFarPositions`).
             issues.push({ code: "positionOutOfRange", span: posSpan, value: args.pos.value });
         }
     }
@@ -644,7 +706,11 @@ export function transformPropsFromArgs(args: TransformArgs): StoryTransformProps
  * set that needs no project lookup (numbers and the three placement words), which is why this can be
  * a plain re-parse rather than a second pass through resolution.
  */
-export function parseFromProps(source: string | undefined): { props: StoryTransformProps; badKeys: readonly string[] } {
+export function parseFromProps(
+    source: string | undefined,
+    /** Far-out pairs the scene already stores, which read back like any other (see `storedFarPositions`). */
+    storedFar: readonly string[] = [],
+): { props: StoryTransformProps; badKeys: readonly string[] } {
     const props: StoryTransformProps = {};
     const badKeys: string[] = [];
     // Held until the list is read: an offset shifts the pair, and the pair may come after it.
@@ -664,7 +730,7 @@ export function parseFromProps(source: string | undefined): { props: StoryTransf
         }
         if (key === "pos" || key === "at" || key === "pan") {
             const position = parsePositionValue(raw);
-            position && !positionBeyondReach(position) ? (props.position = position) : badKeys.push(entry);
+            position && withinReachOrStored(position, storedFar) ? (props.position = position) : badKeys.push(entry);
             continue;
         }
         if (!Number.isFinite(amount)) {
@@ -698,7 +764,7 @@ export function parseFromProps(source: string | undefined): { props: StoryTransf
 }
 
 /** The timing half of the ref: everything that is about WHEN rather than about where it ends up. */
-export function transformTimingFromArgs(args: TransformArgs): Partial<StoryTransformRef> {
+export function transformTimingFromArgs(args: TransformArgs, storedFar: readonly string[] = []): Partial<StoryTransformRef> {
     const ref: Partial<StoryTransformRef> = {};
     const durationMs = asDurationMs(args.d);
     if (durationMs !== undefined) {
@@ -724,7 +790,7 @@ export function transformTimingFromArgs(args: TransformArgs): Partial<StoryTrans
     if (repeatType !== undefined && (STORY_TRANSFORM_REPEAT_TYPES as readonly string[]).includes(repeatType)) {
         ref.repeatType = repeatType as StoryTransformRepeatType;
     }
-    const from = parseFromProps(asText(args.from)).props;
+    const from = parseFromProps(asText(args.from), storedFar).props;
     if (Object.keys(from).length > 0) {
         ref.from = from;
     }

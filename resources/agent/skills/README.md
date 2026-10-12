@@ -23,8 +23,11 @@ writes, the interface conventions it keeps and the traps to avoid.
 - **A whole game, not a demo.** From a brief, a script and a folder of art to a game that builds:
   project, assets, characters, branching story, a restyled interface, translations, voice, gallery,
   verification and packaging.
-- **Watched, not hidden.** Every edit lands live in the Studio you have open and is one undo step.
-  The status bar shows what the agent is editing, and you can pause it at any moment.
+- **Watched, not hidden.** Every edit lands live in the Studio you have open, and most edits are one
+  undo step. The few that are not (project settings, the palette, renaming a scene, choosing the
+  entry scene, importing or generating assets) have no undo in Studio's own editors either;
+  `narraleaf-make-game/SKILL.md` lists them by tool. The status bar shows what the agent is editing,
+  and you can pause it at any moment.
 - **Any agent.** The guide is plain Markdown with an open `SKILL.md` format, and Studio's server also
   serves it to agents that have no skill support at all.
 - **Ready-made connections.** Settings for Claude Code, Claude Desktop, opencode, Codex, Cursor and
@@ -35,6 +38,11 @@ writes, the interface conventions it keeps and the traps to avoid.
 
 > **Ren'Py porting is still being tested and is not stable yet.** Expect gaps and differences from the
 > original game, and check the result yourself before you rely on it.
+>
+> **A Ren'Py game is a program.** To trace its interface the porting skill runs the game, and a game
+> runs with your permissions on your computer. Port only games you made or trust. The skill tells the
+> agent to ask you before it runs the game or downloads or installs any tool (the Ren'Py SDK, an
+> unpacker, ffmpeg), and never to switch off a security protection to get something to run.
 
 ```
 NarraLeaf-Skills/
@@ -50,28 +58,34 @@ NarraLeaf-Skills/
 ### 1. Switch on agent access in Studio
 
 1. Open NarraLeaf Studio.
-2. **Settings -> Agent access** (also in the menu bar's *Agent* menu): switch on agent access.
+2. **Settings -> Agent access**: switch on **Allow agents to connect** (or *Enable agent access* in
+   the menu bar's *Agent* menu).
 3. Switch on **Allow agents to change projects** when you want the agent to edit (it can read without).
 4. Optional: under **Folders agents may import from**, add the folder that holds your art and audio.
    You can skip this - when the agent needs a folder outside the project, Studio asks you in a window
-   and adds it to the list when you allow it. **Full access** lets the agent change projects and read
-   any folder without asking (Studio's own folders stay closed); leave it off unless you want that.
-5. **Copy configuration** gives you the address (`http://127.0.0.1:<PORT>/mcp`, usually port 47219)
-   and the access token, already filled into the settings for the agent you pick. If another program
-   holds that port, Studio moves to a nearby one, keeps it from then on and says so on the settings
-   page; copy the configuration again for agents you set up before.
+   and adds it to the list when you allow it. **Allow agents full access** lets the agent change
+   projects and read any folder without asking (Studio's own folders stay closed); leave it off unless
+   you want that.
+5. Under **Agent application**, pick your agent (Claude Code, Claude Desktop, Codex, opencode, Gemini
+   CLI, Cursor or Other): Studio shows its connection configuration - the address
+   (`http://127.0.0.1:<PORT>/mcp`, usually port 47219) and the access token, already filled in - with
+   a copy button, says where it goes, and installs this skill for it. The *Agent* menu's **Copy
+   connection configuration** offers the same configurations. If another program holds that port,
+   Studio moves to a nearby one, keeps it from then on and says so on the settings page; copy the
+   configuration again for agents you set up before.
 
 The server listens only on your own computer (127.0.0.1) and refuses any request without the token.
 Treat the token like a password; you can regenerate it in the same settings page.
 
 While the agent works, Studio's status bar shows what it is editing; **Pause agent** there stops it
-at once, and **Ctrl+Z** (Cmd+Z) undoes its last edit like any of yours.
+at once, and **Ctrl+Z** (Cmd+Z) undoes its last edit like any of yours (apart from the few kinds of
+edit listed under *Features* that have no undo).
 
 ### 2. Connect your agent
 
-Replace `<PORT>` and `<TOKEN>` with the values from *Copy configuration*. The files in `mcp-configs/`
-hold the same settings. Fill them in a copy outside this folder, or name the copy `*.local.json`
-(`.local.toml`, `.local.sh`) so git ignores it - never commit a real token.
+Replace `<PORT>` and `<TOKEN>` with the values from the copied connection configuration. The files in
+`mcp-configs/` hold the same settings. Fill them in a copy outside this folder, or name the copy
+`*.local.json` (`.local.toml`, `.local.sh`) so git ignores it - never commit a real token.
 
 #### Claude Code
 
@@ -99,10 +113,11 @@ may change anything at all.
 
 Claude Desktop's configuration file starts local programs, and Studio can be that program: started
 with `--mcp-stdio`, it opens no window and forwards the connection to the Studio you have open
-(starting Studio first if it is not running). In Studio, *Copy configuration -> stdio* gives the
-entry with the path to Studio filled in; merge it, or `mcp-configs/claude-desktop.json` with
-`<STUDIO_EXECUTABLE>` replaced, into `claude_desktop_config.json` (*Settings -> Developer -> Edit
-Config*) and restart Claude Desktop. The path is the program itself, for example
+(starting Studio first if it is not running). In Studio, *Copy connection configuration -> Claude
+Desktop* gives the entry with the path to Studio filled in; merge it, or
+`mcp-configs/claude-desktop.json` with `<STUDIO_EXECUTABLE>` replaced, into
+`claude_desktop_config.json` (*Settings -> Developer -> Edit Config*) and restart Claude Desktop.
+The path is the program itself, for example
 `/Applications/NarraLeaf Studio.app/Contents/MacOS/NarraLeaf Studio` on macOS. No token goes into
 this entry: the bridge reads it from Studio's settings.
 
@@ -136,13 +151,25 @@ in your working folder). The `context.fileName` entry makes Gemini read `AGENTS.
 
 Streamable HTTP transport, URL `http://127.0.0.1:<PORT>/mcp`, header
 `Authorization: Bearer <TOKEN>`. For a client that only starts local (stdio) programs, run Studio
-itself with `--mcp-stdio` (*Copy configuration -> stdio*), or a bridge such as `mcp-remote`, as in the
-Claude Desktop example.
+itself with `--mcp-stdio` (*Copy connection configuration -> Claude Desktop* gives that entry), or a
+bridge such as `mcp-remote`, as in the Claude Desktop example.
 
 ### 3. Give your agent the skill
 
 The skill is the folder `narraleaf-make-game/`. `narraleaf-port-renpy/` is the Ren'Py porting skill; it
 relies on `narraleaf-make-game`, so install both if you are porting a Ren'Py game.
+
+The porting skill reads the game's source and runs the game on your computer, so it is meant for an
+agent that works in your folders and terminal (Claude Code, Codex, opencode, Cursor, Gemini CLI).
+Where each skill is available:
+
+- **Both skills:** `npx skills`, a copy by hand, and Studio's own copies into a skill folder - *Install
+  skill* in Studio's first-run setup, and *Agent -> Export Agent Skill...*, which writes this whole
+  folder.
+- **`narraleaf-make-game` only:** the zip Studio's first-run setup saves for Claude Desktop, and the
+  guide Studio's MCP server serves (`make_game`, `agent_guide`, `narraleaf://guide/...`). To give
+  Claude Desktop or claude.ai the porting skill as well, zip `narraleaf-port-renpy/` yourself and
+  upload it as a second skill.
 
 #### With npx
 
@@ -172,7 +199,7 @@ Copy the whole folder (not just `SKILL.md`) to where your agent looks for skills
 |---|---|---|
 | Claude Code | `~/.claude/skills/narraleaf-make-game/` | `.claude/skills/narraleaf-make-game/` |
 | Codex, opencode, Cursor, Gemini CLI | `~/.agents/skills/narraleaf-make-game/` | `.agents/skills/narraleaf-make-game/` |
-| Claude Desktop / claude.ai | zip the folder and upload it under *Settings -> Capabilities -> Skills* | - |
+| Claude Desktop / claude.ai | zip the folder (one zip per skill) and upload it under *Settings -> Capabilities -> Skills* | - |
 
 `~/.agents/skills/` is the one folder all four of those agents read; some also have a folder of their
 own (`~/.config/opencode/skills/`, `~/.cursor/skills/`, `~/.gemini/skills/`). Cursor and opencode read
@@ -182,8 +209,8 @@ own (`~/.config/opencode/skills/`, `~/.cursor/skills/`, `~/.gemini/skills/`). Cu
 Agents that read `AGENTS.md` (opencode, Codex, Cursor, Gemini CLI with the setting above, and many
 others) then find the pointer to the skill on their own.
 
-**Even without any of that, the agent still gets the guide**, because Studio's MCP server serves it
-itself:
+**Even without any of that, the agent still gets the game-making guide**, because Studio's MCP server
+serves it itself (the Ren'Py porting skill is not served this way):
 
 - the **`make_game` prompt** - in clients that show MCP prompts (often as a slash command such as
   `/make_game`, or `/mcp__narraleaf__make_game` in Claude Code), it starts the whole workflow;

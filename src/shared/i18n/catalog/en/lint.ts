@@ -1544,6 +1544,8 @@ export const lint = {
     severity: {
         error: "Error",
         warning: "Warning",
+        // A problem the project never stops a build on and never counts with the warnings.
+        minor: "Minor warning",
         info: "Info",
         off: "Off",
     },
@@ -1553,7 +1555,7 @@ export const lint = {
         running: "Checking…",
         // Each slot is one whole count with its noun, from `common.count.*`, so a count of one
         // reads in the singular.
-        counts: "{errors}, {warnings}, {infos}",
+        counts: "{errors}, {warnings}, {minorWarnings}, {infos}",
         filtered: "{shown} of {total}",
         rerun: "Run again",
         filterAll: "All",
@@ -1591,7 +1593,7 @@ export const lint = {
     },
     // The status bar cell's hover and spoken label. The cell itself shows the two numbers.
     statusBar: {
-        counts: "Problems: {errors}, {warnings}, {infos}",
+        counts: "Problems: {errors}, {warnings}, {minorWarnings}, {infos}",
     },
     command: {
         runProject: "Check project",

@@ -30,6 +30,9 @@ import { readProjectData, type ProjectData } from "./project";
 
 const SKELETON = path.resolve(__dirname, "../../../../resources/templates/skeleton/content");
 
+/** The scene header's lines: a layer is part of the scene, declared in its header rather than by a row. */
+const HEADER = ["#layer overlay"];
+
 /** Rows that put on stage what the examples address by name, as an author would write them. */
 const PRELUDE = [
     "/label intro",
@@ -38,7 +41,6 @@ const PRELUDE = [
     "/show hero",
     "/text name=title Hello",
     "/show title",
-    "/layer overlay",
     "/play intro name=clip wait=false hide=false",
     "/vfx intro name=petals",
     "/show petals",
@@ -113,16 +115,21 @@ const SCAFFOLD_BODY: Record<string, readonly string[]> = {
     choice: ["  - Yes", "    Something happens.", "  - No", "    Nothing happens."],
 };
 
-/** The lines the catalogue prints for a command, each a scene's worth: one per example, one for the sequence. */
-function workedLines(token: string): { label: string; lines: string[] }[] {
+/**
+ * The lines the catalogue prints for a command, each a scene's worth: one per example, one for the
+ * sequence, and one for the scene header a command that is not a row writes instead (`/layer`), which
+ * goes in the header after the prelude's own.
+ */
+function workedLines(token: string): { label: string; header: string[]; lines: string[] }[] {
     const detail = describeCommand(token);
     if (!detail) {
         return [];
     }
     const body = detail.scaffold ? SCAFFOLD_BODY[detail.scaffold] ?? [] : [];
     return [
-        ...detail.examples.map(example => ({ label: example, lines: [example, ...body] })),
-        ...(detail.sequence ? [{ label: detail.sequence.lines.join(" | "), lines: [...detail.sequence.lines] }] : []),
+        ...detail.examples.map(example => ({ label: example, header: [], lines: [example, ...body] })),
+        ...(detail.sequence ? [{ label: detail.sequence.lines.join(" | "), header: [], lines: [...detail.sequence.lines] }] : []),
+        ...(detail.header ? [{ label: detail.header.lines.join(" | "), header: [...detail.header.lines], lines: [] }] : []),
     ];
 }
 
@@ -138,16 +145,16 @@ describe("the command catalogue's worked lines", () => {
     });
 
     it("applies the prelude cleanly on its own", async () => {
-        const source = `#nlstory 1\n#scene ${scene.name} ⟦${scene.id}⟧\n\n${PRELUDE.join("\n")}\n`;
+        const source = `#nlstory 1\n#scene ${scene.name} ⟦${scene.id}⟧\n${HEADER.join("\n")}\n\n${PRELUDE.join("\n")}\n`;
         const result = await applyStorySource(source, context, story);
         expect(result.err.concat(result.out).join("\n")).not.toMatch(/\berror\b/i);
         expect(result.exitCode).toBe(0);
     });
 
     for (const spec of listCommandSpecs()) {
-        for (const { label, lines } of workedLines(spec.token)) {
+        for (const { label, header, lines } of workedLines(spec.token)) {
             it(`/${spec.token}: ${label}`, async () => {
-                const source = `#nlstory 1\n#scene ${scene.name} ⟦${scene.id}⟧\n\n${[...PRELUDE, ...lines].join("\n")}\n`;
+                const source = `#nlstory 1\n#scene ${scene.name} ⟦${scene.id}⟧\n${[...HEADER, ...header].join("\n")}\n\n${[...PRELUDE, ...lines].join("\n")}\n`;
                 const result = await applyStorySource(source, context, story);
                 const errors = [
                     ...result.check.fileDiagnostics,

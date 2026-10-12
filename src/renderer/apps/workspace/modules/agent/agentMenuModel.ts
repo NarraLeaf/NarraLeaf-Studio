@@ -1,5 +1,6 @@
 import type { Translator, TranslationKey } from "@shared/i18n";
 import type { AgentCopyConfigKind, AgentQuickState } from "@shared/agent/workspaceAccess";
+import { AGENT_COPY_CONFIGS, type AgentCopyConfigEntry } from "@shared/agent/clients";
 import { Separator, type ActionDefinition, type ActionMenuItem } from "../../registry/types";
 
 /**
@@ -80,17 +81,11 @@ export function agentMenuStatusLine(t: Translator["t"], clientName: string | nul
 
 /**
  * The configurations the copy submenu offers, in its order, with the row label each takes: product
- * names, the same in every language. The stdio bridge is named for the client it is for. The order
- * and the names are the ones the Settings panel's copy buttons use.
+ * names, the same in every language. The stdio bridge is named for the client it is for. One list
+ * with the Settings panel's copy buttons and the application list in setup and Settings, in
+ * `@shared/agent/clients`.
  */
-export const AGENT_MENU_COPY_KINDS: readonly { kind: AgentCopyConfigKind; label: string }[] = [
-    { kind: "claudeCode", label: "Claude Code" },
-    { kind: "stdio", label: "Claude Desktop" },
-    { kind: "codex", label: "Codex" },
-    { kind: "opencode", label: "opencode" },
-    { kind: "gemini", label: "Gemini CLI" },
-    { kind: "json", label: "JSON" },
-];
+export const AGENT_MENU_COPY_KINDS: readonly AgentCopyConfigEntry[] = AGENT_COPY_CONFIGS;
 
 export function agentCopyKindLabel(kind: AgentCopyConfigKind): string {
     return AGENT_MENU_COPY_KINDS.find(item => item.kind === kind)?.label ?? kind;

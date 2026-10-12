@@ -274,8 +274,8 @@ export const lint = {
         },
         storyDeadEnd: {
             title: "无子节点",
-            description: "场景中部分路径跳转离开，仍有路径的末尾没有子节点",
-            message: "该行没有子节点，执行到此处即越过场景末尾",
+            description: "场景中部分路径离开场景，另有路径执行到场景末尾",
+            message: "播放到该行后越过场景末尾",
             help:
                 "该场景的最后一行不会离开场景，播放可能越过场景末尾。离开场景的行包括：不带「返回」的 /jump、"
                 + "/goto、/ending、/quit，以及所运行蓝图中含有「开始游戏」或「退出游戏」"
@@ -1303,6 +1303,7 @@ export const lint = {
     severity: {
         error: "错误",
         warning: "警告",
+        minor: "次要警告",
         info: "提示",
         off: "关闭",
     },
@@ -1310,7 +1311,7 @@ export const lint = {
         title: "问题",
         empty: "未发现问题",
         running: "检查中…",
-        counts: "{errors}，{warnings}，{infos}",
+        counts: "{errors}，{warnings}，{minorWarnings}，{infos}",
         filtered: "显示 {shown} / {total}",
         rerun: "重新检查",
         filterAll: "全部",
@@ -1343,7 +1344,7 @@ export const lint = {
         jumpFailed: "该位置已无法打开",
     },
     statusBar: {
-        counts: "问题：{errors}，{warnings}，{infos}",
+        counts: "问题：{errors}，{warnings}，{minorWarnings}，{infos}",
     },
     command: {
         runProject: "检查项目",

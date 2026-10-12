@@ -1,37 +1,54 @@
 import { describe, expect, it } from "vitest";
 import type { StorySceneLayer } from "@shared/types/story";
-import { layerStackDepths, layerSwayTransform, snapLayerFollow } from "./storyLayerStackModel";
+import { STORY_LAYER_DISTANCE_MAX } from "@shared/types/story";
+import { layerDepthAt, layerDistanceAtDepth, layerStackDepths, layerSwayTransform, roundLayerDistance } from "./storyLayerStackModel";
 
 const stack: StorySceneLayer[] = [
-    { kind: "custom", id: "fog", name: "fog", follow: 1.4 },
+    { kind: "custom", id: "fog", name: "fog", follow: 2 },
     { kind: "displayable" },
     { kind: "custom", id: "street", name: "street" },
-    { kind: "custom", id: "hills", name: "hills", follow: 0.3 },
+    { kind: "custom", id: "hills", name: "hills", follow: 0.25 },
     { kind: "background", follow: 0 },
 ];
 
-describe("layerStackDepths", () => {
-    it("draws each layer at its share less one, and spreads layers at one distance a step apart in stack order", () => {
-        const depths = layerStackDepths(stack, 0.1);
-        expect(depths[0]).toBeCloseTo(0.4);
-        // The characters and the street both follow all of the camera: drawn either side of 0.
-        expect(depths[1]).toBeCloseTo(0.05);
-        expect(depths[2]).toBeCloseTo(-0.05);
-        expect(depths[3]).toBeCloseTo(-0.7);
-        expect(depths[4]).toBeCloseTo(-1);
+describe("layerDepthAt", () => {
+    it("draws the characters at 0, nearer layers in front and farther ones behind", () => {
+        expect(layerDepthAt(1)).toBe(-0);
+        expect(layerDepthAt(0.5)).toBeCloseTo(Math.log(2));
+        expect(layerDepthAt(2)).toBeLessThan(0);
+        expect(layerDepthAt(10)).toBeLessThan(layerDepthAt(2));
+    });
+
+    it("draws a layer that does not move a step behind the farthest one that does", () => {
+        expect(layerDepthAt(Infinity)).toBeLessThan(layerDepthAt(STORY_LAYER_DISTANCE_MAX));
+    });
+
+    it("reads back the distance it draws", () => {
+        for (const distance of [0.5, 0.8, 1, 2, 3.5, 12, 60]) {
+            expect(layerDistanceAtDepth(layerDepthAt(distance))).toBeCloseTo(distance, 6);
+        }
+        expect(layerDistanceAtDepth(layerDepthAt(Infinity))).toBe(Infinity);
     });
 });
 
-describe("snapLayerFollow", () => {
-    it("settles on all of the camera, none of it, or another layer's share when it comes near", () => {
-        expect(snapLayerFollow(stack, "custom:street", 0.98)).toBe(1);
-        expect(snapLayerFollow(stack, "custom:street", 0.02)).toBe(0);
-        expect(snapLayerFollow(stack, "custom:street", 0.32)).toBe(0.3);
-        expect(snapLayerFollow(stack, "custom:street", 0.5)).toBe(0.5);
+describe("layerStackDepths", () => {
+    it("draws the layers of one level on one plane", () => {
+        const depths = layerStackDepths(stack);
+        expect(depths[1]).toBe(depths[2]);
+        expect(depths[0]).toBeGreaterThan(depths[1]);
+        expect(depths[3]).toBeLessThan(depths[2]);
+        expect(depths[4]).toBe(layerDepthAt(Infinity));
     });
+});
 
-    it("does not snap a layer to its own share", () => {
-        expect(snapLayerFollow(stack, "custom:hills", 0.32)).toBe(0.32);
+describe("roundLayerDistance", () => {
+    it("rounds a dragged distance to the step its size reads in", () => {
+        expect(roundLayerDistance(0.734)).toBe(0.75);
+        expect(roundLayerDistance(2.37)).toBe(2.4);
+        expect(roundLayerDistance(6.8)).toBe(7);
+        expect(roundLayerDistance(17.4)).toBe(17);
+        expect(roundLayerDistance(43)).toBe(45);
+        expect(roundLayerDistance(Infinity)).toBe(Infinity);
     });
 });
 

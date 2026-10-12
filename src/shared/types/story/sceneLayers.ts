@@ -7,12 +7,41 @@ import { normalizeStageObjectName } from "./displayableTarget";
  */
 export const STORY_LAYER_FOLLOW_MAX = 2;
 
+/**
+ * A layer's distance from the camera is counted in the characters' distance, which is 1: a layer at 2
+ * is twice as far and follows half of the camera's movement. The nearest a layer may be is the one
+ * that follows the most a layer may; the farthest, short of a layer that does not move at all
+ * (`Infinity`), is where a pan no longer moves it by a pixel worth seeing.
+ */
+export const STORY_LAYER_DISTANCE_MIN = 1 / STORY_LAYER_FOLLOW_MAX;
+export const STORY_LAYER_DISTANCE_MAX = 100;
+
 type CustomSceneLayer = Extract<StorySceneLayer, { kind: "custom" }>;
 
-/** A share of the camera's movement as the document keeps it: within range, to the hundredth. */
+/**
+ * A share of the camera's movement as the document keeps it: within range, to four places - fine
+ * enough that a distance typed as a whole number reads back as that number.
+ */
 export function clampLayerFollow(value: unknown, min = 0, max = STORY_LAYER_FOLLOW_MAX): number {
     const share = typeof value === "number" && Number.isFinite(value) ? value : 1;
-    return Math.round(Math.min(max, Math.max(min, share)) * 100) / 100;
+    return Math.round(Math.min(max, Math.max(min, share)) * 10000) / 10000;
+}
+
+/** How far away a layer is, in the characters' distance; `Infinity` for a layer that does not move with the camera. */
+export function sceneLayerDistance(layer: StorySceneLayer): number {
+    const follow = sceneLayerFollow(layer);
+    return follow === 0 ? Infinity : 1 / follow;
+}
+
+/** The share of the camera's movement a layer at `distance` follows, as the document keeps it. */
+export function layerFollowAtDistance(distance: number): number {
+    if (Number.isNaN(distance)) {
+        return 1;
+    }
+    if (distance === Infinity) {
+        return 0;
+    }
+    return clampLayerFollow(1 / Math.min(STORY_LAYER_DISTANCE_MAX, Math.max(STORY_LAYER_DISTANCE_MIN, distance)));
 }
 
 /**
@@ -157,6 +186,49 @@ export function sceneLayerZIndex(stack: readonly StorySceneLayer[], index: numbe
     return -1 - (index - background);
 }
 
+/**
+ * The stack's levels: each run of layers at one distance, front to back. `start` and `end` are the
+ * run's indices in the stack, `end` exclusive. Layers at one distance are one plane to the camera, so
+ * the author is shown one level for them, however many layers it holds.
+ */
+export type SceneLayerLevel = { follow: number; start: number; end: number };
+
+export function sceneLayerLevels(stack: readonly StorySceneLayer[]): SceneLayerLevel[] {
+    const levels: SceneLayerLevel[] = [];
+    stack.forEach((layer, index) => {
+        const follow = sceneLayerFollow(layer);
+        const last = levels[levels.length - 1];
+        if (last && last.follow === follow) {
+            last.end = index + 1;
+        } else {
+            levels.push({ follow, start: index, end: index + 1 });
+        }
+    });
+    return levels;
+}
+
+/**
+ * The share for a new level between the level in front (`front`) and the one behind (`behind`), either
+ * absent at an end of the stack, or null when there is no room. Halfway between their distances as the
+ * eye reads distance - 2 and 8 make 4 - and twice as far as the farthest layer that still moves when
+ * nothing behind it moves.
+ */
+export function sceneLayerFollowBetween(front: number | undefined, behind: number | undefined): number | null {
+    let follow: number;
+    if (front === undefined && behind === undefined) {
+        return null;
+    }
+    if (front === undefined) {
+        follow = Math.min(STORY_LAYER_FOLLOW_MAX, (behind as number) * 1.5);
+    } else if (behind === undefined || behind === 0) {
+        follow = front / 2 < 1 / STORY_LAYER_DISTANCE_MAX ? 0 : front / 2;
+    } else {
+        follow = Math.sqrt(front * behind);
+    }
+    const share = clampLayerFollow(follow);
+    return share === front || share === behind ? null : share;
+}
+
 /** The highest and lowest share a layer at `index` may take: no more than the layer in front, no less than the one behind. */
 export function sceneLayerFollowBounds(stack: readonly StorySceneLayer[], index: number): { min: number; max: number } {
     const layer = stack[index];
@@ -181,13 +253,19 @@ export function sceneLayerFollowBounds(stack: readonly StorySceneLayer[], index:
  * characters - it stays behind them.
  */
 export function setSceneLayerFollow(stack: readonly StorySceneLayer[], index: number, follow: number): StorySceneLayer[] {
-    const layer = stack[index];
-    if (!layer || layer.kind === "displayable") {
-        return [...stack];
-    }
-    const share = clampLayerFollow(follow, 0, layer.kind === "background" ? 1 : STORY_LAYER_FOLLOW_MAX);
-    const next = stack.map((entry, at) => (at === index ? withFollow(entry, share) : entry));
-    // Stable, so only the layer that moved changes places.
+    return setSceneLayerFollows(stack, [index], follow);
+}
+
+/**
+ * The stack with several layers at one new share - a whole level moved at once. The characters' layer
+ * among them stays where it is, and the rest go without it.
+ */
+export function setSceneLayerFollows(stack: readonly StorySceneLayer[], indices: readonly number[], follow: number): StorySceneLayer[] {
+    const moving = new Set(indices);
+    const next = stack.map((entry, at) => (moving.has(at) && entry.kind !== "displayable"
+        ? withFollow(entry, clampLayerFollow(follow, 0, entry.kind === "background" ? 1 : STORY_LAYER_FOLLOW_MAX))
+        : entry));
+    // Stable, so only the layers that moved change places.
     return next
         .map((entry, at) => ({ entry, at }))
         .sort((a, b) => sceneLayerFollow(b.entry) - sceneLayerFollow(a.entry) || a.at - b.at)
@@ -204,7 +282,17 @@ export function setSceneLayerFollow(stack: readonly StorySceneLayer[], index: nu
  */
 export function moveSceneLayer(stack: readonly StorySceneLayer[], from: number, to: number): StorySceneLayer[] | null {
     const layer = stack[from];
-    if (!layer || layer.kind === "displayable" || from === to || to < 0 || to >= stack.length) {
+    return layer && from !== to ? placeSceneLayer(stack, from, to, sceneLayerFollow(layer)) : null;
+}
+
+/**
+ * The stack with one layer put at `to` (its index once moved) at `follow`, or null when it cannot go
+ * there. The share is held to what the new place allows, so a layer put inside a level joins it, and
+ * one put between two levels at a share between theirs is a level of its own.
+ */
+export function placeSceneLayer(stack: readonly StorySceneLayer[], from: number, to: number, follow: number): StorySceneLayer[] | null {
+    const layer = stack[from];
+    if (!layer || layer.kind === "displayable" || to < 0 || to >= stack.length) {
         return null;
     }
     const next = stack.filter((_, index) => index !== from);
@@ -213,7 +301,7 @@ export function moveSceneLayer(stack: readonly StorySceneLayer[], from: number, 
         return null;
     }
     const bounds = sceneLayerFollowBounds(next, to);
-    next[to] = withFollow(layer, clampLayerFollow(sceneLayerFollow(layer), bounds.min, bounds.max));
+    next[to] = withFollow(layer, clampLayerFollow(follow, bounds.min, bounds.max));
     return next;
 }
 

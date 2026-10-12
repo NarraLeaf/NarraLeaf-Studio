@@ -534,7 +534,9 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
     {
         id: "variables/unused",
         category: "variables",
-        defaultSeverity: "warning",
+        // A minor warning: nothing in the game reads or sets the variable, so the game is the same
+        // with or without its declaration.
+        defaultSeverity: "minor",
         slug: "variablesUnused",
         run(ctx) {
             const blueprintUses = collectBlueprintVariableUses(ctx.blueprintDocument);

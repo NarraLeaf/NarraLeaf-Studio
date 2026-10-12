@@ -1,10 +1,31 @@
 /**
- * Inline styling in a `.story` line: `{b}…{/b}`, `{i}…{/i}` and `{color=#e04040}…{/color}`.
+ * Inline styling in a `.story` line: `{b}…{/b}`, `{i}…{/i}` and `{color #e04040}…{/color}`.
  *
  * A dialogue, narration or option segment may carry `rich` runs - text with marks the story editor
  * sets (bold, italic, colour, and more). This module spells the three marks above as tags inside
- * the line and reads them back into runs. Tags nest (`{color=#f00}{b}red bold{/b}{/color}`); a close
+ * the line and reads them back into runs. Tags nest (`{color #f00}{b}red bold{/b}{/color}`); a close
  * tag closes the innermost open tag of its own kind.
+ *
+ * ## One spelling with the Script View
+ *
+ * The tags are the Script View's (`narralangDialect.ts`, `NARRALANG_DEFAULT_DIALECT.text`): the
+ * fences, the close sigil and each mark's word come off that table, and a colour is its argument
+ * after a space, quoted the way the Script View quotes one (`narralangTagArgument`) when it holds a
+ * space - `{color "rgb(56, 189, 248)"}`. So one rich-run model has one spelling in both text surfaces.
+ * `{color=#e04040}` is still read - it is what this format printed first, what agents and the public
+ * skill docs were taught, and what Ren'Py writes - but never printed.
+ *
+ * The nesting is this format's own: colour outermost and tags kept open across runs that share them,
+ * so a coloured phrase with a bold word in it is one colour tag, where the Script View wraps every
+ * run on its own. Each reads the other's order.
+ *
+ * What is NOT shared is the reader and printer themselves, because the two formats escape
+ * differently. The Script View escapes every fence character in prose (`\{`, `\}`) and reads a
+ * backslash as "the next character, literally"; a `.story` line escapes only a brace that would start
+ * one of the tags below (`{gold}` stays text, as `{name}` placeholders in a line need it to) and
+ * decodes `\n`, `\r` and `\t` as the rest of the line does (`shapes.ts`). Reading a `.story` line
+ * with the Script View's reader would turn every placeholder into an unknown tag and every escaped
+ * line break into the letter `n`.
  *
  * ## What is spelled, and what stays a `»` row
  *
@@ -18,31 +39,140 @@
  *
  * ## Escaping
  *
- * A `{` that starts one of the tag shapes above is written `\{` when it is meant literally; any other
- * brace is ordinary text. Everything else follows the line's usual escapes (`shapes.ts`), because the
- * spelled line goes through `escapeText` whole: tags are swapped for private-use stand-ins first, so
- * the line-level rules (a leading marker, a leading or trailing space, `: `) apply to the line as it
- * reads rather than to each run.
+ * A `{` that starts one of the tag shapes above (the `{color=…}` alias included) is written `\{` when
+ * it is meant literally; any other brace is ordinary text. Everything else follows the line's usual
+ * escapes (`shapes.ts`), because the spelled line goes through `escapeText` whole: tags are swapped
+ * for private-use stand-ins first, so the line-level rules (a leading marker, a leading or trailing
+ * space, `: `) apply to the line as it reads rather than to each run - and a quoted colour keeps the
+ * Script View's own `\"` and `\\` inside its quotes.
  *
  * Comments in English per project convention.
  */
 
 import type { StoryRichRun, StoryTextMarks, StoryTextSegment } from "@shared/types/story";
+import { NARRALANG_DEFAULT_DIALECT } from "@/lib/story/narralang/narralangDialect";
+import { decodeNarralangEscapes } from "@/lib/story/narralang/narralangLex";
+import { narralangTagArgument } from "@/lib/story/narralang/narralangSyntax";
 import { escapeText } from "./shapes";
 
 /** The marks this format spells. */
 type SpelledMark = "color" | "bold" | "italic";
 
-const TAG_NAME: Record<SpelledMark, string> = { color: "color", bold: "b", italic: "i" };
+const SPELLED_MARKS: readonly SpelledMark[] = ["bold", "italic", "color"];
+
+/** The Script View's rich-text table, which this format spells its tags from. */
+const DIALECT = NARRALANG_DEFAULT_DIALECT;
+const TEXT = DIALECT.text;
+
+/** Each spelled mark's tag word, and whether it takes an argument - read off the dialect's table. */
+const TAG_WORD: Record<SpelledMark, { word: string; argument: boolean }> = (() => {
+    const words = {} as Record<SpelledMark, { word: string; argument: boolean }>;
+    for (const mark of SPELLED_MARKS) {
+        const spec = TEXT.marks.find(entry => entry.mark === mark);
+        if (!spec) {
+            throw new Error(`The Script View dialect has no tag for "${mark}".`);
+        }
+        words[mark] = { word: spec.tag, argument: spec.arg !== undefined };
+    }
+    return words;
+})();
+
+/** The spelling this format read first, `{color=#e04040}`: still read, never printed. */
+const ALIAS_SEPARATOR = "=";
+
+type TagMatch = {
+    /** How many characters of the source the tag spans. */
+    length: number;
+    mark: SpelledMark;
+    close: boolean;
+    /** A colour's value, decoded. Empty when the tag names none, which the reader refuses. */
+    value?: string;
+};
 
 /**
- * A tag at the start of `text`, or null. Colour values are anything up to the closing brace that is
- * not empty and holds no brace or line break - a hex code, a CSS colour name, `rgb(…)`.
+ * A tag at `at` in `text`, or null. The shapes are `{b}`, `{/b}`, `{i}`, `{/i}`, `{/color}`,
+ * `{color VALUE}` - a bare token, or a string quoted the Script View's way - and the alias
+ * `{color=VALUE}`, whose value is anything up to the closing brace without a brace or line break.
+ * A colour tag that names no colour (`{color=}`, `{color ""}`) still matches, so a literal one is
+ * escaped and a typed one is refused by name rather than read as a run with no colour.
  */
-const TAG_PATTERN = /^\{(?:(\/?)(b|i)|(\/)color|color=([^{}\n\r]+?))\}/;
+function matchTag(text: string, at = 0): TagMatch | null {
+    if (!text.startsWith(TEXT.open, at)) {
+        return null;
+    }
+    let index = at + TEXT.open.length;
+    const close = TEXT.closeSigil !== "" && text.startsWith(TEXT.closeSigil, index);
+    if (close) {
+        index += TEXT.closeSigil.length;
+    }
+    for (const mark of SPELLED_MARKS) {
+        const { word, argument } = TAG_WORD[mark];
+        if (!text.startsWith(word, index)) {
+            continue;
+        }
+        const after = index + word.length;
+        if (close || !argument) {
+            if (text.startsWith(TEXT.close, after)) {
+                return { length: after + TEXT.close.length - at, mark, close };
+            }
+            continue;
+        }
+        const read = readArgument(text, after);
+        if (read) {
+            return { length: read.end - at, mark, close: false, value: read.value };
+        }
+    }
+    return null;
+}
+
+/** A colour tag's value from just after its word up to and including the closing fence, or null. */
+function readArgument(text: string, from: number): { value: string; end: number } | null {
+    if (text.startsWith(ALIAS_SEPARATOR, from)) {
+        const match = /^([^{}\n\r]*)\}/.exec(text.slice(from + ALIAS_SEPARATOR.length));
+        return match && TEXT.close === "}"
+            ? { value: match[1].trim(), end: from + ALIAS_SEPARATOR.length + match[0].length }
+            : null;
+    }
+    if (text[from] !== " ") {
+        return null;
+    }
+    let index = from;
+    while (text[index] === " ") {
+        index += 1;
+    }
+    const [quoteOpen, quoteClose] = DIALECT.quote.string;
+    let value: string;
+    if (quoteOpen !== "" && text.startsWith(quoteOpen, index)) {
+        let scan = index + quoteOpen.length;
+        while (scan < text.length && !text.startsWith(quoteClose, scan)) {
+            if (text[scan] === "\n" || text[scan] === "\r") {
+                return null;
+            }
+            scan += text.startsWith(DIALECT.escape, scan) ? DIALECT.escape.length + 1 : 1;
+        }
+        if (scan >= text.length) {
+            return null;
+        }
+        value = decodeNarralangEscapes(text.slice(index + quoteOpen.length, scan), DIALECT);
+        index = scan + quoteClose.length;
+    } else {
+        // A bare token, as `narralangTagArgument` prints one: no space, fence or escape, and not
+        // opening with a quote.
+        const match = /^[^\s{}\\"][^\s{}\\]*/.exec(text.slice(index));
+        if (!match) {
+            return null;
+        }
+        value = match[0];
+        index += match[0].length;
+    }
+    while (text[index] === " ") {
+        index += 1;
+    }
+    return text.startsWith(TEXT.close, index) ? { value, end: index + TEXT.close.length } : null;
+}
 
 export function startsInlineTag(text: string): boolean {
-    return TAG_PATTERN.test(text);
+    return matchTag(text) !== null;
 }
 
 type OpenTag = { mark: SpelledMark; value?: string };
@@ -67,11 +197,13 @@ function sameTag(a: OpenTag, b: OpenTag): boolean {
 }
 
 function openText(tag: OpenTag): string {
-    return tag.mark === "color" ? `{color=${tag.value}}` : `{${TAG_NAME[tag.mark]}}`;
+    const { word, argument } = TAG_WORD[tag.mark];
+    const body = argument ? `${word} ${narralangTagArgument(tag.value ?? "", DIALECT)}` : word;
+    return `${TEXT.open}${body}${TEXT.close}`;
 }
 
 function closeText(tag: OpenTag): string {
-    return `{/${TAG_NAME[tag.mark]}}`;
+    return `${TEXT.open}${TEXT.closeSigil}${TAG_WORD[tag.mark].word}${TEXT.close}`;
 }
 
 /** True when a run's marks are all ones this format spells (and it is a text run). */
@@ -168,7 +300,7 @@ export function spellRichSegment(segment: StoryTextSegment): string | null {
 function escapeLiteralTags(text: string): string {
     let out = "";
     for (let index = 0; index < text.length; index += 1) {
-        if (text[index] === "{" && startsInlineTag(text.slice(index))) {
+        if (matchTag(text, index)) {
             out += LITERAL_BRACE;
             continue;
         }
@@ -231,35 +363,29 @@ export function readInlineMarkup(escaped: string): InlineMarkupResult {
             text += next === "n" ? "\n" : next === "r" ? "\r" : next === "t" ? "\t" : next;
             continue;
         }
-        if (char === "{") {
-            const match = TAG_PATTERN.exec(escaped.slice(index));
-            if (match) {
-                flush();
-                sawTag = true;
-                const [whole, slash, shortName, colorClose, colorValue] = match;
-                if (colorValue !== undefined) {
-                    open.push({ mark: "color", value: colorValue.trim() });
-                } else if (shortName) {
-                    const mark: SpelledMark = shortName === "b" ? "bold" : "italic";
-                    if (slash) {
-                        const at = findLast(open, tag => tag.mark === mark);
-                        if (at < 0) {
-                            return { ok: false, detail: `"{/${shortName}}" closes a {${shortName}} that is not open` };
-                        }
-                        open.splice(at, 1);
-                    } else {
-                        open.push({ mark });
-                    }
-                } else if (colorClose) {
-                    const at = findLast(open, tag => tag.mark === "color");
-                    if (at < 0) {
-                        return { ok: false, detail: "\"{/color}\" closes a {color=…} that is not open" };
-                    }
-                    open.splice(at, 1);
+        const match = matchTag(escaped, index);
+        if (match) {
+            flush();
+            sawTag = true;
+            const source = escaped.slice(index, index + match.length);
+            if (match.close) {
+                const at = findLast(open, tag => tag.mark === match.mark);
+                if (at < 0) {
+                    const word = TAG_WORD[match.mark].word;
+                    const opener = TAG_WORD[match.mark].argument ? `{${word} …}` : `{${word}}`;
+                    return { ok: false, detail: `"${source}" closes a ${opener} that is not open` };
                 }
-                index += whole.length - 1;
-                continue;
+                open.splice(at, 1);
+            } else if (TAG_WORD[match.mark].argument) {
+                if (!match.value) {
+                    return { ok: false, detail: `"${source}" names no colour: write {color #e04040}, or "\\{" for a literal brace` };
+                }
+                open.push({ mark: match.mark, value: match.value });
+            } else {
+                open.push({ mark: match.mark });
             }
+            index += match.length - 1;
+            continue;
         }
         text += char;
     }

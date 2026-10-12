@@ -16,17 +16,30 @@ type Build = (translator: Translator, counts: readonly number[]) => string;
 const SENTENCES: { name: string; build: Build; en: [number[], string][]; zh: [number[], string]; ja: [number[], string] }[] = [
     {
         name: "lint report header",
-        build: ({ t, tn }, [errors, warnings, infos]) => t("lint.report.counts", {
+        build: ({ t, tn }, [errors, warnings, minorWarnings, infos]) => t("lint.report.counts", {
             errors: tn("common.count.errors", errors),
             warnings: tn("common.count.warnings", warnings),
+            minorWarnings: tn("common.count.minorWarnings", minorWarnings),
             infos: tn("common.count.infos", infos),
         }),
         en: [
-            [[1, 1, 1], "1 error, 1 warning, 1 info"],
-            [[2, 0, 3], "2 errors, 0 warnings, 3 info"],
+            [[1, 1, 1, 1], "1 error, 1 warning, 1 minor warning, 1 info"],
+            [[2, 0, 80, 3], "2 errors, 0 warnings, 80 minor warnings, 3 info"],
         ],
-        zh: [[1, 2, 3], "1 个错误，2 个警告，3 个提示"],
-        ja: [[1, 2, 3], "エラー 1 件、警告 2 件、情報 3 件"],
+        zh: [[1, 2, 80, 3], "1 个错误，2 个警告，80 个次要警告，3 个提示"],
+        ja: [[1, 2, 80, 3], "エラー 1 件、警告 2 件、軽微な警告 80 件、情報 3 件"],
+    },
+    {
+        name: "lint status bar hover",
+        build: ({ t, tn }, [errors, warnings, minorWarnings, infos]) => t("lint.statusBar.counts", {
+            errors: tn("common.count.errors", errors),
+            warnings: tn("common.count.warnings", warnings),
+            minorWarnings: tn("common.count.minorWarnings", minorWarnings),
+            infos: tn("common.count.infos", infos),
+        }),
+        en: [[[0, 2, 1, 0], "Problems: 0 errors, 2 warnings, 1 minor warning, 0 info"]],
+        zh: [[0, 2, 80, 0], "问题：0 个错误，2 个警告，80 个次要警告，0 个提示"],
+        ja: [[0, 2, 80, 0], "問題：エラー 0 件、警告 2 件、軽微な警告 80 件、情報 0 件"],
     },
     {
         name: "lint console close",

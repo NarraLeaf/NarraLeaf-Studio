@@ -43,12 +43,17 @@ import {
 
 export type LintGroupMode = "rule" | "location";
 
-/** The severity filter, plus the "show everything" state the three severities cannot express. */
+/** The severity filter, plus the "show everything" state no single severity can express. */
 export type LintSeverityFilter = LintSeverity | "all";
 
 export const LINT_GROUP_MODES: readonly LintGroupMode[] = ["rule", "location"] as const;
 
-export const LINT_SEVERITY_FILTERS: readonly LintSeverityFilter[] = ["all", "error", "warning", "info"] as const;
+/**
+ * The filter's choices, in the order of the severities. Minor warnings have an entry of their own
+ * rather than riding with the warnings: they are left out of every warning count, and a filter that
+ * mixed them back in would answer "warnings" with thousands of rows the count never mentioned.
+ */
+export const LINT_SEVERITY_FILTERS: readonly LintSeverityFilter[] = ["all", "error", "warning", "minor", "info"] as const;
 
 export type LintEntryGroup = {
     /** Stable identity of the group within one grouping mode (rule id, or a location key). */

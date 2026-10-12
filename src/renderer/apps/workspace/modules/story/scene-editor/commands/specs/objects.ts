@@ -129,6 +129,12 @@ export const layer = defineStoryCommand({
     category: "layer",
     icon: Layers,
     examples: ["/layer hills"],
+    header: {
+        note: "Not a row in a file. A scene's layers are header lines, one #layer per layer, nearest first; "
+            + "displayableLayer is the base layer, which holds everything not placed on another layer, at distance 1; distance= is how far away a layer is "
+            + "(below 1 is nearer; 2 is twice as far and moves half as much with the camera; inf does not move).",
+        lines: ["#layer displayableLayer", "#layer hills distance=3", "#layer sky distance=inf"],
+    },
     params: {
         name: { hint: "objectName", type: { kind: "text" }, positional: true, core: true },
     },
@@ -383,7 +389,7 @@ export const front = defineStoryCommand({
         // A layer, a video and an ambience overlay are refused rather than left out, the same way
         // `/transform` refuses the last two: each is on stage under a name the author can see, so a
         // slot that did not resolve them would answer "nothing on stage is named that" about a thing
-        // sitting in plain sight. A layer's own front-to-back is `z=`, which `/layer` already writes.
+        // sitting in plain sight. A layer's own front-to-back is its place in the scene's layers.
         target: targetParam(["image", "text", "character"], { core: true, refuses: ["layer", "video", "vfx"] }),
     },
     build(args, ctx): StoryBlock {

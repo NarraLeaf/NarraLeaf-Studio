@@ -189,6 +189,14 @@ export type StoryCommandSpec<P extends StoryCommandParamsShape = StoryCommandPar
      * scene, so a sequence that stopped working fails the suite.
      */
     sequence?: { readonly note: string; readonly lines: readonly string[] };
+    /**
+     * What a `.story` file writes for a command that changes the scene rather than adding a row
+     * ({@link editScene}): the scene's header lines. A file refuses such a command as a row, so the
+     * command catalogue prints these in place of {@link examples}, which are the command line's. `note`
+     * says why it is not a row; `lines` are a header that does the thing. English, like the examples;
+     * the story CLI's catalogue test applies them as a scene's header.
+     */
+    header?: { readonly note: string; readonly lines: readonly string[] };
 };
 
 /**

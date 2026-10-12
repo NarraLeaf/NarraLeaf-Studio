@@ -259,7 +259,9 @@ Escaping: a backslash before a leading marker, a ": " inside narration, an ancho
 space at either end. "story show" writes these for you.
 
 Inline styling in dialogue, narration and options: {b}bold{/b}, {i}italic{/i} and
-{color=#e04040}coloured{/color}; tags nest and close in the same line. "\\{b}" is a literal brace.
+{color #e04040}coloured{/color} - NarraLang's tags; a colour with a space in it is quoted,
+{color "rgb(224, 64, 64)"}, and {color=#e04040} is read too. Tags nest and close in the same line.
+"\\{b}" is a literal brace.
 Other styling (ruby, size, typing speed, inline pauses) has no spelling: such a line prints as ».
 
 The header is five directives; the footer is the verbatim payloads the » lines stand for:

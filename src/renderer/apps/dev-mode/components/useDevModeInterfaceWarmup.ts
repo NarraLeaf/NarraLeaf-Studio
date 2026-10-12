@@ -52,8 +52,10 @@ const devModeWarmupAccess: Omit<SurfaceWarmupAccess, "onProgress" | "timeoutMs">
  * Without it a page opened during the run - a backlog, a settings page, a gallery with a large
  * backdrop - decoded its pictures on first open, and the page showed its bare background colour (often
  * black) for a second or more first. This is the packaged game's own background pass (a few at a
- * time, nothing waits on it); the decoded pictures are held by the warm-up so the decode is still
- * there when the page opens. Once per session: a hot reload keeps what is already warm.
+ * time, nothing waits on it). As many pictures as the warm-up's hold has room for are decoded and
+ * held, the first screen's first, so the decode is still there when the page opens; the rest are
+ * only fetched (see the hold in `surfaceAssetWarmup`). Once per session: a hot reload keeps what is
+ * already warm.
  */
 function warmRestOfInterface(bundle: DevModeBundle, firstSurfaceId: string, prewarm: () => Promise<void>): void {
     if (backgroundWarmedBundleId === bundle.bundleId) {

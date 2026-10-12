@@ -8,10 +8,19 @@ check it in Studio's running game.** Read `narraleaf-make-game` chapters *interf
 ## 1. Capture references with the Ren'Py SDK
 
 Inferring positions from `screens.rpy` alone fails on exactly the parts that matter (a name plate
-inside a frame inside a window with `gui.*` offsets). Run the game instead:
+inside a frame inside a window with `gui.*` offsets). Run the game instead - with the author's
+agreement:
 
-1. Ask the author where the Ren'Py SDK is installed (or download it from renpy.org with their
-   consent). Any 8.x SDK runs 7.4+/8.x games.
+> **Running the game runs its code.** A Ren'Py game, and the capture script you add to it, run with
+> the author's own permissions: the game's scripts can read and change their files and reach the
+> network. Run only a game the author made or trusts, and ask before the first run. Ask before you
+> download or install the SDK or any other tool, and get it from its official source. Never turn off
+> or route around a security protection (antivirus, SmartScreen, Gatekeeper, quarantine flags,
+> permissions) to make it start; if one blocks the run, tell the author and let them decide. If the
+> author does not want the game run, trace from `screens.rpy` and screenshots they provide.
+
+1. Ask the author where the Ren'Py SDK is installed. If it is not, ask whether you may download it
+   from renpy.org (the official site) and wait for a yes. Any 8.x SDK runs 7.4+/8.x games.
 2. Copy the game folder to your working folder, without `game/saves` and `game/cache`. Never add
    files to the original.
 3. Write a small capture script into the copy's `game/` (never the original). What works:

@@ -24,6 +24,7 @@ import { readProjectLogo } from "../../projectLogo";
 import { backgroundCacheDirectory, cacheBackgroundImage, pruneBackgroundCache } from "../../storage/backgroundCache";
 import { clearCacheBuckets, measureCacheInventory, type CacheLocations } from "../../storage/cacheInventory";
 import { isMainOnlyStateKey, isMainOwnedStateKey, isProtectedStateKey } from "@shared/constants/settingsScopes";
+import { ONBOARDING_STATE_KEY, onboardingMarkerMovesBack } from "@shared/constants/onboarding";
 import { getMainLocale } from "../../../i18n";
 import { collectLogArchiveFiles, encodeLogArchive } from "../../../logging/logArchive";
 import { windowProjectPath } from "../../../utils/windowProject";
@@ -332,6 +333,11 @@ export class AppGlobalStateSetHandler extends IPCHandler<IPCEventType.appGlobalS
         if (isMainOwnedStateKey(data.key)) {
             window.app.logger.warn(`[State] Refused a renderer write to ${data.key}, which only the main process writes`);
             return this.failed(new Error(`${data.key} is written by Studio itself and cannot be set from a window`));
+        }
+        // A window may record that first-run setup is over, never that it is not.
+        if (data.key === ONBOARDING_STATE_KEY && onboardingMarkerMovesBack(window.app.globalState.get(ONBOARDING_STATE_KEY), data.value)) {
+            window.app.logger.warn(`[State] Refused a renderer write that moves ${data.key} back`);
+            return this.failed(new Error(`${data.key} can only move forward`));
         }
         // Persists, fans the change out to every open window so live views (e.g. the
         // i18n locale) stay in sync without a reload, and runs the per-key
@@ -870,7 +876,8 @@ export class AppGlobalStateDeleteHandler extends IPCHandler<IPCEventType.appGlob
         const deleted: string[] = [];
         const refused: string[] = [];
         for (const key of keys) {
-            if (isProtectedStateKey(key) || isMainOwnedStateKey(key)) {
+            // Deleting the setup marker would replay first-run setup; see the set handler.
+            if (isProtectedStateKey(key) || isMainOwnedStateKey(key) || key === ONBOARDING_STATE_KEY) {
                 refused.push(key);
                 continue;
             }

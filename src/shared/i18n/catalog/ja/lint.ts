@@ -318,8 +318,8 @@ export const lint = {
         },
         storyDeadEnd: {
             title: "子ノードなし",
-            description: "一部の経路はシーンから出ていくが、末尾の行に子ノードがない経路が残っているシーン",
-            message: "この行に子ノードがなく、ここでシーンの末尾を越える",
+            description: "一部の経路はシーンから出ていくが、別の経路がシーンの末尾に達するシーン",
+            message: "再生がこの行の後でシーンの末尾を越える",
             help:
                 "このシーンの最後の行がシーンから出ていかないため、再生がシーンの末尾を越えることがある。出ていく行は、"
                 + "「戻り」なしの /jump、/goto、/ending、/quit、そして「ゲームを始める」"
@@ -1457,6 +1457,7 @@ export const lint = {
     severity: {
         error: "エラー",
         warning: "警告",
+        minor: "軽微な警告",
         info: "情報",
         off: "オフ",
     },
@@ -1464,7 +1465,7 @@ export const lint = {
         title: "問題",
         empty: "問題は見つからなかった",
         running: "検査中…",
-        counts: "{errors}、{warnings}、{infos}",
+        counts: "{errors}、{warnings}、{minorWarnings}、{infos}",
         filtered: "{total} 件中 {shown} 件",
         rerun: "もう一度実行",
         filterAll: "すべて",
@@ -1497,7 +1498,7 @@ export const lint = {
         jumpFailed: "この場所はもう開けない",
     },
     statusBar: {
-        counts: "問題：{errors}、{warnings}、{infos}",
+        counts: "問題：{errors}、{warnings}、{minorWarnings}、{infos}",
     },
     command: {
         runProject: "プロジェクトを検査",

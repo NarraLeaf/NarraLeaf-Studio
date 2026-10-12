@@ -22,6 +22,7 @@ import { TrayManager } from "./managers/trayManager";
 import { WINDOW_ICON_KEY, WindowIconEntry, resolveWindowIcon } from "@shared/constants/windowIcon";
 import { ONBOARDING_STATE_KEY, needsOnboarding } from "@shared/constants/onboarding";
 import { LAUNCHER_HOME_SIZE, applyLauncherWindowSize } from "./launcherWindow";
+import { FirstRunSetupGate } from "./firstRunSetupGate";
 import type { AppWindow } from "./managers/window/appWindow";
 import { ProtocolManager } from "./managers/protocolManager";
 import { StorageManager } from "./managers/storageManager";
@@ -126,6 +127,11 @@ export class BaseApp {
     private quitting: boolean = false;
     protected appInfo: AppInfo | null = null;
     private readonly commandLine = parseMainCommandLine(process.argv);
+    /**
+     * The launcher windows main opened in first-run setup. Marked by `App.launchLauncher`, cleared by
+     * the marker (see {@link runGlobalStateSideEffects}); read through {@link isFirstRunSetupWindow}.
+     */
+    protected readonly firstRunSetupGate = new FirstRunSetupGate();
     /**
      * The fatal error being handled, if one is. Non-null is the whole of the re-entrancy guard in
      * {@link crash}: the failure that got here is usually still happening, and the handling is now
@@ -362,6 +368,10 @@ export class BaseApp {
         // screen it is about to show. Hooked to the marker rather than to a channel of its own
         // because the marker IS the end of the flow; a second signal could only ever disagree with
         // it. Idempotent, so a profile that writes it again costs nothing.
+        if (key === ONBOARDING_STATE_KEY) {
+            // The agent handlers that let setup through stop doing so here, with the same signal.
+            this.firstRunSetupGate.noteMarker(value);
+        }
         if (key === ONBOARDING_STATE_KEY && !needsOnboarding(value)) {
             for (const window of this.windowManager.getWindows()) {
                 if (window.isClosed() || window.getWindowType() !== WindowAppType.Launcher) {
@@ -852,6 +862,15 @@ export class BaseApp {
         }
         this.experimentalNoticePending = false;
         return true;
+    }
+
+    /**
+     * Whether `window` is the launcher main opened to show first-run setup, and setup is not over.
+     * Setup's agent access screen is let through a few agent handlers on this answer alone; nothing
+     * a renderer writes can make it true. See {@link FirstRunSetupGate}.
+     */
+    public isFirstRunSetupWindow(window: AppWindow): boolean {
+        return this.firstRunSetupGate.passes(window);
     }
 
     /**

@@ -104,13 +104,34 @@ function describePrompt(prompt: AgentAccessPromptProps, t: Translate): PromptVie
                 confirm: t("workspace.agent.confirm.exportSkill.replace"),
                 cancel: t("common.cancel"),
             };
+        case "skillOverwrite":
+            return {
+                title: t("workspace.agent.confirm.installSkill.title"),
+                warning: true,
+                box: (
+                    <>
+                        <div className="text-sm font-medium text-fg">
+                            {t(prompt.folders.length > 1
+                                ? "workspace.agent.confirm.installSkill.changedMany"
+                                : "workspace.agent.confirm.installSkill.changedOne")}
+                        </div>
+                        {prompt.folders.map(folder => (
+                            <div key={folder} className="mt-1 break-all text-2xs leading-4 text-fg-muted">{folder}</div>
+                        ))}
+                    </>
+                ),
+                consequence: t("workspace.agent.confirm.installSkill.changedDetail"),
+                confirm: t("workspace.agent.confirm.installSkill.replace"),
+                cancel: t("common.cancel"),
+            };
     }
 }
 
 /**
  * The questions agent access puts to the author, each in a window of its own: may an agent read
  * these folders, may agent access be switched on, may agents change projects, may they have full
- * access, may the skill export replace what a folder already holds.
+ * access, may the skill export replace what a folder already holds, may the skill install replace a
+ * `SKILL.md` that is not Studio's.
  *
  * A window rather than a sheet inside the workspace, for the project-trust window's reason: a
  * workspace runs plugin code, and an answer that widens what an outside program may do must come
