@@ -26,9 +26,34 @@ export function homeRelativeDisplay(home: string, target: string): string {
 }
 
 /**
+ * The bundled skills already in `targetDir` whose `SKILL.md` is not Studio's own - edited by the
+ * author, or left by another version of Studio - by folder name. Installing replaces that file, so
+ * main asks first when this is not empty. A skill that is not there yet, or whose `SKILL.md` matches
+ * byte for byte, is not listed.
+ */
+export async function changedSkillFolders(fs: Pick<SkillZipFs, "readFile">, sourceRoot: string, targetDir: string): Promise<string[]> {
+    const changed: string[] = [];
+    for (const name of AGENT_INSTALLED_SKILLS) {
+        let installed: Buffer;
+        try {
+            installed = await fs.readFile(path.join(targetDir, name, "SKILL.md"));
+        } catch {
+            continue;
+        }
+        const bundled = await fs.readFile(path.join(sourceRoot, name, "SKILL.md"));
+        if (!installed.equals(bundled)) {
+            changed.push(name);
+        }
+    }
+    return changed;
+}
+
+/**
  * Copy every bundled skill folder into `targetDir`, each under its own name. Files of the same name
- * are replaced - which is how a newer Studio updates the skill - and anything else in the folder,
- * the author's other skills above all, is left as it is.
+ * are replaced - which is how a newer Studio updates the skill, once the author has agreed to
+ * replace a `SKILL.md` that differs ({@link changedSkillFolders}) - and anything else in the folder,
+ * the author's other skills above all, is left as it is. A skill folder or file that is a link stops
+ * the copy (`copySkillTree`).
  */
 export async function installSkillFolders(fs: SkillExportFs, sourceRoot: string, targetDir: string): Promise<number> {
     let copied = 0;

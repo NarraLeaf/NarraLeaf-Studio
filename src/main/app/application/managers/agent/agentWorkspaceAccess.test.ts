@@ -76,4 +76,44 @@ describe("exporting the agent skill", () => {
         expect(await fs.readFile(path.join(target, "my-notes.md"), "utf8")).toBe("mine");
         expect(await fs.readFile(path.join(target, "narraleaf-make-game", "references", "ui-format.md"), "utf8")).toBe("ui");
     });
+
+    it("refuses a destination folder that is a link, at the top or further down, and writes nothing through it", async () => {
+        const source = await tempDir();
+        await fs.mkdir(path.join(source, "references"), { recursive: true });
+        await fs.writeFile(path.join(source, "SKILL.md"), "skill");
+        await fs.writeFile(path.join(source, "references", "ui-format.md"), "ui");
+        const elsewhere = await tempDir();
+        const home = await tempDir();
+
+        // A junction on Windows, a directory link elsewhere; neither needs elevation.
+        const linkedRoot = path.join(home, "linked-skill");
+        await fs.symlink(elsewhere, linkedRoot, "junction");
+        await expect(copySkillTree(fs, source, linkedRoot)).rejects.toThrow(/is a link/);
+
+        const target = path.join(home, "skill");
+        await fs.mkdir(target);
+        await fs.symlink(elsewhere, path.join(target, "references"), "junction");
+        await expect(copySkillTree(fs, source, target)).rejects.toThrow(/is a link/);
+
+        expect(await fs.readdir(elsewhere)).toEqual([]);
+    });
+
+    it("refuses a destination file that is a link", async () => {
+        const source = await tempDir();
+        await fs.writeFile(path.join(source, "SKILL.md"), "skill");
+        const target = await tempDir();
+        const outside = path.join(await tempDir(), "outside.md");
+        await fs.writeFile(outside, "theirs");
+        try {
+            await fs.symlink(outside, path.join(target, "SKILL.md"), "file");
+        } catch (error) {
+            // A file link needs Developer Mode or elevation on Windows; the folder case above covers it there.
+            if ((error as NodeJS.ErrnoException).code === "EPERM") {
+                return;
+            }
+            throw error;
+        }
+        await expect(copySkillTree(fs, source, target)).rejects.toThrow(/is a link/);
+        expect(await fs.readFile(outside, "utf8")).toBe("theirs");
+    });
 });

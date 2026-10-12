@@ -2758,5 +2758,7 @@ function agentAccessPromptHeight(props: WindowProps[WindowAppType.AgentAccessPro
             return 240;
         case "exportOverwrite":
             return 284 + lines(props.path, 4) * 16;
+        case "skillOverwrite":
+            return 284 + Math.max(1, props.folders.slice(0, 5).reduce((sum, folder) => sum + lines(folder, 3), 0)) * 16;
     }
 }

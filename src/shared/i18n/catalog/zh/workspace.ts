@@ -444,6 +444,13 @@ export const workspace = {
                 existsDetail: "同名文件将被替换，文件夹中的其他文件保留",
                 replace: "替换",
             },
+            installSkill: {
+                title: "安装 Agent Skill",
+                changedOne: "该文件夹中的 SKILL.md 与 Studio 自带的不同",
+                changedMany: "以下文件夹中的 SKILL.md 与 Studio 自带的不同",
+                changedDetail: "同名文件将被替换为当前版本 Studio 的 Agent Skill，其他 Skill 保留",
+                replace: "替换",
+            },
             folderAccess: {
                 title: "允许 Agent 读取文件夹？",
                 messageOne: "{client} 请求读取以下文件夹",

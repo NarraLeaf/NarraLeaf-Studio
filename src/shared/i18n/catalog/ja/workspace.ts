@@ -453,6 +453,13 @@ export const workspace = {
                 existsDetail: "同じ名前のファイルは置き換え、ほかのファイルはそのまま残す",
                 replace: "置き換える",
             },
+            installSkill: {
+                title: "Agent Skill をインストール",
+                changedOne: "このフォルダーの SKILL.md は Studio のものと異なる",
+                changedMany: "次のフォルダーの SKILL.md は Studio のものと異なる",
+                changedDetail: "同じ名前のファイルは現在の Studio の Agent Skill で置き換え、ほかのスキルはそのまま残す",
+                replace: "置き換える",
+            },
             folderAccess: {
                 title: "エージェントにフォルダーの読み取りを許可する？",
                 messageOne: "{client} が次のフォルダーの読み取りを求めている",

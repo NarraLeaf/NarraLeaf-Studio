@@ -59,7 +59,7 @@ import {
     type AgentClientSetupInfo,
     type AgentSkillInstallResult,
 } from "@shared/agent/clients";
-import { agentSkillDir, buildSkillZip, homeRelativeDisplay, installSkillFolders } from "./agentSkillInstall";
+import { agentSkillDir, buildSkillZip, changedSkillFolders, homeRelativeDisplay, installSkillFolders } from "./agentSkillInstall";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { defaultTestEdition } from "../../utils/testEdition";
 import { resolveDefaultProjectDirectory } from "../../defaultProjectDirectory";
@@ -591,9 +591,12 @@ export class AgentManager implements AgentMainToolHost {
     /**
      * Install the bundled skill for one agent application. A client that reads a skill folder gets
      * the skill folders copied into it - files of the same name replaced, the author's other skills
-     * left alone, so running it again updates the skill. A client that takes an upload gets the main
-     * skill as a zip, saved where the author picks. A client whose guide comes from the MCP server
-     * has nothing to install.
+     * left alone, so running it again updates the skill. Where a skill folder already holds a
+     * `SKILL.md` that is not Studio's (the author edited it, or another version of Studio wrote it),
+     * replacing it is asked first, as the skill export asks before writing into a folder that holds
+     * something; and a skill folder or file that is a link stops the copy. A client that takes an
+     * upload gets the main skill as a zip, saved where the author picks. A client whose guide comes
+     * from the MCP server has nothing to install.
      */
     public async installSkill(window: AppWindow, clientId: AgentClientId): Promise<AgentSkillInstallResult> {
         const client = findAgentClient(clientId);
@@ -605,6 +608,15 @@ export class AgentManager implements AgentMainToolHost {
             const target = agentSkillDir(os.homedir(), client);
             if (!target) {
                 throw new Error(`${client.id} has no skill folder`);
+            }
+            const changed = await changedSkillFolders(fs, source, target);
+            if (changed.length > 0) {
+                window.refuseUnattendedPrompt("Agent skill install asked whether to replace a changed SKILL.md");
+                const folders = changed.map(name => path.join(target, name));
+                const replace = await this.askInStudioWindow(window, { kind: "skillOverwrite", folders }, true);
+                if (!replace) {
+                    return { canceled: true };
+                }
             }
             const copied = await installSkillFolders(fs, source, target);
             this.exportedSkillDirs.set(window, path.join(target, AGENT_INSTALLED_SKILLS[0]));

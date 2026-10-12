@@ -489,6 +489,14 @@ export const workspace = {
                 existsDetail: "Files with the same name are replaced. Other files in the folder are kept.",
                 replace: "Replace",
             },
+            // Asked when installing the Agent Skill would replace a SKILL.md that is not Studio's.
+            installSkill: {
+                title: "Install Agent Skill",
+                changedOne: "This folder holds a SKILL.md that differs from Studio's",
+                changedMany: "These folders hold a SKILL.md that differs from Studio's",
+                changedDetail: "Files with the same name are replaced with this version of Studio's Agent Skill. Other skills are kept.",
+                replace: "Replace",
+            },
             // Asked when an agent needs files outside the project and the allowed folders.
             folderAccess: {
                 title: "Allow agents to read folders?",

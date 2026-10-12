@@ -4,7 +4,7 @@ import path from "path";
 import zlib from "zlib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AGENT_CLIENTS, AGENT_INSTALLED_SKILLS, findAgentClient } from "@shared/agent/clients";
-import { agentSkillDir, buildSkillZip, homeRelativeDisplay, installSkillFolders } from "./agentSkillInstall";
+import { agentSkillDir, buildSkillZip, changedSkillFolders, homeRelativeDisplay, installSkillFolders } from "./agentSkillInstall";
 
 /**
  * Installing the skill writes into the author's own home folder, next to whatever skills they
@@ -69,6 +69,24 @@ describe("installSkillFolders", () => {
         expect(await fs.readFile(path.join(target, AGENT_INSTALLED_SKILLS[0], "SKILL.md"), "utf8")).toBe(`new ${AGENT_INSTALLED_SKILLS[0]}`);
         expect(await fs.readFile(path.join(target, "their-skill", "SKILL.md"), "utf8")).toBe("theirs");
         await expect(fs.access(path.join(target, "README.md"))).rejects.toThrow();
+    });
+});
+
+describe("changedSkillFolders", () => {
+    it("names the installed skills whose SKILL.md is not Studio's, and none that match or are missing", async () => {
+        const source = path.join(root, "bundled");
+        for (const name of AGENT_INSTALLED_SKILLS) {
+            await writeFile(path.join(source, name, "SKILL.md"), `studio ${name}`);
+        }
+        const target = path.join(root, "home", ".claude", "skills");
+        expect(await changedSkillFolders(fs, source, target)).toEqual([]);
+
+        await writeFile(path.join(target, AGENT_INSTALLED_SKILLS[0], "SKILL.md"), `studio ${AGENT_INSTALLED_SKILLS[0]}`);
+        expect(await changedSkillFolders(fs, source, target)).toEqual([]);
+
+        await writeFile(path.join(target, AGENT_INSTALLED_SKILLS[1], "SKILL.md"), "edited by the author");
+        await writeFile(path.join(target, "their-skill", "SKILL.md"), "theirs");
+        expect(await changedSkillFolders(fs, source, target)).toEqual([AGENT_INSTALLED_SKILLS[1]]);
     });
 });
 
