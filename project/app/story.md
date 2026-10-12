@@ -125,11 +125,13 @@ Escaping is a backslash, before a leading marker, a `: ` inside narration, an
 anchor bracket, or a space at either end. `show` writes these for you.
 
 Dialogue, narration and options may carry inline styling: `{b}…{/b}`, `{i}…{/i}`
-and `{color=#e04040}…{/color}`, nested as needed and closed on the same line
-(`dsl/inlineMarkup.ts`). A `{` that would read as one of those tags is written
-`\{`; any other brace is text. Styling the format has no tag for - ruby, size,
-typing speed, emphasis, an inline pause or variable - keeps the row as a `»`
-line.
+and `{color #e04040}…{/color}`, nested as needed and closed on the same line
+(`dsl/inlineMarkup.ts`). These are NarraLang's tags, spelled off its dialect
+table (`narralangDialect.ts`): a colour holding a space is quoted
+(`{color "rgb(224, 64, 64)"}`), and the older `{color=#e04040}` is still read but
+never printed. A `{` that would read as one of those tags is written `\{`; any
+other brace is text. Styling the format has no tag for - ruby, size, typing
+speed, emphasis, an inline pause or variable - keeps the row as a `»` line.
 
 ### The anchor is the row
 

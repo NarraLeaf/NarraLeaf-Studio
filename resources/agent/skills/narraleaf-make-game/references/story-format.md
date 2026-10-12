@@ -80,17 +80,21 @@ Dialogue, narration and choice options may style part of a line:
 
 ```
 Mei: That was {b}not{/b} my idea.
-The sign read {color=#d03030}KEEP OUT{/color}, in {i}fresh{/i} paint.
-Aki: {color=#40a8c4}{b}Run!{/b}{/color}
+The sign read {color #d03030}KEEP OUT{/color}, in {i}fresh{/i} paint.
+Aki: {color #40a8c4}{b}Run!{/b}{/color}
 ```
 
-`{b}…{/b}` bold, `{i}…{/i}` italic, `{color=…}…{/color}` colour (a hex code such as `#d03030`, or a
-CSS colour name). Tags nest and must close on the same line; a stray or unclosed tag is refused
-(`compile.inlineMarkup`). A literal brace that would read as one of these tags is written `\{b}`; any
-other brace (`{gold}`) is ordinary text. `story_show` prints styled lines this way. A line with
-styling the format has no tag for - ruby, size, typing speed, emphasis dots, an inline pause or
-variable, all set in Studio - prints as a `»` row instead; keep it as it is. Text tags from another
-engine (`{size=…}`, `{w}`, `{a=…}`, …) are not understood: rewrite the three above, drop the rest.
+`{b}…{/b}` bold, `{i}…{/i}` italic, `{color …}…{/color}` colour: a hex code such as `#d03030` or a
+CSS colour name after a space, and in double quotes when it holds a space itself -
+`{color "rgb(208, 48, 48)"}`. These are the same tags as NarraLeaf's script text (NarraLang).
+`{color=#d03030}` (the spelling this format used first) is still read, but `story_show` prints
+`{color #d03030}`. Tags nest and must close on the same line; a stray or unclosed tag, or a colour
+tag with no colour, is refused (`compile.inlineMarkup`). A literal brace that would read as one of
+these tags is written `\{b}`; any other brace (`{gold}`) is ordinary text. `story_show` prints
+styled lines this way. A line with styling the format has no tag for - ruby, size, typing speed,
+emphasis dots, an inline pause or variable, all set in Studio - prints as a `»` row instead; keep it
+as it is. Text tags from another engine (`{size=…}`, `{w}`, `{a=…}`, …) are not understood: rewrite
+the three above, drop the rest.
 
 ## Anchors: the row's identity
 
