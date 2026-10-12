@@ -241,6 +241,14 @@ export function createRowRuntime(
         onFrameEmit?: (eventName: string, data: unknown) => Promise<void>;
         /** Where `Go Back` goes, for a test that asks whether a graph left the page. */
         onPageBack?: () => void;
+        /**
+         * Give the host API this page's runtime scope, as a running game's page does
+         * (`buildPageHostAdapterBundle`). Then widget state a graph writes through the runtime store
+         * is keyed the way the drawn page reads it - which a test that renders the page and asks a
+         * widget to act on such state needs. Off by default: the surface state of the other tests
+         * here is read back under the surface id.
+         */
+        scopedHostApi?: boolean;
     } = {},
 ) {
     runtimeCount += 1;
@@ -282,6 +290,7 @@ export function createRowRuntime(
         document,
         scope,
         activeSurfaceId: surface.id,
+        ...(options.scopedHostApi ? { runtimeScopeId } : {}),
         emit: event => debug.emit(event),
         onOpenSurface: () => undefined,
         onPageBack: () => options.onPageBack?.(),

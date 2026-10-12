@@ -650,7 +650,9 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
      * `nl.video` owns the DOM `<video>`, so the split between the two lists below is not cosmetic:
      * `readableState` entries like `currentTime` change inside the element with nothing writing to
      * the override store, and `commands` like Play / Seek are one-shot actions rather than state.
-     * Every command marked `planned` has no implementation behind it.
+     * Play, Pause, Stop and Seek are the `Play Video` family of nodes (`videoNodes.ts`), carried out by
+     * the renderer through the widget runtime store. Every command marked `planned` has no
+     * implementation behind it.
      */
     "nl.video": {
         supportsPrivateBlueprint: true,
@@ -658,10 +660,10 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
         events: VIDEO_EVENTS,
         commands: [
             ...baseCommands,
-            { id: "play", displayName: "Play", availability: "planned" },
-            { id: "pause", displayName: "Pause", availability: "planned" },
-            { id: "stop", displayName: "Stop", availability: "planned" },
-            { id: "seek", displayName: "Seek", availability: "planned" },
+            { id: "play", displayName: "Play", capabilityId: "widget.controlVideo", availability: "available" },
+            { id: "pause", displayName: "Pause", capabilityId: "widget.controlVideo", availability: "available" },
+            { id: "stop", displayName: "Stop", capabilityId: "widget.controlVideo", availability: "available" },
+            { id: "seek", displayName: "Seek", capabilityId: "widget.controlVideo", availability: "available" },
             { id: "setSource", displayName: "Set video source", availability: "planned" },
             { id: "setVolume", displayName: "Set volume", availability: "planned" },
             { id: "setMuted", displayName: "Set muted", availability: "planned" },

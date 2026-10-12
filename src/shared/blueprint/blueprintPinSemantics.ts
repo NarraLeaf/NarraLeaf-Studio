@@ -235,6 +235,9 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
     "blueprint.time.formatLocalized", "blueprint.time.formatRelative", "blueprint.time.isSameDay",
     "blueprint.time.make", "blueprint.time.now", "blueprint.time.parse", "blueprint.time.parts",
     "blueprint.time.startOfDay", "blueprint.time.toIsoString", "blueprint.time.zoneOffset",
+    "blueprint.video.getDuration", "blueprint.video.getTime", "blueprint.video.isEnded",
+    "blueprint.video.isPlaying", "blueprint.element.video.getDuration", "blueprint.element.video.getTime",
+    "blueprint.element.video.isEnded", "blueprint.element.video.isPlaying",
 ];
 
 /**
@@ -339,6 +342,9 @@ const STEP_NODE_TYPES: readonly string[] = [
     "blueprint.textInput.clear", "blueprint.textInput.setValue", "blueprint.voice.getAvailableLanguages",
     "blueprint.voice.getLanguage", "blueprint.voice.play", "blueprint.voice.playChoice",
     "blueprint.voice.setLanguage",
+    "blueprint.video.pause", "blueprint.video.play", "blueprint.video.seek", "blueprint.video.stop",
+    "blueprint.element.video.pause", "blueprint.element.video.play", "blueprint.element.video.seek",
+    "blueprint.element.video.stop",
 ];
 
 /**

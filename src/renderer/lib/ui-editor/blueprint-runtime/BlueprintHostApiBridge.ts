@@ -100,6 +100,7 @@ import type {
     UIDisplayableMotionOverride,
     UIDisplayableMotionTarget,
     UIDisplayableMotionTransition,
+    UIVideoPlaybackReading,
     WidgetRuntimeStateStore,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import type { ScopeStoreBridge } from "./ScopeStoreBridge";
@@ -126,6 +127,7 @@ import type {
 import type { UISliderRuntimeValue, UISliderWidgetProps } from "@shared/types/ui-editor/slider";
 import { resolveSliderRuntimeValue } from "@shared/types/ui-editor/slider";
 import type { UISwitchRuntimeValue, UISwitchWidgetProps } from "@shared/types/ui-editor/switch";
+import { UI_VIDEO_ELEMENT_TYPE } from "@shared/types/ui-editor/video";
 import { normalizeSwitchProps, resolveSwitchRuntimeValue } from "@shared/types/ui-editor/switch";
 import type { UITextInputRuntimeValue, UITextInputWidgetProps } from "@shared/types/ui-editor/textInput";
 import { normalizeTextInputProps, resolveTextInputRuntimeValue } from "@shared/types/ui-editor/textInput";
@@ -350,6 +352,27 @@ export type BlueprintFrameProperties = {
     params: Record<string, unknown>;
 };
 
+/**
+ * A video widget's playback as a graph reads it: where the clip is, how long it is, and whether it
+ * is playing or has played to its end. Read from the drawn element when asked, so it is the moment's
+ * answer; a video with nothing drawn reads as at rest.
+ */
+export type BlueprintVideoProperties = UIVideoPlaybackReading;
+
+/**
+ * One thing a graph asks of a video widget's playback.
+ *
+ * Asked, not carried out on the spot: the widget carries it out as soon as it has a clip to carry it
+ * out on, so a Play sent from the widget's own Init, before the clip has loaded, still starts it.
+ * `stop` pauses and returns to the start. `seek` is in seconds from the start of the clip, kept
+ * inside the clip by the widget - the side that knows how long it is.
+ */
+export type BlueprintVideoCommand =
+    | { kind: "play" }
+    | { kind: "pause" }
+    | { kind: "stop" }
+    | { kind: "seek"; seconds: number };
+
 export type BlueprintGamePreferenceKey =
     | "autoForward"
     | "skip"
@@ -517,6 +540,9 @@ export type BlueprintHostApiRuntime = {
         stopDisplayableAnimation: (animationId: string) => Promise<void>;
         getFrameProperties: (elementId: string) => BlueprintFrameProperties;
         setFrameProperties: (elementId: string, patch: Partial<BlueprintFrameProperties>) => Promise<void>;
+        getVideoProperties: (elementId: string) => BlueprintVideoProperties;
+        /** Play, pause, stop or seek a video widget. Settles once asked, not once playback has started. */
+        controlVideo: (elementId: string, command: BlueprintVideoCommand) => Promise<void>;
     };
     state: {
         get: (scope: string, key: string) => unknown;
@@ -1527,6 +1553,14 @@ function assertImageElement(document: UIDocument, elementId: string) {
     const el = requireDocumentElement(document, elementId);
     if (el.type !== "nl.image") {
         throw widgetWrongKind(el, "nl.image");
+    }
+    return el;
+}
+
+function assertVideoElement(document: UIDocument, elementId: string) {
+    const el = requireDocumentElement(document, elementId);
+    if (el.type !== UI_VIDEO_ELEMENT_TYPE) {
+        throw widgetWrongKind(el, UI_VIDEO_ELEMENT_TYPE);
     }
     return el;
 }
@@ -4056,6 +4090,38 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     };
                     emitWidgetPatch(elementId, nextPatch);
                     scheduleElementFlush(elementId);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getVideoProperties: (elementId: string) => {
+                const cap = "widget.getVideoProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    assertVideoElement(document, elementId);
+                    return {
+                        ...widgetRuntimeStore.readVideoPlayback(
+                            scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+                        ),
+                    };
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            controlVideo: async (elementId: string, command: BlueprintVideoCommand) => {
+                const cap = "widget.controlVideo";
+                emitHostCall(emit, cap, "call");
+                try {
+                    assertVideoElement(document, elementId);
+                    const key = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
+                    if (command.kind === "play" || command.kind === "pause") {
+                        widgetRuntimeStore.requestVideoPlayback(key, { playing: command.kind === "play" });
+                    } else if (command.kind === "stop") {
+                        widgetRuntimeStore.requestVideoPlayback(key, { playing: false, seekSeconds: 0 });
+                    } else if (command.kind === "seek") {
+                        const seconds = Number(command.seconds);
+                        widgetRuntimeStore.requestVideoPlayback(key, { seekSeconds: Number.isFinite(seconds) ? seconds : 0 });
+                    }
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

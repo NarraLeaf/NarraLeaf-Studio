@@ -1642,6 +1642,28 @@ export const BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_TOGGLE = "blueprint.element.swit
 export const BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_TURN_ON = "blueprint.element.switch.turnOn" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_TURN_OFF = "blueprint.element.switch.turnOff" as const;
 
+/**
+ * A video widget's playback. The `blueprint.video.*` nodes act on the video whose own blueprint they
+ * are in; the `blueprint.element.video.*` twins act on the video wired into their Video pin, from any
+ * graph on the page.
+ */
+export const BLUEPRINT_NODE_TYPE_VIDEO_PLAY = "blueprint.video.play" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_PAUSE = "blueprint.video.pause" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_STOP = "blueprint.video.stop" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_SEEK = "blueprint.video.seek" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_GET_TIME = "blueprint.video.getTime" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_GET_DURATION = "blueprint.video.getDuration" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_IS_PLAYING = "blueprint.video.isPlaying" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_IS_ENDED = "blueprint.video.isEnded" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_PLAY = "blueprint.element.video.play" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_PAUSE = "blueprint.element.video.pause" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_STOP = "blueprint.element.video.stop" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SEEK = "blueprint.element.video.seek" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_TIME = "blueprint.element.video.getTime" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_DURATION = "blueprint.element.video.getDuration" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_PLAYING = "blueprint.element.video.isPlaying" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_ENDED = "blueprint.element.video.isEnded" as const;
+
 export const BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS = "blueprint.list.setItems" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS = "blueprint.list.getItems" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_CLEAR = "blueprint.list.clear" as const;

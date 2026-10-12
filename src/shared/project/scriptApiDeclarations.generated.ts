@@ -652,6 +652,16 @@ declare module "@narraleaf/script" {
     	/** Length in code points, so an emoji counts once - this is what \`maxLength\` is measured in. */
     	length: number;
     };
+    type UIVideoPlaybackReading = {
+    	/** Seconds from the start of the clip. */
+    	currentTime: number;
+    	/** Length of the clip in seconds; 0 until it is known. */
+    	duration: number;
+    	/** Neither paused nor at its end. */
+    	playing: boolean;
+    	/** Played to its end and still there. Never true for a looping clip. */
+    	ended: boolean;
+    };
     type UIDisplayableMotionFromCurrentValue = {
     	from: "current";
     	to: number;
@@ -887,6 +897,17 @@ declare module "@narraleaf/script" {
     	targetSurfaceId: string | null;
     	params: Record<string, unknown>;
     };
+    type BlueprintVideoProperties = UIVideoPlaybackReading;
+    type BlueprintVideoCommand = {
+    	kind: "play";
+    } | {
+    	kind: "pause";
+    } | {
+    	kind: "stop";
+    } | {
+    	kind: "seek";
+    	seconds: number;
+    };
     type BlueprintGamePreferenceKey = "autoForward" | "skip"
     /**
      * Studio's own, not the engine's: skipping stops at a line the player has not read.
@@ -1030,6 +1051,9 @@ declare module "@narraleaf/script" {
     		stopDisplayableAnimation: (animationId: string) => Promise<void>;
     		getFrameProperties: (elementId: string) => BlueprintFrameProperties;
     		setFrameProperties: (elementId: string, patch: Partial<BlueprintFrameProperties>) => Promise<void>;
+    		getVideoProperties: (elementId: string) => BlueprintVideoProperties;
+    		/** Play, pause, stop or seek a video widget. Settles once asked, not once playback has started. */
+    		controlVideo: (elementId: string, command: BlueprintVideoCommand) => Promise<void>;
     	};
     	state: {
     		get: (scope: string, key: string) => unknown;
