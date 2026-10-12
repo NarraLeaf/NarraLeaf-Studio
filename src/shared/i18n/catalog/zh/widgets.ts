@@ -298,7 +298,7 @@ export const widgets = {
         asset: "视频文件",
         assetNone: "未选择视频",
         assetChoose: "选择视频",
-        assetMissing: "片段缺失",
+        assetMissing: "视频文件缺失",
         poster: "封面",
         posterNone: "未选择封面",
         posterChoose: "选择封面",

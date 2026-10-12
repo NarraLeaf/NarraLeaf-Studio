@@ -13,8 +13,8 @@ import { CharacterService } from "@/lib/workspace/services/core/CharacterService
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
-import type { Asset } from "@/lib/workspace/services/assets/types";
+import { AssetType, categoryOfAssetType, type AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
+import type { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
 import { parseBlueprintOwnerKey } from "@/lib/workspace/services/search/blueprintOwnerKey";
 import { resolveBlueprintOwnerPath } from "@/lib/workspace/services/search/sources/blueprintSource";
 import { createStorySceneEditorTab } from "../../modules/story/scene-editor/openStorySceneEditorTab";
@@ -22,7 +22,8 @@ import { createBlueprintEntryEditorTab } from "../../modules/blueprint-lite/open
 import { blueprintOwnerOpenTarget } from "../../modules/search/blueprintJumpTarget";
 import { createSurfaceEditorTab } from "../../modules/ui-editor/UISurfacesPanel";
 import { openAssetPreviewTabsInEditor } from "../../modules/assets/dnd/openDraggedAssetsInEditor";
-import { distinguishQuickOpenDetails, type QuickOpenPlacedRow } from "./quickOpenPlaces";
+import { groupPath } from "../../modules/assets/browser/assetBrowserModel";
+import { blueprintPlaceDetails, distinguishQuickOpenDetails, type QuickOpenPlacedRow } from "./quickOpenPlaces";
 
 export type QuickOpenKind = "scene" | "character" | "uiSurface" | "asset" | "blueprint";
 
@@ -48,6 +49,12 @@ export const QUICK_OPEN_KIND_LABEL_KEYS: Record<QuickOpenKind, TranslationKey> =
 const CHARACTERS_PANEL_ID = "narraleaf-studio:characters";
 const ASSETS_PANEL_ID = "narraleaf-studio:assets";
 
+/** How a place in a tree reads on a detail line: outermost first, as blueprint owners read. */
+const PATH_SEPARATOR = " › ";
+
+/** How a detail line adds one more thing it says about the row, as a value binding's suffix does. */
+const DETAIL_SEPARATOR = " · ";
+
 function assetIcon(asset: Asset): ReactNode {
     switch (asset.type) {
         case AssetType.Image:
@@ -59,15 +66,35 @@ function assetIcon(asset: Asset): ReactNode {
     }
 }
 
+/** A row's detail with one more thing said after it, or that thing alone when the row had none. */
+function withMore(detail: string | undefined, more: string): string {
+    return detail ? `${detail}${DETAIL_SEPARATOR}${more}` : more;
+}
+
+/** A row that has nothing left to say about where it is, told apart by its place in the list. */
+function numberedDetail(detail: string | undefined, ordinal: number): string {
+    return withMore(detail, translate("workspace.shell.quickOpen.ordinal", { n: ordinal }));
+}
+
 /**
  * Everything the quick-open picker can jump to, gathered fresh from the live registries: story
  * scenes, characters, UI surfaces, assets, and owned blueprints. Entries open through the same
  * tab creators their panels use, so a picker-opened editor is indistinguishable from a
  * panel-opened one. Call `SearchService.ensureReady()` first when story documents may not be
  * loaded yet — scene listing needs the documents in memory.
+ *
+ * Every row's detail is settled last, over all of them together: a name can repeat within a kind - two
+ * chapters' "Corridor", two folders' "bg" - and a row that reads like another one says where it is
+ * until it no longer does (see `distinguishQuickOpenDetails`).
  */
 export function collectQuickOpenEntries(ctx: WorkspaceContext): QuickOpenEntry[] {
     const entries: QuickOpenEntry[] = [];
+    // One per entry, in step: how that entry's detail can read, plainest first.
+    const placed: QuickOpenPlacedRow[] = [];
+    const add = (entry: QuickOpenEntry, details: readonly (string | undefined)[]) => {
+        entries.push(entry);
+        placed.push({ kind: entry.kind, title: entry.title, details });
+    };
     const uiService = ctx.services.get<UIService>(Services.UI);
 
     // --- Story scenes -------------------------------------------------------
@@ -79,8 +106,19 @@ export function collectQuickOpenEntries(ctx: WorkspaceContext): QuickOpenEntry[]
         } catch {
             continue; // Not loaded (ensureReady not awaited) — skip rather than throw.
         }
+        const chapterOf = new Map<string, string>();
+        for (const chapter of document.chapters ?? []) {
+            for (const sceneId of chapter.sceneIds ?? []) {
+                if (!chapterOf.has(sceneId)) {
+                    chapterOf.set(sceneId, chapter.name);
+                }
+            }
+        }
         for (const scene of listScenesInDocumentOrder(document)) {
-            entries.push({
+            // The story, then the chapter inside it, as the story panel files the scene.
+            const chapter = chapterOf.get(scene.id);
+            const details = chapter ? [document.name, `${document.name}${PATH_SEPARATOR}${chapter}`] : [document.name];
+            add({
                 key: `scene:${document.id}:${scene.id}`,
                 kind: "scene",
                 title: scene.name,
@@ -91,7 +129,7 @@ export function collectQuickOpenEntries(ctx: WorkspaceContext): QuickOpenEntry[]
                         createStorySceneEditorTab({ storyId: document.id, sceneId: scene.id }, scene.name),
                     );
                 },
-            });
+            }, details);
         }
     }
 
@@ -99,7 +137,10 @@ export function collectQuickOpenEntries(ctx: WorkspaceContext): QuickOpenEntry[]
     const characterService = ctx.services.get<CharacterService>(Services.Character);
     for (const character of characterService.listCharacter()) {
         const profile = character.profile.getProfile();
-        entries.push({
+        // A character carries no detail of its own; the group it is filed in is where it is.
+        const groupId = character.profile.getGroupId();
+        const group = groupId ? characterService.getGroup(groupId)?.name : undefined;
+        add({
             key: `character:${profile.id}`,
             kind: "character",
             title: profile.name,
@@ -108,14 +149,16 @@ export function collectQuickOpenEntries(ctx: WorkspaceContext): QuickOpenEntry[]
                 uiService.getStore().setPanelVisibility(CHARACTERS_PANEL_ID, true);
                 uiService.getStore().setSelection({ type: "character", data: character });
             },
-        });
+        }, group ? [undefined, group] : []);
     }
 
     // --- UI surfaces --------------------------------------------------------
     const uiDocumentService = ctx.services.get<UIDocumentService>(Services.UIDocument);
     try {
         for (const surface of uiDocumentService.getDocument().surfaces) {
-            entries.push({
+            // A page and a Game UI may share a name; the interface panel lists them apart.
+            const surfaceKind = translate(surface.kind === "appSurface" ? "uiEditor.surfaceKind.page" : "uiEditor.surfaceKind.gameUi");
+            add({
                 key: `surface:${surface.id}`,
                 kind: "uiSurface",
                 title: surface.name,
@@ -123,7 +166,7 @@ export function collectQuickOpenEntries(ctx: WorkspaceContext): QuickOpenEntry[]
                 open: () => {
                     uiService.editor.open(createSurfaceEditorTab(surface));
                 },
-            });
+            }, [undefined, surfaceKind]);
         }
     } catch {
         // UI document not loaded yet — surfaces just don't list.
@@ -132,13 +175,37 @@ export function collectQuickOpenEntries(ctx: WorkspaceContext): QuickOpenEntry[]
     // --- Assets -------------------------------------------------------------
     const assetsService = ctx.services.get<AssetsService>(Services.Assets);
     const assetsByType = assetsService.getAssets();
+    // The folders of each category, read once and only for a category whose assets are listed.
+    const foldersByCategory = new Map<AssetCategory, readonly AssetGroup[]>();
+    const folderPath = (asset: Asset): string | undefined => {
+        if (!asset.groupId) {
+            return undefined;
+        }
+        const category = categoryOfAssetType(asset.type);
+        let folders = foldersByCategory.get(category);
+        if (!folders) {
+            try {
+                folders = assetsService.getGroupAssetsManager().getGroups(category);
+            } catch {
+                folders = []; // Folders not loaded yet - the row says only its type.
+            }
+            foldersByCategory.set(category, folders);
+        }
+        const path = groupPath(asset.groupId, folders).map(folder => folder.name);
+        return path.length > 0 ? path.join(PATH_SEPARATOR) : undefined;
+    };
     for (const byId of Object.values(assetsByType)) {
         for (const asset of Object.values(byId) as Asset[]) {
-            entries.push({
+            // The kind of asset in the interface's words (Image, 图片, 画像), the noun the
+            // properties panel heads the same asset with - not the enum value the library stores.
+            const kind = translate(`dialogs.noun.${asset.type}`);
+            // Then the folder it is filed in, from the category's root down.
+            const folder = folderPath(asset);
+            add({
                 key: `asset:${asset.id}`,
                 kind: "asset",
                 title: asset.name,
-                detail: asset.type,
+                detail: kind,
                 icon: assetIcon(asset),
                 open: () => {
                     if (asset.type === AssetType.Image || asset.type === AssetType.Audio) {
@@ -148,7 +215,7 @@ export function collectQuickOpenEntries(ctx: WorkspaceContext): QuickOpenEntry[]
                     uiService.getStore().setPanelVisibility(ASSETS_PANEL_ID, true);
                     uiService.getStore().setSelection({ type: "asset", data: asset });
                 },
-            });
+            }, folder ? [kind, withMore(kind, folder)] : [kind]);
         }
     }
 
@@ -162,8 +229,6 @@ export function collectQuickOpenEntries(ctx: WorkspaceContext): QuickOpenEntry[]
             ctx.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog),
             translate,
         );
-        const blueprintEntries: QuickOpenEntry[] = [];
-        const places: QuickOpenPlacedRow[] = [];
         for (const [ownerKey, record] of Object.entries(document.ownerRecords)) {
             const blueprint = document.blueprints[record.blueprintId];
             const owner = blueprint ? parseBlueprintOwnerKey(ownerKey) : null;
@@ -171,21 +236,20 @@ export function collectQuickOpenEntries(ctx: WorkspaceContext): QuickOpenEntry[]
                 continue;
             }
             const title = blueprintDisplayName(blueprint, translate, whatItDoes(blueprint));
+            // Whose blueprint it is - the page, component or control it hangs on - named as the search
+            // panel names it. Blueprints take their owner's name, so a page's same-named controls (a
+            // slider's "Track", a rail item named after the page) say which control above them they
+            // are in; a value binding hangs on the same control as that control's logic, so only its
+            // kind can tell the two apart.
             const path = resolveBlueprintOwnerPath(ctx, ownerKey);
-            places.push({
-                title,
-                // A value binding hangs on the same control as that control's logic, so only its kind
-                // can tell the two apart.
-                place: path
-                    ? { path, suffix: owner.ownerKind === "widgetValue" ? translate(ownerLabelKey("widgetValue")) : undefined }
-                    : undefined,
-            });
-            blueprintEntries.push({
+            const details = blueprintPlaceDetails(path
+                ? { path, suffix: owner.ownerKind === "widgetValue" ? translate(ownerLabelKey("widgetValue")) : undefined }
+                : undefined);
+            add({
                 key: `blueprint:${blueprint.id}`,
                 kind: "blueprint",
                 title,
-                // Filled in below, once every row is known: whose blueprint it is - the page,
-                // component or control it hangs on - named as the search panel names it.
+                // Settled below with every other row.
                 detail: undefined,
                 icon: <Workflow className="h-4 w-4" />,
                 // Addressed and named as the interface panel and the inspector open it, so picking a
@@ -193,19 +257,15 @@ export function collectQuickOpenEntries(ctx: WorkspaceContext): QuickOpenEntry[]
                 open: () => {
                     uiService.editor.open(createBlueprintEntryEditorTab(blueprintOwnerOpenTarget(blueprint.id, owner, ctx)));
                 },
-            });
+            }, details);
         }
-        // Blueprints take their owner's name, so `Page › Control` alone left a page's same-named
-        // controls - a slider's "Track", a rail item named after the page - as identical rows that
-        // each opened something else. Rows that read alike say where they are until they differ.
-        const details = distinguishQuickOpenDetails(places);
-        blueprintEntries.forEach((entry, index) => {
-            entry.detail = details[index];
-        });
-        entries.push(...blueprintEntries);
     } catch {
         // Blueprint document not loaded — same treatment as surfaces.
     }
 
+    const settled = distinguishQuickOpenDetails(placed, numberedDetail);
+    entries.forEach((entry, index) => {
+        entry.detail = settled[index];
+    });
     return entries;
 }
