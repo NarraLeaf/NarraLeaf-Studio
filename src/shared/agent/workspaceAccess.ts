@@ -1,5 +1,6 @@
 import type { AgentErrorCode } from "./protocol";
 import type { AgentClientConfigKind, AgentSettingsSnapshot } from "./settings";
+import { AGENT_COPY_CONFIGS } from "./clients";
 
 /**
  * The narrow hold a workspace window has on agent access: what its Agent menu shows and the few
@@ -43,7 +44,7 @@ export type AgentQuickTogglePatch = {
 /** The client configurations the Agent menu can copy; the same kinds the Settings panel offers. */
 export type AgentCopyConfigKind = AgentClientConfigKind;
 
-export const AGENT_COPY_CONFIG_KINDS: readonly AgentCopyConfigKind[] = ["claudeCode", "opencode", "json", "stdio", "codex", "gemini"];
+export const AGENT_COPY_CONFIG_KINDS: readonly AgentCopyConfigKind[] = AGENT_COPY_CONFIGS.map(entry => entry.kind);
 
 /** The folder an exported skill is written into, inside the directory the author picked. */
 export const AGENT_SKILL_EXPORT_FOLDER = "NarraLeaf-Skills";

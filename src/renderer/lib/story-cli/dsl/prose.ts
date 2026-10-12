@@ -22,7 +22,7 @@
  * ## Rich text: three marks are spelled, the rest is kept verbatim
  *
  * Bold, italic and colour runs are written as inline tags (`{b}…{/b}`, `{i}…{/i}`,
- * `{color=#e04040}…{/color}`; see `inlineMarkup.ts`). A segment carrying any other styling (ruby,
+ * `{color #e04040}…{/color}`, the Script View's spelling; see `inlineMarkup.ts`). A segment carrying any other styling (ruby,
  * size, typing speed, emphasis, an inline pause or variable) has no spelling, so the row stays an
  * opaque `»` line and keeps every mark - restyle it in Studio. Notes are never styled.
  *

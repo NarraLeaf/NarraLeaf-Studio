@@ -1063,31 +1063,6 @@ export class StoryService extends Service<StoryService> implements IStoryService
         return this.applyChapterName(storyId, chapterId, trimmed);
     }
 
-    /**
-     * The same rename, as one step of the project's undo history - what an agent's `chapter_rename`
-     * asks for, since an author watching an agent work takes its edits back with Undo. Outside a live
-     * session only; inside one it is {@link renameChapter}, whose inverse is the session's to give.
-     */
-    public renameChapterWithHistory(storyId: StoryId, chapterId: string, name: string): boolean {
-        const trimmed = name.trim();
-        if (!trimmed) {
-            return false;
-        }
-        if (this.handedToSink(storyId, { op: "rename-chapter", chapterId, name: trimmed })) {
-            return true;
-        }
-        const before = this.captureStoryStructure(storyId);
-        const previous = this.getStoryDocument(storyId).chapters.find(chapter => chapter.id === chapterId)?.name ?? "";
-        const changed = this.applyChapterName(storyId, chapterId, trimmed);
-        if (changed) {
-            this.recordStructuralChange(storyId, {
-                key: "story.history.renameChapter" as TranslationKey,
-                params: { name: previous },
-            }, before);
-        }
-        return changed;
-    }
-
     private applyChapterName(storyId: StoryId, chapterId: string, trimmed: string): boolean {
         let changed = false;
         this.mutateDocument(storyId, document => {
@@ -1276,41 +1251,71 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     /**
-     * Run outline edits an agent connected over MCP makes - a chapter, a scene - as one step of undo
-     * on the project's stack that takes back exactly the scenes and chapters they added.
+     * Run outline edits an agent connected over MCP makes - a chapter, a scene, a name - as one step
+     * of undo on the project's stack that takes back exactly what they changed in the outline.
      *
      * Studio's own "new scene" and "new chapter" record nothing (deleting the new one is the author's
      * undo), but an agent's write has to be one Ctrl+Z like any other, and a scene made and then moved
      * into place was two edits, the second a "Move scene" step whose undo moved the new scene instead
      * of removing it. Edits inside `action` record nothing of their own.
      *
-     * A command over the added records rather than {@link recordStructuralChange}'s whole-structure
+     * What the step covers: the scenes and chapters `action` added, the names it gave chapters and
+     * scenes that were already there, and the chapters it removed that held no scene. A chapter
+     * removed with scenes in it, or a scene removed, is not something this step can put back, and no
+     * agent tool runs one inside it.
+     *
+     * A command over those records rather than {@link recordStructuralChange}'s whole-structure
      * snapshot: that restores every scene's rows too, so undoing it later would take back whatever
-     * the author wrote in other scenes since. Undo holds each added scene as it stands then - rows the
-     * agent wrote into it afterwards included - so redo puts it back whole, where it was. A chapter it
-     * added is removed only while no other scene is in it.
+     * the author - or the agent - wrote in any scene since. Undo holds each added scene as it stands
+     * then - rows the agent wrote into it afterwards included - so redo puts it back whole, where it
+     * was. A chapter it added is removed only while no other scene is in it, and a chapter it removed
+     * is removed again on redo only while it is still empty.
      */
     public runAgentOutlineStep<T>(storyId: StoryId, label: HistoryLabel, action: () => T): T {
         const history = this.getHistoryService();
         const before = this.getStoryDocument(storyId);
-        const scenesBefore = new Set(Object.keys(before.scenes));
-        const chaptersBefore = new Set(before.chapters.map(chapter => chapter.id));
+        const sceneNamesBefore = new Map(Object.values(before.scenes).map(scene => [scene.id, scene.name]));
+        type HeldChapter = { chapter: StoryChapter; beforeChapterId: StoryChapterId | null };
+        // A chapter is a name and a list of scene ids, so holding every one as it stood is cheap.
+        const chaptersBefore = new Map<StoryChapterId, HeldChapter>(before.chapters.map((chapter, index) => [chapter.id, {
+            chapter: JSON.parse(JSON.stringify(chapter)) as StoryChapter,
+            beforeChapterId: before.chapters[index + 1]?.id ?? null,
+        }]));
         const result = history.withoutRecording(action);
         if (this.opSink !== null) {
             // Inside a session an undo is the inverse operation, which is the session's to send.
             return result;
         }
         const after = this.getStoryDocument(storyId);
-        const addedSceneIds = listSceneIdsInDocumentOrder(after).filter(id => !scenesBefore.has(id));
+        const addedSceneIds = listSceneIdsInDocumentOrder(after).filter(id => !sceneNamesBefore.has(id));
         const addedChapterIds = after.chapters.map(chapter => chapter.id).filter(id => !chaptersBefore.has(id));
-        if (addedSceneIds.length === 0 && addedChapterIds.length === 0) {
+        const removedChapters = [...chaptersBefore.values()].filter(held =>
+            held.chapter.sceneIds.length === 0 && !after.chapters.some(chapter => chapter.id === held.chapter.id));
+        type Renamed = { id: string; from: string; to: string };
+        const renamedChapters: Renamed[] = after.chapters.flatMap(chapter => {
+            const was = chaptersBefore.get(chapter.id)?.chapter.name;
+            return was !== undefined && was !== chapter.name ? [{ id: chapter.id, from: was, to: chapter.name }] : [];
+        });
+        const renamedScenes: Renamed[] = Object.values(after.scenes).flatMap(scene => {
+            const was = sceneNamesBefore.get(scene.id);
+            return was !== undefined && was !== scene.name ? [{ id: scene.id, from: was, to: scene.name }] : [];
+        });
+        if (
+            addedSceneIds.length === 0 && addedChapterIds.length === 0 && removedChapters.length === 0
+            && renamedChapters.length === 0 && renamedScenes.length === 0
+        ) {
             return result;
         }
         type HeldScene = { scene: StoryScene; chapterId: StoryChapterId | null; beforeSceneId: StorySceneId | null; entry: boolean };
-        type HeldChapter = { chapter: StoryChapter; beforeChapterId: StoryChapterId | null };
         let heldScenes: HeldScene[] = [];
         let heldChapters: HeldChapter[] = [];
         const take = () => {
+            for (const renamed of renamedChapters) {
+                this.applyChapterName(storyId, renamed.id, renamed.from);
+            }
+            for (const renamed of renamedScenes) {
+                this.applySceneName(storyId, renamed.id, renamed.from);
+            }
             const document = this.getStoryDocument(storyId);
             heldScenes = addedSceneIds.flatMap(id => {
                 const scene = document.scenes[id];
@@ -1343,14 +1348,29 @@ export class StoryService extends Service<StoryService> implements IStoryService
             for (const held of heldChapters) {
                 this.applyChapterDelete(storyId, held.chapter.id);
             }
+            // Back to front, so each record's neighbour is already in place when it is put back.
+            for (const held of [...removedChapters].reverse()) {
+                this.applyChapterCreate(storyId, held.chapter, held.beforeChapterId, undefined, undefined);
+            }
         };
-        // Back to front, so each record's neighbour is already in place when it is put back.
         const put = () => {
+            for (const held of removedChapters) {
+                const chapter = this.getStoryDocument(storyId).chapters.find(item => item.id === held.chapter.id);
+                if (chapter && chapter.sceneIds.length === 0) {
+                    this.applyChapterDelete(storyId, held.chapter.id);
+                }
+            }
             for (const held of [...heldChapters].reverse()) {
                 this.applyChapterCreate(storyId, held.chapter, held.beforeChapterId, undefined, undefined);
             }
             for (const held of [...heldScenes].reverse()) {
                 this.applySceneCreate(storyId, this.cloneScene(held.scene), held.chapterId, held.beforeSceneId, undefined, held.entry);
+            }
+            for (const renamed of renamedChapters) {
+                this.applyChapterName(storyId, renamed.id, renamed.to);
+            }
+            for (const renamed of renamedScenes) {
+                this.applySceneName(storyId, renamed.id, renamed.to);
             }
         };
         history.pushCommand(projectHistoryScope(), { label, undo: take, redo: put });

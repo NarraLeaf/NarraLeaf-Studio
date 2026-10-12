@@ -10,7 +10,8 @@
  *   tag ids of the avatar axes (layered);
  * - per differential, a `baked` crop Studio renders from the sprite when the author opens the
  *   Characters panel. An agent cannot bake (it is a canvas render in the panel), so it writes the
- *   default and the overrides; a bake that exists is left alone and an override wins over it.
+ *   default and the overrides, in the shape the character editor writes them: an override replaces
+ *   the differential's entry, and clearing it removes the entry, so Studio bakes afresh.
  *
  * Keys travel by NAME here - a pose name, or tag names joined with `+` - because ids are not what an
  * agent reads in `characters_list`, and the layered key's sort order is an implementation detail.
@@ -19,11 +20,42 @@
  */
 
 import type { CharacterAvatarEntry } from "@shared/types/character/model";
+import type { CharacterAppearanceSummary } from "@shared/types/devMode";
+import { characterAvatarAxisIds, characterAvatarKey } from "@shared/utils/characterAvatar";
 import type { CharacterAppearance } from "../character/CharacterAppearance";
 import { refuse } from "./agentCall";
 
-/** How a layered avatar key joins its tags, both in the model and in what the tools accept. */
+/**
+ * How the tools spell a layered avatar key: tag names joined with `+`. Spelling a model key back
+ * splits it the same way - tag ids are `[a-z0-9]` counters, so the separator cannot be inside one.
+ */
 const KEY_SEPARATOR = "+";
+
+/**
+ * The slice of an appearance the shared avatar keying (`@shared/utils/characterAvatar`) reads - the
+ * one the character editor hands it - so a key an agent writes is the key the baker, the compiler
+ * and the editor work out for the same differential, by the same rule rather than a copy of it.
+ */
+function avatarKeying(appearance: CharacterAppearance): CharacterAppearanceSummary | undefined {
+    switch (appearance.getKind()) {
+        case "preset":
+            return {
+                kind: "preset",
+                poses: appearance.getPoses().map(pose => ({ id: pose.id, name: pose.name, assetId: pose.assetId })),
+                defaultPoseId: appearance.getDefaultPoseId(),
+            };
+        case "layered":
+            return {
+                kind: "layered",
+                canvas: null,
+                layers: [],
+                axes: appearance.getAxes(),
+                avatarAxisIds: appearance.getAvatarAxisIds(),
+            };
+        default:
+            return undefined;
+    }
+}
 
 /** What a call asked for. `undefined` fields leave that part alone. */
 export type AvatarRequest = {
@@ -131,9 +163,11 @@ export function carryPresetAvatars(appearance: CharacterAppearance, byName: Map<
  */
 export function avatarKeyFor(appearance: CharacterAppearance, characterName: string, spelled: string): string {
     const kind = appearance.getKind();
+    const keying = avatarKeying(appearance);
     if (kind === "preset") {
         const pose = appearance.getPoses().find(item => item.name === spelled);
-        if (!pose) {
+        const key = pose ? characterAvatarKey(keying, { poseId: pose.id }) : null;
+        if (!key) {
             const names = appearance.getPoses().map(item => item.name);
             throw refuse(
                 "invalid_args",
@@ -141,7 +175,7 @@ export function avatarKeyFor(appearance: CharacterAppearance, characterName: str
                 names.length > 0 ? `Its poses: ${names.join(", ")}.` : "Give it poses first.",
             );
         }
-        return pose.id;
+        return key;
     }
     if (kind !== "layered") {
         throw refuse(
@@ -151,8 +185,8 @@ export function avatarKeyFor(appearance: CharacterAppearance, characterName: str
         );
     }
     const axes = appearance.getAxes();
-    const declared = appearance.getAvatarAxisIds().filter(id => axes.some(axis => axis.id === id));
-    const avatarAxes = declared.length > 0 ? axes.filter(axis => declared.includes(axis.id)) : axes;
+    const avatarAxisIds = characterAvatarAxisIds(keying);
+    const avatarAxes = axes.filter(axis => avatarAxisIds.includes(axis.id));
     const parts = spelled.split(KEY_SEPARATOR).map(part => part.trim()).filter(Boolean);
     const chosen = new Map<string, string>();
     for (const part of parts) {
@@ -173,14 +207,15 @@ export function avatarKeyFor(appearance: CharacterAppearance, characterName: str
         chosen.set(axis.id, axis.tags.find(tag => tag.name === part)!.id);
     }
     const missing = avatarAxes.filter(axis => axis.tags.length > 0 && !chosen.has(axis.id));
-    if (missing.length > 0 || chosen.size === 0) {
+    const key = missing.length === 0 ? characterAvatarKey(keying, { tags: Object.fromEntries(chosen) }) : null;
+    if (!key) {
         throw refuse(
             "invalid_args",
             `avatars["${spelled}"] must name one tag of every avatar axis, joined with "+"; missing: ${missing.map(axis => axis.name).join(", ") || "all"}.`,
             `Avatar axes: ${avatarAxes.map(item => item.name).join(", ")}. Narrow them with \`avatarAxes\` (e.g. just the expression) to give one avatar per expression.`,
         );
     }
-    return [...chosen.values()].sort().join(KEY_SEPARATOR);
+    return key;
 }
 
 /**
@@ -214,12 +249,15 @@ export function applyAvatarRequest(
     if (request.avatars) {
         for (const [spelled, assetId] of Object.entries(request.avatars)) {
             const key = avatarKeyFor(appearance, characterName, spelled);
-            const current = appearance.getAvatar(key);
+            // The shape the character editor writes when the author picks or clears an avatar: the
+            // override alone, or nothing. Clearing hands the differential back to the baker, so the
+            // bake goes with it and the next reconcile renders a fresh one; a bake kept beside a
+            // cleared override would show a crop from before the author's art changed. Asked to drop
+            // an override there is not, nothing is touched - least of all a bake it was not asked about.
             if (assetId) {
-                appearance.setAvatar(key, { ...(current ?? {}), overrideAssetId: assetId });
-            } else if (current) {
-                const { overrideAssetId: _dropped, ...rest } = current;
-                appearance.setAvatar(key, rest);
+                appearance.setAvatar(key, { overrideAssetId: assetId });
+            } else if (appearance.getAvatar(key)?.overrideAssetId) {
+                appearance.setAvatar(key, null);
             }
         }
     }
@@ -258,17 +296,12 @@ export function describeAvatars(
             baked += 1;
         }
     }
-    const declared = appearance.getKind() === "layered" ? appearance.getAvatarAxisIds() : [];
     return {
         defaultAvatar: defaultAvatarAssetId ? assetName(defaultAvatarAssetId) ?? defaultAvatarAssetId : null,
         avatars: overrides,
         bakedAvatars: baked,
         ...(appearance.getKind() === "layered"
-            ? {
-                avatarAxes: declared.length > 0
-                    ? declared.map(id => appearance.getAxis(id)?.name ?? id)
-                    : appearance.getAxes().map(axis => axis.name),
-            }
+            ? { avatarAxes: characterAvatarAxisIds(avatarKeying(appearance)).map(id => appearance.getAxis(id)?.name ?? id) }
             : {}),
     };
 }

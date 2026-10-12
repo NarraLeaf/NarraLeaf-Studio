@@ -19,6 +19,7 @@ import { segmentPlainText } from "./storyFindReplace";
 import type { StoryCommandAppearanceRef, StoryCommandCharacterSources, StoryCommandContext, StoryCommandNamedRef, StoryCommandStageObjectKind, StoryCommandStageObjects, StoryCommandStageObjectSources, StoryCommandVariableEntry, StoryCommandVideoClips } from "./storyCommandResolution";
 import { EMPTY_STORY_COMMAND_STAGE_OBJECT_SOURCES } from "./storyCommandResolution";
 import type { StoryPuppetVocabulary } from "./storyCommandValues";
+import { storedFarPositions } from "./commands/transformVocabulary";
 
 /**
  * Project a live project onto the flat, name-keyed view the command line resolves against.
@@ -432,6 +433,8 @@ export function buildStoryCommandContext(input: {
         // The one scan, shared with the compiler's `goto` validation (§12.9) - not a completion-layer
         // special case, just another table this projection carries.
         labels: sceneLabelNames(input.scene),
+        // What lets a row that already holds a far-out pair have its own line committed again.
+        storedFarPositions: storedFarPositions(input.scene),
         appTags: appTagRefs(input.appTags),
         surfaces: (input.surfaces ?? []).map(surface => ({ id: surface.id, name: surface.name })),
         inputActions: (input.inputActions ?? []).map(action => ({ id: action.id, name: action.name })),

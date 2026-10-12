@@ -156,15 +156,26 @@ async function changeLanguages(
         removals,
         code => counts.get(code) ?? 0,
     );
-    // Counting each language's translations read its document; the author may have paused meanwhile.
-    assertAgentMayStillWrite(tool);
+    // Counting each language's translations read its document, and each language written is awaited
+    // too: the author may have paused at any of those, so each write asks first.
+    const done: string[] = [];
+    const gate = () => assertAgentMayStillWrite(tool, done.length === 0 ? "Nothing was written." : `Already ${done.join(", ")}; nothing else was written.`);
     for (const code of plan.add) {
+        gate();
         await localization.addLocale({ code, displayName: localeAutonym(code) });
+        done.push(`added ${code}`);
     }
     for (const code of plan.remove) {
+        gate();
         await localization.removeLocale(code);
+        done.push(`removed ${code}`);
     }
     return plan;
+}
+
+/** How a refusal part-way through `project_settings_set` ends: what it had changed by then. */
+function writtenSoFar(changed: readonly string[]): string {
+    return changed.length === 0 ? "Nothing was written." : `Already changed: ${changed.join(" and ")}; nothing else was written.`;
 }
 
 /**
@@ -221,7 +232,10 @@ export const projectSettingsSet: AgentToolHandler = async (args, { ctx, request,
             log("info", `languages +[${languagePlan.add.join(", ")}] -[${languagePlan.remove.join(", ")}]`);
         }
     }
+    // Every write below follows an await - the languages, or the setting written before it - and the
+    // author may have paused at any of them, so each one asks the gate again.
     if (name !== undefined && name !== project.getProjectConfig().name) {
+        assertAgentMayStillWrite({ ctx, request, follow }, writtenSoFar(changed));
         await project.updateProjectName(name);
         changed.push("name");
     }
@@ -229,6 +243,7 @@ export const projectSettingsSet: AgentToolHandler = async (args, { ctx, request,
         const current = project.getProjectConfig().metadata?.resolution ?? DEFAULT_RESOLUTION;
         const next = { width: width ?? current.width, height: height ?? current.height };
         if (next.width !== current.width || next.height !== current.height) {
+            assertAgentMayStillWrite({ ctx, request, follow }, writtenSoFar(changed));
             await project.updateProjectMetadata({ resolution: next });
             changed.push("resolution");
             log("info", `resolution ${current.width}x${current.height} -> ${next.width}x${next.height}`);
@@ -238,6 +253,7 @@ export const projectSettingsSet: AgentToolHandler = async (args, { ctx, request,
         const current = project.getPlayerPreferences();
         const differing = (Object.keys(playerDefaults) as PlayerPreferenceKey[]).filter(key => current[key] !== playerDefaults[key]);
         if (differing.length > 0) {
+            assertAgentMayStillWrite({ ctx, request, follow }, writtenSoFar(changed));
             await project.updatePlayerPreferences(playerDefaults);
             changed.push("player defaults");
             log("info", `player defaults ${differing.map(key => `${key}=${String(playerDefaults[key])}`).join(", ")}`);

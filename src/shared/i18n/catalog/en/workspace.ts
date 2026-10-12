@@ -489,6 +489,14 @@ export const workspace = {
                 existsDetail: "Files with the same name are replaced. Other files in the folder are kept.",
                 replace: "Replace",
             },
+            // Asked when installing the Agent Skill would replace a SKILL.md that is not Studio's.
+            installSkill: {
+                title: "Install Agent Skill",
+                changedOne: "This folder holds a SKILL.md that differs from Studio's",
+                changedMany: "These folders hold a SKILL.md that differs from Studio's",
+                changedDetail: "Files with the same name are replaced with this version of Studio's Agent Skill. Other skills are kept.",
+                replace: "Replace",
+            },
             // Asked when an agent needs files outside the project and the allowed folders.
             folderAccess: {
                 title: "Allow agents to read folders?",
@@ -511,6 +519,10 @@ export const workspace = {
         // The Agent log panel (`AgentLogPanel`).
         log: {
             pluginTool: "A tool of the plugin {plugin}",
+            // What the log's target column names a call by when its subject has no name of its own.
+            target: {
+                standardScreens: "Standard screens",
+            },
             filter: {
                 all: "All calls",
                 writes: "Changes only",
@@ -626,7 +638,7 @@ export const workspace = {
             chapter_rename: "Rename a chapter",
             chapter_delete: "Delete a chapter",
             playtest_click: "Click in the game",
-            playtest_hover: "Point at something in the game",
+            playtest_hover: "Hover in the game",
             playtest_key: "Press a key in the game",
             playtest_stop: "Stop playing",
             console_read: "Read Studio's console",

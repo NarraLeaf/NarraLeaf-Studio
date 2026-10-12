@@ -1267,8 +1267,12 @@ function elementScopeDiagnostics(
             if (isUIElementRefInScope(site.ref.surfaceId, owner)) {
                 continue;
             }
-            const element = uiDocument?.elements?.[site.ref.elementId];
-            const elementLabel = element?.name?.trim() ? `"${element.name.trim()}", ${site.ref.elementId}` : site.ref.elementId;
+            // The element's own name, never its id: the panel is the author's, and an id is nothing they
+            // can act on. An agent finds the node by the line it wrote, which names the id itself.
+            const name = uiDocument?.elements?.[site.ref.elementId]?.name?.trim();
+            const elementLabel = name
+                ? translate("blueprint.diagnostics.node.elementNamed", { name })
+                : translate("blueprint.diagnostics.node.elementUnnamed");
             out.push({
                 severity: "error",
                 code: "element.other_surface",

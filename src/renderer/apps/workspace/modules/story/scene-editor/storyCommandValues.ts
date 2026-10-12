@@ -226,6 +226,13 @@ export type StoryCommandContext = {
      */
     labels: readonly string[];
     /**
+     * The `pos=x,y` pairs beyond the stage's reach that rows of the CURRENT scene already store, as
+     * their lines print them (`3,0.5`). A line may state one of these again; any other far-out pair is
+     * refused as pixels typed where shares belong. Scene-scoped like {@link labels}, and omitted (no
+     * pair accepted) where no scene is open. See `storedFarPositions`.
+     */
+    storedFarPositions?: readonly string[];
+    /**
      * The project's build variants, by the name the author gave them - release first.
      *
      * Always non-empty: the release variant exists in every project, so a slot that takes one always

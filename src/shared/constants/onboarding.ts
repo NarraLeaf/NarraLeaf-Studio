@@ -31,3 +31,19 @@ export const ONBOARDING_VERSION = 1;
 export function needsOnboarding(stored: unknown): boolean {
     return typeof stored !== "number" || !Number.isFinite(stored) || stored < ONBOARDING_VERSION;
 }
+
+/**
+ * Whether writing `next` over the stored marker would move it backwards: to a value that reads as
+ * "setup not done", or to an older revision than the one stored. A window's only business with the
+ * marker is recording that setup was finished or skipped, so the host refuses such a write, and
+ * refuses deleting the marker, from any window.
+ *
+ * This is not what keeps setup's agent handlers shut - main marks the launcher it opened in setup and
+ * reads that (`FirstRunSetupGate`) - but without it a window could still replay setup on every launch.
+ */
+export function onboardingMarkerMovesBack(stored: unknown, next: unknown): boolean {
+    if (needsOnboarding(next)) {
+        return true;
+    }
+    return typeof stored === "number" && Number.isFinite(stored) && (next as number) < stored;
+}

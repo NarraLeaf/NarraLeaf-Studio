@@ -1066,6 +1066,21 @@ describe("logic and effects", () => {
         expect(issuesOf("/transform hero shutter=1")).toEqual(["unsupportedParam"]);
     });
 
+    it("takes back a far-out pair a row of the scene already stores, in pos= and in from=", () => {
+        const stored: StoryCommandContext = { ...CONTEXT, storedFarPositions: ["100,200"] };
+        const issuesIn = (source: string, context: StoryCommandContext) => {
+            const line = parseCommandLine(source);
+            if (line.kind !== "command" || !line.def) {
+                throw new Error(`not a command: ${source}`);
+            }
+            return resolveCommandLine(line, context).issues.map(issue => issue.code);
+        };
+        expect(issuesIn("/transform hero pos=100,200", stored)).toEqual([]);
+        expect(issuesIn("/transform hero pos=100,201", stored)).toEqual(["positionOutOfRange"]);
+        expect(issuesIn("/transform hero from=pos=100,200 pos=0.5,0.5", stored)).toEqual([]);
+        expect(issuesIn("/transform hero from=pos=100,200 pos=0.5,0.5", CONTEXT)).toEqual(["unsupportedOption"]);
+    });
+
     it("/transform takes a drawn easing curve where it takes an easing word", () => {
         // The inspector can state a curve no word names, so the line has to be able to say it too -
         // otherwise a row carrying one printed a value that retyping the row would drop.

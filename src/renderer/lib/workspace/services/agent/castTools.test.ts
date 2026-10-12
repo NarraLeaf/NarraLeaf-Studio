@@ -287,6 +287,29 @@ describe("character_upsert avatars", () => {
         expect(cleared.character).toMatchObject({ avatars: {}, defaultAvatar: null });
     });
 
+    it("writes an override in the shape the character editor writes, dropping the bake, and clears it to nothing", async () => {
+        const { cast, run } = harness();
+        const made = await run(characterUpsert, {
+            name: "Mei",
+            poses: [{ name: "normal", asset: "lin_normal" }, { name: "smile", asset: "lin_smile" }],
+        });
+        const appearance = () => cast.getCharacter(made.character.id)!.profile.appearance;
+        const [normalId, smileId] = appearance().getPoses().map(pose => pose.id);
+        // Studio baked both differentials and the author framed one of them.
+        appearance().setAvatar(normalId, { baked: "fp-normal", portrait: { x: 0.1, y: 0.1, w: 0.5, h: 0.5 } });
+        appearance().setAvatar(smileId, { baked: "fp-smile" });
+
+        await run(characterUpsert, { id: made.character.id, avatars: { normal: "lin_smile" } });
+        expect(appearance().getAvatar(normalId)).toEqual({ overrideAssetId: "cutout" });
+
+        // Cleared, the entry goes, so Studio bakes the differential afresh.
+        await run(characterUpsert, { id: made.character.id, avatars: { normal: null } });
+        expect(appearance().getAvatar(normalId)).toBeNull();
+        // There was no override to drop on the other one: its bake is left alone.
+        await run(characterUpsert, { id: made.character.id, avatars: { smile: null } });
+        expect(appearance().getAvatar(smileId)).toEqual({ baked: "fp-smile" });
+    });
+
     it("refuses an unknown pose or asset before writing anything", async () => {
         const { cast, refusal, run } = harness();
         const made = await run(characterUpsert, { name: "Mei", poses: [{ name: "normal", asset: "lin_normal" }] });

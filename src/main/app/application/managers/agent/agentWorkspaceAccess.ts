@@ -70,6 +70,8 @@ export type SkillExportFs = {
     readdir(dir: string, options: { withFileTypes: true }): Promise<{ name: string; isDirectory(): boolean; isFile(): boolean }[]>;
     mkdir(dir: string, options: { recursive: true }): Promise<unknown>;
     copyFile(from: string, to: string): Promise<void>;
+    /** Without following a link, so a junction or symbolic link in the destination is seen as one. */
+    lstat(target: string): Promise<{ isSymbolicLink(): boolean }>;
 };
 
 /** Whether `dir` exists and holds anything. A missing directory is empty. */
@@ -82,11 +84,33 @@ export async function isNonEmptyDirectory(fs: Pick<SkillExportFs, "readdir">, di
 }
 
 /**
+ * Refuse to write at `target` when it is a symbolic link or a junction. Writing through one would put
+ * the skill wherever the link points - another folder of the author's, or one of the system's -
+ * rather than in the folder the author was shown. A missing entry is fine: the copy creates it.
+ */
+async function refuseLink(fs: Pick<SkillExportFs, "lstat">, target: string): Promise<void> {
+    let isLink: boolean;
+    try {
+        isLink = (await fs.lstat(target)).isSymbolicLink();
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException | null)?.code === "ENOENT") {
+            return;
+        }
+        throw error;
+    }
+    if (isLink) {
+        throw new Error(`${target} is a link. Studio does not copy the Agent Skill through links; remove the link and try again.`);
+    }
+}
+
+/**
  * Copy the skill tree into `target`, file by file. Files of the same name are replaced; anything
  * else already in `target` is left where it is - an export never deletes the author's files.
- * Symbolic links and other special entries in the source are skipped.
+ * Symbolic links and other special entries in the source are skipped, and a folder or file in the
+ * destination that is a link stops the copy before anything is written through it.
  */
 export async function copySkillTree(fs: SkillExportFs, source: string, target: string): Promise<number> {
+    await refuseLink(fs, target);
     await fs.mkdir(target, { recursive: true });
     let copied = 0;
     for (const entry of await fs.readdir(source, { withFileTypes: true })) {
@@ -95,6 +119,7 @@ export async function copySkillTree(fs: SkillExportFs, source: string, target: s
         if (entry.isDirectory()) {
             copied += await copySkillTree(fs, from, to);
         } else if (entry.isFile()) {
+            await refuseLink(fs, to);
             await fs.copyFile(from, to);
             copied += 1;
         }

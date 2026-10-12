@@ -9,6 +9,11 @@
  * Reads are never gated here. A paused agent may still look at the project (that is how it learns
  * what the author changed while it waited), and a frozen workspace is still readable.
  *
+ * One kind of non-write stops for the pause: a tool that drives the running game (`drivesGame` in
+ * the tool table). It changes nothing in the project, so the writes switch, trust, a freeze and a
+ * live session leave it alone - but it presses whatever a player could, a game's "delete save"
+ * included, and a pause means the agent stops acting. Looking at the game goes on working.
+ *
  * Comments in English per project convention.
  */
 
@@ -18,6 +23,8 @@ import type { WorkspaceFreeze } from "@/lib/app/writeFreeze";
 export type AgentGateInput = {
     /** The tool's `write` flag from the tool table. */
     write: boolean;
+    /** The tool's `drivesGame` flag from the tool table: it acts in the running game as a player does. */
+    drivesGame?: boolean;
     policy: AgentSessionPolicy;
     /** The author paused agents from the status bar. */
     paused: boolean;
@@ -30,6 +37,13 @@ export type AgentGateInput = {
 /** Null when the call may run; otherwise the refusal to answer with. */
 export function gateAgentCall(input: AgentGateInput): AgentCallResult | null {
     if (!input.write) {
+        if (input.drivesGame && input.paused) {
+            return agentRefusal(
+                "paused",
+                "The author paused the agent from Studio's status bar, so it may not act in the running game.",
+                "Wait for the author to resume. playtest_screenshot and the other read tools keep working meanwhile; the game may have moved on when you come back, so look again first.",
+            );
+        }
         return null;
     }
     if (!input.policy.writesEnabled) {

@@ -20,6 +20,7 @@ import {
     type PageAnimationNavigationDirection,
 } from "@/lib/ui-editor/runtime/pageAnimation";
 import { SurfaceEnterReadyContext } from "@/lib/ui-editor/runtime/surface/ElementAnimationLayer";
+import { getCssBackgroundAlpha } from "@/lib/ui-editor/runtime/surfaceBackground";
 
 export const SURFACE_PREPAINT_TIMEOUT_MS = 900;
 /**
@@ -40,12 +41,14 @@ const SURFACE_PREPAINT_IMAGE_TIMEOUT_MS = 120;
  * How much longer the prepaint holds a layer back for a picture that covers much of it.
  *
  * The 120ms above is right for a thumbnail popping into its box. It is wrong for a page whose
- * backdrop is one large picture: revealed before it decodes, the page is its bare background colour -
- * usually black - for the second or two a big PNG takes on first open, which reads as a broken page
- * rather than a slow one. So a picture covering at least {@link SURFACE_PREPAINT_LARGE_IMAGE_SHARE}
- * of the layer is waited for up to this long, and meanwhile the layer stays fully transparent: what
- * the player sees is whatever was under it (the page they came from, the stage) until it is ready.
- * Warmed pictures are already decoded and cost nothing here.
+ * backdrop is one large picture: revealed before it has loaded, the page is its bare background
+ * colour - usually black - for the second or two a big PNG takes on first open, which reads as a
+ * broken page rather than a slow one. So a picture covering at least
+ * {@link SURFACE_PREPAINT_LARGE_IMAGE_SHARE} of the layer that has not loaded yet is waited for (to
+ * its decode) up to this long. Meanwhile an opaque layer stays fully transparent - what the player
+ * sees is whatever was under it (the page they came from, the stage) until it is ready - and a
+ * translucent one shows its colour with only its content waiting (see `holdBackgroundWhilePending`).
+ * Warmed pictures have loaded already and cost nothing here.
  */
 const SURFACE_PREPAINT_LARGE_IMAGE_TIMEOUT_MS = 1500;
 const SURFACE_PREPAINT_LARGE_IMAGE_SHARE = 0.25;
@@ -75,6 +78,21 @@ type SurfaceAnimationLayerProps = {
     style?: CSSProperties;
     contentClassName?: string;
     contentStyle?: CSSProperties;
+    /**
+     * Whether the layer's own background (`style`'s colour and image) waits with its content while
+     * the prepaint is pending.
+     *
+     * For an opaque background it does: shown before the pictures on it, it is a bare page - the
+     * black first open of a page whose backdrop is one large picture - so the player goes on seeing
+     * what was under the layer until it is ready. A translucent one is not a page but a veil - a menu
+     * dimming the stage, a dialog's scrim - and shown at once it says the press registered while only
+     * the content waits; held back, a dimming layer popped in late together with its pictures.
+     *
+     * Defaults to whether `style.backgroundColor` is opaque. A host that mixes its colour for
+     * presentation (a `color-mix()`, which cannot be measured here) passes the answer for the colour
+     * it was authored with.
+     */
+    holdBackgroundWhilePending?: boolean;
     surfaceId?: string;
     surfaceKind?: string;
     interactive?: boolean;
@@ -205,11 +223,16 @@ function decodedOrSettled(image: HTMLImageElement): Promise<unknown> {
 }
 
 /**
- * The pictures under `root` that cover a large share of it and have not decoded yet. Read after the
+ * The pictures under `root` that cover a large share of it and have not loaded yet. Read after the
  * first wait, so a picture whose address arrived during it (the `<img>` mounts when its URL resolves)
  * is counted too.
+ *
+ * Loaded, not decoded: a page has no way to ask whether an `<img>` is decoded short of awaiting
+ * `decode()`, and awaiting it for every large picture already loaded - the warmed ones - would put a
+ * frame on every page switch for nothing. What the prepaint waits on for the pictures found here is
+ * their decode (`decodedOrSettled`), so once released they paint at once.
  */
-export function largeUndecodedImages(root: HTMLElement | null, share = SURFACE_PREPAINT_LARGE_IMAGE_SHARE): HTMLImageElement[] {
+export function largeUnloadedImages(root: HTMLElement | null, share = SURFACE_PREPAINT_LARGE_IMAGE_SHARE): HTMLImageElement[] {
     if (!root) {
         return [];
     }
@@ -264,9 +287,9 @@ function useSurfacePrepaint(prepaintKey: string, rootRef: RefObject<HTMLDivEleme
                 waitWithTimeout(waitForDocumentFonts(), SURFACE_PREPAINT_TIMEOUT_MS),
                 waitWithTimeout(waitForImages(rootRef.current), SURFACE_PREPAINT_IMAGE_TIMEOUT_MS),
             ]);
-            // A backdrop-sized picture still decoding is worth holding the layer for (see
+            // A backdrop-sized picture still loading is worth holding the layer for (see
             // SURFACE_PREPAINT_LARGE_IMAGE_TIMEOUT_MS); a small one is not.
-            const large = cancelled ? [] : largeUndecodedImages(rootRef.current);
+            const large = cancelled ? [] : largeUnloadedImages(rootRef.current);
             if (large.length > 0) {
                 await waitWithTimeout(Promise.all(large.map(decodedOrSettled)), SURFACE_PREPAINT_LARGE_IMAGE_TIMEOUT_MS);
             }
@@ -411,6 +434,7 @@ export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
         style,
         contentClassName,
         contentStyle,
+        holdBackgroundWhilePending,
         surfaceId,
         surfaceKind,
         interactive = true,
@@ -529,10 +553,13 @@ export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
         };
     }, [pageMotion.animate, pageMotion.exit, pageMotion.initial, resolveExit, scale]);
 
-    // While the layer is held back its own background is held back too: a page's backdrop colour on
-    // the animation layer would otherwise show, bare, for as long as its pictures take - the black
-    // first open of a page with a large background picture.
-    const holdingBack = isPresent && !prepaintReady;
+    // While an opaque layer is held back its own background is held back too: a page's backdrop
+    // colour on the animation layer would otherwise show, bare, for as long as its pictures take -
+    // the black first open of a page with a large background picture. A translucent one shows at
+    // once (see `holdBackgroundWhilePending`).
+    const holdBackground = holdBackgroundWhilePending
+        ?? getCssBackgroundAlpha(typeof style?.backgroundColor === "string" ? style.backgroundColor : undefined) >= 1;
+    const holdingBack = isPresent && !prepaintReady && holdBackground;
     const mergedStyle: CSSProperties = {
         ...style,
         // Longhands only: React warns when a render swaps a shorthand against the longhands beside it.

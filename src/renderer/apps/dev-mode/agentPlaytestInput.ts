@@ -400,12 +400,25 @@ export class PlaytestPointer {
 }
 
 export type PointerActOutcome =
-    | { kind: "done"; target: DrawnElement }
+    | {
+          kind: "done";
+          target: DrawnElement;
+          /**
+           * Set when the act landed on an element around `target` rather than on `target` or inside it:
+           * `target` lets the pointer through at that point (it takes no pointer events there, or an
+           * element around it clips it), so a player's press there goes to what encloses it. `on` is
+           * the nearest interface element the press reached, null when that is no interface element.
+           * Events bubble up, not down, so nothing on `target` itself heard the act.
+           */
+          around?: { on: DrawnElement | null };
+      }
     | { kind: "refused"; message: string };
 
 /**
  * Point at `target` and click it, or rest on it. The press lands on what is on top at the point,
- * which must be the element or something inside it; anything else covering it is refused, named.
+ * which must be the element, something inside it, or an element around it that it lets the pointer
+ * through to - the last is done as a player's would be, and said (`around`); anything else covering
+ * it is refused, named.
  */
 export function actOnElement(
     env: InputEnvironment,
@@ -431,7 +444,32 @@ export function actOnElement(
     if (gesture === "click") {
         pointer.press(0);
     }
-    return { kind: "done", target };
+    if (hit === target.node || target.node.contains(hit)) {
+        return { kind: "done", target };
+    }
+    return { kind: "done", target, around: { on: owningDrawn(env, hit) } };
+}
+
+/**
+ * What a pointer act did, in the words an agent reads: the element that was actually pressed, and
+ * - when that was not the one asked for - why, so an answer never claims a click its target never
+ * heard.
+ */
+export function describePointerAct(gesture: DevModeAgentPointerGesture, outcome: Extract<PointerActOutcome, { kind: "done" }>): string {
+    const verb = gesture === "click" ? "Clicked" : "Pointed at";
+    const asked = describeDrawnElement(outcome.target);
+    if (!outcome.around) {
+        return `${verb} ${asked}.`;
+    }
+    const landed = outcome.around.on
+        ? describeDrawnElement(outcome.around.on)
+        : "a part of the game around it that is not an interface element";
+    const unheard = gesture === "click"
+        ? "nothing on it heard the click (its On Click did not run)"
+        : "nothing on it heard the pointer (its hover look and On Mouse Enter did not run)";
+    return `${verb} ${landed}, not ${asked}: at that point ${asked} lets the pointer through (it takes no pointer `
+        + `events there, or an element around it clips it), so the ${gesture} landed on the element around it, as a `
+        + `player's would, and ${unheard}. Pass \`at\` to aim at another part of it, or act on the element around it.`;
 }
 
 // ---------------------------------------------------------------------------------------------

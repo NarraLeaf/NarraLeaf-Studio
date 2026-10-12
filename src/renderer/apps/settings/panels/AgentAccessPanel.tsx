@@ -2,30 +2,14 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Check, Copy, Loader2, Trash2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
-import { Button, IconButton, Switch } from "@/lib/components/elements";
+import { Button, IconButton, Select, Switch } from "@/lib/components/elements";
 import { cn } from "@/lib/utils/cn";
 import { copyTextToClipboard } from "@shared/utils/copyText";
 import { pluginDisplayName } from "@shared/utils/pluginDisplayText";
-import {
-    buildAgentClientConfig,
-    type AgentClientConfigKind,
-    type AgentSettingsPatch,
-    type AgentSettingsSnapshot,
-} from "@shared/agent/settings";
+import type { AgentSettingsPatch, AgentSettingsSnapshot } from "@shared/agent/settings";
+import type { AgentClientId } from "@shared/agent/clients";
 import { SETTING_CONTROL_WIDTH } from "../components/settingControlWidth";
-
-/** The copy buttons, in the order and with the names the Agent menu's copy submenu uses (`AGENT_MENU_COPY_KINDS`). */
-const CONFIG_KINDS: {
-    kind: AgentClientConfigKind;
-    labelKey: "settings.agent.copyClaudeCode" | "settings.agent.copyJson" | "settings.agent.copyOpencode" | "settings.agent.copyStdio";
-    tipKey?: "settings.agent.copyStdioHint";
-}[] = [
-    { kind: "claudeCode", labelKey: "settings.agent.copyClaudeCode" },
-    // For clients that only launch local programs: Studio's own executable as a stdio bridge.
-    { kind: "stdio", labelKey: "settings.agent.copyStdio", tipKey: "settings.agent.copyStdioHint" },
-    { kind: "opencode", labelKey: "settings.agent.copyOpencode" },
-    { kind: "json", labelKey: "settings.agent.copyJson" },
-];
+import { AgentClientGuide, useAgentClientOptions } from "../components/AgentClientGuide";
 
 /**
  * Agent access: the MCP endpoint an author's own AI agent connects to, and the switches that decide
@@ -42,6 +26,12 @@ const CONFIG_KINDS: {
  *
  * Rows follow the generic settings row (label and description on the left, the control at the
  * shared control width on the right), so this section reads like the ones around it.
+ *
+ * Under the token rows, the guide first-run setup walks an author through: pick the agent
+ * application, then its configuration (token masked), where it goes, and its Agent Skill - the same
+ * component as the setup screen (`AgentClientGuide`), so what setup offered stays here. It is the
+ * one place a configuration is copied from in this panel: a row of copy buttons beside it would be a
+ * second way to do the same thing, without the guide's "where it goes".
  */
 export function AgentAccessPanel() {
     const { t, locale } = useTranslation();
@@ -50,13 +40,15 @@ export function AgentAccessPanel() {
     const [busy, setBusy] = useState(false);
     const [tokenVisible, setTokenVisible] = useState(false);
     const [confirmRegenerate, setConfirmRegenerate] = useState(false);
-    const [copied, setCopied] = useState<AgentClientConfigKind | "address" | null>(null);
+    const [copied, setCopied] = useState<"address" | null>(null);
     const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     // Each step of regenerating replaces the focused button, so focus is handed on explicitly: the
     // confirm step's Cancel takes it, and once the step closes the Regenerate button gets it back
     // (after a regeneration, once it is enabled again).
     const regenerateButton = useRef<HTMLButtonElement | null>(null);
     const refocusRegenerate = useRef(false);
+    const [guideClient, setGuideClient] = useState<AgentClientId>("claudeCode");
+    const clientOptions = useAgentClientOptions();
 
     const adopt = useCallback((result: Awaited<ReturnType<ReturnType<typeof getInterface>["agent"]["getSettings"]>>) => {
         if (result.success) {
@@ -105,14 +97,12 @@ export function AgentAccessPanel() {
         }
     }, [confirmRegenerate, busy]);
 
-    const copy = useCallback(async (kind: AgentClientConfigKind | "address") => {
+    const copyAddress = useCallback(async () => {
         if (!settings) {
             return;
         }
-        await copyTextToClipboard(kind === "address"
-            ? settings.url
-            : buildAgentClientConfig(kind, settings.url, settings.token, settings.stdio));
-        setCopied(kind);
+        await copyTextToClipboard(settings.url);
+        setCopied("address");
         if (copiedTimer.current) {
             clearTimeout(copiedTimer.current);
         }
@@ -181,7 +171,7 @@ export function AgentAccessPanel() {
                         variant="ghost"
                         aria-label={t("settings.agent.copyAddress")}
                         data-tip={copied === "address" ? t("settings.agent.copied") : t("settings.agent.copyAddress")}
-                        onClick={() => void copy("address")}
+                        onClick={() => void copyAddress()}
                     >
                         {copied === "address" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                     </IconButton>
@@ -221,21 +211,19 @@ export function AgentAccessPanel() {
                     </Button>
                 )}
             </Row>
-            <Row label={t("settings.agent.copyConfig")} description={t("settings.agent.copyConfigHint")} wide>
-                <div className="flex flex-wrap justify-end gap-2">
-                    {CONFIG_KINDS.map(({ kind, labelKey, tipKey }) => (
-                        <Button
-                            key={kind}
-                            size="sm"
-                            variant="secondary"
-                            data-tip={tipKey ? t(tipKey) : undefined}
-                            onClick={() => void copy(kind)}
-                        >
-                            {copied === kind ? t("settings.agent.copied") : t(labelKey)}
-                        </Button>
-                    ))}
-                </div>
+            <Row label={t("settings.agent.guide.app")} description={t("settings.agent.guide.appHint")}>
+                <Select
+                    size="sm"
+                    fullWidth
+                    options={clientOptions}
+                    value={guideClient}
+                    onChange={value => setGuideClient(value as AgentClientId)}
+                    ariaLabel={t("settings.agent.guide.app")}
+                />
             </Row>
+            <div className="px-2 pb-3 pt-1" data-agent-client-guide>
+                <AgentClientGuide client={guideClient} enabled={settings.enabled} endpointKey={settings.url} />
+            </div>
             <div className="rounded-md px-2 py-2">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="flex min-w-0 grow basis-64 flex-col gap-1">

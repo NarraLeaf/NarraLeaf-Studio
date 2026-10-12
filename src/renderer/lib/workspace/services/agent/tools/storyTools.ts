@@ -9,6 +9,7 @@
  * Comments in English per project convention.
  */
 
+import type { TranslationKey } from "@shared/i18n";
 import type { StoryChapter, StoryDocument, StoryScene } from "@shared/types/story";
 import { answer, answerJson, readOptionalString, readString, refuse, type AgentToolHandler, type AgentToolContext } from "../agentCall";
 import { AGENT_HISTORY_LABEL, resolveScene, resolveStory, storyService } from "../agentLookups";
@@ -133,11 +134,20 @@ export const sceneCreate: AgentToolHandler = async (args, tool) => {
     if (madeStory && !afterRef) {
         const defaultChapter = document.chapters[0];
         const defaultSceneId = defaultChapter?.sceneIds.length === 1 ? defaultChapter.sceneIds[0] : undefined;
-        if (defaultChapter && defaultSceneId && document.scenes[defaultSceneId]?.rootBlockIds.length === 0) {
-            if (chapterName) {
-                story.renameChapter(entry.id, defaultChapter.id, chapterName);
-            }
-            story.renameScene(entry.id, defaultSceneId, name);
+        const defaultScene = defaultSceneId ? document.scenes[defaultSceneId] : undefined;
+        if (defaultChapter && defaultSceneId && defaultScene?.rootBlockIds.length === 0) {
+            const madeWith = chapterName ? `"${defaultChapter.name}" and "${defaultScene.name}"` : `"${defaultScene.name}"`;
+            // Loading the new story awaited; the author may have paused meanwhile.
+            assertAgentMayStillWrite(tool, `Story "${entry.name}" was created (it stays, with its first chapter and scene); nothing else was written.`);
+            // The renames are this call's write, so they are one step of undo like any other: it gives
+            // the chapter and scene back the names the new story made them with. The story stays, as it
+            // does when a scene made inside it is taken back.
+            story.runAgentOutlineStep(entry.id, AGENT_HISTORY_LABEL, () => {
+                if (chapterName) {
+                    story.renameChapter(entry.id, defaultChapter.id, chapterName);
+                }
+                story.renameScene(entry.id, defaultSceneId, name);
+            });
             const created = story.getStoryDocument(entry.id).scenes[defaultSceneId];
             follow.noteWrite({ kind: "scene", storyId: entry.id, sceneId: defaultSceneId, name: created?.name ?? name });
             return answerJson(
@@ -147,7 +157,9 @@ export const sceneCreate: AgentToolHandler = async (args, tool) => {
                     entry: story.getStoryDocument(entry.id).entrySceneId === defaultSceneId,
                     revision: story.getSceneContentRevision(entry.id, defaultSceneId),
                 },
-                `Created story "${entry.name}" with scene "${created?.name ?? name}"${chapterName ? ` in chapter "${chapterName}"` : ""}. Write its rows with story_apply.`,
+                `Created story "${entry.name}" with scene "${created?.name ?? name}"${chapterName ? ` in chapter "${chapterName}"` : ""}; `
+                    + `one step of undo in Studio gives back the names the new story made them with (${madeWith}) - the story itself, made for it, stays. `
+                    + "Write its rows with story_apply.",
             );
         }
     }
@@ -323,10 +335,20 @@ export const chapterRename: AgentToolHandler = async (args, { ctx, request, foll
     const chapter = resolveChapter(document, chapterRef);
     follow.describeCall(request.callId, chapter.name);
     const before = chapter.name;
-    if (!storyService(ctx).renameChapterWithHistory(entry.id, chapter.id, name)) {
+    // Loading the story awaited; the author may have paused meanwhile.
+    assertAgentMayStillWrite({ ctx, request, follow });
+    const story = storyService(ctx);
+    // An outline step holding the two names, never a snapshot of the story: taking the rename back
+    // after rows were written into a scene must leave those rows where they are.
+    const renamed = story.runAgentOutlineStep(
+        entry.id,
+        { key: "story.history.renameChapter" as TranslationKey, params: { name: before } },
+        () => story.renameChapter(entry.id, chapter.id, name),
+    );
+    if (!renamed) {
         throw refuse("internal", `Chapter "${before}" could not be renamed.`);
     }
-    return answer(`Renamed chapter "${before}" to "${name}" in story "${entry.name}".`, { chapter: { id: chapter.id, name } });
+    return answer(`Renamed chapter "${before}" to "${name}" in story "${entry.name}". One step of undo in Studio.`, { chapter: { id: chapter.id, name } });
 };
 
 export const chapterDelete: AgentToolHandler = async (args, { ctx, request, follow }) => {
@@ -342,8 +364,18 @@ export const chapterDelete: AgentToolHandler = async (args, { ctx, request, foll
             "Delete them with scene_delete, or recreate them in another chapter, then delete the chapter.",
         );
     }
-    if (!storyService(ctx).deleteChapter(entry.id, chapter.id)) {
+    assertAgentMayStillWrite({ ctx, request, follow }, "Nothing was deleted.");
+    const story = storyService(ctx);
+    // An outline step that puts back this chapter and nothing else. The outline's own deletion
+    // records a snapshot of the whole story, and taking that back would also return every other
+    // scene's rows to how they stood when the chapter went.
+    const deleted = story.runAgentOutlineStep(
+        entry.id,
+        { key: "story.history.deleteChapter" as TranslationKey, params: { name: chapter.name } },
+        () => story.deleteChapter(entry.id, chapter.id),
+    );
+    if (!deleted) {
         throw refuse("internal", `Chapter "${chapter.name}" could not be deleted.`);
     }
-    return answer(`Deleted the empty chapter "${chapter.name}" from story "${entry.name}".`, { chapter: { id: chapter.id, name: chapter.name } });
+    return answer(`Deleted the empty chapter "${chapter.name}" from story "${entry.name}". One step of undo in Studio.`, { chapter: { id: chapter.id, name: chapter.name } });
 };

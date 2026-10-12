@@ -132,6 +132,18 @@ describe("AgentBridgeService", () => {
         expect(harness.projectName()).toBe("After");
     });
 
+    it("stops the tools that drive the running game while paused, and nothing that only looks at it", async () => {
+        const harness = createHarness();
+        await harness.init();
+        // Not writes: the writes switch does not stop them (the handler runs, and fails here for want of a game).
+        expect(codeOf(await harness.bridge.handle(call("playtest_key", { key: "Escape" }, WRITES_OFF)))).not.toBe("writes_disabled");
+        harness.follow.setPaused(true);
+        for (const tool of ["playtest_start", "playtest_advance", "playtest_click", "playtest_hover", "playtest_key", "playtest_stop"]) {
+            expect(codeOf(await harness.bridge.handle(call(tool, { element: "Start", key: "Escape" })))).toBe("paused");
+        }
+        expect(codeOf(await harness.bridge.handle(call("playtest_screenshot", {})))).not.toBe("paused");
+    });
+
     it("refuses writes to a frozen project", async () => {
         const harness = createHarness();
         await harness.init();

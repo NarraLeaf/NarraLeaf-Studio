@@ -6,6 +6,7 @@ import { buildGameTestState } from "@/lib/ui-editor/runtime/app/gameTestState";
 import { DevModeAgentErrorCode } from "@shared/types/devMode";
 import {
     actOnElement,
+    describePointerAct,
     keyEventInit,
     listDrawnSurfaces,
     PlaytestPointer,
@@ -23,13 +24,15 @@ import { PLAYTEST_TIMING, runAgentDriveAction, type PlaytestClock } from "./agen
  * drawn box containing it.
  */
 
-type Spec = { id: string; name?: string; type?: string; box?: [number, number, number, number]; text?: string; children?: Spec[] };
+/** `passThrough`: drawn, but the hit test looks through it, as through `pointer-events: none`. */
+type Spec = { id: string; name?: string; type?: string; box?: [number, number, number, number]; text?: string; passThrough?: boolean; children?: Spec[] };
 
 function element(id: string, name: string | undefined, type: string, parentId: string | null, childrenIds: string[]): UIElement {
     return { id, name, type, parentId, childrenIds, props: {} } as unknown as UIElement;
 }
 
 const boxes = new WeakMap<Element, InputBox>();
+const passThrough = new WeakSet<Element>();
 
 function build(surfaces: { id: string; name: string; box: [number, number, number, number]; root: Spec }[]): {
     env: InputEnvironment;
@@ -53,6 +56,9 @@ function build(surfaces: { id: string; name: string; box: [number, number, numbe
         if (spec.box) {
             const [left, top, width, height] = spec.box;
             boxes.set(node, { left, top, width, height });
+        }
+        if (spec.passThrough) {
+            passThrough.add(node);
         }
         parent.appendChild(node);
         for (const child of spec.children ?? []) {
@@ -79,7 +85,7 @@ function build(surfaces: { id: string; name: string; box: [number, number, numbe
             let top: Element | null = null;
             for (const node of Array.from(root.querySelectorAll("*"))) {
                 const box = boxes.get(node);
-                if (box && x >= box.left && x <= box.left + box.width && y >= box.top && y <= box.top + box.height) {
+                if (box && !passThrough.has(node) && x >= box.left && x <= box.left + box.width && y >= box.top && y <= box.top + box.height) {
                     top = node;
                 }
             }
@@ -247,6 +253,59 @@ describe("clicking", () => {
         expect(outcome.kind).toBe("refused");
         expect(outcome.kind === "refused" && outcome.message).toContain("covered at that point by Confirm: Root / Scrim (id scrim)");
         expect(seen).toEqual([]);
+    });
+
+    it("says it pressed the element around the target when the target lets the pointer through", () => {
+        const { env, node } = build([{
+            id: "title",
+            name: "Title",
+            box: [0, 0, 1920, 1080],
+            root: {
+                id: "title-root",
+                name: "Root",
+                box: [0, 0, 1920, 1080],
+                children: [{
+                    id: "start",
+                    name: "Start",
+                    type: "nl.button",
+                    box: [100, 500, 400, 80],
+                    children: [{ id: "caption", name: "Caption", type: "nl.text", box: [120, 510, 360, 60], text: "New game", passThrough: true }],
+                }],
+            },
+        }]);
+        const onCaption = record(node("caption"));
+        const onStart = record(node("start"));
+        const found = resolveInputTarget(env, { element: "Caption" });
+        if (found.kind !== "found") {
+            throw new Error("not found");
+        }
+        const outcome = actOnElement(env, new PlaytestPointer(), found.target, "click");
+        if (outcome.kind !== "done") {
+            throw new Error("refused");
+        }
+        // The click went where a player's would - to the button around the caption - and only there.
+        expect(onStart).toContain("click");
+        expect(onCaption).toEqual([]);
+        expect(outcome.around?.on?.element.id).toBe("start");
+        const said = describePointerAct("click", outcome);
+        expect(said).toMatch(/^Clicked Title: Root \/ Start \(id start\), not Title: Root \/ Start \/ Caption \(id caption\): /);
+        expect(said).toContain("lets the pointer through");
+        expect(said).toContain("its On Click did not run");
+    });
+
+    it("says only the target's name when the press landed on it or inside it", () => {
+        const { env } = titlePage();
+        const found = resolveInputTarget(env, { element: "Menu" });
+        if (found.kind !== "found") {
+            throw new Error("not found");
+        }
+        // The middle of the menu is one of its buttons: inside it, so the menu hears the click.
+        const outcome = actOnElement(env, new PlaytestPointer(), found.target, "click");
+        if (outcome.kind !== "done") {
+            throw new Error("refused");
+        }
+        expect(outcome.around).toBeUndefined();
+        expect(describePointerAct("click", outcome)).toBe("Clicked Title: Root / Menu (id menu).");
     });
 
     it("aims at the share of the box `at` names", () => {

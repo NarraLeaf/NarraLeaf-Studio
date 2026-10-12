@@ -27,8 +27,8 @@ import type { RequestStatus } from "@shared/types/ipcEvents";
 import {
     actOnElement,
     browserInputEnvironment,
-    describeDrawnElement,
     describeKnownKeys,
+    describePointerAct,
     gameCentre,
     isPointerKey,
     keyEventInit,
@@ -134,6 +134,12 @@ export function movedOn(from: GameAppTestState, next: GameAppTestState | null): 
     if (from.waitingForClick !== next.waitingForClick) {
         return true;
     }
+    if (!from.line && next.actionSerial !== from.actionSerial) {
+        // A stop with no line on screen (a `/wait click`, a timed `/wait`) is told from the next one
+        // like it by the play head alone: with only an instant row between them the engine reaches
+        // the second within one poll, and every other field reads the same.
+        return true;
+    }
     if (lineKey(next) !== lineKey(from)) {
         return true;
     }
@@ -231,7 +237,9 @@ async function waitForStop(
             return state;
         }
         const pause = state?.inGame ? state.pausedBy : null;
-        const key = pause ? JSON.stringify(pause) : null;
+        // The play head is part of the key: two `/wait 2s` rows back to back are two pauses, and the
+        // second gets its own length too.
+        const key = pause && state ? `${state.actionSerial}:${JSON.stringify(pause)}` : null;
         if (pause && key !== pausedSince) {
             // Measured from when the pause is first seen, once per pause: a timed wait gets its own
             // length plus the usual window, a video the whole call.
@@ -728,8 +736,7 @@ async function runInputAction(
         if (outcome.kind === "refused") {
             return refuse(outcome.message);
         }
-        const verb = action.gesture === "click" ? "Clicked" : "Pointed at";
-        did = `${verb} ${describeDrawnElement(outcome.target)}.`;
+        did = describePointerAct(action.gesture, outcome);
     } else if (isPointerKey(action.key)) {
         const centre = gameCentre(env);
         if (!centre) {

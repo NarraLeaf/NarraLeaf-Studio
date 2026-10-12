@@ -110,32 +110,13 @@ export const onboarding = {
         expectation: "How the scene editor is read and typed in.",
     },
     /**
-     * Connecting the author's own AI agent: which application it is, the configuration that points
-     * it at Studio, and the skill that tells it how to make a game. Product names are not
-     * translated and live in `@shared/agent/clients`.
+     * Connecting the author's own AI agent. The screen's switches take the Settings rows' labels and
+     * its guide to one application is the one Settings shows (`settings.agent.guide`).
      */
     agent: {
         title: "Agent access",
         expectation: "An AI agent connects to Studio over MCP and edits the open project. An agent is optional.",
-        app: "Agent application",
-        /** The catch-all row, for any other MCP client. */
-        other: "Other",
-        connection: "Connection",
-        /** Under the connection while the endpoint is off; names the switch above by its label. */
-        offHint: "Available once \"Allow agents to connect\" is on.",
-        runCommand: "Run in a terminal.",
-        mergeInto: "Merge into {file}.",
-        claudeDesktop: "Merge into claude_desktop_config.json (in Claude: Settings > Developer > Edit Config), then restart Claude.",
-        otherClient: "Streamable HTTP. Enter this address and header in the client's MCP settings.",
-        skill: "Skill",
-        skillFolder: "Copied into {path}. Other skills there are kept.",
-        skillInstall: "Install skill",
-        skillReinstall: "Reinstall",
-        skillInstalled: "Installed in {path}.",
-        skillUpload: "Saved as a zip file to upload in Claude under Settings > Capabilities > Skills.",
-        skillSave: "Save zip file…",
-        skillSaved: "Saved to {path}.",
-        skillServed: "Other applications read the same guide from Studio's MCP server. One that supports skills can install them with this command.",
+        toggleFailed: "Agent access could not be changed: {error}",
     },
     /**
      * The way past every question at once, on the first screen. See `WelcomeStep` for why it is

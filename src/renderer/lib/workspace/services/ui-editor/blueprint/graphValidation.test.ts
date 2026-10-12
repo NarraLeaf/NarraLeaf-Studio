@@ -364,6 +364,7 @@ describe("blueprint graph validation", () => {
 
     it("refuses an Element node that names a widget on another page, and accepts its own page's", () => {
         registerCoreBlueprintNodes();
+        const band = "5143dcd8-6a1f-4c3e-9b2d-0e7f1a2b3c4d";
         const docWith = (surfaceId: string): BlueprintDocument => ({
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
             blueprints: {
@@ -381,7 +382,7 @@ describe("blueprint graph validation", () => {
                                         textbox: {
                                             id: "textbox",
                                             type: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
-                                            params: { surfaceId, elementId: "band", elementType: "nl.container" },
+                                            params: { surfaceId, elementId: band, elementType: "nl.container" },
                                         },
                                     },
                                     edges: [],
@@ -395,11 +396,18 @@ describe("blueprint graph validation", () => {
             ownerRecords: {},
         });
         const crossing = validateBlueprintDocumentGraphs(docWith("dialogue-page"), "choice", {
-            uiDocument: { elements: { band: { id: "band", name: "Dialogue band" } as never } },
+            uiDocument: { elements: { [band]: { id: band, name: "Dialogue band" } as never } },
         }).find(d => d.code === "element.other_surface");
         expect(crossing?.severity).toBe("error");
-        expect(crossing?.message).toContain('"Dialogue band", band');
+        // Named by its name alone: the diagnostics panel never shows an id.
+        expect(crossing?.message).toContain('refers to "Dialogue band" on another page');
+        expect(crossing?.message).not.toContain(band);
         expect(crossing?.target).toMatchObject({ kind: "node", nodeId: "textbox" });
+        const unnamed = validateBlueprintDocumentGraphs(docWith("dialogue-page"), "choice", {
+            uiDocument: { elements: { [band]: { id: band, name: " " } as never } },
+        }).find(d => d.code === "element.other_surface");
+        expect(unnamed?.message).toContain("refers to an unnamed element on another page");
+        expect(unnamed?.message).not.toContain(band);
         expect(validateBlueprintDocumentGraphs(docWith("choice-page"), "choice").map(d => d.code)).not.toContain("element.other_surface");
     });
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentSessionPolicy } from "@shared/agent/protocol";
+import { AGENT_TOOLS } from "@shared/agent/tools";
 import { gateAgentCall, type AgentGateInput } from "./agentGate";
 import { agentWriteBlocked } from "./agentCommitGate";
 import { Services } from "../services";
@@ -28,6 +29,27 @@ describe("gateAgentCall", () => {
             freeze: { projectPath: "/p", reason: { kind: "manual" } },
             liveSession: true,
         })))).toBeNull();
+    });
+
+    it("stops a tool that drives the running game for the pause, and for nothing that guards writes", () => {
+        const driving = { write: false, drivesGame: true };
+        const result = gateAgentCall(input({ ...driving, paused: true }));
+        expect(code(result)).toBe("paused");
+        expect(result && !result.ok ? result.error.hint : "").toContain("playtest_screenshot");
+        expect(code(gateAgentCall(input({
+            ...driving,
+            policy: { writesEnabled: false, allowedImportRoots: [], projectTrusted: false },
+            freeze: { projectPath: "/p", reason: { kind: "manual" } },
+            liveSession: true,
+        })))).toBeNull();
+        // Looking at the game is a read like any other.
+        expect(code(gateAgentCall(input({ write: false, paused: true })))).toBeNull();
+    });
+
+    it("marks exactly the playtest tools that act in the game, none of them as a write", () => {
+        const driving = AGENT_TOOLS.filter(tool => tool.drivesGame).map(tool => tool.name).sort();
+        expect(driving).toEqual(["playtest_advance", "playtest_click", "playtest_hover", "playtest_key", "playtest_start", "playtest_stop"]);
+        expect(AGENT_TOOLS.filter(tool => tool.drivesGame && tool.write)).toEqual([]);
     });
 
     it("lets a write through when nothing stands in its way", () => {

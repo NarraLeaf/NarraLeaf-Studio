@@ -26,7 +26,7 @@ Measure anything visual once in a scratch scene before you generate thousands of
 | `e "…" (multiple=2)`, `nvl` mode | `/nvl` block | check `story_command /nvl` |
 | `"???" "…"` before a name is known | `/rename` the character, then dialogue | not a second character |
 | text tags `{w}`, `{p}`, `{nw}` | inline pause / line break forms from `story_command` | |
-| `{color=#f00}`, `{b}`, `{i}` | the same tags in `.story` text: `{color=#f00}…{/color}`, `{b}…{/b}`, `{i}…{/i}` | close each tag on the same line; `{/color}` etc. as in Ren'Py |
+| `{color=#f00}`, `{b}`, `{i}` | the same tags in `.story` text: `{color=#f00}…{/color}` is read as written (`story_show` prints it back as `{color #f00}`), `{b}…{/b}`, `{i}…{/i}` | close each tag on the same line; `{/color}` etc. as in Ren'Py |
 | `{size}`, `{font}`, `{u}`, `{s}`, `{a=…}` | not expressible in `.story` text | strip them; log what styling was lost |
 | `[var]` interpolation | the story format's interpolation form | see `narraleaf-make-game` story format |
 

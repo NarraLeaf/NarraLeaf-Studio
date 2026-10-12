@@ -43,6 +43,14 @@ export type AgentToolDescriptor = {
     side: AgentToolSide;
     /** Changes the project. Refused unless the author enabled writes; refused while paused or frozen. */
     write: boolean;
+    /**
+     * Acts in the running game the way a player does - starts it, reads on, clicks, presses keys,
+     * closes it. Not a write (the project does not change, and the writes switch does not cover it),
+     * but refused while the author has paused agents: a player's press can do anything the game
+     * offers, deleting a save included, and a pause means the agent stops acting. Reads of the game
+     * - a screenshot - are not marked and go on working while paused.
+     */
+    drivesGame?: boolean;
     inputSchema: AgentJsonSchema & { type: "object" };
 };
 
@@ -119,6 +127,11 @@ function ws(
         write,
         inputSchema: { type: "object", properties: { ...properties, project: PROJECT_ARG }, required, additionalProperties: false },
     };
+}
+
+/** A workspace tool that drives the running game; see {@link AgentToolDescriptor.drivesGame}. */
+function drivesGame(tool: AgentToolDescriptor): AgentToolDescriptor {
+    return { ...tool, drivesGame: true };
 }
 
 function main(
@@ -666,7 +679,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "ui_install_standard_screens",
         "Install the standard screens",
-        "Brings the skeleton template's working screens into the open project - splash, title, save, load, config, log, extra and confirm pages, the dialogue box, choice menu, quick menu and notifications, their components and every blueprint behind them - for a project made from the empty template, or one whose interface was lost. Start begins the project's own story; the files, palette entries, translation keys, input actions, save field and persistent variable the screens use come along. A Game UI slot the project already fills is left alone unless `replace` is true, which deletes the project's Game UIs in those slots and its empty pages. The splash becomes the entry page when the current entry page is empty (or with `replace`). Pages whose blueprints need a plugin this project does not run (the Gallery's Extra page) are left out, with the buttons that open them. One step of undo; restyle the result like the skeleton.",
+        "Brings the skeleton template's working screens into the open project - splash, title, save, load, config, log, extra and confirm pages, the dialogue box, choice menu, quick menu and notifications, their components and every blueprint behind them - for a project made from the empty template, or one whose interface was lost. Start begins the project's own story; the files, palette entries, translation keys, input actions, save field and persistent variable the screens use come along. A Game UI slot the project already fills is left alone unless `replace` is true, which deletes the project's Game UIs in those slots and its empty pages. The splash becomes the entry page when the current entry page is empty (or with `replace`). Pages whose blueprints need a plugin this project does not run (the Gallery's Extra page) are left out, with the buttons that open them. One step of undo takes back the interface it added, with its input actions, and puts back what it replaced; the files, palette entries, translation keys, variable and save field stay, as the answer lists. Restyle the result like the skeleton.",
         {
             replace: { type: "boolean", default: false, description: "Delete the project's Game UIs in the slots these fill, and its empty pages, instead of skipping those Game UIs." },
             dryRun: DRY_RUN,
@@ -891,13 +904,13 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
         { project: PROJECT_ARG, id: { type: "string" } },
         ["id"],
     ),
-    ws(
+    drivesGame(ws(
         "playtest_start",
         "Play the game",
         "Opens the game in Dev Mode, from the title page or from a scene (and row). The author sees it too. From a scene it returns once the first line is shown in full (or a menu is up), and says what it is (speaker and text). Then use playtest_advance and playtest_screenshot. Every playtest answer also lists the errors and warnings Dev Mode has reported in this run (`issues`, with scene and row or page) - the ones its issue strip counts.",
         { scene: { type: "string" }, row: { type: "integer", description: "1-based row in the scene." } },
-    ),
-    ws(
+    )),
+    drivesGame(ws(
         "playtest_advance",
         "Advance the game",
         "Reads on `steps` lines of a running story. One step is one line: a click on the line shown in full, then a wait until the game is at rest again - on the next line, finished typing (rows without a line, such as /show or /sound, are not steps), a menu, or out of the story. So the answer names exactly what is on screen, and a screenshot taken next shows that whole line. Stops early at a choice menu, at an ending (names it, and the page the game went to: the title or an ending page), or when a click does not move the game; says why. Rows with no line are waited through: a transition up to 10 s, a timed `/wait` for its length plus 10 s, a `/video` the story waits on for as long as the call allows (the answer says `pausedBy` when one is still running, and an ending reached after the call ran out is reported by the next call), and a click the game swallowed is repeated once before the step is called stuck. A `/wait click` row (stopped for a click, no line on screen) is clicked through and counts as one step; the answer says `waitingForClick` while it waits. With `choice`, picks that option first (counts as one step). Does nothing on the title page: start from a scene.",
@@ -905,7 +918,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
             steps: { type: "integer", default: 1, description: "Lines to read on, 1-50." },
             choice: { type: "integer", description: "1-based option of the menu showing, in the order shown (hidden options are not counted)." },
         },
-    ),
+    )),
     ws(
         "playtest_screenshot",
         "Look at the game",
@@ -915,10 +928,10 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
             view: { type: "string", enum: ["screen", "stage"], default: "screen", description: "`screen` (default): what the player sees. `stage`: the stage alone, without pages and layers." },
         },
     ),
-    ws(
+    drivesGame(ws(
         "playtest_click",
         "Click in the game",
-        "Clicks an element of the interface in the running Dev Mode game - a page, a layer such as the Confirm dialog, or the Game UI on the stage - the way a player's mouse does: pointer events at a point inside the element, landing on whatever is on top there. Use it to exercise buttons you wired: Start, a save or load slot, a settings control, a quick-menu button. `element` is an id, a path of names (`Title / Menu / Start`, the page name allowed first), a name unique on screen, or the words it shows. Ambiguous or missing names are refused with the elements on screen listed; an element drawn several times (list rows) needs `index`; one covered by something else is refused, naming what covers it. Returns what was done, what changed (pages and layers that opened or closed, a story starting, the line on screen) and what is showing now. Then call playtest_screenshot to look.",
+        "Clicks an element of the interface in the running Dev Mode game - a page, a layer such as the Confirm dialog, or the Game UI on the stage - the way a player's mouse does: pointer events at a point inside the element, landing on whatever is on top there. Use it to exercise buttons you wired: Start, a save or load slot, a settings control, a quick-menu button. `element` is an id, a path of names (`Title / Menu / Start`, the page name allowed first), a name unique on screen, or the words it shows. Ambiguous or missing names are refused with the elements on screen listed; an element drawn several times (list rows) needs `index`; one covered by something else is refused, naming what covers it; one that lets the pointer through to an element around it (text on a button, say) is clicked there, as a player's click would be, and the answer names the element that was actually pressed. Returns what was done, what changed (pages and layers that opened or closed, a story starting, the line on screen) and what is showing now. Then call playtest_screenshot to look.",
         {
             element: { type: "string", description: "Id, path of names, unique name, or shown words of the element." },
             surface: { type: "string", description: "The page, layer or Game UI surface it is on (name or id), to narrow the search." },
@@ -926,10 +939,10 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
             at: { type: "object", description: "Where in the element's box: `{ x, y }` as shares from its top-left corner, 0-1 each. Defaults to the centre. Use it for a slider's track." },
         },
         ["element"],
-    ),
-    ws(
+    )),
+    drivesGame(ws(
         "playtest_hover",
-        "Point at something in the game",
+        "Hover in the game",
         "Rests the pointer on an element of the running game without pressing it, the way a player's mouse does: its hover look and its On Mouse Enter graph run, and the element the pointer rested on before is left. Takes the same `element`, `surface`, `index` and `at` as playtest_click and answers the same way. Call playtest_screenshot to see the hover look.",
         {
             element: { type: "string", description: "Id, path of names, unique name, or shown words of the element." },
@@ -938,8 +951,8 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
             at: { type: "object", description: "`{ x, y }` in the element's box, 0-1 each. Defaults to the centre." },
         },
         ["element"],
-    ),
-    ws(
+    )),
+    drivesGame(ws(
         "playtest_key",
         "Press a key in the game",
         "Presses and releases a key in the running game the way a player's keyboard does, so the input actions bound to it (Advance, Skip, Menu, Dismiss...) and the keyboard/gamepad focus navigation answer it: arrows move the focus between controls, Enter or Space presses the focused one, Escape goes back or closes a layer. `rightClick`, `wheelUp` and `wheelDown` are the pointer gestures that name no element, aimed at the middle of the game (right click usually opens the menu; wheel up the backlog). Answers like playtest_click.",
@@ -951,8 +964,8 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
             shift: { type: "boolean", description: "Hold Shift (Shift+Tab moves the focus backwards)." },
         },
         ["key"],
-    ),
-    ws("playtest_stop", "Stop playing", "Closes the Dev Mode game."),
+    )),
+    drivesGame(ws("playtest_stop", "Stop playing", "Closes the Dev Mode game.")),
     ws("console_read", "Read Studio's console", "Recent lines from Studio's console (build, story, blueprint, runtime channels).", { channel: { type: "string" }, level: { type: "string", enum: ["debug", "info", "warning", "error"] }, limit: { type: "integer", default: 100 } }),
     main(
         "build",

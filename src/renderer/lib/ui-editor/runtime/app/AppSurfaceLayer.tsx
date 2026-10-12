@@ -22,6 +22,7 @@ import {
 } from "@/lib/ui-editor/runtime/pageAnimation";
 import { getSurfaceAnimationTimings } from "@/lib/ui-editor/runtime/surfaceAnimationPlan";
 import {
+    getSurfaceBackgroundAlpha,
     getSurfaceLayerBackgroundColor,
     getSurfaceLayerBackgroundImageOpacity,
     SURFACE_LAYER_SCRIM_COLOR,
@@ -351,6 +352,10 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
             scale={scale}
             className="absolute inset-0 flex items-center justify-center"
             style={layerBackgroundStyle}
+            // Measured on the colour as authored: the presented one may be a `color-mix()` the layer
+            // cannot read, and a page authored opaque is a page whether or not it is thinned over
+            // the game. One authored translucent - a dimming layer - shows its veil at once.
+            holdBackgroundWhilePending={getSurfaceBackgroundAlpha(surface) >= 1}
             presentZIndex={10 + layerIndex}
             exitZIndex={entry.exitBehind ? 0 : 30 + layerIndex}
             exitHoldMs={animationTiming.exitHoldMs}
