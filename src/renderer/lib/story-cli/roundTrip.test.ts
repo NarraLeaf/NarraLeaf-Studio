@@ -822,4 +822,47 @@ describe("pixel offsets in a story file", () => {
         expect(printed.opaqueRows.map(row => row.anchor)).toEqual([id]);
         expect(sameRowContent(compiled.scene!.blocks[id], dragged)).toBe(true);
     });
+
+    it("writes a row holding a far-out pair as a line that reads back, and still refuses a new one", () => {
+        // A pair beyond the stage's reach, stored before the line held pairs to it (or by the inspector
+        // before its fields were held to it too). It is the author's own: its line has to read back, or
+        // the row turns opaque and an edit to its duration is refused for a position it already had.
+        const { data, document, scene } = applied(["/show Narra", "/transform Narra pos=0.5,0.5 from=pos=0.5,0.5 d=0.4s"]);
+        const id = scene.rootBlockIds[1];
+        const block = scene.blocks[id]!;
+        const payload = block.payload as Extract<StoryBlock["payload"], { action: "displayable" }>;
+        const far: StoryBlock = {
+            ...block,
+            payload: {
+                ...payload,
+                transform: {
+                    ...payload.transform,
+                    from: { position: { xalign: -1.5, yalign: 0.5 } },
+                    to: { ...payload.transform?.to, position: { xalign: 3, yalign: 0.5 } },
+                },
+            },
+        } as StoryBlock;
+        const stored = { ...scene, blocks: { ...scene.blocks, [id]: far } };
+        const storedDocument = { ...document, scenes: { ...document.scenes, [stored.id]: stored } };
+        const { printed, parseDiagnostics, compiled } = roundTrip(data, storedDocument, stored);
+        expect(printed.stats.opaque).toBe(0);
+        expect(printed.text).toContain("pos=3,0.5");
+        expect(printed.text).toContain("pos=-1.5,0.5");
+        expect(parseDiagnostics).toEqual([]);
+        expect(compiled.diagnostics).toEqual([]);
+        expect(sameRowContent(compiled.scene!.blocks[id], far)).toBe(true);
+
+        // A far-out pair no row of the scene holds is still pixels typed where shares belong.
+        const lookups = buildLookups(data, storedDocument, stored, buildContext(data, storedDocument, stored));
+        const fresh = compileStoryFile({
+            ast: parseStoryFile(`#nlstory 1\n#scene ${stored.name} ⟦${stored.id}⟧\n\n/show Narra\n/transform Narra pos=100,200 d=0.4s\n`).ast,
+            existing: stored,
+            document: storedDocument,
+            contextFor: next => buildContext(data, storedDocument, next ?? stored),
+            prose: lookups.prose,
+            conditions: lookups.conditions,
+            mintId: () => `MINTED-${minted++}`,
+        });
+        expect(fresh.diagnostics.map(diagnostic => diagnostic.code)).toContain("compile.positionOutOfRange");
+    });
 });

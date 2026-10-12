@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { neutralStoryTransformProps } from "@shared/story/transformProps";
 import { enumFreeformValue, paramTypes } from "../storyCommandGrammar";
 import { getCommandDef } from "./registry";
+import type { StoryScene } from "@shared/types/story";
 import {
+    ALIGN_REACH,
+    clampToAlignReach,
     FILTER_SUGAR_KEYS,
     fromPropsWord,
     parseFromProps,
@@ -12,6 +15,7 @@ import {
     positionPropArgs,
     RESET_CHANNEL_KEYS,
     resetPropsFromArgs,
+    storedFarPositions,
     transformPropArgs,
     transformPropsFromArgs,
     transformTimingArgs,
@@ -152,6 +156,28 @@ describe("the pos= align pair", () => {
     it("lets from= carry a pair only when it is within reach of the stage", () => {
         expect(parseFromProps("pos=-0.3,0.5").badKeys).toEqual([]);
         expect(parseFromProps("pos=100,200").badKeys).toEqual(["pos=100,200"]);
+        // Or when a row of the scene already stores it.
+        expect(parseFromProps("pos=100,200", ["100,200"])).toEqual({ props: { position: { xalign: 100, yalign: 200 } }, badKeys: [] });
+    });
+
+    it("holds an inspector field to the same reach the line takes", () => {
+        expect(clampToAlignReach(5)).toBe(ALIGN_REACH.max);
+        expect(clampToAlignReach(-3)).toBe(ALIGN_REACH.min);
+        expect(clampToAlignReach(-0.3)).toBe(-0.3);
+    });
+
+    it("collects the far-out pairs a scene already stores, wherever a row keeps them, as their lines print them", () => {
+        const scene = {
+            blocks: {
+                a: { id: "a", kind: "action", payload: { action: "displayable", transform: { to: { position: { xalign: 3, yalign: 0.5 } } } } },
+                b: { id: "b", kind: "action", payload: { action: "displayable", transform: { from: { position: { xalign: -1.5, yalign: 0.123456 } } } } },
+                c: { id: "c", kind: "action", payload: { action: "displayable", transform: { to: { position: { xalign: 0.5, yalign: 0.5 } } } } },
+                // A half-stated pair prints no `pos=` at all, so it has nothing to read back.
+                d: { id: "d", kind: "action", payload: { action: "displayable", transform: { to: { position: { xalign: 9 } } } } },
+            },
+        } as unknown as StoryScene;
+        expect(storedFarPositions(scene).sort()).toEqual(["-1.5,0.1235", "3,0.5"]);
+        expect(storedFarPositions(null)).toEqual([]);
     });
 });
 

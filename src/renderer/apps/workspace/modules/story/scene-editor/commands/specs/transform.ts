@@ -153,7 +153,7 @@ const CAMERA_DEFAULT_DURATION_MS = 600;
  * carries the same {@link StoryTransformRef} every other subject does, so the line's bag IS the row
  * and every prop in the vocabulary reaches the camera the way it reaches a sprite.
  */
-function cameraBlock(args: TransformArgs, generateId: () => string, operation: CameraTransformOperation): StoryBlock {
+function cameraBlock(args: TransformArgs, generateId: () => string, operation: CameraTransformOperation, storedFar: readonly string[] = []): StoryBlock {
     const block = (payload: Extract<StoryActionPayload, { action: "camera" }>): StoryBlock => ({
         id: generateId(),
         parentId: null,
@@ -174,7 +174,7 @@ function cameraBlock(args: TransformArgs, generateId: () => string, operation: C
     }
     const props = pruneStoryTransformProps(transformPropsFromArgs(args));
     const transform: StoryTransformRef = {
-        ...transformTimingFromArgs(args),
+        ...transformTimingFromArgs(args, storedFar),
         durationMs: asDurationMs(args.d) ?? CAMERA_DEFAULT_DURATION_MS,
         ...(props ? { to: props } : {}),
     };
@@ -251,7 +251,7 @@ function validateProps(
     // `from=` is re-parsed rather than resolved (see `parseFromProps`), so its own bad keys have
     // nowhere else to be reported.
     const fromSpan = ctx.spanOf("from");
-    const from = args.from?.kind === "text" ? parseFromProps(args.from.value) : null;
+    const from = args.from?.kind === "text" ? parseFromProps(args.from.value, ctx.context.storedFarPositions) : null;
     if (fromSpan && from && from.badKeys.length > 0) {
         issues.push({
             code: "unsupportedOption",
@@ -360,7 +360,7 @@ export const transform = defineStoryCommand({
         const subject = subjectOf(args.target);
         const operation = operationOf(args);
         if (subject.kind === "camera") {
-            return cameraBlock(args, ctx.generateId, operation);
+            return cameraBlock(args, ctx.generateId, operation, ctx.context.storedFarPositions);
         }
         if (operation === "stopLoop") {
             const durationMs = asDurationMs(args.d);
@@ -376,7 +376,7 @@ export const transform = defineStoryCommand({
         }
         const props = pruneStoryTransformProps(transformPropsFromArgs(args));
         const transformRef: StoryTransformRef = {
-            ...transformTimingFromArgs(args),
+            ...transformTimingFromArgs(args, ctx.context.storedFarPositions),
             ...(props ? { to: props } : {}),
         };
         return displayableBlock(asTarget(args.target), transformRef, ctx.generateId, operation);
