@@ -115,16 +115,21 @@ const SCAFFOLD_BODY: Record<string, readonly string[]> = {
     choice: ["  - Yes", "    Something happens.", "  - No", "    Nothing happens."],
 };
 
-/** The lines the catalogue prints for a command, each a scene's worth: one per example, one for the sequence. */
-function workedLines(token: string): { label: string; lines: string[] }[] {
+/**
+ * The lines the catalogue prints for a command, each a scene's worth: one per example, one for the
+ * sequence, and one for the scene header a command that is not a row writes instead (`/layer`), which
+ * goes in the header after the prelude's own.
+ */
+function workedLines(token: string): { label: string; header: string[]; lines: string[] }[] {
     const detail = describeCommand(token);
     if (!detail) {
         return [];
     }
     const body = detail.scaffold ? SCAFFOLD_BODY[detail.scaffold] ?? [] : [];
     return [
-        ...detail.examples.map(example => ({ label: example, lines: [example, ...body] })),
-        ...(detail.sequence ? [{ label: detail.sequence.lines.join(" | "), lines: [...detail.sequence.lines] }] : []),
+        ...detail.examples.map(example => ({ label: example, header: [], lines: [example, ...body] })),
+        ...(detail.sequence ? [{ label: detail.sequence.lines.join(" | "), header: [], lines: [...detail.sequence.lines] }] : []),
+        ...(detail.header ? [{ label: detail.header.lines.join(" | "), header: [...detail.header.lines], lines: [] }] : []),
     ];
 }
 
@@ -147,9 +152,9 @@ describe("the command catalogue's worked lines", () => {
     });
 
     for (const spec of listCommandSpecs()) {
-        for (const { label, lines } of workedLines(spec.token)) {
+        for (const { label, header, lines } of workedLines(spec.token)) {
             it(`/${spec.token}: ${label}`, async () => {
-                const source = `#nlstory 1\n#scene ${scene.name} ⟦${scene.id}⟧\n${HEADER.join("\n")}\n\n${[...PRELUDE, ...lines].join("\n")}\n`;
+                const source = `#nlstory 1\n#scene ${scene.name} ⟦${scene.id}⟧\n${[...HEADER, ...header].join("\n")}\n\n${[...PRELUDE, ...lines].join("\n")}\n`;
                 const result = await applyStorySource(source, context, story);
                 const errors = [
                     ...result.check.fileDiagnostics,

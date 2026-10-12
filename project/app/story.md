@@ -180,6 +180,33 @@ says `#background none` (or names the new picture). `targets` lists every scene 
 under "scene settings", which is where an image the linter counts as used, and no row
 names, is used.
 
+### `#layer` lines are the scene's layers
+
+A layer belongs to its scene, not to a row: the scene puts up every layer it has before
+its first row runs, and an image placed on a layer only names it. So a file
+states the layers in the header, one `#layer` line per layer, **nearest first**:
+
+```
+#layer leaves distance=0.7      one of the scene's own layers
+#layer displayableLayer         where the characters stand
+#layer hills distance=3
+#layer backgroundLayer distance=inf
+```
+
+The order of the lines is the order on screen, and `distance=` is how far away a layer is,
+counted in the characters' distance, which is 1: a layer at 2 is twice as far and moves half
+as much with the camera, and one at `inf` does not move with it. A line that leaves it out is
+at 1. Layers at one distance are one level, and the editor shows them as one. A layer written
+in front of `displayableLayer` is no farther than 1 and one behind it no nearer; a line that
+says otherwise is moved to its neighbour's distance and `check` warns. A name may be quoted
+(`#layer 'far hills'`) when it has spaces.
+
+A `/layer hills` *row* is refused: on the editor's command line it adds the layer to the
+scene and leaves no row, and a file says the same thing with a `#layer` line. `show` prints
+the lines only for a scene with layers of its own. **A file that states no `#layer` leaves
+the layers as they are; one that states any states the whole stack** - a layer it leaves
+out is removed, and a name the scene does not have yet is a new layer.
+
 ### `/show <asset>` and `/play <clip>` write `name=`, and have to
 
 `/show` reaches the picture library as well as the stage: `/show sunset` on a file no
@@ -339,7 +366,8 @@ Six things to know before using it:
   `--write`.
 - **Scene settings change only when the header states them.** `#background` and
   `#music` left out of a file are kept, and `apply` names what the scene still opens
-  with; `#background none` / `#music none` clear them.
+  with; `#background none` / `#music none` clear them. `#layer` lines are the same:
+  none leaves the layers alone, any state all of them.
 - **A project's own errors do not block it.** One bad row in another chapter used
   to mean nothing could be written anywhere.
 - **A zero-edit round trip changes nothing.** `show` then `apply` on an untouched
