@@ -184,7 +184,7 @@ export const help = {
                 + "of the scene editor used last.\n"
                 + "- Edits to the Game UI appear in the live preview as they are made.\n"
                 + "- Layers, at the top of the live preview, shows the scene's layers. The list on the left runs front to back, "
-                + "and layers at the same distance form one level. Distance is measured from the characters, who are at 1: "
+                + "and layers at the same distance form one level. Distance is measured from the base layer, which holds everything not placed on another layer and is at 1: "
                 + "larger values are farther away and move less with the camera, and at ∞ a layer stays still. Click a level's "
                 + "value to type a distance. Drag a row onto another level to join it, or between two levels to make a new one; "
                 + "drag the name on a layer to change its distance, and close to another level it joins that level. The small view "
