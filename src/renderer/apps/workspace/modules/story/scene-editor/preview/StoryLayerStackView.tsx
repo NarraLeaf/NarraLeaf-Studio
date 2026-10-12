@@ -33,6 +33,7 @@ import { GAME_STAGE_BASE_CLASS_NAME } from "@/lib/ui-editor/runtime/app/gameStag
 import { useTranslation } from "@/lib/i18n";
 import { formatLayerDistance, parseLayerDistance, storySceneLayerLabel } from "@/lib/story/storyLayerLabel";
 import { cn } from "@/lib/utils/cn";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 import {
     layerDepthAt,
     layerDistanceAtDepth,
@@ -1007,7 +1008,7 @@ function LevelDistance(props: {
     };
     const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
         event.stopPropagation();
-        if (event.nativeEvent.isComposing) {
+        if (isImeKeyEvent(event)) {
             return;
         }
         if (event.key === "Enter") {
@@ -1078,7 +1079,7 @@ function LayerNameInput(props: {
     const problem = sceneLayerNameProblem(props.stack, value, props.layer.id);
     const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
         event.stopPropagation();
-        if (event.nativeEvent.isComposing) {
+        if (isImeKeyEvent(event)) {
             return;
         }
         if (event.key === "Enter") {
