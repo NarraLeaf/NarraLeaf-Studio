@@ -638,7 +638,7 @@ export const workspace = {
             chapter_rename: "Rename a chapter",
             chapter_delete: "Delete a chapter",
             playtest_click: "Click in the game",
-            playtest_hover: "Point at something in the game",
+            playtest_hover: "Hover in the game",
             playtest_key: "Press a key in the game",
             playtest_stop: "Stop playing",
             console_read: "Read Studio's console",

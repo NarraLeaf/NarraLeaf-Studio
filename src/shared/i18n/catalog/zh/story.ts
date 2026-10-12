@@ -634,8 +634,9 @@ export const story = {
         size: "字号",
         // 变换属性词表（`commands/transformVocabulary.ts`），一个通道一个键。
         // 两个偏移是叠加在 `pos=` 上的设计像素，正值向右、向上。
-        xOffset: "横向偏移",
-        yOffset: "纵向偏移",
+        // 与「模糊像素」（en Blur px）同一写法：单位写进词里。
+        xOffset: "横向偏移像素",
+        yOffset: "纵向偏移像素",
         zoom: "缩放",
         scale: "比例",
         scaleX: "横向比例",

@@ -218,7 +218,7 @@ export const blueprint = {
             stepLimitGlobal: "アプリロジックの「{head}」は待機なしで {steps} ステップ実行し、「{node}」で停止した",
             unknownType: "不明なノードの型「{type}」。プラグインが未インストールか無効になっている可能性がある",
             variableIdInvalid: "ノード「{node}」：変数を選ぶ",
-            loopBodyNotClosed: "「{node}」のループ本体は一度しか実行されません：本体の最後がこのノードの入力に戻っていません。次の反復を実行するには、本体の最後を「{node}」に接続してください",
+            loopBodyNotClosed: "「{node}」のループ本体は一度だけ実行される。本体の最後がこのノードの入力に接続されていない。次の反復を実行するには、本体の最後を「{node}」に接続する",
             persistentVariableIdInvalid: "ノード「{node}」：永続変数を選ぶ",
             savedVariableIdInvalid: "ノード「{node}」：セーブ変数を選ぶ",
             fieldMissing: "「{node}」：{struct}にフィールド「{field}」がない",

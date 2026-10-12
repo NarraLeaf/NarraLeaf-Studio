@@ -942,7 +942,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     )),
     drivesGame(ws(
         "playtest_hover",
-        "Point at something in the game",
+        "Hover in the game",
         "Rests the pointer on an element of the running game without pressing it, the way a player's mouse does: its hover look and its On Mouse Enter graph run, and the element the pointer rested on before is left. Takes the same `element`, `surface`, `index` and `at` as playtest_click and answers the same way. Call playtest_screenshot to see the hover look.",
         {
             element: { type: "string", description: "Id, path of names, unique name, or shown words of the element." },
