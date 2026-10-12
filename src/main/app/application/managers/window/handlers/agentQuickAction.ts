@@ -20,12 +20,13 @@ import { IPCHandler } from "./IPCHandler";
  * `AgentManager.quickToggle`, because a workspace runs plugin code.
  *
  * Game windows (Dev Mode, Preview) run project code and are refused, as is everything else that is
- * not a workspace or the Settings window - except the launcher while it is showing first-run setup,
+ * not a workspace or the Settings window - except the launcher main opened to show first-run setup,
  * whose agent access screen switches access on and copies a configuration the same way the menu does.
- * The launcher runs no plugin or project code, and once setup is over it is refused again.
+ * The launcher runs no plugin or project code. Which window that is was marked by main when it opened
+ * it, not read from the stored marker any window can write; once setup is over it is refused again.
  */
 function isLauncherInSetup(window: AppWindow): boolean {
-    return window.getWindowType() === WindowAppType.Launcher && window.getApp().isFirstRunSetupOpen() === true;
+    return window.getApp().isFirstRunSetupWindow(window) === true;
 }
 
 /**

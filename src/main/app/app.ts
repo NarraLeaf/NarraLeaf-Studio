@@ -444,16 +444,6 @@ export class App extends BaseApp {
         return needsOnboarding(this.globalState.get(ONBOARDING_STATE_KEY));
     }
 
-    /**
-     * Whether first-run setup is what the launcher is showing right now. The agent access screen in
-     * setup is let through a few of the agent handlers that otherwise answer only Settings and
-     * workspaces, and only for as long as this holds: once the marker is written the launcher is the
-     * home screen again and is refused like any other window.
-     */
-    public isFirstRunSetupOpen(): boolean {
-        return this.shouldRunOnboarding();
-    }
-
     async launchLauncher(
         options: Partial<Electron.BrowserWindowConstructorOptions>,
         { deferShow = false, unattended = false }: LauncherStartupOptions = {},
@@ -489,6 +479,10 @@ export class App extends BaseApp {
         const window = new AppWindow<WindowAppType.Launcher>(this, config, {
             onboarding,
         });
+        if (onboarding) {
+            // This window, and only it, is setup until the marker is written (`isFirstRunSetupWindow`).
+            this.firstRunSetupGate.open(window);
+        }
         window.setTitle("Launcher - NarraLeaf Studio");
         this.applyWindowIcon(window);
         if (unattended) {

@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WindowAppType } from "@shared/types/window";
+import { ONBOARDING_VERSION } from "@shared/constants/onboarding";
 import type { AgentSettingsSnapshot } from "@shared/agent/settings";
 import type { AppWindow } from "../appWindow";
+import { FirstRunSetupGate } from "../../../firstRunSetupGate";
 import {
     AgentClientSetupHandler,
     AgentCopyConfigHandler,
@@ -40,7 +42,14 @@ const SNAPSHOT: AgentSettingsSnapshot = {
     pluginTools: [],
 };
 
-function makeWindow(windowType: WindowAppType = WindowAppType.Workspace, { inSetup = false }: { inSetup?: boolean } = {}) {
+/**
+ * `inSetup` asks main's own gate to mark the window as the one it opened in first-run setup, the way
+ * `App.launchLauncher` does. The gate, not the test, decides which window types that lets through.
+ */
+function makeWindow(
+    windowType: WindowAppType = WindowAppType.Workspace,
+    { inSetup = false, gate = new FirstRunSetupGate() }: { inSetup?: boolean; gate?: FirstRunSetupGate } = {},
+) {
     const manager = {
         snapshot: vi.fn(async () => SNAPSHOT),
         quickToggle: vi.fn(async () => ({ ...SNAPSHOT, allowWrites: true })),
@@ -54,10 +63,14 @@ function makeWindow(windowType: WindowAppType = WindowAppType.Workspace, { inSet
     };
     const window = {
         getWindowType: () => windowType,
+        isClosed: () => false,
         app: { logger: { warn: vi.fn() } },
-        getApp: () => ({ getAgentManager: () => manager, isFirstRunSetupOpen: () => inSetup }),
+        getApp: () => ({ getAgentManager: () => manager, isFirstRunSetupWindow: (asked: AppWindow) => gate.passes(asked) }),
     } as unknown as AppWindow;
-    return { window, manager };
+    if (inSetup) {
+        gate.open(window);
+    }
+    return { window, manager, gate };
 }
 
 /** Every key anywhere in a value, so a nested secret cannot slip past a top-level check. */
@@ -181,6 +194,26 @@ describe("first-run setup's hold on agent access", () => {
         expect((await new AgentQuickToggleHandler().handle(home.window, { enabled: true })).success).toBe(false);
         expect((await new AgentCopyConfigHandler().handle(home.window, { kind: "codex" })).success).toBe(false);
         expect(home.manager.quickToggle).not.toHaveBeenCalled();
+    });
+
+    it("lets through only the launcher main opened in setup, not another launcher open beside it", async () => {
+        const setup = makeWindow(WindowAppType.Launcher, { inSetup: true });
+        const other = makeWindow(WindowAppType.Launcher, { gate: setup.gate });
+        expect((await new AgentClientSetupHandler().handle(setup.window)).success).toBe(true);
+        expect((await new AgentClientSetupHandler().handle(other.window)).success).toBe(false);
+        expect((await new AgentInstallSkillHandler().handle(other.window, { client: "claudeCode" })).success).toBe(false);
+        expect(other.manager.clientSetup).not.toHaveBeenCalled();
+    });
+
+    it("refuses setup again once the marker says it is finished, whatever the launch flags", async () => {
+        const { window, manager, gate } = makeWindow(WindowAppType.Launcher, { inSetup: true });
+        expect((await new AgentQuickStateHandler().handle(window)).success).toBe(true);
+        gate.noteMarker(ONBOARDING_VERSION);
+        expect((await new AgentQuickStateHandler().handle(window)).success).toBe(false);
+        expect((await new AgentQuickToggleHandler().handle(window, { enabled: true })).success).toBe(false);
+        expect((await new AgentClientSetupHandler().handle(window)).success).toBe(false);
+        expect(manager.snapshot).toHaveBeenCalledTimes(1);
+        expect(manager.clientSetup).not.toHaveBeenCalled();
     });
 
     it("answer the endpoint without the token, to Settings and setup only", async () => {
