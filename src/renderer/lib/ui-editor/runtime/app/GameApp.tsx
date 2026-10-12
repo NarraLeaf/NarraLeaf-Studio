@@ -5202,6 +5202,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                             : undefined;
                         return { waitingForClick: Boolean(binding?.waitsForClick), pausedBy: binding?.pause ?? null };
                     })(),
+                    actionSerial: playHead.moves(),
                 });
             },
             readGameRoot: () => gameRootRef.current,

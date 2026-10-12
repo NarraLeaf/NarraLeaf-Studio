@@ -75,6 +75,14 @@ export type GameTestState = {
      * {@link waitingForClick}.
      */
     pausedBy: { kind: "timed"; ms: number } | { kind: "video" } | null;
+    /**
+     * Where the play head is, as a count that rises every time the engine moves on to another action
+     * (`PlayHead.moves`) and never falls. Nothing to show anyone: it is how a driver tells two stops
+     * that read the same in every other field apart - two `/wait click` rows with only an instant
+     * `/show` between them, two `/wait 2s` back to back - so a click that released the first is not
+     * taken for a click that did nothing because the engine reached the second within one poll.
+     */
+    actionSerial: number;
 };
 
 export type GameTestStateInputs = {
@@ -91,6 +99,8 @@ export type GameTestStateInputs = {
     waitingForClick?: boolean;
     /** See {@link GameTestState.pausedBy}. */
     pausedBy?: GameTestState["pausedBy"];
+    /** See {@link GameTestState.actionSerial}. 0 when not given. */
+    actionSerial?: number;
 };
 
 export function buildGameTestState(inputs: GameTestStateInputs): GameTestState {
@@ -110,6 +120,7 @@ export function buildGameTestState(inputs: GameTestStateInputs): GameTestState {
         page: inGame ? null : inputs.page,
         waitingForClick: Boolean(inGame && inputs.waitingForClick && !line && !inputs.choices),
         pausedBy: inGame && !line && !inputs.choices && inputs.pausedBy ? inputs.pausedBy : null,
+        actionSerial: inputs.actionSerial ?? 0,
     };
 }
 

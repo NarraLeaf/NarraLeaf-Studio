@@ -79,6 +79,8 @@ function pretendEngine(clock: PlaytestClock, script: ScriptItem[], options: { st
     let boxText: string | null = null;
     /** The engine's current action; it changes with every row, line or not. Never to be reported. */
     let actionId = "start";
+    /** How often the current action changed - what the play head reports as `actionSerial`. */
+    let actionSerial = 0;
     const clicks: string[] = [];
 
     const enter = (index: number, at: number) => {
@@ -86,6 +88,7 @@ function pretendEngine(clock: PlaytestClock, script: ScriptItem[], options: { st
         startedAt = at;
         completedByClick = false;
         actionId = `action-${index}`;
+        actionSerial += 1;
         const item = script[index];
         if (item && "say" in item) {
             promptSerial += 1;
@@ -139,6 +142,7 @@ function pretendEngine(clock: PlaytestClock, script: ScriptItem[], options: { st
             page: inGame ? null : page,
             waitingForClick: Boolean(item && "clickWait" in item),
             pausedBy: item && "rows" in item && item.pause ? item.pause : null,
+            actionSerial,
         });
     };
     const game: PlaytestGame & { clicks: string[]; boxText: () => string | null } = {
@@ -274,6 +278,69 @@ describe("advanceLines through a /wait click row", () => {
         ]);
         const outcome = await advanceLines(game, { steps: 3 }, clock);
         expect(outcome).toMatchObject({ advanced: 3, state: { line: { text: "three" } } });
+    });
+
+    it("takes one wait per step when an instant row puts the next wait up within one poll", async () => {
+        // `/show CG1`, `/wait click`, `/show CG2` (no duration), `/wait click`, `/show CG3`, `/wait click`:
+        // the click that releases a wait lands the story on the next one before the driver reads again,
+        // and every field but the play head reads the same. It used to wait 3 s, click again - spending
+        // the second wait inside the first step - and then report the third as one two clicks could not
+        // release.
+        const clock = virtualClock();
+        const game = pretendEngine(clock, [
+            { rows: 0 },
+            { clickWait: true },
+            { rows: 0 },
+            { clickWait: true },
+            { rows: 0 },
+            { clickWait: true },
+            { say: "The album closes.", typeMs: 0 },
+        ]);
+        for (let wait = 1; wait <= 3; wait += 1) {
+            const before = clock.now();
+            const outcome = await advanceLines(game, { steps: 1 }, clock);
+            expect(outcome.error).toBeUndefined();
+            expect(outcome.advanced).toBe(1);
+            expect(game.clicks).toHaveLength(wait);
+            expect(clock.now() - before).toBeLessThan(PLAYTEST_TIMING.moveMs);
+            if (wait < 3) {
+                expect(outcome.state).toMatchObject({ line: null, waitingForClick: true });
+            } else {
+                expect(outcome.state?.line?.text).toBe("The album closes.");
+            }
+        }
+        expect(game.clicks).toEqual(["release wait", "release wait", "release wait"]);
+    });
+
+    it("counts each of several back-to-back waits as its own step", async () => {
+        const clock = virtualClock();
+        const game = pretendEngine(clock, [
+            { say: "Look.", typeMs: 0 },
+            { clickWait: true },
+            { clickWait: true },
+            { say: "Done.", typeMs: 0 },
+        ]);
+        const outcome = await advanceLines(game, { steps: 3 }, clock);
+        expect(outcome.error).toBeUndefined();
+        expect(outcome).toMatchObject({ advanced: 3, state: { line: { text: "Done." } } });
+        expect(game.clicks).toEqual(["next from Look.", "release wait", "release wait"]);
+    });
+});
+
+describe("advanceLines through timed waits back to back", () => {
+    it("gives the second of two equal waits its own length instead of calling the game stuck", async () => {
+        // Two `/wait 15s` rows read the same - the same pause, no line - so the second used to be taken
+        // for the first and given no time of its own: the step gave up 10 s after the first ended.
+        const clock = virtualClock();
+        const game = pretendEngine(clock, [
+            { say: "Hold still.", typeMs: 0 },
+            { rows: 15_000, pause: { kind: "timed", ms: 15_000 } },
+            { rows: 15_000, pause: { kind: "timed", ms: 15_000 } },
+            { say: "Now.", typeMs: 0 },
+        ]);
+        const outcome = await advanceLines(game, { steps: 1 }, clock);
+        expect(outcome.error).toBeUndefined();
+        expect(outcome).toMatchObject({ advanced: 1, state: { line: { text: "Now." } } });
     });
 });
 
@@ -537,6 +604,14 @@ describe("movedOn", () => {
         expect(movedOn(base, { ...base, endings: 1 })).toBe(true);
         expect(movedOn(base, { ...base, inGame: false })).toBe(true);
         expect(movedOn(base, null)).toBe(true);
+    });
+
+    it("tells two waits with no line apart by the play head, and only those", () => {
+        const waiting = { ...base, line: null, lineId: null, waitingForClick: true, actionSerial: 7 };
+        expect(movedOn(waiting, waiting)).toBe(false);
+        expect(movedOn(waiting, { ...waiting, actionSerial: 9 })).toBe(true);
+        // A line is still told by its own identity: the play head moving under it is not a step.
+        expect(movedOn(base, { ...base, actionSerial: base.actionSerial + 1 })).toBe(false);
     });
 });
 
