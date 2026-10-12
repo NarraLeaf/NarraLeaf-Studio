@@ -34,25 +34,35 @@ export type StoryCommandReason = {
      * with everywhere else.
      */
     valueTypeParams?: readonly string[];
+    /**
+     * Params that are a word of the sentence rather than something off the line - the kind of asset
+     * a name was looked up in - each with the catalog entry it reads as. The caller writes them in
+     * the interface language, like the sentence; `params` keeps the raw id as the fallback.
+     */
+    wordParams?: Readonly<Record<string, TranslationKey>>;
 };
 
 /**
  * A reason's params as the sentence reads them: each value type param written the way the variables
- * panel and a blueprint pin write that type. Every other param is passed through.
+ * panel and a blueprint pin write that type, and each word param in the interface language. Every
+ * other param is passed through.
  */
 export function storyCommandReasonParams(
     reason: StoryCommandReason,
     t: (key: TranslationKey, params?: Record<string, string | number>) => string,
 ): Record<string, string | number> {
-    if (!reason.valueTypeParams?.length) {
+    if (!reason.valueTypeParams?.length && !reason.wordParams) {
         return reason.params;
     }
     const params = { ...reason.params };
-    for (const name of reason.valueTypeParams) {
+    for (const name of reason.valueTypeParams ?? []) {
         const value = params[name];
         if (typeof value === "string") {
             params[name] = formatBlueprintValueTypeLabel(value, t);
         }
+    }
+    for (const [name, key] of Object.entries(reason.wordParams ?? {})) {
+        params[name] = t(key);
     }
     return params;
 }
@@ -191,9 +201,13 @@ function resolutionReason(issue: StoryCommandResolutionIssue, token: string): St
         case "unknownAsset":
             // A slot that would have taken a set says so, or the author reads "no image named X" and
             // goes looking in the library for a row that was never going to be there.
+            //
+            // The kind is a word of the sentence, so it is written in the sentence's language: the raw
+            // id read "没有名为「room」的 image 资产" to a Chinese author.
             return {
                 key: reasonKey(issue.allowSets ? "unknownAssetOrSet" : issue.code),
                 params: { value: issue.value, assetType: issue.assetType },
+                wordParams: { assetType: `storyExpr.assetType.${issue.assetType}` as TranslationKey },
             };
         case "unknownCharacter":
         case "unknownScene":

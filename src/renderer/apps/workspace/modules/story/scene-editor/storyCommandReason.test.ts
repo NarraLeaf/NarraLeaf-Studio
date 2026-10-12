@@ -169,6 +169,27 @@ describe("getCommandLineReason", () => {
         expect(reasonFor("/bg forest nosuchparam=1")).toBe(en.reason.unknownParam);
         expect(reasonFor("/bg \"unclosed")).toBe(en.reason.unterminatedQuote);
     });
+
+    /**
+     * The kind of asset is a word of the sentence. It used to be the raw type id, so a Chinese author
+     * typing toward a background read 「没有名为「room」的 image 资产或资产集」.
+     */
+    it("names the kind of asset in the sentence's own language", () => {
+        const reason = getCommandLineReason("/bg nothere", CONTEXT);
+        expect(reason?.key).toBe("storyExpr.reason.unknownAssetOrSet" as TranslationKey);
+        if (!reason) {
+            return;
+        }
+        const expected = {
+            en: "No image or asset set named \"nothere\".",
+            zh: "没有名为「nothere」的图片资产或资产集",
+            ja: "\"nothere\" という画像もアセットセットもない",
+        } as const;
+        for (const locale of ["en", "zh", "ja"] as const) {
+            const { t } = createTranslator(locale);
+            expect(t(reason.key, storyCommandReasonParams(reason, t)), locale).toBe(expected[locale]);
+        }
+    });
 });
 
 /**
