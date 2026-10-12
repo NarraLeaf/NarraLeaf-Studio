@@ -86,20 +86,25 @@ function PreviewToolbar({
     const size = controls.imageSize ?? imageData.metadata;
 
     return (
-        <div className="flex items-center justify-between px-4 py-2 border-b border-edge bg-surface-raised">
-            <div className="flex items-center gap-4">
-                <span className="text-sm text-fg-muted">
+        <div className="flex items-center justify-between gap-4 px-4 py-2 border-b border-edge bg-surface-raised">
+            {/* Each value is one unit and never breaks across lines. In a narrow editor group the
+                values that do not fit drop out whole, from the right - the file size first, then the
+                format - by wrapping onto a second line this one-line-high strip does not show; the
+                pixel size goes last, and only ever shortens to an ellipsis. The zoom controls never
+                give up their room to them. */}
+            <div className="flex h-5 min-w-0 flex-1 flex-wrap items-center gap-x-4 overflow-hidden text-sm text-fg-muted">
+                <span className="min-w-0 truncate">
                     {size.width} × {size.height}
                 </span>
-                <span className="text-sm text-fg-muted">
+                <span className="whitespace-nowrap">
                     {imageData.metadata.format.toUpperCase()}
                 </span>
-                <span className="text-sm text-fg-muted">
+                <span className="whitespace-nowrap">
                     {(imageData.metadata.size / 1024).toFixed(1)} KB
                 </span>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
                 <button
                     onClick={controls.zoomOut}
                     className="p-1 rounded-md hover:bg-fill text-fg-muted hover:text-fg transition-colors cursor-default"
@@ -108,7 +113,7 @@ function PreviewToolbar({
                 >
                     <ZoomOut className="w-4 h-4" />
                 </button>
-                <span className="text-sm text-fg-muted min-w-16 text-center">
+                <span className="text-sm text-fg-muted min-w-16 text-center whitespace-nowrap">
                     {controls.zoomLabel}
                 </span>
                 <button
