@@ -1233,9 +1233,10 @@ export type StoryActionPayload =
           /** The plugin's story-action id, itself namespaced by `pluginId`. */
           actionId: string;
           /**
-           * What the author filled in on the row, for the owning pass to interpret. Studio never
-           * reads inside it - the keys are the plugin's vocabulary - so it is only constrained to be
-           * JSON, which is what makes the row survive a round trip through the project file.
+           * What the author filled in on the row, for the owning plugin to interpret. Studio never
+           * interprets it - the keys are the plugin's vocabulary - and writes a key only through a
+           * field the plugin's action declares (`params` on its registration). It is only constrained
+           * to be JSON, which is what makes the row survive a round trip through the project file.
            */
           params: Record<string, StoryPluginActionParamValue>;
       }

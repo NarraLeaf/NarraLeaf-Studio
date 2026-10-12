@@ -98,6 +98,7 @@ import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalB
 import type { BlueprintOpenOptions } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { StoryActionBlueprintPreviewCard } from "./StoryActionBlueprintPreviewCard";
+import { StoryPluginActionEditor } from "./StoryPluginActionEditor";
 import { ConditionEditor, EMPTY_EXPRESSION_CONDITION } from "./ConditionEditor";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { useAssetFieldNotice } from "@/lib/workspace/hooks/useAssetFieldNotice";
@@ -1203,6 +1204,9 @@ function ActionPayloadFields(props: {
     }
     if (payload.action === "blueprint") {
         return <StoryActionBlueprintEditor payload={payload} onChange={props.onChange} />;
+    }
+    if (payload.action === "plugin") {
+        return <StoryPluginActionEditor payload={payload} onChange={props.onChange} />;
     }
     if (payload.action === "input") {
         return <InputActionEditor document={props.document} sceneId={props.sceneId} payload={payload} onChange={props.onChange} />;

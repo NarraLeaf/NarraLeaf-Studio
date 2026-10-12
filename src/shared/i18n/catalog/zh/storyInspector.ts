@@ -421,6 +421,9 @@ export const storyInspector = {
         storyActionTitle: "故事动作",
         name: "蓝图名称",
     },
+    plugin: {
+        missingOption: "{value}（缺失）",
+    },
     audio: {
         track: "音轨",
         trackDefault: "默认（{name}）",
