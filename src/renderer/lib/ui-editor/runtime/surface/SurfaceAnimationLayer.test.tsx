@@ -11,7 +11,7 @@ import { AnimatePresence } from "motion/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { PageAnimationMotion } from "@/lib/ui-editor/runtime/pageAnimation";
 import { ensureAnimationFramePolyfill } from "@/lib/ui-editor/runtime/testing/lifecycleTestKit";
-import { SurfaceAnimationLayer, largeUndecodedImages } from "./SurfaceAnimationLayer";
+import { SurfaceAnimationLayer, largeUnloadedImages } from "./SurfaceAnimationLayer";
 
 beforeAll(() => {
     ensureAnimationFramePolyfill();
@@ -114,7 +114,57 @@ describe("SurfaceAnimationLayer held back for its pictures", () => {
         expect(layer.style.backgroundColor).toBe("rgb(0, 0, 0)");
     });
 
-    it("counts only undecoded pictures that cover a large share of the layer", () => {
+    it("shows a translucent backdrop at once - a dimming layer - and holds back only its content", async () => {
+        const { container } = render(
+            <AnimatePresence>
+                <SurfaceAnimationLayer
+                    key="layer"
+                    prepaintKey="layer"
+                    direction="forward"
+                    pageMotion={pageMotion}
+                    style={{ backgroundColor: "rgba(0, 0, 0, 0.5)" }}
+                    contentClassName="layer-content"
+                >
+                    <span>content</span>
+                </SurfaceAnimationLayer>
+            </AnimatePresence>,
+        );
+        const layer = container.querySelector<HTMLElement>("[data-ui-surface-prepaint]")!;
+        expect(layer.getAttribute("data-ui-surface-prepaint")).toBe("pending");
+        expect(layer.style.backgroundColor).toBe("rgba(0, 0, 0, 0.5)");
+        expect(contentOpacity(container)).toBe("0");
+        await waitFor(() => expect(contentOpacity(container)).toBe("1"));
+    });
+
+    it("takes the host's word for a colour it cannot measure", () => {
+        // A page thinned over the running game is painted as a `color-mix()`; the host says whether the
+        // colour it was authored with is opaque.
+        const mixed = "color-mix(in srgb, #00000080 85%, transparent)";
+        const layerFor = (hold: boolean) => {
+            const { container } = render(
+                <AnimatePresence>
+                    <SurfaceAnimationLayer
+                        key="layer"
+                        prepaintKey={`layer-${hold}`}
+                        direction="forward"
+                        pageMotion={pageMotion}
+                        style={{ backgroundColor: mixed, backgroundImage: "linear-gradient(red, red)" }}
+                        holdBackgroundWhilePending={hold}
+                    >
+                        <span>content</span>
+                    </SurfaceAnimationLayer>
+                </AnimatePresence>,
+            );
+            return container.querySelector<HTMLElement>("[data-ui-surface-prepaint]")!;
+        };
+        const veil = layerFor(false);
+        expect(veil.style.backgroundImage).toBe("linear-gradient(red, red)");
+        const page = layerFor(true);
+        expect(page.style.backgroundColor).toBe("transparent");
+        expect(page.style.backgroundImage).toBe("none");
+    });
+
+    it("counts only pictures still loading that cover a large share of the layer", () => {
         const root = document.createElement("div");
         const rect = (left: number, top: number, width: number, height: number) =>
             () => ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}) }) as DOMRect;
@@ -128,8 +178,8 @@ describe("SurfaceAnimationLayer held back for its pictures", () => {
         const empty = document.createElement("img");
         empty.getBoundingClientRect = rect(0, 0, 1920, 1080);
         root.append(backdrop, icon, empty);
-        // jsdom never decodes, so `complete && naturalWidth > 0` is false for both pictures.
-        expect(largeUndecodedImages(root)).toEqual([backdrop]);
-        expect(largeUndecodedImages(null)).toEqual([]);
+        // jsdom never loads, so `complete && naturalWidth > 0` is false for both pictures.
+        expect(largeUnloadedImages(root)).toEqual([backdrop]);
+        expect(largeUnloadedImages(null)).toEqual([]);
     });
 });
