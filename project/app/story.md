@@ -188,13 +188,13 @@ states the layers in the header, one `#layer` line per layer, **nearest first**:
 
 ```
 #layer leaves distance=0.7      one of the scene's own layers
-#layer displayableLayer         where the characters stand
+#layer displayableLayer         the base layer: everything not placed on another layer
 #layer hills distance=3
 #layer backgroundLayer distance=inf
 ```
 
 The order of the lines is the order on screen, and `distance=` is how far away a layer is,
-counted in the characters' distance, which is 1: a layer at 2 is twice as far and moves half
+counted in the base layer's distance, which is 1: a layer at 2 is twice as far and moves half
 as much with the camera, and one at `inf` does not move with it. A line that leaves it out is
 at 1. Layers at one distance are one level, and the editor shows them as one. A layer written
 in front of `displayableLayer` is no farther than 1 and one behind it no nearer; a line that
