@@ -1530,9 +1530,9 @@ export const UI_LINT_RULES: readonly LintRule[] = [
     {
         id: "ui/page-unreachable",
         category: "ui",
-        // A warning rather than an error: a page nothing opens yet is what a page under construction
-        // looks like, and an error would refuse the build of a project the author is halfway through.
-        defaultSeverity: "warning",
+        // A minor warning: a page nothing opens yet is what a page under construction looks like, and
+        // the player never meets it, so nothing in the game is wrong because of it.
+        defaultSeverity: "minor",
         slug: "uiPageUnreachable",
         run: ctx => runPageUnreachable(ctx),
     },

@@ -192,6 +192,10 @@ function pageGraph(nodeType: string, surfaceId: string): BlueprintGraphIr {
 }
 
 describe("ui/page-unreachable", () => {
+    it("is a minor warning by default: a page nothing opens is one the player never meets", () => {
+        expect(UI_LINT_RULES.find(rule => rule.id === "ui/page-unreachable")?.defaultSeverity).toBe("minor");
+    });
+
     it("reports a page nothing opens", async () => {
         const findings = await run(
             "ui/page-unreachable",
