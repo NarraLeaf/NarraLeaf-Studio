@@ -48,12 +48,13 @@ export function AgentStep({ client, onClientChange }: AgentStepProps) {
             if (result.success) {
                 setQuick(result.data);
             } else {
-                setError(result.error ?? null);
+                // Main's reason is English; the sentence around it is the author's language.
+                setError(t("onboarding.agent.toggleFailed", { error: result.error ?? "" }));
             }
         } finally {
             setBusy(false);
         }
-    }, []);
+    }, [t]);
 
     return (
         <div className="space-y-5">

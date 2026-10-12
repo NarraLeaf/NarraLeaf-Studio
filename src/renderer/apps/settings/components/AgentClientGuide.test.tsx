@@ -24,6 +24,8 @@ type Answer = { success: true; data: unknown } | { success: false; error?: strin
 
 const bridge = vi.hoisted(() => ({
     exportSkill: null as null | (() => Promise<Answer>),
+    installSkill: null as null | (() => Promise<Answer>),
+    copyConfig: null as null | (() => Promise<Answer>),
     exports: 0,
 }));
 
@@ -32,10 +34,14 @@ vi.mock("@/lib/app/bridge", () => ({
         agent: {
             clientSetup: () => Promise.resolve({
                 success: true,
-                data: { url: "http://127.0.0.1:47219/mcp", stdio: { command: "studio", args: ["--mcp-stdio"] }, skillTargets: {} },
+                data: {
+                    url: "http://127.0.0.1:47219/mcp",
+                    stdio: { command: "studio", args: ["--mcp-stdio"] },
+                    skillTargets: { claudeCode: { displayPath: "~/.claude/skills", installed: false } },
+                },
             }),
-            copyConfig: () => Promise.resolve({ success: true, data: { copied: true } }),
-            installSkill: () => Promise.resolve({ success: true, data: { canceled: true } }),
+            copyConfig: () => bridge.copyConfig ? bridge.copyConfig() : Promise.resolve({ success: true, data: { copied: true } }),
+            installSkill: () => bridge.installSkill ? bridge.installSkill() : Promise.resolve({ success: true, data: { canceled: true } }),
             exportSkill: () => {
                 bridge.exports += 1;
                 return bridge.exportSkill ? bridge.exportSkill() : Promise.resolve({ success: true, data: { canceled: true } });
@@ -47,6 +53,8 @@ vi.mock("@/lib/app/bridge", () => ({
 afterEach(() => {
     cleanup();
     bridge.exportSkill = null;
+    bridge.installSkill = null;
+    bridge.copyConfig = null;
     bridge.exports = 0;
 });
 
@@ -67,5 +75,35 @@ describe("the guide for an application Studio has no skill folder for", () => {
         fireEvent.click(view.getByRole("button", { name: "settings.agent.guide.skillExport" }));
         await waitFor(() => expect(bridge.exports).toBe(1));
         expect(view.getByText("settings.agent.guide.skillServed")).toBeTruthy();
+    });
+});
+
+describe("what the guide says when main refuses", () => {
+    const REASON = "EACCES: permission denied, mkdir '/Users/author/.claude/skills/narraleaf-make-game'";
+
+    it("says an install failed in the author's language, with main's reason after it", async () => {
+        bridge.installSkill = () => Promise.resolve({ success: false, error: REASON });
+        const view = render(<AgentClientGuide client="claudeCode" enabled />);
+        await waitFor(() => expect(view.getByRole("button", { name: "settings.agent.guide.skillInstall" })).toBeTruthy());
+        fireEvent.click(view.getByRole("button", { name: "settings.agent.guide.skillInstall" }));
+        await waitFor(() => expect(view.getByText(`settings.agent.guide.installFailed(${REASON})`)).toBeTruthy());
+    });
+
+    it("says a zip that could not be saved was not saved", async () => {
+        bridge.installSkill = () => Promise.resolve({ success: false, error: REASON });
+        const view = render(<AgentClientGuide client="claudeDesktop" enabled />);
+        fireEvent.click(view.getByRole("button", { name: "settings.agent.guide.skillSave" }));
+        await waitFor(() => expect(view.getByText(`settings.agent.guide.saveFailed(${REASON})`)).toBeTruthy());
+    });
+
+    it("says the same of a copy and of an export", async () => {
+        bridge.copyConfig = () => Promise.resolve({ success: false, error: "A Launcher window cannot copy an agent configuration." });
+        bridge.exportSkill = () => Promise.resolve({ success: false, error: REASON });
+        const view = render(<AgentClientGuide client="other" enabled />);
+        await waitFor(() => expect((view.getByRole("button", { name: "common.copy" }) as HTMLButtonElement).disabled).toBe(false));
+        fireEvent.click(view.getByRole("button", { name: "common.copy" }));
+        await waitFor(() => expect(view.getByText("settings.agent.guide.copyFailed(A Launcher window cannot copy an agent configuration.)")).toBeTruthy());
+        fireEvent.click(view.getByRole("button", { name: "settings.agent.guide.skillExport" }));
+        await waitFor(() => expect(view.getByText(`settings.agent.guide.exportFailed(${REASON})`)).toBeTruthy());
     });
 });

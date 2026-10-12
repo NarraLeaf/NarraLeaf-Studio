@@ -83,10 +83,12 @@ export function AgentClientGuide({ client: clientId, enabled, endpointKey }: Age
         setCopied(false);
     }, [clientId]);
 
+    // Main's reasons are English and technical, so each failure is said in the author's language
+    // with main's reason after it.
     const copy = useCallback(async () => {
         const result = await getInterface().agent.copyConfig(client.configKind).catch(() => null);
         if (!result?.success) {
-            setError(result?.error ?? null);
+            setError(t("settings.agent.guide.copyFailed", { error: result?.error ?? "" }));
             return;
         }
         setError(null);
@@ -95,7 +97,7 @@ export function AgentClientGuide({ client: clientId, enabled, endpointKey }: Age
             clearTimeout(copiedTimer.current);
         }
         copiedTimer.current = setTimeout(() => setCopied(false), COPIED_FLASH_MS);
-    }, [client.configKind]);
+    }, [client.configKind, t]);
 
     const install = useCallback(async () => {
         setBusy(true);
@@ -103,7 +105,8 @@ export function AgentClientGuide({ client: clientId, enabled, endpointKey }: Age
         try {
             const result = await getInterface().agent.installSkill(client.id);
             if (!result.success) {
-                setError(result.error ?? null);
+                const failed = client.skill === "upload" ? "settings.agent.guide.saveFailed" : "settings.agent.guide.installFailed";
+                setError(t(failed, { error: result.error ?? "" }));
             } else if (!result.data.canceled) {
                 const written = result.data.path;
                 setInstalledPath(current => ({ ...current, [client.id]: written }));
@@ -112,7 +115,7 @@ export function AgentClientGuide({ client: clientId, enabled, endpointKey }: Age
         } finally {
             setBusy(false);
         }
-    }, [client.id, readInfo]);
+    }, [client.id, client.skill, readInfo, t]);
 
     // The Agent menu's export, for an application Studio does not know the skill folder of.
     const exportSkill = useCallback(async () => {
@@ -121,14 +124,14 @@ export function AgentClientGuide({ client: clientId, enabled, endpointKey }: Age
         try {
             const result = await getInterface().agent.exportSkill();
             if (!result.success) {
-                setError(result.error ?? null);
+                setError(t("settings.agent.guide.exportFailed", { error: result.error ?? "" }));
             } else if (!result.data.canceled) {
                 setExportedPath(result.data.path);
             }
         } finally {
             setBusy(false);
         }
-    }, []);
+    }, [t]);
 
     return (
         <div className="space-y-5">

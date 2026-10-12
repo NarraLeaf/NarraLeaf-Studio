@@ -517,6 +517,10 @@ export const settings = {
             skillServed: "其他应用通过 Studio 的 MCP 服务读取同一份指南",
             skillExport: "导出 Agent Skill…",
             skillExported: "已导出到 {path}",
+            copyFailed: "无法复制连接配置：{error}",
+            installFailed: "无法安装 Agent Skill：{error}",
+            saveFailed: "无法保存 Agent Skill：{error}",
+            exportFailed: "无法导出 Agent Skill：{error}",
         },
     },
     data: {

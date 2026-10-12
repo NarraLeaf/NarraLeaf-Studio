@@ -588,6 +588,10 @@ export const settings = {
             skillServed: "Other applications read the same guide from Studio's MCP server.",
             skillExport: "Export Agent Skill…",
             skillExported: "Exported to {path}.",
+            copyFailed: "The connection configuration could not be copied: {error}",
+            installFailed: "The Agent Skill could not be installed: {error}",
+            saveFailed: "The Agent Skill could not be saved: {error}",
+            exportFailed: "The Agent Skill could not be exported: {error}",
         },
     },
     data: {

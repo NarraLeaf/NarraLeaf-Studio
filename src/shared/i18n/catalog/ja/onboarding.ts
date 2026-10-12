@@ -63,6 +63,7 @@ export const onboarding = {
     agent: {
         title: "エージェント接続",
         expectation: "AI エージェントが MCP で Studio に接続し、開いているプロジェクトを編集する。エージェントは必須ではない",
+        toggleFailed: "エージェント連携を変更できない：{error}",
     },
     import: {
         action: "設定ファイルを読み込む…",

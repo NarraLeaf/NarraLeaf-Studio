@@ -536,6 +536,10 @@ export const settings = {
             skillServed: "ほかのアプリは Studio の MCP サーバーから同じガイドを読む",
             skillExport: "Agent Skill を書き出す…",
             skillExported: "{path} に書き出し済み",
+            copyFailed: "接続設定をコピーできない：{error}",
+            installFailed: "Agent Skill をインストールできない：{error}",
+            saveFailed: "Agent Skill を保存できない：{error}",
+            exportFailed: "Agent Skill を書き出せない：{error}",
         },
     },
     data: {

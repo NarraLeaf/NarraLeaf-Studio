@@ -116,6 +116,7 @@ export const onboarding = {
     agent: {
         title: "Agent access",
         expectation: "An AI agent connects to Studio over MCP and edits the open project. An agent is optional.",
+        toggleFailed: "Agent access could not be changed: {error}",
     },
     /**
      * The way past every question at once, on the first screen. See `WelcomeStep` for why it is
