@@ -2130,6 +2130,13 @@ export function InsertRow(props: {
     /** What a name typed on this line may refer to — the same view the resolver reads. */
     commandContext: StoryCommandContext;
     inputRef: RefObject<HTMLTextAreaElement | null>;
+    /**
+     * The controller's copy of the line (`insertDraftRef`), which outlives this component: the slot
+     * renders inside the windowed row list, so a hidden tab or a scroll unmounts it while the slot
+     * stays open. A remount seeds from this rather than from `mode.initialValue`, or the field came
+     * back empty while Enter still committed the text it had lost.
+     */
+    draftRef: RefObject<string>;
     onValueChange: (value: string) => void;
     onCommitNarration: (focusNext: boolean) => void;
     /** Escape #1 — drop the candidates, keep the line. */
@@ -2164,9 +2171,14 @@ export function InsertRow(props: {
      * The slot object is the identity of "which line is being typed", so a new slot re-seeds the
      * field. This is React's documented adjust-state-on-prop-change form rather than an effect: an
      * effect would render one frame of the previous slot's text into the new slot.
+     *
+     * Mounting is not always a new slot: the same slot comes back after its row was windowed out
+     * (a hidden tab measures 0 px and renders no rows; a long scroll does the same). The controller's
+     * draft is the line as it stood, so the field starts from that - what the author sees is then
+     * always what Enter commits. For a slot that has just opened the two are the same text.
      */
     const [seededSlot, setSeededSlot] = useState(props.mode.slot);
-    const [value, setValue] = useState(props.mode.initialValue);
+    const [value, setValue] = useState(() => props.draftRef.current ?? props.mode.initialValue);
     if (seededSlot !== props.mode.slot) {
         setSeededSlot(props.mode.slot);
         setValue(props.mode.initialValue);
@@ -2252,7 +2264,7 @@ export function InsertRow(props: {
 
     // Where the caret is decides what the slot offers, so it has to be state: `/bg fo|` asks for an
     // image, `/bg forest_day t=|` for a transition, and only the caret tells them apart.
-    const [caret, setCaret] = useState(props.mode.initialValue.length);
+    const [caret, setCaret] = useState(() => value.length);
     // `ct` is a dependency here for the same reason it is one in `CommandGhostHint`: the command
     // locale is a hidden input to every parse, so a locale switch has to invalidate these too.
     const cursor = useMemo(() => getCommandCursor(source, caret), [ct, caret, source]);
