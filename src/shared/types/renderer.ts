@@ -515,6 +515,11 @@ export interface RendererPreloadedInterface {
             distrusted: ProjectTrustRecord[];
         }>>;
         /**
+         * Delete the project's row from the list. A trusted project stops being trusted, and a
+         * workspace open on it reloads; `"covered"` is a waiting row inside a trusted project, kept.
+         */
+        forget(projectPath: string): Promise<RequestStatus<{ result: "forgotten" | "unknown" | "covered" }>>;
+        /**
          * Put the trust question for this window's own project, in a window of Studio's own. The
          * host writes the grant and reloads this window if the author agrees; the answer is what
          * the ledger says afterwards.
