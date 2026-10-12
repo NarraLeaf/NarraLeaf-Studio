@@ -593,7 +593,9 @@ export const settings = {
             waiting: "Waiting for a decision",
             granted: "Trusted",
             trust: "Trust",
-            remove: "Remove",
+            revoke: "Revoke",
+            delete: "Remove from list",
+            deleteCovered: "Inside a trusted project and cannot be removed",
             reloadNote: "A project that is open reloads when its trust changes.",
             origin: {
                 package: "From a package",

@@ -280,6 +280,7 @@ export enum IPCEventType {
     projectTrustGrant = "projectTrust.grant",
     projectTrustRevoke = "projectTrust.revoke",
     projectTrustList = "projectTrust.list",
+    projectTrustForget = "projectTrust.forget",
     projectTrustPrompt = "projectTrust.prompt",
     workspaceLiveIntentTaken = "workspace.liveIntentTaken",
     workspaceJoinLive = "workspace.joinLive",
@@ -2588,6 +2589,23 @@ export type IPCWorkspaceEvents = {
         },
         response: {
             changed: boolean;
+        };
+    };
+    /**
+     * Delete a row from the settings list, decision and all.
+     *
+     * A project that was trusted stops being trusted, and an open workspace on it reloads as for a
+     * revoke. `"covered"` is the refusal: a waiting row inside a trusted tree stays, because without
+     * it the surrounding grant would cover the project.
+     */
+    [IPCEventType.projectTrustForget]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        },
+        response: {
+            result: "forgotten" | "unknown" | "covered";
         };
     };
     /** Everything the settings list shows: what was vouched for, and what is still waiting. */

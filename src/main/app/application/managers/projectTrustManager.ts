@@ -292,6 +292,35 @@ export class ProjectTrustManager {
     }
 
     /**
+     * The author deletes a row from the settings list.
+     *
+     * The row goes, decision and all: a project trusted before is no longer trusted, and the next
+     * time it is opened Studio meets it as if for the first time and asks again. That is the safe
+     * side, so it needs no confirmation beyond the author pressing the button.
+     *
+     * The one row this refuses to drop is a waiting row inside a trusted tree. A package or a clone
+     * that landed in a project the author trusts was given a row of its own precisely so the
+     * surrounding trust would not cover it; without that row the ancestor's grant would, and a
+     * button that says "delete" would have trusted somebody else's code. `"covered"` says so, and
+     * the row stays.
+     */
+    public forgetRecord(projectPath: string): "forgotten" | "unknown" | "covered" {
+        const key = normalizeProjectPath(projectPath);
+        // A copy, so a refusal leaves the row the state holds untouched.
+        const table = { ...this.table() };
+        const own = key ? table[key] : undefined;
+        if (!own) {
+            return "unknown";
+        }
+        delete table[key];
+        if (!isProjectTrusted(own) && isProjectTrusted(this.governing(table, key))) {
+            return "covered";
+        }
+        this.write(table);
+        return "forgotten";
+    }
+
+    /**
      * Every project the author vouched for, newest grant first - the settings list.
      *
      * Studio's own vouches are not in it. The page is a list of the author's decisions, and a

@@ -540,7 +540,9 @@ export const settings = {
             waiting: "未処理",
             granted: "信頼済み",
             trust: "信頼する",
-            remove: "解除",
+            revoke: "解除",
+            delete: "一覧から削除",
+            deleteCovered: "信頼済みのプロジェクト内にあるため削除できない",
             reloadNote: "開いているプロジェクトは、信頼の状態が変わると読み込み直される。",
             origin: {
                 package: "パッケージから",

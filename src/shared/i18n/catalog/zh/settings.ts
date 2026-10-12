@@ -521,7 +521,9 @@ export const settings = {
             waiting: "等待处理",
             granted: "已信任",
             trust: "信任",
-            remove: "移除",
+            revoke: "取消信任",
+            delete: "从列表中移除",
+            deleteCovered: "位于已信任的项目内，无法移除",
             reloadNote: "已打开的项目在信任状态变更时重新载入。",
             origin: {
                 package: "来自项目包",

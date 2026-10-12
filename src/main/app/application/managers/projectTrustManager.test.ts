@@ -243,6 +243,33 @@ describe("ProjectTrustManager", () => {
         expect(manager.forgetArrival("")).toBe(false);
     });
 
+    it("deletes a row from the settings list, decision and all", () => {
+        manager.recordArrival("D:/games/imported", "package", T1);
+        manager.recordArrival("D:/games/cloned", "remote", T1);
+        manager.grantTrust("D:/games/cloned", T2);
+
+        expect(manager.forgetRecord("D:/games/imported")).toBe("forgotten");
+        expect(manager.forgetRecord("D:/games/cloned")).toBe("forgotten");
+        expect(manager.listDistrusted()).toEqual([]);
+        expect(manager.listTrusted()).toEqual([]);
+        // Gone is the safe side: the project no longer runs, and meeting it again asks again.
+        expect(manager.isTrusted("D:/games/cloned")).toBe(false);
+        expect(manager.forgetRecord("D:/games/cloned")).toBe("unknown");
+        expect(manager.forgetRecord("")).toBe("unknown");
+    });
+
+    it("keeps a waiting row whose deletion would hand it the surrounding trust", () => {
+        // The inner clone has its own row so the outer grant does not cover it. Deleting that row
+        // would trust it, which is not what a delete button means.
+        manager.recordArrival("D:/games/outer", "opened", T1);
+        manager.grantTrust("D:/games/outer", T1);
+        manager.recordArrival("D:/games/outer/inner", "remote", T2);
+
+        expect(manager.forgetRecord("D:/games/outer/inner")).toBe("covered");
+        expect(manager.isTrusted("D:/games/outer/inner")).toBe(false);
+        expect(manager.listDistrusted().map(record => record.path)).toEqual([manager.getRecord("D:/games/outer/inner")!.path]);
+    });
+
     it("treats an unusable path as a project nobody vouched for", () => {
         // No row can exist under an empty key, and nothing that has no key may run.
         expect(manager.isTrusted("")).toBe(false);
