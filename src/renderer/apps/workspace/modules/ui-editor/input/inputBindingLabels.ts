@@ -1,6 +1,6 @@
 import type { InterpolationParams, TranslationKey } from "@shared/i18n";
-import { formatBlueprintKeyboardBinding } from "@shared/types/blueprint/graph";
 import { BLUEPRINT_GAMEPAD_BUTTONS, formatBlueprintGamepadButton } from "@shared/types/blueprint/gamepad";
+import { getKeyboardBindingLabel } from "@/lib/ui-editor/keyboardBindingLabel";
 import {
     inputBindingDevices,
     type UIInputBinding,
@@ -15,8 +15,9 @@ export type TranslateFn = (key: TranslationKey, params?: InterpolationParams) =>
  * Both halves of the input model show the same chips - the library panel where an action's bindings
  * are set, and the interface's own Input section - so the words come from one place.
  *
- * A key is shown through `formatBlueprintKeyboardBinding` rather than raw, so an author who bound
- * "esc" reads "Escape" here and on the `On Key Down` head that answers the same key.
+ * A key is shown through `getKeyboardBindingLabel` rather than raw, so an author who bound "esc"
+ * reads "Esc" here and on the `On Key Down` head that answers the same key, and an arrow is named
+ * in the author's language rather than in the English the binding is stored in.
  *
  * Comments in English per project convention.
  */
@@ -31,7 +32,7 @@ export function getInputBindingLabel(binding: UIInputBinding, t: TranslateFn): s
     if (binding.kind === "gamepad") {
         return formatBlueprintGamepadButton(binding.button) || binding.button;
     }
-    return formatBlueprintKeyboardBinding(binding.key) || binding.key;
+    return getKeyboardBindingLabel(binding.key, t) || binding.key;
 }
 
 /**

@@ -101,4 +101,12 @@ export const common = {
         right: "右",
         overview: "全体図",
     },
+    keys: {
+        arrowUp: "上矢印キー",
+        arrowDown: "下矢印キー",
+        arrowLeft: "左矢印キー",
+        arrowRight: "右矢印キー",
+        space: "スペースキー",
+        plus: "プラスキー",
+    },
 } satisfies LocaleNamespace<"common">;

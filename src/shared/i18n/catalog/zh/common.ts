@@ -95,4 +95,12 @@ export const common = {
         right: "右",
         overview: "概览",
     },
+    keys: {
+        arrowUp: "上方向键",
+        arrowDown: "下方向键",
+        arrowLeft: "左方向键",
+        arrowRight: "右方向键",
+        space: "空格键",
+        plus: "加号键",
+    },
 } satisfies LocaleNamespace<"common">;
