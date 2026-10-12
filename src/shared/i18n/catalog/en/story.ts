@@ -569,7 +569,7 @@ export const story = {
         nameReserved: "This name refers to a built-in layer",
         swayCaption: "Camera moving",
         framingCaption: "This row's shot",
-        framingSelectRow: "Select a camera row that sets a position to frame it here",
+        lookHint: "The camera follows the pointer; scroll to zoom",
     },
     appearance: {
         noPoses: "This character has no poses yet.",
@@ -1184,8 +1184,6 @@ export const story = {
         skipTyping: "Skip typing animation",
         viewStage: "Stage",
         viewLayers: "Layers",
-        cameraHint: "Drag to move the camera, scroll to zoom",
-        cameraPose: "Position {x}, {y} · Zoom {zoom}",
         selectRow: "Select a story row to preview its stage state.",
         failed: "Preview failed",
         settleTimeout: "The stage did not finish setting up in time.",

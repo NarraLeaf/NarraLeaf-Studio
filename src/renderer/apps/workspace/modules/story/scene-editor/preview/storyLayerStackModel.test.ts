@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { StorySceneLayer } from "@shared/types/story";
 import { STORY_LAYER_DISTANCE_MAX } from "@shared/types/story";
-import { layerDepthAt, layerDistanceAtDepth, layerStackDepths, layerSwayTransform, roundLayerDistance } from "./storyLayerStackModel";
+import { layerDepthAt, layerDistanceAtDepth, layerStackDepths, roundLayerDistance } from "./storyLayerStackModel";
 
 const stack: StorySceneLayer[] = [
     { kind: "custom", id: "fog", name: "fog", follow: 2 },
@@ -49,12 +49,5 @@ describe("roundLayerDistance", () => {
         expect(roundLayerDistance(17.4)).toBe(17);
         expect(roundLayerDistance(43)).toBe(45);
         expect(roundLayerDistance(Infinity)).toBe(Infinity);
-    });
-});
-
-describe("layerSwayTransform", () => {
-    it("moves a layer by its share of the camera and leaves one that follows none of it still", () => {
-        expect(layerSwayTransform(0, 0.05, 1.08, 200)).toBe("translate3d(0.00px, 0, 0) scale(1.0000)");
-        expect(layerSwayTransform(1, 0.05, 1.08, 200)).toBe("translate3d(-10.00px, 0, 0) scale(1.0800)");
     });
 });

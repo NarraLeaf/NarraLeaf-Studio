@@ -1872,17 +1872,13 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         }
         : undefined;
     // The selected row, when it is a camera row that states a pose and the preview shows it: the layer
-    // view's moving preview frames that shot (drag to move, wheel to zoom), writing the row.
+    // view's moving preview rests on that shot.
     const framedCameraBlockId = editor.activeBlockId;
     const framedCameraPayload = framedCameraBlockId && editor.scene && !freeze.frozen && framedCameraBlockId === preview.targetBlockId
         ? previewCameraRowPayload(editor.scene.blocks[framedCameraBlockId])
         : null;
     const previewCamera: StoryPreviewCameraApi | null = framedCameraBlockId && framedCameraPayload
-        ? {
-            blockId: framedCameraBlockId,
-            payload: framedCameraPayload,
-            commit: payload => editorRef.current.updateBlockPayloadFor(framedCameraBlockId, payload),
-        }
+        ? { blockId: framedCameraBlockId, payload: framedCameraPayload }
         : null;
     const [menuTargetId, setMenuTargetId] = useState<StoryBlockId | null>(null);
     const openRowContextMenu = useCallback((event: ReactMouseEvent, blockId: StoryBlockId) => {
