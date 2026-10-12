@@ -35,7 +35,7 @@ import {
     subjectGroupId,
     type StoryCommandCategoryId,
 } from "./storyCommandCategories";
-import { searchActionCommands } from "./storyCommandSearch";
+import { commandNamedByWord, searchActionCommands } from "./storyCommandSearch";
 import {
     characterScopedActions,
     characterScopedSidebarGroups,
@@ -2848,19 +2848,22 @@ function useActionCommandMenuState(
     const [activeKey, setActiveKey] = useState<string | null>(null);
     const activeStop = stops.find(stop => stop.key === activeKey) ?? stops[0] ?? null;
     /**
-     * The row an exact abbreviation names. A typed filter otherwise keeps the highlight wherever it
-     * already was, but `/c` is a word the line will turn into one particular command on the next space,
-     * so Enter has to take that command too - the highlight goes to it whenever the rows change.
+     * The row a finished command word names: a spelling the parser reads as one command (`bg`, `char`,
+     * 背景, 表示), or one of the author's abbreviations. A typed filter otherwise keeps the highlight
+     * wherever it already was - and `/show`, lit when the menu opened, still matches "b" and "bg" - but
+     * a finished word is the command the line will be once it is committed, so Enter has to take that
+     * command too: the highlight goes to it whenever the rows change. A built-in spelling comes before
+     * an abbreviation, as it does on the line.
      */
-    const abbreviatedCommandId = abbreviations.get(query.trim().toLowerCase()) ?? null;
-    const abbreviatedKey = abbreviatedCommandId === null
+    const namedCommandId = commandNamedByWord(query, abbreviations);
+    const namedKey = namedCommandId === null
         ? null
-        : stops.find(stop => stop.command.id === abbreviatedCommandId)?.key ?? null;
+        : stops.find(stop => stop.command.id.toLowerCase() === namedCommandId.toLowerCase())?.key ?? null;
 
     useEffect(() => {
-        setActiveKey(current => abbreviatedKey
+        setActiveKey(current => namedKey
             ?? (stops.some(stop => stop.key === current) ? current : stops[0]?.key ?? null));
-    }, [abbreviatedKey, stops]);
+    }, [namedKey, stops]);
 
     const selectKey = (key: string) => {
         setActiveKey(key);
