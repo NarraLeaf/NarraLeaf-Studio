@@ -30,7 +30,9 @@ first, then restyle them like the skeleton's:
    would arrive, any Game UI slot the project already fills (skipped unless `replace: true`) and any
    page left out because the project lacks a plugin its logic needs (the Extra page without the
    Gallery), with the buttons that only opened it.
-2. The same call without `dryRun`. It is one step of undo. The splash becomes the entry page in place
+2. The same call without `dryRun`. One step of undo takes back the interface it added and its input
+   actions; the files, palette entries, translation keys, variable and save field it brought stay (the
+   answer lists them). The splash becomes the entry page in place
    of the blank one (when the entry page is not blank it stays, and the answer says so - move it with
    `ui_page_set_entry`), and Start begins the project's default story at its entry scene.
 3. Check what arrived:
