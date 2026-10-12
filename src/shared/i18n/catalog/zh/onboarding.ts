@@ -62,7 +62,7 @@ export const onboarding = {
     },
     agent: {
         title: "Agent 接入",
-        expectation: "AI Agent 通过 MCP 连接 Studio，编辑打开的工程。Agent 不是必需的",
+        expectation: "AI Agent 通过 MCP 连接 Studio，编辑当前打开的项目。Agent 不是必需的",
         toggleFailed: "无法更改 Agent 接入：{error}",
     },
     import: {
