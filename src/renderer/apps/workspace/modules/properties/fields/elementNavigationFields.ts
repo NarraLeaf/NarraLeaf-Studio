@@ -171,6 +171,9 @@ export function createElementNavigationField(element: UIElement, t: TranslateFn)
         title: t("properties.navigation.title"),
         collapsible: true,
         defaultCollapsed: normalizeUIElementNavigation(element.navigation) === null,
+        // Nothing here moves a focus until the project's actions fill the navigation slots, which is
+        // decided in another panel, so the section carries the topic that says so.
+        helpTopic: "focusNavigationSettings",
         fields,
     });
 }
