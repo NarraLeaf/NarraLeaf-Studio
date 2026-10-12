@@ -4,24 +4,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useFloatingLayer, useHostWindow } from "@/lib/components/layout";
 import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/services";
 import type { BlueprintPaletteContext } from "@/lib/ui-editor/blueprint-nodes/types";
-import {
-    AppWindow,
-    Box,
-    Braces,
-    Bug,
-    CornerUpRight,
-    Database,
-    History as HistoryIcon,
-    MousePointer2,
-    Map as MapIcon,
-    Route,
-    Settings2,
-    Sigma,
-    Type as TypeIcon,
-    Variable,
-    Zap,
-    type LucideIcon,
-} from "lucide-react";
+import { CornerUpRight } from "lucide-react";
 import {
     BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID,
     BLUEPRINT_ADD_NODE_FIELDS_CATEGORY_ID,
@@ -40,6 +23,7 @@ import {
     resolveBlueprintNodeTitle,
 } from "../blueprintNodeI18n";
 import { useCategoryRowScroll } from "./useCategoryRowScroll";
+import { getBlueprintCategoryVisual } from "./blueprintCategoryVisuals";
 
 const MENU_W = 440;
 const MENU_MAX_H = 520;
@@ -82,50 +66,6 @@ type Props = {
      */
     leadingEntries?: readonly PaletteEntry[];
 };
-
-type CategoryVisual = {
-    icon: LucideIcon;
-    color: string;
-};
-
-function getCategoryVisual(categoryId: string): CategoryVisual {
-    switch (categoryId) {
-        case "Events":
-            return { icon: Zap, color: "#d9b36a" };
-        case "Flow":
-            return { icon: Route, color: "#8fa9c7" };
-        case "Data":
-            return { icon: Database, color: "#96b8a0" };
-        case "Math":
-            return { icon: Sigma, color: "#b2a6c9" };
-        case "String":
-            return { icon: TypeIcon, color: "#d2a679" };
-        case "Text":
-            return { icon: TypeIcon, color: "#8fc7b5" };
-        case "Element":
-            return { icon: MousePointer2, color: "#d9b36a" };
-        case "Displayable":
-            return { icon: Box, color: "#b9c47a" };
-        case "Navigation":
-            return { icon: MapIcon, color: "#7ec7c1" };
-        case "App":
-            return { icon: AppWindow, color: "#8fb8c7" };
-        case "Backlog":
-            return { icon: HistoryIcon, color: "#c7a98f" };
-        case "Variables":
-            return { icon: Variable, color: "#8fb3d9" };
-        case "Widget":
-            return { icon: Box, color: "var(--narraleaf-accent, #40a8c4)" };
-        case "Debug":
-            return { icon: Bug, color: "#bd97a3" };
-        case BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID:
-            return { icon: Settings2, color: "#a8adb5" };
-        case BLUEPRINT_ADD_NODE_FIELDS_CATEGORY_ID:
-            return { icon: Braces, color: "#96b8a0" };
-        default:
-            return { icon: Settings2, color: "#9aa3ad" };
-    }
-}
 
 /** A category chip's words: the menu's own group by its own name, a node category by the catalogue's. */
 function addNodeCategoryLabel(category: string, t: ReturnType<typeof useTranslation>["t"]): string {
@@ -457,7 +397,7 @@ export function BlueprintAddNodeMenu({
                         >
                             {categories.map((category, index) => {
                                 const active = activeCategoryId === category.id;
-                                const visual = getCategoryVisual(category.id);
+                                const visual = getBlueprintCategoryVisual(category.id);
                                 const Icon = visual.icon;
                                 return (
                                     <button
@@ -555,7 +495,7 @@ const BlueprintAddNodeRow = memo(function BlueprintAddNodeRow(props: {
     onHover: (flatIndex: number) => void;
 }) {
     const { t } = useTranslation();
-    const visual = getCategoryVisual(props.entry.category);
+    const visual = getBlueprintCategoryVisual(props.entry.category);
     const Icon = visual.icon;
     const magicRef = props.entry.magicElementRef;
     const categoryLabel = addNodeCategoryLabel(props.entry.category, t);
