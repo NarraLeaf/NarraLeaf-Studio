@@ -14,8 +14,8 @@ import type { PortraitCrop } from "@/lib/workspace/services/character/types";
  * `PortraitCrop` is normalized against the image, so a visually square crop of a 1000×2000 sprite is
  * `w: 0.2, h: 0.1` — the two numbers differ even though they describe the same number of pixels.
  * The drag keeps the box square *on screen*, which (the picture being letterboxed, never stretched)
- * is the same thing as square in image pixels. That matters twice over: the bake letterboxes a
- * non-square crop into its square PNG, and `HeadThumbnail` stretches one.
+ * is the same thing as square in image pixels. That matters because a non-square crop does not fill
+ * the avatar: the bake letterboxes it into its square PNG, and `HeadThumbnail` fits it the same way.
  *
  * ## Nothing is written until the pointer comes up
  *
