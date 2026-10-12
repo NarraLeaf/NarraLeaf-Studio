@@ -93,7 +93,7 @@ export const settings = {
         },
         developerMode: {
             label: "開発者オプション",
-            description: "右クリックのメニューに、クリックした項目の ID をコピーする節が加わる",
+            description: "右クリックのメニューに、クリックした項目の ID をコピーする節が加わり、ノード追加のメニューに各ノードの種類の ID が出る",
         },
         screenEffectThreads: {
             label: "画面エフェクトのスレッド数",

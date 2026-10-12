@@ -94,7 +94,7 @@ export const settings = {
         },
         developerMode: {
             label: "Developer options",
-            description: "Right-click menus gain a section for copying the ID of the item clicked.",
+            description: "Right-click menus gain a section for copying the ID of the item clicked, and the blueprint add-node menu shows each node's type ID.",
         },
         screenEffectThreads: {
             label: "Threads for screen effects",

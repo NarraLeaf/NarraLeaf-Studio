@@ -24,6 +24,7 @@ import {
     resolveBlueprintNodeTitle,
 } from "../blueprintNodeI18n";
 import { useCategoryRowScroll } from "./useCategoryRowScroll";
+import { useDeveloperMode } from "@/lib/developer";
 import { getBlueprintCategoryVisual } from "./blueprintCategoryVisuals";
 import { blueprintNodeFamilyOf } from "@/lib/ui-editor/blueprint-nodes/blueprintNodeFamilies";
 
@@ -90,6 +91,10 @@ export function BlueprintAddNodeMenu({
     leadingEntries,
 }: Props) {
     const { t } = useTranslation();
+    // A row's type id is what a `.bp` file and the blueprint CLI call the node: of use to whoever
+    // writes those, and noise beside every row to an author choosing a node, so only developer
+    // options show it.
+    const showTypeIds = useDeveloperMode();
     // The menu is portalled into, positioned against and keyed off the window it is drawn in.
     const hostWindow = useHostWindow();
     const [query, setQuery] = useState("");
@@ -476,6 +481,7 @@ export function BlueprintAddNodeMenu({
                                         offsetY={item.start}
                                         onPick={pickEntry}
                                         onHover={setActiveFlatIndex}
+                                        showTypeId={showTypeIds}
                                     />
                                 );
                             })}
@@ -502,6 +508,7 @@ const BlueprintAddNodeRow = memo(function BlueprintAddNodeRow(props: {
     offsetY: number;
     onPick: (entry: PaletteEntry) => void;
     onHover: (flatIndex: number) => void;
+    showTypeId: boolean;
 }) {
     const { t } = useTranslation();
     const visual = getBlueprintCategoryVisual(props.entry.category);
@@ -525,8 +532,8 @@ const BlueprintAddNodeRow = memo(function BlueprintAddNodeRow(props: {
         : magicRef
         ? `${categoryLabel} -> ${magicRef.label}`
         : categoryLabel;
-    // What the node does is the one thing the row cannot show; its type id is already on the right
-    // of the row, and the search keywords say nothing about the node. A family's row has no one node
+    // What the node does is the one thing the row cannot show; the search keywords say nothing about
+    // the node, and its type id is for developer options to show. A family's row has no one node
     // to describe, and names the ones it holds instead.
     const title = family
         ? [nodeTitle, family.members.map(member => resolveBlueprintNodeTitle(member.displayName, t)).join(" · ")].join("\n")
@@ -564,7 +571,7 @@ const BlueprintAddNodeRow = memo(function BlueprintAddNodeRow(props: {
                     <span className="block truncate text-sm text-fg">{nodeTitle}</span>
                     <span className="block truncate text-2xs text-fg-subtle">{subtitle}</span>
                 </span>
-                {family ? null : (
+                {family || !props.showTypeId ? null : (
                     <span className="min-w-0 max-w-[180px] shrink-0 truncate font-mono text-2xs text-fg-subtle">
                         {props.entry.type}
                     </span>
