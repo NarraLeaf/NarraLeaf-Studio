@@ -335,6 +335,13 @@ export type StoryStageSnapshot = {
     savedVariables: Record<string, StoryLiteralValue>;
     /** Settled stage-camera pose accumulated within this scene, or null if neutral. */
     camera: StageSnapshotCamera | null;
+    /**
+     * When the target row is a camera transform: the camera's settled props once that row has
+     * played (everything before it, with the row's own pose over it). Null for any other target.
+     * The preview opens on this frame instead of playing the move while the author frames the shot
+     * on the stage, and reads the pose a drag starts from here.
+     */
+    targetCamera: Record<string, unknown> | null;
     /** True when the target sits inside an NVL container. */
     nvl: boolean;
     diagnostics: StageSnapshotDiagnostic[];
@@ -552,6 +559,7 @@ class SnapshotWalker {
     private builtinLayerProps = { backgroundLayer: {} as Record<string, unknown>, displayableLayer: {} as Record<string, unknown> };
     /** Story-level camera pose accumulated within this scene; null until a `/camera` op sets one. */
     private camera: StageSnapshotCamera | null = null;
+    private targetCamera: Record<string, unknown> | null = null;
     private nvl = false;
     private reachedTarget = false;
 
@@ -624,6 +632,7 @@ class SnapshotWalker {
             sceneVariables: this.assignedScene,
             savedVariables: this.assignedSaved,
             camera: this.camera,
+            targetCamera: this.targetCamera,
             nvl: this.nvl,
             diagnostics: this.diagnostics,
         };
@@ -827,6 +836,7 @@ class SnapshotWalker {
         if (block.id === this.targetBlockId) {
             this.reachedTarget = true;
             this.nvl = insideNvl;
+            this.targetCamera = this.cameraAfter(block);
             return;
         }
         // A disabled row is compiled out with everything under it, so a playthrough never runs it.
@@ -1401,6 +1411,29 @@ class SnapshotWalker {
      * The zoom clamp mirrors the compiler's: the pose is pre-posed straight onto the camera and never
      * passes through `compileCameraAction`.
      */
+    /**
+     * The camera's settled props once `block` has played, when it is a camera transform the walk
+     * would act on; null otherwise. Worked out on a copy, so the snapshot itself still stops before
+     * the row.
+     */
+    private cameraAfter(block: StoryBlock): Record<string, unknown> | null {
+        if (block.disabled || this.inert > 0 || block.kind !== "action") {
+            return null;
+        }
+        const payload = block.payload as StoryActionPayload;
+        if (payload.action !== "camera" || payload.operation !== "transform") {
+            return null;
+        }
+        const saved = this.camera;
+        this.camera = saved ? { ...saved, props: { ...saved.props }, effects: { ...saved.effects } } : null;
+        try {
+            this.applyCamera(block, payload);
+            return { ...(this.camera?.props ?? {}) };
+        } finally {
+            this.camera = saved;
+        }
+    }
+
     private applyCamera(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "camera" }>): void {
         if (payload.operation === "reset") {
             this.camera = null;
