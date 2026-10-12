@@ -589,7 +589,7 @@ export const settings = {
     data: {
         projectTrust: {
             loading: "Reading…",
-            empty: "Every project opened so far was created by Studio.",
+            empty: "No projects.",
             waiting: "Waiting for a decision",
             granted: "Trusted",
             trust: "Trust",

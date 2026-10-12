@@ -517,7 +517,7 @@ export const settings = {
     data: {
         projectTrust: {
             loading: "读取中…",
-            empty: "目前打开过的项目均由 Studio 创建。",
+            empty: "暂无项目",
             waiting: "等待处理",
             granted: "已信任",
             trust: "信任",

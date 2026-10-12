@@ -536,7 +536,7 @@ export const settings = {
     data: {
         projectTrust: {
             loading: "読み込み中…",
-            empty: "これまでに開いたプロジェクトはすべて Studio が作成したもの。",
+            empty: "プロジェクトはない",
             waiting: "未処理",
             granted: "信頼済み",
             trust: "信頼する",
