@@ -40,7 +40,7 @@ import { BLUEPRINT_COMPONENT_PARAM_OPTIONS_SOURCE } from "@/lib/ui-editor/bluepr
 import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
-import type { BlueprintEntryTabPayload } from "../blueprintEntryTabId";
+import { blueprintTargetKeepingLayer, type BlueprintEntryTabPayload } from "../blueprintEntryTabId";
 import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import type { StoryDocument } from "@shared/types/story";
 import { AUDIO_TRACK_ID_SOUND, audioTrackDisplayName, resolveAudioTrack } from "@shared/types/audioTrack";
@@ -54,7 +54,7 @@ import {
 } from "@shared/types/ui-editor/pageParams";
 import { BLUEPRINT_PAGE_PARAM_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/frameNodes";
 import { BLUEPRINT_SCENE_VARIABLE_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/storyVariableNodes";
-import { buildSceneVariableOptions } from "./sceneVariableOptions";
+import { buildSceneVariableOptions, sceneVariablesRunningBlueprint } from "./sceneVariableOptions";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
 import { blueprintDisplayName, isFactoryStoryBlueprintName, ownerLabelKey } from "@shared/types/ui-editor/ownerLabels";
 import { workspaceStoryBlueprintSummary } from "@/lib/story/storyBlueprintSummary";
@@ -101,6 +101,7 @@ import {
     type BlueprintMinimapPreference,
 } from "../flow/blueprintMinimapPreference";
 import { useBlueprintDiagnostics } from "../hooks/useBlueprintDiagnostics";
+import { useBlueprintNodeCatalogRevision } from "../hooks/useBlueprintNodeCatalogRevision";
 import { useAssetNameGaps } from "../hooks/useAssetNameGaps";
 import { useBlueprintDragConnectSettings } from "../hooks/useBlueprintDragConnectSettings";
 import { useBlueprintEditorState, type BlueprintEditorGraphView } from "../state/useBlueprintEditorState";
@@ -626,6 +627,8 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const historyService = context.services.get<HistoryService>(Services.History);
     const panelStateService = context.services.get<PanelStateService>(Services.PanelState);
     const nodeCatalog = context.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
+    // A plugin's nodes are registered when it loads, which can be after this tab has drawn them.
+    const nodeCatalogRevision = useBlueprintNodeCatalogRevision(nodeCatalog);
     const runtimeBridge = context.services.get<UIRuntimeBridgeService>(Services.RuntimeBridge);
     const storyService = context.services.get<StoryService>(Services.Story);
     const characterService = context.services.get<CharacterService>(Services.Character);
@@ -765,6 +768,25 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         anchorElementId(bp.owner) !== null && payload.elementId
             ? uiDocument.elements[payload.elementId]
             : undefined;
+    // The scene variables a story blueprint can reach - those of the scenes whose rows run it - with
+    // their declared types, which type Get / Set Scene Var's `Value` pin. Kept as one array for as
+    // long as no variable is added, removed or retyped, so editing a story line does not retype the
+    // graph's pins.
+    const reachableSceneVariables = useMemo(
+        () =>
+            bp.owner.kind === "storyAction"
+                ? sceneVariablesRunningBlueprint(
+                      storyService.listStories().map(story => ({ id: story.id, document: storyDocumentsById[story.id] })),
+                      payload.blueprintId,
+                  )
+                : [],
+        // `storyLibraryRevision` stands in for the story list read through the service.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [bp.owner.kind, payload.blueprintId, storyDocumentsById, storyLibraryRevision, storyService],
+    );
+    const sceneVariablesKey = reachableSceneVariables.map(variable => `${variable.id}:${variable.valueType}`).join("|");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const sceneVariables = useMemo(() => reachableSceneVariables, [sceneVariablesKey]);
     /** The shapes this graph's pins are typed with: the document's lists, and the row in scope. */
     const structTypeContext = useMemo(
         () =>
@@ -774,12 +796,13 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 owner: bp.owner,
                 isComponentDefinitionGraph,
                 savedVariables: localBp.listSavedVariables(),
+                sceneVariables,
             }),
         // `uiDocumentRevision` stands in for the document read through the service, `registryRevision`
         // for the variable table read through the blueprint service, and `pageParamsRevision` for the
         // pages' parameters, read through their shared table.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [blueprintDocumentService, bp.owner, isComponentDefinitionGraph, uiDocumentRevision, registryRevision, pageParamsRevision, widgetElement],
+        [blueprintDocumentService, bp.owner, isComponentDefinitionGraph, uiDocumentRevision, registryRevision, pageParamsRevision, widgetElement, sceneVariables],
     );
     const widgetLogicEvents = useMemo(() => {
         const t = widgetElement?.type;
@@ -812,7 +835,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         nodeId: editor.selectedNodeIds.length === 1 ? editor.selectedNodeIds[0] : null,
     });
     const assetNameGaps = useAssetNameGaps(context);
-    const diagnostics = useBlueprintDiagnostics(doc, payload.blueprintId, revision + registryRevision, {
+    const diagnostics = useBlueprintDiagnostics(doc, payload.blueprintId, revision + registryRevision + nodeCatalogRevision, {
         assetNameGaps,
         widgetElement,
         // The same document the palette walks, so the two agree about which element a list draws.
@@ -832,6 +855,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         // Same reasoning, other scope: a saved id is resolved against the `saved` half of the registry,
         // so the picker's options and the diagnostic's accepted set have to be the one same list.
         savedVariables: localBp.listSavedVariables(),
+        sceneVariables,
     });
     const openBlueprint = useOpenBlueprintTarget();
     const dragConnectCreate = useBlueprintDragConnectSettings();
@@ -1153,21 +1177,15 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             return;
         }
         // The same route a right click on any blueprint entry takes, so the window this editor
-        // moves into is named, keyed and restored exactly like one opened from outside.
-        detachBlueprint({
-            blueprintId: payload.blueprintId,
-            ownerKind: payload.ownerKind,
-            surfaceId: payload.surfaceId,
-            componentId: payload.componentId,
-            elementId: payload.elementId,
-            propPath: payload.propPath,
+        // moves into is named, keyed and restored exactly like one opened from outside. It opens on
+        // the layer this tab had open.
+        detachBlueprint(blueprintTargetKeepingLayer(
+            payload,
             // Carried across so closing the window puts back the tab that was here, name included -
             // this editor is opened under several names (the blueprint's own, the widget it belongs
             // to), and re-deriving one would rename it on the way back.
-            title:
-                findEditorTabTitle(uiService.getStore().getEditorLayout(), tabId)
-                ?? t("blueprint.tab.title"),
-        });
+            findEditorTabTitle(uiService.getStore().getEditorLayout(), tabId) ?? t("blueprint.tab.title"),
+        ));
     }, [detachBlueprint, isDetachedHost, payload, t, tabId, uiService]);
 
     /**
@@ -2466,6 +2484,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 <div className="min-h-0 flex-1">
                     <BlueprintFlowCanvas
                         nodeCatalog={nodeCatalog}
+                        nodeCatalogRevision={nodeCatalogRevision}
                         graphKey={graphKey}
                         ir={ir}
                         revision={revision}

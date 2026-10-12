@@ -162,9 +162,7 @@ import {
 } from "@/lib/workspace/services/ui-editor/blueprint/graphStructTypeInference";
 import { interfaceDocumentFreezeScope } from "../../ui-editor/uiLiveSession";
 import { BLUEPRINT_EXEC_EDGE_COLOR } from "@/lib/ui-editor/blueprint-graph-edge-style";
-import { measureEditorSidebarInset } from "@/lib/components/layout/editorSidebarInset";
 import { useHostVisible } from "@/lib/components/layout/hostVisibility";
-import { computeBlueprintRevealViewport } from "./blueprintZoom";
 import {
     blueprintWireEnds,
     describeBlueprintWireEnd,
@@ -432,6 +430,11 @@ export function removeBlueprintNodeFromIr(ir: BlueprintGraphIr, nodeId: string):
 
 type BlueprintFlowCanvasInnerProps = {
     nodeCatalog: IBlueprintNodeCatalogService;
+    /**
+     * The catalogue's revision (`getCatalogRevision`). A change redraws every card: node types a
+     * plugin registers after this canvas drew them stop being unknown nodes.
+     */
+    nodeCatalogRevision?: number;
     graphKey: string;
     ir: BlueprintGraphIr;
     revision: number;
@@ -617,6 +620,7 @@ function syncSameGraphFnCallSnapshots(ir: BlueprintGraphIr, currentBlueprintId: 
 
 function BlueprintFlowCanvasInner({
     nodeCatalog,
+    nodeCatalogRevision = 0,
     graphKey,
     ir,
     revision,
@@ -1051,7 +1055,7 @@ function BlueprintFlowCanvasInner({
         /** The translator the wires were named with; a new one is a language switch. */
         t: typeof t;
     } | null>(null);
-    const lastNodeCatalogRef = useRef(nodeCatalog);
+    const lastNodeCatalogRef = useRef({ catalog: nodeCatalog, revision: nodeCatalogRevision });
 
     /**
      * The creation menu holds its own open/closed state and is reached through this handle.
@@ -1200,8 +1204,9 @@ function BlueprintFlowCanvasInner({
         syncedGraphKeyRef.current = graphKey;
 
         const prevStruct = lastStructuralRef.current;
-        const catalogChanged = lastNodeCatalogRef.current !== nodeCatalog;
-        lastNodeCatalogRef.current = nodeCatalog;
+        const catalogChanged =
+            lastNodeCatalogRef.current.catalog !== nodeCatalog || lastNodeCatalogRef.current.revision !== nodeCatalogRevision;
+        lastNodeCatalogRef.current = { catalog: nodeCatalog, revision: nodeCatalogRevision };
         const structural =
             catalogChanged ||
             !prevStruct ||
@@ -1319,6 +1324,7 @@ function BlueprintFlowCanvasInner({
         structTypeContext,
         graphKey,
         nodeCatalog,
+        nodeCatalogRevision,
         revision,
         blueprintSelectedNodesDependencyKey(selectedNodeIds),
         pendingPlacementEntry,
@@ -2133,23 +2139,10 @@ function BlueprintFlowCanvasInner({
      */
     const revealWireEnd = useCallback(
         (end: BlueprintWireEnd, color: string) => {
-            const internal = getInternalNode(end.nodeId);
-            if (!internal) {
+            if (!getInternalNode(end.nodeId)) {
                 return;
             }
-            const state = store.getState();
-            const viewport = computeBlueprintRevealViewport({
-                node: {
-                    x: internal.internals.positionAbsolute.x,
-                    y: internal.internals.positionAbsolute.y,
-                    width: internal.measured.width ?? 0,
-                    height: internal.measured.height ?? 0,
-                },
-                current: getViewport(),
-                container: { width: state.width, height: state.height },
-                range: { min: state.minZoom, max: state.maxZoom },
-                inset: measureEditorSidebarInset(state.domNode),
-            });
+            const viewport = frameBlueprintNode(store.getState(), end.nodeId, getViewport());
             if (viewport) {
                 void setViewport(viewport, { duration: 220 });
             }

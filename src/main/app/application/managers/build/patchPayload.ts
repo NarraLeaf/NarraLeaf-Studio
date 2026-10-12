@@ -1,11 +1,11 @@
 import crypto from "crypto";
 import mountedFs from "fs/promises";
-import os from "os";
 import path from "path";
 import { openAssetArchive, ASSET_ARCHIVE_FILENAME, ARCHIVE_READER_FILENAME } from "@narraleaf/bindings/read";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import { GAME_RUNTIME_BUNDLE_PACK_ENTRY, RUNTIME_HOST_FILE_PREFIXES } from "@shared/utils/gameRuntimeBundle";
 import { unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
+import { payloadReaderCopiesRoot } from "./payloadReaderCopies";
 
 /**
  * Reading a compiled app directory's payload back out, entry by entry.
@@ -281,17 +281,6 @@ export async function summarizePayload(target: string, options: { digests: boole
     } finally {
         await payload.close().catch(() => undefined);
     }
-}
-
-/**
- * Where the native readers sealed payloads carry are copied to before they are loaded.
- *
- * Studio's own folder rather than the payload's, because loading a module pins the file it came from
- * until the process exits (see the top of this module). Under the system temp folder because a copy
- * is only needed by the process that loaded it, and outlives that one only until a later one sweeps it.
- */
-export function payloadReaderCopiesRoot(): string {
-    return path.join(os.tmpdir(), "narraleaf-payload-readers");
 }
 
 /** The readers this process has loaded copies of, by digest. Their copies stay until it exits. */

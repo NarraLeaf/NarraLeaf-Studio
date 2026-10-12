@@ -5716,7 +5716,9 @@ function getLayer(ctx: SceneCompileContext, objectName: string, zIndex = 0, init
     // A layer's distance from the camera is stated once for the whole scene (its `create` row), and
     // every path that builds the layer - the row itself, a picture placed on it first, a launch's
     // replay - builds it here, so they all build it at the same distance.
-    const parallax = storyLayerDepthParallax(sceneLayerDepthsOf(ctx.scene).custom.get(name));
+    // Read fresh each time, never cached on the scene: the story service edits a scene in place, so a
+    // cache keyed on it would keep the first compile's depths and the preview would ignore every edit.
+    const parallax = storyLayerDepthParallax(sceneLayerDepths(ctx.scene).custom.get(name));
     const layer = new Layer(name, { zIndex, ...(parallax !== 1 ? { parallax } : {}), ...(initialProps ?? {}) } as any);
     setStableElementId(ctx.elementIdBindings, layer, sceneElementStaticId(ctx, "layer", name));
     ((ctx.nlrScene as unknown as { config: { layers: Layer[] } }).config.layers).push(layer);
@@ -5724,23 +5726,12 @@ function getLayer(ctx: SceneCompileContext, objectName: string, zIndex = 0, init
     return layer;
 }
 
-/** Read once per scene: every layer the scene builds asks, and the answer cannot change mid-compile. */
-const sceneLayerDepthCache = new WeakMap<StoryScene, ReturnType<typeof sceneLayerDepths>>();
-function sceneLayerDepthsOf(scene: StoryScene): ReturnType<typeof sceneLayerDepths> {
-    let depths = sceneLayerDepthCache.get(scene);
-    if (!depths) {
-        depths = sceneLayerDepths(scene);
-        sceneLayerDepthCache.set(scene, depths);
-    }
-    return depths;
-}
-
 /**
  * The scene config that puts the scene's own background layer at the distance its `setDepth` row
  * names. Empty when the scene names none, so a scene without depth builds exactly as it always did.
  */
 function sceneBackgroundLayerConfig(scene: StoryScene): { backgroundLayerParallax?: number } {
-    const parallax = storyLayerDepthParallax(sceneLayerDepthsOf(scene).background);
+    const parallax = storyLayerDepthParallax(sceneLayerDepths(scene).background);
     return parallax !== 1 ? { backgroundLayerParallax: parallax } : {};
 }
 
