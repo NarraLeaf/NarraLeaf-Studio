@@ -3,11 +3,13 @@ import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UISurface } from "@shared/types/ui-editor/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { Services } from "../services";
+import { HistoryService } from "../history/HistoryService";
+import { projectHistoryScope } from "../history/historyScopes";
 import { IMPORT_PLACEMENT_FROM_SOURCE, resolveImportedSurfacePlacement, UIDocumentService } from "./UIDocumentService";
 
 /** Minimal harness: a UIDocumentService wired to stub Uuid + LocalBlueprint
  * services, seeded with a fresh empty document (one main app surface). */
-function createHarness() {
+function createHarness(options: { history?: HistoryService } = {}) {
     let nextId = 0;
     const service = new UIDocumentService();
     const blueprintDocument: any = {
@@ -56,6 +58,9 @@ function createHarness() {
                 }
                 if (serviceId === Services.LocalBlueprint) {
                     return localBlueprintService;
+                }
+                if (serviceId === Services.History && options.history) {
+                    return options.history;
                 }
                 throw new Error(`Unexpected service ${serviceId}`);
             },
@@ -429,5 +434,62 @@ describe("importTemplateBundle: the input a surface answers", () => {
 
         expect(result.adoptedActionIds).toEqual(["backlog"]);
         expect(service.getDocument().actions?.advance).toEqual({ id: "advance", name: "Next", bindings: [{ kind: "key", key: "Enter" }] });
+    });
+
+    function withHistory() {
+        const history = new HistoryService();
+        const harness = createHarness({ history });
+        history.setContext((harness.service as any).getContext());
+        return { ...harness, history };
+    }
+
+    it("goes with the import's undo step, and comes back with its redo", () => {
+        const { service, history } = withHistory();
+        const before = service.getDocument().surfaces.length;
+        service.importTemplateBundle({ document: withActions(), graphs: copiedGameUiGraphs(), placement: IMPORT_PLACEMENT_FROM_SOURCE });
+        expect(Object.keys(service.getDocument().actions ?? {}).sort()).toEqual(["advance", "backlog"]);
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(service.getDocument().surfaces).toHaveLength(before);
+        expect(Object.keys(service.getDocument().actions ?? {})).toEqual([]);
+        expect(history.redo(projectHistoryScope())).toBe(true);
+        expect(service.getDocument().surfaces).toHaveLength(before + 1);
+        expect(service.getDocument().actions?.advance?.bindings).toHaveLength(2);
+        expect(service.getDocument().actions?.backlog).toBeDefined();
+    });
+
+    it("stays on undo when a surface left in the project has come to answer it", () => {
+        const { service, history } = withHistory();
+        service.importTemplateBundle({ document: withActions(), graphs: copiedGameUiGraphs(), placement: IMPORT_PLACEMENT_FROM_SOURCE });
+        // The author makes the project's own page answer the adopted Backlog action.
+        (service.getDocument().surfaces[0] as UISurface).actions = [{ actionId: "backlog" }];
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(Object.keys(service.getDocument().actions ?? {})).toEqual(["backlog"]);
+    });
+
+    it("leaves off a key the project already binds, keeping the action's other bindings", () => {
+        const { service } = createHarness();
+        (service as any).document.actions = {
+            next: { id: "next", name: "Next", bindings: [{ kind: "pointer", gesture: "click" }, { kind: "key", key: "Space" }] },
+        };
+        const result = service.importTemplateBundle({ document: withActions(), graphs: copiedGameUiGraphs(), placement: IMPORT_PLACEMENT_FROM_SOURCE });
+
+        // The click is shared - a click fires what the surface under it answers - and Space is not.
+        expect(service.getDocument().actions?.advance?.bindings).toEqual([{ kind: "pointer", gesture: "click" }]);
+        expect(result.heldBackBindings).toEqual({ advance: [{ kind: "key", key: "Space" }] });
+        expect(service.getDocument().actions?.next?.bindings).toHaveLength(2);
+        expect(service.getDocument().actions?.backlog?.bindings).toEqual([{ kind: "pointer", gesture: "wheelUp" }]);
+    });
+
+    it("shares a key the project gives only to a navigation intent, as the starter template does", () => {
+        const { service } = createHarness();
+        (service as any).document.actions = {
+            confirm: { id: "confirm", name: "Confirm", bindings: [{ kind: "key", key: "Space" }], navigationSlot: "confirm" },
+        };
+        const result = service.importTemplateBundle({ document: withActions(), graphs: copiedGameUiGraphs(), placement: IMPORT_PLACEMENT_FROM_SOURCE });
+
+        expect(service.getDocument().actions?.advance?.bindings).toEqual([{ kind: "pointer", gesture: "click" }, { kind: "key", key: "Space" }]);
+        expect(result.heldBackBindings).toEqual({});
     });
 });

@@ -206,11 +206,13 @@ import {
     remapUIListFieldIds,
 } from "@shared/types/ui-editor/structLibrary";
 import {
+    collectReferencedUIInputActionIds,
     dedupeUIInputBindings,
     normalizeUIInputActionLibrary,
     normalizeUIInputBindings,
     normalizeUISurfaceActionEnablements,
     pruneUISurfaceActionEnablements,
+    uiInputBindingIdentity,
     type UIInputActionDef,
     type UIInputBinding,
     type UISurfaceActionEnablement,
@@ -904,9 +906,17 @@ export type ImportTemplateResult = {
     surfaceIdMap: Record<string, string>;
     /**
      * Input actions the arriving surfaces answer that this project's vocabulary lacked, adopted under
-     * the source's ids. They stay when the import is undone, like the files and translations do.
+     * the source's ids. Unlike the files and translations, they go with the import's undo step (the
+     * caller's, when it records the step itself): an action left behind is not inert - its bindings
+     * keep answering keys - so it is taken back with the surfaces that brought it, unless something
+     * else in the project has come to answer or name it by then.
      */
     adoptedActionIds: string[];
+    /**
+     * Key and pad-button bindings of the adopted actions that were left off, by action id, because the
+     * project already gives that key or button a meaning of its own (`adoptArrivingInputActions`).
+     */
+    heldBackBindings: Record<string, UIInputBinding[]>;
 };
 
 /**
@@ -2743,6 +2753,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         ids: { surfaceIds: readonly string[]; componentIds: readonly string[] },
         label: HistoryLabel,
         scopeId?: HistoryScopeId,
+        /** Input actions the operation adopted along with the records; see {@link takeAdoptedInputActions}. */
+        adoptedActionIds: readonly string[] = [],
     ): void {
         const document = this.getDocument();
         const arrived =
@@ -2752,12 +2764,101 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             return;
         }
         let held: UILibraryRecords = { surfaces: [], components: [] };
+        let heldActions: Record<string, UIInputActionDef> = {};
         this.pushLibraryStep(label, {
             undo: () => {
                 held = this.takeLibraryRecords(ids);
+                heldActions = this.takeAdoptedInputActions(adoptedActionIds);
             },
-            redo: () => this.putLibraryRecords(held),
+            redo: () => {
+                this.putInputActions(heldActions);
+                this.putLibraryRecords(held);
+            },
         }, scopeId);
+    }
+
+    /**
+     * Take input actions an import adopted back out of the vocabulary, and return them as they stood.
+     *
+     * Only the ones nothing left in the project answers or names. This runs after the import's own
+     * surfaces and blueprints have gone, so an action a surface still answers, or a blueprint node
+     * still picks, is one the author has put to use since - taking it would leave that surface or node
+     * answering nothing (the rule an agent's outline step keeps for a chapter it added). Empty when
+     * nothing left this copy of the document: an operation sink took the gesture.
+     */
+    private takeAdoptedInputActions(actionIds: readonly string[]): Record<string, UIInputActionDef> {
+        if (actionIds.length === 0) {
+            return {};
+        }
+        const document = this.getDocument();
+        const answered = collectReferencedUIInputActionIds(document);
+        const picked = this.inputActionIdsPickedByBlueprints();
+        const held: Record<string, UIInputActionDef> = {};
+        for (const id of actionIds) {
+            const action = document.actions?.[id];
+            if (action && !answered.has(id) && !picked.has(id)) {
+                held[id] = cloneJson(action);
+            }
+        }
+        const ids = Object.keys(held);
+        if (ids.length === 0) {
+            return {};
+        }
+        this.mutateDocument(next => {
+            const actions = { ...(next.actions ?? {}) };
+            for (const id of ids) {
+                delete actions[id];
+            }
+            next.actions = actions;
+        }, { history: false });
+        const after = this.getDocument().actions ?? {};
+        return ids.some(id => after[id]) ? {} : held;
+    }
+
+    /**
+     * Put actions {@link takeAdoptedInputActions} returned back. An id the vocabulary has gained in
+     * the meantime keeps what it holds, and a navigation slot another action has come to fill stays
+     * with that one - the rule the adoption itself follows.
+     */
+    private putInputActions(held: Readonly<Record<string, UIInputActionDef>>): void {
+        const ids = Object.keys(held);
+        if (ids.length === 0) {
+            return;
+        }
+        this.mutateDocument(document => {
+            const actions = { ...(document.actions ?? {}) };
+            const claimed = new Set(Object.values(actions).map(action => action.navigationSlot).filter(Boolean));
+            for (const id of ids) {
+                if (actions[id]) {
+                    continue;
+                }
+                const action = cloneJson(held[id]);
+                if (action.navigationSlot && claimed.has(action.navigationSlot)) {
+                    delete action.navigationSlot;
+                }
+                actions[id] = action;
+            }
+            document.actions = actions;
+        }, { history: false });
+    }
+
+    /** Every input action id a node of any blueprint in the project picks. */
+    private inputActionIdsPickedByBlueprints(): Set<string> {
+        const out = new Set<string>();
+        const blueprints = this.getGraphService()?.getDocument().blueprintDocument.blueprints ?? {};
+        for (const blueprint of Object.values(blueprints)) {
+            for (const pool of [blueprint.graphs.events, blueprint.graphs.functions, blueprint.graphs.macros]) {
+                for (const entry of Object.values(pool ?? {})) {
+                    for (const node of Object.values(entry?.graph?.nodes ?? {})) {
+                        const picked = node.params?.[BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID];
+                        if (typeof picked === "string" && picked) {
+                            out.add(picked);
+                        }
+                    }
+                }
+            }
+        }
+        return out;
     }
 
     private getElementSurfaceId(elementId: string): string | null {
@@ -3383,8 +3484,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
      * and an undo that took back only the import would leave a project with neither the surfaces it
      * removed nor the ones it brought. Here one Ctrl+Z puts back exactly what was there: the removed
      * surfaces with their blueprints, the entry page as the document named it, and none of the
-     * arrivals. Files, translations and input actions the import adopted stay, as they do for a plain
-     * import.
+     * arrivals - the input actions the import adopted included, as for a plain import. Files and
+     * translations stay, as they do for a plain import.
      *
      * `removeSurfaceIds` may name the entry page; `entrySourceSurfaceId` names a page of the bundle by
      * its id there. When it is absent or did not arrive, the entry is left to the document's own rule.
@@ -3411,14 +3512,19 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         };
         if (addedIds.surfaceIds.length > 0 || addedIds.componentIds.length > 0 || !isEmptyUILibraryRecords(removed)) {
             let added: UILibraryRecords = { surfaces: [], components: [] };
+            let addedActions: Record<string, UIInputActionDef> = {};
             this.pushLibraryStep(input.label, {
                 undo: () => {
                     added = this.takeLibraryRecords(addedIds);
+                    // Before the removed surfaces return: what still answers an action is asked of
+                    // the project as it was before the install, not of surfaces it took out.
+                    addedActions = this.takeAdoptedInputActions(result.adoptedActionIds);
                     this.putLibraryRecords(removed);
                     this.applyEntrySurface(entryBefore);
                 },
                 redo: () => {
                     removed = this.takeLibraryRecords({ surfaceIds: removeIds });
+                    this.putInputActions(addedActions);
                     this.putLibraryRecords(added);
                     this.applyEntrySurface(entryAfter);
                 },
@@ -3853,7 +3959,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 arrivedSources.push(sourceSurface);
             }
         }
-        const adoptedActionIds = this.adoptArrivingInputActions(sourceDocument, arrivedSources);
+        const { adopted: adoptedActionIds, heldBack: heldBackBindings } = this.adoptArrivingInputActions(sourceDocument, arrivedSources);
 
         this.adoptArrivingTranslations(
             arrivals
@@ -3876,21 +3982,25 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         );
         if (input.history !== false) {
             // One step for everything the bundle added: its pages and its definitions, with their
-            // blueprints. Files the caller brought into the asset library first, and the translations
-            // filed above, stay in the project - undoing leaves them unused, and redoing finds them.
+            // blueprints, and the input actions they brought. Files the caller brought into the asset
+            // library first, and the translations filed above, stay in the project - undoing leaves
+            // them unused, and redoing finds them. An action does not stay: its bindings keep
+            // answering keys whether or not anything uses it.
             this.recordLibraryAddition(
                 {
                     surfaceIds: importedSurfaces.map(surface => surface.id),
                     componentIds: importedComponents.map(component => component.id),
                 },
                 describeImportStep(importedSurfaces, importedComponents),
+                undefined,
+                adoptedActionIds,
             );
         }
         const arrivedIdMap: Record<string, string> = {};
         arrivedSources.forEach((source, index) => {
             arrivedIdMap[source.id] = importedSurfaces[index].id;
         });
-        return { importedSurfaces, skippedSlots, importedComponents, surfaceIdMap: arrivedIdMap, adoptedActionIds };
+        return { importedSurfaces, skippedSlots, importedComponents, surfaceIdMap: arrivedIdMap, adoptedActionIds, heldBackBindings };
     }
 
     /**
@@ -3902,30 +4012,59 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
      * along under its own id, with its bindings. One the project already has is the project's, and
      * keeps the author's bindings; a navigation slot another of the project's actions claims stays
      * with that one.
+     *
+     * So does a key or a pad button the project already binds to an action of its own: the arriving
+     * action comes without that binding, and keeps the rest. A key is aimed at no place - it reaches
+     * whatever answers it - so a second action bound to the author's key would change what that key
+     * does in the author's game, which a page brought in must not do behind their back; the author can
+     * bind it on purpose under Input Actions. The action still arrives, so the surface answers it by
+     * its remaining bindings, and nothing is lost that adding it unbound would have kept.
+     *
+     * Two kinds of binding are not held back, because sharing them is how the vocabulary is meant to
+     * be used. A pointer gesture lands on whatever surface is under the pointer and fires what that
+     * surface answers. And a key the project gives to a navigation intent (a focus move, Confirm,
+     * Cancel) is shared with the actions surfaces answer by design - the starter template binds Space
+     * to both Advance and Confirm - so a project that took up keyboard navigation still gets a
+     * dialogue box that reads on with Space.
      */
-    private adoptArrivingInputActions(sourceDocument: UIDocument, arrivedSources: readonly UISurface[]): string[] {
+    private adoptArrivingInputActions(
+        sourceDocument: UIDocument,
+        arrivedSources: readonly UISurface[],
+    ): { adopted: string[]; heldBack: Record<string, UIInputBinding[]> } {
         const sourceActions = sourceDocument.actions ?? {};
         const wanted = new Set(arrivedSources.flatMap(surface => (surface.actions ?? []).map(entry => entry.actionId)));
         const current = this.getDocument().actions ?? {};
         const adopt = [...wanted].filter(id => !current[id] && sourceActions[id]);
         if (adopt.length === 0) {
-            return [];
+            return { adopted: [], heldBack: {} };
         }
         const claimed = new Set(Object.values(current).map(action => action.navigationSlot).filter(Boolean));
-        this.mutateDocument(document => {
-            const actions = { ...(document.actions ?? {}) };
-            for (const id of adopt) {
-                const action = cloneJson(sourceActions[id]);
-                if (action.navigationSlot && claimed.has(action.navigationSlot)) {
-                    delete action.navigationSlot;
-                } else if (action.navigationSlot) {
-                    claimed.add(action.navigationSlot);
-                }
-                actions[id] = action;
+        const bound = new Set(Object.values(current)
+            .filter(action => !action.navigationSlot)
+            .flatMap(action => normalizeUIInputBindings(action.bindings))
+            .filter(binding => binding.kind !== "pointer")
+            .map(uiInputBindingIdentity));
+        const heldBack: Record<string, UIInputBinding[]> = {};
+        const arriving: Record<string, UIInputActionDef> = {};
+        for (const id of adopt) {
+            const action = cloneJson(sourceActions[id]);
+            const bindings = normalizeUIInputBindings(action.bindings);
+            const taken = bindings.filter(binding => binding.kind !== "pointer" && bound.has(uiInputBindingIdentity(binding)));
+            action.bindings = bindings.filter(binding => !taken.includes(binding));
+            if (taken.length > 0) {
+                heldBack[id] = taken;
             }
-            document.actions = actions;
+            if (action.navigationSlot && claimed.has(action.navigationSlot)) {
+                delete action.navigationSlot;
+            } else if (action.navigationSlot) {
+                claimed.add(action.navigationSlot);
+            }
+            arriving[id] = action;
+        }
+        this.mutateDocument(document => {
+            document.actions = { ...(document.actions ?? {}), ...cloneJson(arriving) };
         });
-        return adopt;
+        return { adopted: adopt, heldBack };
     }
 
     /**

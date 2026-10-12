@@ -223,6 +223,10 @@ describe("ui_install_standard_screens", () => {
         expect(undone.surfaces.map(surface => surface.id)).toEqual(["blank"]);
         expect(resolveEntrySurface(undone)?.id).toBe("blank");
         expect(Object.keys(graphDocument.blueprintDocument.ownerRecords)).toEqual([]);
+        // The input actions the screens answer went with them: their bindings would go on taking keys.
+        expect(Object.keys(undone.actions ?? {})).toEqual([]);
+        history.redo(projectHistoryScope());
+        expect(uidoc.getDocument().actions?.advance).toBeDefined();
     }, 120_000);
 
     it("writes nothing when the author pauses while the template is read", async () => {
