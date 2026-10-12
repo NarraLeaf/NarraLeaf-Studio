@@ -130,7 +130,7 @@ function createHarness(blueprints: Blueprint[] = []) {
     };
     const steps = (scopeId: string) => history.describe().find(stack => stack.scopeId === scopeId)?.undo ?? 0;
     const run = (handler: AgentToolHandler, args: Record<string, unknown>) => handler(args, tool);
-    return { uidoc, history, graphDocument, writes, steps, run };
+    return { uidoc, history, graphDocument, follow, writes, steps, run };
 }
 
 function textOf(result: AgentCallResult): string {
@@ -222,6 +222,18 @@ describe("ui_page_delete", () => {
         expect(surfaceNames(uidoc)).toEqual(["Title", "Extra", "Spare", "Dialogue"]);
         expect(uidoc.getDocument().elements.spareButton).toBeDefined();
         expect(graphDocument.blueprintDocument.blueprints["bp-spare"]).toBeDefined();
+    });
+
+    it("is refused with nothing deleted when the author pauses while it reads the stories", async () => {
+        const { uidoc, follow, steps, run } = createHarness();
+        // The bridge let the call in; the handler then awaits every story, and the author pauses.
+        const pending = run(uiPageDelete, { page: "Spare" });
+        follow.setPaused(true);
+        const refused = await refusal(pending);
+        expect(refused.code).toBe("paused");
+        expect(refused.message).toContain("Nothing was deleted.");
+        expect(surfaceNames(uidoc)).toContain("Spare");
+        expect(steps(projectHistoryScope())).toBe(0);
     });
 });
 

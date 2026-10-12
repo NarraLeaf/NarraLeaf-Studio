@@ -323,6 +323,8 @@ export const chapterRename: AgentToolHandler = async (args, { ctx, request, foll
     const chapter = resolveChapter(document, chapterRef);
     follow.describeCall(request.callId, chapter.name);
     const before = chapter.name;
+    // Loading the story awaited; the author may have paused meanwhile.
+    assertAgentMayStillWrite({ ctx, request, follow });
     if (!storyService(ctx).renameChapterWithHistory(entry.id, chapter.id, name)) {
         throw refuse("internal", `Chapter "${before}" could not be renamed.`);
     }
@@ -342,6 +344,7 @@ export const chapterDelete: AgentToolHandler = async (args, { ctx, request, foll
             "Delete them with scene_delete, or recreate them in another chapter, then delete the chapter.",
         );
     }
+    assertAgentMayStillWrite({ ctx, request, follow }, "Nothing was deleted.");
     if (!storyService(ctx).deleteChapter(entry.id, chapter.id)) {
         throw refuse("internal", `Chapter "${chapter.name}" could not be deleted.`);
     }

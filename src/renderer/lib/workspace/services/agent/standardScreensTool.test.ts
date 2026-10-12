@@ -153,15 +153,16 @@ function createHarness() {
     const entry = story.createStory("Tale");
     const sceneId = story.getStoryDocument(entry.id).chapters[0].sceneIds[0];
 
+    const follow = new AgentFollowService();
     const tool: AgentToolContext = {
         ctx: context,
         request: { callId: "call-1", tool: "ui_install_standard_screens", args: {}, clientName: null, policy: { writesEnabled: true, allowedImportRoots: [] }, deadline: Date.now() + 60_000 },
-        follow: new AgentFollowService(),
+        follow,
         offscreen: null as never,
         log: () => undefined,
     };
     const steps = () => history.describe().find(stack => stack.scopeId === projectHistoryScope())?.undo ?? 0;
-    return { uidoc, history, graphDocument, registry, saveSchema: () => saveSchema, storyId: entry.id, sceneId, steps, run: (args: Record<string, unknown>) => uiInstallStandardScreens(args, tool) };
+    return { uidoc, history, graphDocument, registry, follow, saveSchema: () => saveSchema, storyId: entry.id, sceneId, steps, run: (args: Record<string, unknown>) => uiInstallStandardScreens(args, tool) };
 }
 
 function structured(result: AgentCallResult): Record<string, unknown> {
@@ -222,6 +223,20 @@ describe("ui_install_standard_screens", () => {
         expect(undone.surfaces.map(surface => surface.id)).toEqual(["blank"]);
         expect(resolveEntrySurface(undone)?.id).toBe("blank");
         expect(Object.keys(graphDocument.blueprintDocument.ownerRecords)).toEqual([]);
+    }, 120_000);
+
+    it("writes nothing when the author pauses while the template is read", async () => {
+        const { uidoc, graphDocument, registry, follow, saveSchema, steps, run } = createHarness();
+        // The bridge let the call in; the handler then awaits the template, and the author pauses.
+        const pending = run({});
+        follow.setPaused(true);
+        await expect(pending).rejects.toMatchObject({ code: "paused", message: expect.stringContaining("Nothing was written.") });
+        expect(uidoc.getDocument().surfaces.map(surface => surface.id)).toEqual(["blank"]);
+        expect(uidoc.getDocument().actions).toBeUndefined();
+        expect(Object.keys(graphDocument.blueprintDocument.blueprints)).toEqual([]);
+        expect(Object.keys(registry.entries)).toEqual([]);
+        expect(Object.keys(saveSchema().fields)).toEqual([]);
+        expect(steps()).toBe(0);
     }, 120_000);
 
     it("refuses a second set beside working screens", async () => {

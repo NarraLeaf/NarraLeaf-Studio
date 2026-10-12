@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/app/writeFreeze", () => ({ getProjectWriteFreeze: () => null }));
 import { AGENT_TOOLS } from "@shared/agent/tools";
 import { DEFAULT_PLAYER_PREFERENCES, PLAYER_PREFERENCE_KEYS, normalizePlayerPreferences, type PlayerPreferences } from "@shared/types/preference";
 import { Services } from "../services";
 import type { AgentCallResult } from "@shared/agent/protocol";
-import type { AgentToolContext } from "./agentCall";
+import { AgentRefusal, type AgentToolContext } from "./agentCall";
 import { projectSettingsSet, readPlayerDefaults } from "./tools/projectTools";
 
 /**
@@ -44,8 +46,8 @@ describe("project_settings_set playerDefaults", () => {
         };
         const tool = {
             ctx: { services: { get: (name: string) => (name === Services.Project ? project : undefined) } },
-            request: { callId: "call" },
-            follow: { describeCall: vi.fn() },
+            request: { callId: "call", policy: { writesEnabled: true, allowedImportRoots: [] } },
+            follow: { describeCall: vi.fn(), getState: () => ({ paused: false }) },
             log: vi.fn(),
         } as unknown as AgentToolContext;
         const result = await projectSettingsSet({ playerDefaults: { cps: 60, autoForwardDelay: 1200 } }, tool) as AgentCallResult & { structured?: Record<string, any> };
@@ -56,5 +58,37 @@ describe("project_settings_set playerDefaults", () => {
         const again = await projectSettingsSet({ playerDefaults: { cps: 60 } }, tool) as AgentCallResult & { structured?: Record<string, any> };
         expect(again.structured?.changed).toEqual([]);
         expect(project.updatePlayerPreferences).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe("project_settings_set when the author pauses part-way", () => {
+    it("stops before the next setting and says which ones it had changed", async () => {
+        let paused = false;
+        let stored: PlayerPreferences = { ...DEFAULT_PLAYER_PREFERENCES };
+        let name = "Demo";
+        const project = {
+            getProjectConfig: () => ({ name, metadata: { resolution: { width: 1920, height: 1080 } } }),
+            getPlayerPreferences: () => stored,
+            // The author pauses agents while the name is being written.
+            updateProjectName: vi.fn(async (next: string) => { name = next; paused = true; }),
+            updateProjectMetadata: vi.fn(async () => undefined),
+            updatePlayerPreferences: vi.fn(async (patch: Partial<PlayerPreferences>) => { stored = normalizePlayerPreferences({ ...stored, ...patch }); }),
+        };
+        const tool = {
+            ctx: { services: { get: (service: string) => (service === Services.Project ? project : undefined) } },
+            request: { callId: "call", policy: { writesEnabled: true, allowedImportRoots: [] } },
+            follow: { describeCall: vi.fn(), getState: () => ({ paused }) },
+            log: vi.fn(),
+        } as unknown as AgentToolContext;
+        const refused = await projectSettingsSet({ name: "Renamed", width: 1280, playerDefaults: { cps: 60 } }, tool).then(
+            () => { throw new Error("expected a refusal"); },
+            (error: unknown) => error as AgentRefusal,
+        );
+        expect(refused).toBeInstanceOf(AgentRefusal);
+        expect(refused.code).toBe("paused");
+        expect(refused.message).toMatch(/Already changed: name; nothing else was written\.$/);
+        expect(project.updateProjectMetadata).not.toHaveBeenCalled();
+        expect(project.updatePlayerPreferences).not.toHaveBeenCalled();
+        expect(stored.cps).toBe(DEFAULT_PLAYER_PREFERENCES.cps);
     });
 });

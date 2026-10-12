@@ -149,7 +149,7 @@ function createHarness() {
     };
     const steps = (scopeId: string) => history.describe().find(stack => stack.scopeId === scopeId)?.undo ?? 0;
     const run = (handler: AgentToolHandler, args: Record<string, unknown>) => handler(args, tool);
-    return { story, uidoc, history, local, context, graphDocument, storyId: entry.id, sceneId, writes, steps, run };
+    return { story, uidoc, history, local, context, graphDocument, follow, storyId: entry.id, sceneId, writes, steps, run };
 }
 
 function textOf(result: AgentCallResult): string {
@@ -308,6 +308,23 @@ describe("scene_create in a story it creates, and the chapter tools", () => {
         const missing = await refusal(run(chapterDelete, { chapter: "Nowhere" }));
         expect(missing.code).toBe("not_found");
         expect(missing.hint).toContain('"Chapter 1"');
+    }, 60_000);
+
+    it("renames or deletes nothing when the author pauses while the story loads", async () => {
+        const { story, storyId, follow, steps, run } = createHarness();
+        story.createChapter(storyId, "Spare");
+        // The bridge let each call in; the handler then awaits the story, and the author pauses.
+        const renaming = run(chapterRename, { chapter: "Chapter 1", name: "Act One" });
+        follow.setPaused(true);
+        expect((await refusal(renaming)).code).toBe("paused");
+        follow.setPaused(false);
+        const deleting = run(chapterDelete, { chapter: "Spare" });
+        follow.setPaused(true);
+        const refused = await refusal(deleting);
+        expect(refused.code).toBe("paused");
+        expect(refused.message).toContain("Nothing was deleted.");
+        expect(story.getStoryDocument(storyId).chapters.map(chapter => chapter.name)).toEqual(["Chapter 1", "Spare"]);
+        expect(steps(projectHistoryScope())).toBe(0);
     }, 60_000);
 });
 

@@ -54,8 +54,10 @@ import type { StoryService } from "../../story/StoryService";
 import type { BlueprintNodeCatalogService } from "../../ui-editor/BlueprintNodeCatalogService";
 import { IMPORT_PLACEMENT_FROM_SOURCE } from "../../ui-editor/UIDocumentService";
 import { createCatalogAssetPinResolver } from "../../ui-editor/blueprint/catalogAssetPins";
+import { findLibraryAsset } from "../../assets/assetTransferImport";
 import type { VariableRegistryService } from "../../variables/VariableRegistryService";
 import { answerJson, readOptionalBoolean, refuse, type AgentToolHandler } from "../agentCall";
+import { assertAgentMayStillWrite } from "../agentCommitGate";
 import { AGENT_HISTORY_LABEL } from "../agentLookups";
 import { liveBlueprintDocument, uiDocumentService } from "./textFormat";
 
@@ -237,7 +239,20 @@ export const uiInstallStandardScreens: AgentToolHandler = async (args, { ctx, re
     // Everything the interface names that is not an interface record goes in first, under the ids
     // the template gave it, so the import finds each one already resolving.
     const assets = ctx.services.get<AssetsService>(Services.Assets);
+    const missingFiles = () => plan.assetIds.filter(assetId => !findLibraryAsset(assets.getAssets(), assetId)).length;
+    const filesBefore = missingFiles();
+    // Reading the template and finding Start's target awaited; the author may have paused meanwhile.
+    assertAgentMayStillWrite({ ctx, request, follow });
     await importTemplateFiles({ assets }, content, plan.assetIds, content.contentLocale ?? locale);
+    // So did bringing the files in. They are filed under the template's ids, so a later install finds
+    // them instead of filing them twice.
+    const filesAdded = filesBefore - missingFiles();
+    assertAgentMayStillWrite(
+        { ctx, request, follow },
+        filesAdded > 0
+            ? `${filesAdded} of the template's files were added to the asset library (they stay, unused); nothing else was written.`
+            : "Nothing was written.",
+    );
     const brand = optionalService<BrandService>(ctx, Services.Brand);
     if (brand) {
         brand.adoptColors(brandColorsToAdopt(

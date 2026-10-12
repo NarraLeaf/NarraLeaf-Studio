@@ -14,6 +14,7 @@ import { isEntrySurface, resolveEntrySurface } from "@shared/types/ui-editor/ent
 import { Services } from "../../services";
 import type { UIService } from "../../core/UIService";
 import { answerJson, readString, refuse, type AgentToolHandler } from "../agentCall";
+import { assertAgentMayStillWrite } from "../agentCommitGate";
 import { AGENT_HISTORY_LABEL, resolveSurface } from "../agentLookups";
 import { blueprintReferencesTo, formatReferrers, storyReferencesTo, uiReferencesTo } from "../agentReferences";
 import { liveBlueprintDocument, loadAllStories, uiDocumentService } from "./textFormat";
@@ -129,6 +130,8 @@ export const uiPageDelete: AgentToolHandler = async (args, { ctx, request, follo
             "Point those elsewhere or remove them first (blueprint_show / blueprint_apply for a Go Page node, blueprint_remove for a blueprint whose element is gone, ui_patch for an element), then delete this one.",
         );
     }
+    // Reading every story for the referrers awaited; the author may have paused meanwhile.
+    assertAgentMayStillWrite({ ctx, request, follow }, "Nothing was deleted.");
     const removed = uidoc.deleteSurfaces([surface.id], AGENT_HISTORY_LABEL);
     if (removed.length === 0) {
         throw refuse("unavailable", `"${surface.name}" could not be deleted (a live session may own the interface).`);
