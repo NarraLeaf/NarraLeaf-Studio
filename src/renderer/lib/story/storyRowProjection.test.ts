@@ -111,6 +111,12 @@ describe("storyRowSentence — the sentence the editor shows", () => {
             .toBe("Motion");
     });
 
+    it("says \"layer\" once on the rows the layer command writes", () => {
+        expect(describeStoryBlock(action({ action: "layer", operation: "create", objectName: "Fog" }), bare)).toBe("Layer Fog");
+        i18nStore.setLocale("zh");
+        expect(describeStoryBlock(action({ action: "layer", operation: "create", objectName: "Fog", depth: "far" }), bare)).toBe("图层 Fog · 纵深 远");
+    });
+
     it("names a blueprint row by its blueprint, and only by its kind when there is nothing to say", () => {
         const row = (blueprintId: string) => action({ action: "blueprint", blueprintId });
         const lookups: StoryRowLookups = { ...bare, blueprintName: id => ({ a: "Confirm sound", b: "Back sound" } as Record<string, string>)[id] ?? null };
