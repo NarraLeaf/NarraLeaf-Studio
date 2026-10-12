@@ -205,6 +205,12 @@ function describeScrollContext(
 /** A row's `py-1`, the part of its height the density's box does not cover. */
 const ROW_VERTICAL_PADDING_PX = 8;
 
+/**
+ * How many frames a returning tab waits for its open slot's row to be windowed back in before it
+ * stops trying to put the caret back. The list measures within a frame or two of being shown.
+ */
+const SLOT_REFOCUS_MAX_FRAMES = 20;
+
 /** "No drag in progress", as one shared value — a fresh `new Set()` would re-render every row. */
 const EMPTY_DRAG_GROUP: Set<StoryBlockId> = new Set();
 
@@ -1457,6 +1463,27 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     target.focus();
                 }
             });
+        } else if (target && target.closest("[data-story-insert-slot]") && editorRef.current.editorMode.kind === "insert") {
+            // The open slot's field, unmounted with its row while the tab was hidden (the windowed
+            // list renders nothing at 0 px) and mounted again as a new element once the list has
+            // measured. The caret goes back into that one, at the end of the line it still holds,
+            // so the author carries on typing where they left off.
+            let frames = 0;
+            const refocusSlot = () => {
+                if (lastFocusedRef.current !== target || editorRef.current.editorMode.kind !== "insert") {
+                    return;
+                }
+                const field = editorRef.current.insertInputRef.current;
+                if (field && field.isConnected) {
+                    field.focus();
+                    field.setSelectionRange(field.value.length, field.value.length);
+                    return;
+                }
+                if (frames++ < SLOT_REFOCUS_MAX_FRAMES) {
+                    window.requestAnimationFrame(refocusSlot);
+                }
+            };
+            window.requestAnimationFrame(refocusSlot);
         }
     }, [active, scrollContainerRef]);
 
@@ -2543,6 +2570,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                         characters={editor.characters}
                                         commandContext={editor.commandContext}
                                         inputRef={editor.insertInputRef}
+                                        draftRef={editor.insertDraftRef}
                                         onValueChange={editor.handleInsertValueChange}
                                         onCommitNarration={focusNext => editor.commitNarrationFromInsert(focusNext)}
                                         onDismissChooser={editor.dismissInsertChooser}
@@ -2568,6 +2596,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                         characters={editor.characters}
                                         commandContext={editor.commandContext}
                                         inputRef={editor.insertInputRef}
+                                        draftRef={editor.insertDraftRef}
                                         onValueChange={editor.handleInsertValueChange}
                                         onCommitNarration={focusNext => editor.commitNarrationFromInsert(focusNext)}
                                         onDismissChooser={editor.dismissInsertChooser}
@@ -2610,6 +2639,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                         characters={editor.characters}
                                         commandContext={editor.commandContext}
                                         inputRef={editor.insertInputRef}
+                                        draftRef={editor.insertDraftRef}
                                         onValueChange={editor.handleInsertValueChange}
                                         onCommitNarration={focusNext => editor.commitNarrationFromInsert(focusNext)}
                                         onDismissChooser={editor.dismissInsertChooser}
@@ -2637,6 +2667,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         characters={editor.characters}
                         commandContext={editor.commandContext}
                         inputRef={editor.insertInputRef}
+                        draftRef={editor.insertDraftRef}
                         onValueChange={editor.handleInsertValueChange}
                         onCommitNarration={focusNext => editor.commitNarrationFromInsert(focusNext)}
                         onDismissChooser={editor.dismissInsertChooser}

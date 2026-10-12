@@ -36,6 +36,11 @@ export const storyExpr = {
         duplicateVariable: "同じ名前の変数がこのスコープにすでにある",
         compoundWithoutTarget: "ここには足し込む先の変数がない",
     },
+    assetType: {
+        image: "画像",
+        audio: "音声",
+        video: "動画",
+    },
     /**
      * 行が確定しない理由。入力中の行にそのまま出る。
      *

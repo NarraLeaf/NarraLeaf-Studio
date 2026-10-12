@@ -452,8 +452,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * made a keystroke a state change on the whole editor — every row re-rendered to show one character
      * landing in one field, so typing cost time proportional to the length of the scene.
      *
-     * The draft is seeded wherever a slot opens and read wherever a line commits; nothing else touches
-     * it, and it is meaningless outside `kind: "insert"`.
+     * The draft is seeded wherever a slot opens and read wherever a line commits, and by the slot itself
+     * when it mounts again for the same open slot (its row windowed out by a hidden tab or a scroll), so
+     * the field shows what Enter would commit. It is meaningless outside `kind: "insert"`.
      */
     const insertDraftRef = useRef("");
     /**
@@ -3796,7 +3797,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // How many rows the page would hold with the filter off. The one thing that tells an empty
         // editor apart from an entirely filtered-out one, which read identically before.
         unfilteredRowCount: unfilteredRows.length,
-        rootRef, scrollContainerRef, insertInputRef, textInputRef, uuidService,
+        rootRef, scrollContainerRef, insertInputRef, insertDraftRef, textInputRef, uuidService,
         // The viewport channel. `revealRow` is for the tab's own reasons to move the page (a filter
         // that redrew it, a find result); everything driven by the cursor declares its intent at the
         // gesture and arrives here on its own. See `storyRowReveal`.
