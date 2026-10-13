@@ -55,12 +55,39 @@ export type AgentErrorCode =
      * itself, a file-system root).
      */
     | "path_not_allowed"
-    /** The project is not trusted, so its code may not run (play-test, build). */
+    /**
+     * The project is not trusted: an agent may read it but not change it (every write, imports
+     * included), is given no folders outside it, and may not run its code (play-test, build).
+     */
     | "untrusted"
     /** The call is valid but the operation is not possible in this state. */
     | "unavailable"
     /** Something broke that is not the agent's fault. */
     | "internal";
+
+/**
+ * Every {@link AgentErrorCode}, for what has to list them all - the troubleshooting chapter of the
+ * guide is held to this. A record rather than an array, so a code added to the type does not compile
+ * until it is added here.
+ */
+const AGENT_ERROR_CODE_SET: Record<AgentErrorCode, true> = {
+    invalid_args: true,
+    unknown_tool: true,
+    no_workspace: true,
+    writes_disabled: true,
+    paused: true,
+    frozen: true,
+    live_session: true,
+    stale_revision: true,
+    check_failed: true,
+    not_found: true,
+    path_not_allowed: true,
+    untrusted: true,
+    unavailable: true,
+    internal: true,
+};
+
+export const AGENT_ERROR_CODES = Object.keys(AGENT_ERROR_CODE_SET) as AgentErrorCode[];
 
 export type AgentError = {
     code: AgentErrorCode;
