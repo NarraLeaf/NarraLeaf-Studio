@@ -178,13 +178,13 @@ describe("AgentMcpServer", () => {
         expect(apply.annotations.readOnlyHint).toBe(false);
     });
 
-    it("calls a tool with the client name from its session and returns content and structured data", async () => {
+    it("calls a tool with the client name from its session and returns its content alone", async () => {
         const init = await rpc(port, "initialize", { protocolVersion: "2025-06-18", clientInfo: { name: "claude-code" } });
         const session = init.headers["mcp-session-id"] as string;
         const reply = await rpc(port, "tools/call", { name: "agent_status", arguments: {} }, { "Mcp-Session-Id": session });
+        // No `structuredContent`: Claude Code shows that in place of the text when it is there.
         expect(reply.json().result).toEqual({
             content: [{ type: "text", text: "done" }],
-            structuredContent: { value: 1 },
             isError: false,
         });
         expect(host.callTool).toHaveBeenCalledWith(

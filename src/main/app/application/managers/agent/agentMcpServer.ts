@@ -613,19 +613,22 @@ export function describeTool(tool: AgentToolDescriptor) {
     };
 }
 
-/** An answer as MCP's `tools/call` result: a refusal is a result the model reads, not a transport error. */
+/**
+ * An answer as MCP's `tools/call` result: a refusal is a result the model reads, not a transport error.
+ *
+ * Only `content` is sent, never `structuredContent`. A client that finds `structuredContent` may show
+ * the model that alone - Claude Code does - and the tools' data is often a summary of what the text
+ * says rather than all of it: `story_show`'s data is the revision without the scene, `agent_guide`'s
+ * the chapter's name without the chapter. Such a client read every scene, page and guide chapter as
+ * empty. The text always carries the whole answer, so every client gets that.
+ */
 export function toToolResult(result: AgentCallResult) {
     if (result.ok) {
-        return {
-            content: result.content,
-            ...(result.structured ? { structuredContent: result.structured } : {}),
-            isError: false,
-        };
+        return { content: result.content, isError: false };
     }
     const { code, message, hint } = result.error;
     return {
         content: [{ type: "text", text: `${code}: ${message}${hint ? `\nHint: ${hint}` : ""}` }],
-        structuredContent: { error: result.error },
         isError: true,
     };
 }

@@ -100,7 +100,10 @@ export type AgentCallResult =
     | {
           ok: true;
           content: AgentContent[];
-          /** The same answer as data, for clients that read MCP's `structuredContent`. */
+          /**
+           * Facts from the answer as data, for Studio itself (main reads the pause and follow state
+           * from it, and the tests read it). Not sent to MCP clients: see `toToolResult`.
+           */
           structured?: Record<string, unknown>;
       }
     | { ok: false; error: AgentError };

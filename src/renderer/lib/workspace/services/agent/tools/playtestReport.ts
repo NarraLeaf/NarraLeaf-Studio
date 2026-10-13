@@ -83,7 +83,7 @@ export function describeInputResult(result: {
         .join(" ");
 }
 
-/** The same, as data for `structuredContent`. */
+/** The same, as data for Studio itself (the agent reads the text). */
 export function gameStateData(state: DevModeAgentGameState): Record<string, unknown> {
     return {
         inGame: state.inGame,

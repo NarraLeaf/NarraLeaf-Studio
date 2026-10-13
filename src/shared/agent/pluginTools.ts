@@ -37,7 +37,7 @@ export const AGENT_PLUGIN_TOOL_TITLE_MAX = 80;
 export const AGENT_PLUGIN_TOOL_DESCRIPTION_MAX = 1200;
 /** An answer's text is cut here; a plugin that wants to say more should page. */
 export const AGENT_PLUGIN_TOOL_TEXT_MAX = 60_000;
-/** The same budget for `structuredContent`, measured as JSON. Larger data is dropped, not cut. */
+/** The same budget for `data`, measured as JSON. Larger data is dropped, not cut. */
 export const AGENT_PLUGIN_TOOL_DATA_MAX = 60_000;
 /** One picture, base64, at most this long (about 7.5 MB of PNG). */
 export const AGENT_PLUGIN_TOOL_IMAGE_MAX = 10_000_000;
@@ -338,7 +338,7 @@ const PLUGIN_ERROR_CODES: readonly PluginAgentToolErrorCode[] = ["invalid_args",
 /** An answer: text the model reads, optionally the same facts as data, optionally one picture. */
 export type PluginAgentToolAnswer = {
     text: string;
-    /** Sent as MCP `structuredContent`. Plain JSON; dropped when larger than 60 000 characters. */
+    /** Kept beside the text for Studio; not sent to the agent, which reads the text alone (`toToolResult`). Plain JSON; dropped when larger than 60 000 characters. */
     data?: Record<string, unknown>;
     /** One PNG or JPEG, base64 without a `data:` prefix. */
     image?: { mimeType: "image/png" | "image/jpeg"; data: string };
