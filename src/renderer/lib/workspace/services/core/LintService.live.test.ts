@@ -29,7 +29,7 @@ const engine = vi.hoisted(() => {
                 startedAt: 0,
                 finishedAt: 0,
                 entries: [],
-                counts: { error: 0, warning: 0, info: 0 },
+                counts: { error: 0, warning: 0, minor: 0, info: 0 },
                 rulesRun: [],
                 skipped: [],
             };
@@ -182,10 +182,10 @@ describe("LintService live sweeps", () => {
         expect(service.getState().requestedRunning).toBe(true);
 
         // The abandoned sweep comes back; what it found is older than what is about to be read.
-        live.finish({ counts: { error: 9, warning: 0, info: 0 } });
+        live.finish({ counts: { error: 9, warning: 0, minor: 0, info: 0 } });
         await settle();
         expect(engine.calls).toHaveLength(2);
-        engine.calls[1].finish({ counts: { error: 1, warning: 0, info: 0 } });
+        engine.calls[1].finish({ counts: { error: 1, warning: 0, minor: 0, info: 0 } });
         const report = await requested;
 
         expect(report.counts.error).toBe(1);

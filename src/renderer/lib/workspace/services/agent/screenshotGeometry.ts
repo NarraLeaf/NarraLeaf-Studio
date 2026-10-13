@@ -88,3 +88,55 @@ export function fitWithin(width: number, height: number, maxSize: number): { wid
 function clamp(value: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, value));
 }
+
+/** A client rectangle as edges. */
+export type ClientBox = { left: number; top: number; right: number; bottom: number };
+
+/** One drawn box under the element being photographed: its rectangle and whether it clips what it holds. */
+export type DrawnBox = { box: ClientBox; clips: boolean; children: DrawnBox[] };
+
+function intersectBoxes(a: ClientBox, b: ClientBox): ClientBox | null {
+    const box = { left: Math.max(a.left, b.left), top: Math.max(a.top, b.top), right: Math.min(a.right, b.right), bottom: Math.min(a.bottom, b.bottom) };
+    return box.right > box.left && box.bottom > box.top ? box : null;
+}
+
+function hasArea(box: ClientBox): boolean {
+    return box.right > box.left && box.bottom > box.top;
+}
+
+/**
+ * Everything an element draws: its own box joined with every descendant's, each cut by the boxes
+ * above it that clip their contents.
+ *
+ * An element's own rectangle is not what it draws: a button whose picture hangs over its edge (a
+ * ribbon, a glow, a character peeking out) draws outside it, and a crop to the rectangle alone cuts
+ * the overhang off - or, for a small button with a large picture, shows mostly background. A child
+ * inside a box that clips (overflow hidden, `clipContent`) is cut where the game cuts it, so the
+ * crop never shows what the player would not see.
+ */
+export function drawnBounds(root: DrawnBox): ClientBox {
+    let union: ClientBox = { ...root.box };
+    const visit = (node: DrawnBox, clip: ClientBox | null) => {
+        for (const child of node.children) {
+            const visible = hasArea(child.box) ? (clip ? intersectBoxes(child.box, clip) : child.box) : null;
+            if (visible) {
+                union = {
+                    left: Math.min(union.left, visible.left),
+                    top: Math.min(union.top, visible.top),
+                    right: Math.max(union.right, visible.right),
+                    bottom: Math.max(union.bottom, visible.bottom),
+                };
+            }
+            if (child.clips) {
+                const next = clip ? intersectBoxes(child.box, clip) : child.box;
+                if (next && hasArea(next)) {
+                    visit(child, next);
+                }
+                continue;
+            }
+            visit(child, clip);
+        }
+    };
+    visit(root, root.clips ? root.box : null);
+    return union;
+}

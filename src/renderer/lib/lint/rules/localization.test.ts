@@ -62,6 +62,10 @@ function contextOf(blocks: StoryBlock[], units: Record<string, LocalizationUnit>
 const LINE = "We should go home.";
 
 describe("localization/missing", () => {
+    it("is a minor warning by default, so a script in translation does not bury every other finding", () => {
+        expect(LOCALIZATION_LINT_RULES.find(rule => rule.id === "localization/missing")?.defaultSeverity).toBe("minor");
+    });
+
     it("reports an absent unit and an empty one, once per target locale", async () => {
         const findings = await run(
             "localization/missing",
@@ -208,6 +212,21 @@ describe("localization/markup", () => {
             stories: singleSceneStories([dialogueBlock("b1", textSegment("t-1", LINE, "dialogue", MARKED))]),
         });
         expect(await run("localization/markup", ctx)).toEqual([]);
+    });
+
+    it("reports a translation that drops a pause, and does so as a warning", async () => {
+        // A pause is a run tag like a style is, and the compiler drops the one a translation does not
+        // carry: players of that language lose the pause itself, not only an emphasis. That is what
+        // put this rule at `warning` - it changes what plays, and a warning is shown by default.
+        const PAUSED = [{ text: "We should go" }, { pause: 800 }, { text: " home." }];
+        const findings = await run(
+            "localization/markup",
+            contextOf([dialogueBlock("b1", textSegment("t-1", LINE, "dialogue", PAUSED))], {
+                "t-1": unit("家に帰ろう。", LINE),
+            }),
+        );
+        expect(findings).toHaveLength(1);
+        expect(LOCALIZATION_LINT_RULES.find(rule => rule.id === "localization/markup")?.defaultSeverity).toBe("warning");
     });
 });
 

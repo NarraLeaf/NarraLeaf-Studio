@@ -11,15 +11,15 @@ traps that do not produce a refusal at all.
 | `invalid_args` | The arguments do not fit the tool's schema | Re-read the tool's input schema; fix names and types |
 | `unknown_tool` | No tool by that name | Names use underscores (`story_apply`, not `story.apply`); list tools again |
 | `no_workspace` | No Studio window has a project open, or several do and you did not say which | `agent_status`; open one with `project_open`, or pass `project` (the project's absolute path) |
-| `writes_disabled` | The author has not allowed changes | Ask them: *Settings -> Agent access -> allow agents to make changes*. Keep reading and planning meanwhile |
+| `writes_disabled` | The author has not allowed changes | Ask them: *Settings -> Agent access -> Allow agents to change projects*. Keep reading and planning meanwhile |
 | `paused` | The author paused you from the status bar | Stop. Tell them where you are; continue when they resume |
 | `frozen` | The project is busy (version control, recovery, reload) | Wait a moment and retry once; if it persists, ask the author |
 | `live_session` | A Team live session is running | Writes would race the room; ask the author to end the session or to write themselves |
 | `stale_revision` | The page or scene changed since you read it | Read it again (`story_show` / `ui_show`), redo your edit on the new text, write with the new revision. Never re-send the old text |
 | `check_failed` | The source had errors; **nothing was written** | Read every finding, fix them all, write again (a `dryRun` is free) |
 | `not_found` | A scene, page, element, asset or character name/id does not exist | `story_list`, `ui_surfaces`, `assets_list`, `characters_list`, `story_targets` |
-| `path_not_allowed` | A path outside the project and the allowed folders that the author has not allowed (yet) | The hint says which: *asking* - Studio's dialog is still open, call again once the author answers; *declined* - do not ask again, ask the author in chat or have them copy the files into the project; *never opened* (home folder, a drive root, Studio's own folders) - name the specific folder. Use `request_folder_access` up front for big imports |
-| `untrusted` | The project is not trusted, so its code cannot run (playtest, build) | Ask the author to trust the project in Studio |
+| `path_not_allowed` | A path outside the project and the allowed folders that the author has not allowed (yet), or a relative path | The hint says which: *asking* - Studio's dialog is still open, call again once the author answers; *declined* - do not ask again, ask the author in chat or have them copy the files into the project; *never opened* (home folder, a drive root, Studio's own folders) - name the specific folder. Paths must be absolute. Use `request_folder_access` up front for big imports: one dialog asks about at most 5 folders, and the rest come back under `refused` as `tooMany` - for many folders, ask for their common parent |
+| `untrusted` | The project is not trusted: you may read it, but not change it (imports included), be given folders outside it or run its game (playtest, build) | Ask the author to trust the project in Studio (the status bar, or Settings > Data > Trusted projects); read tools keep working meanwhile |
 | `unavailable` | Valid call, impossible now (e.g. advancing a playtest that is not running) | Read the message; fix the precondition |
 | `internal` | Something broke in Studio | Retry once; if it repeats, `console_read {level:"error"}` and tell the author what you were doing |
 
@@ -32,13 +32,15 @@ traps that do not produce a refusal at all.
 - **Same error on `/hide Aoi` at the top of a scene.** Each scene starts empty; `/show Aoi` earlier in
   that scene.
 - **A picture never appears.** `/image` only creates; use `/show <asset> name=…`.
-- **Game crashes on start, "stringify is not a function", no row named.** A `/bg` inside an `/if` or a
-  menu option. Move it out (`story-format` has the pattern).
-- **`compile.expressionError`.** Use `&&`, `||`, `!` and double-quoted strings.
-- **A speaker shows as plain text with no colour.** The label does not match a character's name or
-  nickname exactly (case, spaces, full-width colon). Fix the label or add a nickname with
-  `character_upsert`.
+- **`compile.bad_condition`** (a `?` or `/if` condition) **or `compile.expressionError`** (a value such
+  as `/set`'s). Use `&&`, `||`, `!` and double-quoted strings.
+- **A speaker shows as plain text with no colour.** Only `Name: text` - a half-width colon with a space
+  after it - is dialogue; a full-width `：` or no space reads as narration. Then the label must match a
+  character's name, or else one of its nicknames, exactly (case and spaces). Fix the label or add a
+  nickname with `character_upsert`.
 - **Dialogue split oddly.** A `: ` inside narration made it dialogue - escape it as `\: `.
+- **A line vanished with no error.** A line starting with `#` (indented or not) is a comment and is
+  dropped silently. Text that must start with `#` is written `\#`.
 - **A skeleton picture (classroom, corridor) flashes between scenes, or lint never calls it unused.**
   A reused demo scene opens on it: `story_show` prints `#background classroom` in its header. Apply
   the scene with `#background none` (and `#music none`), then `asset_delete` the picture.
@@ -77,11 +79,26 @@ traps that do not produce a refusal at all.
 
 ## Assets traps
 
-- **Import refused for a video or audio file.** Unsupported container (AVI, WMV, FLV, MPEG, TS, AIFF,
-  MP2) or image (TIFF). Ask the author to convert: video to WebM (VP9) or MP4 (H.264), audio to OGG or
-  MP3, images to PNG.
+- **A video, audio or image file comes back under `failed`.** Unsupported container (AVI, WMV, FLV,
+  MPEG, TS, AIFF, MP2) or image (TIFF). Ask the author to convert: video to WebM (VP9) or MP4 (H.264),
+  audio to OGG or MP3, images to PNG.
+- **`assets_import` answers `stopped`.** The author paused you, or the project froze, part-way: the
+  files before that point are imported, the rest are not. Import the rest once you may write again.
+- **A misspelt path outside the project opens the folder dialog.** Folder access is checked before
+  Studio looks for the file, so the author is asked first and the path only then comes back under
+  `failed` as not found. Check paths outside the project before importing them.
 - **Video plays sound over black.** HEVC/H.265 MP4, ProRes MOV or Theora OGV; convert to WebM or H.264
   MP4.
+- **A transparent (alpha) video's colours look off.** Studio plays an alpha WebM as it is - it is not
+  re-encoded on import or by the build - with straight (not premultiplied) alpha, composited
+  normally unless its overlay was given a blend mode in Studio's inspector. Colour shifts come from the encode: the RGB->YUV matrix used
+  to make the file has to be the one the file says it uses. Encode alpha clips as VP9 `yuva420p` and
+  state the colours explicitly, e.g. convert with `-vf "format=rgba,scale=out_color_matrix=bt709:out_range=tv,format=yuva420p"`
+  and tag with `-colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv` (decode a
+  VP9 alpha source with `-c:v libvpx-vp9` before `-i`, or ffmpeg drops the alpha). A file with no
+  colour tags is shown as BT.601 limited range, which is also what ffmpeg's default conversion
+  writes - so re-tagging only, without converting the same way, makes it worse. A Screen or Add blend
+  mode on an alpha clip brightens it; leave the blend at Normal for a clip that carries its own alpha.
 - **A sprite is gigantic, tiny or floating.** A sprite is drawn at its pixel size times its
   character's entrance `zoom`, centred at the `/show` position. `character_upsert {id,
   entranceTransform:"standing"}` puts its feet on the bottom edge at its own size; for a smaller
@@ -102,7 +119,9 @@ traps that do not produce a refusal at all.
   only with their agreement.
 - **`asset_delete` refused.** Something still uses the asset; the refusal lists each place (a row, a
   scene's `#background`/`#music`, a character pose, a page). Rewrite those, then delete. Lint's
-  `assets/unused` warnings are the list of leftovers safe to delete.
+  `assets/unused` warnings are candidates, not a verdict: before deleting one, call `asset_usage
+  {asset}`; delete only when both of its lists are empty. It also lists places that write the asset's
+  id but that Studio's usage index does not count, and `asset_delete` refuses those too.
 
 ## Variable traps
 

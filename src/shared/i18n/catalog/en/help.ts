@@ -176,6 +176,7 @@ export const help = {
                 + "\n"
                 + "- The right panel edits the selected row.\n"
                 + "- Rows can be moved, duplicated, indented and deleted from the keyboard.\n"
+                + "- On an empty row, a ・, ／ or ＃ confirmed from an input method becomes / or #. Escape straight after restores the character.\n"
                 + "- The live preview shows the stage at the selected row. Clicking it selects the next row the "
                 + "game waits at: a line or a menu. On a menu, clicking an option selects the first line of that option.\n"
                 + "- A click on a line the live preview is still typing shows the whole line first. With Skip typing "
@@ -183,6 +184,15 @@ export const help = {
                 + "- In picture-in-picture, the live preview stays on screen over the other editors and shows the scene "
                 + "of the scene editor used last.\n"
                 + "- Edits to the Game UI appear in the live preview as they are made.\n"
+                + "- Layers, at the top of the live preview, shows the scene's layers. The list on the left runs front to back, "
+                + "and layers at the same distance form one level. Distance is measured from the base layer, which holds everything not placed on another layer and is at 1: "
+                + "larger values are farther away and move less with the camera, and at ∞ a layer stays still. Click a level's "
+                + "value to type a distance. Drag a row onto another level to join it, or between two levels to make a new one; "
+                + "drag the name on a layer to change its distance, and close to another level it joins that level. The small view "
+                + "in the corner shows the camera moving. The Layers button in the scene's title bar opens the same view, and /layer name adds a layer "
+                + "to the scene.\n"
+                + "- The small view in the corner of Layers grows while the pointer is on it: the camera follows the pointer, scrolling zooms, "
+                + "and it settles back when the pointer leaves. With a camera row that sets the camera's position selected, it starts from that row's shot.\n"
                 + "- The ▶ on a row, Play from this row, runs the scene in Dev Mode starting at that row.",
         },
         storyCommands: {
@@ -629,6 +639,73 @@ export const help = {
                 + "A widget that reacts to being clicked uses its own Mouse Click head instead. An action is "
                 + "what the interface does with an input nothing on it wanted.",
         },
+        focusNavigation: {
+            title: "Focus navigation",
+            body:
+                "Focus navigation moves the focus between the controls on screen for a player using a keyboard "
+                + "or a gamepad. One control holds the focus at a time, and Confirm presses it.\n"
+                + "\n"
+                + "Under Focus navigation in the Input Actions panel, each operation has a slot filled by one of the "
+                + "project's actions, and the action's bindings perform the operation. A project whose actions fill "
+                + "no slot has no focus navigation. Add actions for empty slots creates an action for each empty "
+                + "slot, with keyboard and gamepad bindings.\n"
+                + "\n"
+                + "- Move up, Move down, Move left and Move right go to the nearest control in that direction on "
+                + "screen. A focused slider takes the directions along its track and changes its value.\n"
+                + "- Next control and Previous control step through the controls one at a time, and continue from "
+                + "the opposite end after the last one. A list counts as one control.\n"
+                + "- Confirm presses the focused control. During the story, with nothing focused, it advances the "
+                + "dialogue.\n"
+                + "- Back closes the modal layer on top when the layer is dismissible, and otherwise returns to the "
+                + "previous page.\n"
+                + "- Quick menu, during the story, moves the focus onto the buttons of the game UI on the stage. "
+                + "Quick menu or Back moves it off them.\n"
+                + "\n"
+                + "The focus moves within the modal layer or the page on top, and during the story within the choice "
+                + "menu. A press does not move the focus when that interface answers it, through an action in its "
+                + "Input section or through a head for the key or button in its blueprint or the App logic "
+                + "blueprint.\n"
+                + "\n"
+                + "Moving the pointer onto a control takes the focus off any other control, and the next direction "
+                + "starts from the control under the pointer.\n"
+                + "\n"
+                + "A control whose appearance has a Focused state is drawn in that state while it holds the focus. "
+                + "A control without one shows a default focus ring, which appears only while the player uses a "
+                + "keyboard or a gamepad. A widget's Focus and Blur heads run when the focus arrives on it and when "
+                + "it leaves.",
+        },
+        focusNavigationSettings: {
+            title: "Navigation settings",
+            body:
+                "The Navigation sections in the properties panel set where the focus starts on an interface and "
+                + "where each direction takes it. With nothing set, every control can take the focus, and each "
+                + "direction goes to the nearest control on screen.\n"
+                + "\n"
+                + "Pages, and the Choice game UI, have three settings.\n"
+                + "\n"
+                + "- Starting focus names the element the focus starts on. Automatic starts on an element set as "
+                + "Use as starting focus, and otherwise on the first control from the top left.\n"
+                + "- Focus on open decides whether a control takes the focus as the interface opens. Keyboard or "
+                + "gamepad, the default, does so when the player last used one of them, and Always does so every "
+                + "time. Otherwise the focus appears at the first direction pressed.\n"
+                + "- Loop at edges continues a move past the edge of the interface from the opposite side.\n"
+                + "\n"
+                + "Returning to a page puts the focus back on the control it was on when the player left.\n"
+                + "\n"
+                + "Each element on an interface has its own settings.\n"
+                + "\n"
+                + "- With Focusable on Automatic, the default, an element can take the focus when it is a control. "
+                + "Always lets any element take it, and Confirm on the element acts as a click. Never takes the "
+                + "element and everything inside it out of navigation.\n"
+                + "- Use as starting focus starts the focus on the element, unless the interface's Starting focus "
+                + "names another.\n"
+                + "- Navigation group, on an element that holds others, keeps the focus inside while a control "
+                + "inside lies in the pressed direction. With Loop at edges, a move past the edge of the group "
+                + "continues from its opposite side. With Remember last focus, a focus entering the group again "
+                + "lands on the control it last left the group from.\n"
+                + "- Up, Down, Left and Right name where each direction goes when the focus leaves the element. By "
+                + "layout goes to the nearest control in that direction.",
+        },
         uiSurfaces: {
             title: "Game screens",
             body:
@@ -780,6 +857,7 @@ export const help = {
                 + "The Problems panel lists the findings and updates them shortly after each edit. The status bar shows how many errors and warnings there are.\n"
                 + "\n"
                 + "- Selecting a finding opens the place it is about. Its ? opens the rule: what it found and how to fix it.\n"
+                + "- Each rule reports at the level set in Project ▸ Project ▸ Project check. A minor warning is listed in the panel, is not counted in the status bar, and never stops a build.\n"
                 + "- Check Project reads every file again, including assets changed outside Studio.\n"
                 + "- Running the checks modifies nothing.",
         },

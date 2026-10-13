@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import type { AssetGroup } from "@/lib/workspace/services/assets/types";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
@@ -127,6 +127,70 @@ export function useBrowserItemGestures({
     const onDragEnd = useCallback(() => handleDragEnd?.(), [handleDragEnd]);
 
     return { onClick, onOpen, onContextMenu, dragStartFor, onDragEnd };
+}
+
+/**
+ * Keeps the item a key moved the selection to on screen.
+ *
+ * The grid and the table are windowed, so the item may not be drawn yet: the view is first scrolled
+ * to its row by index (`scrollToIndex`), and the item itself is then brought fully into view the
+ * first time it is drawn - the windowing's offsets leave out the padding and the table's sticky
+ * header. Only the view's own scroller moves, by the least that shows the whole item; an item's
+ * `scroll-margin` is the room it keeps clear (the table's rows keep the header's height).
+ */
+export function useStepReveal(
+    stepReveal: { key: string; nonce: number } | null | undefined,
+    items: readonly AssetBrowserItem[],
+    scrollElement: HTMLElement | null,
+    scrollToIndex: (index: number) => void,
+) {
+    const pending = useRef<string | null>(null);
+
+    const revealDrawn = useCallback((key: string): boolean => {
+        const element = scrollElement
+            ? Array.from(scrollElement.querySelectorAll("[data-asset-browser-item]"))
+                .find(node => node.getAttribute("data-asset-browser-item") === key)
+            : undefined;
+        if (!scrollElement || !element) {
+            return false;
+        }
+        const box = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        const top = box.top - (parseFloat(style.scrollMarginTop) || 0);
+        const bottom = box.bottom + (parseFloat(style.scrollMarginBottom) || 0);
+        const viewTop = scrollElement.getBoundingClientRect().top + scrollElement.clientTop;
+        const viewBottom = viewTop + scrollElement.clientHeight;
+        if (top < viewTop) {
+            scrollElement.scrollTop -= viewTop - top;
+        } else if (bottom > viewBottom) {
+            scrollElement.scrollTop += bottom - viewBottom;
+        }
+        return true;
+    }, [scrollElement]);
+
+    const nonce = stepReveal?.nonce ?? null;
+    useEffect(() => {
+        if (!stepReveal) {
+            return;
+        }
+        if (revealDrawn(stepReveal.key)) {
+            pending.current = null;
+            return;
+        }
+        const index = items.findIndex(item => item.key === stepReveal.key);
+        if (index >= 0) {
+            pending.current = stepReveal.key;
+            scrollToIndex(index);
+        }
+        // The request is the event; the items are read from the render it landed in.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [nonce]);
+
+    useLayoutEffect(() => {
+        if (pending.current && revealDrawn(pending.current)) {
+            pending.current = null;
+        }
+    });
 }
 
 /**

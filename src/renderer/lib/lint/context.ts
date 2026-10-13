@@ -219,6 +219,15 @@ export type LintContext = {
      */
     appTags: readonly ProjectAppTag[];
     /**
+     * The project's own ending page - the page a build lands on when its story runs out, unless the
+     * variant states one of its own (`ProjectAppTag.endingSurfaceId`). Blank when the project picks
+     * none.
+     *
+     * Read off the variant document's root rather than off a tag, because that is where it lives:
+     * the release variant is synthesized and stores nothing, so `appTags` cannot carry it.
+     */
+    projectEndingSurfaceId: string;
+    /**
      * The DLC this project ships, as the registry holds them.
      *
      * Ids as stored, because an id is what a node points at and what the file a player installs is

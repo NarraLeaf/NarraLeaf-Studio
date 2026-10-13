@@ -244,6 +244,31 @@ describe("ProjectService manifest writes", () => {
     });
 });
 
+describe("ProjectService lint configuration", () => {
+    it("writes back a level it cannot read when the author changes another lint setting", async () => {
+        // As a project saved by a newer Studio arrives: one rule at a level this Studio has no name for.
+        const initial = config(false);
+        const stored = {
+            ...initial,
+            app: { ...initial.app, linting: { runOnBuild: true, failBuildOn: "error", severities: { "voice/missing": "trivial" }, options: {} } },
+        } as unknown as ProjectConfig;
+        const service = new ProjectService();
+        const disk = mountHeldDisk(stored);
+        await service.initialize(disk.ctx, async () => undefined);
+
+        // Read as no choice at all: the rule runs at its own default here.
+        expect(service.getLintingConfiguration().severities).toEqual({});
+
+        const changed = service.updateLintingConfiguration({ severities: { "text/empty": "minor" } });
+        await disk.release();
+        await changed;
+
+        expect((disk.onDisk().app?.linting as { severities?: unknown } | undefined)?.severities)
+            .toEqual({ "voice/missing": "trivial", "text/empty": "minor" });
+        expect(service.getLintingConfiguration().severities).toEqual({ "text/empty": "minor" });
+    });
+});
+
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 describe("ProjectService letterbox configuration", () => {

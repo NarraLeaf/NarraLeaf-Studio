@@ -717,6 +717,17 @@ export type BlueprintNodeEditorCatalogEntry = {
         title: string;
         subtitle: string;
     };
+    /**
+     * Present on the one row the add-node menu draws for a whole node family while it is browsed
+     * (see `blueprintNodeFamilies.ts`): the entry is the member picking it places, and the row is
+     * named for the family.
+     */
+    family?: {
+        id: string;
+        title: TranslationKey;
+        /** The members this palette offers, in the family's order. */
+        members: ReadonlyArray<{ type: string; displayName: string }>;
+    };
 };
 
 export type { BehaviorNodeExecutionContext };

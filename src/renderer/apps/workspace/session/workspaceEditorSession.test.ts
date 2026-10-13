@@ -429,26 +429,20 @@ describe("workspace editor session serialization", () => {
         });
     });
 
-    it("round-trips blank new-tab pages, keeping each one's identity", () => {
-        const layout: EditorLayout = {
-            id: "main",
-            tabs: [
-                { id: "narraleaf-studio:new-tab-t1", title: "New Tab", component: (() => null) as never },
-                { id: "narraleaf-studio:new-tab-t2", title: "New Tab", component: (() => null) as never },
-            ],
-            focus: "narraleaf-studio:new-tab-t2",
-        };
-
-        const parsed = parseWorkspaceEditorSession(JSON.parse(JSON.stringify(serializeEditorSession(layout))));
-
-        expect(parsed!.layout).toMatchObject({
-            kind: "group",
-            focus: "narraleaf-studio:new-tab-t2",
-            tabs: [
-                { kind: "newTab", token: "t1" },
-                { kind: "newTab", token: "t2" },
-            ],
+    it("drops a blank new-tab page a session from an earlier Studio held", () => {
+        // The tab strip's "+" used to open a blank page, and a session saved then still names it.
+        const parsed = parseWorkspaceEditorSession({
+            version: 2,
+            activeGroupId: "main",
+            layout: {
+                kind: "group",
+                id: "main",
+                focus: "narraleaf-studio:new-tab-t1",
+                tabs: [{ kind: "dashboard" }, { kind: "newTab", token: "t1" }],
+            },
         });
+
+        expect(parsed?.layout).toMatchObject({ kind: "group", tabs: [{ kind: "dashboard" }] });
     });
 
     it("round-trips the Blueprint Overview tab", () => {

@@ -51,6 +51,20 @@ describe("tallyLintFindingsByRule", () => {
         expect(tally).toEqual([{ ruleId: "story/dead-end", count: 5, severity: "error" }]);
     });
 
+    it("puts a minor warning after every warning and before every info, however loud it is", () => {
+        const tally = tallyLintFindingsByRule([
+            ...many("localization/missing", "minor", 9070),
+            ...many("story/empty-scene", "info", 2),
+            ...many("text/empty", "warning", 1),
+        ]);
+
+        expect(tally).toEqual([
+            { ruleId: "text/empty", count: 1, severity: "warning" },
+            { ruleId: "localization/missing", count: 9070, severity: "minor" },
+            { ruleId: "story/empty-scene", count: 2, severity: "info" },
+        ]);
+    });
+
     it("has nothing to say about a report with no findings", () => {
         expect(tallyLintFindingsByRule([])).toEqual([]);
     });

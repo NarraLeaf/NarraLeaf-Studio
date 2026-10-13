@@ -1,3 +1,4 @@
+import type { InterpolationParams, TranslationKey } from "@shared/i18n";
 import type { StoryBlockId, StoryScene } from "@shared/types/story";
 import type { NarralangIssue, NarralangIssueDetail, NarralangIssueReason, NarralangLookups } from "@/lib/story/narralang/narralangPrinter";
 import { describeStoryBlock } from "@/lib/story/storyRowProjection";
@@ -34,8 +35,28 @@ export type NarralangIssueRow = {
      * is two entries, because "points at something that no longer exists" twice would read as a
      * repeat rather than as two separate dangling references.
      */
-    reasons: { reason: NarralangIssueReason; detail?: NarralangIssueDetail }[];
+    reasons: NarralangIssueRowReason[];
 };
+
+/** One way a row has no script form, and for a dangling reference, what kind of thing is missing. */
+export type NarralangIssueRowReason = { reason: NarralangIssueReason; detail?: NarralangIssueDetail };
+
+/**
+ * One reason as the sentence an author reads, in the language `t` speaks.
+ *
+ * A dangling reference is the reason an author meets most, and the generic sentence leaves them
+ * guessing whether the missing thing is an asset or a character, so it names the kind when the printer
+ * knew it. Every other reason says all it can from the reason alone. The export report and the script
+ * view's list of rows both read their sentences here, so the same row is explained the same way in both.
+ */
+export function narralangReasonText(
+    { reason, detail }: NarralangIssueRowReason,
+    t: (key: TranslationKey, params?: InterpolationParams) => string,
+): string {
+    return reason === "unresolvedRef" && detail
+        ? t("story.narralang.unresolvedRefNamed", { what: t(`story.narralang.detail.${detail}` as TranslationKey) })
+        : t(`story.narralang.reason.${reason}` as TranslationKey);
+}
 
 /**
  * The printer's issues as rows an author can find in their story.

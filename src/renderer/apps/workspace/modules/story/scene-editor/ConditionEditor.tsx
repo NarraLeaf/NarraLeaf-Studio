@@ -489,7 +489,7 @@ function ConditionExpressionField(props: {
     variableNames: readonly string[];
     onChange: (source: string) => void;
 }) {
-    const { t } = useTranslation();
+    const { t, formatList } = useTranslation();
     const parsed = useMemo(() => parseStoryExpression(props.source, props.scope), [props.scope, props.source]);
     const problem = props.source.trim() === ""
         ? null
@@ -514,7 +514,7 @@ function ConditionExpressionField(props: {
                    is the one thing a text field cannot show and a dropdown gets for free. */
                 <p className="truncate text-2xs text-fg-subtle">
                     {props.variableNames.length
-                        ? t("story.condition.expressionVariables", { names: props.variableNames.slice(0, 6).join(", ") })
+                        ? t("story.condition.expressionVariables", { names: formatList(props.variableNames.slice(0, 6), { style: "narrow" }) })
                         : t("story.interpolation.noVariables")}
                 </p>
             )}

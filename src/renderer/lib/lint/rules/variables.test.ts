@@ -470,6 +470,10 @@ describe("variables/undeclared", () => {
 // --- variables/unused -------------------------------------------------------
 
 describe("variables/unused", () => {
+    it("is a minor warning by default: nothing in the game depends on the variable", () => {
+        expect(VARIABLES_LINT_RULES.find(rule => rule.id === "variables/unused")?.defaultSeverity).toBe("minor");
+    });
+
     it("reports a declaration nothing reads or writes", () => {
         const ctx = createTestLintContext({
             stories: [story("s1", "Main", [scene("sc1", "Prologue", [declaration("v1", "scene", "Gold")])])],
@@ -1165,6 +1169,38 @@ describe("variables/condition-never-holds", () => {
         expect(findings).toHaveLength(1);
         expect(findings[0]?.messageParams).toMatchObject({ variable: "affection", bound: "2..2" });
         expect(await runAsync("variables/condition-never-holds", reachingWith(pickedGuard(2)))).toEqual([]);
+    });
+
+    it("leaves a persistent counter alone, since a run starts it where the last run left it", async () => {
+        // The shape a game with a second-run route has: an ending counts the clear, and a scene
+        // early in the story opens something once it has been cleared. Within one run `plays` is
+        // still 0 when the guard is reached - but the guard is for the run after, which starts with
+        // whatever the ending left. Seeded with the default, this was reported as never holding.
+        const PLAYS_REF: StoryVariableRef = { scope: "persistent", variableId: "plays" };
+        const guardOn = (scope: "persistent" | "saved"): LintContext => {
+            const ref: StoryVariableRef = scope === "persistent" ? PLAYS_REF : { scope: "saved", variableId: "plays" };
+            return createTestLintContext({
+                stories: [storyFrom("s1", "Story", [
+                    scene("a", "Chapter two", [
+                        {
+                            id: "plays",
+                            kind: "declaration",
+                            payload: { scope, name: "plays", valueType: "number", storageKey: "plays", defaultValue: 0 },
+                        },
+                        ifBranch("if1", "b1", "plays > 0", binary(">", varRead(ref, "plays"), num(0))),
+                        jump("j1", "end"),
+                    ]),
+                    scene("end", "Ending", [incBy("w1", ref, 1, "plays")]),
+                ], "a")],
+            });
+        };
+
+        expect(await runAsync("variables/condition-never-holds", guardOn("persistent"))).toEqual([]);
+        // The same story with a counter that lives in the save is still judged: a new game starts it
+        // at 0, and nothing before the guard moves it.
+        const saved = await runAsync("variables/condition-never-holds", guardOn("saved"));
+        expect(saved).toHaveLength(1);
+        expect(saved[0]?.messageParams).toMatchObject({ variable: "plays", bound: "0..0" });
     });
 
     it("leaves the case with no writer at all to the other rule", async () => {

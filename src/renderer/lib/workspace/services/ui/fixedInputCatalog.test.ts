@@ -245,6 +245,18 @@ const ANCHORS: Record<string, Anchor[]> = {
             present: ["if (event.key === \"Backspace\" || (event.altKey && event.key === \"ArrowUp\")) {"],
         },
     ],
+    "assets.step-selection": [
+        {
+            file: `${ASSETS}/browser/AssetBrowserView.tsx`,
+            present: ["ArrowDown: \"down\",", "Home: \"first\",", "End: \"last\",", "} else if (step && !mod && !event.altKey) {"],
+        },
+    ],
+    "assets.extend-selection": [
+        { file: `${ASSETS}/browser/AssetBrowserView.tsx`, present: ["stepSelection(step, event.shiftKey);"] },
+    ],
+    "assets.tree-keys": [
+        { file: `${ASSETS}/browser/BrowserFolderTree.tsx`, present: ["case \"ArrowRight\":", "case \"ArrowLeft\":", "onKeyDown={onKeyDown}"] },
+    ],
     "assets.move-to-group": [
         { file: `${ASSETS}/browser/useBrowserItemGestures.ts`, present: ["return draggedItem.category === category ? \"move\" : null;"] },
     ],

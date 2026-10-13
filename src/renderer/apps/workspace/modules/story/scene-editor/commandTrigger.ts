@@ -61,6 +61,54 @@ export function toCanonicalCommandLine(value: string, aliasEnabled: boolean): st
 }
 
 /**
+ * The characters an input method types for the two trigger keys. A Japanese one that is switched on
+ * puts "・" on the line for "/" ("／" in some configurations) and "＃" for "#"; a Chinese one in
+ * full-width mode puts "／" and "＃". The author pressed the trigger key either way.
+ */
+const INPUT_METHOD_TRIGGERS: ReadonlyMap<string, "/" | "#"> = new Map([
+    ["・", ACTION_TRIGGER],
+    ["／", ACTION_TRIGGER],
+    ["＃", "#"],
+]);
+
+/** The words {@link foldInputMethodTrigger} accepts after a trigger. The caller knows the project. */
+export type InputMethodTriggerWords = {
+    /** Whether `word` is a finished command word: `bg`, `表示`, one of the author's abbreviations. */
+    command: (word: string) => boolean;
+    /** Whether `name` is, exactly, a speaker the "#" menu offers. */
+    speaker: (name: string) => boolean;
+};
+
+/**
+ * What an input method has just put on an EMPTY line, with its trigger character replaced by the real
+ * one - or null when the line is prose.
+ *
+ * Every one of these characters is also one a line of Japanese prose can open with, so the trigger is
+ * read in two shapes only: on its own (the author confirmed the bare character), or directly followed
+ * by a whole command word or speaker name (`/hyouji` typed as one conversion lands as `・表示`).
+ * `・・・` and `・りんご` stay the lines they are. "Empty" is the caller's half of the rule: a trigger
+ * typed after something already on the line is never one.
+ *
+ * Only the first character changes, so offsets into the line stay valid.
+ */
+export function foldInputMethodTrigger(value: string, words: InputMethodTriggerWords): string | null {
+    const trigger = INPUT_METHOD_TRIGGERS.get(value.charAt(0));
+    if (!trigger) {
+        return null;
+    }
+    const rest = value.slice(1);
+    if (rest) {
+        const named = trigger === ACTION_TRIGGER
+            ? !/\s/.test(rest) && words.command(rest)
+            : words.speaker(rest);
+        if (!named) {
+            return null;
+        }
+    }
+    return trigger + rest;
+}
+
+/**
  * The other direction: a canonical line spelled with the trigger the author actually types.
  *
  * The exact inverse of {@link toCanonicalCommandLine}, and it lives beside it for that reason - a

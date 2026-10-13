@@ -28,14 +28,18 @@
  */
 
 import {
+    isDefaultSceneLayerStack,
     listSceneBlocksInDocumentOrder,
+    normalizeSceneLayerStack,
     normalizeStageObjectName,
+    rebindSceneLayerIds,
     STORY_DOCUMENT_SCHEMA_VERSION,
     StoryBlock,
     StoryBlockId,
     StoryDocument,
     StoryScene,
     StorySceneId,
+    StorySceneLayer,
 } from "@shared/types/story";
 import { formatStorySecondsValue } from "@shared/utils/storyTime";
 
@@ -184,6 +188,9 @@ export function migrateStoryDocumentToLatest(document: StoryDocument, options: S
     }
     if (version < 27) {
         migrated = migrateStoryDocumentV26toV27(migrated, options.commandSpelling ?? CANONICAL_STORY_COMMAND_SPELLING);
+    }
+    if (version < 30) {
+        migrated = migrateStoryDocumentV29toV30(migrated);
     }
     // The stamp is unconditional, and has to be. Most bumps are additive - a document at the
     // version below is already valid at the new one, because it cannot contain a field that did not
@@ -424,6 +431,194 @@ function migrateSceneClips(scene: StoryScene, spelling: StoryCommandSpelling): S
         }
     }
     return { ...scene, blocks, rootBlockIds: scene.rootBlockIds.filter(id => !removed.has(id)) };
+}
+
+/**
+ * v29→v30: a scene's layers become part of the scene (`StoryScene.layers`), and the rows that declared
+ * them go.
+ *
+ * Each scene, read in document order:
+ *  - Every `create` row becomes a layer of the scene **under the row's own id**, so every reference
+ *    bound to the row - a picture placed on the layer, a row moving it - is bound to the layer
+ *    without being touched. A second `create` of a name the scene already has was the same layer to
+ *    the compiler (it built the first and handed it to the second), so it folds into the first and
+ *    the references bound to it follow.
+ *  - The stack's order is the order the stage drew the layers in: by z number, nearest first, and a
+ *    tie as the engine broke it - the two built-ins behind any layer of the scene's own at the same
+ *    number, and of the scene's own the later-declared in front.
+ *  - Each layer's share of the camera's movement is the share its depth word stood for; the
+ *    background layer's is its `setDepth` row's. A row the compiler skipped (disabled, or under a
+ *    disabled row) said no depth. Where the order and the words disagreed - which v29 allowed and
+ *    flagged - the order stands and the share moves to its neighbour's (`normalizeSceneLayerStack`):
+ *    the order is what every still shows, the share only what a moving camera does.
+ *  - A layer a picture or text was placed on by name with no `create` row anywhere was built on the
+ *    spot by the compiler, at z 0; it becomes a layer of the scene too, so it still exists when
+ *    nothing builds layers from mentions any more.
+ *
+ * A create row's own transform is dropped with it: a `create` only ever set the z number at run time.
+ */
+function migrateStoryDocumentV29toV30(document: StoryDocument): StoryDocument {
+    const scenes: Record<StorySceneId, StoryScene> = {};
+    for (const [sceneId, scene] of Object.entries(document.scenes ?? {})) {
+        scenes[sceneId] = migrateSceneLayers(scene);
+    }
+    return { ...document, scenes };
+}
+
+/** A v29 layer row, read loosely: `create`, `setDepth` and `depth` are what the v30 type no longer has. */
+type LegacyLayerPayload = {
+    action: "layer";
+    operation: string;
+    objectName?: string;
+    target?: { kind?: string; layer?: string; sourceBlockId?: string; name?: string };
+    zIndex?: number;
+    depth?: string;
+    [key: string]: unknown;
+};
+
+/** The share of the camera's movement each v29 depth word stood for (`layerDepth.ts`, removed with them). */
+const LEGACY_DEPTH_FOLLOW: Record<string, number> = { near: 1.4, follow: 1, mid: 0.6, far: 0.3, farthest: 0 };
+
+function legacyDepthFollow(depth: unknown): number {
+    return typeof depth === "string" && Object.prototype.hasOwnProperty.call(LEGACY_DEPTH_FOLLOW, depth)
+        ? LEGACY_DEPTH_FOLLOW[depth]
+        : 1;
+}
+
+function legacyLayerPayload(block: StoryBlock | undefined): LegacyLayerPayload | null {
+    if (!block || block.kind !== "action") {
+        return null;
+    }
+    const payload = block.payload as unknown as LegacyLayerPayload;
+    return payload.action === "layer" ? payload : null;
+}
+
+type LegacyPlacement = { kind?: string; sourceBlockId?: string; name?: string };
+
+/** A picture's or text's `layer` when it names one of the scene's own layers, read loosely. */
+function legacyPlacement(block: StoryBlock): LegacyPlacement | null {
+    if (block.kind !== "action" || (block.payload.action !== "image" && block.payload.action !== "text")) {
+        return null;
+    }
+    const layer = (block.payload as { layer?: LegacyPlacement }).layer;
+    return layer && layer.kind === "custom" ? layer : null;
+}
+
+function migrateSceneLayers(scene: StoryScene): StoryScene {
+    const ordered = listSceneBlocksInDocumentOrder(scene);
+    const disabled = new Set<StoryBlockId>();
+    for (const block of ordered) {
+        if (block.disabled || (block.parentId !== null && disabled.has(block.parentId))) {
+            disabled.add(block.id);
+        }
+    }
+
+    type Draft = { id: string; name: string; z: number; follow: number; order: number };
+    const drafts: Draft[] = [];
+    const byKey = new Map<string, Draft>();
+    const byId = new Map<string, Draft>();
+    // A folded `create` row's id, and the layer that answers to it now.
+    const rebind = new Map<string, string>();
+    const removed = new Set<StoryBlockId>();
+    let backgroundFollow = 1;
+
+    for (const block of ordered) {
+        const payload = legacyLayerPayload(block);
+        if (!payload) {
+            continue;
+        }
+        if (payload.operation === "create") {
+            removed.add(block.id);
+            const key = normalizeStageObjectName(payload.objectName);
+            const existing = byKey.get(key);
+            if (existing) {
+                rebind.set(block.id, existing.id);
+                continue;
+            }
+            const draft: Draft = {
+                id: block.id,
+                name: payload.objectName?.trim() || key,
+                z: typeof payload.zIndex === "number" && Number.isFinite(payload.zIndex) ? payload.zIndex : 0,
+                follow: disabled.has(block.id) ? 1 : legacyDepthFollow(payload.depth),
+                order: drafts.length,
+            };
+            drafts.push(draft);
+            byKey.set(key, draft);
+            byId.set(draft.id, draft);
+        } else if (payload.operation === "setDepth") {
+            removed.add(block.id);
+            if (!disabled.has(block.id) && payload.target?.kind === "default" && payload.target.layer === "background") {
+                backgroundFollow = legacyDepthFollow(payload.depth);
+            }
+        }
+    }
+
+    // Layers a placement named that no row declared: the compiler built them where they were named.
+    for (const block of ordered) {
+        const placement = legacyPlacement(block);
+        if (!placement) {
+            continue;
+        }
+        const boundId = placement.sourceBlockId ? rebind.get(placement.sourceBlockId) ?? placement.sourceBlockId : undefined;
+        if (boundId && byId.has(boundId)) {
+            continue;
+        }
+        const name = placement.name?.trim();
+        if (!name || byKey.has(normalizeStageObjectName(name))) {
+            continue;
+        }
+        const draft: Draft = { id: `${block.id}-layer`, name, z: 0, follow: 1, order: drafts.length };
+        drafts.push(draft);
+        byKey.set(normalizeStageObjectName(name), draft);
+        byId.set(draft.id, draft);
+    }
+
+    if (removed.size === 0 && drafts.length === 0) {
+        return scene;
+    }
+
+    // Nearest first. The built-ins rank behind the scene's own layers at the same number, because the
+    // engine made them first and draws a tie in the order it made the layers.
+    const entries: { layer: StorySceneLayer; z: number; rank: number }[] = [
+        { layer: { kind: "displayable" }, z: 0, rank: -1 },
+        { layer: { kind: "background", follow: backgroundFollow }, z: -1, rank: -1 },
+        ...drafts.map(draft => ({
+            layer: { kind: "custom" as const, id: draft.id, name: draft.name, follow: draft.follow },
+            z: draft.z,
+            rank: draft.order,
+        })),
+    ];
+    entries.sort((a, b) => b.z - a.z || b.rank - a.rank);
+    const stack = normalizeSceneLayerStack(entries.map(entry => entry.layer));
+
+    const blocks: Record<StoryBlockId, StoryBlock> = {};
+    for (const [id, block] of Object.entries(scene.blocks)) {
+        if (removed.has(id)) {
+            continue;
+        }
+        let next = rebindSceneLayerIds(block, rebind);
+        const placement = legacyPlacement(next);
+        const boundId = placement?.sourceBlockId ? rebind.get(placement.sourceBlockId) ?? placement.sourceBlockId : undefined;
+        if (placement && !(boundId && byId.has(boundId))) {
+            // Bound by a name, or to a row that is gone: bound to the layer by id from here, so a
+            // rename of the layer carries the placement along.
+            const draft = placement.name?.trim() ? byKey.get(normalizeStageObjectName(placement.name)) : undefined;
+            if (draft) {
+                next = { ...next, payload: { ...next.payload, layer: { kind: "custom", sourceBlockId: draft.id, name: draft.name } } } as StoryBlock;
+            }
+        }
+        if (next.childrenIds.some(childId => removed.has(childId))) {
+            next = { ...next, childrenIds: next.childrenIds.filter(childId => !removed.has(childId)) };
+        }
+        blocks[id] = next;
+    }
+    const { layers: _layers, ...rest } = scene;
+    return {
+        ...rest,
+        ...(isDefaultSceneLayerStack(stack) ? {} : { layers: stack }),
+        blocks,
+        rootBlockIds: scene.rootBlockIds.filter(id => !removed.has(id)),
+    };
 }
 
 type StoryActionPayloadOf<A extends string> = Extract<Extract<StoryBlock, { kind: "action" }>["payload"], { action: A }>;

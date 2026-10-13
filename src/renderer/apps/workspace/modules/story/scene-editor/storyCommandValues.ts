@@ -226,6 +226,13 @@ export type StoryCommandContext = {
      */
     labels: readonly string[];
     /**
+     * The `pos=x,y` pairs beyond the stage's reach that rows of the CURRENT scene already store, as
+     * their lines print them (`3,0.5`). A line may state one of these again; any other far-out pair is
+     * refused as pixels typed where shares belong. Scene-scoped like {@link labels}, and omitted (no
+     * pair accepted) where no scene is open. See `storedFarPositions`.
+     */
+    storedFarPositions?: readonly string[];
+    /**
      * The project's build variants, by the name the author gave them - release first.
      *
      * Always non-empty: the release variant exists in every project, so a slot that takes one always
@@ -476,6 +483,10 @@ export type StoryCommandResolutionIssue =
      */
     | { code: "unknownAsset"; span: StoryCommandSpan; value: string; assetType: "image" | "audio" | "video"; allowSets?: true }
     | { code: "unknownCharacter"; span: StoryCommandSpan; value: string }
+    /** `/layer hills` in a scene that already has a layer called `hills`. */
+    | { code: "duplicateLayer"; span: StoryCommandSpan; value: string }
+    /** `/layer backgroundLayer` - a word the built-in layers are written with. */
+    | { code: "reservedLayerName"; span: StoryCommandSpan; value: string }
     | { code: "unknownScene"; span: StoryCommandSpan; value: string }
     /** `/bgm theme track=Ambience` with no `Ambience` track - it would silently land on Music instead. */
     | { code: "unknownAudioTrack"; span: StoryCommandSpan; value: string }
@@ -528,6 +539,17 @@ export type StoryCommandResolutionIssue =
     | { code: "repeatTimesAndUntil"; span: StoryCommandSpan }
     /** An enum value this command's variant of the shared vocabulary does not support (`/bg t=zoom`). */
     | { code: "unsupportedOption"; span: StoryCommandSpan; value: string; allowed: readonly string[] }
+    /**
+     * A `pos=x,y` pair too far out to be a share of the stage (`pos=100,200`): almost always pixels
+     * typed where fractions belong, and the object would land far off screen.
+     */
+    | { code: "positionOutOfRange"; span: StoryCommandSpan; value: string }
+    /**
+     * `xoffset=` / `yoffset=` with no `pos=` on the line: pixels added to shares the line never
+     * states. Refused rather than stored, because the row would mean "40 pixels right of wherever an
+     * earlier row left it" and would print back without the pair it shifts.
+     */
+    | { code: "offsetWithoutPosition"; span: StoryCommandSpan; key: string }
     /** Carries the whole underlying {@link StoryExpressionIssue} - its params make the message worth having. */
     | { code: "expressionError"; span: StoryCommandSpan; value: string; issue: StoryExpressionIssue }
     /** `/if gold` - parses fine, but a condition that is not a comparison is nearly always unfinished. */

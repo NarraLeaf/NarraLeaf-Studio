@@ -36,7 +36,10 @@ export type StoryInspectorBridgeState = {
     onClose: () => void;
     onSetDialogueCharacter: (characterId: string | undefined) => void;
     generateTextId: () => string;
-    onCreateLayer: (beforeBlockId: StoryBlockId) => string | null;
+    /** Add a layer to the scene's stack and return its id. */
+    onCreateLayer: () => string | null;
+    /** Show the scene's layers - the live preview's layer view. */
+    onManageLayers: () => void;
     /**
      * The one write path for the scene's own metadata — the controller's `updateSceneMetadata`, which
      * is also what the inline scene header card commits through. Two surfaces, one commit, so undo

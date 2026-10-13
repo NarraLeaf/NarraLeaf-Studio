@@ -71,7 +71,7 @@ describe("the verb a row reads back", () => {
         expect(storyRowSentence(action({ action: "image", operation: "show", objectName: "Sign" }), bare)).toContain("显示");
         expect(storyRowSentence(action({ action: "video", operation: "play", objectName: "Intro" }), bare)).toContain("播放");
         expect(storyRowSentence(action({ action: "audio", operation: "setBgm", objectName: "Piano" }), bare)).toContain("背景音乐");
-        expect(storyRowSentence(action({ action: "layer", operation: "create", objectName: "Fog" }), bare)).toContain("图层");
+        expect(storyRowSentence(action({ action: "layer", operation: "show", objectName: "Fog" }), bare)).toContain("图层");
     });
 });
 
@@ -111,10 +111,11 @@ describe("storyRowSentence — the sentence the editor shows", () => {
             .toBe("Motion");
     });
 
-    it("says \"layer\" once on the rows the layer command writes", () => {
-        expect(describeStoryBlock(action({ action: "layer", operation: "create", objectName: "Fog" }), bare)).toBe("Layer Fog");
+    it("says what a layer row does to its layer, and where a z-index row moves it", () => {
+        expect(describeStoryBlock(action({ action: "layer", operation: "hide", objectName: "Fog" }), bare)).toBe("Hide layer Fog");
+        expect(describeStoryBlock(action({ action: "layer", operation: "setZIndex", objectName: "Fog", zIndex: 3 }), bare)).toBe("Layer Fog to z-index 3");
         i18nStore.setLocale("zh");
-        expect(describeStoryBlock(action({ action: "layer", operation: "create", objectName: "Fog", depth: "far" }), bare)).toBe("图层 Fog · 纵深 远");
+        expect(describeStoryBlock(action({ action: "layer", operation: "setZIndex", objectName: "Fog", zIndex: 3 }), bare)).toBe("图层 Fog 层级改为 3");
     });
 
     it("names a blueprint row by its blueprint, and only by its kind when there is nothing to say", () => {

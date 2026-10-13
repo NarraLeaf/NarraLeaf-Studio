@@ -34,6 +34,7 @@ import type {
     StoryDocument,
     StoryScene,
     StorySceneId,
+    StorySceneLayer,
     StorySceneSnapshot,
 } from "@shared/types/story";
 import { DeletedPositions, type LivePosition } from "./deletedPositions";
@@ -328,6 +329,8 @@ export type LiveBefore =
     | { op: "move-scene"; chapterId: string | null; beforeSceneId: StorySceneId | null }
     /** The snapshots the scene held. The operation states the new list and nothing about the old. */
     | { op: "set-scene-snapshots"; snapshots: readonly StorySceneSnapshot[] }
+    /** The layer stack the scene held. The operation states the new stack and nothing about the old. */
+    | { op: "set-scene-layers"; layers: readonly StorySceneLayer[] }
     /** The chapter's name. */
     | { op: "rename-chapter"; name: string }
     /**
@@ -780,6 +783,13 @@ export function captureBefore(op: LiveOp, sources: LiveBeforeSources): LiveBefor
             const scene = document.scenes[op.sceneId];
             return scene
                 ? { op: "set-scene-snapshots", snapshots: structuredClone(scene.sceneSnapshots ?? []) }
+                : null;
+        }
+
+        case "set-scene-layers": {
+            const scene = document.scenes[op.sceneId];
+            return scene
+                ? { op: "set-scene-layers", layers: structuredClone(scene.layers ?? []) }
                 : null;
         }
 
@@ -1806,6 +1816,22 @@ export function inverseOf(effect: LiveEffect, context: LiveInverseContext): Live
                     op: "set-scene-snapshots",
                     sceneId: op.sceneId,
                     snapshots: structuredClone(before.snapshots),
+                },
+            };
+        }
+
+        case "set-scene-layers": {
+            if (!before || before.op !== "set-scene-layers") {
+                return { impossible: "no-record" };
+            }
+            if (!document.scenes[op.sceneId]) {
+                return { impossible: "scene-gone" };
+            }
+            return {
+                op: {
+                    op: "set-scene-layers",
+                    sceneId: op.sceneId,
+                    layers: structuredClone(before.layers),
                 },
             };
         }

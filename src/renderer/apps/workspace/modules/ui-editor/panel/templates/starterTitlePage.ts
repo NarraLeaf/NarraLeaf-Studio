@@ -80,7 +80,7 @@ export type LiftedTitlePage = {
 type Blueprint = BlueprintDocument["blueprints"][string];
 
 /** Every graph a blueprint holds. Script layers have no nodes and are not graphs here. */
-function blueprintGraphs(blueprint: Blueprint): BlueprintGraphIr[] {
+export function blueprintGraphs(blueprint: Blueprint): BlueprintGraphIr[] {
     const graphs: BlueprintGraphIr[] = [];
     for (const slots of [blueprint.graphs.events, blueprint.graphs.functions, blueprint.graphs.macros]) {
         for (const slot of Object.values(slots ?? {})) {
@@ -151,19 +151,39 @@ function pageParamKeys(node: BlueprintGraphNode): string[] {
 }
 
 /**
- * Whether a node takes the game somewhere that is not coming along: it opens a page other than
- * `pageId` (or any page, with no `pageId`), or it is a node a plugin provides.
+ * What a cut keeps: the pages a graph may still open, and the nodes the receiving project can run.
+ * Everything else is where logic leaves.
  */
-function leavesPage(node: BlueprintGraphNode, pageId: string | null): boolean {
+export type LogicCutRule = {
+    pageStays(pageId: string): boolean;
+    nodeStays(nodeType: string): boolean;
+};
+
+/**
+ * The rule for one page coming along on its own: it may open only itself (nothing at all, with no
+ * `pageId`), and only Studio's own nodes - the receiving project may not have the plugin switched on.
+ */
+function onePage(pageId: string | null): LogicCutRule {
+    return {
+        pageStays: id => id === pageId,
+        nodeStays: type => blueprintNodeRegistry.isBuiltIn(type),
+    };
+}
+
+/**
+ * Whether a node takes the game somewhere that is not coming along: it opens a page the rule does
+ * not keep, or it is a node the rule does not keep.
+ */
+function leavesPage(node: BlueprintGraphNode, rule: LogicCutRule): boolean {
     if (node.type === BLUEPRINT_NODE_TYPE_FLOW_COMMENT) {
         return false;
     }
-    if (!blueprintNodeRegistry.isBuiltIn(node.type)) {
+    if (!rule.nodeStays(node.type)) {
         return true;
     }
     return pageParamKeys(node).some(key => {
         const value = String(node.params?.[key] ?? "").trim();
-        return value !== "" && value !== pageId;
+        return value !== "" && !rule.pageStays(value);
     });
 }
 
@@ -183,10 +203,10 @@ function execInputPorts(node: BlueprintGraphNode): Set<string> {
  *
  * A note on a cut graph goes too: it was written about the graph as it was.
  */
-function cutWhereLogicLeaves(graph: BlueprintGraphIr, pageId: string | null): boolean {
+function cutWhereLogicLeaves(graph: BlueprintGraphIr, rule: LogicCutRule): boolean {
     const nodes = graph.nodes ?? {};
     const edges = graph.edges ?? [];
-    const removed = new Set(Object.values(nodes).filter(node => leavesPage(node, pageId)).map(node => node.id));
+    const removed = new Set(Object.values(nodes).filter(node => leavesPage(node, rule)).map(node => node.id));
     if (removed.size === 0) {
         return false;
     }
@@ -223,12 +243,12 @@ function cutWhereLogicLeaves(graph: BlueprintGraphIr, pageId: string | null): bo
  *
  * `emptied` is a blueprint that had layers and has none left: everything it did led away.
  */
-function cutBlueprint(blueprint: Blueprint, pageId: string | null): "untouched" | "trimmed" | "emptied" {
+export function cutBlueprint(blueprint: Blueprint, rule: LogicCutRule): "untouched" | "trimmed" | "emptied" {
     let cut = false;
     const index = blueprint.graphs;
     const dropFrom = (ids: string[] | undefined, id: string) => ids?.filter(entry => entry !== id);
     for (const [id, layer] of Object.entries(index.events ?? {})) {
-        if (layer?.graph && cutWhereLogicLeaves(layer.graph, pageId)) {
+        if (layer?.graph && cutWhereLogicLeaves(layer.graph, rule)) {
             cut = true;
             if (graphNodes(layer.graph).length === 0) {
                 delete index.events[id];
@@ -237,7 +257,7 @@ function cutBlueprint(blueprint: Blueprint, pageId: string | null): "untouched" 
         }
     }
     for (const [id, fn] of Object.entries(index.functions ?? {})) {
-        if (fn?.graph && cutWhereLogicLeaves(fn.graph, pageId)) {
+        if (fn?.graph && cutWhereLogicLeaves(fn.graph, rule)) {
             cut = true;
             if (graphNodes(fn.graph).length === 0) {
                 delete index.functions[id];
@@ -246,7 +266,7 @@ function cutBlueprint(blueprint: Blueprint, pageId: string | null): "untouched" 
         }
     }
     for (const [id, macro] of Object.entries(index.macros ?? {})) {
-        if (macro?.graph && cutWhereLogicLeaves(macro.graph, pageId) && graphNodes(macro.graph).length === 0) {
+        if (macro?.graph && cutWhereLogicLeaves(macro.graph, rule) && graphNodes(macro.graph).length === 0) {
             cut = true;
             delete (index.macros as Record<string, unknown>)[id];
         }
@@ -261,7 +281,7 @@ function cutBlueprint(blueprint: Blueprint, pageId: string | null): "untouched" 
 }
 
 /** Drop a blueprint and the owner record that files it. */
-function dropBlueprint(document: BlueprintDocument, blueprintId: string): void {
+export function dropBlueprint(document: BlueprintDocument, blueprintId: string): void {
     delete document.blueprints[blueprintId];
     for (const [ownerKey, record] of Object.entries(document.ownerRecords)) {
         if (record.blueprintId === blueprintId) {
@@ -316,7 +336,7 @@ function liftComponents(
             .filter(blueprint => anchorComponentId(blueprint.owner) === id)
             .map(blueprint => cloneJson(blueprint));
         // A component's own logic may name no page at all: it does not know which page it is on.
-        const outcomes = blueprints.map(blueprint => cutBlueprint(blueprint, null));
+        const outcomes = blueprints.map(blueprint => cutBlueprint(blueprint, onePage(null)));
         if (outcomes.includes("emptied")) {
             refused.add(id);
             continue;
@@ -418,7 +438,7 @@ function removeElements(payload: UISurfaceClipboardPayload, removed: ReadonlySet
  * not this one. With no target the fields are cleared rather than left naming a story the receiving
  * project does not have, which the node reports in its own words when it runs.
  */
-function pointStartAt(blueprints: BlueprintDocument, target: StarterStartTarget | null): void {
+export function pointStartAt(blueprints: BlueprintDocument, target: StarterStartTarget | null): void {
     for (const blueprint of Object.values(blueprints.blueprints)) {
         for (const graph of blueprintGraphs(blueprint)) {
             for (const node of graphNodes(graph)) {
@@ -440,7 +460,7 @@ function pointStartAt(blueprints: BlueprintDocument, target: StarterStartTarget 
 }
 
 /** Every palette entry a value names by link, wherever in the value it sits. */
-function collectBrandLinkIds(value: unknown, into: Set<string>): void {
+export function collectBrandLinkIds(value: unknown, into: Set<string>): void {
     if (typeof value === "string") {
         const link = parseBrandLink(value);
         if (link) {
@@ -487,7 +507,7 @@ export function liftStarterTitlePage(input: {
     // The page's own logic first: a control whose every layer led away has nothing left to do.
     const emptiedElements = new Set<UIElementId>();
     for (const blueprint of Object.values(blueprintDocument.blueprints)) {
-        if (cutBlueprint(blueprint, page.id) !== "emptied") {
+        if (cutBlueprint(blueprint, onePage(page.id)) !== "emptied") {
             continue;
         }
         const elementId = anchorElementId(blueprint.owner);

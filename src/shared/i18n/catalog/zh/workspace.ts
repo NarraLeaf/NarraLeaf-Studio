@@ -444,6 +444,13 @@ export const workspace = {
                 existsDetail: "同名文件将被替换，文件夹中的其他文件保留",
                 replace: "替换",
             },
+            installSkill: {
+                title: "安装 Agent Skill",
+                changedOne: "该文件夹中的 SKILL.md 与 Studio 自带的不同",
+                changedMany: "以下文件夹中的 SKILL.md 与 Studio 自带的不同",
+                changedDetail: "同名文件将被替换为当前版本 Studio 的 Agent Skill，其他 Skill 保留",
+                replace: "替换",
+            },
             folderAccess: {
                 title: "允许 Agent 读取文件夹？",
                 messageOne: "{client} 请求读取以下文件夹",
@@ -464,6 +471,9 @@ export const workspace = {
         },
         log: {
             pluginTool: "插件 {plugin} 提供的工具",
+            target: {
+                standardScreens: "标准界面",
+            },
             filter: {
                 all: "全部",
                 writes: "仅修改",
@@ -548,6 +558,10 @@ export const workspace = {
             ui_patch: "编辑元素",
             ui_templates: "界面模板",
             ui_template_apply: "应用模板",
+            ui_page_rename: "重命名页面",
+            ui_page_delete: "删除页面",
+            ui_page_set_entry: "设置入口页面",
+            ui_install_standard_screens: "安装标准界面",
             brand_get: "读取配色",
             brand_set: "修改配色",
             blueprint_nodes: "蓝图节点目录",
@@ -555,6 +569,7 @@ export const workspace = {
             blueprint_list: "列出蓝图",
             blueprint_show: "读取蓝图文本",
             blueprint_apply: "写入蓝图",
+            blueprint_remove: "移除蓝图",
             localization_status: "翻译进度",
             localization_list: "列出待翻译文本",
             localization_set: "写入翻译",
@@ -568,6 +583,12 @@ export const workspace = {
             playtest_start: "试玩游戏",
             playtest_advance: "推进试玩",
             playtest_screenshot: "试玩截图",
+            asset_usage: "查看资产引用",
+            chapter_rename: "重命名章节",
+            chapter_delete: "删除章节",
+            playtest_click: "在试玩中点击",
+            playtest_hover: "在试玩中悬停",
+            playtest_key: "在试玩中按键",
             playtest_stop: "停止试玩",
             console_read: "读取控制台",
             build: "构建游戏",
@@ -768,11 +789,6 @@ export const workspace = {
         noActiveEditor: "没有活动的编辑器",
         closePanel: "关闭面板",
         closeTab: "关闭 {name}",
-        newTab: "新建标签页",
-        // 标签条"+"打开的浏览器式空白标签页。
-        newTabPage: {
-            title: "新标签页",
-        },
         tabMenu: {
             keepOpen: "保留标签页",
             close: "关闭",
@@ -889,6 +905,8 @@ export const workspace = {
                 asset: "资产",
                 blueprint: "蓝图",
             },
+            // 种类、名称与位置都相同的行，按项目中的顺序编号。
+            ordinal: "第 {n} 项",
         },
         // 底部状态条。各信号只在有意义时出现（运行中/构建中/未保存）。
         statusBar: {
@@ -1687,6 +1705,9 @@ export const workspace = {
                     clearMarker: "清除标记",
                     videoZoom: "缩放画面",
                     videoActualSize: "在适应窗口与实际像素之间切换",
+                    moveSelection: "移动选择",
+                    extendSelection: "扩展选择",
+                    moveThroughGroupTree: "在分组树中移动",
                 },
             },
         },

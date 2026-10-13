@@ -3,12 +3,16 @@ import type { TextVerticalAlign, TextWrapMode } from "@/lib/ui-editor/widget-mod
 
 export function lineWrapCss(mode: TextWrapMode): Pick<CSSProperties, "whiteSpace" | "wordBreak" | "overflowWrap"> {
     switch (mode) {
-        case "word":
-            return { whiteSpace: "pre-wrap", wordBreak: "normal", overflowWrap: "break-word" };
         case "character":
             return { whiteSpace: "pre-wrap", wordBreak: "break-all", overflowWrap: "normal" };
         case "nowrap":
             return { whiteSpace: "nowrap", wordBreak: "normal", overflowWrap: "normal" };
+        case "word":
+        default:
+            // A stored word outside the union (a hand-edited file, or one a tool wrote before the
+            // tools refused it) wraps as the default does, rather than returning nothing and leaving
+            // the box to whatever `white-space` it inherits.
+            return { whiteSpace: "pre-wrap", wordBreak: "normal", overflowWrap: "break-word" };
     }
 }
 

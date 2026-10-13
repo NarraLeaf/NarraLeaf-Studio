@@ -11,7 +11,6 @@ import type {
     StoryDisplayableTargetKind,
     StoryEndingPage,
     StoryGroupKind,
-    StoryLayerDepth,
     StoryLiteralValue,
     StoryRumblePresetId,
     StoryScene,
@@ -26,7 +25,6 @@ import type {
 } from "@shared/types/story";
 import {
     authoredCharacterStageName,
-    DEFAULT_STORY_LAYER_DEPTH,
     DEFAULT_VIDEO_LEAVE_FADE_MS,
     declarationDefaultForType,
     isStoryExpressionEvaluable,
@@ -44,13 +42,13 @@ import {
     storyGroupWaits,
     storyPersistentDefs,
     storyTransitionKindOf,
-    STORY_LAYER_DEPTHS,
     STORY_RUMBLE_DEFAULT_PRESET,
     STORY_RUMBLE_PRESET_IDS,
     videoLeaveFadeMs,
     videoPlayHidesOnEnd,
     videoPlayWaits,
 } from "@shared/types/story";
+import { parseSceneTranslationUnitId, sceneTranslationUnitId } from "@shared/types/localization";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { buildMergedVariableView } from "@shared/variables/mergedPersistentView";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
@@ -69,7 +67,6 @@ import {
     type WeatherSeedId,
 } from "@shared/weather/model";
 import { audioBusStatusLine } from "@/lib/story/audioBusStatus";
-import { storyLayerDepthLabel } from "@/lib/story/storyLayerLabel";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
 import { useProjectAppTags } from "@/lib/story/useProjectAppTags";
 import { useProjectSurfaces } from "@/lib/story/useProjectSurfaces";
@@ -101,6 +98,7 @@ import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalB
 import type { BlueprintOpenOptions } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { StoryActionBlueprintPreviewCard } from "./StoryActionBlueprintPreviewCard";
+import { StoryPluginActionEditor } from "./StoryPluginActionEditor";
 import { ConditionEditor, EMPTY_EXPRESSION_CONDITION } from "./ConditionEditor";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { useAssetFieldNotice } from "@/lib/workspace/hooks/useAssetFieldNotice";
@@ -523,17 +521,15 @@ const textOperationOptions = (t: TFunc): SelectOption[] => [
 ];
 
 // `transform` is intentionally omitted: transforming a layer goes through the unified
-// "Transform displayable" target list (which includes both built-in layers). The `layer` action
-// stays layer-lifecycle only. `transform` remains valid in the type + compiler so pre-existing
-// layer-transform blocks still compile; it is just no longer offered as a new choice here.
-const layerDepthOptions = (): SelectOption[] => STORY_LAYER_DEPTHS.map(depth => ({ value: depth, label: storyLayerDepthLabel(depth) }));
-
-const layerOperationOptions = (t: TFunc): SelectOption[] => [
-    { value: "create", label: t("common.create") },
-    { value: "setZIndex", label: t("storyInspector.layerOperation.setZIndex") },
-    { value: "setDepth", label: t("storyInspector.layerOperation.setDepth") },
+// "Transform displayable" target list (which includes both built-in layers). `transform` remains
+// valid in the type + compiler so pre-existing layer-transform blocks still compile; it is just no
+// longer offered as a new choice here. So is `setZIndex`, offered only on a row that already holds
+// it: the scene's layer stack is where a layer's place is set now. Declaring a layer is not a row's
+// to do at all - the scene declares its layers.
+const layerOperationOptions = (t: TFunc, current: string): SelectOption[] => [
     { value: "show", label: t("common.show") },
     { value: "hide", label: t("common.hide") },
+    ...(current === "setZIndex" ? [{ value: "setZIndex", label: t("storyInspector.layerOperation.setZIndex") }] : []),
 ];
 
 // `play` first: it is the row that brings a clip on, and the others name a clip a play defined.
@@ -584,7 +580,10 @@ export function ActionInspector(props: {
     onClose: () => void;
     onSetDialogueCharacter: (characterId: string | undefined) => void;
     generateTextId: () => string;
-    onCreateLayer: (beforeBlockId: StoryBlockId) => string | null;
+    /** Add a layer to the scene's stack and return its id. */
+    onCreateLayer: () => string | null;
+    /** Show the scene's layers - the live preview's layer view. */
+    onManageLayers?: () => void;
 }) {
     const { context, isInitialized } = useWorkspace();
     const block = props.block;
@@ -636,6 +635,7 @@ export function ActionInspector(props: {
             onSetDialogueCharacter={props.onSetDialogueCharacter}
             generateTextId={props.generateTextId}
             onCreateLayer={props.onCreateLayer}
+            onManageLayers={props.onManageLayers}
         />
     );
 
@@ -683,7 +683,10 @@ function InspectorFields(props: {
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
     onSetDialogueCharacter: (characterId: string | undefined) => void;
     generateTextId: () => string;
-    onCreateLayer: (beforeBlockId: StoryBlockId) => string | null;
+    /** Add a layer to the scene's stack and return its id. */
+    onCreateLayer: () => string | null;
+    /** Show the scene's layers - the live preview's layer view. */
+    onManageLayers?: () => void;
 }) {
     const { t } = useTranslation();
     const { block } = props;
@@ -782,6 +785,7 @@ function InspectorFields(props: {
                 characters={props.characters}
                 onChange={props.onUpdatePayload}
                 onCreateLayer={props.onCreateLayer}
+                onManageLayers={props.onManageLayers}
             />
         );
     }
@@ -893,6 +897,9 @@ function SetVariableEditor(props: {
 }) {
     const options = useStoryVariableOptions(props.document, props.sceneId);
     const valueType = resolveRefValueType(props.payload.target, options);
+    const sceneValue = props.payload.expression || typeof props.payload.value !== "string"
+        ? null
+        : parseSceneTranslationUnitId(props.payload.value);
     return (
         <div className="nl-field-grid">
             <VariableRefPicker
@@ -900,12 +907,51 @@ function SetVariableEditor(props: {
                 options={options}
                 onChange={target => props.onChange({ ...props.payload, target })}
             />
-            <VariableValueField
-                valueType={valueType}
-                value={props.payload.value}
-                onChange={value => props.onChange({ ...props.payload, value })}
-            />
+            {sceneValue !== null ? (
+                <SceneReferenceValueField
+                    document={props.document}
+                    sceneId={sceneValue}
+                    onChange={value => props.onChange({ ...props.payload, value, expression: undefined })}
+                />
+            ) : (
+                <VariableValueField
+                    valueType={valueType}
+                    value={props.payload.value}
+                    onChange={value => props.onChange({ ...props.payload, value })}
+                />
+            )}
         </div>
+    );
+}
+
+/**
+ * The value of a `/set` that stores a scene reference (`scene:<id>`), shown and picked as the scene.
+ *
+ * The runtime reads such a value as that scene's name wherever it is displayed - a save slot's place
+ * is what the skeleton stores it for - so the field offers the scenes by name, as the row's own value
+ * token does, and writes the reference back. A reference whose scene is gone reads as missing.
+ */
+function SceneReferenceValueField(props: {
+    document: StoryDocument;
+    sceneId: StorySceneId;
+    onChange: (value: string) => void;
+}) {
+    const { t } = useTranslation();
+    const scenes = listScenesInDocumentOrder(props.document);
+    const current = sceneTranslationUnitId(props.sceneId);
+    const sceneOptions: SelectOption[] = [
+        ...(scenes.some(scene => scene.id === props.sceneId)
+            ? []
+            : [{ value: current, label: t("storyInspector.setVariable.missingScene") }]),
+        ...scenes.map(scene => ({ value: sceneTranslationUnitId(scene.id), label: scene.name })),
+    ];
+    return (
+        <SelectField
+            label={t("storyInspector.field.value")}
+            options={sceneOptions}
+            value={current}
+            onChange={value => props.onChange(String(value))}
+        />
     );
 }
 
@@ -1115,7 +1161,10 @@ function ActionPayloadFields(props: {
     payload: StoryActionPayload;
     characters: Character[];
     onChange: (payload: StoryBlock["payload"]) => void;
-    onCreateLayer: (beforeBlockId: StoryBlockId) => string | null;
+    /** Add a layer to the scene's stack and return its id. */
+    onCreateLayer: () => string | null;
+    /** Show the scene's layers - the live preview's layer view. */
+    onManageLayers?: () => void;
 }) {
     const { t } = useTranslation();
     const payload = props.payload;
@@ -1156,6 +1205,9 @@ function ActionPayloadFields(props: {
     if (payload.action === "blueprint") {
         return <StoryActionBlueprintEditor payload={payload} onChange={props.onChange} />;
     }
+    if (payload.action === "plugin") {
+        return <StoryPluginActionEditor payload={payload} onChange={props.onChange} />;
+    }
     if (payload.action === "input") {
         return <InputActionEditor document={props.document} sceneId={props.sceneId} payload={payload} onChange={props.onChange} />;
     }
@@ -1189,7 +1241,8 @@ function ActionPayloadFields(props: {
                         blockId={props.block.id}
                         value={payload.layer}
                         onChange={layer => props.onChange({ ...payload, layer })}
-                        onCreateLayer={() => props.onCreateLayer(props.block.id)}
+                        onCreateLayer={props.onCreateLayer}
+                        onManageLayers={props.onManageLayers}
                     />
                     <AssetField
                         label={t("storyInspector.image.imageAsset")}
@@ -1284,7 +1337,8 @@ function ActionPayloadFields(props: {
                         blockId={props.block.id}
                         value={payload.layer}
                         onChange={layer => props.onChange({ ...payload, layer })}
-                        onCreateLayer={() => props.onCreateLayer(props.block.id)}
+                        onCreateLayer={props.onCreateLayer}
+                        onManageLayers={props.onManageLayers}
                     />
                     <NumberField label={t("storyInspector.text.fontSize")} value={payload.fontSize} onChange={fontSize => props.onChange({ ...payload, fontSize })} />
                     <ColorTextField label={t("storyInspector.text.fontColor")} value={payload.fontColor ?? "#ffffff"} onChange={fontColor => props.onChange({ ...payload, fontColor })} />
@@ -1306,68 +1360,36 @@ function ActionPayloadFields(props: {
         );
     }
     if (payload.action === "layer") {
-        const isCreate = payload.operation === "create";
-        // Non-create ops target an existing layer (built-in or custom) via the layer picker; `create`
-        // names a new one. Z-index only applies to create / setZIndex; transform/show/hide animate.
-        const showZIndex = isCreate || payload.operation === "setZIndex";
-        const setsDepth = payload.operation === "setDepth";
+        // Every op targets one of the scene's layers (built-in or its own) via the layer picker.
+        // Z-index only applies to setZIndex; transform/show/hide animate.
+        const showZIndex = payload.operation === "setZIndex";
         const showTransform = payload.operation === "transform" || payload.operation === "show" || payload.operation === "hide";
         const layerRefValue = layerActionTargetRef(payload.target, payload.objectName);
-        const layerName = isCreate
-            ? (payload.objectName || t("storyInspector.motionTarget.layer"))
-            : (resolveStoryLayerRef(props.document.scenes[props.sceneId], layerRefValue).name || t("storyInspector.motionTarget.layer"));
+        const layerName = resolveStoryLayerRef(props.document.scenes[props.sceneId], layerRefValue).name || t("storyInspector.motionTarget.layer");
         return (
             <div className="grid grid-cols-1 gap-3">
                 <div className="nl-field-grid">
                     <SelectField
                         label={t("storyInspector.field.operation")}
-                        options={layerOperationOptions(t)}
+                        options={layerOperationOptions(t, payload.operation)}
                         value={payload.operation}
-                        onChange={operation => {
-                            const next = operation as Extract<StoryActionPayload, { action: "layer" }>["operation"];
-                            // A depth row is about the scene's own background layer and nothing else,
-                            // so choosing it points the row there rather than leaving a target that
-                            // the compiler would refuse.
-                            props.onChange(next === "setDepth"
-                                ? { ...payload, operation: next, target: { kind: "default", layer: "background" }, depth: payload.depth ?? "mid" }
-                                : { ...payload, operation: next });
-                        }}
+                        onChange={operation => props.onChange({ ...payload, operation: operation as Extract<StoryActionPayload, { action: "layer" }>["operation"] })}
                     />
-                    {setsDepth ? (
-                        // One choice, shown rather than hidden: the row is about this layer and no other.
-                        <SelectField
-                            label={t("storyInspector.field.layer")}
-                            options={[{ value: "background", label: t("story.layerField.backgroundName") }]}
-                            value="background"
-                            onChange={() => undefined}
-                        />
-                    ) : isCreate ? (
-                        <TextField label={t("storyInspector.layer.layerName")} value={payload.objectName} onChange={objectName => props.onChange({ ...payload, objectName })} />
-                    ) : (
-                        <StoryLayerField
-                            label={t("storyInspector.field.layer")}
-                            document={props.document}
-                            sceneId={props.sceneId}
-                            blockId={props.block.id}
-                            value={layerRefValue}
-                            onChange={target => props.onChange({ ...payload, target })}
-                            onCreateLayer={() => props.onCreateLayer(props.block.id)}
-                        />
-                    )}
+                    <StoryLayerField
+                        label={t("storyInspector.field.layer")}
+                        document={props.document}
+                        sceneId={props.sceneId}
+                        blockId={props.block.id}
+                        value={layerRefValue}
+                        onChange={target => props.onChange({ ...payload, target })}
+                        onCreateLayer={props.onCreateLayer}
+                        onManageLayers={props.onManageLayers}
+                    />
                     {showZIndex ? (
                         <NumberField label={t("storyInspector.layer.zIndex")} value={payload.zIndex} onChange={zIndex => props.onChange({ ...payload, zIndex })} />
                     ) : null}
-                    {isCreate || setsDepth ? (
-                        <SelectField
-                            label={t("storyInspector.layer.depth")}
-                            options={layerDepthOptions()}
-                            value={payload.depth ?? DEFAULT_STORY_LAYER_DEPTH}
-                            // The default is the absent value, so a layer set back to it says nothing on its row.
-                            onChange={depth => props.onChange({ ...payload, depth: depth === DEFAULT_STORY_LAYER_DEPTH && isCreate ? undefined : depth as StoryLayerDepth })}
-                        />
-                    ) : null}
                 </div>
-                {setsDepth ? <div className="text-2xs text-fg-subtle">{t("storyInspector.layer.setDepthHint")}</div> : null}
+                {showZIndex ? <div className="text-2xs text-fg-subtle">{t("storyInspector.layer.zIndexRowHint")}</div> : null}
                 {showTransform ? (
                     <TransformPresetEditor
                         value={payload.transform}

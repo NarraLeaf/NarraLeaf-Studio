@@ -41,7 +41,7 @@ export const STARRED_ICON_COLOR = "#c8b06e";
  * folded into `/play` when a play became the only row that brings a clip on.
  */
 export const LEGACY_FAVORITE_TO_SPEC_ID: Readonly<
-    Record<ActionCommandId | "conditionIf" | "code" | "declareSavedVariable" | "declarePersistentVariable" | "screenBlink" | "screenVignette" | "videoCreate" | "videoShow" | "video", string | null>
+    Record<ActionCommandId | "conditionIf" | "code" | "declareSavedVariable" | "declarePersistentVariable" | "screenBlink" | "screenVignette" | "videoCreate" | "videoShow" | "video" | "layerCreate" | "layerZIndex" | "layerDepth", string | null>
 > = {
     narration: null,
     conditionIf: null,

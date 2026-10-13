@@ -13,6 +13,9 @@ import { useFloatingLayer } from "@/lib/components/layout";
 
 const MAX_ROWS = 50;
 
+/** The binding that opens the picker; the tab strip's "+" runs it rather than keeping a second way in. */
+export const QUICK_OPEN_BINDING_ID = "workspace-quick-open";
+
 /**
  * Quick Open (mod+p): a fuzzy picker over everything openable — story scenes, characters, UI
  * surfaces, assets, and blueprints — gathered from the live registries when the picker opens.
@@ -44,7 +47,7 @@ export function QuickOpenPicker() {
     });
 
     useKeybinding({
-        id: "workspace-quick-open",
+        id: QUICK_OPEN_BINDING_ID,
         key: "mod+p",
         description: "Quick open (scenes, assets, surfaces…)",
         handler: () => setOpen(previous => !previous),

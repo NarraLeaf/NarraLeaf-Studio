@@ -7,7 +7,7 @@ import {
     resolveDevModeAssetType,
     resolveDevModeAssetUrl,
 } from "@/lib/ui-editor/runtime/devModeAssetUrls";
-import { warmSurfaceAssets } from "@/lib/ui-editor/runtime/surfaceAssetWarmup";
+import { warmInterfaceAssets, warmSurfaceAssets, type SurfaceWarmupAccess, type SurfaceWarmupSource } from "@/lib/ui-editor/runtime/surfaceAssetWarmup";
 import { createGameBootReporter } from "@/lib/ui-editor/runtime/app/bootTiming";
 import { warmDevModeFont } from "@/lib/workspace/hooks/useEditorFontFamily";
 
@@ -20,6 +20,53 @@ import { warmDevModeFont } from "@/lib/workspace/hooks/useEditorFontFamily";
  * times the story's warm-up under the same name.
  */
 const interfaceWarmupTimeline = createGameBootReporter();
+
+/** The bundle whose whole interface has been put on the background queue; once per session. */
+let backgroundWarmedBundleId: string | null = null;
+
+function devModeWarmupSource(bundle: DevModeBundle): SurfaceWarmupSource {
+    const publishedIds = publishedDevModeAssetIds();
+    return {
+        uidoc: bundle.ui.uidoc,
+        fontAssetIds: (bundle.fonts ?? []).map(entry => entry.assetId),
+        letterboxAssetIds: letterboxAssetIds(bundle.letterbox),
+        // What the library has, standing in for a pack's manifest. An id the window could not
+        // resolve is one no widget will draw from this map either, and waiting on it would only be
+        // waiting for its failure.
+        manifestIds: publishedIds.size > 0 ? publishedIds : null,
+    };
+}
+
+const devModeWarmupAccess: Omit<SurfaceWarmupAccess, "onProgress" | "timeoutMs"> = {
+    assetUrl: assetId => resolveDevModeAssetUrl(assetId) ?? "",
+    entryFor: assetId => {
+        const type = resolveDevModeAssetType(assetId);
+        return type ? { type } : undefined;
+    },
+    loadFont: assetId => warmDevModeFont(assetId),
+};
+
+/**
+ * Put every other page's pictures on a slow background queue, after the first screen is up.
+ *
+ * Without it a page opened during the run - a backlog, a settings page, a gallery with a large
+ * backdrop - decoded its pictures on first open, and the page showed its bare background colour (often
+ * black) for a second or more first. This is the packaged game's own background pass (a few at a
+ * time, nothing waits on it). As many pictures as the warm-up's hold has room for are decoded and
+ * held, the first screen's first, so the decode is still there when the page opens; the rest are
+ * only fetched (see the hold in `surfaceAssetWarmup`). Once per session: a hot reload keeps what is
+ * already warm.
+ */
+function warmRestOfInterface(bundle: DevModeBundle, firstSurfaceId: string, prewarm: () => Promise<void>): void {
+    if (backgroundWarmedBundleId === bundle.bundleId) {
+        return;
+    }
+    backgroundWarmedBundleId = bundle.bundleId;
+    void (async () => {
+        await prewarm();
+        await warmInterfaceAssets({ ...devModeWarmupAccess, source: devModeWarmupSource(bundle), firstSurfaceId });
+    })().catch(() => undefined);
+}
 
 export type DevModeInterfaceWarmup = {
     /** The screen the window opens on is warm, or never will be (it timed out, or had nothing). */
@@ -35,7 +82,7 @@ export type DevModeInterfaceWarmup = {
  * The screen it opens on and nothing else. A packaged game warms its whole interface before it shows
  * any of it; Dev Mode is the window an author stops and starts all day, so it pays for what is on
  * screen when it lights up - pictures and fonts that pop in a frame after the reveal are what this
- * exists to stop - and leaves the rest to arrive when it is opened. The walk is the packaged game's
+ * exists to stop - and warms the rest on a background queue afterwards (`warmRestOfInterface`). The walk is the packaged game's
  * own (`surfaceAssetWarmup`), so the set it waits on is the set a player's first screen waits on.
  *
  * Once per session. A hot reload keeps the play head and the screen the author is looking at, and a
@@ -84,6 +131,8 @@ export function useDevModeInterfaceWarmup(input: {
         if (warmedKeyRef.current === key || !enabled) {
             warmedKeyRef.current = key;
             setState({ key, ready: true, loaded: 0, total: 0 });
+            // A launch into a story row: pages it opens (a backlog, settings) still want warming.
+            warmRestOfInterface(bundle, surfaceId, () => prewarmRef.current());
             return;
         }
         let cancelled = false;
@@ -93,24 +142,10 @@ export function useDevModeInterfaceWarmup(input: {
         void (async () => {
             try {
                 await prewarmRef.current();
-                const publishedIds = publishedDevModeAssetIds();
                 const result = await warmSurfaceAssets({
-                    source: {
-                        uidoc: bundle.ui.uidoc,
-                        fontAssetIds: (bundle.fonts ?? []).map(entry => entry.assetId),
-                        letterboxAssetIds: letterboxAssetIds(bundle.letterbox),
-                        // What the library has, standing in for a pack's manifest. An id the window
-                        // could not resolve is one no widget will draw from this map either, and
-                        // waiting on it would only be waiting for its failure.
-                        manifestIds: publishedIds.size > 0 ? publishedIds : null,
-                    },
+                    ...devModeWarmupAccess,
+                    source: devModeWarmupSource(bundle),
                     surfaceId,
-                    assetUrl: assetId => resolveDevModeAssetUrl(assetId) ?? "",
-                    entryFor: assetId => {
-                        const type = resolveDevModeAssetType(assetId);
-                        return type ? { type } : undefined;
-                    },
-                    loadFont: assetId => warmDevModeFont(assetId),
                     onProgress: (settled, total) => {
                         if (!cancelled) {
                             setState({ key, ready: false, loaded: settled, total });
@@ -146,6 +181,7 @@ export function useDevModeInterfaceWarmup(input: {
                 if (!cancelled) {
                     warmedKeyRef.current = key;
                     setState(previous => ({ ...previous, key, ready: true }));
+                    warmRestOfInterface(bundle, surfaceId, () => prewarmRef.current());
                 }
             }
         })();

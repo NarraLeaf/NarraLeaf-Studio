@@ -34,6 +34,12 @@ export const storyExpr = {
         duplicateVariable: "A variable with this name already exists in this scope.",
         compoundWithoutTarget: "There is no variable here to add to.",
     },
+    /** The kind of asset a slot looks a name up in, as `{assetType}` reads in the reasons below. */
+    assetType: {
+        image: "image",
+        audio: "audio",
+        video: "video",
+    },
     /**
      * Why a line will not commit, said in the row while it is being typed.
      *
@@ -63,6 +69,8 @@ export const storyExpr = {
         notPuppetCharacter: "{value} is not drawn by a runtime, so it has no motion or skin to set.",
         ambiguousName: "More than one thing is called \"{value}\". Rename one of them.",
         conflictingParams: "{keys} cannot both be set on one line. Split the line in two.",
+        positionOutOfRange: "\"{value}\" is not a place on the stage. pos=x,y takes fractions of the stage, not pixels: x from the left edge (0) to the right edge (1), y from the bottom (0) to the top (1), giving where the object's center goes. Values from -1 to 2 reach off screen.",
+        offsetWithoutPosition: "{key}= adds pixels to a position, so it needs pos=x,y on the same line.",
         repeatTimesAndUntil: "A repeat runs a set number of times or until a condition, not both. Remove one of them.",
         expressionError: "{message}",
         expressionNotBoolean: "A condition has to be a true/false test, like gold >= 100.",
@@ -73,6 +81,8 @@ export const storyExpr = {
         expressionTypeMismatch: "\"{variable}\" holds a {expected}, so it cannot take a {received}.",
         duplicateVariable: "\"{value}\" already exists. Choose another name, or use /set to change its value.",
         reservedVariableName: "\"{value}\" is the build variant in an expression. Choose another name.",
+        duplicateLayer: "\"{value}\" is already a layer of this scene. Choose another name.",
+        reservedLayerName: "\"{value}\" names a built-in layer. Choose another name.",
         unknownTarget: "Nothing on stage is named \"{value}\".",
         // The name was right and the verb is wrong. Both messages name the verb the author wrote,
         // because every slot that resolves a kind in order to refuse it reports through these two -

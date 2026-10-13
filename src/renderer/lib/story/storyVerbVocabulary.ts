@@ -64,12 +64,10 @@ const TEXT: Record<OperationOf<"text">, CommandId> = {
     setFontColor: "font",
 };
 
-const LAYER: Record<OperationOf<"layer">, CommandId> = {
-    create: "layer",
-    // `z=` is a param of `/layer`, not a verb of its own.
-    setZIndex: "layer",
-    // So is `depth=` - a background layer's depth row reads back as `/layer backgroundLayer depth=…`.
-    setDepth: "layer",
+// `setZIndex` has no command: it moves a layer in the stacking order part way through a scene, which
+// the scene's stack no longer lets a row say, and it is kept only for the rows that hold it. `/layer`
+// itself writes no row at all - it adds a layer to the scene.
+const LAYER: Partial<Record<OperationOf<"layer">, CommandId>> = {
     show: "show",
     hide: "hide",
     transform: "transform",

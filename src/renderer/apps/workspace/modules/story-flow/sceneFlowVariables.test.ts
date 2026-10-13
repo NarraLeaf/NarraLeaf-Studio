@@ -434,6 +434,46 @@ describe("computeVariableRanges", () => {
         return rangeTuples(computeVariableRanges(buildSceneFlowGraph(story), story, variableKey));
     }
 
+    it("names no number for a persistent counter, which a run starts where the last one left it", () => {
+        // A clear count: the ending adds one, and the next run begins with it. Within one run it
+        // would read 0 on the way in and 1 at the end, and the second run would read 1 and 2 - so
+        // the default is not where a run starts, and the honest chip is "?".
+        const plays = (scope: StoryVariableScope): StoryDocument => document([
+            scene("a", "Title", [
+                declarationBlock("plays", scope, "通关次数", "number", 0),
+                jumpBlock("j1", "end"),
+            ]),
+            scene("end", "Ending", [{
+                id: "w1",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "setVariable",
+                    target: { scope, variableId: "plays" },
+                    value: 0,
+                    expression: {
+                        source: "通关次数 + (1)",
+                        ast: {
+                            kind: "binary",
+                            op: "+",
+                            left: { kind: "var", target: { scope, variableId: "plays" }, name: "通关次数" },
+                            right: { kind: "literal", value: 1 },
+                        },
+                    },
+                },
+            } as StoryBlock]),
+        ], "a");
+
+        const persistent = plays("persistent");
+        expect(rangesOf(persistent, "persistent:plays")).toEqual({ a: "?", end: "?" });
+        expect(foldRouteVariableValue(buildSceneFlowGraph(persistent), persistent, "persistent:plays", {
+            sceneIds: ["a", "end"], branchIds: [],
+        })).toEqual({ kind: "unknown" });
+        // The same counter kept in the save starts every new game at its default.
+        expect(rangesOf(plays("saved"), "saved:plays")).toEqual({ a: "0..0", end: "0..0" });
+    });
+
     it("splits the range down two options and widens it where they meet again", () => {
         // The 好感度分歧线 in one fixture: +2 one way, -1 the other, and a scene reachable by both.
         const story = document([

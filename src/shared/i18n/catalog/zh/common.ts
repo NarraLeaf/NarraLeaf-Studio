@@ -77,6 +77,9 @@ export const common = {
         warnings: {
             other: "{count} 个警告",
         },
+        minorWarnings: {
+            other: "{count} 个次要警告",
+        },
         infos: {
             other: "{count} 个提示",
         },
@@ -91,5 +94,21 @@ export const common = {
         left: "左",
         right: "右",
         overview: "概览",
+    },
+    keys: {
+        arrowUp: "上方向键",
+        arrowDown: "下方向键",
+        arrowLeft: "左方向键",
+        arrowRight: "右方向键",
+        space: "空格键",
+        plus: "加号键",
+        dpadUp: "十字键上",
+        dpadDown: "十字键下",
+        dpadLeft: "十字键左",
+        dpadRight: "十字键右",
+        leftStickUp: "左摇杆上",
+        leftStickDown: "左摇杆下",
+        leftStickLeft: "左摇杆左",
+        leftStickRight: "左摇杆右",
     },
 } satisfies LocaleNamespace<"common">;

@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import path from "path";
-import { shell } from "electron";
+import os from "os";
+import { app as electronApp, shell } from "electron";
 import { unpatchedFs, unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { WindowAppType } from "@shared/types/window";
@@ -48,7 +49,17 @@ import {
 import type { App } from "../../../app";
 import type { AppWindow } from "../window/appWindow";
 import { IPC_PAGE_GONE } from "../window/ipcHost";
-import { dialogTranslator, showOpenDialog } from "../window/fileDialog";
+import { dialogTranslator, showOpenDialog, showSaveDialog } from "../window/fileDialog";
+import {
+    AGENT_CLIENTS,
+    AGENT_INSTALLED_SKILLS,
+    AGENT_SKILL_ZIP_NAME,
+    findAgentClient,
+    type AgentClientId,
+    type AgentClientSetupInfo,
+    type AgentSkillInstallResult,
+} from "@shared/agent/clients";
+import { agentSkillDir, buildSkillZip, changedSkillFolders, homeRelativeDisplay, installSkillFolders } from "./agentSkillInstall";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { defaultTestEdition } from "../../utils/testEdition";
 import { resolveDefaultProjectDirectory } from "../../defaultProjectDirectory";
@@ -443,7 +454,8 @@ export class AgentManager implements AgentMainToolHost {
      * withdrawing access is always safe.
      *
      * The Settings window's switches go through `updateSettings` directly, unconfirmed: that window
-     * is Studio's own and runs no plugin code, so its switch is already the author's answer.
+     * is Studio's own and runs no plugin code, so its switch is already the author's answer. So do
+     * first-run setup's, for the same reason (`AgentQuickToggleHandler`).
      */
     public async quickToggle(window: AppWindow, patch: AgentQuickTogglePatch): Promise<AgentSettingsSnapshot> {
         const current = await this.store.load();
@@ -553,6 +565,81 @@ export class AgentManager implements AgentMainToolHost {
         this.exportedSkillDirs.set(window, target);
         this.app.logger.info(`[Agent] Exported the agent skill to ${target} (${copied} files)`);
         return { canceled: false, path: target };
+    }
+
+    /**
+     * What first-run setup shows to connect an agent: the endpoint, the stdio command, and for each
+     * client that reads a skill folder, that folder and whether the skill is already in it. No token.
+     */
+    public async clientSetup(): Promise<AgentClientSetupInfo> {
+        const snapshot = await this.snapshot();
+        const home = os.homedir();
+        const skillTargets: AgentClientSetupInfo["skillTargets"] = {};
+        for (const client of AGENT_CLIENTS) {
+            const dir = agentSkillDir(home, client);
+            if (!dir) {
+                continue;
+            }
+            skillTargets[client.id] = {
+                displayPath: homeRelativeDisplay(home, dir),
+                installed: unpatchedFs.existsSync(path.join(dir, AGENT_INSTALLED_SKILLS[0], "SKILL.md")),
+            };
+        }
+        return { url: snapshot.url, stdio: snapshot.stdio, skillTargets };
+    }
+
+    /**
+     * Install the bundled skill for one agent application. A client that reads a skill folder gets
+     * the skill folders copied into it - files of the same name replaced, the author's other skills
+     * left alone, so running it again updates the skill. Where a skill folder already holds a
+     * `SKILL.md` that is not Studio's (the author edited it, or another version of Studio wrote it),
+     * replacing it is asked first, as the skill export asks before writing into a folder that holds
+     * something; and a skill folder or file that is a link stops the copy. A client that takes an
+     * upload gets the main skill as a zip, saved where the author picks. A client whose guide comes
+     * from the MCP server has nothing to install.
+     */
+    public async installSkill(window: AppWindow, clientId: AgentClientId): Promise<AgentSkillInstallResult> {
+        const client = findAgentClient(clientId);
+        if (!client) {
+            throw new Error(`Unknown agent application: ${String(clientId)}`);
+        }
+        const source = this.app.resolveResource(path.join("agent", "skills"));
+        if (client.skill === "folder") {
+            const target = agentSkillDir(os.homedir(), client);
+            if (!target) {
+                throw new Error(`${client.id} has no skill folder`);
+            }
+            const changed = await changedSkillFolders(fs, source, target);
+            if (changed.length > 0) {
+                window.refuseUnattendedPrompt("Agent skill install asked whether to replace a changed SKILL.md");
+                const folders = changed.map(name => path.join(target, name));
+                const replace = await this.askInStudioWindow(window, { kind: "skillOverwrite", folders }, true);
+                if (!replace) {
+                    return { canceled: true };
+                }
+            }
+            const copied = await installSkillFolders(fs, source, target);
+            this.exportedSkillDirs.set(window, path.join(target, AGENT_INSTALLED_SKILLS[0]));
+            this.app.logger.info(`[Agent] Installed the agent skill for ${client.id} into ${target} (${copied} files)`);
+            return { canceled: false, path: target };
+        }
+        if (client.skill === "upload") {
+            const { t } = dialogTranslator(window);
+            const picked = await showSaveDialog(window, {
+                title: t("workspace.agent.confirm.exportSkill.title"),
+                defaultPath: path.join(electronApp.getPath("desktop"), AGENT_SKILL_ZIP_NAME),
+                filters: [{ name: "Zip", extensions: ["zip"] }],
+            });
+            if (picked.canceled || !picked.filePath) {
+                return { canceled: true };
+            }
+            const zip = await buildSkillZip(fs, path.join(source, AGENT_INSTALLED_SKILLS[0]), AGENT_INSTALLED_SKILLS[0]);
+            await fs.writeFile(picked.filePath, zip);
+            this.exportedSkillDirs.set(window, picked.filePath);
+            this.app.logger.info(`[Agent] Wrote the agent skill as ${picked.filePath} (${zip.length} bytes)`);
+            return { canceled: false, path: picked.filePath };
+        }
+        throw new Error(`${client.id} reads the guide from the MCP server; there is nothing to install`);
     }
 
     /** Show what the last export from this window wrote. False when it exported nothing yet. */
@@ -1420,10 +1507,19 @@ function headlessTestResult(
         return agentRefusal("unavailable", finished);
     }
     if (finished.test) {
-        const { title, status, summary, findings } = finished.test;
+        const { title, status, summary } = finished.test;
+        // An agent reads English (the tool descriptions are), so a finding's English rendering wins
+        // over the one in the Studio UI language when the test supplied it; the rule id travels as
+        // `rule`, the name the `lint` tool uses for the same thing.
+        const findings = finished.test.findings.map(({ englishMessage, id, ...finding }) => ({
+            severity: finding.severity,
+            ...(id ? { rule: id } : {}),
+            message: englishMessage || finding.message,
+            ...(finding.location ? { location: finding.location } : {}),
+        }));
         const lines = [
             `${title} (${finished.test.testId}): ${status}${summary ? ` - ${summary}` : ""}`,
-            ...findings.slice(0, 50).map(finding => `- [${finding.severity}] ${finding.message}${finding.location ? ` (${finding.location})` : ""}`),
+            ...findings.slice(0, 50).map(finding => `- [${finding.severity}]${finding.rule ? ` ${finding.rule}:` : ""} ${finding.message}${finding.location ? ` (${finding.location})` : ""}`),
         ];
         return agentText(lines.join("\n"), { ...finished.test, findings: findings.slice(0, 200) });
     }

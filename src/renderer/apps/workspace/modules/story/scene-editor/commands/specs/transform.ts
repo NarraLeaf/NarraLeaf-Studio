@@ -19,7 +19,7 @@ import { resetVariableBlock } from "./variables";
 import {
     filterWritersOf,
     parseFromProps,
-    parsePositionValue,
+    positionIssues,
     CAMERA_ONLY_PROP_KEYS,
     RESET_CHANNEL_KEYS,
     RESET_PROP_PARAMS,
@@ -153,7 +153,7 @@ const CAMERA_DEFAULT_DURATION_MS = 600;
  * carries the same {@link StoryTransformRef} every other subject does, so the line's bag IS the row
  * and every prop in the vocabulary reaches the camera the way it reaches a sprite.
  */
-function cameraBlock(args: TransformArgs, generateId: () => string, operation: CameraTransformOperation): StoryBlock {
+function cameraBlock(args: TransformArgs, generateId: () => string, operation: CameraTransformOperation, storedFar: readonly string[] = []): StoryBlock {
     const block = (payload: Extract<StoryActionPayload, { action: "camera" }>): StoryBlock => ({
         id: generateId(),
         parentId: null,
@@ -174,7 +174,7 @@ function cameraBlock(args: TransformArgs, generateId: () => string, operation: C
     }
     const props = pruneStoryTransformProps(transformPropsFromArgs(args));
     const transform: StoryTransformRef = {
-        ...transformTimingFromArgs(args),
+        ...transformTimingFromArgs(args, storedFar),
         durationMs: asDurationMs(args.d) ?? CAMERA_DEFAULT_DURATION_MS,
         ...(props ? { to: props } : {}),
     };
@@ -235,12 +235,9 @@ function validateProps(
         }
     }
 
-    // A position that is neither a placement word nor an align pair. The grammar cannot check it -
-    // the pair has no closed value set - so the spec is the only place it can be said.
-    const posSpan = ctx.spanOf("pos");
-    if (posSpan && args.pos !== undefined && parsePositionValue(args.pos.kind === "text" ? args.pos.value : undefined) === null && args.pos.kind === "text") {
-        issues.push({ code: "unsupportedOption", span: posSpan, value: args.pos.value, allowed: ["left", "center", "right", "x,y"] });
-    }
+    // A position that is neither a placement word nor an align pair, or an offset with no pair to
+    // shift. The grammar cannot check either, so the spec is the only place it can be said.
+    issues.push(...positionIssues(args, ctx));
 
     // A Story Motion is a whole keyframed shot with its own timing; a prop bag is a destination with
     // one. A row carrying both says two different things about the same move.
@@ -254,13 +251,13 @@ function validateProps(
     // `from=` is re-parsed rather than resolved (see `parseFromProps`), so its own bad keys have
     // nowhere else to be reported.
     const fromSpan = ctx.spanOf("from");
-    const from = args.from?.kind === "text" ? parseFromProps(args.from.value) : null;
+    const from = args.from?.kind === "text" ? parseFromProps(args.from.value, ctx.context.storedFarPositions) : null;
     if (fromSpan && from && from.badKeys.length > 0) {
         issues.push({
             code: "unsupportedOption",
             span: fromSpan,
             value: from.badKeys[0],
-            allowed: ["pos", "zoom", "scale", "rot", "opacity", "blur", "bright", "gray", "sat", "sepia", "hue", "invert"],
+            allowed: ["pos", "xoffset", "yoffset", "zoom", "scale", "rot", "opacity", "blur", "bright", "gray", "sat", "sepia", "hue", "invert"],
         });
     }
 
@@ -336,6 +333,8 @@ export const transform = defineStoryCommand({
     icon: Move3d,
     examples: [
         "/transform hero pos=left d=0.4",
+        "/transform hero pos=0.3,0.6 d=0.4",
+        "/transform hero pos=0.5,0.5 xoffset=40 yoffset=-12 d=0.4",
         "/transform hero blur=4 gray=1",
         "/transform Alice flip=on",
         "/transform hero loop scaleY=1.02 d=0.9 repeatType=mirror",
@@ -361,7 +360,7 @@ export const transform = defineStoryCommand({
         const subject = subjectOf(args.target);
         const operation = operationOf(args);
         if (subject.kind === "camera") {
-            return cameraBlock(args, ctx.generateId, operation);
+            return cameraBlock(args, ctx.generateId, operation, ctx.context.storedFarPositions);
         }
         if (operation === "stopLoop") {
             const durationMs = asDurationMs(args.d);
@@ -377,7 +376,7 @@ export const transform = defineStoryCommand({
         }
         const props = pruneStoryTransformProps(transformPropsFromArgs(args));
         const transformRef: StoryTransformRef = {
-            ...transformTimingFromArgs(args),
+            ...transformTimingFromArgs(args, ctx.context.storedFarPositions),
             ...(props ? { to: props } : {}),
         };
         return displayableBlock(asTarget(args.target), transformRef, ctx.generateId, operation);

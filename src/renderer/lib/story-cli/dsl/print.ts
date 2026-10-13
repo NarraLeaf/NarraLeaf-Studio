@@ -38,6 +38,7 @@ import { conditionSource, type ConditionLookups } from "./condition";
 import { sameRowContent } from "./equal";
 import { proseLineOf, type ProseLookups } from "./prose";
 import { printSceneSettings } from "./sceneSettings";
+import { printSceneLayers } from "./sceneLayers";
 import {
     ANCHOR_CLOSE,
     ANCHOR_OPEN,
@@ -130,6 +131,8 @@ export function printStoryScene(input: PrintInput): PrintResult {
         `${DIRECTIVE_SCENE} ${scene.name} ${ANCHOR_OPEN}${scene.id}${ANCHOR_CLOSE}`,
         // What the scene opens on before its first row runs - not rows, so they live in the header.
         ...printSceneSettings(scene, input.context),
+        // The scene's layers, nearest first, for a scene that has layers of its own.
+        ...printSceneLayers(scene),
     ];
     const footer = Object.keys(data).length > 0
         // One row per line rather than one blob: a diff of two exports should point at the row that

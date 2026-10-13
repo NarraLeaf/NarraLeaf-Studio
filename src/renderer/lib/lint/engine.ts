@@ -6,6 +6,7 @@ import { annotateBlueprintLocation, createBlueprintNodeLocator } from "./bluepri
 import {
     LINT_CATEGORY_ORDER,
     LINT_SEVERITY_ORDER,
+    countLintSeverities,
     type LintFinding,
     type LintLocation,
     type LintReport,
@@ -135,7 +136,7 @@ export async function runLintRules(ctx: LintContext, options: LintRunOptions = {
         startedAt,
         finishedAt: Date.now(),
         entries,
-        counts: countBySeverity(entries),
+        counts: countLintSeverities(entries),
         rulesRun,
         skipped,
         durations,
@@ -185,14 +186,6 @@ function coerceOption(spec: LintRuleOptionSpec, value: unknown): string | number
         return value;
     }
     return typeof value === "string" && spec.values.includes(value) ? value : spec.default;
-}
-
-function countBySeverity(entries: readonly LintReportEntry[]): LintReport["counts"] {
-    const counts = { error: 0, warning: 0, info: 0 };
-    for (const entry of entries) {
-        counts[entry.severity] += 1;
-    }
-    return counts;
 }
 
 /** Severity, then category, then rule id, then location - stable and locale-independent. */

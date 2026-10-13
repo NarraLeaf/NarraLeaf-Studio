@@ -1,12 +1,15 @@
-import { Plus } from "lucide-react";
+import { Search } from "lucide-react";
 import { useAssetDropTarget } from "@/apps/workspace/dnd/useAssetDropTarget";
 import { useWorkspace } from "@/apps/workspace/context";
 import {
     openAssetPreviewTabsInEditor,
     setWorkspaceSelectionToPrimaryAsset,
 } from "@/apps/workspace/modules/assets/dnd/openDraggedAssetsInEditor";
-import { openNewTab } from "@/apps/workspace/modules/new-tab/openNewTab";
 import { useTranslation } from "@/lib/i18n";
+import { Services } from "@/lib/workspace/services/services";
+import { UIService } from "@/lib/workspace/services/core/UIService";
+import { useShortcutLabels } from "../../hooks/useShortcutLabels";
+import { QUICK_OPEN_BINDING_ID } from "./QuickOpenPicker";
 import { useWorkspaceBackgroundImage } from "./useWorkspaceBackgroundImage";
 import { ProductLogoWatermark } from "./ProductLogoWatermark";
 
@@ -19,7 +22,8 @@ interface MainEditorEmptyDropZoneProps {
  */
 export function MainEditorEmptyDropZone({ groupId }: MainEditorEmptyDropZoneProps) {
     const { t } = useTranslation();
-    const { context } = useWorkspace();
+    const { context, recovery } = useWorkspace();
+    const shortcuts = useShortcutLabels();
 
     const { dropTargetProps, overlayClassName } = useAssetDropTarget({
         onDrop: ({ wire, resolved }) => {
@@ -37,14 +41,12 @@ export function MainEditorEmptyDropZone({ groupId }: MainEditorEmptyDropZoneProp
     // space. Hide the watermark whenever a background is set; the wallpaper is the backdrop instead.
     const { url: backgroundUrl } = useWorkspaceBackgroundImage();
 
-    const handleNewTab = () => {
-        if (!context) {
-            return;
-        }
-        // Same as the strip's "+": open a browser-style blank tab in this group. The blank page
-        // carries the Quick Open entry point itself.
-        openNewTab(context, groupId);
+    // Same as the strip's "+": Quick Open, where anything with a tab is picked by name. A recovery
+    // window has no Quick Open, and draws no button for it.
+    const openQuickOpen = () => {
+        context?.services.get<UIService>(Services.UI).keybindings.trigger(QUICK_OPEN_BINDING_ID);
     };
+    const quickOpenLabel = t("workspace.shell.quickOpen.title");
 
     return (
         <div
@@ -64,14 +66,18 @@ export function MainEditorEmptyDropZone({ groupId }: MainEditorEmptyDropZoneProp
                     </div>
                 )}
 
-                <button
-                    type="button"
-                    onClick={handleNewTab}
-                    className="pointer-events-auto flex items-center gap-2 px-4 h-9 rounded-md border border-edge bg-surface/60 text-sm text-fg-muted hover:text-fg hover:bg-surface transition-colors"
-                >
-                    <Plus className="w-4 h-4" />
-                    <span>{t("workspace.shell.newTab")}</span>
-                </button>
+                {recovery ? null : (
+                    <button
+                        type="button"
+                        onClick={openQuickOpen}
+                        className="pointer-events-auto flex items-center gap-2 px-4 h-9 rounded-md border border-edge bg-surface/60 text-sm text-fg-muted hover:text-fg hover:bg-surface transition-colors"
+                        data-tip={quickOpenLabel}
+                        data-tip-shortcut={shortcuts.forBinding(QUICK_OPEN_BINDING_ID)}
+                    >
+                        <Search className="w-4 h-4" />
+                        <span>{quickOpenLabel}</span>
+                    </button>
+                )}
             </div>
         </div>
     );

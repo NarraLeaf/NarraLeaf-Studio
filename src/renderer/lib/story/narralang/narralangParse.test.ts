@@ -273,13 +273,15 @@ describe("one keyword, seven statements", () => {
     const stage = [
         "image create bird corridor_dusk",
         "text create title \"第一章\"",
-        "layer create sky zindex 5",
         "video play op corridor_dusk",
         "vfx create petals corridor_dusk",
     ];
+    // A layer is the scene's, so the script names one the scene already has.
+    const sceneLayers = [{ kind: "custom" as const, id: "sky-layer", name: "sky" }];
+    const parseOnStage = (...lines: string[]) => parseNarralangScene([...stage, ...lines].join("\n"), lookups, { sceneLayers });
 
     const lastPayload = (line: string): unknown => {
-        const result = parse(...stage, line);
+        const result = parseOnStage(line);
         expect(result.diagnostics).toEqual([]);
         const all = rows(result);
         return all[all.length - 1].payload;
@@ -297,13 +299,22 @@ describe("one keyword, seven statements", () => {
         expect(lastPayload("show title")).toMatchObject({ action: "text", operation: "show", objectName: "title" });
     });
 
-    it("reads a layer", () => {
-        expect(lastPayload("show sky")).toMatchObject({ action: "layer", operation: "show", objectName: "sky" });
+    it("reads a layer, bound to the scene's layer of that name", () => {
+        expect(lastPayload("show sky")).toMatchObject({
+            action: "layer",
+            operation: "show",
+            objectName: "sky",
+            target: { kind: "custom", sourceBlockId: "sky-layer", name: "sky" },
+        });
+    });
+
+    it("refuses a line that declares a layer, which only the scene can do", () => {
+        expect(parse("layer create mist").diagnostics).toEqual([{ line: 1, column: 1, reason: "layerDeclaration", detail: "mist" }]);
     });
 
     it("reads a video's hide, and has no show for one", () => {
         expect(lastPayload("hide op")).toMatchObject({ action: "video", operation: "hide", objectName: "op" });
-        const shown = rows(parse(...stage, "show op"));
+        const shown = rows(parseOnStage("show op"));
         expect(shown[shown.length - 1].kind).toBe("invalid");
     });
 

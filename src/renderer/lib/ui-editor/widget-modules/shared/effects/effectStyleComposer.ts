@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import type { ElementEffectValues } from "@shared/types/ui-editor/effects";
-import { effectFilterStoredToCss, effectShadowStoredToCss } from "@shared/types/ui-editor/effects";
+import { effectFilterStoredToCss, effectShadowStoredToCss, effectTextShadowStoredToCss } from "@shared/types/ui-editor/effects";
 
 export type ComposedChromeEffectLayers = {
     /** Applied on chrome root (user outer + glow + inset shadows). */
@@ -80,7 +80,7 @@ export function composeTextEffectStyle(effects: ElementEffectValues): TextEffect
     if (blendRaw) {
         out.mixBlendMode = blendRaw as CSSProperties["mixBlendMode"];
     }
-    const ts = effectShadowStoredToCss(effects.effectTextShadow, "outer");
+    const ts = effectTextShadowStoredToCss(effects.effectTextShadow);
     if (ts) {
         out.textShadow = ts;
     }

@@ -14,7 +14,8 @@ import type {
 } from "@shared/types/plugins";
 import type { PluginRegistryFetchResult } from "@shared/types/pluginRegistry";
 import type { LocaleContribution } from "@shared/i18n";
-import { downloadAndExtract, fetchRegistryIndex, resolveRegistryUrl } from "../../pluginRegistryClient";
+import { downloadAndExtract, fetchPluginCatalogue, presentPluginCatalogue } from "../../pluginRegistryClient";
+import { storeSourceChoice } from "../../storeSource";
 import { WindowAppType, WindowCloseResults } from "@shared/types/window";
 import { satisfiesRange } from "@shared/utils/semver";
 import { readProjectConfigFromDir } from "../../../utils/projectConfigFile";
@@ -296,15 +297,18 @@ export class PluginRegistryFetchHandler extends IPCHandler<IPCEventType.pluginRe
         const denied = ensurePluginInstallCapability(window);
         if (denied) return denied;
 
-        const registryUrl = resolveRegistryUrl(window.app.getGlobalState().get("plugins.registryUrl"));
+        const choice = pluginStoreChoice(window);
         // Refresh means the whole store, thumbnails included: an icon that was
         // unreachable last time gets another chance. Ones already on disk stay
         // there — they are keyed by version, so they cannot be stale.
         window.app.pluginIconCache.clearFailures();
-        return this.tryUse(async () => ({
-            registryUrl,
-            index: await fetchRegistryIndex(registryUrl),
-        }));
+        return this.tryUse(async () => {
+            const catalogue = await fetchPluginCatalogue(choice);
+            return {
+                registryUrl: catalogue.origin.servedUrl,
+                index: presentPluginCatalogue(catalogue),
+            };
+        });
     }
 }
 
@@ -321,9 +325,9 @@ export class PluginRegistryIconHandler extends IPCHandler<IPCEventType.pluginReg
 
         // Same shape as the install handler: the renderer names a plugin, and
         // the address is taken from the index main trusts. It never supplies one.
-        const registryUrl = resolveRegistryUrl(window.app.getGlobalState().get("plugins.registryUrl"));
+        const choice = pluginStoreChoice(window);
         return this.tryUse(async () => ({
-            icon: await window.app.pluginIconCache.resolve(registryUrl, data.pluginId),
+            icon: await window.app.pluginIconCache.resolve(choice, data.pluginId),
         }));
     }
 }
@@ -341,9 +345,9 @@ export class PluginInstallFromRegistryHandler extends IPCHandler<IPCEventType.pl
 
         // Re-fetch the index and match the id here so the download URL is the one
         // the trusted registry carries, never an address supplied by the renderer.
-        const registryUrl = resolveRegistryUrl(window.app.getGlobalState().get("plugins.registryUrl"));
+        const choice = pluginStoreChoice(window);
         const installed = await this.tryUse(async () => {
-            const index = await fetchRegistryIndex(registryUrl);
+            const { index, origin } = await fetchPluginCatalogue(choice);
             const entry = index.plugins.find(plugin => plugin.id === data.pluginId);
             if (!entry) {
                 throw new Error(`Plugin is not in the registry: ${data.pluginId}`);
@@ -367,10 +371,12 @@ export class PluginInstallFromRegistryHandler extends IPCHandler<IPCEventType.pl
                 `nls-plugin-install-${Date.now()}-${Math.random().toString(36).slice(2)}`,
             );
             try {
-                const manifestDir = await downloadAndExtract(entry, tempDir);
+                // Recorded as the address the package actually came from, which is what the
+                // permission prompt shows as its source.
+                const { manifestDir, url } = await downloadAndExtract(entry, origin, tempDir);
                 return await window.app.pluginManager.installFromDirectory(manifestDir, {
                     kind: "registry",
-                    url: entry.release.download,
+                    url,
                 });
             } finally {
                 await fs.rm(tempDir, { recursive: true, force: true });
@@ -385,4 +391,10 @@ export class PluginInstallFromRegistryHandler extends IPCHandler<IPCEventType.pl
         }
         return installed;
     }
+}
+
+/** The plugin store's source, as Settings › Network holds it. */
+function pluginStoreChoice(window: AppWindow) {
+    const state = window.app.getGlobalState();
+    return storeSourceChoice(key => state.get(key), "plugins.registryUrl");
 }

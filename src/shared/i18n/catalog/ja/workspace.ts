@@ -453,6 +453,13 @@ export const workspace = {
                 existsDetail: "同じ名前のファイルは置き換え、ほかのファイルはそのまま残す",
                 replace: "置き換える",
             },
+            installSkill: {
+                title: "Agent Skill をインストール",
+                changedOne: "このフォルダーの SKILL.md は Studio のものと異なる",
+                changedMany: "次のフォルダーの SKILL.md は Studio のものと異なる",
+                changedDetail: "同じ名前のファイルは現在の Studio の Agent Skill で置き換え、ほかのスキルはそのまま残す",
+                replace: "置き換える",
+            },
             folderAccess: {
                 title: "エージェントにフォルダーの読み取りを許可する？",
                 messageOne: "{client} が次のフォルダーの読み取りを求めている",
@@ -473,6 +480,9 @@ export const workspace = {
         },
         log: {
             pluginTool: "プラグイン {plugin} のツール",
+            target: {
+                standardScreens: "標準画面",
+            },
             filter: {
                 all: "すべて",
                 writes: "変更のみ",
@@ -557,6 +567,10 @@ export const workspace = {
             ui_patch: "要素を編集",
             ui_templates: "インターフェーステンプレート",
             ui_template_apply: "テンプレートを適用",
+            ui_page_rename: "ページ名を変更",
+            ui_page_delete: "ページを削除",
+            ui_page_set_entry: "開始ページを設定",
+            ui_install_standard_screens: "標準画面を導入",
             brand_get: "配色を読む",
             brand_set: "配色を変更",
             blueprint_nodes: "ブループリントノード一覧",
@@ -564,6 +578,7 @@ export const workspace = {
             blueprint_list: "ブループリント一覧",
             blueprint_show: "ブループリントをテキストで読む",
             blueprint_apply: "ブループリントを書き込む",
+            blueprint_remove: "ブループリントを削除",
             localization_status: "翻訳の進捗",
             localization_list: "翻訳するテキストを一覧",
             localization_set: "翻訳を書き込む",
@@ -577,6 +592,12 @@ export const workspace = {
             playtest_start: "ゲームをプレイ",
             playtest_advance: "プレイを進める",
             playtest_screenshot: "プレイ画面のスクリーンショット",
+            asset_usage: "アセットの使用箇所",
+            chapter_rename: "チャプターの名前を変更",
+            chapter_delete: "チャプターを削除",
+            playtest_click: "プレイ中にクリック",
+            playtest_hover: "プレイ中にポインターを重ねる",
+            playtest_key: "プレイ中にキーを押す",
             playtest_stop: "プレイを終了",
             console_read: "コンソールを読む",
             build: "ゲームをビルド",
@@ -789,11 +810,6 @@ export const workspace = {
         noActiveEditor: "エディタが開いていない",
         closePanel: "パネルを閉じる",
         closeTab: "{name} を閉じる",
-        newTab: "新しいタブ",
-        // タブ列の「+」で開く、ブラウザ風の空のタブ。
-        newTabPage: {
-            title: "新しいタブ",
-        },
         tabMenu: {
             keepOpen: "タブとして残す",
             close: "閉じる",
@@ -913,6 +929,8 @@ export const workspace = {
                 asset: "アセット",
                 blueprint: "ブループリント",
             },
+            // 種類・名前・場所がすべて同じ行に、プロジェクト内の順序で振る番号。
+            ordinal: "{n} 番目",
         },
         // 下端のステータスの帯。意味のあるときだけ出る。
         statusBar: {
@@ -1737,6 +1755,9 @@ export const workspace = {
                     clearMarker: "マーカーを消去",
                     videoZoom: "画面をズーム",
                     videoActualSize: "ウィンドウに合わせる表示と実寸を切り替え",
+                    moveSelection: "選択を移動",
+                    extendSelection: "選択を広げる",
+                    moveThroughGroupTree: "グループツリー内を移動",
                 },
             },
         },

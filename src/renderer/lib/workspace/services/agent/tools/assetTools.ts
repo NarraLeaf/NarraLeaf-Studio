@@ -12,11 +12,15 @@
  * main granted it to this window (`AgentManager.grantFolders`). A path this check admits but the
  * window may not read fails at import with `sourceUnreadable`, and the answer says so.
  *
- * An image that cannot be transparent and is taller than it is wide gets a warning: that shape is a
- * standing sprite, and an opaque sprite shows on the stage as a rectangle. Every opaque image is not
- * warned about, because backgrounds and CGs are opaque by design - a warning on every background
- * would teach an agent to read past the one that matters. `character_upsert` warns for every opaque
- * pose whatever its shape, since there the use is no longer a guess.
+ * A path that names no file is reported as not found before anything else is tried. The import
+ * itself cannot tell a missing file from one this window may not read, and answering "may be outside
+ * the directories this window is allowed to read" for a typo sends an agent off asking for access it
+ * already has.
+ *
+ * Import does not warn about opaque images. Whether a picture needs transparency depends on what it
+ * becomes, and at import that is a guess: backgrounds and CGs are opaque by design, and a portrait CG
+ * has a sprite's shape. The warning lives where the use is known - `character_upsert` and the layered
+ * sprite tools warn for every opaque pose or layer.
  *
  * Comments in English per project convention.
  */
@@ -42,8 +46,8 @@ import { describeBlockedDelete } from "../../assets/assetDeleteGuard";
 import { AGENT_ASSET_TYPES, assetsService, listAssets, stripExtension } from "../agentLookups";
 import { ensureAgentMayReadPaths } from "../agentFolderRequest";
 import { agentWriteBlocked, assertAgentMayStillWrite } from "../agentCommitGate";
-import { opaqueImageWarning } from "../imageAlpha";
-import { readImageFacts } from "./castTools";
+import { findAssetMentions, type AssetMention } from "../assetMentions";
+import { liveBlueprintDocument, loadAllStories, uiDocumentService } from "./textFormat";
 
 const IMPORTABLE_TYPES: readonly AssetType[] = [AssetType.Image, AssetType.Audio, AssetType.Video, AssetType.Font];
 
@@ -149,7 +153,7 @@ async function finishImported(
 export function describeImportRefusal(refusal: AssetImportRefusal | undefined, fallback: string | undefined): string {
     switch (refusal?.kind) {
         case "sourceUnreadable":
-            return "Studio could not read the file (it may be outside the directories this window is allowed to read).";
+            return "The file exists, but Studio could not read it (it may be outside the directories this window is allowed to read).";
         case "empty":
             return "The file is empty.";
         case "wrongType":
@@ -167,6 +171,19 @@ export function describeImportRefusal(refusal: AssetImportRefusal | undefined, f
         default:
             return fallback ?? "The import failed.";
     }
+}
+
+/**
+ * Whether `path` is known to name no file. `false` when it exists, and also when the existence check
+ * itself was refused or failed: only a definite "no such file" counts as missing.
+ */
+export async function isSourceMissing(path: string): Promise<boolean> {
+    const answer = await appPrivilegedFacade.fs.isFileExists(path).catch(() => null);
+    return Boolean(answer && answer.success && answer.data.ok && answer.data.data === false);
+}
+
+export function describeMissingSource(path: string): string {
+    return `File not found: no file exists at ${path}. Check the path and its spelling; nothing was imported from it.`;
 }
 
 export const assetsImport: AgentToolHandler = async (args, { ctx, request, follow, log }) => {
@@ -195,7 +212,6 @@ export const assetsImport: AgentToolHandler = async (args, { ctx, request, follo
     const imported: ReturnType<typeof describeAsset>[] = [];
     const duplicates: { path: string; existing: ReturnType<typeof describeAsset> }[] = [];
     const failed: { path: string; reason: string }[] = [];
-    const warnings: string[] = [];
     let stopped: { code: string; message: string } | null = null;
 
     for (let index = 0; index < paths.length; index += 1) {
@@ -221,6 +237,10 @@ export const assetsImport: AgentToolHandler = async (args, { ctx, request, follo
             failed.push({ path, reason: `No asset type takes ${extname(path) || "files without an extension"}.` });
             continue;
         }
+        if (await isSourceMissing(path)) {
+            failed.push({ path, reason: describeMissingSource(path) });
+            continue;
+        }
         const hashed = await appPrivilegedFacade.fs.hash(path).catch(() => null);
         const hash = hashed && hashed.success && hashed.data.ok ? hashed.data.data : null;
         if (hash) {
@@ -239,23 +259,19 @@ export const assetsImport: AgentToolHandler = async (args, { ctx, request, follo
         const wanted = names?.[index]?.trim() || stripExtension(basename(path));
         const finished = await finishImported(ctx, status.data as Asset<AssetType, AssetSource>, wanted, folder);
         imported.push(describeAsset(service, finished));
-        if (finished.type === AssetType.Image) {
-            const facts = await readImageFacts(ctx, finished.id);
-            if (facts && facts.header.alpha === false && facts.size && facts.size.height > facts.size.width) {
-                warnings.push(opaqueImageWarning(finished.name, facts.header));
-            }
-        }
     }
 
     log("info", `imported ${imported.length}, duplicates ${duplicates.length}, failed ${failed.length}`);
     const lead = [
         `Imported ${imported.length} of ${paths.length}.`,
-        duplicates.length > 0 ? `${duplicates.length} already in the project under another name (not imported again).` : "",
+        duplicates.length > 0
+            ? `${duplicates.length} already in the project byte for byte, so not imported again: no asset was made under the new name; `
+                + "use the existing asset's name given under `duplicates`."
+            : "",
         failed.length > 0 ? `${failed.length} failed.` : "",
-        warnings.length > 0 ? `${warnings.length} warning(s).` : "",
         stopped ? `Stopped: ${stopped.message}` : "",
     ].filter(Boolean).join(" ");
-    return answerJson({ imported, duplicates, failed, ...(warnings.length > 0 ? { warnings } : {}), ...(stopped ? { stopped } : {}) }, lead);
+    return answerJson({ imported, duplicates, failed, ...(stopped ? { stopped } : {}) }, lead);
 };
 
 const PLACEHOLDER_MAX_EDGE = 8192;
@@ -413,6 +429,17 @@ export const assetDelete: AgentToolHandler = async (args, { ctx, request, follow
                 + "ui_patch or blueprint_apply for pages - then delete it. Nothing was deleted.",
         );
     }
+    // The index found nothing. Ask the stored values too before deleting: a row kind the index does
+    // not know reads as unused there, and this is the call that would delete what it uses.
+    const mentioned = await assetMentionsIn(ctx, asset.id);
+    if (mentioned.length > 0) {
+        throw refuse(
+            "unavailable",
+            `${asset.type} "${asset.name}" is not in Studio's usage index, but its id is still written in ${mentioned.length} place(s):\n`
+                + `${describeMentions(mentioned)}\nThese are uses the index does not count, so lint may list the asset as unused. Nothing was deleted.`,
+            "Leave it, or rewrite those places first and try again.",
+        );
+    }
     assertAgentMayStillWrite({ ctx, request, follow }, "Nothing was deleted.");
     const result = await service.deleteAsset(asset);
     if (!result.success) {
@@ -421,5 +448,68 @@ export const assetDelete: AgentToolHandler = async (args, { ctx, request, follow
     return answerJson(
         { deleted: { id: asset.id, name: asset.name, type: asset.type } },
         `Deleted ${asset.type} "${asset.name}". One step of undo in Studio.`,
+    );
+};
+
+/** Every place the project's stored values write an asset's id - the second opinion beside the index. */
+async function assetMentionsIn(ctx: WorkspaceContext, assetId: string): Promise<AssetMention[]> {
+    const { stories } = await loadAllStories(ctx);
+    let uiDocument = null;
+    try {
+        uiDocument = uiDocumentService(ctx).getDocument();
+    } catch {
+        // No interface document open: nothing there to name it.
+    }
+    let blueprintDocument = null;
+    try {
+        blueprintDocument = liveBlueprintDocument(ctx);
+    } catch {
+        // Likewise for the blueprints.
+    }
+    return findAssetMentions({ assetId, stories, uiDocument, blueprintDocument });
+}
+
+const MENTIONS_SPELLED_OUT = 30;
+
+function describeMentions(mentioned: readonly AssetMention[]): string {
+    const lines = mentioned.slice(0, MENTIONS_SPELLED_OUT).map(item => `- ${item.where}`);
+    if (mentioned.length > MENTIONS_SPELLED_OUT) {
+        lines.push(`- ...and ${mentioned.length - MENTIONS_SPELLED_OUT} more`);
+    }
+    return lines.join("\n");
+}
+
+export const assetUsage: AgentToolHandler = async (args, { ctx, request, follow }) => {
+    const type = readOptionalString(args, "type") as AssetType | undefined;
+    if (type && !AGENT_ASSET_TYPES.includes(type)) {
+        throw refuse("invalid_args", `Unknown asset type "${type}".`);
+    }
+    const asset = resolveAnyAsset(ctx, readString(args, "asset"), type);
+    follow.describeCall(request.callId, asset.name);
+    const report = await assetsService(ctx).findAssetReferences([asset.id], [asset.type]);
+    const indexed = (report.references.get(asset.id) ?? []).map(reference => ({
+        where: [reference.label, reference.detail].filter(Boolean).join(" › "),
+        field: reference.field ?? null,
+        ...(reference.dormant ? { dormant: true } : {}),
+    }));
+    const mentioned = await assetMentionsIn(ctx, asset.id);
+    const used = indexed.length > 0 || mentioned.length > 0;
+    const lines = [
+        used
+            ? `${asset.type} "${asset.name}" is used. Do not delete it until every place below is rewritten.`
+            : `${asset.type} "${asset.name}" is not used anywhere Studio can see: nothing in its usage index, and its id is written nowhere in the stories, pages or blueprints.`,
+    ];
+    if (!report.checked) {
+        lines.push("Studio's usage index is incomplete right now (lint names what it cannot read), so treat a clean answer with care.");
+    }
+    if (indexed.length > 0) {
+        lines.push(`In the usage index (${indexed.length}):`, ...indexed.map(item => `- ${item.where}${item.field ? ` (${item.field})` : ""}`));
+    }
+    if (mentioned.length > 0) {
+        lines.push(`Where its id is written (${mentioned.length}):`, describeMentions(mentioned));
+    }
+    return answerJson(
+        { asset: { id: asset.id, name: asset.name, type: asset.type }, used, indexComplete: report.checked, indexed, mentioned },
+        lines.join("\n"),
     );
 };

@@ -5,15 +5,13 @@ import {
     ChevronsDownUp,
     ChevronsUpDown,
     CircleHelp,
-    CircleX,
-    Info,
     Loader2,
     RefreshCw,
     Settings2,
-    TriangleAlert,
 } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
+    countLintSeverities,
     deriveLintRuleSlug,
     resolveLintMessageParams,
     type LintLocation,
@@ -65,31 +63,17 @@ import {
     type LintSeverityFilter,
 } from "./lintReportModel";
 import { filterEntriesByScope, PROBLEMS_SCOPES, type ProblemsScope } from "./problemsScope";
+import { LINT_SEVERITY_ICON, LINT_SEVERITY_TEXT_CLASS } from "./severityStyle";
 
 const ICON_BUTTON_CLASS = controlButtonClass();
-
-/** Text colour per severity. Info is the accent, as the design system assigns it. */
-const SEVERITY_TEXT_CLASS: Record<LintSeverity, string> = {
-    error: "text-danger",
-    warning: "text-warning",
-    info: "text-primary",
-};
-
-const SEVERITY_ICON: Record<LintSeverity, typeof CircleX> = {
-    error: CircleX,
-    warning: TriangleAlert,
-    info: Info,
-};
 
 const GROUP_ROW_HEIGHT_PX = 26;
 const ENTRY_ROW_HEIGHT_PX = 24;
 
-const SEVERITY_FILTER_OPTIONS: SelectOption[] = [
-    { value: "all", labelKey: "lint.report.filterAll" as TranslationKey },
-    { value: "error", labelKey: "lint.severity.error" as TranslationKey },
-    { value: "warning", labelKey: "lint.severity.warning" as TranslationKey },
-    { value: "info", labelKey: "lint.severity.info" as TranslationKey },
-];
+const SEVERITY_FILTER_OPTIONS: SelectOption[] = LINT_SEVERITY_FILTERS.map(filter => ({
+    value: filter,
+    labelKey: (filter === "all" ? "lint.report.filterAll" : lintSeverityLabelKey(filter)) as TranslationKey,
+}));
 
 const GROUP_MODE_OPTIONS: SelectOption[] = [
     { value: "rule", labelKey: "lint.report.groupByRule" as TranslationKey },
@@ -385,20 +369,17 @@ export function ProblemsPanel({ panelId = PROBLEMS_PANEL_ID }: Partial<PanelComp
         }
     }, [context]);
 
-    // The counts are the scope's, so the heading always describes the list under it.
-    const counts = useMemo(() => {
-        const tally = { error: 0, warning: 0, info: 0 };
-        for (const entry of scopedEntries) {
-            tally[entry.severity] += 1;
-        }
-        return tally;
-    }, [scopedEntries]);
+    // The counts are the scope's, so the heading always describes the list under it. Minor warnings
+    // have a count of their own rather than joining the warnings: the warning count is the one an
+    // author acts on, and a few thousand untranslated lines would make it say nothing.
+    const counts = useMemo(() => countLintSeverities(scopedEntries), [scopedEntries]);
 
     const headline = !report
         ? (pending ? t("lint.report.running") : "")
         : t("lint.report.counts", {
               errors: tn("common.count.errors", counts.error),
               warnings: tn("common.count.warnings", counts.warning),
+              minorWarnings: tn("common.count.minorWarnings", counts.minor),
               infos: tn("common.count.infos", counts.info),
           });
 
@@ -602,7 +583,7 @@ function ProblemGroupRow({
                 onClick={onToggle}
             >
                 <Chevron className="h-3 w-3 shrink-0 text-fg-subtle" />
-                <span className={cn("min-w-0 truncate text-2xs font-semibold", SEVERITY_TEXT_CLASS[severity])}>
+                <span className={cn("min-w-0 truncate text-2xs font-semibold", LINT_SEVERITY_TEXT_CLASS[severity])}>
                     {title}
                 </span>
                 <span className="shrink-0 text-2xs text-fg-subtle">{count}</span>
@@ -675,12 +656,12 @@ function ProblemEntryRow({
     const excerpt = lintEntryExcerpt(entry.location, t);
     const { label, line } = lintEntryLocator(entry.location, mode, locationLabel, message);
     const helpTopic = ruleHelpTopic(entry.ruleId);
-    const SeverityIcon = SEVERITY_ICON[entry.severity];
+    const SeverityIcon = LINT_SEVERITY_ICON[entry.severity];
 
     const body = (
         <>
             <SeverityIcon
-                className={cn("h-3.5 w-3.5 shrink-0 self-center", SEVERITY_TEXT_CLASS[entry.severity])}
+                className={cn("h-3.5 w-3.5 shrink-0 self-center", LINT_SEVERITY_TEXT_CLASS[entry.severity])}
                 aria-label={t(lintSeverityLabelKey(entry.severity))}
             />
             {mode === "location" ? (
@@ -703,7 +684,7 @@ function ProblemEntryRow({
                 </span>
             )}
             {showSeverity ? (
-                <span className={cn("shrink-0 text-2xs", SEVERITY_TEXT_CLASS[entry.severity])}>
+                <span className={cn("shrink-0 text-2xs", LINT_SEVERITY_TEXT_CLASS[entry.severity])}>
                     {t(lintSeverityLabelKey(entry.severity))}
                 </span>
             ) : null}
@@ -716,7 +697,7 @@ function ProblemEntryRow({
                 ) : null}
             </span>
             {secondary ? (
-                <span className={cn("max-w-[30%] shrink-0 truncate text-2xs", SEVERITY_TEXT_CLASS[entry.severity])}>
+                <span className={cn("max-w-[30%] shrink-0 truncate text-2xs", LINT_SEVERITY_TEXT_CLASS[entry.severity])}>
                     <MarkedText text={secondary} matcher={matcher} active={matchActive} />
                 </span>
             ) : null}

@@ -16,7 +16,7 @@ import { describe, expect, it } from "vitest";
 import { commandI18nStore } from "@/lib/i18n/commandLocale";
 import { listCommandDefs } from "@/apps/workspace/modules/story/scene-editor/commands/registry";
 import { describeCommand, formatCommandDetail, queryCommands } from "./catalog";
-import { COMMANDS, USAGE } from "./cli";
+import { COMMANDS, COMMON_FLAGS, USAGE } from "./cli";
 
 const GUIDE_PATH = path.resolve(__dirname, "../../../../project/app/story.md");
 const GUIDE = fs.readFileSync(GUIDE_PATH, "utf8");
@@ -83,6 +83,18 @@ describe("the story guide", () => {
                 expect(GUIDE, `${command} --${flag} is not in the guide`).toContain(`--${flag}`);
             }
         }
+    });
+
+    it("names no flag that no command takes", () => {
+        // The other direction of the test above. The usage text once offered `check --deep` and
+        // `--rules`, which no command declared, so following the help was a usage error.
+        const declared = new Set([
+            ...Object.keys(COMMON_FLAGS),
+            ...Object.values(COMMANDS).flatMap(spec => Object.keys(spec.flags)),
+        ]);
+        const named = [...USAGE.matchAll(/--([a-z][a-z-]*)/g)].map(match => match[1]);
+        expect(named.length).toBeGreaterThan(3);
+        expect([...new Set(named)].filter(flag => !declared.has(flag))).toEqual([]);
     });
 
     it("says out loud that this is not a way for an author to write a story", () => {

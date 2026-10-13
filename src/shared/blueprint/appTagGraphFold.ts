@@ -6,6 +6,7 @@ import {
     isPureDataBlueprintNode,
     readVariadicPinIds,
 } from "./blueprintPinSemantics";
+import { blueprintValuesEqual } from "./blueprintValueEquality";
 import type {
     Blueprint,
     BlueprintDocument,
@@ -512,9 +513,9 @@ class FoldableGraph {
         const resolvedAs = (value: unknown): PinValue => ({ tainted, resolved: true, value });
         switch (node.type) {
             case BLUEPRINT_NODE_TYPE_COMPARE_EQUAL:
-                return resolvedAs(a.value === b.value);
+                return resolvedAs(blueprintValuesEqual(a.value, b.value));
             case BLUEPRINT_NODE_TYPE_COMPARE_NOT_EQUAL:
-                return resolvedAs(a.value !== b.value);
+                return resolvedAs(!blueprintValuesEqual(a.value, b.value));
             case BLUEPRINT_NODE_TYPE_STRING_EQUALS:
                 return resolvedAs(toBlueprintString(a.value) === toBlueprintString(b.value));
             case BLUEPRINT_NODE_TYPE_STRING_EQUALS_IGNORE_CASE:

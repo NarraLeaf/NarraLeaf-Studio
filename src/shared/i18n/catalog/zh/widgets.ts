@@ -298,7 +298,7 @@ export const widgets = {
         asset: "视频文件",
         assetNone: "未选择视频",
         assetChoose: "选择视频",
-        assetMissing: "片段缺失",
+        assetMissing: "视频文件缺失",
         poster: "封面",
         posterNone: "未选择封面",
         posterChoose: "选择封面",
@@ -326,6 +326,7 @@ export const widgets = {
         previewPlay: "预览播放",
         previewPause: "暂停预览",
         previewRestart: "回到首帧",
+        playRefused: "视频「{name}」未能开始播放。有声视频需在玩家点击或按键后才能播放，静音视频可立即播放",
     },
     puppet: {
         title: "模型",

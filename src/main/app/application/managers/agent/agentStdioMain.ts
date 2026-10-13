@@ -1,6 +1,7 @@
 import { spawn } from "child_process";
 import fs from "fs";
 import http from "http";
+import net from "net";
 import os from "os";
 import path from "path";
 import { Readable } from "stream";
@@ -136,6 +137,34 @@ export function fetchWithoutTimeouts(url: string, init: RequestInit = {}): Promi
 }
 
 /**
+ * Standard input, as a stream that reads what the client writes.
+ *
+ * Not `process.stdin` on Windows: there Electron's main process replaces it with a stream that has
+ * already ended, on the assumption that nothing pipes into a GUI program. A bridge reading it saw
+ * the end at once and exited before the client had sent `initialize`, and the client reported only
+ * that the connection closed. The client's pipe is still descriptor 0, and is opened here the way
+ * Node opens it for `process.stdin` anywhere else: as a socket when it is a pipe, and as a file
+ * stream for anything else (input redirected from a file).
+ */
+export function openStandardInput(
+    platform: NodeJS.Platform = process.platform,
+    open: { pipe(): NodeJS.ReadableStream; file(): NodeJS.ReadableStream } = {
+        pipe: () => new net.Socket({ fd: 0, readable: true, writable: false }),
+        file: () => fs.createReadStream("", { fd: 0 }),
+    },
+): NodeJS.ReadableStream {
+    if (platform !== "win32") {
+        return process.stdin;
+    }
+    try {
+        return open.pipe();
+    } catch {
+        // Not a pipe: `net.Socket` refuses any other kind of descriptor.
+        return open.file();
+    }
+}
+
+/**
  * Run this process as the bridge, and exit when the client closes standard input. Synchronous up to
  * the point the bridge starts reading, because the GPU and Dock calls must come before `ready`.
  */
@@ -217,7 +246,7 @@ export function startAgentStdioBridge(electronApp: ElectronApp, argv: readonly s
     };
 
     void runAgentStdioBridge({
-        input: process.stdin,
+        input: openStandardInput(),
         writeLine: line => {
             process.stdout.write(`${line}\n`);
         },

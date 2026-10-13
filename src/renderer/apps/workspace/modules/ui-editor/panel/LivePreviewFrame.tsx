@@ -47,10 +47,19 @@ export const LivePreviewFrame = memo(
                 return undefined;
             }
 
-            setFrameWidth(Math.max(0, node.clientWidth));
+            // A width of zero is the panel being hidden, not the card shrinking to nothing: the
+            // sidebar keeps a panel mounted under `display: none` while another one is shown. Taking
+            // it would drop the built preview and leave the bare frame - near black - on screen
+            // when the panel comes back, until the observer fires again and every page re-renders.
+            const takeWidth = (width: number) => {
+                if (width > 0) {
+                    setFrameWidth(width);
+                }
+            };
+            takeWidth(node.clientWidth);
             const resizeObserver = new ResizeObserver(entries => {
                 const entry = entries[0];
-                setFrameWidth(Math.max(0, entry?.contentRect.width ?? node.clientWidth));
+                takeWidth(entry?.contentRect.width ?? node.clientWidth);
             });
             resizeObserver.observe(node);
 

@@ -169,6 +169,49 @@ describe("getCommandLineReason", () => {
         expect(reasonFor("/bg forest nosuchparam=1")).toBe(en.reason.unknownParam);
         expect(reasonFor("/bg \"unclosed")).toBe(en.reason.unterminatedQuote);
     });
+
+    /**
+     * The kind of asset is a word of the sentence. It used to be the raw type id, so a Chinese author
+     * typing toward a background read 「没有名为「room」的 image 资产或资产集」.
+     */
+    it("names the kind of asset in the sentence's own language", () => {
+        const reason = getCommandLineReason("/bg nothere", CONTEXT);
+        expect(reason?.key).toBe("storyExpr.reason.unknownAssetOrSet" as TranslationKey);
+        if (!reason) {
+            return;
+        }
+        const expected = {
+            en: "No image or asset set named \"nothere\".",
+            zh: "没有名为「nothere」的图片资产或资产集",
+            ja: "\"nothere\" という画像もアセットセットもない",
+        } as const;
+        for (const locale of ["en", "zh", "ja"] as const) {
+            const { t } = createTranslator(locale);
+            expect(t(reason.key, storyCommandReasonParams(reason, t)), locale).toBe(expected[locale]);
+        }
+    });
+
+    /**
+     * The command word's rule, applied to the name after it: a word at the end of the line with
+     * nothing after it is still being typed, and a space is the decision. `/show N` used to say
+     * "Nothing on stage is named N" while the candidate list was already offering Narra.
+     */
+    it("waits for a name being typed to be finished, as it does for the command word", () => {
+        const typing = (source: string) => getCommandLineReason(source, CONTEXT, { typing: true })?.key ?? null;
+        expect(typing("/show Al")).toBeNull();
+        expect(typing("/show Zoe")).toBeNull();
+        expect(typing("/bg fore")).toBeNull();
+        expect(typing("/show Alice fr")).toBeNull();
+        // A space after it is the decision.
+        expect(typing("/show Zoe ")).toBe("storyExpr.reason.unknownTarget");
+        expect(typing("/bg fore ")).toBe("storyExpr.reason.unknownAssetOrSet");
+        // A name with more of the line after it is finished.
+        expect(typing("/bg fore t=fade")).toBe("storyExpr.reason.unknownAssetOrSet");
+        // Not a name lookup: reported at once, as before.
+        expect(typing("/bg twin")).toBe("storyExpr.reason.ambiguousName");
+        // A committed line (a draft row's reason) is reported whatever its end looks like.
+        expect(getCommandLineReason("/show Zoe", CONTEXT)?.key).toBe("storyExpr.reason.unknownTarget");
+    });
 });
 
 /**

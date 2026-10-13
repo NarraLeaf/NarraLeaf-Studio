@@ -313,7 +313,7 @@ export const widgets = {
         loop: "Loop",
         muted: "Muted",
         autoplay: "Autoplay",
-        autoplayHint: "Applies in the game. The editor canvas stays paused; use the docker bar to preview.",
+        autoplayHint: "Applies in the game. The editor canvas stays paused; use the toolbar to preview.",
         volume: "Volume",
         volumeHint: "0 to 1. A blueprint volume pin overrides this at runtime.",
         audioTrack: "Audio Track",
@@ -331,6 +331,7 @@ export const widgets = {
         previewPlay: "Preview playback",
         previewPause: "Pause preview",
         previewRestart: "Back to first frame",
+        playRefused: "Video “{name}” did not start playing. A video with sound plays only after the player has clicked or pressed a key; a muted one plays at once.",
     },
     /**
      * The widget's stored type is `nl.puppet` and names no renderer; every string an author reads

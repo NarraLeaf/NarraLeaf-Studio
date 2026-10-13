@@ -102,6 +102,11 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_CHANGED = "blueprint.event.he
  */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_ON = "blueprint.event.head.switchTurnedOn" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_OFF = "blueprint.event.head.switchTurnedOff" as const;
+/**
+ * A video widget's clip played to its end: the `<video>` element's own `ended`, raised once per
+ * time the clip reaches its end. A clip set to loop never reaches it, so this never runs for one.
+ */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_VIDEO_ENDED = "blueprint.event.head.videoEnded" as const;
 /** Entry for global `appBoot` lifecycle event (application start). */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT = "blueprint.event.head.appBoot" as const;
 /** Entry for global NarraLeaf game runtime readiness. */
@@ -197,6 +202,7 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_ON,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_OFF,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_VIDEO_ENDED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
@@ -253,13 +259,6 @@ const BLUEPRINT_KEYBOARD_MODIFIER_ORDER: BlueprintKeyboardModifierFlag[] = [
     "metaKey",
 ];
 
-const BLUEPRINT_KEYBOARD_MODIFIER_LABELS: Record<BlueprintKeyboardModifierFlag, string> = {
-    altKey: "Alt",
-    ctrlKey: "Ctrl",
-    shiftKey: "Shift",
-    metaKey: "Meta",
-};
-
 const BLUEPRINT_KEYBOARD_MODIFIER_ALIASES: Record<string, BlueprintKeyboardModifierFlag> = {
     alt: "altKey",
     option: "altKey",
@@ -300,6 +299,12 @@ const BLUEPRINT_KEYBOARD_KEY_ALIASES: Record<string, string> = {
     "arrow down": "arrowdown",
 };
 
+/**
+ * How a binding is stored, key by key: the spelling written into a project and matched back through
+ * the aliases above. English in every language, and never changed lightly, since every saved binding
+ * is written in it. What an author reads is drawn from the same keys in their own language by the
+ * renderer (`getKeyboardBindingLabel`), not from this table.
+ */
 const BLUEPRINT_KEYBOARD_KEY_LABELS: Record<string, string> = {
     "+": "Plus",
     " ": "Space",
@@ -351,7 +356,7 @@ function keyboardModifierKeyForFlag(flag: BlueprintKeyboardModifierFlag): string
     }
 }
 
-function keyboardBindingDisplayLabelForKey(key: string): string {
+function keyboardBindingStoredSpellingForKey(key: string): string {
     const label = BLUEPRINT_KEYBOARD_KEY_LABELS[key];
     if (label) {
         return label;
@@ -421,19 +426,35 @@ export function parseBlueprintKeyboardBinding(raw: unknown): BlueprintKeyboardBi
     };
 }
 
-export function formatBlueprintKeyboardBinding(raw: unknown): string {
+/**
+ * The keys a binding is written with, in the order it is written: the held modifiers (Ctrl, Alt,
+ * Shift, Meta), then the key - unless the key is itself one of them, so Shift held alone is one key
+ * and not "Shift+Shift".
+ */
+function keyboardBindingKeys(held: (flag: BlueprintKeyboardModifierFlag) => boolean, key: string): string[] {
+    const keyModifier = readKeyboardModifierFlagForKey(key);
+    const keys = BLUEPRINT_KEYBOARD_MODIFIER_ORDER.filter(held).map(keyboardModifierKeyForFlag);
+    if (!keyModifier || !held(keyModifier)) {
+        keys.push(key);
+    }
+    return keys;
+}
+
+/**
+ * A binding's keys, each spelled as {@link normalizeBlueprintKeyboardEventKeyName} spells it
+ * ("control", "arrowup", "space", "+"), in the order the binding is written. Empty when the binding
+ * cannot be read.
+ *
+ * The one reading both the stored spelling ({@link formatBlueprintKeyboardBinding}) and every display
+ * of a binding start from, so the two cannot disagree about which keys a binding holds.
+ */
+export function listBlueprintKeyboardBindingKeys(raw: unknown): string[] {
     const binding = parseBlueprintKeyboardBinding(raw);
-    if (!binding) {
-        return "";
-    }
-    const keyModifier = readKeyboardModifierFlagForKey(binding.key);
-    const parts = BLUEPRINT_KEYBOARD_MODIFIER_ORDER
-        .filter(flag => binding[flag])
-        .map(flag => BLUEPRINT_KEYBOARD_MODIFIER_LABELS[flag]);
-    if (!keyModifier || !binding[keyModifier]) {
-        parts.push(keyboardBindingDisplayLabelForKey(binding.key));
-    }
-    return parts.join("+");
+    return binding ? keyboardBindingKeys(flag => binding[flag], binding.key) : [];
+}
+
+export function formatBlueprintKeyboardBinding(raw: unknown): string {
+    return listBlueprintKeyboardBindingKeys(raw).map(keyboardBindingStoredSpellingForKey).join("+");
 }
 
 export function formatBlueprintKeyboardBindingFromEvent(event: BlueprintKeyboardEventLike): string {
@@ -441,14 +462,9 @@ export function formatBlueprintKeyboardBindingFromEvent(event: BlueprintKeyboard
     if (!key) {
         return "";
     }
-    const keyModifier = readKeyboardModifierFlagForKey(key);
-    const parts = BLUEPRINT_KEYBOARD_MODIFIER_ORDER
-        .filter(flag => Boolean(event[flag]))
-        .map(flag => BLUEPRINT_KEYBOARD_MODIFIER_LABELS[flag]);
-    if (!keyModifier || !Boolean(event[keyModifier])) {
-        parts.push(keyboardBindingDisplayLabelForKey(key));
-    }
-    return parts.join("+");
+    return keyboardBindingKeys(flag => Boolean(event[flag]), key)
+        .map(keyboardBindingStoredSpellingForKey)
+        .join("+");
 }
 
 export function blueprintKeyboardBindingMatchesEvent(raw: unknown, eventPayload?: BlueprintKeyboardEventLike): boolean {
@@ -1247,6 +1263,11 @@ export const BLUEPRINT_NODE_TYPE_GAME_IS_NARRATOR = "blueprint.game.isNarrator" 
  */
 export const BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER = "blueprint.game.getCharacter" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS = "blueprint.game.getNotifications" as const;
+/**
+ * Show a line in the running game's notification stream - the one the engine's own notices go
+ * into, which `Get Notifications` reads and the Game UI notification slot draws.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_POST_NOTIFICATION = "blueprint.game.postNotification" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT = "blueprint.game.getChoiceCount" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE = "blueprint.game.isNvlMode" as const;
 /** True while a dialog line is on screen and its message is read (seen before, or display finished). */
@@ -1630,6 +1651,41 @@ export const BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_SET_CHECKED = "blueprint.element
 export const BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_TOGGLE = "blueprint.element.switch.toggle" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_TURN_ON = "blueprint.element.switch.turnOn" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_TURN_OFF = "blueprint.element.switch.turnOff" as const;
+
+/**
+ * A video widget's playback. The `blueprint.video.*` nodes act on the video whose own blueprint they
+ * are in; the `blueprint.element.video.*` twins act on the video wired into their Video pin, from any
+ * graph on the page.
+ */
+export const BLUEPRINT_NODE_TYPE_VIDEO_PLAY = "blueprint.video.play" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_PAUSE = "blueprint.video.pause" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_STOP = "blueprint.video.stop" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_SEEK = "blueprint.video.seek" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_GET_TIME = "blueprint.video.getTime" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_GET_DURATION = "blueprint.video.getDuration" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_IS_PLAYING = "blueprint.video.isPlaying" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_IS_ENDED = "blueprint.video.isEnded" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_PLAY = "blueprint.element.video.play" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_PAUSE = "blueprint.element.video.pause" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_STOP = "blueprint.element.video.stop" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SEEK = "blueprint.element.video.seek" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_TIME = "blueprint.element.video.getTime" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_DURATION = "blueprint.element.video.getDuration" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_PLAYING = "blueprint.element.video.isPlaying" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_ENDED = "blueprint.element.video.isEnded" as const;
+/** The video props a graph sets at run time, over what the author set on the widget. */
+export const BLUEPRINT_NODE_TYPE_VIDEO_SET_VOLUME = "blueprint.video.setVolume" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_SET_MUTED = "blueprint.video.setMuted" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_SET_LOOP = "blueprint.video.setLoop" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_SET_PLAYBACK_RATE = "blueprint.video.setPlaybackRate" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_GET_VOLUME = "blueprint.video.getVolume" as const;
+export const BLUEPRINT_NODE_TYPE_VIDEO_IS_MUTED = "blueprint.video.isMuted" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_VOLUME = "blueprint.element.video.setVolume" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_MUTED = "blueprint.element.video.setMuted" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_LOOP = "blueprint.element.video.setLoop" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_SET_PLAYBACK_RATE = "blueprint.element.video.setPlaybackRate" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_GET_VOLUME = "blueprint.element.video.getVolume" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_VIDEO_IS_MUTED = "blueprint.element.video.isMuted" as const;
 
 export const BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS = "blueprint.list.setItems" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS = "blueprint.list.getItems" as const;

@@ -72,6 +72,8 @@ import {
     isValidBlueprintIrExecConnection,
     writeNodeEditorLayout,
 } from "@/lib/workspace/services/ui-editor/blueprint/graphEditing";
+import { retypeBlueprintNodeInIr } from "@/lib/workspace/services/ui-editor/blueprint/graphNodeRetype";
+import { isBlueprintNodeAllowedInGraphContext } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import {
     pickBlueprintDragConnectTargetPin,
     resolveBlueprintDragConnectSource,
@@ -162,9 +164,7 @@ import {
 } from "@/lib/workspace/services/ui-editor/blueprint/graphStructTypeInference";
 import { interfaceDocumentFreezeScope } from "../../ui-editor/uiLiveSession";
 import { BLUEPRINT_EXEC_EDGE_COLOR } from "@/lib/ui-editor/blueprint-graph-edge-style";
-import { measureEditorSidebarInset } from "@/lib/components/layout/editorSidebarInset";
 import { useHostVisible } from "@/lib/components/layout/hostVisibility";
-import { computeBlueprintRevealViewport } from "./blueprintZoom";
 import {
     blueprintWireEnds,
     describeBlueprintWireEnd,
@@ -219,6 +219,12 @@ const PAN_BUTTONS_HAND_TOOL = [0, 1];
  * it is framed anyway. The longest wait it is meant to cover is the canvas's 200ms slide.
  */
 const MAX_FRAMES_BEFORE_FITTING = 30;
+
+/**
+ * How long a newly opened graph stays undrawn when neither its fit nor a reveal comes to frame it.
+ * Well past the frames above even when they run slow, so it never cuts a framing short.
+ */
+const OPENING_FRAME_GIVE_UP_MS = 2000;
 
 /**
  * How many of a pin's wires its context menu lists in place before it gathers them into a submenu.
@@ -432,6 +438,11 @@ export function removeBlueprintNodeFromIr(ir: BlueprintGraphIr, nodeId: string):
 
 type BlueprintFlowCanvasInnerProps = {
     nodeCatalog: IBlueprintNodeCatalogService;
+    /**
+     * The catalogue's revision (`getCatalogRevision`). A change redraws every card: node types a
+     * plugin registers after this canvas drew them stop being unknown nodes.
+     */
+    nodeCatalogRevision?: number;
     graphKey: string;
     ir: BlueprintGraphIr;
     revision: number;
@@ -617,6 +628,7 @@ function syncSameGraphFnCallSnapshots(ir: BlueprintGraphIr, currentBlueprintId: 
 
 function BlueprintFlowCanvasInner({
     nodeCatalog,
+    nodeCatalogRevision = 0,
     graphKey,
     ir,
     revision,
@@ -813,6 +825,51 @@ function BlueprintFlowCanvasInner({
             commitBlueprintIr(snap, history);
         },
         [blueprintMemberVariables, blueprintPersistentVariables, commitBlueprintIr, resolveCallableFnSignature],
+    );
+
+    /** Turns a card into another member of its node family, as one undo step. */
+    const retypeNode = useCallback(
+        (nodeId: string, nextType: string) => {
+            const snap = cloneBlueprintIr(irRef.current);
+            if (!retypeBlueprintNodeInIr(snap, nodeId, nextType, variableTypeContextRef.current)) {
+                return;
+            }
+            commitBlueprintIr(snap);
+        },
+        [commitBlueprintIr],
+    );
+    const retypeNodeRef = useRef(retypeNode);
+    retypeNodeRef.current = retypeNode;
+    const stableRetypeNode = useCallback((nodeId: string, nextType: string) => {
+        retypeNodeRef.current(nodeId, nextType);
+    }, []);
+    // What this graph may hold, which is what a card's family menu may switch it to: the palette's
+    // own answer, so a member the add-node menu would not offer here is not offered on a card either.
+    const paletteTypes = useMemo(
+        () => new Set(nodeCatalog.listPaletteEntries(paletteContext).map(entry => entry.type)),
+        // The revision is the catalogue changing under the same service: a plugin's nodes arriving.
+        [nodeCatalog, nodeCatalogRevision, paletteContext],
+    );
+    const paletteTypesRef = useRef(paletteTypes);
+    paletteTypesRef.current = paletteTypes;
+    const paletteContextRef = useRef(paletteContext);
+    paletteContextRef.current = paletteContext;
+    const isFamilyMemberAllowed = useCallback(
+        (type: string) => {
+            if (paletteTypesRef.current.has(type)) {
+                return true;
+            }
+            // A node that acts on an Element is listed only while this graph holds an Element it fits,
+            // and a card of one can be wired to an element some other way. It may be placed wherever
+            // its graph kind and owner allow, which is what the palette asks of it too once listed.
+            const def = nodeCatalog.get(type);
+            return Boolean(
+                def?.magicElementTarget &&
+                    !def.hideInPalette &&
+                    isBlueprintNodeAllowedInGraphContext({ ...def, scope: undefined }, paletteContextRef.current),
+            );
+        },
+        [nodeCatalog],
     );
 
     const patchNodeParamRef = useRef(patchNodeParam);
@@ -1051,7 +1108,7 @@ function BlueprintFlowCanvasInner({
         /** The translator the wires were named with; a new one is a language switch. */
         t: typeof t;
     } | null>(null);
-    const lastNodeCatalogRef = useRef(nodeCatalog);
+    const lastNodeCatalogRef = useRef({ catalog: nodeCatalog, revision: nodeCatalogRevision });
 
     /**
      * The creation menu holds its own open/closed state and is reached through this handle.
@@ -1200,8 +1257,9 @@ function BlueprintFlowCanvasInner({
         syncedGraphKeyRef.current = graphKey;
 
         const prevStruct = lastStructuralRef.current;
-        const catalogChanged = lastNodeCatalogRef.current !== nodeCatalog;
-        lastNodeCatalogRef.current = nodeCatalog;
+        const catalogChanged =
+            lastNodeCatalogRef.current.catalog !== nodeCatalog || lastNodeCatalogRef.current.revision !== nodeCatalogRevision;
+        lastNodeCatalogRef.current = { catalog: nodeCatalog, revision: nodeCatalogRevision };
         const structural =
             catalogChanged ||
             !prevStruct ||
@@ -1249,6 +1307,8 @@ function BlueprintFlowCanvasInner({
                 onBindElementLiteral,
                 openSaveSchemaEditor,
                 fitGroupFrame,
+                stableRetypeNode,
+                isFamilyMemberAllowed,
             );
             setNodes(prevNodes => {
                 const withSel = applyBlueprintFlowNodeSelection(base, selectedNodeIdsRef.current);
@@ -1319,6 +1379,7 @@ function BlueprintFlowCanvasInner({
         structTypeContext,
         graphKey,
         nodeCatalog,
+        nodeCatalogRevision,
         revision,
         blueprintSelectedNodesDependencyKey(selectedNodeIds),
         pendingPlacementEntry,
@@ -1360,10 +1421,27 @@ function BlueprintFlowCanvasInner({
         lastFocusRequestRef.current = focusRequestKey;
     }
 
+    /**
+     * The graph whose opening view is in place. Until it is, the graph is not drawn: React Flow mounts
+     * a graph at the origin at 100%, and the fit below can only be taken frames later, once every card
+     * has been measured and the pane has stopped changing size - so every layer opened flashed up at
+     * the wrong place and zoom, then jumped to its frame. A graph opened where the author left it is in
+     * place from the start and is drawn at once, unless it is opened to reveal a node, which then lands
+     * without the glide meant for moving within a graph already on screen.
+     */
+    const [framedGraphKey, setFramedGraphKey] = useState<string | null>(null);
+    const framedGraphKeyRef = useRef(framedGraphKey);
+    framedGraphKeyRef.current = framedGraphKey;
+    const awaitingOpeningFrame = framedGraphKey !== graphKey && (!initialViewport || focusPendingRef.current);
+
     useEffect(() => {
         // Opening a graph to reveal one node in it: fitting the whole graph first would be a jump
         // to somewhere the author did not ask to look, followed immediately by another one.
-        if (initialViewport || focusPendingRef.current) {
+        if (focusPendingRef.current) {
+            return undefined;
+        }
+        if (initialViewport) {
+            setFramedGraphKey(graphKey);
             return undefined;
         }
         // The same holds for a node asked for while the fit is still waiting: a blueprint opened at
@@ -1395,6 +1473,7 @@ function BlueprintFlowCanvasInner({
             if (viewport) {
                 setViewport(viewport, { duration: 0 });
             }
+            setFramedGraphKey(graphKey);
         };
         // Two frames at the least, as before: the graph's nodes reach the store a frame after it is
         // switched to.
@@ -1436,6 +1515,7 @@ function BlueprintFlowCanvasInner({
                 viewport !== null && last !== null && last.x === viewport.x && last.y === viewport.y && last.zoom === viewport.zoom;
             last = viewport;
             if (!viewport && framesLeft <= 0) {
+                setFramedGraphKey(graphKey);
                 return;
             }
             if (!viewport || (!settled && framesLeft > 0)) {
@@ -1444,11 +1524,24 @@ function BlueprintFlowCanvasInner({
                 return;
             }
             appliedFocusKeyRef.current = focusRequestKey;
-            void setViewport(viewport, { duration: 220 });
+            void setViewport(viewport, { duration: framedGraphKeyRef.current === graphKey ? 220 : 0 });
+            setFramedGraphKey(graphKey);
         };
         revealWhenSettled();
         return () => window.cancelAnimationFrame(frame);
-    }, [focusRequestKey, focusNodeId, hostVisible, nodes, getViewport, setViewport, store]);
+    }, [focusRequestKey, focusNodeId, graphKey, hostVisible, nodes, getViewport, setViewport, store]);
+
+    /**
+     * Drawn where it is rather than not at all, should neither the fit nor the reveal land - a node
+     * asked for and taken back before it was reached leaves both of them standing aside.
+     */
+    useEffect(() => {
+        if (!awaitingOpeningFrame || !hostVisible) {
+            return undefined;
+        }
+        const timer = window.setTimeout(() => setFramedGraphKey(graphKey), OPENING_FRAME_GIVE_UP_MS);
+        return () => window.clearTimeout(timer);
+    }, [awaitingOpeningFrame, graphKey, hostVisible]);
 
     /** Clicking the overview goes there, keeping the author's zoom - the same bargain the reveal above strikes. */
     const jumpToMinimapPoint = useCallback(
@@ -2133,23 +2226,10 @@ function BlueprintFlowCanvasInner({
      */
     const revealWireEnd = useCallback(
         (end: BlueprintWireEnd, color: string) => {
-            const internal = getInternalNode(end.nodeId);
-            if (!internal) {
+            if (!getInternalNode(end.nodeId)) {
                 return;
             }
-            const state = store.getState();
-            const viewport = computeBlueprintRevealViewport({
-                node: {
-                    x: internal.internals.positionAbsolute.x,
-                    y: internal.internals.positionAbsolute.y,
-                    width: internal.measured.width ?? 0,
-                    height: internal.measured.height ?? 0,
-                },
-                current: getViewport(),
-                container: { width: state.width, height: state.height },
-                range: { min: state.minZoom, max: state.maxZoom },
-                inset: measureEditorSidebarInset(state.domNode),
-            });
+            const viewport = frameBlueprintNode(store.getState(), end.nodeId, getViewport());
             if (viewport) {
                 void setViewport(viewport, { duration: 220 });
             }
@@ -2632,6 +2712,7 @@ function BlueprintFlowCanvasInner({
             style={pendingPlacementEntry ? { cursor: "crosshair" } : undefined}
             onPointerDownCapture={onControlPanPointerDownCapture}
             onContextMenuCapture={onControlPanContextMenuCapture}
+            data-blueprint-awaiting-frame={awaitingOpeningFrame ? "" : undefined}
             {...{ [BLUEPRINT_CANVAS_ATTRIBUTE]: flowId }}
         >
             <ReactFlow

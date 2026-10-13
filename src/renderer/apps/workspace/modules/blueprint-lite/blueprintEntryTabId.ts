@@ -1,4 +1,5 @@
 import type { UIElementId, UISurfaceId } from "@shared/types/ui-editor/document";
+import type { BlueprintEditorOpenTarget } from "@/lib/workspace/services/ui-editor/blueprint/navigationTargets";
 
 export type BlueprintEntryOwnerKind =
     | "globalMain"
@@ -48,4 +49,26 @@ export function isBlueprintEntryTabShowing(tab: { id: string; payload?: unknown 
     }
     const payload = tab.payload as Partial<BlueprintEntryTabPayload> | undefined;
     return payload?.blueprintId === blueprintId;
+}
+
+/**
+ * What opens the blueprint `payload` shows again where the author left it: the same owner, under
+ * `title`, on the layer that was open.
+ *
+ * Handed across whenever an editor moves between a tab and a window of its own. The open layer goes
+ * with it; a node or field to bring into view does not - that is a one-off request the editor has
+ * already acted on, and repeating it would move the view the author has since set.
+ */
+export function blueprintTargetKeepingLayer(payload: BlueprintEntryTabPayload, title: string): BlueprintEditorOpenTarget {
+    return {
+        blueprintId: payload.blueprintId,
+        ownerKind: payload.ownerKind,
+        surfaceId: payload.surfaceId,
+        componentId: payload.componentId,
+        elementId: payload.elementId,
+        propPath: payload.propPath,
+        title,
+        ...(payload.focusEventId ? { focusEventId: payload.focusEventId } : {}),
+        ...(payload.focusFunctionId ? { focusFunctionId: payload.focusFunctionId } : {}),
+    };
 }

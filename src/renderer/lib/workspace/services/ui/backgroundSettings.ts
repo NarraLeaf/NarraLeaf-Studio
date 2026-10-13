@@ -71,10 +71,11 @@ export interface BackgroundSettings {
     sidebarOpacity: number;
     /**
      * Whether the window's frame (the title bar, the editor tab strips, the activity rails, the
-     * version panel, the status bar, and the header strips of the docks and of the panels inside
-     * editors) keeps its sunken paint over the wallpaper. Off by default: the frame carries a few
-     * labels and icons rather than small text, and a picture that stops short of the window's edges
-     * reads as a panel laid on the editor rather than as the window's own background.
+     * version panel's header, the status bar, and the header strips of the docks and of the panels
+     * inside editors) keeps its sunken paint over the wallpaper. Off by default: the frame carries a
+     * few labels and icons rather than small text, and a picture that stops short of the window's
+     * edges reads as a panel laid on the editor rather than as the window's own background. The lists
+     * under the version panel's header read on the dock plate (`.nl-frame-body` in styles.css).
      */
     frameFill: boolean;
     /** Percent, 10–100: the frame plate's opacity while `frameFill` is on. */

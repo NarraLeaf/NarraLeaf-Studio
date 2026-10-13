@@ -8,6 +8,7 @@ import { withAgentProjectArgument } from "@shared/agent/pluginTools";
 import { AGENT_TOOLS } from "@shared/agent/tools";
 import { AGENT_MCP_DEFAULT_PORT, AGENT_MCP_FALLBACK_PORTS, AGENT_MCP_LEGACY_DEFAULT_PORT } from "@shared/agent/protocol";
 import { AGENT_SETTINGS_FILE_NAME } from "@shared/agent/settings";
+import { AGENT_INSTALLED_SKILLS } from "@shared/agent/clients";
 import type { App } from "../../../app";
 import type { AppWindow } from "../window/appWindow";
 
@@ -111,6 +112,7 @@ function makeManager(
         storageManager: { grantFileSystemAccess: vi.fn() },
         getAppPath: () => path.join(dir, "app"),
         getResourcesDir: () => path.join(dir, "resources"),
+        resolveResource: (relative: string) => path.join(dir, "resources", relative),
     };
     const manager = new AgentManager(app as unknown as App);
     const window = { refuseUnattendedPrompt: vi.fn() } as unknown as AppWindow;
@@ -404,5 +406,48 @@ describe("an untrusted project", () => {
         expect((await manager.callTool(writeTool, {}, { clientName: null })).ok).toBe(true);
         const [, request] = window.invokeIpcRequest.mock.calls[0] as unknown as [unknown, { policy: { projectTrusted?: boolean } }];
         expect(request.policy.projectTrusted).toBe(true);
+    });
+});
+
+/**
+ * Installing the Agent Skill writes into the author's own skill folder. Replacing a SKILL.md that is
+ * not Studio's - one the author edited - is asked first, in the agent access window.
+ */
+describe("installing the Agent Skill into a skill folder", () => {
+    const home = () => path.join(dir, "home");
+    const installed = (name: string) => path.join(home(), ".claude", "skills", name, "SKILL.md");
+
+    beforeEach(() => {
+        vi.spyOn(os, "homedir").mockReturnValue(path.join(dir, "home"));
+        for (const name of AGENT_INSTALLED_SKILLS) {
+            fs.mkdirSync(path.join(dir, "resources", "agent", "skills", name), { recursive: true });
+            fs.writeFileSync(path.join(dir, "resources", "agent", "skills", name, "SKILL.md"), `studio ${name}`);
+        }
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it("asks nothing when the folder holds no skill of Studio's, or Studio's own", async () => {
+        const { manager, asked, window } = makeManager(false);
+        expect(await manager.installSkill(window, "claudeCode")).toEqual({ canceled: false, path: path.join(home(), ".claude", "skills") });
+        expect(await manager.installSkill(window, "claudeCode")).toMatchObject({ canceled: false });
+        expect(asked).toEqual([]);
+        expect(fs.readFileSync(installed(AGENT_INSTALLED_SKILLS[0]), "utf8")).toBe(`studio ${AGENT_INSTALLED_SKILLS[0]}`);
+    });
+
+    it("asks before replacing an edited SKILL.md, and leaves it when the author declines", async () => {
+        fs.mkdirSync(path.dirname(installed(AGENT_INSTALLED_SKILLS[0])), { recursive: true });
+        fs.writeFileSync(installed(AGENT_INSTALLED_SKILLS[0]), "my own edits");
+        const declined = makeManager(false);
+        expect(await declined.manager.installSkill(declined.window, "claudeCode")).toEqual({ canceled: true });
+        expect(declined.asked).toEqual([{ kind: "skillOverwrite", folders: [path.dirname(installed(AGENT_INSTALLED_SKILLS[0]))] }]);
+        expect(fs.readFileSync(installed(AGENT_INSTALLED_SKILLS[0]), "utf8")).toBe("my own edits");
+        expect(fs.existsSync(installed(AGENT_INSTALLED_SKILLS[1]))).toBe(false);
+
+        const allowed = makeManager(true);
+        expect(await allowed.manager.installSkill(allowed.window, "claudeCode")).toMatchObject({ canceled: false });
+        expect(fs.readFileSync(installed(AGENT_INSTALLED_SKILLS[0]), "utf8")).toBe(`studio ${AGENT_INSTALLED_SKILLS[0]}`);
     });
 });

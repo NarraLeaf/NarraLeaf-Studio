@@ -3,7 +3,7 @@ import { useTranslation } from "@/lib/i18n";
 const LOGO_MASK = "url(/img/narraleaf-studio/logo-icon-white.png)";
 
 /**
- * The faint mark behind an idle editor canvas, shared by the empty group and the blank tab.
+ * The faint mark behind an idle editor canvas.
  *
  * The art is a flat white silhouette of the leaf, invisible against the light theme's surface, so it
  * is painted as a mask over `bg-fg` and takes the theme's foreground colour - the same way the

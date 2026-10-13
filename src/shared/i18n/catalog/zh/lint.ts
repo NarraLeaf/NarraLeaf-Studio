@@ -274,8 +274,8 @@ export const lint = {
         },
         storyDeadEnd: {
             title: "无子节点",
-            description: "场景中部分路径跳转离开，仍有路径的末尾没有子节点",
-            message: "该行没有子节点，执行到此处即越过场景末尾",
+            description: "场景中部分路径离开场景，另有路径执行到场景末尾",
+            message: "播放到该行后越过场景末尾",
             help:
                 "该场景的最后一行不会离开场景，播放可能越过场景末尾。离开场景的行包括：不带「返回」的 /jump、"
                 + "/goto、/ending、/quit，以及所运行蓝图中含有「开始游戏」或「退出游戏」"
@@ -450,14 +450,16 @@ export const lint = {
             // 一贯说法（`story.enterExit.enter`、`story.empty.emptyExampleShow`、动效的 `entrance`），
             // 同一件事换个说法就是命令词汇那轮消灭掉的东西。
             messageCharacter: "本场景中没有任何行让 {object} 登场，该行没有可操作的对象",
+            messageLayer: "本场景的图层中没有 {object}，该行没有可操作的对象",
             help:
                 "该行操作的舞台对象，在本场景中没有任何行创建。只计算同一场景中的行，舞台对象不会从其他场景延续过来；"
                 + "名称须完全一致\n"
                 + "\n"
                 + "游戏中该行没有可操作的对象，不起作用\n"
                 + "\n"
-                + "- 在本场景中、该行之前添加创建它的行：/image、/text、/layer、/vfx、"
+                + "- 在本场景中、该行之前添加创建它的行：/image、/text、/vfx、"
                 + "/play 或 /sound；角色用 /show 让其登场\n"
+                + "- 图层在实时预览的「图层」视图中添加到场景的图层\n"
                 + "- 该行本应操作已有的对象时，在检查器中改选该对象\n"
                 + "- 名称拼写有误时改正",
         },
@@ -686,7 +688,8 @@ export const lint = {
             message: "没有任何位置会打开该页面",
             help:
                 "没有任何位置打开该页面：它不是入口页面，没有蓝图节点选定它（例如「前往页面」「叠加页面」「退出游戏」），"
-                + "也没有页面控件显示它。游戏 UI 不在检查范围内\n"
+                + "没有页面控件显示它，没有 /quit 或 /ending 行指定它，项目与各构建变体也未将它设为剧本结束后显示的页面。"
+                + "游戏 UI 不在检查范围内\n"
                 + "\n"
                 + "玩家无法打开该页面\n"
                 + "\n"
@@ -1017,7 +1020,7 @@ export const lint = {
             messageUnnamed: "此处一个未声明的变量取值始终在 {bound} 之内，该条件不会成立",
             help:
                 "在该行处，变量所有可能的取值都无法使条件成立。只检查数字变量与写明的数字之间的比较，"
-                + "例如 affection >= 50。问题中给出的范围由变量的默认值，"
+                + "例如 affection >= 50。持久变量的值从上一局延续，不做检查。问题中给出的范围由变量的默认值，"
                 + "以及到达该行之前故事可能做出的全部改动得出\n"
                 + "\n"
                 + "游戏中该条件始终不成立：/if 分支永远不会执行，/until 永远不会因它结束循环，"
@@ -1300,6 +1303,7 @@ export const lint = {
     severity: {
         error: "错误",
         warning: "警告",
+        minor: "次要警告",
         info: "提示",
         off: "关闭",
     },
@@ -1307,7 +1311,7 @@ export const lint = {
         title: "问题",
         empty: "未发现问题",
         running: "检查中…",
-        counts: "{errors}，{warnings}，{infos}",
+        counts: "{errors}，{warnings}，{minorWarnings}，{infos}",
         filtered: "显示 {shown} / {total}",
         rerun: "重新检查",
         filterAll: "全部",
@@ -1340,7 +1344,7 @@ export const lint = {
         jumpFailed: "该位置已无法打开",
     },
     statusBar: {
-        counts: "问题：{errors}，{warnings}，{infos}",
+        counts: "问题：{errors}，{warnings}，{minorWarnings}，{infos}",
     },
     command: {
         runProject: "检查项目",

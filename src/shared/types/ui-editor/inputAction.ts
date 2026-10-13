@@ -171,7 +171,7 @@ export type UISurfaceActionEnablement = {
 export const UI_SURFACE_ACTION_DEFAULT_CONSUME = true;
 
 /** The key a binding is the same as another one by. */
-function bindingIdentity(binding: UIInputBinding): string {
+export function uiInputBindingIdentity(binding: UIInputBinding): string {
     if (binding.kind === "pointer") {
         return `pointer:${binding.gesture}`;
     }
@@ -212,10 +212,10 @@ export function normalizeUIInputBindings(value: unknown): UIInputBinding[] {
     const out: UIInputBinding[] = [];
     for (const entry of Array.isArray(value) ? value : []) {
         const binding = normalizeUIInputBinding(entry);
-        if (!binding || seen.has(bindingIdentity(binding))) {
+        if (!binding || seen.has(uiInputBindingIdentity(binding))) {
             continue;
         }
-        seen.add(bindingIdentity(binding));
+        seen.add(uiInputBindingIdentity(binding));
         out.push(binding);
     }
     return out;
@@ -226,7 +226,7 @@ export function dedupeUIInputBindings(bindings: readonly UIInputBinding[]): UIIn
     const seen = new Set<string>();
     const out: UIInputBinding[] = [];
     for (const binding of bindings) {
-        const identity = bindingIdentity(binding);
+        const identity = uiInputBindingIdentity(binding);
         if (seen.has(identity)) {
             continue;
         }

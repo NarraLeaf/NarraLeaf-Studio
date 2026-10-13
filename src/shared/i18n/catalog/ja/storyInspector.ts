@@ -397,7 +397,6 @@ export const storyInspector = {
 
     layerOperation: {
         setZIndex: "重ね順を決める",
-        setDepth: "奥行きを決める",
     },
 
     videoOperation: {
@@ -450,6 +449,9 @@ export const storyInspector = {
         targetScene: "行き先のシーン",
         returnable: "行き先のシーンのあとで戻る",
     },
+    setVariable: {
+        missingScene: "シーンが見つからない",
+    },
 
     note: {
         label: "メモ",
@@ -458,6 +460,10 @@ export const storyInspector = {
     blueprint: {
         storyActionTitle: "ストーリーアクション",
         name: "ブループリント名",
+    },
+
+    plugin: {
+        missingOption: "{value}（見つからない）",
     },
 
     audio: {
@@ -489,10 +495,8 @@ export const storyInspector = {
     },
 
     layer: {
-        layerName: "レイヤーの名前",
         zIndex: "重ね順",
-        depth: "奥行き",
-        setDepthHint: "シーン全体の背景レイヤーの奥行きを決める",
+        zIndexRowHint: "レイヤーの最初の重ね順はシーンのレイヤーで決まる",
     },
 
     video: {

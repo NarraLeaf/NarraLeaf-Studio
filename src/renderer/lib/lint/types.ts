@@ -20,9 +20,22 @@ import type { LintContext } from "./context";
  *    declare gets `undefined` and deserves it.
  */
 
-export type LintSeverity = "error" | "warning" | "info";
+/**
+ * How much a finding matters, worst first.
+ *
+ *  - `error` - the game will not be what the author wrote; refuses the build of any project that
+ *    checks before building.
+ *  - `warning` - probably wrong; refuses a build only on a project set to stop on warnings too.
+ *  - `minor` - strictly a problem, in practice unimportant: a line with no translation yet, an
+ *    asset nothing uses. Listed like any finding and reachable from the Problems panel's filter,
+ *    but never counted with the warnings, never coloured like one, and never refuses a build or
+ *    fails a command-line sweep, whatever the project's threshold says. It exists so a rule that
+ *    fires once per line of a long script does not bury the few findings that need the author.
+ *  - `info` - a note about something that may well be intended.
+ */
+export type LintSeverity = "error" | "warning" | "minor" | "info";
 
-/** A configured severity: the three real ones, plus the "do not run this at all" state. */
+/** A configured severity: the four real ones, plus the "do not run this at all" state. */
 export type LintRuleSeverity = LintSeverity | "off";
 
 export type LintCategory =
@@ -63,12 +76,30 @@ export const LINT_CATEGORY_ORDER: readonly LintCategory[] = [
     "typography",
 ] as const;
 
-/** Error first, info last - the order findings are reported and rendered in. */
+/**
+ * Error first, info last - the order findings are reported and rendered in.
+ *
+ * `minor` sits between `warning` and `info`: it is a problem, which a note is not, and it is one
+ * the author can leave for later, which a warning is not.
+ */
 export const LINT_SEVERITY_ORDER: Record<LintSeverity, number> = {
     error: 0,
     warning: 1,
-    info: 2,
+    minor: 2,
+    info: 3,
 };
+
+/** How many findings a report holds at each severity. */
+export type LintSeverityCounts = Record<LintSeverity, number>;
+
+/** Tally entries by severity. One function, so no surface can forget a severity in its own tally. */
+export function countLintSeverities(entries: readonly Pick<LintReportEntry, "severity">[]): LintSeverityCounts {
+    const counts: LintSeverityCounts = { error: 0, warning: 0, minor: 0, info: 0 };
+    for (const entry of entries) {
+        counts[entry.severity] += 1;
+    }
+    return counts;
+}
 
 /**
  * The ids that name a finding no rule produces.
@@ -326,7 +357,7 @@ export type LintReport = {
     startedAt: number;
     finishedAt: number;
     entries: LintReportEntry[];
-    counts: { error: number; warning: number; info: number };
+    counts: LintSeverityCounts;
     rulesRun: LintRuleId[];
     /** Rules configured `off`, plus anything left unrun when the sweep was cancelled. */
     skipped: LintRuleId[];

@@ -57,7 +57,12 @@ export const vfx = defineStoryCommand({
     aliases: ["ambience"],
     category: "vfx",
     icon: Wind,
-    examples: ["/vfx intro", "/vfx intro name=petals opacity=0.5"],
+    examples: ["/vfx intro name=petals", "/vfx intro name=petals opacity=0.5"],
+    sequence: {
+        note: "Declares an overlay and does not display it: nothing plays until a `/show <name>` row; "
+            + "`/hide <name>` takes it away.",
+        lines: ["/vfx intro name=petals opacity=0.5", "/show petals", "/hide petals"],
+    },
     params: {
         clip: {
             aliases: ["src"],

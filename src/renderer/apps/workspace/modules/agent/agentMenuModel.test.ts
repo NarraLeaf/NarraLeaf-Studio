@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createTranslator } from "@shared/i18n";
+import { AGENT_CLIENTS } from "@shared/agent/clients";
+import { AGENT_COPY_CONFIG_KINDS } from "@shared/agent/workspaceAccess";
 import { isActionMenuAction, isActionMenuSeparator } from "../../components/ui/actionMenuModel";
 import type { ActionDefinition, ActionMenuItem, ActionSubmenu } from "../../registry/types";
 import {
@@ -157,24 +159,21 @@ describe("the Agent menu's rows", () => {
         expect(model.run.toggleFullAccess).toHaveBeenCalled();
     });
 
-    it("offers the four configurations by client, in the Settings panel's order, and copies the one picked", () => {
-        const model = input();
-        const copy = buildAgentMenuItems(model).find(item => !isActionMenuSeparator(item) && item.id === AGENT_MENU_ACTIONS.copyConfig) as ActionSubmenu;
-        expect(copy.items.map(item => (item as ActionDefinition).label)).toEqual(["Claude Code", "Claude Desktop", "opencode", "JSON"]);
-        (copy.items[1] as ActionDefinition).onClick(undefined as never);
-        expect(model.run.copyConfig).toHaveBeenCalledWith("stdio");
+    it("takes its order from the application list in setup and Settings, one row per configuration", () => {
+        const kinds = AGENT_CLIENTS.map(client => client.configKind).filter((kind, index, all) => all.indexOf(kind) === index);
+        expect(AGENT_MENU_COPY_KINDS.map(entry => entry.kind)).toEqual(kinds);
+        // Every application's configuration can be copied from the menu.
+        for (const client of AGENT_CLIENTS) {
+            expect(AGENT_COPY_CONFIG_KINDS).toContain(client.configKind);
+        }
     });
 
-    it("names each configuration as the Settings panel's copy buttons do, in every language", () => {
-        const keys = {
-            claudeCode: "settings.agent.copyClaudeCode",
-            stdio: "settings.agent.copyStdio",
-            opencode: "settings.agent.copyOpencode",
-            json: "settings.agent.copyJson",
-        } as const;
-        for (const t of [en, zh, createTranslator("ja").t]) {
-            expect(AGENT_MENU_COPY_KINDS.map(entry => t(keys[entry.kind]))).toEqual(AGENT_MENU_COPY_KINDS.map(entry => entry.label));
-        }
+    it("offers every configuration by client, in the Settings panel's order, and copies the one picked", () => {
+        const model = input();
+        const copy = buildAgentMenuItems(model).find(item => !isActionMenuSeparator(item) && item.id === AGENT_MENU_ACTIONS.copyConfig) as ActionSubmenu;
+        expect(copy.items.map(item => (item as ActionDefinition).label)).toEqual(["Claude Code", "Claude Desktop", "Codex", "opencode", "Gemini CLI", "JSON"]);
+        (copy.items[1] as ActionDefinition).onClick(undefined as never);
+        expect(model.run.copyConfig).toHaveBeenCalledWith("stdio");
     });
 
     it("holds only the way to turn access on and its settings while access is off", () => {

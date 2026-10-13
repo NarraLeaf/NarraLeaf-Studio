@@ -652,6 +652,16 @@ declare module "@narraleaf/script" {
     	/** Length in code points, so an emoji counts once - this is what \`maxLength\` is measured in. */
     	length: number;
     };
+    type UIVideoPlaybackReading = {
+    	/** Seconds from the start of the clip. */
+    	currentTime: number;
+    	/** Length of the clip in seconds; 0 until it is known. */
+    	duration: number;
+    	/** Neither paused nor at its end. */
+    	playing: boolean;
+    	/** Played to its end and still there. Never true for a looping clip. */
+    	ended: boolean;
+    };
     type UIDisplayableMotionFromCurrentValue = {
     	from: "current";
     	to: number;
@@ -786,6 +796,43 @@ declare module "@narraleaf/script" {
     	/** Optional variant + conditional row visuals; when absent, flat props are the sole source. */
     	appearance?: AppearanceModel | null;
     };
+    type UIVideoObjectFit = "contain" | "cover" | "fill" | "none";
+    type UIVideoPreload = "none" | "metadata" | "auto";
+    type UIVideoWidgetProps = {
+    	/**
+    	 * Named \`assetId\` on purpose, not \`videoAssetId\`. \`surfaceAssetWarmup.ts\` keys its preload
+    	 * walk on that literal property name, so the shipped game preloads this asset with no per-widget
+    	 * code. \`referenceModel.ts\` now matches the same two literal names (it previously only knew
+    	 * \`imageFill\`, \`fontAssetId\`, and \`nl.image\`'s legacy bare id).
+    	 */
+    	assetId: string | null;
+    	/** Optional still shown before playback starts; also what the paused editor canvas prefers. */
+    	posterAssetId: string | null;
+    	objectFit: UIVideoObjectFit;
+    	loop: boolean;
+    	muted: boolean;
+    	/** Runtime only. The editor canvas never autoplays - see \`videoPreviewPlayback.ts\`. */
+    	autoplay: boolean;
+    	/**
+    	 * 0-1, as authored. Not what the \`<video>\` element ends up at: the widget multiplies this by
+    	 * the track's gain and by the player's channel and master volumes, which is the only reason
+    	 * muting the game now silences a video. See \`videoMixer.ts\`.
+    	 */
+    	volume: number;
+    	/**
+    	 * The project audio track this clip's sound lands on.
+    	 *
+    	 * \`null\` resolves to the built-in SFX track, which is what an unqualified video sound has always
+    	 * effectively been. A video that *is* the scene (an OP movie) usually wants the Music track, so
+    	 * that lowering BGM lowers it - which was not expressible before, because the element bypassed
+    	 * the mixer entirely and answered to no slider at all.
+    	 */
+    	audioTrackId: string | null;
+    	playbackRate: number;
+    	/** Browser-native control strip. Off by default: most titles skin their own. */
+    	controls: boolean;
+    	preload: UIVideoPreload;
+    };
     type BlueprintPointerMoveOptions = {
     	durationSeconds?: number;
     	easing?: BlueprintPointerMoveEasing;
@@ -886,6 +933,23 @@ declare module "@narraleaf/script" {
     type BlueprintFrameProperties = {
     	targetSurfaceId: string | null;
     	params: Record<string, unknown>;
+    };
+    type BlueprintVideoProperties = UIVideoPlaybackReading & {
+    	volume: number;
+    	muted: boolean;
+    	loop: boolean;
+    	playbackRate: number;
+    };
+    type BlueprintVideoPropertiesPatch = Partial<Pick<UIVideoWidgetProps, "volume" | "muted" | "loop" | "playbackRate">>;
+    type BlueprintVideoCommand = {
+    	kind: "play";
+    } | {
+    	kind: "pause";
+    } | {
+    	kind: "stop";
+    } | {
+    	kind: "seek";
+    	seconds: number;
     };
     type BlueprintGamePreferenceKey = "autoForward" | "skip"
     /**
@@ -1030,6 +1094,10 @@ declare module "@narraleaf/script" {
     		stopDisplayableAnimation: (animationId: string) => Promise<void>;
     		getFrameProperties: (elementId: string) => BlueprintFrameProperties;
     		setFrameProperties: (elementId: string, patch: Partial<BlueprintFrameProperties>) => Promise<void>;
+    		getVideoProperties: (elementId: string) => BlueprintVideoProperties;
+    		setVideoProperties: (elementId: string, patch: BlueprintVideoPropertiesPatch) => Promise<void>;
+    		/** Play, pause, stop or seek a video widget. Settles once asked, not once playback has started. */
+    		controlVideo: (elementId: string, command: BlueprintVideoCommand) => Promise<void>;
     	};
     	state: {
     		get: (scope: string, key: string) => unknown;
@@ -1175,6 +1243,15 @@ declare module "@narraleaf/script" {
     		 */
     		getCharacter: (characterId: string) => BlueprintCharacterInfo | null;
     		getNotifications: () => BlueprintGameNotification[];
+    		/**
+    		 * Add a line to the running game's notification stream - the one the engine's own notices
+    		 * go into, so it is drawn by the Game UI notification slot (or the engine's own toast when
+    		 * the project has none) and listed by \`getNotifications\` until it times out.
+    		 *
+    		 * \`durationSeconds\` undefined means the engine's default. Throws with no game running:
+    		 * there is no stream to post into.
+    		 */
+    		postNotification: (message: string, durationSeconds?: number) => void;
     		getChoiceCount: () => number;
     		isNvlMode: () => boolean;
     		/** True while a dialog line is on screen and its message is marked read. */
@@ -1927,6 +2004,7 @@ declare module "@narraleaf/script" {
     		readonly value: "string";
     		readonly previousValue: "string";
     	};
+    	readonly videoEnded: {};
     	readonly pageEvent: {
     		readonly event: "string";
     		readonly data: "unknown";
@@ -2105,7 +2183,8 @@ declare module "@narraleaf/script" {
     		"mouseWheel",
     		"rightClick",
     		"focus",
-    		"blur"
+    		"blur",
+    		"videoEnded"
     	];
     	readonly "nl.puppet": readonly [
     		"init",

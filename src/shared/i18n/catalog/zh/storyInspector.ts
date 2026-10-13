@@ -367,7 +367,6 @@ export const storyInspector = {
     },
     layerOperation: {
         setZIndex: "设置层级",
-        setDepth: "设置纵深",
     },
     videoOperation: {
         play: "播放",
@@ -412,12 +411,18 @@ export const storyInspector = {
         targetScene: "目标场景",
         returnable: "目标场景结束后返回",
     },
+    setVariable: {
+        missingScene: "场景缺失",
+    },
     note: {
         label: "备注",
     },
     blueprint: {
         storyActionTitle: "故事动作",
         name: "蓝图名称",
+    },
+    plugin: {
+        missingOption: "{value}（缺失）",
     },
     audio: {
         track: "音轨",
@@ -444,10 +449,8 @@ export const storyInspector = {
         text: "文本",
     },
     layer: {
-        layerName: "图层名称",
         zIndex: "层级",
-        depth: "纵深",
-        setDepthHint: "为整个场景设置背景图层的纵深",
+        zIndexRowHint: "图层的初始层级由场景的图层顺序决定",
     },
     video: {
         videoName: "视频名称",

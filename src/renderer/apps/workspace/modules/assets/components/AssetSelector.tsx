@@ -114,7 +114,7 @@ export function AssetSelector({
     onClose,
     onConfirm,
 }: AssetSelectorProps) {
-    const { t, tn } = useTranslation();
+    const { t, tn, formatList } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     // The picker asks about the freeze itself rather than trusting whoever opened it: it renders in
     // a portal on the window's body, so every `fieldset disabled` clamp an inspector puts around its
@@ -603,7 +603,7 @@ export function AssetSelector({
         const tagLabels = readAssetTags(asset.tags ?? [], assetSetNaming).map(entry => entry.label);
         const secondLine = subtitle !== undefined
             ? subtitle || " "
-            : tagLabels.length ? tagLabels.join(", ") : t("assets.noTags");
+            : tagLabels.length ? formatList(tagLabels, { style: "narrow" }) : t("assets.noTags");
         return (
             <button
                 key={asset.id}

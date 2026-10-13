@@ -21,11 +21,12 @@ export const onboarding = {
         identity: "作者",
         team: "团队",
         story: "故事编辑器",
+        agent: "Agent 接入",
         done: "完成",
     },
     welcome: {
         title: "欢迎",
-        expectation: "界面与故事编辑器的六项设置。每一项选中即刻生效，均可在设置中修改",
+        expectation: "界面、故事编辑器与 Agent 接入的七项设置。每一项选中即刻生效，均可在设置中修改",
         haveSettings: "来自其他安装的设置",
     },
     language: {
@@ -58,6 +59,11 @@ export const onboarding = {
     story: {
         title: "故事编辑器",
         expectation: "场景编辑器的阅读与输入方式",
+    },
+    agent: {
+        title: "Agent 接入",
+        expectation: "AI Agent 通过 MCP 连接 Studio，编辑当前打开的项目。Agent 不是必需的",
+        toggleFailed: "无法更改 Agent 接入：{error}",
     },
     import: {
         action: "导入设置文件…",

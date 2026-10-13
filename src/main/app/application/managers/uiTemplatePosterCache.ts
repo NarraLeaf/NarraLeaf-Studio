@@ -3,6 +3,7 @@ import path from "path";
 import { CacheNamespace } from "@shared/types/constants";
 import type { UIThemeDescriptor } from "@shared/types/uiTemplateRegistry";
 import { fetchThemePreviews } from "./uiTemplateRegistryClient";
+import type { StoreOrigin } from "./storeSource";
 
 /**
  * Theme posters from the UI template store, fetched by main and kept on disk.
@@ -39,18 +40,18 @@ export class UITemplatePosterCache {
      */
     public async getMany(
         themes: UIThemeDescriptor[],
-        registryUrl: string,
+        origin: StoreOrigin,
     ): Promise<{ id: string; dataUrl: string }[]> {
         const results = await Promise.all(
             themes.map(async theme => {
-                const dataUrl = await this.get(theme, registryUrl);
+                const dataUrl = await this.get(theme, origin);
                 return dataUrl ? { id: theme.id, dataUrl } : null;
             }),
         );
         return results.filter((entry): entry is { id: string; dataUrl: string } => entry !== null);
     }
 
-    private get(theme: UIThemeDescriptor, registryUrl: string): Promise<string | null> {
+    private get(theme: UIThemeDescriptor, origin: StoreOrigin): Promise<string | null> {
         const key = cacheKey(theme);
         if (this.failures.has(key)) {
             return Promise.resolve(null);
@@ -59,14 +60,14 @@ export class UITemplatePosterCache {
         if (existing) {
             return existing;
         }
-        const pending = this.load(theme, key, registryUrl).finally(() => {
+        const pending = this.load(theme, key, origin).finally(() => {
             this.inFlight.delete(key);
         });
         this.inFlight.set(key, pending);
         return pending;
     }
 
-    private async load(theme: UIThemeDescriptor, key: string, registryUrl: string): Promise<string | null> {
+    private async load(theme: UIThemeDescriptor, key: string, origin: StoreOrigin): Promise<string | null> {
         if (!theme.preview) {
             return null;
         }
@@ -74,7 +75,7 @@ export class UITemplatePosterCache {
         if (cached) {
             return cached;
         }
-        const [fetched] = await fetchThemePreviews([theme], registryUrl);
+        const [fetched] = await fetchThemePreviews([theme], origin);
         if (!fetched) {
             this.failures.add(key);
             return null;

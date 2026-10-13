@@ -46,7 +46,6 @@ const DECLARATIONS: Record<string, StoryActionPayload> = {
     b_char: { action: "character", operation: "enter", characterId: "c1", objectName: "Alice" },
     b_img: { action: "image", operation: "create", objectName: "hero", assetId: "i1" },
     b_txt: { action: "text", operation: "create", objectName: "title", text: "Hi" },
-    b_layer: { action: "layer", operation: "create", objectName: "overlay" },
     b_vid: { action: "video", operation: "play", objectName: "clip", assetId: "v1" },
     b_snd: { action: "audio", operation: "playSound", objectName: "piano", assetId: "a1" },
     b_vfx: { action: "vfx", operation: "create", objectName: "petals", assetId: "v2" },
@@ -98,6 +97,8 @@ function buildIn(document: StoryDocument, source: string): Extract<StoryBlock, {
 }
 
 const DECLARED = documentWith(DECLARATIONS);
+// A layer is the scene's, not a row's: declared on the scene under the id a reference binds to.
+DECLARED.scenes[SCENE_ID].layers = [{ kind: "custom", id: "b_layer", name: "overlay" }, { kind: "displayable" }, { kind: "background" }];
 const build = (source: string) => buildIn(DECLARED, source);
 
 describe("a row that addresses a displayable names the row that declared it", () => {
@@ -261,7 +262,6 @@ describe("a row that declares an object writes no reference", () => {
             "/image night",
             "/text Chapter One",
             "/video intro",
-            "/layer fx",
             "/vfx rain",
             "/sound hit",
             "/bgm theme",

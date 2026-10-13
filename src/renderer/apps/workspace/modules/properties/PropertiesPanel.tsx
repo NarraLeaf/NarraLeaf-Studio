@@ -1468,6 +1468,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                         onSetDialogueCharacter={storyInspector.onSetDialogueCharacter}
                         generateTextId={storyInspector.generateTextId}
                         onCreateLayer={storyInspector.onCreateLayer}
+                        onManageLayers={storyInspector.onManageLayers}
                     />
                 </div>
             );

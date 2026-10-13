@@ -489,6 +489,14 @@ export const workspace = {
                 existsDetail: "Files with the same name are replaced. Other files in the folder are kept.",
                 replace: "Replace",
             },
+            // Asked when installing the Agent Skill would replace a SKILL.md that is not Studio's.
+            installSkill: {
+                title: "Install Agent Skill",
+                changedOne: "This folder holds a SKILL.md that differs from Studio's",
+                changedMany: "These folders hold a SKILL.md that differs from Studio's",
+                changedDetail: "Files with the same name are replaced with this version of Studio's Agent Skill. Other skills are kept.",
+                replace: "Replace",
+            },
             // Asked when an agent needs files outside the project and the allowed folders.
             folderAccess: {
                 title: "Allow agents to read folders?",
@@ -511,6 +519,10 @@ export const workspace = {
         // The Agent log panel (`AgentLogPanel`).
         log: {
             pluginTool: "A tool of the plugin {plugin}",
+            // What the log's target column names a call by when its subject has no name of its own.
+            target: {
+                standardScreens: "Standard screens",
+            },
             filter: {
                 all: "All calls",
                 writes: "Changes only",
@@ -597,6 +609,10 @@ export const workspace = {
             ui_patch: "Edit elements",
             ui_templates: "Interface templates",
             ui_template_apply: "Apply a template",
+            ui_page_rename: "Rename a page",
+            ui_page_delete: "Delete a page",
+            ui_page_set_entry: "Set the entry page",
+            ui_install_standard_screens: "Install the standard screens",
             brand_get: "Read the palette",
             brand_set: "Change the palette",
             blueprint_nodes: "Blueprint node catalog",
@@ -604,6 +620,7 @@ export const workspace = {
             blueprint_list: "List blueprints",
             blueprint_show: "Read a blueprint as text",
             blueprint_apply: "Write blueprints",
+            blueprint_remove: "Remove a blueprint",
             localization_status: "Translation progress",
             localization_list: "List text to translate",
             localization_set: "Write translations",
@@ -617,6 +634,12 @@ export const workspace = {
             playtest_start: "Play the game",
             playtest_advance: "Advance the game",
             playtest_screenshot: "Look at the game",
+            asset_usage: "Where an asset is used",
+            chapter_rename: "Rename a chapter",
+            chapter_delete: "Delete a chapter",
+            playtest_click: "Click in the game",
+            playtest_hover: "Hover in the game",
+            playtest_key: "Press a key in the game",
             playtest_stop: "Stop playing",
             console_read: "Read Studio's console",
             build: "Build the game",
@@ -870,11 +893,6 @@ export const workspace = {
         noActiveEditor: "No active editor",
         closePanel: "Close panel",
         closeTab: "Close {name}",
-        newTab: "New tab",
-        // Browser-style blank tab opened by the tab strip's "+".
-        newTabPage: {
-            title: "New Tab",
-        },
         tabMenu: {
             // Turns a preview tab - the italic one a group holds at most one of - into an ordinary tab.
             keepOpen: "Keep open",
@@ -1005,6 +1023,9 @@ export const workspace = {
                 asset: "Asset",
                 blueprint: "Blueprint",
             },
+            // Ends the detail of rows that read alike in every other way (same kind, name and place),
+            // counted in the order the project lists them.
+            ordinal: "Item {n}",
         },
         // The bottom status strip. Signals only show while meaningful (running/ building/dirty).
         statusBar: {
@@ -1996,6 +2017,9 @@ export const workspace = {
                     clearMarker: "Clear a Marker",
                     videoZoom: "Zoom the Picture",
                     videoActualSize: "Switch Between Fit and Actual Pixels",
+                    moveSelection: "Move the Selection",
+                    extendSelection: "Extend the Selection",
+                    moveThroughGroupTree: "Move Through the Group Tree",
                 },
             },
         },

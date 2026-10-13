@@ -27,6 +27,10 @@ type HeadThumbnailProps = {
 export function HeadThumbnail({ url, alt, className, iconClassName, frame }: HeadThumbnailProps) {
     // An explicit frame is authoritative — the silhouette heuristic is only the fallback.
     const hasFrame = frame !== undefined;
+    // The picture's own size, read once it loads. A framing is normalized to the picture, so whether
+    // it is square - and how to fit it when it is not - is only known in its pixels.
+    const [natural, setNatural] = React.useState<{ url: string; width: number; height: number } | null>(null);
+    const size = natural && natural.url === url ? natural : null;
     // The crop is read live from the shared cache below; this bump only forces a re-render once this
     // component's own async resolution finishes. Reading the cache directly (rather than mirroring it
     // into state) means a crop already warmed by another thumbnail — or one that lands while an
@@ -49,20 +53,27 @@ export function HeadThumbnail({ url, alt, className, iconClassName, frame }: Hea
     }, [url, hasFrame]);
 
     const crop = hasFrame ? frame : (url ? peekHeadCrop(url) : null);
+    const recordSize = (event: React.SyntheticEvent<HTMLImageElement>) => {
+        const image = event.currentTarget;
+        if (url && image.naturalWidth > 0 && image.naturalHeight > 0) {
+            setNatural({ url, width: image.naturalWidth, height: image.naturalHeight });
+        }
+    };
     return (
         <div className={cn("relative flex items-center justify-center overflow-hidden shrink-0", className)}>
             {url ? (
                 <img
                     src={url}
                     alt={alt}
+                    onLoad={recordSize}
                     className={cn(
                         "transition-opacity duration-150",
-                        // Held back until the head is located so the thumbnail
-                        // does not visibly jump from centre-cropped to framed.
-                        crop === undefined ? "opacity-0" : "opacity-100",
+                        // Held back until the head is located, and a framing until the picture's size
+                        // is known, so the thumbnail does not visibly jump into place.
+                        crop === undefined || (crop && !size) ? "opacity-0" : "opacity-100",
                         crop ? "absolute max-w-none" : "w-full h-full object-cover object-top",
                     )}
-                    style={crop ? toFrameStyle(crop) : undefined}
+                    style={crop && size ? toFrameStyle(crop, size) : undefined}
                 />
             ) : (
                 <ImageIcon className={cn("text-fg-subtle", iconClassName ?? "w-5 h-5")} />
@@ -71,12 +82,20 @@ export function HeadThumbnail({ url, alt, className, iconClassName, frame }: Hea
     );
 }
 
-/** Scales and offsets the image so that `crop` exactly fills the square frame. */
-function toFrameStyle(crop: NormalizedCrop): React.CSSProperties {
+/**
+ * Scales and offsets the image so that `crop` fits the square frame the way the avatar bake fits it:
+ * one scale for both axes, the crop's long side across the frame, the short side centred. A square
+ * crop fills the frame exactly. A crop that is not square in the picture's pixels used to be
+ * stretched to the square, so the editor's avatar was taller or wider than the one the game shows.
+ */
+function toFrameStyle(crop: NormalizedCrop, size: { width: number; height: number }): React.CSSProperties {
+    const cropWidth = crop.w * size.width;
+    const cropHeight = crop.h * size.height;
+    const long = Math.max(cropWidth, cropHeight);
     return {
-        width: `${100 / crop.w}%`,
-        height: `${100 / crop.h}%`,
-        left: `${(-crop.x / crop.w) * 100}%`,
-        top: `${(-crop.y / crop.h) * 100}%`,
+        width: `${(size.width / long) * 100}%`,
+        height: `${(size.height / long) * 100}%`,
+        left: `${(((long - cropWidth) / 2 - crop.x * size.width) / long) * 100}%`,
+        top: `${(((long - cropHeight) / 2 - crop.y * size.height) / long) * 100}%`,
     };
 }

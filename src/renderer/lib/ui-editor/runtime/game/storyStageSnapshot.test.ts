@@ -187,6 +187,20 @@ describe("computeStoryStageSnapshot", () => {
         expect(snapshot(reset, "target").camera).toBeNull();
     });
 
+    it("works out the camera a camera target leaves, without moving the snapshot past it", () => {
+        const document = baseDocument({
+            pan: block("pan", "action", { action: "camera", operation: "transform", transform: { mode: "props", to: { position: { xalign: 0.25, yalign: 0.5 }, zoom: 2 } } }),
+            target: block("target", "action", { action: "camera", operation: "transform", transform: { mode: "props", to: { zoom: 3 } } }),
+            line: say("line"),
+        }, ["pan", "target", "line"]);
+        const result = snapshot(document, "target");
+        // Still the camera before the row: the preview plays the row's move from here.
+        expect(result.camera?.props.zoom).toBe(2);
+        // And the frame it ends on: the earlier pan, with the row's zoom over it.
+        expect(result.targetCamera).toEqual({ position: expect.objectContaining({ xalign: 0.25, yalign: 0.5 }), zoom: 3 });
+        expect(snapshot(document, "line").targetCamera).toBeNull();
+    });
+
     it("leaves the camera pose null when no /camera runs before the target", () => {
         const document = baseDocument({ target: say("target") }, ["target"]);
         expect(snapshot(document, "target").camera).toBeNull();
@@ -433,9 +447,8 @@ describe("computeStoryStageSnapshot", () => {
         expect(result.displayables).toEqual([]);
     });
 
-    it("flags nvl containers and layer records", () => {
+    it("flags nvl containers and layer records, with the scene's layers up from its first row", () => {
         const document = baseDocument({
-            layer: block("layer", "action", { action: "layer", operation: "create", objectName: "fg", zIndex: 5 }),
             "layer-move": block("layer-move", "action", {
                 action: "layer",
                 operation: "transform",
@@ -445,12 +458,14 @@ describe("computeStoryStageSnapshot", () => {
             }),
             nvl: block("nvl", "action", { action: "nvl" }, null, ["target"]),
             target: say("target", "nvl"),
-        }, ["layer", "layer-move", "nvl"]);
+        }, ["layer-move", "nvl"]);
+        // In front of the characters: the stack puts it at z-index 1.
+        document.scenes["scene-1"].layers = [{ kind: "custom", id: "layer", name: "fg" }, { kind: "displayable" }, { kind: "background" }];
         const result = snapshot(document, "target");
         expect(result.nvl).toBe(true);
         const layer = result.displayables[0];
         expect(layer.kind).toBe("layer");
-        expect(layer.zIndex).toBe(5);
+        expect(layer.zIndex).toBe(1);
         expect(layer.visible).toBe(true);
         expect(layer.props.position).toEqual(expect.objectContaining({ yoffset: -20 }));
     });

@@ -35,5 +35,10 @@ export function useKeepAlivePanelIds(activePanelId: string | null, positionPanel
         });
     }, [activePanelId, registeredSignature]);
 
+    // The active panel is mounted in the same render that makes it active. Waiting for the effect
+    // above would leave one painted frame with nothing in the sidebar but its background.
+    if (activePanelId && !shown.has(activePanelId) && positionPanels.some(panel => panel.id === activePanelId)) {
+        return new Set([...shown, activePanelId]);
+    }
     return shown;
 }

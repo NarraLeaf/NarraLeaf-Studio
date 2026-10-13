@@ -45,6 +45,7 @@ import { AgentManager } from "./application/managers/agent/agentManager";
 import { SpellcheckManager } from "./application/managers/spellcheck/spellcheckManager";
 import { ProjectSessionLockManager } from "./application/managers/projectSessionLockManager";
 import { SPELLCHECK_LANGUAGE_KEY } from "@shared/types/spellcheck";
+import { STORE_SOURCE_KEY } from "@shared/constants/storeSource";
 import { resolveStartupProject } from "./application/startupProject";
 import { CommandLineBuildRun } from "./application/commandLineBuild";
 import { CommandLineCheckRun } from "./application/commandLineCheck";
@@ -270,6 +271,7 @@ export class App extends BaseApp {
         this.spellcheckManager = new SpellcheckManager({
             cacheRoot: () => this.getCacheRootDir(),
             readSetting: () => this.globalState.get(SPELLCHECK_LANGUAGE_KEY),
+            readStoreSource: () => this.globalState.get(STORE_SOURCE_KEY),
         });
 
         // Built as soon as there is an Electron app to attach it to, because from here on it is
@@ -477,6 +479,10 @@ export class App extends BaseApp {
         const window = new AppWindow<WindowAppType.Launcher>(this, config, {
             onboarding,
         });
+        if (onboarding) {
+            // This window, and only it, is setup until the marker is written (`isFirstRunSetupWindow`).
+            this.firstRunSetupGate.open(window);
+        }
         window.setTitle("Launcher - NarraLeaf Studio");
         this.applyWindowIcon(window);
         if (unattended) {
@@ -2752,5 +2758,7 @@ function agentAccessPromptHeight(props: WindowProps[WindowAppType.AgentAccessPro
             return 240;
         case "exportOverwrite":
             return 284 + lines(props.path, 4) * 16;
+        case "skillOverwrite":
+            return 284 + Math.max(1, props.folders.slice(0, 5).reduce((sum, folder) => sum + lines(folder, 3), 0)) * 16;
     }
 }

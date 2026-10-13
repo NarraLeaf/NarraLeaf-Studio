@@ -22,6 +22,7 @@ import { TrayManager } from "./managers/trayManager";
 import { WINDOW_ICON_KEY, WindowIconEntry, resolveWindowIcon } from "@shared/constants/windowIcon";
 import { ONBOARDING_STATE_KEY, needsOnboarding } from "@shared/constants/onboarding";
 import { LAUNCHER_HOME_SIZE, applyLauncherWindowSize } from "./launcherWindow";
+import { FirstRunSetupGate } from "./firstRunSetupGate";
 import type { AppWindow } from "./managers/window/appWindow";
 import { ProtocolManager } from "./managers/protocolManager";
 import { StorageManager } from "./managers/storageManager";
@@ -30,6 +31,7 @@ import { GlobalStateManager } from "./managers/storage/globalState";
 import { DOWNLOAD_REWRITES_KEY, setDownloadRewriteSource } from "./managers/downloadRewrites";
 import { setUseSystemProxySource } from "./managers/downloadProxy";
 import { USE_SYSTEM_PROXY_KEY } from "@shared/types/downloadSource";
+import { storeSourceMigration } from "@shared/constants/storeSource";
 import { sweepPsdTempDirectories } from "./managers/storage/cacheInventory";
 import {
     describeCacheRoot,
@@ -39,6 +41,7 @@ import {
 } from "./managers/storage/cacheRoot";
 import { PluginPermissionManager } from "./managers/pluginPermissionManager";
 import { ProjectTrustManager } from "./managers/projectTrustManager";
+import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { PluginManager } from "./managers/pluginManager";
 import { PluginIconCache } from "./managers/pluginIconCache";
 import { UITemplatePosterCache } from "./managers/uiTemplatePosterCache";
@@ -126,6 +129,11 @@ export class BaseApp {
     protected appInfo: AppInfo | null = null;
     private readonly commandLine = parseMainCommandLine(process.argv);
     /**
+     * The launcher windows main opened in first-run setup. Marked by `App.launchLauncher`, cleared by
+     * the marker (see {@link runGlobalStateSideEffects}); read through {@link isFirstRunSetupWindow}.
+     */
+    protected readonly firstRunSetupGate = new FirstRunSetupGate();
+    /**
      * The fatal error being handled, if one is. Non-null is the whole of the re-entrancy guard in
      * {@link crash}: the failure that got here is usually still happening, and the handling is now
      * asynchronous, so more of them arrive while the first is still writing the windows out.
@@ -139,6 +147,8 @@ export class BaseApp {
      * latch would put the dialog back on screen each time.
      */
     private experimentalNoticePending = true;
+    /** Projects `trust-all-projects` has let run, so each is named in the log once rather than per gate. */
+    private readonly experimentallyTrustedProjects = new Set<string>();
     /** Memoized by {@link resolveCacheRootOnce}; see it for why it must not be recomputed. */
     private cacheRootResolution: CacheRootResolution | null = null;
 
@@ -188,6 +198,18 @@ export class BaseApp {
         if (sweptKeys.length > 0) {
             this.logger.info(`[App] Removed ${sweptKeys.length} retired setting(s): ${sweptKeys.join(", ")}`);
         }
+        // A profile from before the store source choice: the retired "China mirror" address goes,
+        // and a typed registry address becomes the `custom` choice. A no-op once the choice exists.
+        const storeMigration = storeSourceMigration(this.globalState.raw());
+        for (const key of storeMigration.remove) {
+            this.globalState.delete(key as GlobalStateKeys);
+        }
+        for (const [key, value] of Object.entries(storeMigration.set)) {
+            this.globalState.set(key as GlobalStateKeys, value as GlobalStateValue<GlobalStateKeys>);
+        }
+        if (storeMigration.remove.length > 0 || Object.keys(storeMigration.set).length > 0) {
+            this.logger.info(`[App] Store source: removed ${storeMigration.remove.join(", ") || "nothing"}, set ${JSON.stringify(storeMigration.set)}`);
+        }
         // Read through on every download rather than snapshotted: a mirror typed in the Settings
         // window has to apply to the next fetch, not the next launch.
         setDownloadRewriteSource(() => this.globalState.get(DOWNLOAD_REWRITES_KEY));
@@ -196,7 +218,9 @@ export class BaseApp {
         // the answer is fixed for the rest of the session.
         this.logger.info(`[Cache] ${describeCacheRoot(this.resolveCacheRootOnce())}`);
         this.pluginPermissionManager = new PluginPermissionManager(this.getUserDataDir());
-        this.projectTrustManager = new ProjectTrustManager(this.getUserDataDir());
+        this.projectTrustManager = new ProjectTrustManager(this.getUserDataDir(), {
+            trustUnvouched: projectPath => this.trustUnvouchedProject(projectPath),
+        });
         this.pluginManager = new PluginManager(this.getUserDataDir(), this.pluginPermissionManager, {
             builtInPluginsDir: this.getBuiltInPluginsDir(),
         });
@@ -349,6 +373,10 @@ export class BaseApp {
         // screen it is about to show. Hooked to the marker rather than to a channel of its own
         // because the marker IS the end of the flow; a second signal could only ever disagree with
         // it. Idempotent, so a profile that writes it again costs nothing.
+        if (key === ONBOARDING_STATE_KEY) {
+            // The agent handlers that let setup through stop doing so here, with the same signal.
+            this.firstRunSetupGate.noteMarker(value);
+        }
         if (key === ONBOARDING_STATE_KEY && !needsOnboarding(value)) {
             for (const window of this.windowManager.getWindows()) {
                 if (window.isClosed() || window.getWindowType() !== WindowAppType.Launcher) {
@@ -839,6 +867,40 @@ export class BaseApp {
         }
         this.experimentalNoticePending = false;
         return true;
+    }
+
+    /**
+     * The experimental `trust-all-projects` condition: let a project the ledger does not trust run
+     * anyway, for a test instance nobody is at the screen of to answer the trust question.
+     *
+     * Asked only after the ledger has said no, so a project the author vouched for is trusted on its
+     * own merits and never named here. Every project this does let through is named in the log the
+     * first time - that line is the record of what the run would have been refused without the
+     * flag. The ledger itself is never written: turning the condition off puts every project it
+     * covered back exactly where it was, waiting for the author.
+     */
+    private trustUnvouchedProject(projectPath: string): boolean {
+        if (!this.hasExperimentalCondition("trust-all-projects")) {
+            return false;
+        }
+        const key = normalizeProjectPath(projectPath);
+        if (!this.experimentallyTrustedProjects.has(key)) {
+            this.experimentallyTrustedProjects.add(key);
+            this.logger.warn(
+                `[Experimental] trust-all-projects treated ${projectPath} as trusted. The author never `
+                + "vouched for it; Studio as shipped does not run it.",
+            );
+        }
+        return true;
+    }
+
+    /**
+     * Whether `window` is the launcher main opened to show first-run setup, and setup is not over.
+     * Setup's agent access screen is let through a few agent handlers on this answer alone; nothing
+     * a renderer writes can make it true. See {@link FirstRunSetupGate}.
+     */
+    public isFirstRunSetupWindow(window: AppWindow): boolean {
+        return this.firstRunSetupGate.passes(window);
     }
 
     /**

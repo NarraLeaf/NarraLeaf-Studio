@@ -88,6 +88,20 @@ function buildIn(source: string, context: StoryCommandContext): StoryBlock {
     return spec.build(args, { generateId, context });
 }
 
+/** Parse, resolve and commit a scene-changing line against an empty scene; the change it makes. */
+function editSceneWith(source: string): unknown {
+    const line = parseCommandLine(source);
+    if (line.kind !== "command" || !line.def) {
+        throw new Error(`not a command: ${source}`);
+    }
+    expect(line.issues).toEqual([]);
+    const { args, issues } = resolveCommandLine(line, CONTEXT);
+    expect(issues).toEqual([]);
+    const spec = getCommandSpec(line.def.commandId);
+    const scene = { id: "s", name: "Scene", runtimeName: "scene", rootBlockIds: [], blocks: {} };
+    return spec?.editScene?.(args, { generateId, context: CONTEXT, scene }) ?? null;
+}
+
 /** Resolution issues for a line - for asserting what must NOT commit. */
 /** What the PARSE rejected, before any target is resolved - an unknown word for the command. */
 function commandLineIssues(source: string): string[] {
@@ -1045,7 +1059,26 @@ describe("logic and effects", () => {
         // Camera only, and structurally so: the engine renders the lens from the camera's own overlay
         // and no other Displayable has one.
         expect(issuesOf("/transform hero lens=blink")).toEqual(["unsupportedParam"]);
+        // Shares of the stage, not pixels: a pair far off it is refused, one just off it is a slide-in start.
+        expect(issuesOf("/transform hero pos=100,200")).toEqual(["positionOutOfRange"]);
+        expect(issuesOf("/transform hero pos=-0.3,0.5")).toEqual([]);
+        expect(issuesOf("/transform hero pos=50%,20%")).toEqual(["unsupportedOption"]);
         expect(issuesOf("/transform hero shutter=1")).toEqual(["unsupportedParam"]);
+    });
+
+    it("takes back a far-out pair a row of the scene already stores, in pos= and in from=", () => {
+        const stored: StoryCommandContext = { ...CONTEXT, storedFarPositions: ["100,200"] };
+        const issuesIn = (source: string, context: StoryCommandContext) => {
+            const line = parseCommandLine(source);
+            if (line.kind !== "command" || !line.def) {
+                throw new Error(`not a command: ${source}`);
+            }
+            return resolveCommandLine(line, context).issues.map(issue => issue.code);
+        };
+        expect(issuesIn("/transform hero pos=100,200", stored)).toEqual([]);
+        expect(issuesIn("/transform hero pos=100,201", stored)).toEqual(["positionOutOfRange"]);
+        expect(issuesIn("/transform hero from=pos=100,200 pos=0.5,0.5", stored)).toEqual([]);
+        expect(issuesIn("/transform hero from=pos=100,200 pos=0.5,0.5", CONTEXT)).toEqual(["unsupportedOption"]);
     });
 
     it("/transform takes a drawn easing curve where it takes an easing word", () => {
@@ -1381,6 +1414,11 @@ describe("manual examples", () => {
     it("parses, resolves and builds every one of them", () => {
         for (const spec of specs) {
             for (const example of spec.examples ?? []) {
+                if (spec.editScene) {
+                    // A command that changes the scene writes no row: what it commits is the change.
+                    expect(editSceneWith(example), example).not.toBeNull();
+                    continue;
+                }
                 // `build` asserts zero parse and zero resolution issues on the way through.
                 expect(build(example), example).toBeTruthy();
             }

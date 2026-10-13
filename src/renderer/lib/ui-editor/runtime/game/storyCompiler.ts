@@ -100,9 +100,10 @@ import {
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
     revealCreates,
-    sceneLayerDepths,
+    sceneLayerFollow,
+    sceneLayerStack,
+    sceneLayerZIndex,
     sceneVariableDefs,
-    storyLayerDepthParallax,
     soundStageObjectName,
     storyPersistentDefs,
     storyTransitionKindOf,
@@ -654,6 +655,18 @@ export type NlrActionIdBinding = {
      * re-pointed a row at a different file.
      */
     audioAssetId?: string;
+    /**
+     * Set on the action of a `/wait click` row: the story is stopped until the player clicks, with
+     * no line on screen. A driver that reads on line by line (an agent's play-test) needs to know
+     * that a click is what the game is waiting for, since nothing else on screen says so.
+     */
+    waitsForClick?: true;
+    /**
+     * Set on the actions of a row the story holds on by itself for a while, with no line on screen:
+     * a timed `/wait` (`ms` long) or a `/video` play the story waits out. Read by the same driver as
+     * {@link waitsForClick}, which otherwise sees nothing but "no line yet" and calls the game stuck.
+     */
+    pause?: { kind: "timed"; ms: number } | { kind: "video" };
 };
 
 type NlrAction = Parameters<typeof DevTools.setActionId>[0];
@@ -1479,6 +1492,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         // never make it, so `ctx.pluginInjections` stays unset there and their snapshots stay free of
         // anything a plugin injected.
         runStoryCompilePasses(ctx);
+        buildSceneLayers(ctx);
         // Seed declared scene-local defaults at the head of the scene's statement list. They must be
         // statements (not build-time sets): `Scene.local.init` resets the namespace on every scene
         // entry, so the seeds have to re-run each time the scene starts.
@@ -1730,12 +1744,8 @@ async function buildLaunchEntryScene(params: {
     // name that IS on stage is always built from its own record.
     const preposed = [...snapshot.displayables, ...snapshot.declarations];
 
-    // Custom layers first so images/texts can bind to them, all pre-posed via constructor config.
-    for (const record of preposed) {
-        if (record.kind === "layer") {
-            getLayer(ctx, record.objectName, record.zIndex ?? 0, snapshotPoseProps(record));
-        }
-    }
+    // The scene's layers first so images/texts can bind to them, pre-posed as the target row left them.
+    buildSceneLayers(ctx, preposed);
     const registrations: { element: Image | Text; layer: Layer | undefined; id: string }[] = [];
     for (const record of preposed) {
         if (record.kind === "layer") {
@@ -2057,12 +2067,8 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         nextActionIndex,
     };
 
-    // Custom layers first so images/texts can bind to them, all pre-posed via constructor config.
-    for (const record of snapshot.displayables) {
-        if (record.kind === "layer") {
-            getLayer(ctx, record.objectName, record.zIndex ?? 0, snapshotPoseProps(record));
-        }
-    }
+    // The scene's layers first so images/texts can bind to them, pre-posed as the row left them.
+    buildSceneLayers(ctx, snapshot.displayables);
     const registrations: { element: Image | Text; layer: Layer | undefined }[] = [];
     for (const record of snapshot.displayables) {
         if (record.kind === "layer") {
@@ -3701,7 +3707,16 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
         const chain = payload.mode === "click"
             ? Control.waitForClick()
             : Control.sleep(Math.max(0, payload.durationMs ?? 0));
-        return [recordStatement(ctx, chain, block)];
+        const firstBinding = ctx.actionIdBindings.length;
+        const recorded = recordStatement(ctx, chain, block);
+        for (const binding of ctx.actionIdBindings.slice(firstBinding)) {
+            if (payload.mode === "click") {
+                binding.waitsForClick = true;
+            } else {
+                binding.pause = { kind: "timed", ms: Math.max(0, payload.durationMs ?? 0) };
+            }
+        }
+        return [recorded];
     }
 
     if (payload.action === "image") {
@@ -4847,28 +4862,15 @@ async function compileLayerAction(
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "layer" }>,
 ): Promise<NlrStatement[]> {
-    if (payload.operation === "setDepth") {
-        // Not a step in time: the scene was built with its background layer at this distance (see
-        // `sceneBackgroundLayerConfig`), so there is nothing for the row to do when the story gets to
-        // it. Only the background layer takes one - a custom layer's depth is on its own `create`
-        // row, and the displayable layer is where the characters stand, which is what the camera is
-        // aimed at by definition.
-        if (payload.target?.kind !== "default" || payload.target.layer !== "background") {
-            diagnostic(ctx, "warning", block.id, say("story.compile.layer.depthBackgroundOnly"));
-        }
-        return [];
-    }
-    // `create` names a new custom layer; every other op resolves an existing layer - a built-in
-    // (background / displayable) or a custom one - via the target ref (falling back to the default
-    // displayable layer), so a transform can now target the background instead of only named layers.
-    const layer = declaresStageObject(payload)
-        ? getLayer(ctx, payload.objectName, payload.zIndex)
-        : findStageLayer(ctx, block.id, payload);
+    // Every op resolves one of the scene's layers - a built-in (background / displayable) or one of
+    // its own - via the target ref, falling back to the default displayable layer. The scene built
+    // them all when it was made (`buildSceneLayers`); no row declares one.
+    const layer = findStageLayer(ctx, block.id, payload);
     if (!layer) {
         return [];
     }
     const statements: NlrStatement[] = [];
-    if (payload.operation === "setZIndex" || (payload.operation === "create" && payload.zIndex !== undefined)) {
+    if (payload.operation === "setZIndex") {
         statements.push(recordStatement(ctx, layer.setZIndex(payload.zIndex ?? 0), block));
     }
     if (payload.operation === "show" || payload.operation === "hide" || payload.operation === "transform") {
@@ -4920,7 +4922,19 @@ function compileVideoPlay(
     payload: Extract<StoryActionPayload, { action: "video" }>,
     video: Video,
 ): NlrStatement {
-    const record = (statement: NlrStatement): NlrStatement => recordStatement(ctx, statement, block);
+    const waits = videoPlayWaits(payload);
+    const record = (statement: NlrStatement): NlrStatement => {
+        const firstBinding = ctx.actionIdBindings.length;
+        const recorded = recordStatement(ctx, statement, block);
+        if (waits) {
+            // Every action of a play the story waits on - the race against a click included - is
+            // the story holding on the clip, which is what a driver needs to hear.
+            for (const binding of ctx.actionIdBindings.slice(firstBinding)) {
+                binding.pause = { kind: "video" };
+            }
+        }
+        return recorded;
+    };
     const steps: NlrStatement[] = [record(video.show())];
     if (videoPlayWaits(payload)) {
         steps.push(skippableVideoPlay(record, video));
@@ -5702,44 +5716,61 @@ function getText(ctx: SceneCompileContext, objectName: string, options: { text?:
 }
 
 /**
- * Get-or-create, on the same terms as {@link getImage}: `/layer create` rows, snapshot replay, and
- * PLACEMENT - an image or text can name the layer it sits on before the row declaring that layer has
- * compiled, and dropping it on the default layer instead would silently restack the scene. A `/layer`
- * row that addresses an existing layer goes through {@link findStageLayer}.
+ * Build every layer of the scene's own, as the scene starts - which is when the engine puts a scene's
+ * layers up, whatever the story does afterwards.
+ *
+ * Each is built at the place its stack gives it (`sceneLayerZIndex`: the engine orders layers by
+ * z-index and nothing else) and following the share of the camera's movement its stack gives it, the
+ * engine's `parallax`. A layer that follows the camera exactly gets none, so a scene without depth
+ * builds exactly as every scene always did.
+ *
+ * `records` is a launch's or a still's stage at its row: a layer it holds is built where the rows
+ * before that row left it - its pose, and the z-index a `setZIndex` row may have moved it to.
+ *
+ * Registered under the name the stage knows the layer by, and with the id that name always had, so a
+ * save that holds a layer finds it again.
  */
-function getLayer(ctx: SceneCompileContext, objectName: string, zIndex = 0, initialProps?: Record<string, unknown>): Layer {
-    const name = normalizeObjectName(objectName);
-    const existing = ctx.layers.get(name);
-    if (existing) {
-        return existing;
-    }
-    // A layer's distance from the camera is stated once for the whole scene (its `create` row), and
-    // every path that builds the layer - the row itself, a picture placed on it first, a launch's
-    // replay - builds it here, so they all build it at the same distance.
-    // Read fresh each time, never cached on the scene: the story service edits a scene in place, so a
-    // cache keyed on it would keep the first compile's depths and the preview would ignore every edit.
-    const parallax = storyLayerDepthParallax(sceneLayerDepths(ctx.scene).custom.get(name));
-    const layer = new Layer(name, { zIndex, ...(parallax !== 1 ? { parallax } : {}), ...(initialProps ?? {}) } as any);
-    setStableElementId(ctx.elementIdBindings, layer, sceneElementStaticId(ctx, "layer", name));
-    ((ctx.nlrScene as unknown as { config: { layers: Layer[] } }).config.layers).push(layer);
-    ctx.layers.set(name, layer);
-    return layer;
+function buildSceneLayers(ctx: SceneCompileContext, records?: readonly StageSnapshotDisplayable[]): void {
+    const stack = sceneLayerStack(ctx.scene);
+    stack.forEach((entry, index) => {
+        if (entry.kind !== "custom") {
+            return;
+        }
+        const name = normalizeObjectName(entry.name);
+        if (ctx.layers.has(name)) {
+            // Two layers the stage knows by one name are one layer to every row that names it.
+            return;
+        }
+        const record = records?.find(candidate => candidate.kind === "layer" && candidate.objectName === name);
+        const parallax = sceneLayerFollow(entry);
+        const layer = new Layer(name, {
+            zIndex: record?.zIndex ?? sceneLayerZIndex(stack, index),
+            ...(parallax !== 1 ? { parallax } : {}),
+            ...(record ? snapshotPoseProps(record) : {}),
+        } as any);
+        setStableElementId(ctx.elementIdBindings, layer, sceneElementStaticId(ctx, "layer", name));
+        ((ctx.nlrScene as unknown as { config: { layers: Layer[] } }).config.layers).push(layer);
+        ctx.layers.set(name, layer);
+    });
 }
 
 /**
- * The scene config that puts the scene's own background layer at the distance its `setDepth` row
- * names. Empty when the scene names none, so a scene without depth builds exactly as it always did.
+ * The scene config that puts the scene's own background layer at the share of the camera's movement
+ * its stack gives it. Empty when that is all of it, so a scene without depth builds exactly as it
+ * always did.
  */
 function sceneBackgroundLayerConfig(scene: StoryScene): { backgroundLayerParallax?: number } {
-    const parallax = storyLayerDepthParallax(sceneLayerDepths(scene).background);
+    const background = sceneLayerStack(scene).find(layer => layer.kind === "background");
+    const parallax = background ? sceneLayerFollow(background) : 1;
     return parallax !== 1 ? { backgroundLayerParallax: parallax } : {};
 }
 
 /**
  * Resolve an image/text `layer` reference to a concrete NLR {@link Layer}, or `undefined` to leave
  * the displayable on the scene's default layer. Built-in refs map to NLR's `Scene.backgroundLayer`
- * / `Scene.displayableLayer`; a custom ref resolves through its stable creator block (so it follows
- * renames) to the same name-keyed layer the `layer` create block registers.
+ * / `Scene.displayableLayer`; a custom ref resolves through the scene's layers (by id, so it follows
+ * renames) to the layer {@link buildSceneLayers} built for it. One the scene no longer has leaves the
+ * displayable on the default layer - lint names the row.
  */
 function resolveLayerForRef(ctx: SceneCompileContext, ref: StoryLayerRef | undefined): Layer | undefined {
     if (!ref) {
@@ -5748,15 +5779,10 @@ function resolveLayerForRef(ctx: SceneCompileContext, ref: StoryLayerRef | undef
     if (ref.kind === "default") {
         return ref.layer === "background" ? ctx.nlrScene.backgroundLayer : ctx.nlrScene.displayableLayer;
     }
-    const name = resolveStoryLayerRef(ctx.scene, ref).name.trim();
-    if (!name) {
-        return undefined;
-    }
-    const sourceBlock = ref.sourceBlockId ? ctx.scene.blocks[ref.sourceBlockId] : undefined;
-    const zIndex = sourceBlock?.kind === "action" && sourceBlock.payload.action === "layer"
-        ? sourceBlock.payload.zIndex ?? 0
-        : 0;
-    return getLayer(ctx, name, zIndex);
+    const resolved = resolveStoryLayerRef(ctx.scene, ref);
+    return resolved.kind === "custom" && resolved.resolved
+        ? ctx.layers.get(normalizeObjectName(resolved.name))
+        : undefined;
 }
 
 /** The url each clip was built from - the engine keeps its own copy out of reach. */

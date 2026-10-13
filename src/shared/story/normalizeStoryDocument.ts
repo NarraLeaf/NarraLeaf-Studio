@@ -30,6 +30,8 @@
 
 import {
     deriveUnassignedSceneIds,
+    isDefaultSceneLayerStack,
+    normalizeSceneLayerStack,
     STORY_DOCUMENT_SCHEMA_VERSION,
     StoryBlock,
     StoryBlockId,
@@ -221,6 +223,14 @@ function normalizeScene(scene: StoryScene): StoryScene {
         normalized.defaultBackgroundAssetId = defaultBackgroundAssetId;
     } else {
         delete normalized.defaultBackgroundAssetId;
+    }
+    // A stack the stage can have, and none at all when it is the one every scene starts with - so a
+    // scene that gave its layers back to the default holds no residue of them.
+    const layers = normalizeSceneLayerStack(scene.layers);
+    if (isDefaultSceneLayerStack(layers)) {
+        delete normalized.layers;
+    } else {
+        normalized.layers = layers;
     }
     return normalized;
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
 import { en } from "@shared/i18n/catalog/en";
 import type { NarralangIssue, NarralangIssueReason, NarralangLookups } from "@/lib/story/narralang/narralangPrinter";
-import { narralangFileName, narralangIssueRows } from "./narralangIo";
+import { narralangFileName, narralangIssueRows, narralangReasonText } from "./narralangIo";
 
 /**
  * The two things the export flow decides after the printer has run: what the file is called, and how
@@ -66,6 +66,23 @@ describe("narralang issue reasons", () => {
         // The other direction: a sentence for a reason that no longer exists is dead copy the parity
         // test would happily keep translating.
         expect(Object.keys(sentences).sort()).toEqual(Object.keys(EVERY_REASON).sort());
+    });
+});
+
+describe("narralang reason sentence", () => {
+    // A stand-in translator that shows which key was asked for and with what, so the test reads the
+    // choice the helper made rather than the wording of a catalogue.
+    const t = (key: string, params?: Record<string, unknown>) => (params ? `${key}(${JSON.stringify(params)})` : key);
+
+    it("reads a reason as its own sentence, never as the entry it is held in", () => {
+        expect(narralangReasonText({ reason: "inputAction" }, t as never)).toBe("story.narralang.reason.inputAction");
+    });
+
+    it("names what a dangling reference points at when the printer knew its kind", () => {
+        expect(narralangReasonText({ reason: "unresolvedRef", detail: "asset" }, t as never)).toBe(
+            "story.narralang.unresolvedRefNamed({\"what\":\"story.narralang.detail.asset\"})",
+        );
+        expect(narralangReasonText({ reason: "unresolvedRef" }, t as never)).toBe("story.narralang.reason.unresolvedRef");
     });
 });
 

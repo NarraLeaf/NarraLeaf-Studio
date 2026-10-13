@@ -313,8 +313,8 @@ function namedPlaceholders(text: string): Set<string> {
 /**
  * What in a translation does not carry what its source carries: `{n}` values, `‹n›` run tags,
  * `{name}` placeholders and line breaks. Warnings, never refusals - the panel's own check
- * (`localization/markup`) treats every one of them as something a translator may mean, and a line
- * that renders without an emphasis still renders.
+ * (`localization/markup`) reports a dropped tag as a warning too, not an error: a translator may mean
+ * to leave one out, and the line still renders.
  */
 export function translationWarnings(unit: AgentTranslationUnit, target: string): string[] {
     if (!target) {

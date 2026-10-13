@@ -635,7 +635,7 @@ function ScriptRowDetail({ blueprint, layer, widgetType }: {
     layer: ScriptLayerEntry;
     widgetType?: string;
 }): ReactNode {
-    const { t } = useTranslation();
+    const { t, formatList } = useTranslation();
     const layerKey = scriptLayerKey(blueprint.id, layer.layerId);
     const loaded = isScriptMounted(layerKey);
     const exported = loaded ? listScriptExportedFunctionNames(layerKey) : [];
@@ -651,11 +651,11 @@ function ScriptRowDetail({ blueprint, layer, widgetType }: {
                 <div className="break-words">
                     {exported.length === 0
                         ? t("devMode.blueprints.scriptExportsNone")
-                        : t("devMode.blueprints.scriptExports", { names: exported.join(", ") })}
+                        : t("devMode.blueprints.scriptExports", { names: formatList(exported, { style: "narrow" }) })}
                 </div>
             ) : null}
             {called.length > 0 ? (
-                <div className="break-words">{t("devMode.blueprints.scriptCalls", { names: called.join(", ") })}</div>
+                <div className="break-words">{t("devMode.blueprints.scriptCalls", { names: formatList([...called], { style: "narrow" }) })}</div>
             ) : null}
         </>
     );
