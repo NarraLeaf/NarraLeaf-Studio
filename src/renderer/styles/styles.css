@@ -1148,6 +1148,19 @@ input[type="radio"]:focus {
 }
 
 /*
+ * Blueprint: a graph just opened, not yet framed (`BlueprintFlowCanvas`). Its cards, wires, dot grid
+ * and overview wait undrawn for the opening view, so it appears already in place instead of showing
+ * at the origin and jumping. Opacity rather than visibility: React Flow writes `visibility: visible`
+ * onto every measured card, which would show through a hidden ancestor. Still laid out either way,
+ * which is what lets the cards be measured for the frame.
+ */
+[data-blueprint-awaiting-frame] .react-flow__renderer,
+[data-blueprint-awaiting-frame] .react-flow__background,
+[data-blueprint-awaiting-frame] .react-flow__minimap-svg {
+    opacity: 0;
+}
+
+/*
  * Pin drag feel: a blueprint pin is only an ~8px dot sitting at the card edge. Pressing a
  * pixel or two off it lands on the pane and React Flow starts a marquee (or a node drag)
  * instead of pulling a connection — even when the crosshair cursor was showing. A transparent

@@ -149,7 +149,12 @@ export type EditorMode =
      * character typed into one field. The name says "initial" so a read that wants the live line is a
      * compile error rather than a silently stale string.
      */
-    | { kind: "insert"; slot: InsertSlot; initialValue: string; chooserDismissed?: boolean; confirmation?: string }
+    /**
+     * `inputMethodLine` is set when the slot opened on what an input method typed for the trigger
+     * (`・` read as `/`, see `foldInputMethodTrigger`): the line as typed, which the slot's first
+     * Escape gives back. `initialValue` is then the line it was read as.
+     */
+    | { kind: "insert"; slot: InsertSlot; initialValue: string; chooserDismissed?: boolean; confirmation?: string; inputMethodLine?: string }
     | { kind: "inspector"; blockId: StoryBlockId };
 
 export type SerializedStoryBlock = {

@@ -38,9 +38,8 @@ export function AgentAccessPanel() {
     const [settings, setSettings] = useState<AgentSettingsSnapshot | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
-    const [tokenVisible, setTokenVisible] = useState(false);
     const [confirmRegenerate, setConfirmRegenerate] = useState(false);
-    const [copied, setCopied] = useState<"address" | null>(null);
+    const [copied, setCopied] = useState<"address" | "token" | null>(null);
     const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     // Each step of regenerating replaces the focused button, so focus is handed on explicitly: the
     // confirm step's Cancel takes it, and once the step closes the Regenerate button gets it back
@@ -97,18 +96,18 @@ export function AgentAccessPanel() {
         }
     }, [confirmRegenerate, busy]);
 
-    const copyAddress = useCallback(async () => {
+    const copy = useCallback(async (what: "address" | "token") => {
         if (!settings) {
             return;
         }
-        await copyTextToClipboard(settings.url);
-        setCopied("address");
+        await copyTextToClipboard(what === "address" ? settings.url : settings.token);
+        setCopied(what);
         if (copiedTimer.current) {
             clearTimeout(copiedTimer.current);
         }
         copiedTimer.current = setTimeout(() => setCopied(null), 1500);
         // What was copied names the current port: the notice that it moved has been acted on.
-        if (settings.movedToPort !== null) {
+        if (what === "address" && settings.movedToPort !== null) {
             void update({ acknowledgeMovedPort: true });
         }
     }, [settings, update]);
@@ -171,20 +170,26 @@ export function AgentAccessPanel() {
                         variant="ghost"
                         aria-label={t("settings.agent.copyAddress")}
                         data-tip={copied === "address" ? t("settings.agent.copied") : t("settings.agent.copyAddress")}
-                        onClick={() => void copyAddress()}
+                        onClick={() => void copy("address")}
                     >
                         {copied === "address" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                     </IconButton>
                 </div>
             </Row>
+            {/* Never shown in full: it is only ever pasted, and a 43-character secret does not fit the control
+                column anyway. The last characters tell which token a client was set up with. */}
             <Row label={t("settings.agent.token")} description={t("settings.agent.tokenHint")}>
-                <div className="flex w-full items-center gap-2">
-                    <p className="min-w-0 flex-1 truncate font-mono text-xs text-fg-muted">
-                        {tokenVisible ? settings.token : "•".repeat(24)}
-                    </p>
-                    <Button size="sm" variant="ghost" onClick={() => setTokenVisible(visible => !visible)}>
-                        {tokenVisible ? t("settings.agent.hide") : t("settings.agent.show")}
-                    </Button>
+                <div className="flex w-full items-center justify-end gap-1">
+                    <p className="min-w-0 truncate font-mono text-xs text-fg-muted">{maskAgentToken(settings.token)}</p>
+                    <IconButton
+                        size="sm"
+                        variant="ghost"
+                        aria-label={t("settings.agent.copyToken")}
+                        data-tip={copied === "token" ? t("settings.agent.copied") : t("settings.agent.copyToken")}
+                        onClick={() => void copy("token")}
+                    >
+                        {copied === "token" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                    </IconButton>
                 </div>
             </Row>
             <Row label={t("settings.agent.regenerate")} description={t("settings.agent.regenerateHint")}>
@@ -305,6 +310,13 @@ export function AgentAccessPanel() {
             {busy && <Loader2 className="mx-2 h-3 w-3 animate-spin text-primary" />}
         </div>
     );
+}
+
+/** How many of the token's last characters the Settings row shows. */
+const TOKEN_VISIBLE_TAIL = 4;
+
+function maskAgentToken(token: string): string {
+    return `${"•".repeat(8)}${token.slice(-TOKEN_VISIBLE_TAIL)}`;
 }
 
 const TONE_CLASS = { muted: "text-fg-subtle", warning: "text-warning", danger: "text-danger" } as const;
