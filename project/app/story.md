@@ -110,8 +110,9 @@ Narra: You're late.  ⟦51d4f8dc⟧
 
 - **`/<token> args`** - a command. A line opening with `/` is *always* a command:
   an unknown one is an error, never prose.
-- **`Name: words`** - dialogue. Everything before the first `: ` is the speaker;
-  a name no character answers to is a one-off speaker, exactly as `/say` does.
+- **`Name: words`** - dialogue. Everything before the first `: ` is the speaker:
+  a character's name, else one of its nicknames; a name no character answers to
+  is a one-off speaker.
 - **plain text** - narration, which is any line that is none of the others.
 - **`// text`** - a note.
 - **`- text`** - a choice option, under a `/menu` row.

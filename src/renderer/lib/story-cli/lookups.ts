@@ -39,11 +39,14 @@ export function buildLookups(
 ): SceneLookups {
     const charactersById = new Map(data.characters.map(character => [character.profile.getId(), character]));
     const byName = new Map<string, { id: string; name: string }[]>();
+    const byNickname = new Map<string, { id: string; name: string }[]>();
     for (const character of data.characters) {
         const name = character.profile.getName();
-        const list = byName.get(name) ?? [];
-        list.push({ id: character.profile.getId(), name });
-        byName.set(name, list);
+        const entry = { id: character.profile.getId(), name };
+        byName.set(name, [...(byName.get(name) ?? []), entry]);
+        for (const nickname of new Set(character.profile.getNicknames())) {
+            byNickname.set(nickname, [...(byNickname.get(nickname) ?? []), entry]);
+        }
     }
 
     const assetsByIdName = new Map<string, string>();
@@ -87,7 +90,10 @@ export function buildLookups(
 
     const prose: ProseLookups = {
         characterName: characterId => charactersById.get(characterId)?.profile.getName() ?? null,
-        charactersNamed: name => byName.get(name) ?? [],
+        // A character's own name first; a nickname only when no character is called that, so another
+        // character's nickname never makes a name that already binds ambiguous. The nicknames are
+        // what Studio pastes a script's other labels by, and a file binds them the same way.
+        charactersNamed: name => byName.get(name) ?? byNickname.get(name) ?? [],
     };
 
     const conditions: ConditionLookups = {
