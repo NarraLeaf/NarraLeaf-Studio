@@ -53,7 +53,7 @@ import { FocusArea } from "@/lib/workspace/services/ui/types";
 import type { StorySceneEditorDraftJump, StorySceneEditorTabPayload } from "./storySceneEditorTabId";
 import { writeStoryJumpLine } from "./storyJumpLine";
 import { createBlockForCommand, dialogueSpeakerOf, pluginActionToPaletteCommand, type ActionCommandId } from "./storyActionCommands";
-import { findPluginActionsByCommandWord } from "./storyCommandSearch";
+import { commandNamedByWord, findPluginActionsByCommandWord } from "./storyCommandSearch";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
 import { buildStoryCommandContext } from "./storyCommandContext";
@@ -119,7 +119,7 @@ import { useProjectSurfaces } from "@/lib/story/useProjectSurfaces";
 import { useProjectInputActions } from "@/lib/story/useProjectInputActions";
 import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
 import { syncEditorTabTitle } from "@/lib/workspace/services/ui/editorTabTitle";
-import { ACTION_TRIGGER, ALT_ACTION_TRIGGER, isActionCommandLine, toCanonicalCommandLine, toDisplayedCommandLine } from "./commandTrigger";
+import { ACTION_TRIGGER, ALT_ACTION_TRIGGER, foldInputMethodTrigger, isActionCommandLine, toCanonicalCommandLine, toDisplayedCommandLine } from "./commandTrigger";
 import { expandCommandAbbreviation } from "./storyCommandSpelling";
 import { useStoryCommandAbbreviations } from "./useStoryCommandAbbreviations";
 import { projectStoryCommandLine } from "./storyCommandLine";
@@ -478,6 +478,17 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      */
     const textDraftRef = useRef<{ blockId: StoryBlockId; value: string; rich?: StoryRichRun[] } | null>(null);
     /**
+     * The open row's words as they stood when the running input-method composition began, or null
+     * while none is running. A trigger key under a Japanese input method is a conversion ("/" composes
+     * "・"), and `startCharacterActionSlot` judges it once confirmed, against the line before it.
+     */
+    const rowCompositionBaseRef = useRef<{ blockId: StoryBlockId; value: string } | null>(null);
+    /**
+     * The row whose author backed out of the slot an input method's "・" opened - they meant the
+     * character. Until that row closes, a "・" typed on it stays text.
+     */
+    const inputMethodTriggerDeclinedRef = useRef<StoryBlockId | null>(null);
+    /**
      * The pending "move the open row's words into the document" timers, and the settle they run.
      *
      * The draft above made a keystroke cost nothing, and left the words with nowhere to go until
@@ -584,6 +595,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         textDraftRef.current = editorMode.kind === "text"
             ? { blockId: editorMode.blockId, value: editorMode.value, rich: editorMode.rich }
             : null;
+        rowCompositionBaseRef.current = null;
+        // Outlives the slot it was declined in, because that slot hands the author straight back to
+        // this same row; it ends with the row.
+        if (editorMode.kind !== "text" || editorMode.blockId !== inputMethodTriggerDeclinedRef.current) {
+            inputMethodTriggerDeclinedRef.current = null;
+        }
         // A settle armed for the row that just closed would run against a draft that is no longer
         // its own, and the undo receipt belongs to one edit session rather than to the editor.
         cancelTextSettle();
@@ -1720,11 +1737,39 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // trigger. Reading `editorMode.value` instead would answer with the row's text at the moment
         // it opened, and a cleared line would never offer the actions again.
         const draft = readTextDraft(blockId);
-        if (editorMode.kind !== "text" || editorMode.blockId !== blockId || !draft || draft.value !== "" || !scene) {
+        if (editorMode.kind !== "text" || editorMode.blockId !== blockId || !draft || !scene) {
             return false;
         }
-        if (value.length !== 1 || !isActionCommandLine(value, slashAtAlias)) {
+        // Mid-conversion, the field holds the input method's candidate rather than the author's words,
+        // so nothing is decided yet; "before this keystroke" then means before the conversion began.
+        if (textInputRef.current?.isComposing()) {
+            if (rowCompositionBaseRef.current?.blockId !== blockId) {
+                rowCompositionBaseRef.current = { blockId, value: draft.value };
+            }
             return false;
+        }
+        const base = rowCompositionBaseRef.current?.blockId === blockId ? rowCompositionBaseRef.current.value : draft.value;
+        rowCompositionBaseRef.current = null;
+        if (base !== "") {
+            return false;
+        }
+        // The trigger as the author typed it, or what an input method typed for it (`・`, or `・表示`
+        // in one conversion) read as one - unless they already backed out of that once on this row.
+        let line = value;
+        let inputMethodLine: string | undefined;
+        if (value.length !== 1 || !isActionCommandLine(value, slashAtAlias)) {
+            const folded = inputMethodTriggerDeclinedRef.current === blockId
+                ? null
+                : foldInputMethodTrigger(value, {
+                    command: word => commandNamedByWord(word, commandAbbreviations) !== null,
+                    speaker: () => false,
+                });
+            // A speaker's line has no "#" of its own: "＃" there is text.
+            if (folded === null || !folded.startsWith(ACTION_TRIGGER)) {
+                return false;
+            }
+            line = folded;
+            inputMethodLine = value;
         }
         const block = scene.blocks[blockId];
         if (!block) {
@@ -1739,7 +1784,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         slotDiscardedRef.current = false;
         // The trigger the author actually pressed, kept as typed - the slot shows their "@" and only
         // the parse and the commit fold it onto "/", exactly as a slot opened any other way does.
-        insertDraftRef.current = value;
+        insertDraftRef.current = line;
         setEditorMode({
             kind: "insert",
             slot: {
@@ -1749,7 +1794,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
                 replaceBlockId: blockId,
                 characterScope: { characterId: character.profile.getId(), name: character.profile.getName() },
             },
-            initialValue: value,
+            initialValue: line,
+            ...(inputMethodLine === undefined ? {} : { inputMethodLine }),
         });
         setActiveBlockId(blockId);
         window.requestAnimationFrame(() => {
@@ -1763,10 +1809,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             // already in it, and Chromium drops the caret at offset 0 of a field it is focusing for
             // the first time — which puts the next keystroke BEFORE the "@" and stops the line
             // being a command at all.
-            input.setSelectionRange(value.length, value.length);
+            input.setSelectionRange(line.length, line.length);
         });
         return true;
-    }, [characters, editorMode, readTextDraft, scene, slashAtAlias]);
+    }, [characters, commandAbbreviations, editorMode, readTextDraft, scene, slashAtAlias]);
 
     /**
      * Give the line back to the dialogue row a character-scoped slot is standing in for.
@@ -2339,20 +2385,27 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, []);
 
     /** Escape, last press: an uncommitted slot never existed, so leaving it must not create anything. */
-    const discardInsertSlot = useCallback(() => {
+    const discardInsertSlot = useCallback((lineBack?: string) => {
         // Set before anything else: `focusRoot` blurs the slot synchronously, and the blur handler's job
         // is to commit prose. The `setEditorMode` below has not flushed by then, so that commit would
         // still see the slot and land the very line this is discarding. A ref is what the blur can read
         // in the same tick; state cannot.
         slotDiscardedRef.current = true;
+        const rowId = editorMode.kind === "insert" ? editorMode.slot.replaceBlockId : undefined;
         // A character-scoped slot opened on top of a line the author was already writing, so its
         // Escape hands that line back rather than closing on an empty dialogue row nobody asked for.
         if (returnFromCharacterActionSlot()) {
+            // The "・" an input method typed there goes back on the line as the text it was meant to be,
+            // once the row's field is open again - and the row keeps taking it as text.
+            if (lineBack && rowId) {
+                inputMethodTriggerDeclinedRef.current = rowId;
+                window.requestAnimationFrame(() => textInputRef.current?.insertText(0, lineBack));
+            }
             return;
         }
         setEditorMode({ kind: "idle" });
         focusRoot();
-    }, [focusRoot, returnFromCharacterActionSlot]);
+    }, [editorMode, focusRoot, returnFromCharacterActionSlot]);
 
     // An open insert slot is anchored to a row (insert after it, above it, or in place of it). If that
     // row leaves the visible set while the slot is open — the author toggled the "narrative only" filter

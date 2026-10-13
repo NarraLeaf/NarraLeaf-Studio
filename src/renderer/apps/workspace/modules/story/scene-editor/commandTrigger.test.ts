@@ -1,5 +1,47 @@
 import { describe, expect, it } from "vitest";
-import { actionTrigger, isActionCommandLine, toCanonicalCommandLine } from "./commandTrigger";
+import { actionTrigger, foldInputMethodTrigger, isActionCommandLine, toCanonicalCommandLine, type InputMethodTriggerWords } from "./commandTrigger";
+
+describe("foldInputMethodTrigger", () => {
+    const words: InputMethodTriggerWords = {
+        command: word => ["表示", "bg"].includes(word),
+        speaker: name => name === "アリス",
+    };
+
+    it("reads what an input method types for the trigger keys, on its own, as the trigger", () => {
+        // Japanese input methods: "/" → "・" (or "／"), "#" → "＃". Chinese full width: "／", "＃".
+        expect(foldInputMethodTrigger("・", words)).toBe("/");
+        expect(foldInputMethodTrigger("／", words)).toBe("/");
+        expect(foldInputMethodTrigger("＃", words)).toBe("#");
+    });
+
+    it("reads a trigger followed by a whole command word or speaker name, typed as one conversion", () => {
+        expect(foldInputMethodTrigger("・表示", words)).toBe("/表示");
+        expect(foldInputMethodTrigger("／bg", words)).toBe("/bg");
+        expect(foldInputMethodTrigger("＃アリス", words)).toBe("#アリス");
+    });
+
+    it("leaves prose that opens with one of those characters as prose", () => {
+        expect(foldInputMethodTrigger("・・・", words)).toBe(null);
+        expect(foldInputMethodTrigger("・りんご", words)).toBe(null);
+        // A command word is the whole of what follows, not the start of it.
+        expect(foldInputMethodTrigger("・表示された", words)).toBe(null);
+        expect(foldInputMethodTrigger("・表示 アリス", words)).toBe(null);
+        expect(foldInputMethodTrigger("＃タグ", words)).toBe(null);
+        expect(foldInputMethodTrigger("＃表示", words)).toBe(null);
+    });
+
+    it("answers only for the input method's characters", () => {
+        expect(foldInputMethodTrigger("/", words)).toBe(null);
+        expect(foldInputMethodTrigger("#", words)).toBe(null);
+        expect(foldInputMethodTrigger("、", words)).toBe(null);
+        expect(foldInputMethodTrigger("あ・", words)).toBe(null);
+        expect(foldInputMethodTrigger("", words)).toBe(null);
+    });
+
+    it("changes only the first character, so offsets into the line stay valid", () => {
+        expect(foldInputMethodTrigger("・表示", words)).toHaveLength("・表示".length);
+    });
+});
 
 describe("actionTrigger", () => {
     it("reads a leading slash regardless of the alias setting", () => {

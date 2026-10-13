@@ -183,6 +183,11 @@ export type RichTextInputHandle = {
      */
     replaceSpelling: (start: number, end: number, replacement: string) => void;
     /**
+     * Type `text` at unit `unit` as one undoable edit, with focus and the caret after it - the same
+     * splice as {@link replaceSpelling}, over an empty range.
+     */
+    insertText: (unit: number, text: string) => void;
+    /**
      * Current rich runs read straight from the live editor DOM (bypasses any not-yet-flushed draft).
      * Returns `null` when the editor is not mounted so callers fall back to their own state instead of
      * committing an empty edit.
@@ -1213,7 +1218,8 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     }, [insertRun]);
 
     /**
-     * Write an accepted suggestion over the word it corrects.
+     * Write text over units `[start, end)` - an accepted suggestion over the word it corrects, or, with
+     * an empty range, words put back where the author typed them.
      *
      * The replacement inherits the marks of the run it replaces: a misspelled word can be bold,
      * coloured or annotated like any other, and a bare splice would leave the one word the author
@@ -1223,9 +1229,9 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
      * detour — there is nothing else to say about the word — so the caret returns to just after the
      * correction, where the author would have put it themselves.
      */
-    const replaceSpelling = useCallback((start: number, end: number, replacement: string) => {
+    const writeText = useCallback((start: number, end: number, replacement: string) => {
         const el = editorRef.current;
-        if (!el || readOnly || end <= start || !replacement) {
+        if (!el || readOnly || end < start || !replacement) {
             return;
         }
         recordStructural();
@@ -1240,6 +1246,11 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         scheduleReportActive(true);
         emitChange();
     }, [emitChange, readOnly, recordStructural, scheduleReportActive]);
+    const replaceSpelling = useCallback((start: number, end: number, replacement: string) => {
+        if (end > start) {
+            writeText(start, end, replacement);
+        }
+    }, [writeText]);
 
     useImperativeHandle(ref, () => ({
         focus: () => {
@@ -1275,9 +1286,10 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         updateEventAt: (unit, event) => spliceUnits(unit, 1, [{ event }], true),
         removeEventAt: (unit) => spliceUnits(unit, 1, [], false),
         replaceSpelling,
+        insertText: (unit, text) => writeText(unit, unit, text),
         getRuns: () => (editorRef.current ? domToRuns(editorRef.current) : null),
         isComposing: () => composingRef.current,
-    }), [applyMark, insertPause, insertInterpolation, insertEvent, readOnly, replaceSpelling, resolveRubyTarget, resolveTypeTarget, setRuby, setTypeMark, spliceUnits]);
+    }), [applyMark, insertPause, insertInterpolation, insertEvent, readOnly, replaceSpelling, resolveRubyTarget, resolveTypeTarget, setRuby, setTypeMark, spliceUnits, writeText]);
 
     return (
         <>

@@ -176,6 +176,7 @@ export const help = {
                 + "\n"
                 + "- The right panel edits the selected row.\n"
                 + "- Rows can be moved, duplicated, indented and deleted from the keyboard.\n"
+                + "- On an empty row, a ・, ／ or ＃ confirmed from an input method becomes / or #. Escape straight after restores the character.\n"
                 + "- The live preview shows the stage at the selected row. Clicking it selects the next row the "
                 + "game waits at: a line or a menu. On a menu, clicking an option selects the first line of that option.\n"
                 + "- A click on a line the live preview is still typing shows the whole line first. With Skip typing "
