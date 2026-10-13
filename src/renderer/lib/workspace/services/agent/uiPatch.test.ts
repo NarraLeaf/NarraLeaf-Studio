@@ -174,6 +174,24 @@ beforeAll(async () => {
     await ensureWidgetModulesRegistered();
 }, 120_000);
 
+/** Give `id` a one-variant appearance holding `groups` (and `props` beside it), outside any undo. */
+function withAppearance(uidoc: UIDocumentService, id: string, groups: unknown[], props: Record<string, unknown> = {}): void {
+    const target = (uidoc as any).document.elements[id] as UIElement;
+    target.props = {
+        ...(target.props ?? {}),
+        ...props,
+        appearance: { defaultVariantId: "default", variants: [{ id: "default", name: "Default", propertyGroups: groups }] },
+    };
+}
+
+/** The value of the default variant's unconditional row for `key`. */
+function defaultRow(target: UIElement, key: string): unknown {
+    const appearance = target.props?.appearance as any;
+    const variant = appearance.variants.find((item: { id: string }) => item.id === appearance.defaultVariantId);
+    const group = variant.propertyGroups.find((item: { key?: string }) => item.key === key);
+    return group.rows.find((row: { conditions: unknown }) => row.conditions === null).value;
+}
+
 describe("applyUiPatch", () => {
     it("lands every operation through the editor's methods, as one undo step", () => {
         const { uidoc, history, steps, snapshot } = createHarness();
@@ -335,6 +353,72 @@ describe("applyUiPatch", () => {
         expect(() => applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
             { op: "set", element: "box", props: { "layout.visible": true } },
         ]), LABEL, { dryRun: true })).toThrow(expect.objectContaining({ code: "check_failed" }));
+    });
+
+    it("draws the size and colour a new text is given, not the ones its appearance was made with", () => {
+        const { uidoc } = createHarness();
+        applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "add", type: "nl.text", id: "label", props: { text: "Hi", fontSize: 30, color: "#ff0000" } },
+        ]), LABEL);
+        const label = uidoc.getDocument().elements.label;
+        expect(label.props).toMatchObject({ fontSize: 30, color: "#ff0000" });
+        // The text is painted from these rows; before, they kept 16 px and the default colour.
+        expect(defaultRow(label, "fontSize")).toBe(30);
+        expect(defaultRow(label, "color")).toBe("#ff0000");
+    });
+
+    it("sets the unconditional row of a written prop and leaves a hover row alone", () => {
+        const { uidoc } = createHarness();
+        withAppearance(uidoc, "title", [
+            { key: "fontSize", rows: [{ conditions: null, value: 16 }, { conditions: { hovered: true }, value: 20 }] },
+            { key: "color", rows: [{ conditions: null, value: "#ffffff" }] },
+        ]);
+        applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "set", element: "title", props: { fontSize: 24 } },
+        ]), LABEL);
+        const groups = (uidoc.getDocument().elements.title.props!.appearance as any).variants[0].propertyGroups;
+        expect(groups[0].rows).toEqual([{ conditions: null, value: 24 }, { conditions: { hovered: true }, value: 20 }]);
+        expect(groups[1].rows).toEqual([{ conditions: null, value: "#ffffff" }]);
+    });
+
+    it("brings a row already out of step with its prop back in step, rather than reporting no change", () => {
+        const { uidoc } = createHarness();
+        withAppearance(uidoc, "title", [{ key: "fontSize", rows: [{ conditions: null, value: 16 }] }], { fontSize: 26 });
+        applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "set", element: "title", props: { fontSize: 26 } },
+        ]), LABEL);
+        expect(defaultRow(uidoc.getDocument().elements.title, "fontSize")).toBe(26);
+    });
+
+    it("sets the row of an effect the write changed, and not of one it carried along", () => {
+        const { uidoc } = createHarness();
+        withAppearance(uidoc, "title", [
+            { key: "effectBlur", rows: [{ conditions: null, value: 0 }] },
+            { key: "effectBlend", rows: [{ conditions: null, value: "multiply" }] },
+        ], { effects: { effectBlur: 0, effectBlend: "" } });
+        applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "set", element: "title", props: { "effects.effectBlur": 4 } },
+        ]), LABEL);
+        const title = uidoc.getDocument().elements.title;
+        expect(defaultRow(title, "effectBlur")).toBe(4);
+        expect(defaultRow(title, "effectBlend")).toBe("multiply");
+    });
+
+    it("rebuilds the bare keys of an appearance written whole from the props they repeat", () => {
+        const { uidoc } = createHarness();
+        applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            {
+                op: "set",
+                element: "title",
+                props: { fontSize: 40, appearance: { defaultVariantId: "default", variants: [{ id: "default", name: "Default", propertyGroups: ["fontSize"] }] } },
+            },
+        ]), LABEL);
+        expect((uidoc.getDocument().elements.title.props!.appearance as any).variants[0].propertyGroups).toEqual([
+            { key: "fontSize", rows: [{ conditions: null, value: 40 }] },
+        ]);
+        expect(() => applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "set", element: "title", props: { appearance: { defaultVariantId: "default", variants: [{ id: "default", name: "Default", propertyGroups: ["noSuchProp"] }] } } },
+        ]), LABEL)).toThrow(/"noSuchProp" as a bare key/);
     });
 
     it("refuses deleting the page root", () => {
