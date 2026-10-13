@@ -144,7 +144,29 @@ describe("the agent access panel", () => {
         const view = await renderPanel();
         const guide = view.container.querySelector("[data-agent-client-guide]") as HTMLElement;
         const copyButtons = view.getAllByRole("button").filter(button => /copy/i.test(button.getAttribute("aria-label") ?? button.textContent ?? ""));
-        expect(copyButtons.filter(button => !guide.contains(button)).map(button => button.getAttribute("aria-label"))).toEqual(["settings.agent.copyAddress"]);
+        // The address and the token each have their own; neither is a configuration.
+        expect(copyButtons.filter(button => !guide.contains(button)).map(button => button.getAttribute("aria-label"))).toEqual([
+            "settings.agent.copyAddress",
+            "settings.agent.copyToken",
+        ]);
+    });
+
+    it("shows the token masked but for its last characters, and copies it whole", async () => {
+        const view = await renderPanel({ token: "abcdefghijklmnopqrstuvwxyz0123456789-_ABCDEF" });
+        expect(view.getByText("••••••••CDEF")).toBeTruthy();
+        expect(view.container.textContent).not.toContain("abcdefghij");
+        // There is nothing to reveal: the row has no show button.
+        expect(view.queryByText("settings.agent.show")).toBeNull();
+        fireEvent.click(view.getByRole("button", { name: "settings.agent.copyToken" }));
+        await waitFor(() => expect(bridge.clipboard).toEqual(["abcdefghijklmnopqrstuvwxyz0123456789-_ABCDEF"]));
+    });
+
+    it("leaves the moved-port notice standing when only the token is copied", async () => {
+        const view = await renderPanel({ url: "http://127.0.0.1:47220/mcp", movedToPort: 47220 });
+        fireEvent.click(view.getByRole("button", { name: "settings.agent.copyToken" }));
+        await waitFor(() => expect(bridge.clipboard).toEqual(["secret-token"]));
+        // A token says nothing about the port, so the configurations set up before still need copying again.
+        expect(bridge.patches).toEqual([]);
     });
 
     it("walks one agent application through, as first-run setup does, with the token masked", async () => {

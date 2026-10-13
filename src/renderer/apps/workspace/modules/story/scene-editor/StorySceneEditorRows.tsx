@@ -102,7 +102,7 @@ import {
 import { ConditionPopover } from "./ConditionPopover";
 import { EMPTY_EXPRESSION_CONDITION } from "./ConditionEditor";
 import { BlockOverview } from "./storyQuickParams";
-import { actionTrigger, ACTION_TRIGGER, insertChooserType, isActionCommandLine, toCanonicalCommandLine } from "./commandTrigger";
+import { actionTrigger, ACTION_TRIGGER, foldInputMethodTrigger, insertChooserType, isActionCommandLine, toCanonicalCommandLine } from "./commandTrigger";
 import { StoryCommandLineText, useStoryCommandLineContext } from "./StoryCommandLineView";
 import { storyConditionSummary, type StoryVariableNameLookups } from "@/lib/story/storyRowProjection";
 import { useStoryRowActions } from "./storyRowActions";
@@ -2141,8 +2141,11 @@ export function InsertRow(props: {
     onCommitNarration: (focusNext: boolean) => void;
     /** Escape #1 — drop the candidates, keep the line. */
     onDismissChooser: () => void;
-    /** Escape #2 — an uncommitted slot leaves nothing behind. */
-    onDiscardSlot: () => void;
+    /**
+     * Escape #2 — an uncommitted slot leaves nothing behind. `lineBack` is the text a slot standing on a
+     * speaker's line hands back to it (the "・" an input method typed there, see `inputMethodLine`).
+     */
+    onDiscardSlot: (lineBack?: string) => void;
     /** Enter / Shift+Enter with no candidate to take: the line stands on its own or becomes invalid. */
     onResolveLine: () => void;
     onCommitInvalid: () => void;
@@ -2179,10 +2182,20 @@ export function InsertRow(props: {
      */
     const [seededSlot, setSeededSlot] = useState(props.mode.slot);
     const [value, setValue] = useState(() => props.draftRef.current ?? props.mode.initialValue);
+    /**
+     * The line as an input method typed it, while the slot still holds the "/" or "#" it was read as
+     * (`foldInputMethodTrigger`). Escape gives it back: the author's way of saying the "・" was a
+     * character. Any edit drops it, and so does a slot that is not this one.
+     */
+    const [inputMethodLine, setInputMethodLine] = useState<{ typed: string; folded: string } | null>(() =>
+        (props.mode.inputMethodLine ? { typed: props.mode.inputMethodLine, folded: props.mode.initialValue } : null));
     if (seededSlot !== props.mode.slot) {
         setSeededSlot(props.mode.slot);
         setValue(props.mode.initialValue);
+        setInputMethodLine(props.mode.inputMethodLine ? { typed: props.mode.inputMethodLine, folded: props.mode.initialValue } : null);
     }
+    /** The line as it stood when the running composition began, or null while none is running. */
+    const compositionBaseRef = useRef<string | null>(null);
     const setLineValue = (next: string) => {
         setValue(next);
         props.onValueChange(next);
@@ -2338,6 +2351,31 @@ export function InsertRow(props: {
         window.requestAnimationFrame(() => props.inputRef.current?.setSelectionRange(nextCaret, nextCaret));
     };
 
+    /** Replace the whole line and put the caret at its end, by the same hand-off as `applyCompletion`. */
+    const replaceLine = (next: string) => {
+        setLineValue(next);
+        setCaret(next.length);
+        window.requestAnimationFrame(() => props.inputRef.current?.setSelectionRange(next.length, next.length));
+    };
+
+    /**
+     * What an input method put on the empty line, read as the trigger the author pressed: `・` becomes
+     * `/` and `＃` becomes `#`, and the menu that trigger opens follows from the text as it always does.
+     * Returns whether it took the line. The caller has already established that the line was empty.
+     */
+    const foldTypedTrigger = (typed: string): boolean => {
+        const folded = foldInputMethodTrigger(typed, {
+            command: word => commandNamedByWord(word, abbreviations) !== null,
+            speaker: name => isSpeakerName(props.characters, props.tempSpeakers, name),
+        });
+        if (folded === null) {
+            return false;
+        }
+        replaceLine(folded);
+        setInputMethodLine({ typed, folded });
+        return true;
+    };
+
     const takeArgCandidate = (item: StoryCandidateItem) => {
         const completion = completionFor(cursor, item.value);
         if (completion) {
@@ -2415,8 +2453,21 @@ export function InsertRow(props: {
                         colorLine ? "text-transparent caret-[rgb(var(--nl-fg))]" : "text-fg",
                     ].join(" ")}
                     style={textStyle}
-                    onCompositionStart={() => setComposing(true)}
-                    onCompositionEnd={() => setComposing(false)}
+                    onCompositionStart={() => {
+                        setComposing(true);
+                        compositionBaseRef.current = value;
+                    }}
+                    onCompositionEnd={event => {
+                        setComposing(false);
+                        // A trigger key under a Japanese input method is a conversion like any other
+                        // ("/" composes "・"), so it is read once the author confirms it - and only if
+                        // the line was empty when the conversion began.
+                        const base = compositionBaseRef.current;
+                        compositionBaseRef.current = null;
+                        if (base === "") {
+                            foldTypedTrigger(event.currentTarget.value);
+                        }
+                    }}
                     rows={1}
                     value={value}
                     // The hint advertises whichever trigger this author actually uses. Suppressed while a
@@ -2432,6 +2483,12 @@ export function InsertRow(props: {
                     onChange={event => {
                         const typed = event.target.value;
                         const typedCaret = event.target.selectionStart ?? typed.length;
+                        setInputMethodLine(null);
+                        // The same reading for an input method that puts the character down without
+                        // composing it. One that composes reaches `onCompositionEnd` instead.
+                        if (value === "" && !(event.nativeEvent as InputEvent).isComposing && foldTypedTrigger(typed)) {
+                            return;
+                        }
                         // The verb settles into the command language the moment it is finished, so a
                         // hand-typed `@show` reads as the `@显示` the menu, the ghost and the committed
                         // row all say - and one of the author's own abbreviations (`/c`) becomes the
@@ -2476,6 +2533,18 @@ export function InsertRow(props: {
                         // half-typed `/set` into a line of prose the author never wrote.
                         if (event.key === "Escape") {
                             event.preventDefault();
+                            // The first rung after an input method's "・" was read as "/": the author
+                            // meant the character, so it comes back as text and the menu goes with it.
+                            // A slot standing on a speaker's line hands it back to that line.
+                            if (inputMethodLine && value === inputMethodLine.folded) {
+                                setInputMethodLine(null);
+                                if (scopeName !== null) {
+                                    props.onDiscardSlot(inputMethodLine.typed);
+                                } else {
+                                    replaceLine(inputMethodLine.typed);
+                                }
+                                return;
+                            }
                             chooser === "none" ? props.onDiscardSlot() : props.onDismissChooser();
                             return;
                         }
@@ -2631,6 +2700,13 @@ const tempSpeakerKey = (name: string) => `name:${name}`;
  * being a state with its own rules. An unknown name is just a candidate you pick like any other, so
  * Tab and Enter mean one thing here rather than two.
  */
+/** Whether `name` is, exactly (ignoring case, as the "#" menu matches), a speaker the menu offers. */
+function isSpeakerName(characters: Character[], tempSpeakers: TempSpeakerRef[], name: string): boolean {
+    const needle = name.toLowerCase();
+    return characters.some(character => character.profile.getName().toLowerCase() === needle)
+        || tempSpeakers.some(speaker => speaker.name.toLowerCase() === needle);
+}
+
 export function getSpeakerCandidates(characters: Character[], tempSpeakers: TempSpeakerRef[], query: string): SpeakerCandidate[] {
     const typed = query.trim();
     const needle = typed.toLowerCase();
