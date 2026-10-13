@@ -189,7 +189,11 @@ those you deliberately keep.
   no rows simply carries on after the menu, as does every option that does not jump away.
 - **Condition, short form:** `/if <expression>` with the rows to run indented under it. It reads back
   in the long form below (a bare `/if` and one `? <expression>`); for an else, write the long form - a
-  `?` line directly under a short `/if` is refused (`compile.short_if_branch`).
+  `?` line directly under a short `/if` is refused (`compile.short_if_branch`). Studio 1.6.1 and
+  earlier dropped the short form's condition without a word: if `story_show` reads it back as a bare
+  `/if` with the rows straight under it, those rows never run - write the long form instead. The same
+  versions did not bind a speaker by nickname (the line reads back under the label, not the
+  character's name); write the character's own name there.
 - **Condition with else:** a bare `/if`, then `? <expression>` (the if), more `? <expression>` lines
   (else-ifs) and finally `? else`, each with its rows indented under it:
   ```
