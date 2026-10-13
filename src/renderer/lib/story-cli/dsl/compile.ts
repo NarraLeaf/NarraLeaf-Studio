@@ -78,7 +78,7 @@ import { sameRowContent } from "./equal";
 import { buildProseBlock, type ProseLookups } from "./prose";
 import { applySceneSettings } from "./sceneSettings";
 import { applySceneLayerDirectives } from "./sceneLayers";
-import { BRANCH_ELSE, unescapeText } from "./shapes";
+import { BRANCH_ELSE, escapeText, unescapeText } from "./shapes";
 
 export type CompileInput = {
     ast: StoryFileAst;
@@ -106,8 +106,76 @@ export function compileStoryFile(input: CompileInput): CompileResult {
     if (layered.diagnostics.some(diagnostic => diagnostic.severity === "error")) {
         return { scene: null, diagnostics: layered.diagnostics };
     }
-    const result = compileStoryRows({ ...input, existing: layered.scene });
+    const expanded = expandShortConditions(input.ast);
+    if (expanded.diagnostics.length > 0) {
+        return { scene: null, diagnostics: [...layered.diagnostics, ...expanded.diagnostics] };
+    }
+    const result = compileStoryRows({ ...input, ast: expanded.ast, existing: layered.scene });
     return { ...result, diagnostics: [...layered.diagnostics, ...result.diagnostics] };
+}
+
+/**
+ * `/if <expression>` with rows indented under it, read as a bare `/if` holding one
+ * `? <expression>` branch that holds those rows - the rows Studio builds when the same line is typed
+ * in the editor.
+ *
+ * There the condition typed on an `/if` line is written onto the branch the command scaffolds under
+ * it. A file has no scaffolding step, so the container used to be written bare with the rows hung
+ * straight under it, and the game - which runs only `?` branches - skipped them without a word.
+ * Expanded here, before the tree is built, the short form compiles to exactly what the long form
+ * does and reads back as the long form. Else-branches still need the long form: a `?` line directly
+ * under a short `/if` is refused rather than guessed at.
+ */
+function expandShortConditions(ast: StoryFileAst): { ast: StoryFileAst; diagnostics: StoryFileDiagnostic[] } {
+    const diagnostics: StoryFileDiagnostic[] = [];
+    const lines: StoryFileLine[] = [];
+    /** The written depth of every short `/if` still open above the current line, outermost first. */
+    const open: number[] = [];
+    for (const line of ast.lines) {
+        while (open.length > 0 && open[open.length - 1] >= line.depth) {
+            open.pop();
+        }
+        // Each short `/if` the line sits inside gains a branch level between it and its rows.
+        const depth = line.depth + open.length;
+        if (line.shape === "branch" && open.length > 0 && open[open.length - 1] === line.depth - 1) {
+            diagnostics.push(
+                errorAt(
+                    "compile.short_if_branch",
+                    `"/if <expression>" runs the rows indented under it when the expression holds. For `
+                        + `"? <expression>" or "? ${BRANCH_ELSE}" branches, write a bare "/if" and put its condition `
+                        + `on the first "? <expression>" line.`,
+                    line.lineNumber,
+                ),
+            );
+            continue;
+        }
+        const short = line.shape === "command" ? shortCondition(line.text) : null;
+        if (!short) {
+            lines.push(depth === line.depth ? line : { ...line, depth });
+            continue;
+        }
+        lines.push({ ...line, depth, text: short.command });
+        lines.push({
+            lineNumber: line.lineNumber,
+            depth: depth + 1,
+            shape: "branch",
+            text: escapeText(short.test, { asProse: false }),
+            anchorId: null,
+            disabled: false,
+        });
+        open.push(line.depth);
+    }
+    return { ast: diagnostics.length > 0 ? ast : { ...ast, lines }, diagnostics };
+}
+
+/** An `/if` line's command token and the expression after it, or null for any other line. */
+function shortCondition(text: string): { command: string; test: string } | null {
+    const parsed = parseCommandLine(text);
+    if (parsed.kind !== "command" || parsed.def?.commandId !== "if") {
+        return null;
+    }
+    const test = text.slice(parsed.tokenSpan.end).trim();
+    return test ? { command: text.slice(0, parsed.tokenSpan.end), test } : null;
 }
 
 function compileStoryRows(input: CompileInput): CompileResult {
@@ -516,7 +584,8 @@ function buildCommand(line: StoryFileLine, ctx: LineContext): LineResult {
     // Except where the spec says the row it scaffolds is what holds the value: `/if` builds only the
     // container, and the condition an author types on that line is written onto the branch created
     // under it. In a file those branches are lines of their own, so the container is written bare and
-    // its "missing" core param is on the next line down.
+    // its "missing" core param is on the next line down (a condition written on the `/if` line itself
+    // was moved onto such a line by `expandShortConditions` before this ran).
     if (!canCommit(parsed) && !spec?.scaffold) {
         const missing = missingCoreParams(parsed).map(param => param.name);
         diagnostics.push(
