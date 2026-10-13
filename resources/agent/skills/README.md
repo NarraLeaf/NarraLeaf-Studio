@@ -164,7 +164,7 @@ agent that works in your folders and terminal (Claude Code, Codex, opencode, Cur
 Where each skill is available:
 
 - **Both skills:** `npx skills`, a copy by hand, and Studio's own copies into a skill folder - *Install
-  skill* in Studio's first-run setup, and *Agent -> Export Agent Skill...*, which writes this whole
+  Agent Skill* in Studio's first-run setup, and *Agent -> Export Agent Skill...*, which writes this whole
   folder.
 - **`narraleaf-make-game` only:** the zip Studio's first-run setup saves for Claude Desktop, and the
   guide Studio's MCP server serves (`make_game`, `agent_guide`, `narraleaf://guide/...`). To give

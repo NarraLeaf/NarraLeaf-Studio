@@ -20,7 +20,9 @@ agreement:
 > author does not want the game run, trace from `screens.rpy` and screenshots they provide.
 
 1. Ask the author where the Ren'Py SDK is installed. If it is not, ask whether you may download it
-   from renpy.org (the official site) and wait for a yes. Any 8.x SDK runs 7.4+/8.x games.
+   from renpy.org (the official site) and wait for a yes. An 8.x SDK runs most 7.4+ and 8.x games,
+   but a 7.x game whose scripts use Python 2 needs a 7.x SDK - ask the author which version the game
+   was made with.
 2. Copy the game folder to your working folder, without `game/saves` and `game/cache`. Never add
    files to the original.
 3. Write a small capture script into the copy's `game/` (never the original). What works:
@@ -30,7 +32,8 @@ agreement:
    - For each screen: `renpy.show_screen(name, **args)`, then `renpy.call_screen` a tiny screen of
      your own with `timer 1.2 action Function(save_png)` and `timer 2.0 action Return()`, so the
      screen has been drawn before you capture. Save with
-     `renpy.screenshot_to_bytes((config.screen_width, config.screen_height))` written to a file.
+     `renpy.screenshot_to_bytes((1920, 1080))` written to a file - the project's size, so a capture
+     and a Studio screenshot compare pixel for pixel.
    - The choice screen needs `items`: objects with `caption`, `action` (`NullAction()`), `chosen`,
      `args` and `kwargs`.
    - Dialogue: the say screen shown on its own lacks the speaker's styles. Use a real line instead -
@@ -40,8 +43,8 @@ agreement:
      capture again; or take the hover images straight from the game's files.
    - End with `renpy.quit()`.
 4. Run `<sdk>/renpy.sh <copy>` (`renpy.exe` / `renpy.app` elsewhere). A window opens on the author's
-   screen; keep runs short. If it stops, read `traceback.txt` in the copy. Check every PNG is at the
-   game's resolution.
+   screen; keep runs short. If it stops, read `traceback.txt` in the copy. Check every PNG is
+   1920x1080.
 5. For story moments (a sprite pose, a CG, a caption mode, a menu), jump to a label with
    auto-forward on (`preferences.afm_enable = True`, a short `afm_time`) and capture from a character
    callback on `show_done`, comparing each shot with its line.
@@ -56,7 +59,8 @@ pixels) rather than by eye.
   an element type gives `x_button`, `x_button_text`, `x_label`… Follow the chain in `gui.rpy`,
   `screens.rpy` and the screen itself; the last assignment wins.
 - **Positions** follow the model in `references/positions-and-atl.md` (`xpos/xanchor/xoffset`,
-  `xalign`, ints = pixels, floats = fractions of the containing area).
+  `xalign`, ints = pixels, floats = fractions of the containing area). The project is 1920x1080, so
+  multiply every Ren'Py pixel value by 1920/w (w = the game's `config.screen_width`).
 - **Containers.** `fixed` stacks its children at their own positions; `hbox`/`vbox` place them in a
   row/column with `spacing` (from the style, often `gui.*_spacing`); `grid c r` / `vpgrid` fill
   cells; `frame` draws `background` (often `Frame("img.png", left, top, right, bottom)` - a
@@ -81,12 +85,13 @@ pixels) rather than by eye.
 | `choice` | the Choice game UI | row template = one option button; check row pitch in the running game |
 | `quick_menu` | the Quick menu game UI | |
 | `main_menu` | the title page | video backgrounds are video elements; check them in a playtest (the editor screenshot may not draw video) |
-| `navigation`, `game_menu` | a shared component or the frame the menu pages share | |
+| `navigation`, `game_menu` | the side rail each menu page carries | the skeleton has no shared frame: every system page holds its own copy of the rail, so restyle it on each (or make it a component of your own) |
 | `save`, `load` | the save and load pages | keep the skeleton's slot list wiring; restyle the slot template; page buttons |
 | `preferences` | the settings page | bind each Ren'Py preference to the matching setting; volume sliders, text speed, auto-forward, skip |
 | `history` | the backlog page | bound to the history list |
 | `confirm` | the confirm page | its contract (props in, result out) is in the blueprint chapter |
 | `notify` | the notifications game UI | |
+| `nvl` | an NVL game UI (`slot=nvl`, built on `nl.nvl.list`) | the skeleton and `ui_install_standard_screens` bring none: make it with `ui_apply` (`ui_widget` on the NVL widgets first) |
 | gallery / music room / replay | gallery pages (with the gallery plugin when installed) | unlock with persistent flags set in the story |
 | custom screens | new pages or game UIs | port their behaviour with blueprints |
 | `splash` / `splashscreen` label | the entry page shown before the title | |
@@ -95,7 +100,8 @@ pixels) rather than by eye.
 
 1. Table every element of the capture: rectangle, image, font, size, colour, states.
 2. Build or restyle the Studio page with the game's images (`ui_patch` on the skeleton's elements;
-   `ui_apply` for new ones). Keep element names readable; blueprints refer to them.
+   `ui_apply` for new ones). Keep element names readable for the author; blueprints refer to elements
+   by id, so give any element a blueprint will name an explicit `id`.
 3. `ui_screenshot` the page and put it next to the Ren'Py capture (or diff them). Fix until the
    rectangles agree to a pixel or two.
 4. **Check it in the running game** - `playtest_start`, then `playtest_screenshot` (open the page

@@ -29,18 +29,23 @@ first, then restyle them like the skeleton's:
 1. `ui_install_standard_screens {dryRun: true}` - it lists the pages, Game UIs and components that
    would arrive, any Game UI slot the project already fills (skipped unless `replace: true`) and any
    page left out because the project lacks a plugin its logic needs (the Extra page without the
-   Gallery), with the buttons that only opened it.
+   Gallery), with the buttons that only opened it. It refuses outright when the project already has
+   working screens (a page that starts the story and loads saves): restyle those instead.
 2. The same call without `dryRun`. One step of undo takes back the interface it added and its input
    actions; the files, palette entries, translation keys, variable and save field it brought stay (the
    answer lists them). The splash becomes the entry page in place
    of the blank one (when the entry page is not blank it stays, and the answer says so - move it with
-   `ui_page_set_entry`), and Start begins the project's default story at its entry scene.
+   `ui_page_set_entry`), and Start begins the project's default story at the scene that is its entry
+   at install time. That scene is written into the Start Game node by id, so a later
+   `scene_set_entry` does not move Start - set the node's `sceneId` (`blueprint-format`, "The title
+   screen's Start button").
 3. Check what arrived:
    - [ ] `project_info` names the splash (or the title) as the entry page; `ui_surfaces` lists Title,
      Save, Load, Config, Log, Confirm and the Dialogue, Choice, Quick menu and Notifications Game UIs,
      and no leftover blank page;
-   - [ ] the title's Start blueprint (`ui_show` the title, then `blueprint_show` the `# blueprint:`
-     named after Start) starts the scene you mean (`story_list` shows ids);
+   - [ ] the title's Start blueprint (`ui_show` the title, find the button whose `localizationKey`
+     is `menu.start`, then `blueprint_show` the name in the `# blueprint:` note on its line) starts
+     the scene you mean (`story_list` shows ids);
    - [ ] `lint` reports nothing dangling: no page nothing reaches, no missing asset, no node naming
      something gone;
    - [ ] `ui_screenshot` of the title and the dialogue box looks like the skeleton's.
@@ -118,7 +123,8 @@ Per page, in order, each pass one `ui_patch` (or a few) and one `ui_screenshot`:
 2. **Style** - fills, borders, radii, type sizes and weights, images (the title's key art, background
    images, the logo).
 3. **Interaction** - hover and pressed looks (appearance rows with `hovered` / `active`), a transition
-   of 120-200 ms on them, click and hover sounds, a selected look for the current rail entry.
+   of 120-200 ms on them, click and hover sounds, a selected look for the current rail entry. Check
+   each look with `ui_screenshot {surface, element, state:"hovered"}` (or `"active"`, `"selected"`).
 
 Then the self-critique, written in the chat, and fixes before the next page:
 
@@ -165,6 +171,9 @@ but get ids of their own, so find those pages by name (`ui_surfaces`).
   room for the longest option; at most 4-5 options visible.
 - **Quick menu** (slot `onStage`): small, quiet, just above the band's top-right; Auto and Skip have a
   lit look while active (already wired with variants - restyle the variants, do not remove them).
+- **Notifications** (slot `notification`): the short messages the game raises over the stage, top
+  right in the skeleton; a list whose `Toast` row is the template - restyle the row and keep its
+  `message` field binding.
 - **Save / Load**: the rail, the screen title, the 6-slot grid. Slots are a component (`Save slot`):
   restyle the component once and every slot follows.
 - **Config**: rail, category rail, one pane at a time. Sliders and toggles are wired; restyle their
@@ -184,11 +193,13 @@ but get ids of their own, so find those pages by name (`ui_surfaces`).
 
 Two behaviours players expect of the dialogue box are not settings; each is a small blueprint. Both
 follow the pattern the skeleton's own nametag uses: the blueprint sits on an element that **stays on
-screen** - the box's container (the skeleton's `Dialogue band`) - and shows or hides an element
-**inside** it. `Init` runs when the box appears and `On Flush` each time it shows a new line or the
-line finishes typing, so the state is re-read at every change. Both layers can live in one block on
-the container (`blueprint_show` it first if it already has one: a block replaces every layer of its
-owner). Get the ids from `ui_surfaces {query:"Dialogue"}` and `ui_show`.
+screen** - the box's container (the skeleton's `Dialogue band`) - and shows, hides or fades an
+element through an Element node. `Init` runs when the box appears and `On Flush` each time it shows a
+new line or the line finishes typing, so the state is re-read at every change. Both layers can live in
+one block on the container (`blueprint_show` it first if it already has one: a block replaces every
+layer of its owner). Find the ids in any language with `ui_surfaces {query:"nl.dialog.sentence"}` -
+it lists the Game UI with `slot=dialog`, and the Sentence's path names the container it sits in -
+then `ui_show` that page.
 
 **A click-to-continue mark shown only once the line is complete.** Add the mark (an `nl.image`, say,
 with an explicit `id`) inside the container, then:
@@ -220,13 +231,42 @@ event "Show the continue mark once the line is complete"
 
 `Is Dialog Waiting` is true once the line has finished typing and the game waits for the click.
 
-**The empty box hidden while a menu shows.** During a choice menu with no question the box has no
-line. A second layer on the same container hides the box's picture (the textbox image or plate
-inside the container) whenever there is no line - the same graph with `blueprint.game.getDialogText`
--> `blueprint.string.isBlank` -> `blueprint.boolean.not` feeding `value` (wire `text` -> `value`,
-`result` -> `a`, `result` -> `value`) and the textbox picture as the element. The sentence is empty
-then anyway, and the skeleton's nametag already hides itself. Do not put this on the Choice page: a
-blueprint reaches only the elements of its own page (`blueprint-format`).
+**The empty box stepping aside while a menu shows.** During a choice menu with no question the box
+has no line. In the skeleton the container is the box: `Dialogue band` paints the panel itself and
+holds only the top rule, the nametag, the sentence and the avatar - there is no separate picture to
+hide. So a second layer in the same block fades the container itself whenever there is no line. Use
+Opacity, not Visible: the container carries the graph that brings it back, so it stays on screen,
+only transparent.
+
+```
+event "Step aside while there is no line"
+    boxInit: blueprint.event.head.init
+    boxLine: blueprint.event.head.flush
+    lineText: blueprint.game.getDialogText
+    noLine: blueprint.string.isBlank
+    check: if
+    hideRef: blueprint.element.ref
+        surfaceId = <Dialogue page id>
+        elementId = <container id>
+    hide: blueprint.element.displayable.setProperty property=opacity value=0
+    showRef: blueprint.element.ref
+        surfaceId = <Dialogue page id>
+        elementId = <container id>
+    show: blueprint.element.displayable.setProperty property=opacity value=1
+
+    boxInit.then -> check.in
+    boxLine.then -> check.in
+    lineText.text -> noLine.value
+    noLine.result -> check.condition
+    check.true -> hide.in
+    hideRef.element -> hide.element
+    check.false -> show.in
+    showRef.element -> show.element
+```
+
+A box of your own whose panel is a picture inside the container can hide that picture with Visible
+instead, the way the first layer shows the mark. Do not put this on the Choice page: a blueprint
+reaches only the elements of its own page (`blueprint-format`).
 
 ## Templates instead
 

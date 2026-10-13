@@ -5,8 +5,8 @@
 page is a condensed reference. **The catalogue tools are the truth**: `ui_widget {type}` lists a
 widget's props with defaults, what it may contain, its parts, events and notes; `ui_usage {type}`
 prints how the shipped skeleton really uses it, in pasteable `.ui` text. Ask them before writing a
-widget or a prop for the first time - a prop name that does not exist is silently kept and does
-nothing.
+widget or a prop for the first time - `ui_patch` refuses a prop the widget does not know, and
+`ui_apply` keeps it with only a note, where it does nothing.
 
 ## Pages, Game UIs and components
 
@@ -98,15 +98,18 @@ backgroundColor=#222` on a button whose appearance row still says `nlbrand:butto
 nothing on screen.
 
 - Best: change the palette entry the row points at (`brand_set`), which is what the rows are for.
-- Otherwise: write the whole `appearance` object back with the row changed (read it from `ui_show`,
-  edit, `set` it), and change the flat prop to the same value.
+- Otherwise: write the whole `appearance` object back with the row changed (read it with
+  `ui_show {compact:false}`, edit, `set` it), and change the flat prop to the same value. The short
+  form prints a group that only repeats its prop as a bare key, which `ui_apply` rebuilds and
+  `ui_patch` does not.
 - Hover and pressed looks are rows with conditions:
   `{"conditions":{"hovered":true},"value":…}` and `{"conditions":{"active":true},"value":…}`; also
   `focused`, `disabled`, `selected` (a list's selected row). The last matching row wins, and a group's
   `transition` (`{"type":"tween","durationMs":160,"easing":"easeOut"}`) animates the change. The
   title's Start button is the model: its `effectTextShadow` and `transformOffsetX` rows move and glow
   on hover.
-- A button's text colour cannot be switched by a variant; express "selected" with fill and border.
+- A button's label is appearance material too: `color`, `fontSize` and `effectTextShadow` rows can
+  change it per variant or state, as the fill and border do.
 
 ## `ui_patch` - the everyday tool
 
@@ -183,7 +186,6 @@ different rows.
 |---|---|
 | `ui.unknown_widget_type` | No such widget (`ui_widgets`). Plugin widgets need their plugin loaded in the project. |
 | `ui.not_a_part` / children errors | A child under a widget that takes none, or that is not one of a part-owning widget's parts (sliders, switches). Do not delete or re-parent parts. |
-| stage widget on a page | `nl.dialog.sentence`, `nl.choice.list` etc. only on their Game UI slot. |
 | `ui.binding_owner_mismatch` | A prop bound to a blueprint some other element owns. |
 | `ui.frame_target_missing` / `ui.frame_loop` | A Page widget (`nl.frame`) naming a missing page, or a page that leads back to itself. |
 | `ui.words_two_sources` | Words and a translation key on one element. |
@@ -191,13 +193,17 @@ different rows.
 | `stale_revision` | The author edited the page since your `ui_show`. Read again. |
 
 Notes, not refusals: `ui.unknown_prop` (kept, probably does nothing - check the spelling with
-`ui_widget`), `ui.orphaned_blueprint` (a deleted element's blueprint stays behind: remove it with
-`blueprint_remove`), `ui.binding_blueprint_missing`.
+`ui_widget`; `ui_patch` refuses it instead), `ui.palette_scope` (a stage widget - `nl.dialog.sentence`,
+`nl.choice.list` etc. - on a page or in another Game UI slot: written, but it works only in its own
+slot; `ui_patch` does not check it), `ui.orphaned_blueprint` (a deleted element's blueprint stays
+behind: remove it with `blueprint_remove`), `ui.binding_blueprint_missing`.
 
 ## After every visible change
 
 `ui_screenshot {surface}` (or `{component}`, or `{surface, element}` to crop) renders the page as the
-game draws it. Game UIs render with sample text. A crop to an element takes in what it draws past its
+game draws it, every element at rest; add `state` (`hovered`, `active`, `focused`, `selected`,
+`disabled`) to a crop to see that element in that state - the way to check hover and pressed looks.
+Game UIs render with sample text. A crop to an element takes in what it draws past its
 own box (a picture hanging over a button's edge) unless the element clips its contents. A video
 element is drawn as its poster (`posterAssetId`), or as a grey placeholder with a play mark when it
 has none - a still never plays; check motion in a playtest. Look before moving on - see `ui-design`

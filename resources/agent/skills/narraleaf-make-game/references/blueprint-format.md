@@ -12,7 +12,8 @@ allowed in and a description. Call `blueprint_node` for every node type before y
 The skeleton already wires starting and continuing a game, save/load slots, every setting, the
 backlog, skip, auto, hide, the quick menu, the confirm dialog and quitting. Most games need **no new
 blueprint**. Reach for one only for behaviour the skeleton lacks - a button on a page you added, a
-route-select screen, an unlock. And prefer a setting where there is one:
+route-select screen, an unlock, a name the player types (an `nl.textInput`, read on its submit
+event). And prefer a setting where there is one:
 
 - A sound on click or hover is the element's `clickSound` / `hoverSound` prop, not a graph.
 - A row's content in a list is a field binding (`bind text = field …`), not Set Text.
@@ -191,22 +192,24 @@ Layer). The skeleton's `Buttons` list does it in its row click graph
   `button_2_*`, result `0` runs `button_1_pressed`, result `1` runs `button_2_pressed`. Deleting a
   pair from the middle shifts the positions of the pairs after it, not their pins.
 - anything else - null, a number with no matching button, the layer dismissed by Go back (Escape or
-  the pad's B through the `back` input action, or a page's Back button) - runs `dismissed`, with `Index` -1 and `Label` "".
+  the pad's B through the `dismiss` input action the page answers, or a page's Back button) - runs `dismissed`, with `Index` -1 and `Label` "".
 
 Nothing fires on the page itself when it opens beyond its own `Surface Init`; the events that run on
 the caller are exactly one of the button outputs or `dismissed`. Only one confirm is on screen at a
 time: a second Show Confirm waits until the first has closed.
 
 Test it in a playtest: trigger the question, then `playtest_click {element:"<button words>",
-surface:"Confirm"}` and read the answer, or `playtest_key {key:"Escape"}` for the dismissal
+surface:"<the Confirm page's name>"}` and read the answer, or `playtest_key {key:"Escape"}` for the dismissal
 (`verify-and-ship`).
 
 ## The title screen's Start button
 
-Its blueprint (`blueprint_show {blueprint:"Start"}`) holds one Start Game node whose `sceneId` names
-the skeleton's first scene by id. If your opening scene is a different scene (not the renamed demo
-scene), set `sceneId` to its id (from `story_list`) and apply the blueprint again, or Start will open
-the old scene.
+Its blueprint is named in the project's language. Find it in any language: `ui_show` the title page,
+find the button whose `localizationKey` is `menu.start`, and `blueprint_show` the name in the
+`# blueprint:` note on its line (or the owner key `widgetMain:<surface id>:<element id>`). It holds
+one Start Game node whose `sceneId` names the skeleton's first scene by id. If your opening scene is
+a different scene (not the renamed demo scene), set `sceneId` to its id (from `story_list`) and apply
+the blueprint again, or Start will open the old scene.
 
 ## Plugins
 

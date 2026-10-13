@@ -34,8 +34,8 @@ writing:
   `y` is a share of the stage height **from the bottom edge**, up. `pos=left|center|right` are
   0.25 / 0.5 / 0.75 across at mid-height. Values slightly outside 0..1 are allowed (slide-ins);
   pixel numbers are refused.
-- If the catalogue lists `xoffset=` / `yoffset=`, they add design pixels on top of `pos`; otherwise
-  fold offsets into the fractions yourself.
+- `xoffset=` / `yoffset=` add design pixels on top of `pos` (only beside a `pos=`). `+yoffset` is
+  **up**. On a character's row a `yoffset=` replaces the entrance `yoffset` instead of adding to it.
 - There is no anchor: compute the centre.
 - `zoom=` scales about the centre; `d=` and `ease=` animate a change.
 - `/bg` draws the background at native pixels, centred, unscaled.
@@ -52,17 +52,23 @@ pos.x  = cx / W
 pos.y  = 1 - cy / H          # y up from the bottom
 ```
 
-For a character with an entrance offset, subtract it before converting (`cy - entranceYOffset`),
-because Studio adds it back.
+`W` and `H` here are the project's 1920x1080, with every Ren'Py pixel value already scaled by
+`1920 / w` (the port's `SKILL.md`, step 0). A character row without its own `yoffset=` is raised by
+its entrance `yoffset` (up is positive), so for one use `pos.y = 1 - (cy + entranceYOffset) / H`.
 
 ## Sprites
 
-Find the y offset that puts a sprite exactly where Ren'Py's default sprite position puts it:
+Ren'Py's stock positions (`left`, `center`, `right` and the default for `show` with no `at`) stand a
+sprite on the bottom edge. So does `entranceTransform: "standing"` (`character_upsert`): feet on the
+bottom edge at the sprite's own pixels, whatever `pos=` word a row uses. Use it for every character
+whose sprites stand like that.
+
+A game whose own transforms place sprites otherwise (a `yanchor` like 0.6, a `ypos` above the edge)
+needs the offset computed:
 
 1. Compute Ren'Py's `top` for the most common sprite size at the game's default sprite transform.
-2. Studio's `pos=center` puts the centre at mid-height, i.e. `top = H/2 - h/2`.
-3. The entrance `yoffset` is the difference (negative = up, in the stage's y direction - verify the
-   sign with one screenshot).
+2. Studio's `pos=center` without an offset puts the centre at mid-height, i.e. `top = H/2 - h/2`.
+3. The entrance `yoffset` is that `top` minus Ren'Py's, in pixels: positive moves the sprite up.
 4. Set it once per character size class with `character_upsert` (`entranceTransform`), then
    `/show <name> <pose> pos=center` matches Ren'Py `at center`, and `pos=x,0.5` keeps the baseline.
 
@@ -83,9 +89,9 @@ pixel-exact.
 Turn each `transform` the game uses into Studio rows by **interpreting its ATL**, game by game:
 
 - A static block (`xalign .3 yalign .2 zoom .8`) → initial placement (`pos`, `zoom`).
-- `linear t prop v` / `ease t …` / `easein` / `easeout` → `/transform … d=t ease=…` (map Ren'Py's
-  ease names: `ease` → easeInOut, `easein` → easeOut-like start, `easeout` → easeIn-like start;
-  check the visual once).
+- `linear t prop v` / `ease t …` / `easein` / `easeout` → `/transform … d=t ease=…`. Ren'Py names
+  the end that eases the other way round: `ease` → `easeInOut`; `easein` (fast, then slowing into
+  place) → `easeOut`; `easeout` (slow, then speeding up) → `easeIn`. Check the visual once.
 - `repeat` around a back-and-forth → a repeated or looping transform if the catalogue offers one;
   otherwise unroll a small fixed count and log it.
 - `parallel` blocks → the parts on one row when Studio can animate them together, else sequential
