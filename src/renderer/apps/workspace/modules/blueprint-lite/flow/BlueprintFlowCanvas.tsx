@@ -221,6 +221,12 @@ const PAN_BUTTONS_HAND_TOOL = [0, 1];
 const MAX_FRAMES_BEFORE_FITTING = 30;
 
 /**
+ * How long a newly opened graph stays undrawn when neither its fit nor a reveal comes to frame it.
+ * Well past the frames above even when they run slow, so it never cuts a framing short.
+ */
+const OPENING_FRAME_GIVE_UP_MS = 2000;
+
+/**
  * How many of a pin's wires its context menu lists in place before it gathers them into a submenu.
  * An output can feed a dozen inputs - one element read by every node that acts on it - and a menu
  * that grew a row per wire would run off the bottom of the screen.
@@ -1415,10 +1421,27 @@ function BlueprintFlowCanvasInner({
         lastFocusRequestRef.current = focusRequestKey;
     }
 
+    /**
+     * The graph whose opening view is in place. Until it is, the graph is not drawn: React Flow mounts
+     * a graph at the origin at 100%, and the fit below can only be taken frames later, once every card
+     * has been measured and the pane has stopped changing size - so every layer opened flashed up at
+     * the wrong place and zoom, then jumped to its frame. A graph opened where the author left it is in
+     * place from the start and is drawn at once, unless it is opened to reveal a node, which then lands
+     * without the glide meant for moving within a graph already on screen.
+     */
+    const [framedGraphKey, setFramedGraphKey] = useState<string | null>(null);
+    const framedGraphKeyRef = useRef(framedGraphKey);
+    framedGraphKeyRef.current = framedGraphKey;
+    const awaitingOpeningFrame = framedGraphKey !== graphKey && (!initialViewport || focusPendingRef.current);
+
     useEffect(() => {
         // Opening a graph to reveal one node in it: fitting the whole graph first would be a jump
         // to somewhere the author did not ask to look, followed immediately by another one.
-        if (initialViewport || focusPendingRef.current) {
+        if (focusPendingRef.current) {
+            return undefined;
+        }
+        if (initialViewport) {
+            setFramedGraphKey(graphKey);
             return undefined;
         }
         // The same holds for a node asked for while the fit is still waiting: a blueprint opened at
@@ -1450,6 +1473,7 @@ function BlueprintFlowCanvasInner({
             if (viewport) {
                 setViewport(viewport, { duration: 0 });
             }
+            setFramedGraphKey(graphKey);
         };
         // Two frames at the least, as before: the graph's nodes reach the store a frame after it is
         // switched to.
@@ -1491,6 +1515,7 @@ function BlueprintFlowCanvasInner({
                 viewport !== null && last !== null && last.x === viewport.x && last.y === viewport.y && last.zoom === viewport.zoom;
             last = viewport;
             if (!viewport && framesLeft <= 0) {
+                setFramedGraphKey(graphKey);
                 return;
             }
             if (!viewport || (!settled && framesLeft > 0)) {
@@ -1499,11 +1524,24 @@ function BlueprintFlowCanvasInner({
                 return;
             }
             appliedFocusKeyRef.current = focusRequestKey;
-            void setViewport(viewport, { duration: 220 });
+            void setViewport(viewport, { duration: framedGraphKeyRef.current === graphKey ? 220 : 0 });
+            setFramedGraphKey(graphKey);
         };
         revealWhenSettled();
         return () => window.cancelAnimationFrame(frame);
-    }, [focusRequestKey, focusNodeId, hostVisible, nodes, getViewport, setViewport, store]);
+    }, [focusRequestKey, focusNodeId, graphKey, hostVisible, nodes, getViewport, setViewport, store]);
+
+    /**
+     * Drawn where it is rather than not at all, should neither the fit nor the reveal land - a node
+     * asked for and taken back before it was reached leaves both of them standing aside.
+     */
+    useEffect(() => {
+        if (!awaitingOpeningFrame || !hostVisible) {
+            return undefined;
+        }
+        const timer = window.setTimeout(() => setFramedGraphKey(graphKey), OPENING_FRAME_GIVE_UP_MS);
+        return () => window.clearTimeout(timer);
+    }, [awaitingOpeningFrame, graphKey, hostVisible]);
 
     /** Clicking the overview goes there, keeping the author's zoom - the same bargain the reveal above strikes. */
     const jumpToMinimapPoint = useCallback(
@@ -2674,6 +2712,7 @@ function BlueprintFlowCanvasInner({
             style={pendingPlacementEntry ? { cursor: "crosshair" } : undefined}
             onPointerDownCapture={onControlPanPointerDownCapture}
             onContextMenuCapture={onControlPanContextMenuCapture}
+            data-blueprint-awaiting-frame={awaitingOpeningFrame ? "" : undefined}
             {...{ [BLUEPRINT_CANVAS_ATTRIBUTE]: flowId }}
         >
             <ReactFlow
