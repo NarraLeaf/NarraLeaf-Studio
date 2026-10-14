@@ -47,7 +47,8 @@ export type ProseLookups = {
     /** The display name of a character id, or null when the id answers to nothing. */
     characterName: (characterId: string) => string | null;
     /**
-     * Every character answering to a display name.
+     * Every character answering to a display name: called it, or - when none is - given it as a
+     * nickname.
      *
      * A list rather than an id, because a name is neither unique nor guaranteed to exist: two
      * characters may share one (renaming does not check), and a line naming both is ambiguous rather

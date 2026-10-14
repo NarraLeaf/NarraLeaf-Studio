@@ -7,7 +7,8 @@ is what I will use if you have no preference.
 
 - **Title:**
 - **Game text language:** (e.g. English, 简体中文, 日本語)
-- **Resolution:** 1920 x 1080 (default) / other:
+- **Resolution:** 1920 x 1080 (default - the only size the Skeleton's ready-made screens come in) /
+  other (starts from an empty project, every screen built from scratch):
 - **Length:** number of scenes or rough word count:
 - **Genre and tone:** (e.g. school romance, quiet melancholy, mystery)
 - **One-sentence pitch:**

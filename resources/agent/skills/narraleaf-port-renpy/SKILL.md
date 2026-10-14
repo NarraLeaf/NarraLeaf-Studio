@@ -74,8 +74,12 @@ network like any program they install. Reading the scripts as text is safe; runn
   screens. If the author already opened a project made from the empty template, run
   `ui_install_standard_screens {dryRun:true}`, show the author what it adds, then run it. Do not
   rebuild save, load or settings logic by hand from store templates - they are layouts only.
-- Resolution: read `gui.init(w, h)` (or `config.screen_width/height`). Set the project to the same
-  size with `project_settings_set` so every pixel value carries over unchanged.
+- Resolution: the skeleton is laid out for 1920x1080 only, so the project is 1920x1080. Read the
+  game's size from `gui.init(w, h)` (or `config.screen_width/height`) and scale every Ren'Py pixel
+  value by `1920 / w` in the converter - positions, sizes, offsets, font sizes, outline widths (x1.5
+  for a 1280x720 game). Capture the Ren'Py screens at 1920x1080 too (`interface.md`) so the pictures
+  compare one to one. A game that is not 16:9 does not fit the skeleton's screens; ask the author
+  before going on.
 
 ## Step 1 - Survey
 
@@ -136,7 +140,9 @@ that byte-identical files are imported once (the second name points at the first
   images (base, eyes, mouth) or a PSD → a layered character (`narraleaf-make-game` chapter
   *layered sprites*).
 - Set each character's entrance so that `/show <name> <pose>` lands where Ren'Py's default position
-  puts the sprite (`references/positions-and-atl.md` → "Sprites"). Verify one with a screenshot.
+  puts the sprite. For Ren'Py's stock bottom-anchored positions that is
+  `entranceTransform: "standing"`; a game whose transforms place sprites otherwise needs the offset
+  computed (`references/positions-and-atl.md` → "Sprites"). Verify one with a screenshot.
 - Name colours, name-box styles and per-character text styles come from the `Character(...)`
   arguments.
 
@@ -153,11 +159,13 @@ that nothing came back as an opaque `»` row you did not expect. Then:
 
 - **Voice.** There is no voice command in `.story`; link takes after the text is written:
   `voice_settings_set`, then `voice_list` and `voice_link` by line id (match on scene + line order
-  from your IR, not by file name guessing). **Once voice is linked, do not re-apply a regenerated
-  scene file** - new rows get new ids and the links go. Edit through `story_show` → `story_apply`
-  instead, which keeps anchors.
+  from your IR, not by file name guessing). **Once voice is linked or any line translated, do not
+  re-apply a regenerated scene file** - lines without anchors are new lines, and the takes and
+  translations of the old ones are lost to them. Edit through `story_show` → `story_apply` instead,
+  which keeps anchors; so link voice and translate last, once the converter is final.
 - **Menus and flags.** Port conditions on menu options and the variables they set exactly; the
-  endings depend on them.
+  endings depend on them. An option's own `if` has no `.story` spelling: write the menu once per case
+  under `/if` / `? else`, or list it under "Needs the author" (`references/statement-mapping.md`).
 - **Endings.** Mark each final label's end with `/ending` and name the endings (the achievement or
   the credits title usually gives the name).
 

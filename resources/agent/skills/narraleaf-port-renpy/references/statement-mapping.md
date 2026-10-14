@@ -12,7 +12,8 @@ Measure anything visual once in a scratch scene before you generate thousands of
   statements, `nvl` statements. Count anything you do not recognise and drive that count to zero
   before generating; an unknown line is a silent hole in the port.
 - Expand `call` the way the game uses it: a called label that returns is usually a shared routine -
-  inline it or give it its own scene and `/jump` back explicitly.
+  inline it, or give it its own scene and call it with `/jump 'Scene' return`, which comes back to the
+  row after it when that scene ends. A plain `/jump` back is wrong as soon as two places call it.
 - Walk the IR with a **stage model** (what each tag shows, with which attributes, at which
   transform) so every generated row knows the state it changes. Most mapping bugs are state bugs.
 
@@ -22,13 +23,14 @@ Measure anything visual once in a scratch scene before you generate thousands of
 |---|---|---|
 | `e "Hello."` | `Eileen: Hello.` (dialogue row) | speaker = the merged Studio character |
 | `"Narration."` | narration row | |
-| `extend " more"` | append to the previous line's text | count them; Studio has no separate row |
-| `e "…" (multiple=2)`, `nvl` mode | `/nvl` block | check `story_command /nvl` |
+| `extend " more"` | append to the previous line's text | the click between the two parts is lost - `.story` has no wait inside a line; count them and log it in `port-log.md` |
+| `e "…" (multiple=2)` | the lines one after another, as separate rows | Ren'Py shows the speakers side by side at once; `.story` has no such form - log each in `port-log.md` |
+| `nvl` mode | `/nvl` block | check `story_command /nvl` |
 | `"???" "…"` before a name is known | `/rename` the character, then dialogue | not a second character |
-| text tags `{w}`, `{p}`, `{nw}` | inline pause / line break forms from `story_command` | |
+| text tags `{w}`, `{p}`, `{nw}` | drop `{w}` and `{nw}`; write `{p}` as a line break, `\n` | `.story` has no inline pause (Studio sets those in its editor): the waits are lost, and a `{nw}` line now waits for a click - log each line in `port-log.md` |
 | `{color=#f00}`, `{b}`, `{i}` | the same tags in `.story` text: `{color=#f00}…{/color}` is read as written (`story_show` prints it back as `{color #f00}`), `{b}…{/b}`, `{i}…{/i}` | close each tag on the same line; `{/color}` etc. as in Ren'Py |
 | `{size}`, `{font}`, `{u}`, `{s}`, `{a=…}` | not expressible in `.story` text | strip them; log what styling was lost |
-| `[var]` interpolation | the story format's interpolation form | see `narraleaf-make-game` story format |
+| `[var]` interpolation | not expressible in `.story` text: an inline variable is inserted in Studio's editor | write the line without it and log scene, line and variable in `port-log.md` for the author |
 
 Keep the speaker's Ren'Py `Character` arguments (`who_color`, `window_background`, `what_prefix`
 quotes, `ctc`) for the interface step; they are not story rows.
@@ -44,7 +46,7 @@ quotes, `ctc`) for the interface step; they are not story rows.
 | `show x at left` | placement on `/show`, or `/transform` after it | `references/positions-and-atl.md` |
 | `hide x` | `/hide x` | |
 | `show x behind y`, `zorder` | `/front` on the one that must be on top | |
-| `with dissolve` / `Dissolve(t)` / `fade` | the row's transition params (`t=fade d=…` on `/bg`, `in=fade d=…` on `/show`) | a `with` after several statements applies to all of them: put the transition on each row it covers |
+| `with dissolve` / `Dissolve(t)` / `fade` | the row's transition params (`t=fade d=…` on `/bg`, `in=fade d=…` on `/show`) | a `with` after several statements applies to all of them: put the transition on each row it covers. A `/show` with `pos=` drops its `in=` (one preset per row): for `show x at left with dissolve`, declare a picture in place (`/image … pos=left`) and `/show <name> in=fade`; a character takes either `pos=` or `in=fade` on its `/show`, then `/transform` |
 | `with vpunch` / `hpunch` | a short `/transform camera` shake | |
 | `window show` / `window hide` | usually nothing | Studio shows the dialogue box with lines; verify once in a playtest |
 | `pause 1.5` | `/wait 1.5` | |
@@ -83,16 +85,21 @@ wrong or no image. Record unresolvable statements with their line numbers.
 |---|---|---|
 | `label x:` | a scene, or a `/label` inside one | |
 | `jump x` | `/jump 'Scene'` or `/goto label` | |
-| `menu:` with options | `/menu` with indented options | conditions on options carry over |
+| `call x` | `/jump 'Scene' return` | the called label is its own scene; play continues after the row when that scene ends |
+| `menu:` with options | `/menu` with indented options | an option's `if` has no `.story` spelling (Studio sets option conditions in its editor): put two `/menu` rows, with and without the option, under `/if` / `? else`, or log it in `port-log.md` under "Needs the author" |
 | `if / elif / else` | `/if` blocks | port the expression; the story expression language is documented in `narraleaf-make-game` |
 | `$ x = True`, `$ x += 1` | `/set`, `/inc`, `/dec`, `/toggle` | |
 | `$ persistent.x = True` | `/set` on the persistent variable | |
 | `return` at a route's end | `/ending <name>` | |
-| `$ renpy.notify("…")` | a notification (see the interface chapter) | |
+| `$ renpy.notify("…")` | a `/blueprint` row whose blueprint runs Post Notification (`blueprint.game.postNotification`, the text on its `message` pin) | story-format, "A row that runs a blueprint" |
 | `$ achievement.grant("X")` | a `/blueprint` row running the achievements plugin's unlock node (story-format, "A row that runs a blueprint"); a `/note` row only when there is no such plugin | list the note rows in "Needs the author" |
 | other `python` | decide per block; log each | |
 
 ## Splitting and naming
 
 Name scenes after the chapter and part (`Chapter 3 · 02`), keep a source map (scene → Ren'Py file and
-line range) in the log, and keep scene ids in a file so a re-apply targets the same scene.
+line range) in the log, and keep scene ids in a file so a re-apply targets the same scene. A
+regenerated source carries no anchors, so applying it replaces every row of the scene with a new one:
+the translations and voice takes linked to the old rows are orphaned together
+(`localization/orphan`, `voice/orphan`). Regenerate only before translating and linking voice; after
+that, edit from `story_show` with the anchors kept.

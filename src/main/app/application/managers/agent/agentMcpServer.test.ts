@@ -178,13 +178,13 @@ describe("AgentMcpServer", () => {
         expect(apply.annotations.readOnlyHint).toBe(false);
     });
 
-    it("calls a tool with the client name from its session and returns content and structured data", async () => {
+    it("calls a tool with the client name from its session and returns its content alone", async () => {
         const init = await rpc(port, "initialize", { protocolVersion: "2025-06-18", clientInfo: { name: "claude-code" } });
         const session = init.headers["mcp-session-id"] as string;
         const reply = await rpc(port, "tools/call", { name: "agent_status", arguments: {} }, { "Mcp-Session-Id": session });
+        // No `structuredContent`: Claude Code shows that in place of the text when it is there.
         expect(reply.json().result).toEqual({
             content: [{ type: "text", text: "done" }],
-            structuredContent: { value: 1 },
             isError: false,
         });
         expect(host.callTool).toHaveBeenCalledWith(
@@ -317,7 +317,7 @@ describe("AgentMcpServer", () => {
         expect(text).toContain("Step one.");
     });
 
-    describe("choosing a port", () => {
+    describe("the port it is given", () => {
         /** Ports nothing listens on right now, as the system hands them out. */
         async function freePorts(count: number): Promise<number[]> {
             const holders = await Promise.all(Array.from({ length: count }, () => new Promise<net.Server>((resolve, reject) => {
@@ -347,55 +347,25 @@ describe("AgentMcpServer", () => {
             return { attempts, restore: () => spy.mockRestore() };
         }
 
-        it("moves past a port in use and a port the system reserved, in the order given", async () => {
-            const [reserved, free, unused] = await freePorts(3);
+        it("fails with the system's answer when the port is in use, and tries nothing else", async () => {
             // `port` is held by the server the suite started: in use for real.
-            const listen = refuseListen({ [reserved]: "EACCES" });
-            const second = new AgentMcpServer({ port, fallbackPorts: [reserved, free, unused], token: () => TOKEN, host });
+            const listen = refuseListen({});
             try {
-                expect(await second.start()).toBe(free);
-                expect(listen.attempts).toEqual([port, reserved, free]);
-                expect((await rpc(free, "ping")).status).toBe(200);
+                const second = new AgentMcpServer({ port, token: () => TOKEN, host });
+                await expect(second.start()).rejects.toMatchObject({ code: "EADDRINUSE" });
+                expect(listen.attempts).toEqual([port]);
             } finally {
                 listen.restore();
-                await second.stop();
             }
         });
 
-        it("takes any free port once every port it was given is unavailable", async () => {
-            const [reserved] = await freePorts(1);
-            const listen = refuseListen({ [reserved]: "EACCES" });
-            const second = new AgentMcpServer({ port: reserved, fallbackPorts: [port], token: () => TOKEN, host });
-            try {
-                const bound = await second.start();
-                expect(bound).not.toBe(reserved);
-                expect(bound).not.toBe(port);
-                expect(listen.attempts).toEqual([reserved, port, 0]);
-            } finally {
-                listen.restore();
-                await second.stop();
-            }
-        });
-
-        it("fails with the last refusal when told not to take any free port", async () => {
+        it("fails the same way for a port the system reserved", async () => {
             const [reserved] = await freePorts(1);
             const listen = refuseListen({ [reserved]: "EACCES" });
             try {
-                const strict = new AgentMcpServer({ port, fallbackPorts: [reserved], token: () => TOKEN, host, fallBackToFreePort: false });
-                await expect(strict.start()).rejects.toMatchObject({ code: "EACCES" });
-                expect(listen.attempts).toEqual([port, reserved]);
-            } finally {
-                listen.restore();
-            }
-        });
-
-        it("does not try another port for a failure that is not about the port", async () => {
-            const [odd, next] = await freePorts(2);
-            const listen = refuseListen({ [odd]: "EINVAL" });
-            try {
-                const server = new AgentMcpServer({ port: odd, fallbackPorts: [next], token: () => TOKEN, host });
-                await expect(server.start()).rejects.toMatchObject({ code: "EINVAL" });
-                expect(listen.attempts).toEqual([odd]);
+                const server = new AgentMcpServer({ port: reserved, token: () => TOKEN, host });
+                await expect(server.start()).rejects.toMatchObject({ code: "EACCES" });
+                expect(listen.attempts).toEqual([reserved]);
             } finally {
                 listen.restore();
             }

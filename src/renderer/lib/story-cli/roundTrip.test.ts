@@ -534,6 +534,51 @@ function branchKinds(scene: StoryScene, conditionId: string): string[] {
  * condition is an else-if. It was built as a second `if`, which the editor heads with 如果 a second
  * time and the scene flow draws as the start of another condition, while `check` said nothing.
  */
+describe("a speaker named by a nickname", () => {
+    function cast() {
+        commandI18nStore.setPreference(false);
+        const project = skeletonProject();
+        expect(project).not.toBeNull();
+        const { data, document } = project!;
+        const named = (name: string) => {
+            const character = data.characters.find(entry => entry.profile.getName() === name);
+            expect(character).toBeDefined();
+            return character!;
+        };
+        const scene = { ...(Object.values(document.scenes)[0] as StoryScene), rootBlockIds: [], blocks: {} };
+        return { data, document, scene, narra: named("Narra"), aoi: named("Aoi") };
+    }
+
+    function speakerOf(scene: StoryScene) {
+        const payload = scene.blocks[scene.rootBlockIds[0]].payload as { characterId?: string; speakerName?: string };
+        return { characterId: payload.characterId, speakerName: payload.speakerName };
+    }
+
+    it("binds the line to the character, as pasting the line into Studio does", () => {
+        const { data, document, scene, narra } = cast();
+        narra.profile.addNickname("Narra (phone)");
+        const compiled = compileBody(data, document, scene, ["Narra (phone): Can you hear me?"]);
+        expect(compiled.diagnostics).toEqual([]);
+        expect(speakerOf(compiled.scene!)).toEqual({ characterId: narra.profile.getId(), speakerName: undefined });
+    });
+
+    it("lets a character's own name win over another character's nickname", () => {
+        const { data, document, scene, narra, aoi } = cast();
+        aoi.profile.addNickname("Narra");
+        const compiled = compileBody(data, document, scene, ["Narra: Still me."]);
+        expect(compiled.diagnostics).toEqual([]);
+        expect(speakerOf(compiled.scene!).characterId).toBe(narra.profile.getId());
+    });
+
+    it("refuses a nickname two characters share, rather than picking one", () => {
+        const { data, document, scene, narra, aoi } = cast();
+        narra.profile.addNickname("Club");
+        aoi.profile.addNickname("Club");
+        const compiled = compileBody(data, document, scene, ["Club: Which of us?"]);
+        expect(compiled.diagnostics.map(diagnostic => diagnostic.code)).toContain("compile.ambiguousSpeaker");
+    });
+});
+
 describe("the branches of one /if", () => {
     it("builds every condition after the first as an else-if, and the chain reads back unchanged", () => {
         commandI18nStore.setPreference(false);

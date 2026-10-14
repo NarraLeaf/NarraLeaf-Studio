@@ -9,8 +9,9 @@ import { Separator, type ActionDefinition, type ActionMenuItem } from "../../reg
  * setting of the same name in Settings ▸ Agent access), the log, and the three things that
  * belong to agent access as a whole (the endpoint, write access, connection configuration and the
  * skill), then the way to the full settings. While access is off, only the status line, the switch
- * that turns it on and the way to settings. When the endpoint had to move to another port, a second
- * read-only line under the status says so until a configuration is copied again.
+ * that turns it on and the way to settings. A second read-only line under the status says when the
+ * endpoint could not start because its port is in use or reserved, or - until a configuration is
+ * copied again - that a profile was moved off the old default port.
  *
  * Separate from the component so the status line and the shape can be tested without a workspace.
  * The rows carry ids and `group` but never `shortcut`: a shortcut on a registered action becomes a
@@ -32,6 +33,7 @@ export const AGENT_MENU_MNEMONIC = "A";
 export const AGENT_MENU_ACTIONS = {
     status: "narraleaf-studio:agent-status",
     portMoved: "narraleaf-studio:agent-port-moved",
+    portUnavailable: "narraleaf-studio:agent-port-unavailable",
     pause: "narraleaf-studio:agent-pause",
     follow: "narraleaf-studio:agent-follow",
     log: "narraleaf-studio:agent-log",
@@ -132,12 +134,26 @@ export function buildAgentMenuItems(input: AgentMenuModelInput): ActionMenuItem[
             onClick: () => undefined,
         })]
         : [];
+    // The endpoint is on but did not start: its port is taken or reserved, and Settings is where
+    // another one is set.
+    const unavailable = quick?.running === false ? quick.portUnavailable : null;
+    const portUnavailable = unavailable
+        ? [action({
+            id: AGENT_MENU_ACTIONS.portUnavailable,
+            label: t("settings.agent.failed", {
+                message: t(unavailable.reason === "inUse" ? "settings.agent.portInUse" : "settings.agent.portReserved", { port: unavailable.port }),
+            }),
+            disabled: true,
+            onClick: () => undefined,
+        })]
+        : [];
     const enable = action({
         id: AGENT_MENU_ACTIONS.enable,
         labelKey: "workspace.agent.appMenu.enable",
         label: t("workspace.agent.appMenu.enable"),
         checked: quick?.enabled ?? false,
-        disabled: quick === null,
+        // A development launch decides it with `--agent`.
+        disabled: quick === null || quick.setByLaunch,
         onClick: run.toggleEnabled,
     });
     const settings = action({
@@ -154,6 +170,7 @@ export function buildAgentMenuItems(input: AgentMenuModelInput): ActionMenuItem[
     }
     return [
         status,
+        ...portUnavailable,
         ...portMoved,
         Separator,
         action({

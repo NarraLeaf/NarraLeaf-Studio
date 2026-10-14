@@ -70,9 +70,10 @@ NarraLeaf-Skills/
    CLI, Cursor or Other): Studio shows its connection configuration - the address
    (`http://127.0.0.1:<PORT>/mcp`, usually port 47219) and the access token, already filled in - with
    a copy button, says where it goes, and installs this skill for it. The *Agent* menu's **Copy
-   connection configuration** offers the same configurations. If another program holds that port,
-   Studio moves to a nearby one, keeps it from then on and says so on the settings page; copy the
-   configuration again for agents you set up before.
+   connection configuration** offers the same configurations. **Endpoint port** on the same page
+   changes the port; copy the configuration again afterwards for agents you set up before. If another
+   program holds the port, or the system reserved it, the endpoint does not start, and the settings
+   page and the *Agent* menu say so; pick another port there.
 
 The server listens only on your own computer (127.0.0.1) and refuses any request without the token.
 Treat the token like a password; you can regenerate it in the same settings page.
@@ -164,8 +165,8 @@ agent that works in your folders and terminal (Claude Code, Codex, opencode, Cur
 Where each skill is available:
 
 - **Both skills:** `npx skills`, a copy by hand, and Studio's own copies into a skill folder - *Install
-  skill* in Studio's first-run setup, and *Agent -> Export Agent Skill...*, which writes this whole
-  folder.
+  Agent Skill* under *Settings -> Agent access -> Agent application* (and in first-run setup), and
+  *Agent -> Export Agent Skill...*, which writes this whole folder.
 - **`narraleaf-make-game` only:** the zip Studio's first-run setup saves for Claude Desktop, and the
   guide Studio's MCP server serves (`make_game`, `agent_guide`, `narraleaf://guide/...`). To give
   Claude Desktop or claude.ai the porting skill as well, zip `narraleaf-port-renpy/` yourself and
@@ -223,6 +224,24 @@ So with any MCP client, this first message works:
 
 > Use the NarraLeaf Studio tools. Call agent_guide with chapter "workflow" and follow it to make my
 > game.
+
+#### Updating the skill
+
+The skill describes what Studio does, so it changes with Studio. Install it again the way you
+installed it, then start a new agent session - one already running keeps the text it has read:
+
+- **From Studio:** update Studio, then *Settings -> Agent access -> Agent application*, pick your agent
+  and press *Reinstall*. It replaces the skill's files and leaves your other skills alone; when the
+  installed `SKILL.md` is not the one this Studio ships (an older version, or your own edits), it asks
+  first. For Claude Desktop, *Save zip file...* again and upload it in place of the old skill.
+- **With npx:** `npx skills update`, or the same `npx skills add` command again.
+- **By hand:** copy the folders again over the old ones.
+- **The guide Studio serves** (`make_game`, `agent_guide`) needs nothing: it is always the one of the
+  Studio you have open.
+
+This repository can be ahead of the Studio you run. The copy Studio installs always matches that
+Studio; one from here may describe something a newer Studio does - the guide names the version where
+that matters.
 
 ### 4. Make a game
 

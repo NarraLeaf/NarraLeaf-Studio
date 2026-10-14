@@ -25,9 +25,10 @@
  * and the last file the newest release is a partial one; an updater that finds no `latest.yml`
  * there treats GitCode as not having the version yet, which is true.
  *
- * The upload crosses from wherever this runs into GitCode's storage in China, and from GitHub's
- * runners a single connection manages a couple of hundred kilobytes a second - the first 1.4.4 copy
- * spent half an hour on one 316 MB file. So the installers go up side by side, each on its own
+ * The upload crosses from wherever this runs into GitCode's storage in China. In the small hours
+ * there a connection from GitHub's runners carries 15 MB/s; the rest of the day it carries tens of
+ * kilobytes a second, and the 1.6.1 copy spent four hours on its two installers without finishing
+ * the second (mirror-gitcode.yml says when). So the installers go up side by side, each on its own
  * connection; a connection that has carried almost nothing for five minutes is dropped and the
  * file started again on a fresh address; and every minute each upload says how far it has got,
  * because a run that is quiet for an hour cannot be told from one that is stuck.
