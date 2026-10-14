@@ -34,6 +34,7 @@ function snapshot(overrides: Partial<AgentSettingsSnapshot> = {}): AgentSettings
         error: null,
         movedToPort: null,
         portUnavailable: null,
+        setByLaunch: false,
         stdio: { command: "C:\\Studio\\NarraLeaf Studio.exe", args: ["--mcp-stdio"] },
         pluginTools: [],
         ...overrides,
@@ -195,6 +196,18 @@ describe("the agent access panel", () => {
         expect(view.queryByText("settings.agent.stopped")).toBeNull();
         // The port row is where another port is set; it shows the port that failed.
         expect((view.getByRole("textbox", { name: "settings.agent.port" }) as HTMLInputElement).value).toBe("41500");
+    });
+
+    it("holds the access switch and the port still in a development launch, and says what sets them", async () => {
+        const view = await renderPanel({ setByLaunch: true, port: 47300, url: "http://127.0.0.1:47300/mcp" });
+        expect((view.getByRole("switch", { name: "settings.agent.enable" }) as HTMLButtonElement).disabled).toBe(true);
+        expect(view.getByText("settings.agent.enableSetByLaunch")).toBeTruthy();
+        const field = view.getByRole("textbox", { name: "settings.agent.port" }) as HTMLInputElement;
+        expect(field.disabled).toBe(true);
+        expect(field.value).toBe("47300");
+        expect(view.getByText("settings.agent.portSetByLaunch")).toBeTruthy();
+        // What the profile still owns stays live.
+        expect((view.getByRole("switch", { name: "settings.agent.allowWrites" }) as HTMLButtonElement).disabled).toBe(false);
     });
 
     it("copies a configuration from the guide only, not from a second row of buttons", async () => {

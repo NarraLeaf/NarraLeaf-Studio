@@ -163,18 +163,21 @@ export function AgentAccessPanel() {
     const statusTone = settings.running
         ? settings.movedToPort !== null ? "warning" : "muted"
         : failure ? "danger" : "muted";
-    const portDescription = !portValid
-        ? t("settings.agent.portInvalid", { min: AGENT_PORT_MIN, max: AGENT_PORT_MAX })
-        : portRefused
-            ? portProblem(portRefused)
-            : t("settings.agent.portHint");
+    const portDescription = settings.setByLaunch
+        ? t("settings.agent.portSetByLaunch")
+        : !portValid
+            ? t("settings.agent.portInvalid", { min: AGENT_PORT_MIN, max: AGENT_PORT_MAX })
+            : portRefused
+                ? portProblem(portRefused)
+                : t("settings.agent.portHint");
 
     return (
         <div className="flex flex-col gap-1">
-            <Row label={t("settings.agent.enable")} description={t("settings.agent.enableHint")}>
+            {/* A development launch decides both from its flags; the switch and the port show them and hold still. */}
+            <Row label={t("settings.agent.enable")} description={t(settings.setByLaunch ? "settings.agent.enableSetByLaunch" : "settings.agent.enableHint")}>
                 <Switch
                     checked={settings.enabled}
-                    disabled={busy}
+                    disabled={busy || settings.setByLaunch}
                     onCheckedChange={checked => void update({ enabled: checked })}
                     size="md"
                     aria-label={t("settings.agent.enable")}
@@ -206,7 +209,7 @@ export function AgentAccessPanel() {
                     inputMode="numeric"
                     value={portDraft}
                     variant={portValid ? "default" : "error"}
-                    disabled={busy}
+                    disabled={busy || settings.setByLaunch}
                     onChange={event => {
                         setPortDraft(event.target.value.replace(/[^0-9]/g, ""));
                         setPortRefused(null);

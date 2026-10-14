@@ -17,7 +17,7 @@ import { AGENT_COPY_CONFIGS } from "./clients";
  * Comments in English per project convention.
  */
 
-/** What the Agent menu shows of agent access. Never more than these six fields. */
+/** What the Agent menu shows of agent access. Never more than these seven fields. */
 export type AgentQuickState = {
     /** The author switched the endpoint on. */
     enabled: boolean;
@@ -34,6 +34,8 @@ export type AgentQuickState = {
     movedToPort: number | null;
     /** The endpoint is enabled but did not start, because its port is in use or reserved. */
     portUnavailable: AgentPortRefusal | null;
+    /** A development launch decides {@link enabled} (`--agent`); the menu cannot switch it. */
+    setByLaunch: boolean;
 };
 
 /** The switches the Agent menu may flip. Anything absent is left as it is. */
@@ -59,7 +61,7 @@ export const AGENT_SKILL_EXPORT_FOLDER = "NarraLeaf-Skills";
  * snapshot later is withheld from the workspace until someone decides otherwise.
  */
 export function toAgentQuickState(
-    snapshot: Pick<AgentSettingsSnapshot, "enabled" | "allowWrites" | "fullAccess" | "running" | "movedToPort" | "portUnavailable">,
+    snapshot: Pick<AgentSettingsSnapshot, "enabled" | "allowWrites" | "fullAccess" | "running" | "movedToPort" | "portUnavailable" | "setByLaunch">,
 ): AgentQuickState {
     const unavailable = snapshot.portUnavailable;
     return {
@@ -71,6 +73,7 @@ export function toAgentQuickState(
         portUnavailable: unavailable && Number.isInteger(unavailable.port)
             ? { port: unavailable.port, reason: unavailable.reason === "inUse" ? "inUse" : "reserved" }
             : null,
+        setByLaunch: snapshot.setByLaunch === true,
     };
 }
 

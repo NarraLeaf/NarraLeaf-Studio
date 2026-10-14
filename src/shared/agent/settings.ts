@@ -95,13 +95,22 @@ export type AgentPluginToolsSetting = {
 
 /** What the Settings window is shown. */
 export type AgentSettingsSnapshot = {
+    /** Whether the endpoint is to be served: the profile's switch, or `--agent` in development. */
     enabled: boolean;
+    /**
+     * A development launch: whether the endpoint is served and on which port come from `--agent` and
+     * `--agent-port`, not from the profile, and neither can be changed from Studio for this run.
+     */
+    setByLaunch: boolean;
     allowWrites: boolean;
     /** See {@link AgentSettingsFile.fullAccess}. */
     fullAccess: boolean;
     token: string;
     allowedImportRoots: string[];
-    /** The profile's port: the one the endpoint is on while it runs, and the one it starts on next. */
+    /**
+     * The profile's port - the one the endpoint is on while it runs and the one it starts on next -
+     * or `--agent-port` in development.
+     */
     port: number;
     /** Whether the endpoint is listening. */
     running: boolean;

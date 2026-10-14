@@ -83,12 +83,19 @@ type FakePlugin = { pluginId: string; enabled: boolean; builtIn?: boolean; manif
 
 function makeManager(
     answer: boolean | null,
-    options: { windows?: unknown[]; plugins?: () => Promise<FakePlugin[]>; trusted?: (projectPath: string) => boolean } = {},
+    options: {
+        windows?: unknown[];
+        plugins?: () => Promise<FakePlugin[]>;
+        trusted?: (projectPath: string) => boolean;
+        /** A development launch's `--agent` / `--agent-port`. */
+        launch?: { enabled: boolean; port: number };
+    } = {},
 ) {
     const quickStates: unknown[] = [];
     const asked: AgentAccessPromptProps[] = [];
     const app = {
         getUserDataDir: () => dir,
+        getAgentLaunchAccess: () => options.launch ?? null,
         askAgentAccess: vi.fn(async (_window: AppWindow, props: AgentAccessPromptProps) => {
             asked.push(props);
             return answer === null ? null : { allowed: answer };
@@ -215,6 +222,7 @@ describe("the endpoint's port", () => {
             running: false,
             movedToPort: null,
             portUnavailable: { port: AGENT_MCP_DEFAULT_PORT, reason },
+            setByLaunch: false,
         });
     });
 
@@ -333,6 +341,52 @@ describe("the endpoint's port", () => {
             await manager.updateSettings({ enabled: true });
             expect(await manager.snapshot()).toMatchObject({ running: true, movedToPort: null });
         });
+    });
+});
+
+describe("a development launch", () => {
+    it("serves the endpoint on --agent-port although the profile has access off", async () => {
+        const { manager } = makeManager(true, { launch: { enabled: true, port: 47300 } });
+        await manager.initialize();
+        expect(servers.asked.map(options => options.port)).toEqual([47300]);
+        expect(await manager.snapshot()).toMatchObject({ enabled: true, setByLaunch: true, running: true, port: 47300, url: "http://127.0.0.1:47300/mcp" });
+        // The profile keeps its own switch and port; only the live address is written for the stdio bridge.
+        expect(readSettingsFile()).toMatchObject({ enabled: false, port: AGENT_MCP_DEFAULT_PORT, url: "http://127.0.0.1:47300/mcp" });
+    });
+
+    it("leaves it off without --agent although the profile remembers it on", async () => {
+        fs.writeFileSync(settingsFile(), JSON.stringify({ schemaVersion: 2, token: "k".repeat(43), enabled: true, port: 47219 }));
+        const { manager } = makeManager(true, { launch: { enabled: false, port: AGENT_MCP_DEFAULT_PORT } });
+        await manager.initialize();
+        expect(servers.started).toBe(0);
+        expect(await manager.snapshot()).toMatchObject({ enabled: false, setByLaunch: true, running: false });
+    });
+
+    it("refuses to switch access or move the port, from Settings and from a menu, and changes nothing", async () => {
+        const { manager, window, asked } = makeManager(true, { launch: { enabled: true, port: 47300 } });
+        await manager.initialize();
+        await expect(manager.updateSettings({ enabled: false })).rejects.toThrow(/--agent/);
+        await expect(manager.updateSettings({ port: 50123 })).rejects.toThrow(/--agent-port/);
+        await expect(manager.quickToggle(window, { enabled: false })).rejects.toThrow(/--agent/);
+        expect(asked).toEqual([]);
+        expect(servers.stopped).toBe(0);
+        expect(await manager.snapshot()).toMatchObject({ enabled: true, running: true, port: 47300 });
+    });
+
+    it("still takes the switches that are the profile's", async () => {
+        const { manager, quickStates } = makeManager(true, { launch: { enabled: true, port: 47300 } });
+        await manager.initialize();
+        expect(await manager.updateSettings({ allowWrites: true })).toMatchObject({ allowWrites: true, running: true });
+        expect(quickStates.at(-1)).toMatchObject({ enabled: true, allowWrites: true, setByLaunch: true });
+    });
+
+    it("says so when --agent-port is taken, and does not move", async () => {
+        servers.bind = options => {
+            throw Object.assign(new Error(`listen EADDRINUSE: 127.0.0.1:${options.port}`), { code: "EADDRINUSE" });
+        };
+        const { manager } = makeManager(true, { launch: { enabled: true, port: 47300 } });
+        await manager.initialize();
+        expect(await manager.snapshot()).toMatchObject({ running: false, portUnavailable: { port: 47300, reason: "inUse" } });
     });
 });
 

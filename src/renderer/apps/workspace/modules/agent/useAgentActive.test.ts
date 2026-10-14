@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentQuickState } from "@shared/agent/workspaceAccess";
 import { agentStatusCellShown, agentWashesStatusBar } from "./useAgentActive";
 
-const ON: AgentQuickState = { enabled: true, allowWrites: true, fullAccess: false, running: true, movedToPort: null, portUnavailable: null };
+const ON: AgentQuickState = { enabled: true, allowWrites: true, fullAccess: false, running: true, movedToPort: null, portUnavailable: null, setByLaunch: false };
 const OFF: AgentQuickState = { ...ON, enabled: false, running: false };
 
 /**

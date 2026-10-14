@@ -39,6 +39,7 @@ import {
     AGENT_PORT_MIN,
     type AgentPluginToolsSetting,
     type AgentPortRefusal,
+    type AgentSettingsFile,
     type AgentSettingsPatch,
     type AgentSettingsSnapshot,
 } from "@shared/agent/settings";
@@ -140,8 +141,25 @@ export class AgentManager implements AgentMainToolHost {
         warn: message => this.app.logger.warn(`[Agent] ${message}`),
     });
 
+    /**
+     * A development launch's `--agent` and `--agent-port`, which decide whether the endpoint is served
+     * and where in place of the profile's switch and port; null outside development.
+     */
+    private readonly launch: { enabled: boolean; port: number } | null;
+
     constructor(private readonly app: App) {
         this.store = new AgentSettingsStore(app.getUserDataDir());
+        this.launch = app.getAgentLaunchAccess();
+    }
+
+    /** Whether the endpoint is to be served: the launch's flags in development, else the profile's switch. */
+    private accessOn(settings: AgentSettingsFile): boolean {
+        return this.launch ? this.launch.enabled : settings.enabled;
+    }
+
+    /** The port the endpoint is served on: `--agent-port` in development, else the profile's. */
+    private servedPort(settings: AgentSettingsFile): number {
+        return this.launch ? this.launch.port : settings.port;
     }
 
     public async initialize(): Promise<void> {
@@ -159,7 +177,7 @@ export class AgentManager implements AgentMainToolHost {
         this.app.electronApp.on("before-quit", () => {
             void this.server?.stop();
         });
-        if (settings.enabled) {
+        if (this.accessOn(settings)) {
             await this.serialize(() => this.startServer());
         }
     }
@@ -169,17 +187,20 @@ export class AgentManager implements AgentMainToolHost {
     public async snapshot(): Promise<AgentSettingsSnapshot> {
         const settings = await this.store.load();
         const livePort = this.server?.port ?? null;
+        const enabled = this.accessOn(settings);
+        const port = this.servedPort(settings);
         return {
-            enabled: settings.enabled,
+            enabled,
+            setByLaunch: this.launch !== null,
             allowWrites: settings.allowWrites,
             fullAccess: settings.fullAccess,
             token: settings.token,
             allowedImportRoots: settings.allowedImportRoots.map(root => root.path),
-            port: settings.port,
+            port,
             running: livePort !== null,
-            url: agentEndpointUrl(livePort ?? settings.port),
-            error: settings.enabled && livePort === null ? this.lastError : null,
-            portUnavailable: settings.enabled && livePort === null ? this.portUnavailable : null,
+            url: agentEndpointUrl(livePort ?? port),
+            error: enabled && livePort === null ? this.lastError : null,
+            portUnavailable: enabled && livePort === null ? this.portUnavailable : null,
             movedToPort: livePort !== null ? this.movedToPort : null,
             stdio: agentStdioCommand(this.app.electronApp),
             pluginTools: await this.pluginToolSettings(settings.blockedPluginTools),
@@ -220,6 +241,7 @@ export class AgentManager implements AgentMainToolHost {
         if (patch.port !== undefined && !isUsableAgentPort(patch.port)) {
             throw new Error(`The port must be a whole number from ${AGENT_PORT_MIN} to ${AGENT_PORT_MAX}.`);
         }
+        this.refuseWhatTheLaunchSets(patch);
         if (patch.acknowledgeMovedPort === true) {
             this.movedToPort = null;
         }
@@ -227,7 +249,7 @@ export class AgentManager implements AgentMainToolHost {
         if (patch.fullAccess === true && !before.fullAccess && confirmWith && !(await this.confirmFullAccess(confirmWith))) {
             patch = { ...patch, fullAccess: undefined };
         }
-        const wasEnabled = before.enabled;
+        const wasEnabled = this.accessOn(before);
         const after = await this.store.update(draft => {
             if (typeof patch.enabled === "boolean") {
                 draft.enabled = patch.enabled;
@@ -262,12 +284,13 @@ export class AgentManager implements AgentMainToolHost {
         }
         const port = patch.port;
         const portRefused = port !== undefined ? await this.serialize(() => this.changePort(port)) : null;
-        if (after.enabled && (!wasEnabled || !this.server)) {
+        const nowEnabled = this.accessOn(after);
+        if (nowEnabled && (!wasEnabled || !this.server)) {
             await this.serialize(async () => {
                 await this.stopServer();
                 await this.startServer();
             });
-        } else if (!after.enabled && wasEnabled) {
+        } else if (!nowEnabled && wasEnabled) {
             await this.serialize(() => this.stopServer());
         }
         const snapshot = await this.snapshot();
@@ -469,6 +492,7 @@ export class AgentManager implements AgentMainToolHost {
      * first-run setup's, for the same reason (`AgentQuickToggleHandler`).
      */
     public async quickToggle(window: AppWindow, patch: AgentQuickTogglePatch): Promise<AgentSettingsSnapshot> {
+        this.refuseWhatTheLaunchSets(patch);
         const current = await this.store.load();
         const next: AgentSettingsPatch = {};
         if (typeof patch.enabled === "boolean") {
@@ -699,7 +723,7 @@ export class AgentManager implements AgentMainToolHost {
         if (this.server) {
             return;
         }
-        const port = this.store.current.port;
+        const port = this.servedPort(this.store.current);
         // A profile just moved off the old default had clients configured with that one.
         const legacyPort = this.store.takeLegacyPort();
         const server = new AgentMcpServer({
@@ -774,6 +798,20 @@ export class AgentManager implements AgentMainToolHost {
         });
         this.app.logger.info(`[Agent] MCP endpoint moved to ${url}`);
         return null;
+    }
+
+    /**
+     * In development, `--agent` and `--agent-port` decide whether the endpoint is served and where,
+     * for the whole run; a request to change either is refused with that reason rather than stored
+     * where it would not count. The Settings panel and the Agent menu hold those controls still.
+     */
+    private refuseWhatTheLaunchSets(patch: { enabled?: boolean; port?: number }): void {
+        if (!this.launch) {
+            return;
+        }
+        if (typeof patch.enabled === "boolean" || patch.port !== undefined) {
+            throw new Error("In development, agent access and its port are set by --agent and --agent-port when Studio starts.");
+        }
     }
 
     private async stopServer(): Promise<void> {

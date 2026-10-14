@@ -152,7 +152,8 @@ export function buildAgentMenuItems(input: AgentMenuModelInput): ActionMenuItem[
         labelKey: "workspace.agent.appMenu.enable",
         label: t("workspace.agent.appMenu.enable"),
         checked: quick?.enabled ?? false,
-        disabled: quick === null,
+        // A development launch decides it with `--agent`.
+        disabled: quick === null || quick.setByLaunch,
         onClick: run.toggleEnabled,
     });
     const settings = action({
