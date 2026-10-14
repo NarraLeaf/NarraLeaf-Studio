@@ -1,3 +1,4 @@
+import { normalizeFrameSequence, type CharacterFrameSequence } from "@shared/types/character/frameSequence";
 import {
     CharacterAppearanceKind,
     isCharacterAppearanceKind,
@@ -166,7 +167,12 @@ function cloneAppearance(appearance: ICharacterAppearance): ICharacterAppearance
     const preset = appearance as PresetAppearance;
     return {
         kind: "preset",
-        poses: (preset?.poses ?? []).map(pose => ({ ...pose })),
+        poses: (preset?.poses ?? []).map(pose => {
+            const sequence = normalizeFrameSequence(pose.sequence);
+            const fields = { ...pose };
+            delete fields.sequence;
+            return { ...fields, ...(sequence ? { sequence } : {}) };
+        }),
         defaultPoseId: preset?.defaultPoseId ?? null,
         ...(preset?.avatars ? { avatars: cloneAvatars(preset.avatars) } : {}),
     };
@@ -261,6 +267,7 @@ export class CharacterAppearance {
         if (this.appearance.kind === "preset") {
             for (const pose of this.appearance.poses) {
                 if (pose.assetId) ids.add(pose.assetId);
+                for (const id of pose.sequence?.frameAssetIds ?? []) ids.add(id);
             }
         } else if (isPuppetAppearance(this.appearance)) {
             if (this.appearance.assetId) ids.add(this.appearance.assetId);
@@ -407,7 +414,9 @@ export class CharacterAppearance {
         const index = preset.poses.findIndex(pose => pose.id === poseId);
         if (index === -1) return false;
         const [removed] = preset.poses.splice(index, 1);
-        this.notifyAssetChange(removed.assetId ?? null, null);
+        for (const id of new Set([removed.assetId, ...(removed.sequence?.frameAssetIds ?? [])])) {
+            if (id) this.notifyAssetChange(id, null);
+        }
         if (preset.defaultPoseId === poseId) {
             preset.defaultPoseId = preset.poses[0]?.id ?? null;
         }
@@ -419,7 +428,24 @@ export class CharacterAppearance {
         const pose = this.getPose(poseId);
         if (!pose) return;
         this.notifyAssetChange(pose.assetId ?? null, assetId);
+        for (const id of pose.sequence?.frameAssetIds ?? []) {
+            if (id !== pose.assetId && id !== assetId) this.notifyAssetChange(id, null);
+        }
+        delete pose.sequence;
         pose.assetId = assetId;
+        this.notifyChange();
+    }
+
+    public setPoseSequence(poseId: string, input: CharacterFrameSequence): void {
+        const pose = this.getPose(poseId);
+        const sequence = normalizeFrameSequence(input);
+        if (!pose || !sequence) return;
+        const oldIds = new Set([pose.assetId, ...(pose.sequence?.frameAssetIds ?? [])]);
+        const newIds = new Set(sequence.frameAssetIds);
+        for (const id of oldIds) if (id && !newIds.has(id)) this.notifyAssetChange(id, null);
+        for (const id of newIds) if (!oldIds.has(id)) this.notifyAssetChange(null, id);
+        pose.sequence = sequence;
+        pose.assetId = sequence.frameAssetIds[0];
         this.notifyChange();
     }
 
