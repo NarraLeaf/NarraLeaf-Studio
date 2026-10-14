@@ -187,7 +187,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     main(
         "project_create",
         "Create a project",
-        "Creates a new NarraLeaf project from a template and opens it in Studio. Use the `skeleton` template for a game: it ships a title page, dialogue box, save/load, settings and history that work out of the box, which you then restyle. `dir` is the PARENT directory: the project folder is created inside it, named after a lower-case ASCII slug of `name` (末班车 becomes `mo-ban-che`); the result gives the full path. The skeleton's pages, scenes, variables and folders are named in `language`. The game carries `language` only, plus any `languages` you list (the skeleton's sample translations of other languages are not kept).",
+        "Creates a new NarraLeaf project from a template and opens it in Studio. Use the `skeleton` template for a game: it ships a title page, dialogue box, save/load, settings and history that work out of the box, which you then restyle. The skeleton is laid out for 1920x1080 only and refuses another size; for another size use the `empty` template. `dir` is the PARENT directory: the project folder is created inside it, named after a lower-case ASCII slug of `name` (末班车 becomes `mo-ban-che`); the result gives the full path. The skeleton's pages, scenes, variables and folders are named in `language`. The game carries `language` only, plus any `languages` you list (the skeleton's sample translations of other languages are not kept).",
         {
             name: { type: "string", description: "Project (and game) name." },
             dir: { type: "string", description: "Absolute PARENT directory; the project folder is created inside it. Defaults to Studio's default projects directory." },
@@ -471,7 +471,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
         ["variable"],
         true,
     ),
-    ws("audio_tracks_list", "List audio tracks", "Lists the audio tracks (Music, Sound, Voice and any custom ones) that `/bgm track=` and sound props can name."),
+    ws("audio_tracks_list", "List audio tracks", "Lists the audio tracks (Music, SFX, Voice and any custom ones) that `/bgm track=` and sound props can name."),
 
     // ── Story ────────────────────────────────────────────────────────────────────────────────────
     ws(
@@ -922,7 +922,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "playtest_screenshot",
         "Look at the game",
-        "Screenshot of the running Dev Mode game as the player sees it: the stage with its Game UI and every page or layer open over it (the title, a backlog or settings page opened in game, a Confirm dialog). `view: \"stage\"` gives the engine's picture of the stage alone - the scene and the Game UI, without pages - which is what a save thumbnail shows, its text in a fallback typeface rather than the project's fonts (judge fonts from `screen`). Fails within about 10 s, saying why, when the game cannot be captured.",
+        "Screenshot of the running Dev Mode game as the player sees it: the stage with its Game UI and every page or layer open over it (the title, a backlog or settings page opened in game, a Confirm dialog). `view: \"stage\"` gives the engine's picture of the stage alone - the scene and the Game UI, without pages - which is what a save thumbnail shows, its text in a fallback typeface rather than the project's fonts (judge fonts from `screen`). Fails within about 15 s, saying why, when the game cannot be captured.",
         {
             maxSize: { type: "integer", default: 1280 },
             view: { type: "string", enum: ["screen", "stage"], default: "screen", description: "`screen` (default): what the player sees. `stage`: the stage alone, without pages and layers." },
@@ -966,11 +966,11 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
         ["key"],
     )),
     drivesGame(ws("playtest_stop", "Stop playing", "Closes the Dev Mode game.")),
-    ws("console_read", "Read Studio's console", "Recent lines from Studio's console (build, story, blueprint, runtime channels).", { channel: { type: "string" }, level: { type: "string", enum: ["debug", "info", "warning", "error"] }, limit: { type: "integer", default: 100 } }),
+    ws("console_read", "Read Studio's console", "Recent lines from Studio's console. Channels: `build` (builds, and everything Dev Mode reports - the running game's errors land here), `blueprint`, `lint`, `storage`, `agent` (your own calls), and `story` while a scene's editor is open.", { channel: { type: "string" }, level: { type: "string", enum: ["debug", "info", "warning", "error"] }, limit: { type: "integer", default: 100 } }),
     main(
         "build",
         "Build the game",
-        "Builds a playable package of the project. Runs the same pipeline as Studio's Build menu. Returns the output directory and, in `artifacts`, what was built (the `.app` bundle, installer or app folder) - the thing to open.",
+        "Builds a playable package of the project. Runs the same pipeline as Studio's Build menu. Returns the output directory and, in `artifacts`, what was built (the `.app` bundle or the app folder) - the thing to open.",
         {
             project: PROJECT_ARG,
             target: { type: "string", enum: ["current", "windows", "macos", "linux", "web"], default: "current" },

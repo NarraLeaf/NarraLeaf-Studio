@@ -113,6 +113,13 @@ yarn stop
 
 `--cdp` enables the Electron Chrome DevTools Protocol endpoint during development. `--cdp-port` is optional and defaults to `9222`; the main process ignores CDP flags outside development mode.
 
+```bash
+yarn dev --agent
+yarn dev --agent-port=47300
+```
+
+In development, agent access follows these flags instead of Settings: `--agent` serves the agent MCP endpoint for this launch, on `--agent-port` (which implies `--agent`) or on `47219`. Without either, the endpoint stays off whatever the profile remembers, and Settings shows the switch and the port held still. A port another program holds is reported as an error; the endpoint does not move to another one. Whether agents may change projects, and full access, still come from Settings.
+
 `yarn stop` ends the session `yarn dev` started — the dev server on port `5588` and the Electron app it spawned. Only this checkout's processes are stopped; anything else holding those ports is reported instead of killed (`--force` overrides, `--dry-run` previews). Reach for it when `yarn dev` reports that another session owns the port, which it refuses to start alongside.
 
 ### Checks

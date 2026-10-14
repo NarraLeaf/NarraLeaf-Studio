@@ -355,7 +355,7 @@ export const uiInstallStandardScreens: AgentToolHandler = async (args, { ctx, re
             + `${result.removedSurfaces.length > 0 ? ", puts back what they replaced" : ""}${entryMoves ? " and returns the entry page" : ""}. `
             + `It leaves the rest of what came with them in the project, unused: ${leftBehind.join(", ")}.`,
         entry ? `The game opens on "${entry.name}".${entryMoves ? "" : " The entry page did not move, because it is not empty: make the new splash or title the entry with ui_page_set_entry if it should be."}` : "",
-        startTarget ? "Start begins the project's default story at its entry scene; move it with scene_set_entry." : "The project has no scene yet, so Start names none: create a scene, then check the title's Start blueprint (blueprint_show).",
+        startTarget ? "Start begins the project's default story at the scene that is its entry now, named by id in the title's Start blueprint: a later scene_set_entry does not move it. To start elsewhere, set that Start Game node's sceneId (blueprint_show, then blueprint_apply)." :"The project has no scene yet, so Start names none: create a scene, then check the title's Start blueprint (blueprint_show).",
         result.removedSurfaces.length > 0 ? `Removed: ${result.removedSurfaces.map(surface => `"${surface.name}"`).join(", ")}.` : "",
         variables.length > 0 ? `Added the variable(s) the save pages read: ${variables.map(item => `"${item.name}" (${item.scope})`).join(", ")}. Set them from the story (\`/set\`) to show the place on a save slot.` : "",
         saveFields.length > 0 ? `Added the save-slot field(s): ${saveFields.map(field => `"${field.name}"`).join(", ")}.` : "",

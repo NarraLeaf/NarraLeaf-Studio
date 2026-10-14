@@ -235,8 +235,9 @@ from what it starts with, and nothing else.
   /bg forest_day t=fade       a command - "story commands" lists them, "story command <token>"
                               explains one. A line opening with / is always a command: an
                               unknown one is an error, never prose.
-  Alice: Good morning.        dialogue. Everything before the first ": " is the speaker; a name
-                              no character answers to is a one-off speaker, exactly as /say does.
+  Alice: Good morning.        dialogue. Everything before the first ": " is the speaker: a
+                              character's name, else one of its nicknames; a name no character
+                              answers to is a one-off speaker.
   The rain had stopped.       narration - any line that is none of the others.
   // check this line          a note. Never compiled, never shown to a player.
   - I was waiting for you.    a choice option. Only under a /menu row.

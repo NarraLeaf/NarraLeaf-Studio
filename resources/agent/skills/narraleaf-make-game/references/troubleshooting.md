@@ -18,8 +18,8 @@ traps that do not produce a refusal at all.
 | `stale_revision` | The page or scene changed since you read it | Read it again (`story_show` / `ui_show`), redo your edit on the new text, write with the new revision. Never re-send the old text |
 | `check_failed` | The source had errors; **nothing was written** | Read every finding, fix them all, write again (a `dryRun` is free) |
 | `not_found` | A scene, page, element, asset or character name/id does not exist | `story_list`, `ui_surfaces`, `assets_list`, `characters_list`, `story_targets` |
-| `path_not_allowed` | A path outside the project and the allowed folders that the author has not allowed (yet) | The hint says which: *asking* - Studio's dialog is still open, call again once the author answers; *declined* - do not ask again, ask the author in chat or have them copy the files into the project; *never opened* (home folder, a drive root, Studio's own folders) - name the specific folder. Use `request_folder_access` up front for big imports |
-| `untrusted` | The project is not trusted, so its code cannot run (playtest, build) | Ask the author to trust the project in Studio |
+| `path_not_allowed` | A path outside the project and the allowed folders that the author has not allowed (yet), or a relative path | The hint says which: *asking* - Studio's dialog is still open, call again once the author answers; *declined* - do not ask again, ask the author in chat or have them copy the files into the project; *never opened* (home folder, a drive root, Studio's own folders) - name the specific folder. Paths must be absolute. Use `request_folder_access` up front for big imports: one dialog asks about at most 5 folders, and the rest come back under `refused` as `tooMany` - for many folders, ask for their common parent |
+| `untrusted` | The project is not trusted: you may read it, but not change it (imports included), be given folders outside it or run its game (playtest, build) | Ask the author to trust the project in Studio (the status bar, or Settings > Data > Trusted projects); read tools keep working meanwhile |
 | `unavailable` | Valid call, impossible now (e.g. advancing a playtest that is not running) | Read the message; fix the precondition |
 | `internal` | Something broke in Studio | Retry once; if it repeats, `console_read {level:"error"}` and tell the author what you were doing |
 
@@ -32,13 +32,15 @@ traps that do not produce a refusal at all.
 - **Same error on `/hide Aoi` at the top of a scene.** Each scene starts empty; `/show Aoi` earlier in
   that scene.
 - **A picture never appears.** `/image` only creates; use `/show <asset> name=…`.
-- **Game crashes on start, "stringify is not a function", no row named.** A `/bg` inside an `/if` or a
-  menu option. Move it out (`story-format` has the pattern).
-- **`compile.expressionError`.** Use `&&`, `||`, `!` and double-quoted strings.
-- **A speaker shows as plain text with no colour.** The label does not match a character's name or
-  nickname exactly (case, spaces, full-width colon). Fix the label or add a nickname with
-  `character_upsert`.
+- **`compile.bad_condition`** (a `?` or `/if` condition) **or `compile.expressionError`** (a value such
+  as `/set`'s). Use `&&`, `||`, `!` and double-quoted strings.
+- **A speaker shows as plain text with no colour.** Only `Name: text` - a half-width colon with a space
+  after it - is dialogue; a full-width `：` or no space reads as narration. Then the label must match a
+  character's name, or else one of its nicknames, exactly (case and spaces). Fix the label or add a
+  nickname with `character_upsert`.
 - **Dialogue split oddly.** A `: ` inside narration made it dialogue - escape it as `\: `.
+- **A line vanished with no error.** A line starting with `#` (indented or not) is a comment and is
+  dropped silently. Text that must start with `#` is written `\#`.
 - **A skeleton picture (classroom, corridor) flashes between scenes, or lint never calls it unused.**
   A reused demo scene opens on it: `story_show` prints `#background classroom` in its header. Apply
   the scene with `#background none` (and `#music none`), then `asset_delete` the picture.
@@ -77,9 +79,14 @@ traps that do not produce a refusal at all.
 
 ## Assets traps
 
-- **Import refused for a video or audio file.** Unsupported container (AVI, WMV, FLV, MPEG, TS, AIFF,
-  MP2) or image (TIFF). Ask the author to convert: video to WebM (VP9) or MP4 (H.264), audio to OGG or
-  MP3, images to PNG.
+- **A video, audio or image file comes back under `failed`.** Unsupported container (AVI, WMV, FLV,
+  MPEG, TS, AIFF, MP2) or image (TIFF). Ask the author to convert: video to WebM (VP9) or MP4 (H.264),
+  audio to OGG or MP3, images to PNG.
+- **`assets_import` answers `stopped`.** The author paused you, or the project froze, part-way: the
+  files before that point are imported, the rest are not. Import the rest once you may write again.
+- **A misspelt path outside the project opens the folder dialog.** Folder access is checked before
+  Studio looks for the file, so the author is asked first and the path only then comes back under
+  `failed` as not found. Check paths outside the project before importing them.
 - **Video plays sound over black.** HEVC/H.265 MP4, ProRes MOV or Theora OGV; convert to WebM or H.264
   MP4.
 - **A transparent (alpha) video's colours look off.** Studio plays an alpha WebM as it is - it is not

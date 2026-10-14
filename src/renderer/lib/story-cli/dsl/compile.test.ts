@@ -21,6 +21,11 @@ const SCENE: StoryScene = {
 } as unknown as StoryScene;
 
 function check(body: string): string[] {
+    const { parsed, compiled } = compile(body);
+    return [...parsed.diagnostics, ...compiled.diagnostics].map(d => `${d.code}: ${d.message}`);
+}
+
+function compile(body: string) {
     commandI18nStore.setPreference(false);
     const source = `#nlstory 1\n#scene Test ⟦${SCENE.id}⟧\n\n${body}\n`;
     const parsed = parseStoryFile(source);
@@ -43,7 +48,19 @@ function check(body: string): string[] {
             return () => `00000000-0000-4000-8000-${String(next++).padStart(12, "0")}`;
         })(),
     });
-    return [...parsed.diagnostics, ...compiled.diagnostics].map(d => `${d.code}: ${d.message}`);
+    return { parsed, compiled };
+}
+
+/** The scene's rows as a nested outline: `control:condition`, `branch:if`, `narration`, … */
+function outline(scene: StoryScene, ids: readonly string[] = scene.rootBlockIds, depth = 0): string[] {
+    return ids.flatMap(id => {
+        const block = scene.blocks[id];
+        const payload = block.payload as { control?: string; branch?: string; action?: string };
+        const label = payload.control === "conditionBranch"
+            ? `branch:${payload.branch}`
+            : payload.control ? `control:${payload.control}` : payload.action ?? block.kind;
+        return [`${"  ".repeat(depth)}${label}`, ...outline(scene, block.childrenIds, depth + 1)];
+    });
 }
 
 describe("what a broken file is told", () => {
@@ -97,5 +114,62 @@ describe("what a broken file is told", () => {
         const twice = check("/if\n  ? true\n  ? else\n  ? else");
         expect(twice.some(message => /^compile\.branch_after_else:/.test(message))).toBe(true);
         expect(check("/if\n  ? true\n  ? false\n  ? else").some(message => /branch_after_else/.test(message))).toBe(false);
+    });
+});
+
+describe("/if with its condition on the line", () => {
+    it("builds the branch the editor builds, holding the rows indented under it", () => {
+        // The short form used to apply cleanly as a container with no branch, which the game skips:
+        // the rows under it never ran and nothing said so.
+        const { compiled } = compile("/if true\n  Inside.\n  Still inside.\nAfter.");
+        expect(compiled.diagnostics).toEqual([]);
+        expect(outline(compiled.scene!)).toEqual([
+            "control:condition",
+            "  branch:if",
+            "    narration",
+            "    narration",
+            "narration",
+        ]);
+        const branchId = compiled.scene!.blocks[compiled.scene!.rootBlockIds[0]].childrenIds[0];
+        expect((compiled.scene!.blocks[branchId].payload as { condition?: unknown }).condition).toBeTruthy();
+    });
+
+    it("compiles to the same rows as the long form", () => {
+        const short = compile("/if true\n  Inside.");
+        const long = compile("/if\n  ? true\n    Inside.");
+        expect(outline(short.compiled.scene!)).toEqual(outline(long.compiled.scene!));
+    });
+
+    it("nests, each short /if gaining its own branch", () => {
+        const { compiled } = compile("/if true\n  /if false\n    Deep.\n  Back in the outer.\nOutside.");
+        expect(compiled.diagnostics).toEqual([]);
+        expect(outline(compiled.scene!)).toEqual([
+            "control:condition",
+            "  branch:if",
+            "    control:condition",
+            "      branch:if",
+            "        narration",
+            "    narration",
+            "narration",
+        ]);
+    });
+
+    it("leaves branches under a long /if inside a short one alone", () => {
+        const { compiled } = compile("/if true\n  /if\n    ? false\n      Deep.\n    ? else\n      Other.");
+        expect(compiled.diagnostics).toEqual([]);
+        expect(outline(compiled.scene!)).toEqual([
+            "control:condition",
+            "  branch:if",
+            "    control:condition",
+            "      branch:if",
+            "        narration",
+            "      branch:else",
+            "        narration",
+        ]);
+    });
+
+    it("refuses a ? branch written directly under it, pointing at the long form", () => {
+        const found = check("/if true\n  ? else\n    Other.");
+        expect(found.some(message => /^compile\.short_if_branch:.*bare "\/if"/.test(message))).toBe(true);
     });
 });

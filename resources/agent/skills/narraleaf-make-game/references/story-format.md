@@ -68,8 +68,9 @@ What a line is depends only on how it starts:
 
 | Line | Meaning |
 |---|---|
-| `/token args` | A command. A line starting with `/` is **always** a command; an unknown one is an error, never prose. |
-| `Name: words` | Dialogue. Everything before the first `: ` is the speaker. A name no character or nickname answers to becomes a one-off speaker. |
+| `/<token> args` | A command. A line starting with `/` is **always** a command; an unknown one is an error, never prose. |
+| `Name: words` | Dialogue. Everything before the first `: ` (a half-width colon and a space; `Aoi：` with a full-width colon is narration) is the speaker, matched exactly, case included - a character's name first, then a nickname. A name nothing answers to becomes a one-off speaker. |
+| `# text` | A comment in the file (the header's directives aside). Not a row: it is dropped without a word. |
 | any other text | Narration. |
 | `// text` | A note for the author. Never shown to the player. |
 | `- text` | A choice option, directly under a `/menu` row. |
@@ -77,9 +78,11 @@ What a line is depends only on how it starts:
 | `» label` | A row this format cannot spell; its payload is in the `#data` footer. Never edit the label. |
 | `.` | An empty row. |
 
-Escape with a backslash: a line of narration that starts with `/`, `-`, `?`, `//`, `»` or contains
-`: ` (which would read as dialogue) needs `\` before the marker - `\...Huh.`, `\- not an option`,
-`It said\: closed.` Leading or trailing spaces need it too. `story_show` writes escapes for you.
+Escape with a backslash: a line of narration that starts with `/`, `#`, `-`, `?`, `//`, `»` or contains
+`: ` (which would read as dialogue) needs `\` before the marker - `\...Huh.`, `\#1 on the list`,
+`\- not an option`, `It said\: closed.` An unescaped `#` loses the line silently. Leading or trailing
+spaces need it too. `story_show` writes escapes for you. A speaker name that would need escaping
+reads more plainly as `/say <name> <words>`, which writes the same dialogue row.
 
 ### Inline styling
 
@@ -106,8 +109,9 @@ the three above, drop the rest.
 ## Anchors: the row's identity
 
 `story_show` ends each line with `⟦…⟧` - the first characters of the row's id, optionally followed by
-`disabled`. Keep the anchor on a line you edit: the row keeps its id, and with it its translations and
-any save that points at it. A line without an anchor is a new row. **A line you delete deletes its
+`disabled`. Keep the anchor on a line you edit: the row keeps its id, and with it its translations, its
+voice take and any save that points at it. A line without an anchor is a new row with a new id - the
+old row's translations and takes are left on the old id, orphaned. **A line you delete deletes its
 row**: a source describes the whole scene, and `story_apply` removes every row the source does not
 mention. When rewriting a skeleton demo scene from scratch, drop all its anchors and `»` lines except
 those you deliberately keep.
@@ -117,16 +121,20 @@ those you deliberately keep.
 - **Each scene starts with an empty stage.** Bring on what the scene uses: `/bg` first, then `/show`
   for every character present. A `/hide`, `/char` or `/transform` on something not brought on earlier
   in the same scene is refused (`story/stage-object-missing`).
-- **Characters** are addressed by name: `/show Aoi smile pos=left in=fade d=0.4`, `/char Aoi sad`
+- **Characters** are addressed by name: `/show Aoi smile pos=left d=0.4`, `/char Aoi sad`
   (change pose), `/transform Aoi pos=right d=0.5`, `/hide Aoi out=fade d=0.3`. The pose name must be one
   of the character's poses (`compile.unknownForm` otherwise).
+- **One preset per row.** A `/show` holds a placement (`pos=`) or an entrance (`in=`), not both: with
+  `pos=` on the row, its `in=` is dropped without a word. To fade in, leave `pos=` off
+  (`/show Aoi smile in=fade d=0.4`), or `/show` first and `/transform` after; a picture can also be
+  declared in place (`/image <asset> name=<name> pos=…`) and revealed with `/show <name> in=fade`.
 - **Backgrounds**: `/bg <image> t=<transition> d=<seconds>`; also a colour, `/bg #000000`. A background
   covers the stage whatever the picture's size.
 - **Other pictures** (a CG over the background, a letter, a flashback frame): `/show <image asset>
-  name=<name> pos=center in=fade d=0.5` creates the picture and reveals it in one row. **Always write
-  `name=`**, even when it repeats the asset name - later rows (`/hide`, `/swap`, `/transform`) address
-  the picture by that name, and a `/show` without `name=` means "reveal the object already called
-  that". `/image` alone only creates a picture without showing it (`story/declared-never-shown`); use
+  name=<name> in=fade d=0.5` creates the picture and reveals it in one row. **Write `name=`**, even when
+  it repeats the asset name - later rows (`/hide`, `/swap`, `/transform`) address the picture by that
+  name, and without it the picture takes the asset's name, numbered when that is taken (`cg_rain2`).
+  `/image` alone only creates a picture without showing it (`story/declared-never-shown`); use
   `/show <asset> name=`.
 - **Declare, then show.** `/image`, `/text` and `/vfx` rows only declare an object; nothing is on screen
   until a `/show <name>` row. `/text name=title pos=center Chapter One` then `/show title in=fade d=0.5`;
@@ -161,7 +169,8 @@ those you deliberately keep.
 - `/transform` moves images, texts, layers, characters and the camera. These params reach neither an
   anchor nor a video's or `/vfx` overlay's own transform: `/transform` refuses videos and overlays
   (the engine gives them none), and `/transform camera ...` moves them together with the rest of the
-  stage, while the dialogue box and menus stay put.
+  stage, while the dialogue box and menus stay put. `/reset <name>` (or `/reset camera d=0.5`) puts
+  one back the way it was drawn.
 
 ## Sound
 
@@ -169,15 +178,22 @@ those you deliberately keep.
   Repeat the line in each scene where the music should change.
 - `/sound <audio> name=<name>` - a sound effect. Give it `name=` if a later row must `/stop` it;
   `/stop <name> fade=0.5`. The music is the reserved name `bgm`: `/stop bgm fade=1`, `/vol bgm 0.5`,
-  `/pause bgm`. `music` is not a name - it only works if a row created something called that.
+  `/pause bgm` and `/resume bgm`. `music` is not a name - it only works if a row created something
+  called that.
 - `track=` names an audio track from `audio_tracks_list` (Music, SFX, Voice, or custom ones).
 
 ## Branching and flow
 
-- **Choice:** `/menu Question text` then `- option` lines, each with its rows indented under it. An
-  option with no rows is an empty choice (lint warning). After the menu the scene continues for every
-  option that does not jump away.
-- **Condition, short form:** `/if <expression>` with the rows to run indented under it.
+- **Choice:** `/menu Question text` then `- option` lines, each with its rows indented under it. A
+  menu with no options, or an option with no words, is refused (`story/empty-choice`); an option with
+  no rows simply carries on after the menu, as does every option that does not jump away.
+- **Condition, short form:** `/if <expression>` with the rows to run indented under it. It reads back
+  in the long form below (a bare `/if` and one `? <expression>`); for an else, write the long form - a
+  `?` line directly under a short `/if` is refused (`compile.short_if_branch`). Studio 1.6.1 and
+  earlier dropped the short form's condition without a word: if `story_show` reads it back as a bare
+  `/if` with the rows straight under it, those rows never run - write the long form instead. The same
+  versions did not bind a speaker by nickname (the line reads back under the label, not the
+  character's name); write the character's own name there.
 - **Condition with else:** a bare `/if`, then `? <expression>` (the if), more `? <expression>` lines
   (else-ifs) and finally `? else`, each with its rows indented under it:
   ```
@@ -190,12 +206,15 @@ those you deliberately keep.
       Aoi: Forget it.
   ```
 - **Scene to scene:** `/jump 'Scene name' t=fade d=0.6`. Quote names with spaces. A scene with no jump
-  and no ending at its end stops dead (`story` lint reports dead ends).
+  and no ending at its end stops dead (`story` lint reports dead ends). `/jump 'Scene name' return`
+  comes back to the row after it when that scene runs out of rows.
 - **Within a scene:** `/label name` and `/goto name`.
 - **Endings:** `/ending Name of the ending` records the ending, ends the playthrough and takes the
   player to the build's ending page. Rows after it never run. Names must be unique across the story.
 - **Leave to a page without an ending:** `/quit Title` (any page from `story_targets`).
 - **Loops:** `/repeat 3`, `/until <expression>`, `/break` - rare in a VN.
+- **Together:** rows run one after another; rows indented under `/parallel` start at once, and the row
+  after it waits for all of them - two characters crossing the stage together.
 - `/wait 1.5` pauses; `/wait click` waits for a click.
 
 ## Variables and expressions
@@ -231,7 +250,8 @@ gives trouble, leave it out: saves then show no place, nothing else breaks.
 A `/blueprint` row runs a blueprint of its own when play reaches it - the way to grant an
 achievement, unlock a gallery CG the moment it shows, or call any plugin's node at a point in the
 story. Such a row has no line spelling: it is a `»` row whose `#data` entry names its blueprint, and
-the blueprint is written with `blueprint_apply` under the owner `storyAction`.
+the blueprint is written with `blueprint_apply` under the owner `storyAction`. Do not type `/blueprint`
+as a line: it makes a row with no blueprint, which runs nothing.
 
 1. Find the node: `blueprint_nodes {query:"achievement"}` (plugin nodes are listed when the plugin is
    loaded in the project), then `blueprint_node {type}` for its pins and fields.
@@ -272,15 +292,17 @@ blueprint per row: copy the pattern with new UUIDs for the next one.
 | Symptom | Cause | Fix |
 |---|---|---|
 | `compile.unknownCommand` | A `/` line with a token that does not exist | `story_commands {query}` |
-| `compile.unknownTarget` | A name nothing answers to | `story_targets {query}`; import or declare it first |
+| `compile.unknownAsset`, `compile.unknownCharacter`, `compile.unknownScene`, `compile.unknownTarget` | A name nothing answers to (an asset, a character, a scene, something on stage) | `story_targets {query}`; import or declare it first |
+| `compile.ambiguousSpeaker` | Two characters answer to the speaker's name or nickname | Rename one, or drop the shared nickname |
 | `compile.unknownForm` | A pose the character does not have | `characters_list`; add the pose with `character_upsert` |
-| `compile.expressionError` | `and`/`or`/`not`, single quotes, or a typo in an expression | Use `&&` `\|\|` `!` and double quotes |
+| `compile.expressionError` (`compile.bad_condition` on a `?` line) | `and`/`or`/`not`, single quotes, or a typo in an expression | Use `&&` `\|\|` `!` and double quotes |
 | `compile.bad_indent` | Rows indented under a row that holds none (or one level too deep) | Only `/menu`, options, `/if`, `?` branches and loops hold rows; two spaces per level |
-| `story/stage-object-missing` | Acting on something not brought on in this scene, or `/show <asset>` without `name=` before a row that names it | Bring it on earlier in the scene; write `name=` |
-| `story/stage-object-duplicate` | Creating the same name twice | `/swap` or `/show <name>` the existing one |
-| `story/declared-never-shown` | `/image` without a `/show` | Use `/show <asset> name=` |
-| `story/ending-name-duplicate` | Two endings share a name | Rename one |
-| Game fails to start, "stringify is not a function", no row named | `/bg` inside an `/if` branch or menu option | Before the condition `/show <asset> name=bgx` with a picture at the project resolution; inside it `/swap bgx <asset>`. Or jump to a scene that opens with the other `/bg` |
+| `compile.short_if_branch` | A `?` line directly under `/if <expression>` | Write a bare `/if` and put the condition on the first `?` line |
+| `story/stage-object-missing` | Acting on something not brought on in this scene, or by a name it did not get (without `name=` a picture takes its asset's name) | Bring it on earlier in the scene; write `name=` |
+| `story/empty-choice` | A menu with no options, or an option with no words | Give every option its words |
+| `story/stage-object-duplicate` (warning, written) | Creating the same name twice | `/swap` or `/show <name>` the existing one |
+| `story/declared-never-shown` (warning, written) | `/image` without a `/show` | Use `/show <asset> name=` |
+| `story/ending-name-duplicate` (info, written) | Two endings share a name | Rename one |
 | Rows vanished after apply | The source left them out | Always start from `story_show`; keep anchors |
 
 ## Writing efficiently

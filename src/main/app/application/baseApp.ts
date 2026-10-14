@@ -48,6 +48,7 @@ import { UITemplatePosterCache } from "./managers/uiTemplatePosterCache";
 import {
     isMainDevMode,
     parseMainCommandLine,
+    type AgentCommandLineOptions,
     type BuildCommandLineOptions,
     type CheckCommandLineOptions,
     type ExperimentalCommandLineOptions,
@@ -190,6 +191,7 @@ export class BaseApp {
         this.setupUserDataDir();
         this.setupLogging();
         this.reportExperimentalMode();
+        this.reportAgentLaunchFlags();
 
         this.globalState = new GlobalStateManager(this.getUserDataDir());
         // Before any window exists, so nothing has read a retired value and there is nothing to
@@ -939,6 +941,23 @@ export class BaseApp {
         return this.isDevMode() ? this.commandLine.project.selector : null;
     }
 
+    /**
+     * Agent access as this development launch set it, or null outside development, where the
+     * profile's settings decide. `--agent` serves the endpoint and `--agent-port` says where; with
+     * neither it stays off, whatever the profile remembers.
+     *
+     * Development instances - a worktree, a second checkout - run beside an installed Studio that
+     * holds the default port. A profile that remembered "on" would try to bind on every start; the
+     * flags make each launch say whether it wants an endpoint and on which port.
+     */
+    public getAgentLaunchAccess(): Pick<AgentCommandLineOptions, "enabled" | "port"> | null {
+        if (!this.isDevMode()) {
+            return null;
+        }
+        const agent = this.commandLine.agent;
+        return { enabled: agent.enabled && agent.error === null, port: agent.port };
+    }
+
     /** What was wrong with `--project`, for the one place that reports it. Dev-gated as above. */
     public getStartupProjectError(): string | null {
         return this.isDevMode() ? this.commandLine.project.error : null;
@@ -1258,6 +1277,23 @@ export class BaseApp {
         }
         for (const id of experimental.conditions) {
             this.logger.warn(`[Experimental] ${id}: ${experimentalCondition(id).summary}`);
+        }
+    }
+
+    private reportAgentLaunchFlags(): void {
+        const agent = this.commandLine.agent;
+        if (!this.isDevMode()) {
+            if (agent.enabled || agent.error) {
+                this.logger.warn("[Agent] Ignoring --agent and --agent-port: they are only read in development mode.");
+            }
+            return;
+        }
+        if (agent.error) {
+            this.logger.warn(`[Agent] ${agent.error}. Agent access stays off.`);
+        } else {
+            this.logger.info(agent.enabled
+                ? `[Agent] Development launch: agent access on, port ${agent.port} (--agent).`
+                : "[Agent] Development launch: agent access off; pass --agent or --agent-port=<port> to serve it.");
         }
     }
 

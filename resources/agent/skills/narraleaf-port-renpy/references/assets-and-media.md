@@ -6,8 +6,9 @@ Keep a name → asset-id map from each result; your converter emits asset names 
 
 ## What imports as is
 
-PNG, JPEG, WebP images; MP3, OGG, WAV, Opus audio; MP4 (H.264) and WebM (VP8/VP9) video; TTF/OTF/
-WOFF fonts. When unsure, import one file and read the answer - Studio checks the real container and
+PNG, JPEG, WebP, GIF, AVIF and SVG images; MP3, OGG, Opus, WAV, M4A, AAC and FLAC audio; MP4
+(H.264) and WebM (VP8/VP9) video; TTF/OTF/WOFF/WOFF2 fonts - the list in the make-game `SKILL.md`,
+step 3. When unsure, import one file and read the answer - Studio checks the real container and
 codecs, not the extension, and says what is wrong.
 
 ## Convert first (into your working folder, never the source)

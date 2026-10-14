@@ -77,18 +77,16 @@ export type AgentCallContext = {
 };
 
 export type AgentMcpServerOptions = {
-    /** The port asked for. 0 asks the system for any free one. */
-    port: number;
     /**
-     * Tried in order when the port asked for cannot be bound - in use (`EADDRINUSE`) or reserved by
-     * the system (`EACCES`, as Windows answers for a port inside a range Hyper-V or WSL excluded).
+     * The port to serve on, and the only one tried: when it cannot be bound, `start` fails with the
+     * system's error - `EADDRINUSE` when another program holds it, `EACCES` when the system reserved
+     * it (as Windows answers inside a range Hyper-V, WSL or Docker excluded). 0 asks the system for
+     * any free one.
      */
-    fallbackPorts?: readonly number[];
+    port: number;
     /** Read on every request, so a regenerated token takes effect at once. */
     token: () => string;
     host: AgentMcpHost;
-    /** When none of those ports can be bound, take any free one instead of failing. Defaults to true. */
-    fallBackToFreePort?: boolean;
 };
 
 export const AGENT_MCP_BODY_LIMIT = 4 * 1024 * 1024;
@@ -170,37 +168,12 @@ export class AgentMcpServer {
         // Slow or idle connections are not held open forever: a request is a few kilobytes.
         server.requestTimeout = 5 * 60 * 1000;
         server.headersTimeout = 30 * 1000;
-        this.boundPort = await this.bind(server);
+        this.boundPort = await listen(server, this.options.port);
         // An error after listening (a socket fault) must not become an unhandled 'error' event,
         // which would take the main process down with it.
         server.on("error", error => this.options.host.log("warn", `[Agent] Server error: ${describe(error)}`));
         this.server = server;
         return this.boundPort;
-    }
-
-    /**
-     * The port asked for, then each fallback, then - unless told not to - any free port. Only a port
-     * that is unavailable moves on to the next; any other failure is the answer.
-     */
-    private async bind(server: http.Server): Promise<number> {
-        const candidates = [...new Set([this.options.port, ...(this.options.fallbackPorts ?? [])])];
-        let unavailable: unknown = null;
-        for (const candidate of candidates) {
-            try {
-                return await listen(server, candidate);
-            } catch (error) {
-                if (!isPortUnavailable(error)) {
-                    throw error;
-                }
-                unavailable = error;
-                this.options.host.log("warn", `[Agent] Port ${candidate} cannot be used (${(error as NodeJS.ErrnoException).code})`);
-            }
-        }
-        if (this.options.fallBackToFreePort === false) {
-            throw unavailable;
-        }
-        this.options.host.log("warn", "[Agent] Serving on a free port the system picked instead");
-        return listen(server, 0);
     }
 
     public async stop(): Promise<void> {
@@ -613,19 +586,22 @@ export function describeTool(tool: AgentToolDescriptor) {
     };
 }
 
-/** An answer as MCP's `tools/call` result: a refusal is a result the model reads, not a transport error. */
+/**
+ * An answer as MCP's `tools/call` result: a refusal is a result the model reads, not a transport error.
+ *
+ * Only `content` is sent, never `structuredContent`. A client that finds `structuredContent` may show
+ * the model that alone - Claude Code does - and the tools' data is often a summary of what the text
+ * says rather than all of it: `story_show`'s data is the revision without the scene, `agent_guide`'s
+ * the chapter's name without the chapter. Such a client read every scene, page and guide chapter as
+ * empty. The text always carries the whole answer, so every client gets that.
+ */
 export function toToolResult(result: AgentCallResult) {
     if (result.ok) {
-        return {
-            content: result.content,
-            ...(result.structured ? { structuredContent: result.structured } : {}),
-            isError: false,
-        };
+        return { content: result.content, isError: false };
     }
     const { code, message, hint } = result.error;
     return {
         content: [{ type: "text", text: `${code}: ${message}${hint ? `\nHint: ${hint}` : ""}` }],
-        structuredContent: { error: result.error },
         isError: true,
     };
 }
@@ -717,12 +693,6 @@ function readBody(req: http.IncomingMessage, limit: number): Promise<Buffer | "t
             }
         });
     });
-}
-
-/** In use by another program, or reserved by the system: worth trying another port for. */
-function isPortUnavailable(error: unknown): boolean {
-    const code = (error as NodeJS.ErrnoException | null)?.code;
-    return code === "EADDRINUSE" || code === "EACCES";
 }
 
 function listen(server: http.Server, port: number): Promise<number> {
