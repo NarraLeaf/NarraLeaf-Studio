@@ -13,8 +13,6 @@ import type { AppEventToken } from "@shared/types/app";
 import {
     AGENT_INTERNAL_TOOL_STATE,
     AGENT_INTERNAL_TOOL_TEST,
-    AGENT_MCP_DEFAULT_PORT,
-    AGENT_MCP_FALLBACK_PORTS,
     agentRefusal,
     agentText,
     type AgentCallRequest,
@@ -105,9 +103,11 @@ export class AgentManager implements AgentMainToolHost {
     private readonly store: AgentSettingsStore;
     private server: AgentMcpServer | null = null;
     private lastError: string | null = null;
+    /** The last start failed because the profile's port is in use or reserved; see `startServer`. */
+    private portUnavailable: AgentPortRefusal | null = null;
     /**
-     * The port the endpoint moved to on its last start, until the author copies a configuration
-     * (one copied before names the old port). Cleared by a start that lands where the profile was.
+     * The new default a profile on the old one was moved to, until the author copies a configuration
+     * (one copied before names the old port). Cleared by the next start.
      */
     private movedToPort: number | null = null;
     private readonly focusedAt = new WeakMap<AppWindow, number>();
@@ -179,6 +179,7 @@ export class AgentManager implements AgentMainToolHost {
             running: livePort !== null,
             url: agentEndpointUrl(livePort ?? settings.port),
             error: settings.enabled && livePort === null ? this.lastError : null,
+            portUnavailable: settings.enabled && livePort === null ? this.portUnavailable : null,
             movedToPort: livePort !== null ? this.movedToPort : null,
             stdio: agentStdioCommand(this.app.electronApp),
             pluginTools: await this.pluginToolSettings(settings.blockedPluginTools),
@@ -689,49 +690,48 @@ export class AgentManager implements AgentMainToolHost {
     }
 
     /**
-     * Serve on the profile's port; when it cannot be bound (in use, or reserved by the system), on
-     * the first of a fixed run of fallbacks that can, and failing those on any free port. Whichever
-     * binds is written back as the profile's port, so the next launch tries it first and an HTTP
-     * client configured with it keeps reaching the endpoint. When that is not the port the profile
-     * had, configurations copied before name the wrong one, and Settings and the Agent menu say so
-     * until a configuration is copied again.
+     * Serve on the profile's port, and only there. When it cannot be bound - in use, or reserved by
+     * the system - the endpoint does not start, and Settings and the Agent menu say which port and
+     * why, so the author can pick another in Settings. Moving to another port on its own would leave
+     * every configuration copied before naming a port nothing listens on.
      */
     private async startServer(): Promise<void> {
         if (this.server) {
             return;
         }
-        const asked = this.store.current.port;
+        const port = this.store.current.port;
         // A profile just moved off the old default had clients configured with that one.
-        const known = this.store.takeLegacyPort() ?? asked;
+        const legacyPort = this.store.takeLegacyPort();
         const server = new AgentMcpServer({
-            port: asked,
-            fallbackPorts: [AGENT_MCP_DEFAULT_PORT, ...AGENT_MCP_FALLBACK_PORTS],
+            port,
             token: () => this.store.current.token,
             host: this.serverHost(),
         });
         try {
-            const port = await server.start();
-            this.server = server;
-            this.lastError = null;
-            this.movedToPort = port === known ? null : port;
-            const url = agentEndpointUrl(port);
-            await this.store.update(draft => {
-                draft.port = port;
-                draft.url = url;
-            });
-            this.app.logger.info(port === known
-                ? `[Agent] MCP endpoint listening on ${url}`
-                : `[Agent] MCP endpoint listening on ${url}, moved from port ${known}`);
+            await server.start();
         } catch (error) {
-            this.lastError = describe(error);
-            this.app.logger.warn(`[Agent] MCP endpoint could not start: ${this.lastError}`);
+            this.portUnavailable = agentPortRefusal(port, error);
+            this.lastError = this.portUnavailable ? null : describe(error);
+            this.app.logger.warn(`[Agent] MCP endpoint could not start on port ${port}: ${describe(error)}`);
+            return;
         }
+        this.server = server;
+        this.lastError = null;
+        this.portUnavailable = null;
+        this.movedToPort = legacyPort !== null ? port : null;
+        const url = agentEndpointUrl(port);
+        await this.store.update(draft => {
+            draft.url = url;
+        });
+        this.app.logger.info(legacyPort !== null
+            ? `[Agent] MCP endpoint listening on ${url}, moved from the old default port ${legacyPort}`
+            : `[Agent] MCP endpoint listening on ${url}`);
     }
 
     /**
-     * Move the endpoint to the port the author set in Settings. Unlike a start, nothing falls back:
-     * the author asked for this port, so when it cannot be bound the endpoint stays where it was and
-     * the answer says why. While access is off the port is only stored, and the next start begins there.
+     * Move the endpoint to the port the author set in Settings. When it cannot be bound the endpoint
+     * stays where it was and the answer says why. While access is off the port is only stored, and
+     * the next start begins there.
      */
     private async changePort(port: number): Promise<AgentPortRefusal | null> {
         // A second request for the same port (Enter, then the field losing focus) waited its turn
@@ -747,23 +747,23 @@ export class AgentManager implements AgentMainToolHost {
         }
         const server = new AgentMcpServer({
             port,
-            fallBackToFreePort: false,
             token: () => this.store.current.token,
             host: this.serverHost(),
         });
         try {
             await server.start();
         } catch (error) {
-            const code = (error as NodeJS.ErrnoException | null)?.code;
-            if (code !== "EADDRINUSE" && code !== "EACCES") {
+            const refusal = agentPortRefusal(port, error);
+            if (!refusal) {
                 throw error;
             }
-            this.app.logger.warn(`[Agent] Port ${port} cannot be used (${code}); the endpoint stays where it was`);
-            return { port, reason: code === "EADDRINUSE" ? "inUse" : "reserved" };
+            this.app.logger.warn(`[Agent] Port ${port} cannot be used (${describe(error)}); the endpoint stays where it was`);
+            return refusal;
         }
         const previous = this.server;
         this.server = server;
         this.lastError = null;
+        this.portUnavailable = null;
         // The port field shows where it went, and the author is the one who moved it.
         this.movedToPort = null;
         await previous?.stop();
@@ -1626,4 +1626,13 @@ function sleep(ms: number): Promise<void> {
 
 function describe(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+}
+
+/** Why a port could not be bound, when the port is the reason: in use, or reserved by the system. */
+function agentPortRefusal(port: number, error: unknown): AgentPortRefusal | null {
+    const code = (error as NodeJS.ErrnoException | null)?.code;
+    if (code === "EADDRINUSE") {
+        return { port, reason: "inUse" };
+    }
+    return code === "EACCES" ? { port, reason: "reserved" } : null;
 }

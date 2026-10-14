@@ -39,6 +39,7 @@ const SNAPSHOT: AgentSettingsSnapshot = {
     url: "http://127.0.0.1:47219/mcp",
     error: null,
     movedToPort: null,
+    portUnavailable: null,
     stdio: { command: "/Applications/NarraLeaf Studio.app/Contents/MacOS/NarraLeaf Studio", args: ["--mcp-stdio"] },
     pluginTools: [],
 };
@@ -102,7 +103,7 @@ describe("the Agent menu's narrow handlers", () => {
     it("answer the state as four booleans and nothing else", async () => {
         const { window } = makeWindow();
         const result = await new AgentQuickStateHandler().handle(window);
-        expect(result).toEqual({ success: true, data: { enabled: true, allowWrites: false, fullAccess: false, running: true, movedToPort: null } });
+        expect(result).toEqual({ success: true, data: { enabled: true, allowWrites: false, fullAccess: false, running: true, movedToPort: null, portUnavailable: null } });
         expectNoSecret(result);
     });
 
@@ -110,7 +111,7 @@ describe("the Agent menu's narrow handlers", () => {
         const { window, manager } = makeWindow();
         manager.snapshot.mockResolvedValueOnce({ ...SNAPSHOT, url: "http://127.0.0.1:47220/mcp", movedToPort: 47220 });
         const result = await new AgentQuickStateHandler().handle(window);
-        expect(result).toEqual({ success: true, data: { enabled: true, allowWrites: false, fullAccess: false, running: true, movedToPort: 47220 } });
+        expect(result).toEqual({ success: true, data: { enabled: true, allowWrites: false, fullAccess: false, running: true, movedToPort: 47220, portUnavailable: null } });
         expectNoSecret(result);
         expect(JSON.stringify(result)).not.toContain("127.0.0.1");
     });
@@ -119,7 +120,7 @@ describe("the Agent menu's narrow handlers", () => {
         const { window, manager } = makeWindow();
         const result = await new AgentQuickToggleHandler().handle(window, { allowWrites: true, fullAccess: "yes", port: 1, removeImportRoot: "/" } as never);
         expect(manager.quickToggle).toHaveBeenCalledWith(window, { allowWrites: true });
-        expect(result).toEqual({ success: true, data: { enabled: true, allowWrites: true, fullAccess: false, running: true, movedToPort: null } });
+        expect(result).toEqual({ success: true, data: { enabled: true, allowWrites: true, fullAccess: false, running: true, movedToPort: null, portUnavailable: null } });
         expectNoSecret(result);
         await new AgentQuickToggleHandler().handle(window, { fullAccess: true });
         expect(manager.quickToggle).toHaveBeenLastCalledWith(window, { fullAccess: true });
@@ -203,7 +204,7 @@ describe("first-run setup's hold on agent access", () => {
     it("switches access and writes from setup as Settings does, without a second confirmation", async () => {
         const setup = makeWindow(WindowAppType.Launcher, { inSetup: true });
         const result = await new AgentQuickToggleHandler().handle(setup.window, { enabled: true, allowWrites: true, removeImportRoot: "/" } as never);
-        expect(result).toEqual({ success: true, data: { enabled: true, allowWrites: true, fullAccess: false, running: true, movedToPort: null } });
+        expect(result).toEqual({ success: true, data: { enabled: true, allowWrites: true, fullAccess: false, running: true, movedToPort: null, portUnavailable: null } });
         expectNoSecret(result);
         // The window goes along so that full access, were it asked for, is still confirmed over it.
         expect(setup.manager.updateSettings).toHaveBeenCalledWith({ enabled: true, allowWrites: true }, setup.window);

@@ -272,17 +272,18 @@ export const AGENT_MCP_SERVER_NAME = "narraleaf-studio";
 export const AGENT_MCP_PATH = "/mcp";
 
 /**
- * The port a profile's endpoint starts on. Below Windows' dynamic range (49152-65535), where
- * Hyper-V, WSL and Docker reserve blocks of ports and a bind fails with `EACCES`.
+ * The port a profile's endpoint is on until the author sets another in Settings. Below Windows'
+ * dynamic range (49152-65535), where Hyper-V, WSL and Docker reserve blocks of ports and a bind
+ * fails with `EACCES`.
  */
 export const AGENT_MCP_DEFAULT_PORT = 47219;
 
 /**
- * Tried in this order when the profile's port cannot be bound (in use, or reserved by the system),
- * before falling back to any free port the system hands out. Fixed and below the dynamic range, so
- * the port a crowded machine moves to is the same from one launch to the next.
+ * The ports Studio 1.5 to 1.6.1 moved an endpoint to on its own when the default was taken. Nothing
+ * moves there any more - a port that cannot be bound is an error now - but a profile moved then
+ * still names one, so a packaged game keeps refusing them (`STUDIO_DEFAULT_LOOPBACK_PORTS`).
  */
-export const AGENT_MCP_FALLBACK_PORTS: readonly number[] = Array.from({ length: 9 }, (_, index) => AGENT_MCP_DEFAULT_PORT + index + 1);
+export const AGENT_MCP_FORMER_FALLBACK_PORTS: readonly number[] = Array.from({ length: 9 }, (_, index) => AGENT_MCP_DEFAULT_PORT + index + 1);
 
 /** The default before {@link AGENT_MCP_DEFAULT_PORT}. A profile that still names it is moved once; see `normalizeAgentSettings`. */
 export const AGENT_MCP_LEGACY_DEFAULT_PORT = 54080;

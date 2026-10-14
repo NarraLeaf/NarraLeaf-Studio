@@ -33,6 +33,7 @@ function snapshot(overrides: Partial<AgentSettingsSnapshot> = {}): AgentSettings
         url: "http://127.0.0.1:41500/mcp",
         error: null,
         movedToPort: null,
+        portUnavailable: null,
         stdio: { command: "C:\\Studio\\NarraLeaf Studio.exe", args: ["--mcp-stdio"] },
         pluginTools: [],
         ...overrides,
@@ -185,6 +186,15 @@ describe("the agent access panel", () => {
         fireEvent.click(view.getByRole("button", { name: "settings.agent.copyAddress" }));
         await waitFor(() => expect(bridge.patches).toEqual([{ acknowledgeMovedPort: true }]));
         expect(bridge.clipboard).toEqual(["http://127.0.0.1:47220/mcp"]);
+    });
+
+    it("says the endpoint did not start, on which port and why, where it says it is running", async () => {
+        const view = await renderPanel({ running: false, portUnavailable: { port: 41500, reason: "inUse" } });
+        const status = view.getByText("settings.agent.failed(settings.agent.portInUse(41500))");
+        expect(status.className).toContain("text-danger");
+        expect(view.queryByText("settings.agent.stopped")).toBeNull();
+        // The port row is where another port is set; it shows the port that failed.
+        expect((view.getByRole("textbox", { name: "settings.agent.port" }) as HTMLInputElement).value).toBe("41500");
     });
 
     it("copies a configuration from the guide only, not from a second row of buttons", async () => {

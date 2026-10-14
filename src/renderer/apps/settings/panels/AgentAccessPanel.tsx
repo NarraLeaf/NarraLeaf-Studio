@@ -28,9 +28,9 @@ import { AgentClientGuide, useAgentClientOptions } from "../components/AgentClie
  * it hoped to write. The endpoint starts and stops the moment the switch moves.
  *
  * The port row moves the endpoint at once, or says why it could not and shows the port it is still
- * on. A start that finds the profile's port taken moves on its own instead; the address row says so -
- * which is when configurations copied before stop working - until a configuration or the address is
- * copied again.
+ * on. A start that finds the port in use or reserved fails, and the address row says which port and
+ * why. A profile moved off the old default port says so there too - configurations copied before
+ * name the old one - until a configuration or the address is copied again.
  *
  * Rows follow the generic settings row (label and description on the left, the control at the
  * shared control width on the right), so this section reads like the ones around it.
@@ -150,20 +150,23 @@ export function AgentAccessPanel() {
             : <p className="px-2 text-xs text-fg-subtle">{t("settings.agent.loading")}</p>;
     }
 
+    const portProblem = (refusal: AgentPortRefusal) =>
+        t(refusal.reason === "inUse" ? "settings.agent.portInUse" : "settings.agent.portReserved", { port: refusal.port });
+    const failure = settings.portUnavailable ? portProblem(settings.portUnavailable) : settings.error;
     const status = settings.running
         ? settings.movedToPort !== null
             ? t("settings.agent.portMoved", { port: settings.movedToPort })
             : t("settings.agent.running")
-        : settings.error
-            ? t("settings.agent.failed", { message: settings.error })
+        : failure
+            ? t("settings.agent.failed", { message: failure })
             : t("settings.agent.stopped");
     const statusTone = settings.running
         ? settings.movedToPort !== null ? "warning" : "muted"
-        : settings.error ? "danger" : "muted";
+        : failure ? "danger" : "muted";
     const portDescription = !portValid
         ? t("settings.agent.portInvalid", { min: AGENT_PORT_MIN, max: AGENT_PORT_MAX })
         : portRefused
-            ? t(portRefused.reason === "inUse" ? "settings.agent.portInUse" : "settings.agent.portReserved", { port: portRefused.port })
+            ? portProblem(portRefused)
             : t("settings.agent.portHint");
 
     return (

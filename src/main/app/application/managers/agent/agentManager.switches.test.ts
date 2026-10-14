@@ -6,7 +6,7 @@ import type { AgentAccessPromptProps } from "@shared/types/agentAccess";
 import { WindowAppType } from "@shared/types/window";
 import { withAgentProjectArgument } from "@shared/agent/pluginTools";
 import { AGENT_TOOLS } from "@shared/agent/tools";
-import { AGENT_MCP_DEFAULT_PORT, AGENT_MCP_FALLBACK_PORTS, AGENT_MCP_LEGACY_DEFAULT_PORT } from "@shared/agent/protocol";
+import { AGENT_MCP_DEFAULT_PORT, AGENT_MCP_LEGACY_DEFAULT_PORT } from "@shared/agent/protocol";
 import { AGENT_SETTINGS_FILE_NAME } from "@shared/agent/settings";
 import { AGENT_INSTALLED_SKILLS } from "@shared/agent/clients";
 import type { App } from "../../../app";
@@ -34,7 +34,7 @@ vi.mock("./agentStdioMain", () => ({
     agentStdioCommand: () => ({ command: "studio", args: ["--mcp-stdio"] }),
 }));
 
-type ServerOptions = { port: number; fallbackPorts?: readonly number[]; fallBackToFreePort?: boolean };
+type ServerOptions = { port: number };
 
 const servers: { started: number; stopped: number; asked: ServerOptions[]; bind: ((options: ServerOptions) => number) | null } = {
     started: 0,
@@ -173,26 +173,82 @@ describe("turning agent access on", () => {
 });
 
 describe("the endpoint's port", () => {
-    it("is tried first from the profile, then the default and its fixed fallbacks", async () => {
+    /** Make a start on this port fail the way the system would, before anything is bound. */
+    function refuse(port: number, code: string) {
+        servers.bind = options => {
+            if (options.port === port) {
+                throw Object.assign(new Error(`listen ${code}: 127.0.0.1:${port}`), { code });
+            }
+            return options.port;
+        };
+    }
+
+    it("is the profile's, and the only one tried", async () => {
         const { manager } = makeManager(true);
         await manager.updateSettings({ enabled: true });
-        expect(servers.asked[0]).toEqual(expect.objectContaining({
-            port: AGENT_MCP_DEFAULT_PORT,
-            fallbackPorts: [AGENT_MCP_DEFAULT_PORT, ...AGENT_MCP_FALLBACK_PORTS],
-        }));
+        expect(servers.asked.map(options => options.port)).toEqual([AGENT_MCP_DEFAULT_PORT]);
+        expect(servers.asked[0]).not.toHaveProperty("fallbackPorts");
     });
 
-    it("moves at once when the Settings window sets it, to that port or not at all", async () => {
+    it.each([
+        ["EACCES", "reserved"],
+        ["EADDRINUSE", "inUse"],
+    ] as const)("does not start when it answers %s, and says which port and why", async (code, reason) => {
+        refuse(AGENT_MCP_DEFAULT_PORT, code);
+        const { manager, quickStates } = makeManager(true);
+        const snapshot = await manager.updateSettings({ enabled: true });
+        expect(snapshot).toMatchObject({
+            enabled: true,
+            running: false,
+            port: AGENT_MCP_DEFAULT_PORT,
+            error: null,
+            portUnavailable: { port: AGENT_MCP_DEFAULT_PORT, reason },
+            movedToPort: null,
+        });
+        expect(servers.asked.map(options => options.port)).toEqual([AGENT_MCP_DEFAULT_PORT]);
+        expect(readSettingsFile()).toMatchObject({ port: AGENT_MCP_DEFAULT_PORT, url: null });
+        // The workspaces' menus are told too, with the port and nothing that opens it.
+        expect(quickStates.at(-1)).toEqual({
+            enabled: true,
+            allowWrites: false,
+            fullAccess: false,
+            running: false,
+            movedToPort: null,
+            portUnavailable: { port: AGENT_MCP_DEFAULT_PORT, reason },
+        });
+    });
+
+    it("starts once the author sets a port that is free", async () => {
+        refuse(AGENT_MCP_DEFAULT_PORT, "EADDRINUSE");
+        const { manager } = makeManager(true);
+        await manager.updateSettings({ enabled: true });
+        const snapshot = await manager.updateSettings({ port: 50123 });
+        expect(snapshot).toMatchObject({ running: true, port: 50123, portUnavailable: null, url: "http://127.0.0.1:50123/mcp" });
+        expect(snapshot.portRefused).toBeUndefined();
+    });
+
+    it("keeps a failure that is not about the port as the error it is", async () => {
+        servers.bind = () => {
+            throw Object.assign(new Error("listen EINVAL: invalid argument"), { code: "EINVAL" });
+        };
+        const { manager } = makeManager(true);
+        expect(await manager.updateSettings({ enabled: true })).toMatchObject({
+            running: false,
+            error: "listen EINVAL: invalid argument",
+            portUnavailable: null,
+        });
+    });
+
+    it("moves at once when the Settings window sets it", async () => {
         const { manager, quickStates } = makeManager(true);
         await manager.updateSettings({ enabled: true });
         const snapshot = await manager.updateSettings({ port: 50123 });
-        expect(servers.asked.at(-1)).toEqual(expect.objectContaining({ port: 50123, fallBackToFreePort: false }));
-        expect(servers.asked.at(-1)?.fallbackPorts).toBeUndefined();
+        expect(servers.asked.map(options => options.port)).toEqual([AGENT_MCP_DEFAULT_PORT, 50123]);
         expect(servers.stopped).toBe(1);
         expect(snapshot).toMatchObject({ port: 50123, running: true, url: "http://127.0.0.1:50123/mcp", movedToPort: null });
         expect(snapshot.portRefused).toBeUndefined();
         expect(readSettingsFile()).toMatchObject({ port: 50123, url: "http://127.0.0.1:50123/mcp" });
-        expect(quickStates.at(-1)).toMatchObject({ running: true, movedToPort: null });
+        expect(quickStates.at(-1)).toMatchObject({ running: true, movedToPort: null, portUnavailable: null });
 
         // The next launch starts there.
         const next = makeManager(true);
@@ -206,12 +262,7 @@ describe("the endpoint's port", () => {
     ] as const)("stays where it was when the port asked for answers %s, and says why", async (code, reason) => {
         const { manager } = makeManager(true);
         await manager.updateSettings({ enabled: true });
-        servers.bind = options => {
-            if (options.port === 50123) {
-                throw Object.assign(new Error(`listen ${code} 127.0.0.1:50123`), { code });
-            }
-            return options.port;
-        };
+        refuse(50123, code);
         const snapshot = await manager.updateSettings({ port: 50123 });
         expect(snapshot).toMatchObject({ port: AGENT_MCP_DEFAULT_PORT, running: true, portRefused: { port: 50123, reason } });
         expect(servers.stopped).toBe(0);
@@ -225,10 +276,7 @@ describe("the endpoint's port", () => {
         expect(await manager.updateSettings({ port: 50123 })).toMatchObject({ port: 50123, running: false });
         expect(servers.started).toBe(0);
         await manager.updateSettings({ enabled: true });
-        expect(servers.asked[0]).toEqual(expect.objectContaining({
-            port: 50123,
-            fallbackPorts: [AGENT_MCP_DEFAULT_PORT, ...AGENT_MCP_FALLBACK_PORTS],
-        }));
+        expect(servers.asked.map(options => options.port)).toEqual([50123]);
     });
 
     it("binds once when the same port is asked for twice in a row", async () => {
@@ -251,58 +299,40 @@ describe("the endpoint's port", () => {
         expect((await manager.snapshot()).port).toBe(AGENT_MCP_DEFAULT_PORT);
     });
 
-    it("is written back when the endpoint lands elsewhere, so the next launch starts there and says nothing", async () => {
-        servers.bind = () => 47221;
-        const first = makeManager(true);
-        const snapshot = await first.manager.updateSettings({ enabled: true });
-        expect(snapshot).toMatchObject({ running: true, url: "http://127.0.0.1:47221/mcp", movedToPort: 47221 });
-        expect(readSettingsFile()).toMatchObject({ port: 47221, url: "http://127.0.0.1:47221/mcp" });
-        // The workspaces' menus and Settings are told, with the port and nothing that opens it.
-        expect(first.quickStates.at(-1)).toEqual({ enabled: true, allowWrites: false, fullAccess: false, running: true, movedToPort: 47221 });
+    describe("on a profile moved off the old default", () => {
+        beforeEach(() => {
+            fs.writeFileSync(settingsFile(), JSON.stringify({ token: "k".repeat(43), enabled: true, port: AGENT_MCP_LEGACY_DEFAULT_PORT }));
+        });
 
-        // Next launch: the stored port is free and is taken, and copied configurations still fit.
-        servers.bind = null;
-        const second = makeManager(true);
-        await second.manager.initialize();
-        expect(servers.asked.at(-1)?.port).toBe(47221);
-        expect((await second.manager.snapshot()).movedToPort).toBeNull();
-    });
+        it("says it moved when access comes back on the new default", async () => {
+            const { manager } = makeManager(true);
+            await manager.initialize();
+            expect(servers.asked[0].port).toBe(AGENT_MCP_DEFAULT_PORT);
+            expect(await manager.snapshot()).toMatchObject({ running: true, movedToPort: AGENT_MCP_DEFAULT_PORT });
+            expect(readSettingsFile()).toMatchObject({ schemaVersion: 2, port: AGENT_MCP_DEFAULT_PORT });
+        });
 
-    it("stops saying it moved once a configuration is copied", async () => {
-        servers.bind = () => 47220;
-        const { manager, quickStates } = makeManager(true);
-        await manager.updateSettings({ enabled: true });
-        await manager.acknowledgeMovedPort();
-        expect((await manager.snapshot()).movedToPort).toBeNull();
-        expect(quickStates.at(-1)).toMatchObject({ movedToPort: null });
+        it("stops saying so once a configuration is copied", async () => {
+            const { manager, quickStates } = makeManager(true);
+            await manager.initialize();
+            await manager.acknowledgeMovedPort();
+            expect((await manager.snapshot()).movedToPort).toBeNull();
+            expect(quickStates.at(-1)).toMatchObject({ movedToPort: null });
+        });
 
-        servers.bind = () => 47222;
-        await manager.updateSettings({ enabled: false });
-        await manager.updateSettings({ enabled: true });
-        expect((await manager.snapshot()).movedToPort).toBe(47222);
-        // The Settings panel answers it through its own channel.
-        expect((await manager.updateSettings({ acknowledgeMovedPort: true })).movedToPort).toBeNull();
-    });
+        it("stops saying so through the Settings panel's own channel", async () => {
+            const { manager } = makeManager(true);
+            await manager.initialize();
+            expect((await manager.updateSettings({ acknowledgeMovedPort: true })).movedToPort).toBeNull();
+        });
 
-    it("stops saying it moved on a start that lands where the profile was", async () => {
-        servers.bind = () => 47220;
-        const { manager } = makeManager(true);
-        await manager.updateSettings({ enabled: true });
-        expect((await manager.snapshot()).movedToPort).toBe(47220);
-        servers.bind = null;
-        await manager.updateSettings({ enabled: false });
-        expect((await manager.snapshot()).movedToPort).toBeNull();
-        await manager.updateSettings({ enabled: true });
-        expect((await manager.snapshot())).toMatchObject({ running: true, movedToPort: null });
-    });
-
-    it("says it moved when a profile enabled on the old default comes back on the new one", async () => {
-        fs.writeFileSync(settingsFile(), JSON.stringify({ token: "k".repeat(43), enabled: true, port: AGENT_MCP_LEGACY_DEFAULT_PORT }));
-        const { manager } = makeManager(true);
-        await manager.initialize();
-        expect(servers.asked[0].port).toBe(AGENT_MCP_DEFAULT_PORT);
-        expect(await manager.snapshot()).toMatchObject({ running: true, movedToPort: AGENT_MCP_DEFAULT_PORT });
-        expect(readSettingsFile()).toMatchObject({ schemaVersion: 2, port: AGENT_MCP_DEFAULT_PORT });
+        it("stops saying so on the next start", async () => {
+            const { manager } = makeManager(true);
+            await manager.initialize();
+            await manager.updateSettings({ enabled: false });
+            await manager.updateSettings({ enabled: true });
+            expect(await manager.snapshot()).toMatchObject({ running: true, movedToPort: null });
+        });
     });
 });
 
