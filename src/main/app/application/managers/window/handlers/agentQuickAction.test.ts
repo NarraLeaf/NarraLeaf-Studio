@@ -34,6 +34,7 @@ const SNAPSHOT: AgentSettingsSnapshot = {
     fullAccess: false,
     token: TOKEN,
     allowedImportRoots: ["/Users/author/Pictures"],
+    port: 47219,
     running: true,
     url: "http://127.0.0.1:47219/mcp",
     error: null,

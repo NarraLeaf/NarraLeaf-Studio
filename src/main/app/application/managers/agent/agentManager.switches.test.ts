@@ -34,7 +34,7 @@ vi.mock("./agentStdioMain", () => ({
     agentStdioCommand: () => ({ command: "studio", args: ["--mcp-stdio"] }),
 }));
 
-type ServerOptions = { port: number; fallbackPorts?: readonly number[] };
+type ServerOptions = { port: number; fallbackPorts?: readonly number[]; fallBackToFreePort?: boolean };
 
 const servers: { started: number; stopped: number; asked: ServerOptions[]; bind: ((options: ServerOptions) => number) | null } = {
     started: 0,
@@ -182,11 +182,73 @@ describe("the endpoint's port", () => {
         }));
     });
 
-    it("is not something the Settings window can set", async () => {
+    it("moves at once when the Settings window sets it, to that port or not at all", async () => {
+        const { manager, quickStates } = makeManager(true);
+        await manager.updateSettings({ enabled: true });
+        const snapshot = await manager.updateSettings({ port: 50123 });
+        expect(servers.asked.at(-1)).toEqual(expect.objectContaining({ port: 50123, fallBackToFreePort: false }));
+        expect(servers.asked.at(-1)?.fallbackPorts).toBeUndefined();
+        expect(servers.stopped).toBe(1);
+        expect(snapshot).toMatchObject({ port: 50123, running: true, url: "http://127.0.0.1:50123/mcp", movedToPort: null });
+        expect(snapshot.portRefused).toBeUndefined();
+        expect(readSettingsFile()).toMatchObject({ port: 50123, url: "http://127.0.0.1:50123/mcp" });
+        expect(quickStates.at(-1)).toMatchObject({ running: true, movedToPort: null });
+
+        // The next launch starts there.
+        const next = makeManager(true);
+        await next.manager.initialize();
+        expect(servers.asked.at(-1)?.port).toBe(50123);
+    });
+
+    it.each([
+        ["EACCES", "reserved"],
+        ["EADDRINUSE", "inUse"],
+    ] as const)("stays where it was when the port asked for answers %s, and says why", async (code, reason) => {
         const { manager } = makeManager(true);
-        await manager.updateSettings({ enabled: true, port: 50000 } as never);
-        expect(servers.asked[0].port).toBe(AGENT_MCP_DEFAULT_PORT);
+        await manager.updateSettings({ enabled: true });
+        servers.bind = options => {
+            if (options.port === 50123) {
+                throw Object.assign(new Error(`listen ${code} 127.0.0.1:50123`), { code });
+            }
+            return options.port;
+        };
+        const snapshot = await manager.updateSettings({ port: 50123 });
+        expect(snapshot).toMatchObject({ port: AGENT_MCP_DEFAULT_PORT, running: true, portRefused: { port: 50123, reason } });
+        expect(servers.stopped).toBe(0);
         expect(readSettingsFile().port).toBe(AGENT_MCP_DEFAULT_PORT);
+        // The refusal answers that request only.
+        expect((await manager.snapshot()).portRefused).toBeUndefined();
+    });
+
+    it("is only stored while access is off, and the next start begins there", async () => {
+        const { manager } = makeManager(true);
+        expect(await manager.updateSettings({ port: 50123 })).toMatchObject({ port: 50123, running: false });
+        expect(servers.started).toBe(0);
+        await manager.updateSettings({ enabled: true });
+        expect(servers.asked[0]).toEqual(expect.objectContaining({
+            port: 50123,
+            fallbackPorts: [AGENT_MCP_DEFAULT_PORT, ...AGENT_MCP_FALLBACK_PORTS],
+        }));
+    });
+
+    it("binds once when the same port is asked for twice in a row", async () => {
+        const { manager } = makeManager(true);
+        await manager.updateSettings({ enabled: true });
+        const [first, second] = await Promise.all([
+            manager.updateSettings({ port: 50123 }),
+            manager.updateSettings({ port: 50123 }),
+        ]);
+        expect(servers.started).toBe(2);
+        expect(first.portRefused).toBeUndefined();
+        expect(second).toMatchObject({ port: 50123, running: true });
+        expect(second.portRefused).toBeUndefined();
+    });
+
+    it("refuses a port outside the usable range", async () => {
+        const { manager } = makeManager(true);
+        await expect(manager.updateSettings({ port: 80 })).rejects.toThrow(/1024/);
+        await expect(manager.updateSettings({ port: 50123.5 })).rejects.toThrow(/1024/);
+        expect((await manager.snapshot()).port).toBe(AGENT_MCP_DEFAULT_PORT);
     });
 
     it("is written back when the endpoint lands elsewhere, so the next launch starts there and says nothing", async () => {

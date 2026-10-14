@@ -36,7 +36,11 @@ import {
 import {
     agentEndpointUrl,
     buildAgentClientConfig,
+    isUsableAgentPort,
+    AGENT_PORT_MAX,
+    AGENT_PORT_MIN,
     type AgentPluginToolsSetting,
+    type AgentPortRefusal,
     type AgentSettingsPatch,
     type AgentSettingsSnapshot,
 } from "@shared/agent/settings";
@@ -171,6 +175,7 @@ export class AgentManager implements AgentMainToolHost {
             fullAccess: settings.fullAccess,
             token: settings.token,
             allowedImportRoots: settings.allowedImportRoots.map(root => root.path),
+            port: settings.port,
             running: livePort !== null,
             url: agentEndpointUrl(livePort ?? settings.port),
             error: settings.enabled && livePort === null ? this.lastError : null,
@@ -211,6 +216,9 @@ export class AgentManager implements AgentMainToolHost {
      * rest of the patch still applies when they decline.
      */
     public async updateSettings(patch: AgentSettingsPatch, confirmWith?: AppWindow): Promise<AgentSettingsSnapshot> {
+        if (patch.port !== undefined && !isUsableAgentPort(patch.port)) {
+            throw new Error(`The port must be a whole number from ${AGENT_PORT_MIN} to ${AGENT_PORT_MAX}.`);
+        }
         if (patch.acknowledgeMovedPort === true) {
             this.movedToPort = null;
         }
@@ -251,6 +259,8 @@ export class AgentManager implements AgentMainToolHost {
         if (after.fullAccess !== before.fullAccess) {
             this.app.logger.info(`[Agent] Full access ${after.fullAccess ? "allowed" : "withdrawn"}`);
         }
+        const port = patch.port;
+        const portRefused = port !== undefined ? await this.serialize(() => this.changePort(port)) : null;
         if (after.enabled && (!wasEnabled || !this.server)) {
             await this.serialize(async () => {
                 await this.stopServer();
@@ -261,7 +271,7 @@ export class AgentManager implements AgentMainToolHost {
         }
         const snapshot = await this.snapshot();
         this.broadcastQuickState(snapshot);
-        return snapshot;
+        return portRefused ? { ...snapshot, portRefused } : snapshot;
     }
 
     public async regenerateToken(): Promise<AgentSettingsSnapshot> {
@@ -672,9 +682,9 @@ export class AgentManager implements AgentMainToolHost {
 
     // ── Server lifecycle ─────────────────────────────────────────────────────────────────────────
 
-    private serialize(run: () => Promise<void>): Promise<void> {
+    private serialize<T>(run: () => Promise<T>): Promise<T> {
         const next = this.lifecycle.then(run, run);
-        this.lifecycle = next.catch(() => undefined);
+        this.lifecycle = next.then(() => undefined, () => undefined);
         return next;
     }
 
@@ -716,6 +726,54 @@ export class AgentManager implements AgentMainToolHost {
             this.lastError = describe(error);
             this.app.logger.warn(`[Agent] MCP endpoint could not start: ${this.lastError}`);
         }
+    }
+
+    /**
+     * Move the endpoint to the port the author set in Settings. Unlike a start, nothing falls back:
+     * the author asked for this port, so when it cannot be bound the endpoint stays where it was and
+     * the answer says why. While access is off the port is only stored, and the next start begins there.
+     */
+    private async changePort(port: number): Promise<AgentPortRefusal | null> {
+        // A second request for the same port (Enter, then the field losing focus) waited its turn
+        // behind the first, which already moved there.
+        if (port === this.store.current.port) {
+            return null;
+        }
+        if (!this.store.current.enabled) {
+            await this.store.update(draft => {
+                draft.port = port;
+            });
+            return null;
+        }
+        const server = new AgentMcpServer({
+            port,
+            fallBackToFreePort: false,
+            token: () => this.store.current.token,
+            host: this.serverHost(),
+        });
+        try {
+            await server.start();
+        } catch (error) {
+            const code = (error as NodeJS.ErrnoException | null)?.code;
+            if (code !== "EADDRINUSE" && code !== "EACCES") {
+                throw error;
+            }
+            this.app.logger.warn(`[Agent] Port ${port} cannot be used (${code}); the endpoint stays where it was`);
+            return { port, reason: code === "EADDRINUSE" ? "inUse" : "reserved" };
+        }
+        const previous = this.server;
+        this.server = server;
+        this.lastError = null;
+        // The port field shows where it went, and the author is the one who moved it.
+        this.movedToPort = null;
+        await previous?.stop();
+        const url = agentEndpointUrl(port);
+        await this.store.update(draft => {
+            draft.port = port;
+            draft.url = url;
+        });
+        this.app.logger.info(`[Agent] MCP endpoint moved to ${url}`);
+        return null;
     }
 
     private async stopServer(): Promise<void> {

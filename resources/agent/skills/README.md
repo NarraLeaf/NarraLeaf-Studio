@@ -70,9 +70,10 @@ NarraLeaf-Skills/
    CLI, Cursor or Other): Studio shows its connection configuration - the address
    (`http://127.0.0.1:<PORT>/mcp`, usually port 47219) and the access token, already filled in - with
    a copy button, says where it goes, and installs this skill for it. The *Agent* menu's **Copy
-   connection configuration** offers the same configurations. If another program holds that port,
-   Studio moves to a nearby one, keeps it from then on and says so on the settings page; copy the
-   configuration again for agents you set up before.
+   connection configuration** offers the same configurations. **Endpoint port** on the same page
+   changes the port. If another program holds the port when Studio starts, Studio moves to a nearby
+   one, keeps it from then on and says so on the settings page; after either, copy the configuration
+   again for agents you set up before.
 
 The server listens only on your own computer (127.0.0.1) and refuses any request without the token.
 Treat the token like a password; you can regenerate it in the same settings page.

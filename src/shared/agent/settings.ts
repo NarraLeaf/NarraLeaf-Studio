@@ -13,9 +13,10 @@ import { AGENT_MCP_DEFAULT_PORT, AGENT_MCP_LEGACY_DEFAULT_PORT, AGENT_MCP_PATH }
  * The same file is what a stdio bridge reads to find the endpoint, which is why the address it is
  * actually served on is written there too.
  *
- * There is no port setting. Which port the endpoint is on is not something an author should need to
- * know to fill in, so Studio picks it: the profile's port, then a fixed run of fallbacks, then any
- * free one, and whichever binds becomes the profile's port - see `AgentManager.startServer`.
+ * The port is the profile's, and the Settings window may change it. A change from there binds that
+ * port or nothing (`AgentManager.changePort`); a start falls back instead - the profile's port, then
+ * a fixed run of fallbacks, then any free one - and whichever binds becomes the profile's port (see
+ * `AgentManager.startServer`), so an author who never touches the setting never has to.
  *
  * Comments in English per project convention.
  */
@@ -100,6 +101,8 @@ export type AgentSettingsSnapshot = {
     fullAccess: boolean;
     token: string;
     allowedImportRoots: string[];
+    /** The profile's port: the one the endpoint is on while it runs, and the one it starts on next. */
+    port: number;
     /** Whether the endpoint is listening. */
     running: boolean;
     /** The endpoint a client connects to: the live one while running, else the one the profile's port gives. */
@@ -112,10 +115,25 @@ export type AgentSettingsSnapshot = {
      * A stdio bridge reads the live address itself and is not affected.
      */
     movedToPort: number | null;
+    /**
+     * Only on the answer to an update that asked for a port: why that port could not be bound. The
+     * endpoint and the profile's port are left as they were.
+     */
+    portRefused?: AgentPortRefusal;
     /** The command a stdio-only client runs to reach the endpoint through {@link AGENT_MCP_STDIO_FLAG}. */
     stdio: AgentStdioCommand;
     /** Installed, enabled plugins that offer agent tools, with whether the author allows them. */
     pluginTools: AgentPluginToolsSetting[];
+};
+
+/**
+ * A port the author asked for that the endpoint could not move to: in use by another program
+ * (`EADDRINUSE`), or reserved by the system (`EACCES`, as Windows answers inside a range Hyper-V,
+ * WSL or Docker excluded).
+ */
+export type AgentPortRefusal = {
+    port: number;
+    reason: "inUse" | "reserved";
 };
 
 /**
@@ -141,6 +159,11 @@ export type AgentSettingsPatch = {
     allowWrites?: boolean;
     /** Turning it on is confirmed in the agent access window first; see `AgentManager`. */
     fullAccess?: boolean;
+    /**
+     * Move the endpoint to this port, from {@link AGENT_PORT_MIN} to {@link AGENT_PORT_MAX}. While it
+     * runs, it moves at once or not at all; see {@link AgentSettingsSnapshot.portRefused}.
+     */
+    port?: number;
     /** The author copied a configuration with the current address, so {@link AgentSettingsSnapshot.movedToPort} is answered. */
     acknowledgeMovedPort?: true;
     /** Remove this directory from the allowed list. Adding one goes through the folder picker. */
