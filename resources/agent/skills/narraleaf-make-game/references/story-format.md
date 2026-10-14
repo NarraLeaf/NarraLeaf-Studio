@@ -180,7 +180,9 @@ those you deliberately keep.
   `/stop <name> fade=0.5`. The music is the reserved name `bgm`: `/stop bgm fade=1`, `/vol bgm 0.5`,
   `/pause bgm` and `/resume bgm`. `music` is not a name - it only works if a row created something
   called that.
-- `track=` names an audio track from `audio_tracks_list` (Music, SFX, Voice, or custom ones).
+- `track=` names an audio track as `audio_tracks_list` names it. A new project names its three
+  built-in tracks in the story's language (Music, SFX and Voice in English; 音乐, 音效 and 语音 in
+  Chinese; 音楽, 効果音 and ボイス in Japanese), plus any custom ones.
 
 ## Branching and flow
 
