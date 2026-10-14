@@ -145,7 +145,7 @@ export async function writeAgentProject(
         await fs.mkdir(path.join(projectPath, ...directory), { recursive: true });
     }
     const createId = deps.createId ?? (() => crypto.randomUUID());
-    for (const file of newProjectFiles(designSize, createId)) {
+    for (const file of newProjectFiles(designSize, createId, sourceLocale)) {
         await fs.writeFile(path.join(projectPath, ...file.path), file.text, "utf8");
     }
 

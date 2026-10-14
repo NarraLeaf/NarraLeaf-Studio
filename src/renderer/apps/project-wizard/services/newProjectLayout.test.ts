@@ -45,6 +45,7 @@ describe("new project layout", () => {
         const paths = newProjectFiles({ width: 1920, height: 1080 }, () => `id-${id++}`).map(file => file.path.join("/"));
         expect(paths).toContain(ProjectNameConvention.EditorConfig.join("/"));
         expect(paths).toContain(ProjectNameConvention.EditorUIDocument.join("/"));
+        expect(paths).toContain(ProjectNameConvention.EditorAudioTracks.join("/"));
         for (const type of Object.values(AssetType)) {
             expect(paths).toContain(ProjectNameConvention.AssetsMetadataShard(type).join("/"));
         }

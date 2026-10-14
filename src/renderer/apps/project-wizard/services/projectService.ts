@@ -79,7 +79,7 @@ export class ProjectService {
             for (const directory of NEW_PROJECT_DIRECTORIES) {
                 throwException(await BaseFileSystemService.createDir(join(basePath, ...directory)));
             }
-            for (const file of newProjectFiles(designSize, createId)) {
+            for (const file of newProjectFiles(designSize, createId, projectData.sourceLocale.trim())) {
                 throwException(await BaseFileSystemService.write(join(basePath, ...file.path), file.text, "utf-8"));
             }
 

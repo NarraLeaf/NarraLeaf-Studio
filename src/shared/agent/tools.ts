@@ -471,7 +471,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
         ["variable"],
         true,
     ),
-    ws("audio_tracks_list", "List audio tracks", "Lists the audio tracks (Music, SFX, Voice and any custom ones) that `/bgm track=` and sound props can name."),
+    ws("audio_tracks_list", "List audio tracks", "Lists the audio tracks (the three built-in ones, named in the project's story language, and any custom ones) that `/bgm track=` and sound props can name."),
 
     // ── Story ────────────────────────────────────────────────────────────────────────────────────
     ws(
