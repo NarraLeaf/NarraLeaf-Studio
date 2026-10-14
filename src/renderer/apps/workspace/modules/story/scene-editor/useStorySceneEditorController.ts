@@ -56,7 +56,7 @@ import { createBlockForCommand, dialogueSpeakerOf, pluginActionToPaletteCommand,
 import { commandNamedByWord, findPluginActionsByCommandWord } from "./storyCommandSearch";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
-import { buildStoryCommandContext } from "./storyCommandContext";
+import { buildStoryCommandContext, listPuppetCharacterIds } from "./storyCommandContext";
 import { useContentStable, useDocumentStableForRows } from "./storyRowIdentity";
 import { canCommit, parseCommandLine } from "./storyCommandParser";
 import { resolveCommandLine, type StoryCommandResolvedArgs } from "./storyCommandResolution";
@@ -797,6 +797,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     /**
      * The puppet characters, and whichever of their models have already described themselves.
      *
+     * Live2D and Spine characters included: all three runtime-drawn kinds are puppets here, which is
+     * why this goes through `listPuppetCharacterIds` rather than comparing the kind to `"puppet"`.
+     *
      * Every puppet character in the project, not only the ones this scene mentions: the command line
      * offers a list the moment the author names a character, which is before any row exists to scan
      * for. The cost is bounded - the service dedupes concurrent lookups, remembers the answer for the
@@ -804,7 +807,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * or its runtime rather than once per scene opened.
      */
     const puppetCharacters = useMemo(
-        () => characters.filter(character => character.profile.appearance.getKind() === "puppet").map(character => character.profile.getId()),
+        () => listPuppetCharacterIds(characters),
         [characters],
     );
 

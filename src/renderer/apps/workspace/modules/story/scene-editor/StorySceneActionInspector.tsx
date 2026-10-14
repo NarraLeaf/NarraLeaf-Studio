@@ -2117,7 +2117,7 @@ function PuppetChannelControl(props: {
 }) {
     const { t } = useTranslation();
     const appearance = props.character.profile.appearance;
-    const puppet = appearance.getKind() === "puppet" ? appearance.getPuppet() : null;
+    const puppet = appearance.getPuppet();
     // Memoised on the puppet's individual fields: the appearance object is mutable and keeps the same
     // reference across an edit, so depending on it alone would never re-ask.
     const request = useMemo(
@@ -2258,7 +2258,7 @@ function PuppetParamRows(props: {
 }) {
     const { t } = useTranslation();
     const appearance = props.character.profile.appearance;
-    const puppet = appearance.getKind() === "puppet" ? appearance.getPuppet() : null;
+    const puppet = appearance.getPuppet();
     const request = useMemo(
         () => puppetDescriptionRequestFor(appearance),
         [appearance, puppet?.assetId, puppet?.backend, puppet?.entry, puppet?.options, puppet?.size],
@@ -2370,7 +2370,8 @@ function PuppetParamRows(props: {
 
 type CharacterActionPayload = Extract<StoryActionPayload, { action: "character" }>;
 
-function CharacterActionEditor(props: {
+/** Exported for `storyPuppetRowInspector.test`, which renders the character rows on their own. */
+export function CharacterActionEditor(props: {
     payload: CharacterActionPayload;
     storyId: string;
     sceneId: StorySceneId;
@@ -2436,7 +2437,7 @@ function CharacterActionEditor(props: {
                         onChange={updateCharacter}
                     />
                 </FieldGrid>
-                {selectedCharacter && selectedCharacter.profile.appearance.getKind() === "puppet" ? (
+                {selectedCharacter && isPuppetAppearanceKind(selectedCharacter.profile.appearance.getKind()) ? (
                     <Section title={t("storyInspector.character.puppetParams")}>
                         <PuppetParamRows
                             character={selectedCharacter}
@@ -2468,7 +2469,7 @@ function CharacterActionEditor(props: {
                         onChange={updateCharacter}
                     />
                 </FieldGrid>
-                {selectedCharacter && selectedCharacter.profile.appearance.getKind() === "puppet" ? (
+                {selectedCharacter && isPuppetAppearanceKind(selectedCharacter.profile.appearance.getKind()) ? (
                     <Section title={t("storyInspector.section.appearance")}>
                         <PuppetChannelControl
                             character={selectedCharacter}

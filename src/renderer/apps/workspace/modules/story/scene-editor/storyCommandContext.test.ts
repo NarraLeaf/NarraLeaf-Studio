@@ -4,7 +4,11 @@ import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { BUILTIN_AUDIO_TRACKS } from "@shared/types/audioTrack";
 import { commandI18nStore, i18nStore } from "@/lib/i18n";
 import { LOCALIZED_COMMANDS_DEFAULT } from "@/lib/settings/commandLanguageOptions";
-import { buildStoryCommandContext } from "./storyCommandContext";
+import { Character } from "@/lib/workspace/services/character/Character";
+import { CharacterProfile } from "@/lib/workspace/services/character/CharacterProfile";
+import { buildStoryCommandContext, listPuppetCharacterIds } from "./storyCommandContext";
+import { getCommandCandidates } from "./storyCommandCandidates";
+import { getCommandCursor } from "./storyCommandCursor";
 import { parseCommandLine } from "./storyCommandParser";
 import { resolveCommandLine } from "./storyCommandResolution";
 
@@ -237,5 +241,61 @@ describe("buildStoryCommandContext - audio tracks", () => {
             audioTracks: tracks.map(track => (track.id === "bgm" ? { ...track, name: "Score" } : track)),
         });
         expect(renamed.audioTracks[0]).toEqual({ id: "bgm", name: "Score" });
+    });
+});
+
+/**
+ * Who counts as a puppet, read off real characters rather than off a hand-written context.
+ *
+ * Every command-line test downstream of here is handed `puppetCharacterIds` ready-made, so none of
+ * them could see that the scene editor was building its own list with `getKind() === "puppet"` - and
+ * that a Live2D character, whose kind is `live2d`, was never on it. Her model was never described,
+ * and `/motion Hiyori` offered nothing although the model had ten motions to give.
+ */
+describe("buildStoryCommandContext - runtime-drawn characters", () => {
+    function characterOf(id: string, name: string, kind: Parameters<typeof CharacterProfile.create>[2]): Character {
+        return Character.fromJSON({ profile: CharacterProfile.create(id, name, kind).toJSON() });
+    }
+
+    it("counts every runtime-drawn kind as a puppet, not only the one spelled `puppet`", () => {
+        const cast = [
+            characterOf("c-preset", "Alice", "preset"),
+            characterOf("c-live2d", "Hiyori", "live2d"),
+            characterOf("c-layered", "Mio", "layered"),
+            characterOf("c-spine", "Doll", "spine"),
+            characterOf("c-puppet", "Robot", "puppet"),
+        ];
+        expect(listPuppetCharacterIds(cast)).toEqual(["c-live2d", "c-spine", "c-puppet"]);
+        expect(buildStoryCommandContext({
+            assets: undefined,
+            characters: cast,
+            document: null,
+            sceneId: null,
+            scene: null,
+        }).puppetCharacterIds).toEqual(["c-live2d", "c-spine", "c-puppet"]);
+    });
+
+    it("offers a Live2D character's own motions on `/motion` once her model has described itself", () => {
+        const context = buildStoryCommandContext({
+            assets: undefined,
+            characters: [characterOf("hiyori", "Hiyori", "live2d")],
+            document: null,
+            sceneId: null,
+            scene: null,
+            puppetByCharacterId: {
+                hiyori: { motions: ["Idle_0", "Idle_6", "TapBody_0"], expressions: [], skins: [], params: [] },
+            },
+        });
+        expect(context.puppetByCharacterId.hiyori?.motions).toEqual(["Idle_0", "Idle_6", "TapBody_0"]);
+
+        const line = parseCommandLine("/motion Hiyori");
+        if (line.kind !== "command") {
+            throw new Error("not a command");
+        }
+        const resolved = resolveCommandLine(line, context);
+        expect(resolved.issues).toEqual([]);
+        const typed = "/motion Hiyori ";
+        const candidates = getCommandCandidates(getCommandCursor(typed, typed.length), context, resolved.args);
+        expect(candidates.map(candidate => candidate.value)).toEqual(["Idle_0", "Idle_6", "TapBody_0"]);
     });
 });
