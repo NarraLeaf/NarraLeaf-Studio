@@ -22,6 +22,10 @@ export const properties = {
         typePage: "页面",
         backgroundColor: "背景颜色",
         backgroundImage: "背景图片",
+        // 该页面显示时播放的音乐，对应场景检视器的「场景音乐」
+        music: "页面音乐",
+        clearMusic: "清除页面音乐",
+        selectMusic: "选择页面音乐",
         animation: "动画",
         logic: "逻辑",
         navigation: {

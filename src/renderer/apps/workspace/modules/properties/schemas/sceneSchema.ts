@@ -32,6 +32,7 @@ import {
 } from "@shared/types/ui-editor/navigation";
 import { SurfaceBlueprintEntrySection } from "../blueprint/SurfaceBlueprintEntrySection";
 import { SurfaceBackgroundImageField } from "../fields/SurfaceBackgroundImageField";
+import { SurfaceMusicField } from "../fields/SurfaceMusicField";
 import { SurfaceInputActionsField } from "../fields/SurfaceInputActionsField";
 import { SurfaceEntryPageField } from "../fields/SurfaceEntryPageField";
 import { SurfacePageParamsField } from "../PageParamsEditor";
@@ -207,6 +208,14 @@ export const scenePropertySchema = (t: TranslateFn) =>
             // A Game UI is drawn over the running scene, and its whole job is to let that scene
             // through. A full-bleed picture there would cover the one thing the slot exists to sit
             // on top of, so the offer is not made.
+            hidden: data => isGameUi(data.surface),
+        }),
+        defineField<SceneEditorContext, CustomFieldDefinition<SceneEditorContext>>({
+            id: "scene.music",
+            type: "custom",
+            label: t("properties.scene.music"),
+            component: SurfaceMusicField,
+            // A Game UI is drawn over the running scene, and the scene's music is what plays there.
             hidden: data => isGameUi(data.surface),
         }),
         defineField<SceneEditorContext, SectionFieldDefinition<SceneEditorContext>>({

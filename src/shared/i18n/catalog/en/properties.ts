@@ -21,6 +21,10 @@ export const properties = {
         typePage: "Page",
         backgroundColor: "Background Color",
         backgroundImage: "Background Image",
+        // What the page plays while it is the page on screen; the scene inspector's Scene music for a page.
+        music: "Page Music",
+        clearMusic: "Clear page music",
+        selectMusic: "Select Page Music",
         animation: "Animation",
         logic: "Logic",
         navigation: {

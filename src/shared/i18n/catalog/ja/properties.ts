@@ -22,6 +22,10 @@ export const properties = {
         typePage: "ページ",
         backgroundColor: "背景色",
         backgroundImage: "背景画像",
+        // このページの表示中に流れる音楽。シーンのインスペクターの「シーンの音楽」に当たる
+        music: "ページの音楽",
+        clearMusic: "ページの音楽を外す",
+        selectMusic: "ページの音楽を選択",
         animation: "アニメーション",
         logic: "ロジック",
         navigation: {
