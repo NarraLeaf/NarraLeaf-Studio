@@ -26,6 +26,8 @@ type WindowEventTypes = {
 
 export class WindowEventManager {
     private events: EventEmitter<WindowEventTypes> = new EventEmitter<WindowEventTypes>();
+    /** Whether `close` has been emitted. See {@link emitClosed}. */
+    private closeEmitted = false;
 
     public onClose(fn: () => void): AppEventToken {
         const handler = () => {
@@ -69,7 +71,25 @@ export class WindowEventManager {
     }
 
     public emit<K extends StringKeyOf<WindowEventTypes>>(event: K, ...args: WindowEventTypes[K]): void {
+        if (event === "close") {
+            this.closeEmitted = true;
+        }
         this.events.emit(event, ...args as any);
+    }
+
+    /**
+     * Announce that the window is gone, and that it is closing first if nobody heard that yet.
+     *
+     * A window can go without a close request: `destroy()`, or its page calling `window.close()`,
+     * which Electron carries out without a `close` event. Everything subscribed through
+     * {@link onClose} is there to hear that the window went away - a Dev Mode session that never
+     * heard it went on reporting "running" for a window that no longer existed.
+     */
+    public emitClosed(window: AppWindow): void {
+        if (!this.closeEmitted) {
+            this.emit("close", window);
+        }
+        this.emit("closed", window);
     }
 
     public onRenderProcessGone(fn: (window: AppWindow, reason: string, detail: string) => void): AppEventToken {
