@@ -21,6 +21,7 @@ export const assets = {
         deleteAsset: "{name} の削除",
         deleteGroup: "フォルダ {name} の削除",
         replaceContent: "{name} の差し替え",
+        convert: "{name} の変換",
         restoreFailed: "「{name}」を復元できなかった",
     },
     delete: {
