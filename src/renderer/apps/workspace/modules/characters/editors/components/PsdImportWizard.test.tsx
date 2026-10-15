@@ -79,6 +79,7 @@ const DOCUMENT: PsdDocument = {
 function appearanceStub(): CharacterAppearance {
     return {
         findPsdSlot: () => null,
+        getLayers: () => [],
         createLayer: (name: string) => ({ id: `layer-${name}` }),
         setLayerAsset: () => undefined,
         getCanvas: () => null,
@@ -96,9 +97,9 @@ afterEach(() => {
 });
 
 /** Open the wizard and read a PSD, the way the author does before deciding anything. */
-async function openWithDocument(): Promise<ReturnType<typeof render>> {
+async function openWithDocument(onImported?: (hadArt: boolean) => void): Promise<ReturnType<typeof render>> {
     const view = render(
-        <PsdImportWizard open onClose={() => undefined} appearance={appearanceStub()} characterName="Hero" />,
+        <PsdImportWizard open onClose={() => undefined} appearance={appearanceStub()} characterName="Hero" onImported={onImported} />,
     );
     await act(async () => {
         fireEvent.click(screen.getByText("characters.editor.psd.choose"));
@@ -112,7 +113,8 @@ function importButton(): HTMLElement {
 
 describe("PsdImportWizard while the workspace is frozen", () => {
     it("bakes and imports when nothing is frozen", async () => {
-        await openWithDocument();
+        const onImported = vi.fn();
+        await openWithDocument(onImported);
 
         expect(importButton().matches(":disabled")).toBe(false);
         await act(async () => {
@@ -120,6 +122,8 @@ describe("PsdImportWizard while the workspace is frozen", () => {
         });
         expect(bakePsd).toHaveBeenCalledTimes(1);
         expect(importFromPaths).toHaveBeenCalledTimes(1);
+        // A character with no art before it: the editor stands her first picture on the floor.
+        expect(onImported).toHaveBeenCalledWith(false);
     });
 
     it("refuses before the bake when the freeze arrives with the wizard open", async () => {

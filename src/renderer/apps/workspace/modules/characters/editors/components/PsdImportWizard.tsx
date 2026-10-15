@@ -62,6 +62,8 @@ export function PsdImportWizard(props: {
     onClose: () => void;
     appearance: CharacterAppearance;
     characterName: string;
+    /** After a successful import, with whether the character had any art before it. */
+    onImported?: (hadArt: boolean) => void;
 }) {
     const { t, tn } = useTranslation();
     const { context } = useWorkspace();
@@ -156,6 +158,7 @@ export function PsdImportWizard(props: {
                 props.appearance.setCanvas({ width: document.width, height: document.height });
             }
 
+            const hadArt = props.appearance.getLayers().some(layer => Boolean(layer.assetId) || Object.values(layer.options ?? {}).some(Boolean));
             const slots = applyPsdPlan(props.appearance, plan, path => assetIds.get(joinPath(path)) ?? null);
             props.appearance.setPsdFingerprint({
                 fileName: document.fileName,
@@ -164,6 +167,7 @@ export function PsdImportWizard(props: {
                 slots,
                 importedAt: Date.now(),
             });
+            props.onImported?.(hadArt);
             close();
         } catch (thrown: unknown) {
             console.warn("[psd] import failed", thrown);
