@@ -235,6 +235,8 @@ export const characters = {
         thumbnail: "缩略图",
         preview: "预览",
         defaultAvatar: "默认对白头像",
+        // 由运行时绘制的角色没有差分可生成头像，对白只显示这一张
+        defaultAvatarRuntimeHint: "由运行时绘制的角色不生成对白头像，对白显示此头像",
         // 该角色语音所在的音轨。只提供语音音轨及其之下的音轨：引擎不接受挂在别处的语音片段
         voiceTrack: "语音音轨",
         voiceTrackMissing: "音轨已不存在",

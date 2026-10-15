@@ -268,6 +268,7 @@ export const characters = {
         thumbnail: "Thumbnail",
         preview: "Preview",
         defaultAvatar: "Default dialog avatar",
+        defaultAvatarRuntimeHint: "A character drawn by a runtime has no generated avatar. Dialogue shows this one.",
         // The bus this character's voice lines play on. Only the voice bus and buses beneath it are
         // offered - the engine refuses a voice clip anywhere else.
         voiceTrack: "Voice track",

@@ -6,6 +6,7 @@ import { useAssetSetPickerSource } from "@/apps/workspace/modules/assets/state/u
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { useTranslation } from "@/lib/i18n";
+import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
 import type { CustomFieldProps } from "../framework/types";
 import type { CharacterEditorContext } from "../schemas/characterSchema";
 
@@ -18,7 +19,8 @@ import type { CharacterEditorContext } from "../schemas/characterSchema";
  * into the private editor store.
  *
  * The frame is the picker. There is no second button and no line explaining what a dialog avatar is
- * — the same reasoning the thumbnail's empty frame follows.
+ * — the same reasoning the thumbnail's empty frame follows. The one line it does carry is for a
+ * character drawn by a runtime, where nothing is baked and this picture is all her dialogue shows.
  */
 export function CharacterAvatarField({ data }: CustomFieldProps<CharacterEditorContext>) {
     const { t } = useTranslation();
@@ -41,39 +43,47 @@ export function CharacterAvatarField({ data }: CustomFieldProps<CharacterEditorC
         setAssetId(next);
         profile.setDefaultAvatarAssetId(next);
     };
+    // A character a runtime draws has no differentials to bake an avatar from, so this picture is the
+    // only one its dialogue ever shows. Said here, where the author looks for the avatar.
+    const drawnByRuntime = isPuppetAppearanceKind(profile.appearance.getKind());
 
     return (
-        <div className="flex items-center gap-2">
-            <button
-                ref={anchorRef}
-                type="button"
-                aria-label={t("characters.properties.defaultAvatar")}
-                onClick={() => setOpen(true)}
-                className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-edge bg-surface text-fg-subtle transition-colors hover:bg-fill-subtle hover:text-fg-muted"
-            >
-                {url
-                    ? <img src={url} alt="" className="absolute inset-0 h-full w-full object-cover" />
-                    : <span className="grid h-full w-full place-items-center"><ImagePlus className="h-5 w-5" /></span>}
-            </button>
-            {assetId && (
-                <button className="text-xs text-danger hover:text-danger/80" onClick={() => commit(null)}>
-                    {t("common.clear")}
+        <div className="min-w-0">
+            <div className="flex items-center gap-2">
+                <button
+                    ref={anchorRef}
+                    type="button"
+                    aria-label={t("characters.properties.defaultAvatar")}
+                    onClick={() => setOpen(true)}
+                    className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-edge bg-surface text-fg-subtle transition-colors hover:bg-fill-subtle hover:text-fg-muted"
+                >
+                    {url
+                        ? <img src={url} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                        : <span className="grid h-full w-full place-items-center"><ImagePlus className="h-5 w-5" /></span>}
                 </button>
+                {assetId && (
+                    <button className="text-xs text-danger hover:text-danger/80" onClick={() => commit(null)}>
+                        {t("common.clear")}
+                    </button>
+                )}
+                <AssetSelector
+                    visible={open}
+                    assetType={AssetType.Image}
+                    selectedIds={assetId ? [assetId] : []}
+                    onClose={() => setOpen(false)}
+                    onConfirm={assets => {
+                        setOpen(false);
+                        commit(assets[0]?.id ?? null);
+                    }}
+                    anchorRef={anchorRef}
+                    title={t("characters.properties.defaultAvatar")}
+                    multiple={false}
+                    {...(virtualGroups ? { virtualGroups, resolveAssetPreviewUrl } : {})}
+                />
+            </div>
+            {drawnByRuntime && (
+                <p className="mt-1 text-xs text-fg-subtle">{t("characters.properties.defaultAvatarRuntimeHint")}</p>
             )}
-            <AssetSelector
-                visible={open}
-                assetType={AssetType.Image}
-                selectedIds={assetId ? [assetId] : []}
-                onClose={() => setOpen(false)}
-                onConfirm={assets => {
-                    setOpen(false);
-                    commit(assets[0]?.id ?? null);
-                }}
-                anchorRef={anchorRef}
-                title={t("characters.properties.defaultAvatar")}
-                multiple={false}
-                {...(virtualGroups ? { virtualGroups, resolveAssetPreviewUrl } : {})}
-            />
         </div>
     );
 }

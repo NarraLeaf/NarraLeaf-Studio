@@ -422,7 +422,7 @@ export const help = {
                 "A character has a name, a color and a set of appearances. An appearance is the character's "
                 + "form on stage, and story rows switch between appearances by name.\n"
                 + "\n"
-                + "- The portrait beside dialogue is generated from an appearance.\n"
+                + "- The portrait beside dialogue is generated from a sprite. A character drawn by a runtime shows the Default dialog avatar from its properties.\n"
                 + "- A character can speak without being on stage.",
         },
         appearances: {
@@ -436,9 +436,11 @@ export const help = {
                 + "independently.\n"
                 + "- Custom runtime: a model, drawn by a runtime installed in this project.\n"
                 + "\n"
-                + "The dialog avatar is generated from the drawn result and by default changes with every axis; "
+                + "For preset and layered sprites, the dialog avatar is generated from the drawn result and by default changes with every axis; "
                 + "an axis with Avatar varies with this axis switched off leaves it unchanged. Where no differential gives one, dialogue shows the Default dialog avatar "
-                + "from the character's properties.",
+                + "from the character's properties.\n"
+                + "\n"
+                + "A character drawn by a runtime has no generated avatar. Dialogue shows its Default dialog avatar, or none when it is not set.",
         },
         puppetRuntimes: {
             title: "Model runtimes",

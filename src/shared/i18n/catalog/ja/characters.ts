@@ -261,6 +261,7 @@ export const characters = {
         thumbnail: "サムネイル",
         preview: "プレビュー",
         defaultAvatar: "既定のダイアログのアバター",
+        defaultAvatarRuntimeHint: "ランタイムで描くキャラクターにはアバターが作られない。ダイアログにはこのアバターを表示する",
         // このキャラクターのボイスが鳴るバス。ボイスのバスとその下のバスしか出さない。
         // エンジンはそれ以外の場所でボイスのクリップを受け付けない。
         voiceTrack: "ボイスのトラック",
