@@ -311,7 +311,9 @@ export const characters = {
         variant: "Variant: {name}",
         loading: "Loading preview…",
         failed: "Preview failed",
-        placeholder: "Select a variant with an image to preview",
+        // What the preview says while it draws nothing, per kind of character.
+        emptyLayered: "Add a layer with an image, or import a PSD, to preview",
+        emptyPreset: "Set an image for this pose to preview",
         noSize: "No size",
         noMetadata: "No metadata",
         zoomOut: "Zoom Out",

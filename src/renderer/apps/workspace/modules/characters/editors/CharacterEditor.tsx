@@ -673,6 +673,7 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
                         // the kind that has layers. A preset preview says which pose it is showing,
                         // which is the thing the author actually needs to read here.
                         caption={kind === "preset" ? (previewPose?.name ?? null) : undefined}
+                        emptyLabel={kind === "preset" ? t("characters.preview.emptyPreset") : t("characters.preview.emptyLayered")}
                         // Never drawn while frozen: the box is a gesture, and a gesture that picks
                         // up and refuses to write reads as a broken editor rather than as a freeze.
                         overlay={cropping && !freeze.frozen ? (
