@@ -63,7 +63,7 @@ import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
 import { combinationKey, enumerateCombinations } from "@/lib/workspace/services/character/characterCombinations";
 import { characterAvatarAxisIds, characterAvatarKey, characterAvatarSelection } from "@shared/utils/characterAvatar";
 import { readableAccentColor } from "@/apps/workspace/modules/story/scene-editor/storySceneBlockUtils";
-import { defaultSpriteSize, stageSize } from "@/lib/workspace/services/agent/tools/castTools";
+import { defaultSpriteSize, stageSize } from "@/lib/workspace/services/agent/spriteFacts";
 import { entranceForFirstArt } from "@/lib/workspace/services/agent/spriteStage";
 import {
     CHARACTER_INSPECTOR_DEFAULT_WIDTH,

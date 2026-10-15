@@ -25,7 +25,6 @@ import type { StoryLiteralValue, StoryTransformProps } from "@shared/types/story
 import type { StoryVariableValueType } from "@shared/types/story/document";
 import type { VariableRegistryEntry, VariableRegistryScope } from "@shared/types/variables/registry";
 import { AssetType } from "../../assets/assetTypes";
-import type { Asset, AssetSource } from "../../assets/types";
 import { Services, type WorkspaceContext } from "../../services";
 import type { CharacterService } from "../../core/CharacterService";
 import { Character } from "../../character/Character";
@@ -34,7 +33,6 @@ import type { TranslationKey } from "@shared/i18n";
 import type { VariableRegistryService } from "../../variables/VariableRegistryService";
 import type { AudioTrackService } from "../../audio/AudioTrackService";
 import type { AssetsService } from "../../core/AssetsService";
-import type { ProjectService } from "../../core/ProjectService";
 import { VARIABLE_PANEL_HISTORY_SCOPE_ID, type LocalBlueprintService } from "../../ui-editor/LocalBlueprintService";
 import {
     answerJson,
@@ -47,40 +45,13 @@ import {
 import { assetsService, resolveAsset } from "../agentLookups";
 import { assertAgentMayStillWrite } from "../agentCommitGate";
 import { blueprintReferencesTo, formatReferrers, storyReferencesTo, storyUsesNotFitting, uiReferencesTo } from "../agentReferences";
-import { opaqueImageWarning, readImageAlpha, type ImageAlphaFacts } from "../imageAlpha";
-import { drawnBoxAtCenter, stageSizeOf, standingEntrance, type PixelSize } from "../spriteStage";
+import { opaqueImageWarning } from "../imageAlpha";
+import { drawnBoxAtCenter, standingEntrance, type PixelSize } from "../spriteStage";
+import { defaultSpriteSize, readImageFacts, stageSize, type ImageFacts } from "../spriteFacts";
 import { describeLayered } from "../layeredSpec";
 import { storyRowsChoosingLook } from "../characterLooks";
 import { applyAvatarRequest, asksForAvatars, carryPresetAvatars, describeAvatars, presetAvatarsByPoseName, readAvatarArgs, type AvatarRequest } from "../characterAvatars";
 import { liveBlueprintDocument, loadAllStories, uiDocumentService } from "./textFormat";
-
-/** The project's design resolution: the stage every sprite position is a share of. */
-export function stageSize(ctx: WorkspaceContext): PixelSize {
-    return stageSizeOf(ctx.services.get<ProjectService>(Services.Project).getProjectConfig().metadata?.resolution);
-}
-
-export type ImageFacts = { name: string; size: PixelSize | null; header: ImageAlphaFacts };
-
-/**
- * An image asset's pixel size and whether it can be transparent, from its bytes. Null when the asset
- * is gone or will not read - a pose that cannot be measured is reported without a box, never refused.
- */
-export async function readImageFacts(ctx: WorkspaceContext, assetId: string): Promise<ImageFacts | null> {
-    const assets = assetsService(ctx);
-    const asset = assets.getAssets()[AssetType.Image]?.[assetId] as Asset<AssetType, AssetSource> | undefined;
-    if (!asset) {
-        return null;
-    }
-    const fetched = await assets.fetch(asset).catch(() => null);
-    const data = fetched && fetched.success ? (fetched.data as { data?: unknown; metadata?: { width?: number; height?: number } } | undefined) : undefined;
-    if (!data || !(data.data instanceof Uint8Array)) {
-        return null;
-    }
-    const facts = readImageAlpha(data.data);
-    const width = data.metadata?.width || facts.width;
-    const height = data.metadata?.height || facts.height;
-    return { name: asset.name, size: width && height ? { width, height } : null, header: facts };
-}
 
 /**
  * One character as the cast tools report it.
@@ -137,23 +108,6 @@ export function describeCharacter(character: Character, assets: AssetsService, s
         spriteSize: sprite,
         drawnAtCenter: sprite ? drawnBoxAtCenter(sprite, entranceTransform, stage) : null,
     };
-}
-
-/**
- * The default look's pixel size: a preset's default pose, a layered character's canvas (every layer
- * is drawn at it), a puppet's stage box when one is set. Null when it cannot be known.
- */
-export async function defaultSpriteSize(ctx: WorkspaceContext, character: Character): Promise<PixelSize | null> {
-    const appearance = character.profile.appearance;
-    const stored = appearance.toJSON();
-    if (stored.kind === "layered") {
-        return stored.canvas ? { ...stored.canvas } : null;
-    }
-    if (isPuppetAppearance(stored)) {
-        return stored.size ? { ...stored.size } : null;
-    }
-    const assetId = appearance.resolvePoseAssetId(undefined);
-    return assetId ? (await readImageFacts(ctx, assetId))?.size ?? null : null;
 }
 
 /** A character by id or exact name; `null` when there is none, a refusal when the name is ambiguous. */
