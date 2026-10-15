@@ -2227,6 +2227,9 @@ export function InsertRow(props: {
      * slot object on every keystroke cannot invalidate the lists memoized against it.
      */
     const scopeName = props.mode.slot.characterScope?.name ?? null;
+    // Whether a runtime draws the speaker: only then are her motions, skins and parameters hers to set.
+    const scopeCharacterId = props.mode.slot.characterScope?.characterId ?? null;
+    const scopeDrawnByRuntime = scopeCharacterId !== null && props.commandContext.puppetCharacterIds.includes(scopeCharacterId);
     // The author's abbreviations that still expand: the line replaces them once the word is finished,
     // and the menu ranks and prints the same list, so the two always agree on what `/c` is.
     const { live: abbreviations } = useStoryCommandAbbreviations();
@@ -2242,9 +2245,13 @@ export function InsertRow(props: {
                 // A plugin action carries the label its own language pack already resolved.
                 ...pluginCommands,
             ];
-            return searchActionCommands(scopeName === null ? all : characterScopedActions(all), chooserQuery, abbreviations);
+            return searchActionCommands(
+                scopeName === null ? all : characterScopedActions(all, { drawnByRuntime: scopeDrawnByRuntime }),
+                chooserQuery,
+                abbreviations,
+            );
         },
-        [abbreviations, chooserQuery, ct, pluginCommands, props.commandContext, scopeName],
+        [abbreviations, chooserQuery, ct, pluginCommands, props.commandContext, scopeDrawnByRuntime, scopeName],
     );
     // The browse is the sidebar's projection, not a second catalogue: same `accepts` classification.
     // Handed over undeduped, because the menu's category column needs both readings of it —
@@ -2257,9 +2264,9 @@ export function InsertRow(props: {
                 buildSpecSidebarGroups(pluginCommands, command => localizeSpecCommand(command, ct)),
                 props.commandContext,
             );
-            return scopeName === null ? groups : characterScopedSidebarGroups(groups);
+            return scopeName === null ? groups : characterScopedSidebarGroups(groups, { drawnByRuntime: scopeDrawnByRuntime });
         },
-        [ct, pluginCommands, props.commandContext, scopeName],
+        [ct, pluginCommands, props.commandContext, scopeDrawnByRuntime, scopeName],
     );
     const { starredIds, toggleStarred } = useStarredStoryCommands();
     // A scoped menu is one subject's list under that subject's name, so it does not lead with the

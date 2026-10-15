@@ -628,6 +628,7 @@ function validatePuppetCharacter(
 export const motion = defineStoryCommand({
     id: "motion",
     token: "motion",
+    runtimeDrawnOnly: true,
     aliases: ["anim"],
     category: "character",
     icon: PersonStanding,
@@ -643,6 +644,7 @@ export const motion = defineStoryCommand({
 export const skin = defineStoryCommand({
     id: "skin",
     token: "skin",
+    runtimeDrawnOnly: true,
     aliases: ["costume"],
     category: "character",
     icon: Shirt,
@@ -674,6 +676,7 @@ export const skin = defineStoryCommand({
 export const param = defineStoryCommand({
     id: "param",
     token: "param",
+    runtimeDrawnOnly: true,
     category: "character",
     icon: SlidersHorizontal,
     examples: ["/param Doll ParamAngleX 12"],
