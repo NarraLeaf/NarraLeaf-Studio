@@ -12,6 +12,7 @@ import {
     type HistoryLabel,
     type HistoryScopeId,
 } from "./historyModel";
+import { projectHistoryScope } from "./historyScopes";
 
 /**
  * The workspace's undo stacks, all of them.
@@ -121,6 +122,18 @@ export type HistoryEvents = {
  * them. Least-recently-touched goes first.
  */
 const RETAINED_INACTIVE_SCOPES = 8;
+
+/**
+ * Whether a stack belongs to the window rather than to an editor, and so is never evicted.
+ *
+ * The cap above is for stacks an editor left behind. The project's stack has no editor: nothing
+ * ever registers it, so by the cap's own rule it is always "inactive", and opening and closing nine
+ * scenes after deleting a character was enough to drop it - Ctrl+Z in the characters panel then had
+ * nothing to take back.
+ */
+function isWindowStack(scopeId: HistoryScopeId): boolean {
+    return scopeId === projectHistoryScope();
+}
 
 export class HistoryService extends Service<HistoryService> implements IHistoryService {
     private readonly scopes = new Map<HistoryScopeId, HistoryScope>();
@@ -612,12 +625,18 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
         this.touchOrder.push(scopeId);
     }
 
-    /** Drop the least-recently-touched stacks that nothing is registered against any more. */
+    /**
+     * Drop the least-recently-touched stacks that nothing is registered against any more.
+     *
+     * An evicted stack's entries leave for good, so they are let go as a clear lets them go.
+     */
     private evictInactive(): void {
-        const inactive = this.touchOrder.filter(id => !this.scopes.has(id) && this.stacks.has(id));
+        const inactive = this.touchOrder.filter(id =>
+            !this.scopes.has(id) && this.stacks.has(id) && !isWindowStack(id));
         const excess = inactive.length - RETAINED_INACTIVE_SCOPES;
         for (let i = 0; i < excess; i++) {
             const scopeId = inactive[i];
+            this.stacks.get(scopeId)?.clear();
             this.stacks.delete(scopeId);
             const index = this.touchOrder.indexOf(scopeId);
             if (index >= 0) {
