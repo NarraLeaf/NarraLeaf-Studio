@@ -8,7 +8,7 @@
  */
 
 import type { VoiceCsvRow } from "@shared/utils/voiceCsv";
-import { formatVoiceFilename, matchKeyForFilename } from "@shared/utils/voiceNaming";
+import { formatVoiceFilename, matchKeyForFilename, matchKeyForVoiceName } from "@shared/utils/voiceNaming";
 import type { VoiceDocument } from "@shared/types/voice";
 import { deriveVoiceUnitState } from "./voiceModel";
 
@@ -76,7 +76,7 @@ export function buildVoiceNameKeyMap(
     const map = new Map<string, VoiceNameKey>();
     const ambiguous = new Set<string>();
     for (const entry of entries) {
-        const key = matchKeyForFilename(formatVoiceFilename(pattern, {
+        const key = matchKeyForVoiceName(formatVoiceFilename(pattern, {
             scene: entry.sceneName,
             index: entry.indexInScene,
             character: entry.speaker,
@@ -105,7 +105,7 @@ export function buildVoiceNameKeyMap(
  * assign picker agree on what "this clip belongs to this line" means.
  */
 export function voiceMatchKeyForEntry(entry: VoiceScriptEntry, pattern: string, locale: string): string {
-    return matchKeyForFilename(formatVoiceFilename(pattern, {
+    return matchKeyForVoiceName(formatVoiceFilename(pattern, {
         scene: entry.sceneName,
         index: entry.indexInScene,
         character: entry.speaker,

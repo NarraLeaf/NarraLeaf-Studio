@@ -18,7 +18,7 @@
 
 import { listSceneBlocksInDocumentOrder, type StoryDocument, type StoryRichRun } from "@shared/types/story";
 import type { StoryTextSegment } from "@shared/types/story";
-import { formatVoiceFilename, matchKeyForFilename } from "@shared/utils/voiceNaming";
+import { formatVoiceFilename, matchKeyForVoiceName } from "@shared/utils/voiceNaming";
 import {
     validateMarkupParity,
     validatePlaceholderParity,
@@ -437,7 +437,7 @@ export async function collectAgentVoiceLines(ctx: WorkspaceContext, locale: stri
                 text: voice.getLineText(locale, row.unitId, row.sourceText),
                 where: `${prefix}${row.sceneName}${position ? `, row ${position}` : ""}`,
                 expectedName,
-                matchKey: matchKeyForFilename(expectedName),
+                matchKey: matchKeyForVoiceName(expectedName),
             });
         }
     }

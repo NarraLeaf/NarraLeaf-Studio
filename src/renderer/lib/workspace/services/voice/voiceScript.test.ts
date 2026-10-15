@@ -64,6 +64,25 @@ describe("buildVoiceNameKeyMap + matchImportedFiles", () => {
         expect(result.unmatched).toEqual(["leftover_take.wav"]);
     });
 
+    /**
+     * A speaker whose name has a dot. Reading `.Hara` off the expected name as an extension made the
+     * line expect `…_ms`, so the booth's correctly named file never matched.
+     */
+    it("matches a speaker whose name has a dot", () => {
+        const dotted: VoiceScriptEntry[] = [
+            { unitId: "t-h", sceneName: "Walk together", indexInScene: 5, speaker: "Ms. Hara", sourceText: "Morning." },
+            { unitId: "t-m", sceneName: "Walk together", indexInScene: 6, speaker: "Ms", sourceText: "Hi." },
+        ];
+        const keyMap = buildVoiceNameKeyMap(dotted, PATTERN, "en");
+        const result = matchImportedFiles(["Walktogether_005_Ms.Hara.wav", "Walktogether_006_Ms.wav"], keyMap);
+
+        expect(result.matched.map(m => m.unitId)).toEqual(["t-h", "t-m"]);
+        expect(voiceMatchKeyForEntry(dotted[0], PATTERN, "en")).toBe("walktogether005mshara");
+        // An asset keeps the extension it was imported with, and is matched with it dropped.
+        expect(buildAssetNameKeyMap([{ id: "a1", name: "Walktogether_005_Ms.Hara.wav" }])
+            .get(voiceMatchKeyForEntry(dotted[0], PATTERN, "en"))).toBe("a1");
+    });
+
     it("drops ambiguous keys rather than mis-linking", () => {
         // Two lines that collapse to the same filename (same scene/index/speaker).
         const collide: VoiceScriptEntry[] = [
