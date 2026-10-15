@@ -65,7 +65,7 @@ export const storyExpr = {
         unknownSurface: "\"{value}\" というページはない",
         unknownInputAction: "\"{value}\" という入力アクションはない",
         unknownVariable: "\"{value}\" という変数がない",
-        unknownForm: "{characterName} に \"{value}\" という表情はない",
+        unknownForm: "{characterName} に \"{value}\" という見た目はない",
         notPuppetCharacter: "{value} はランタイムが描くものではないので、設定できるモーションもスキンもない",
         ambiguousName: "\"{value}\" という名前のものが複数ある。どちらかの名前を変える",
         conflictingParams: "{keys} を 1 行に両方は書けない。行を 2 つに分ける",

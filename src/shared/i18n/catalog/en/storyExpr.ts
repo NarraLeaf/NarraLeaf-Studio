@@ -65,7 +65,7 @@ export const storyExpr = {
         unknownSurface: "No page named \"{value}\".",
         unknownInputAction: "No input action named \"{value}\".",
         unknownVariable: "No variable named \"{value}\".",
-        unknownForm: "{characterName} has no \"{value}\" expression.",
+        unknownForm: "{characterName} has no appearance named \"{value}\".",
         notPuppetCharacter: "{value} is not drawn by a runtime, so it has no motion or skin to set.",
         ambiguousName: "More than one thing is called \"{value}\". Rename one of them.",
         conflictingParams: "{keys} cannot both be set on one line. Split the line in two.",

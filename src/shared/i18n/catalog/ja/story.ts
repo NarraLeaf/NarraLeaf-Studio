@@ -632,7 +632,7 @@ export const story = {
         // 舞台とメディア
         character: "キャラクター",
         speaker: "話者",
-        form: "表情",
+        form: "見た目",
         motion: "モーション",
         skin: "スキン",
         puppetParam: "パラメータ",
@@ -947,7 +947,7 @@ export const story = {
             video: "動画アセット",
             character: "キャラクター",
             characterOrName: "キャラクター、または任意の名前",
-            characterForm: "そのキャラクターの表情のいずれか",
+            characterForm: "そのキャラクターの見た目のいずれか",
             puppet: {
                 motion: "ランタイムが提供するモーション。空にすると静止に戻す",
                 expression: "ランタイムが提供する表情。空にすると消す",

@@ -595,7 +595,7 @@ export const story = {
         times: "次数",
         character: "角色",
         speaker: "说话人",
-        form: "表情",
+        form: "外观",
         motion: "动作",
         skin: "皮肤",
         puppetParam: "参数",
@@ -911,7 +911,7 @@ export const story = {
             video: "视频资产",
             character: "角色",
             characterOrName: "角色，或任意名字",
-            characterForm: "该角色的某个表情",
+            characterForm: "该角色的某个外观",
             puppet: {
                 motion: "运行时提供的动作名（为空时恢复静止）",
                 expression: "运行时提供的表情名（为空时清除）",

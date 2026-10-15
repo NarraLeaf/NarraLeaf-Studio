@@ -725,7 +725,7 @@ export const story = {
         // Stage and media
         character: "Character",
         speaker: "Speaker",
-        form: "Expression",
+        form: "Appearance",
         motion: "Motion",
         skin: "Skin",
         puppetParam: "Parameter",
@@ -1057,7 +1057,7 @@ export const story = {
             video: "Video asset",
             character: "Character",
             characterOrName: "Character, or any name",
-            characterForm: "One of that character's expressions",
+            characterForm: "One of that character's appearances",
             puppet: {
                 motion: "A motion provided by the runtime (blank returns it to rest)",
                 expression: "An expression provided by the runtime (blank clears it)",

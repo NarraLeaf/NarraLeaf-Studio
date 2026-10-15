@@ -192,6 +192,33 @@ describe("getCommandLineReason", () => {
     });
 
     /**
+     * A look is a pose on a drawn character and a tag on a layered one, and the refusal called every
+     * one of them an expression: 「美绪 没有名为「蓝」的表情」 for an outfit tag.
+     */
+    it("calls a character's look an appearance, whatever kind it is", () => {
+        const reason = getCommandLineReason("/show Alice frown", CONTEXT);
+        expect(reason?.key).toBe("storyExpr.reason.unknownForm" as TranslationKey);
+        const expected = {
+            en: "Alice has no appearance named \"frown\".",
+            zh: "Alice 没有名为「frown」的外观",
+            ja: "Alice に \"frown\" という見た目はない",
+        } as const;
+        for (const locale of ["en", "zh", "ja"] as const) {
+            const { t } = createTranslator(locale);
+            expect(t(reason!.key, storyCommandReasonParams(reason!, t)), locale).toBe(expected[locale]);
+            expect(t("story.paramHint.form" as TranslationKey), locale).toBe({ en: "Appearance", zh: "外观", ja: "見た目" }[locale]);
+        }
+        // The slot's old name still reads as its key.
+        i18nStore.setLocale("zh");
+        try {
+            expect(getCommandLineReason("/显示 Alice 表情=smile", CONTEXT)).toBeNull();
+            expect(getCommandLineReason("/显示 Alice 外观=smile", CONTEXT)).toBeNull();
+        } finally {
+            i18nStore.setLocale("en");
+        }
+    });
+
+    /**
      * The command word's rule, applied to the name after it: a word at the end of the line with
      * nothing after it is still being typed, and a space is the decision. `/show N` used to say
      * "Nothing on stage is named N" while the candidate list was already offering Narra.
