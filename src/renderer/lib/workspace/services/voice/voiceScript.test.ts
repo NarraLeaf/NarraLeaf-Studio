@@ -7,7 +7,9 @@ import {
     buildVoiceNameKeyMap,
     buildAssetNameKeyMap,
     matchImportedFiles,
+    voiceLineSpeaker,
     voiceMatchKeyForEntry,
+    voiceMatchKeysForEntry,
     withSceneIndices,
     type VoiceScriptEntry,
 } from "./voiceScript";
@@ -141,5 +143,51 @@ describe("assign-time name matching", () => {
 
     it("ignores an asset whose name reduces to nothing", () => {
         expect(buildAssetNameKeyMap([{ id: "a1", name: "---" }]).size).toBe(0);
+    });
+});
+
+describe("the speaker a narration line is named by", () => {
+    const narration = { role: "narration" as const };
+    const noCharacter = () => undefined;
+
+    it("is the project's word for narration, not the interface's", () => {
+        expect(voiceLineSpeaker(narration, noCharacter, "zh-CN").speaker).toBe("旁白");
+        expect(voiceLineSpeaker(narration, noCharacter, "en").speaker).toBe("Narration");
+        expect(voiceLineSpeaker(narration, noCharacter, "ja").speaker).toBe("地の文");
+    });
+
+    it("is a character's own name on her lines", () => {
+        const line = voiceLineSpeaker({ role: "dialogue", characterId: "c1" }, () => "Narra", "zh");
+        expect(line).toEqual({ speaker: "Narra", speakerAliases: [] });
+    });
+
+    /** Both directions: a take named under another language's word still finds its line. */
+    it.each([
+        ["zh-CN", "放学后_001_Narration.wav"],
+        ["zh-CN", "放学后_001_地の文.wav"],
+        ["en", "放学后_001_旁白.wav"],
+        ["ja", "放学后_001_Narration.wav"],
+    ])("in a %s project still matches %s", (sourceLocale, file) => {
+        const entry: VoiceScriptEntry = {
+            unitId: "t-n",
+            sceneName: "放学后",
+            indexInScene: 1,
+            ...voiceLineSpeaker(narration, noCharacter, sourceLocale),
+            sourceText: "走廊的灯一盏一盏熄了。",
+        };
+        const keyMap = buildVoiceNameKeyMap([entry], PATTERN, "zh");
+        expect(matchImportedFiles([file], keyMap).matched.map(m => m.unitId)).toEqual(["t-n"]);
+        // The assign picker's preselection answers the same.
+        const assets = buildAssetNameKeyMap([{ id: "a1", name: file }]);
+        expect(voiceMatchKeysForEntry(entry, PATTERN, "zh").map(key => assets.get(key)).filter(Boolean)).toEqual(["a1"]);
+    });
+
+    it("is exported under the project's word, so the script and the import agree", () => {
+        const entry: VoiceScriptEntry = {
+            unitId: "t-n", sceneName: "放学后", indexInScene: 1,
+            ...voiceLineSpeaker(narration, noCharacter, "zh-CN"), sourceText: "…",
+        };
+        const [row] = buildRecordingScriptRows([entry], PATTERN, "zh", undefined);
+        expect(row.filename).toBe("放学后_001_旁白");
     });
 });

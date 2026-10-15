@@ -9,7 +9,9 @@
 
 import type { VoiceCsvRow } from "@shared/utils/voiceCsv";
 import { formatVoiceFilename, matchKeyForFilename, matchKeyForVoiceName } from "@shared/utils/voiceNaming";
+import { voiceSpeakerWord, voiceSpeakerWordsInEveryLanguage, type VoiceUnnamedSpeaker } from "@shared/utils/voiceSpeakerWords";
 import type { VoiceDocument } from "@shared/types/voice";
+import type { StoryTranslationRow } from "@/lib/workspace/services/localization/localizationModel";
 import { deriveVoiceUnitState } from "./voiceModel";
 
 /** One voiceable line with everything the naming pattern and script need. */
@@ -18,10 +20,48 @@ export type VoiceScriptEntry = {
     sceneName: string;
     /** 1-based position among the voiceable lines of its scene. */
     indexInScene: number;
-    /** Resolved speaker (character name or narration label). */
+    /** What `{character}` spells for this line: a character's name, or the narration / option word. */
     speaker: string;
+    /**
+     * Other spellings a take's name may carry for {@link speaker}: the narration or option word in
+     * Studio's other languages. Matched, never written.
+     */
+    speakerAliases?: readonly string[];
     sourceText: string;
 };
+
+/** What a line is filed under in a recording file name, and the other spellings it is matched by. */
+export type VoiceLineSpeaker = { speaker: string; speakerAliases: readonly string[] };
+
+/**
+ * The speaker a recording file name spells for a line - the one answer the recording script, the
+ * batch import, the assign picker and the agent's tools all use, so a name written by one is found
+ * by the others.
+ *
+ * A character's name is project content and is spelled as it is. Narration, a line whose character
+ * is gone and a voiced option have no name, and take the project's word for them, in its source
+ * language (`voiceSpeakerWord`); the other languages' words are kept as aliases for matching.
+ */
+export function voiceLineSpeaker(
+    row: Pick<StoryTranslationRow, "role" | "characterId">,
+    characterName: (characterId: string) => string | null | undefined,
+    sourceLocale: string | null | undefined,
+): VoiceLineSpeaker {
+    if (row.role === "dialogue" && row.characterId) {
+        const name = characterName(row.characterId);
+        if (name) {
+            return { speaker: name, speakerAliases: [] };
+        }
+    }
+    // A choice option is read by whoever the game decides at that moment, so it carries no speaker
+    // of its own; filed under narration it would collide with the narrator's lines in the same scene.
+    const unnamed: VoiceUnnamedSpeaker = row.role === "choiceText" ? "choice" : "narration";
+    const speaker = voiceSpeakerWord(unnamed, sourceLocale);
+    return {
+        speaker,
+        speakerAliases: voiceSpeakerWordsInEveryLanguage(unnamed).filter(word => word !== speaker),
+    };
+}
 
 /** Assign each row its 1-based index within its own scene (rows must be in narrative order). */
 export function withSceneIndices<T extends { sceneId: string }>(rows: readonly T[]): (T & { indexInScene: number })[] {
@@ -76,21 +116,13 @@ export function buildVoiceNameKeyMap(
     const map = new Map<string, VoiceNameKey>();
     const ambiguous = new Set<string>();
     for (const entry of entries) {
-        const key = matchKeyForVoiceName(formatVoiceFilename(pattern, {
-            scene: entry.sceneName,
-            index: entry.indexInScene,
-            character: entry.speaker,
-            locale,
-            unitId: entry.unitId,
-        }));
-        if (!key) {
-            continue;
+        for (const key of voiceMatchKeysForEntry(entry, pattern, locale)) {
+            if (map.has(key)) {
+                ambiguous.add(key);
+                continue;
+            }
+            map.set(key, { unitId: entry.unitId, sourceText: entry.sourceText });
         }
-        if (map.has(key)) {
-            ambiguous.add(key);
-            continue;
-        }
-        map.set(key, { unitId: entry.unitId, sourceText: entry.sourceText });
     }
     for (const key of ambiguous) {
         map.delete(key);
@@ -105,10 +137,25 @@ export function buildVoiceNameKeyMap(
  * assign picker agree on what "this clip belongs to this line" means.
  */
 export function voiceMatchKeyForEntry(entry: VoiceScriptEntry, pattern: string, locale: string): string {
+    return voiceKeyFor(entry, entry.speaker, pattern, locale);
+}
+
+/**
+ * Every key a line's take may be named by: {@link voiceMatchKeyForEntry} first, then the same name
+ * with each of the line's speaker aliases. No key twice, and no empty one.
+ */
+export function voiceMatchKeysForEntry(entry: VoiceScriptEntry, pattern: string, locale: string): string[] {
+    const keys = [entry.speaker, ...(entry.speakerAliases ?? [])]
+        .map(speaker => voiceKeyFor(entry, speaker, pattern, locale))
+        .filter(key => key.length > 0);
+    return [...new Set(keys)];
+}
+
+function voiceKeyFor(entry: VoiceScriptEntry, speaker: string, pattern: string, locale: string): string {
     return matchKeyForVoiceName(formatVoiceFilename(pattern, {
         scene: entry.sceneName,
         index: entry.indexInScene,
-        character: entry.speaker,
+        character: speaker,
         locale,
         unitId: entry.unitId,
     }));

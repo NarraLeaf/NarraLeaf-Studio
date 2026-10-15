@@ -42,7 +42,13 @@ import type { Asset } from "@/lib/workspace/services/assets/types";
 import type { StoryLibraryEntry } from "@shared/types/story";
 import { clipVolume, normalizeAudioClipRegion } from "@shared/types/audio";
 import type { VoiceConfiguration, VoiceDocument } from "@shared/types/voice";
-import { buildAssetNameKeyMap, voiceMatchKeyForEntry, withSceneIndices } from "@/lib/workspace/services/voice/voiceScript";
+import {
+    buildAssetNameKeyMap,
+    voiceLineSpeaker,
+    voiceMatchKeysForEntry,
+    withSceneIndices,
+    type VoiceLineSpeaker,
+} from "@/lib/workspace/services/voice/voiceScript";
 import type { VoiceEditorTabPayload } from "./voiceEditorTabId";
 import { VoiceRow, type VoiceTableRow } from "./VoiceRows";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
@@ -64,7 +70,11 @@ const CHOICE_GROUP_KEY = "__choice__";
 const GROUP_ROW_HEIGHT_PX = 26;
 const VOICE_ROW_HEIGHT_PX = 37;
 
-type TableRow = VoiceTableRow & { speaker: string; indexInScene: number };
+/**
+ * `speaker` is the column's word, in the interface language; `naming` is what the line's take is
+ * named by, which is the project's (`voiceLineSpeaker`) and the same in every Studio.
+ */
+type TableRow = VoiceTableRow & { speaker: string; naming: VoiceLineSpeaker; indexInScene: number };
 
 export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<VoiceEditorTabPayload | undefined>) {
     const { context, isInitialized } = useWorkspace();
@@ -144,6 +154,11 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
         }
         return t("workspace.voice.table.narrationSpeaker");
     }, [characterService, t]);
+    const namingSpeakerFor = useCallback((row: StoryTranslationRow) => voiceLineSpeaker(
+        row,
+        characterId => characterService?.getCharacter(characterId)?.profile.getName(),
+        localizationService?.getConfiguration().sourceLocale,
+    ), [characterService, localizationService]);
 
     // Story list + default selection.
     useEffect(() => {
@@ -245,6 +260,7 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
                         role: row.role,
                         ...(row.characterId ? { characterId: row.characterId } : {}),
                         speaker: speakerNameFor(row),
+                        naming: namingSpeakerFor(row),
                     };
                 }));
             } catch {
@@ -271,7 +287,7 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
             unsubscribeStory();
             unsubscribeTranslation?.();
         };
-    }, [voiceService, storyService, localizationService, storyId, locale, speakerNameFor, characters, config?.voiceChoices]);
+    }, [voiceService, storyService, localizationService, storyId, locale, speakerNameFor, namingSpeakerFor, characters, config?.voiceChoices]);
 
     // Voice document for this language, read again if the language comes back to the list.
     useEffect(() => {
@@ -448,14 +464,20 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
         if (!config) {
             return undefined;
         }
-        const key = voiceMatchKeyForEntry({
+        const keys = voiceMatchKeysForEntry({
             unitId: row.unitId,
             sceneName: row.sceneName,
             indexInScene: row.indexInScene,
-            speaker: row.speaker,
+            ...row.naming,
             sourceText: row.sourceText,
         }, config.namingPattern, locale);
-        return key ? assetNameKeys.get(key) : undefined;
+        for (const key of keys) {
+            const assetId = assetNameKeys.get(key);
+            if (assetId) {
+                return assetId;
+            }
+        }
+        return undefined;
     }, [assetNameKeys, config, locale]);
 
     const rowStates = useMemo(() => {

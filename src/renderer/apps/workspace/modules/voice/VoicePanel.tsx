@@ -35,10 +35,12 @@ import { deriveVoiceUnitState, type VoiceProgress } from "@/lib/workspace/servic
 import {
     buildRecordingScriptRows,
     buildVoiceNameKeyMap,
+    voiceLineSpeaker,
     withSceneIndices,
     type VoiceScriptEntry,
 } from "@/lib/workspace/services/voice/voiceScript";
 import type { StoryTranslationRow } from "@/lib/workspace/services/localization/localizationModel";
+import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -131,6 +133,10 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
     );
     const characterService = useMemo(
         () => (context && isInitialized ? context.services.get<CharacterService>(Services.Character) : null),
+        [context, isInitialized],
+    );
+    const localizationService = useMemo(
+        () => (context && isInitialized ? context.services.get<LocalizationService>(Services.Localization) : null),
         [context, isInitialized],
     );
 
@@ -333,21 +339,14 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
         openEditorTab(createVoiceEditorTab(code, displayName));
     }, [openEditorTab]);
 
-    const speakerNameFor = useCallback((row: StoryTranslationRow): string => {
-        if (row.role === "dialogue" && row.characterId) {
-            const character = characterService?.getCharacter(row.characterId);
-            if (character) {
-                return character.profile.getName();
-            }
-        }
-        // This feeds `{character}` in the recording filename as well as the script's speaker column,
-        // so a choice option has to read as one: filed under narration it would collide with the
-        // narrator's own lines in the same scene and land in the booth as the wrong instruction.
-        if (row.role === "choiceText") {
-            return t("workspace.voice.table.choiceSpeaker");
-        }
-        return t("workspace.voice.table.narrationSpeaker");
-    }, [characterService, t]);
+    // This feeds `{character}` in the recording filename as well as the script's speaker column, so
+    // it is the project's word for narration and options rather than the interface's: the same
+    // project has to export, and match back, the same names in every Studio.
+    const speakerNameFor = useCallback((row: StoryTranslationRow) => voiceLineSpeaker(
+        row,
+        characterId => characterService?.getCharacter(characterId)?.profile.getName(),
+        localizationService?.getConfiguration().sourceLocale,
+    ), [characterService, localizationService]);
 
     // Gather every voiceable line across all stories as recording-script entries
     // (speaker resolved, 1-based index within each scene). On-demand — the
@@ -370,7 +369,7 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                         sceneId: row.sceneId,
                         sceneName: row.sceneName,
                         indexInScene: 0,
-                        speaker: speakerNameFor(row),
+                        ...speakerNameFor(row),
                         sourceText: voiceService.getLineText(locale, row.unitId, row.sourceText),
                     });
                 }
