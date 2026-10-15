@@ -56,7 +56,7 @@ import type { ReferenceService } from "../references/ReferenceService";
 import { dirname, extname } from "@shared/utils/path";
 import type { TranslationKey } from "@shared/i18n";
 import { AssetTrash } from "../assets/AssetTrash";
-import { AssetLibraryChange, type TakenFolder } from "../assets/AssetLibraryChange";
+import { AssetLibraryChange, type AssetIdentity, type TakenFolder } from "../assets/AssetLibraryChange";
 import { describeRestoreNotKept } from "@/lib/workspace/assets/importFailure";
 import { HistoryService } from "../history/HistoryService";
 import type { HistoryLabel } from "../history/historyModel";
@@ -2811,7 +2811,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
                 }
                 return kept.missing ? { missing: true } : { refusal: { kind: "notKept", fsCode: kept.fsCode } };
             },
-            write: (asset, token) => this.replaceAssetContent(asset, trash.pathOf(token)),
+            write: (asset, token, identity) => this.restoreKeptContent(asset, trash.pathOf(token), identity),
             release: (type, token) => trash.purge(token, type),
             takeBack: async asset => {
                 const plan = await this.removeAssetForRestore(asset);
@@ -2836,6 +2836,43 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
                 }
             },
         });
+    }
+
+    /**
+     * Put bytes kept for undo back into an asset, with the name and extension its record had while it
+     * held them. {@link replaceAssetContent}'s four steps in its order, so thumbnails, previews and
+     * waveforms refresh as they did for the replacement; what differs is that the bytes are the
+     * asset's own, so no format check stands in their way, and the record's name and extension are
+     * put back as they were rather than derived from the file (`AssetsMetadataManager.applyRestoredContent`).
+     */
+    private async restoreKeptContent<T extends AssetType>(
+        asset: Asset<T, AssetSource>,
+        sourcePath: string,
+        identity: AssetIdentity,
+    ): Promise<RefusableStatus<Asset<T, AssetSource>>> {
+        if (asset.source !== AssetSource.Local) {
+            return { success: false, error: "Restoring the contents of a remote asset is not supported" };
+        }
+        const written = await this.getLocalAssetsManager()
+            .writeAssetContentFromPath(asset as Asset<T, AssetSource.Local>, sourcePath, { ownBytes: true });
+        if (!written.success || !written.data) {
+            return { success: false, error: written.error, refusal: written.refusal };
+        }
+
+        try {
+            await this.clearThumbnailCache(asset.id);
+        } catch (error) {
+            console.warn(`Failed to clear thumbnail cache for asset: ${asset.id}`, error);
+        }
+
+        const applied = this.getAssetsMetadataManager().applyRestoredContent(asset, written.data.hash, identity);
+        if (!applied.success || !applied.data) {
+            return { success: false, error: applied.error };
+        }
+
+        this.getEvents().emit("updated", applied.data);
+
+        return { success: true, data: applied.data };
     }
 
     /**

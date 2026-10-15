@@ -979,6 +979,53 @@ describe("AssetsService.replaceAssetContentUndoably", () => {
         expect(metadata[AssetType.Image]["asset-1"].name).toBe("room.jpg");
     });
 
+    it("gives a record with no extension its own name back, as the starter template's assets have", async () => {
+        const asset = imageAsset("asset-1", { name: "classroom", ext: undefined });
+        delete (asset as { ext?: string }).ext;
+        seedPayload("asset-1", "JPEG");
+        fakeDisk.set("C:/incoming/red.png", "PNG");
+        const { service, metadata, history } = createHarness([asset]);
+
+        await service.replaceAssetContentUndoably(asset, "C:/incoming/red.png", label);
+        expect(metadata[AssetType.Image]["asset-1"].name).toBe("classroom.png");
+        expect(metadata[AssetType.Image]["asset-1"].ext).toBe("png");
+
+        history.undo(projectHistoryScope());
+        await history.settled();
+        expect(fakeDisk.get("assets/content/asset-1")).toBe("JPEG");
+        // Exactly as it was: no extension made up from the bytes, and none on the name.
+        expect(metadata[AssetType.Image]["asset-1"].name).toBe("classroom");
+        expect("ext" in metadata[AssetType.Image]["asset-1"]).toBe(false);
+
+        history.redo(projectHistoryScope());
+        await history.settled();
+        expect(fakeDisk.get("assets/content/asset-1")).toBe("PNG");
+        expect(metadata[AssetType.Image]["asset-1"].name).toBe("classroom.png");
+        expect(metadata[AssetType.Image]["asset-1"].ext).toBe("png");
+    });
+
+    it("tells the author when an undo could not write the old file back", async () => {
+        const asset = imageAsset("asset-1");
+        seedPayload("asset-1", "OLD");
+        fakeDisk.set("C:/incoming/new.png", "NEW");
+        const notifications: unknown[] = [];
+        const { service, history } = createHarness([asset], { notifications });
+        await service.replaceAssetContentUndoably(asset, "C:/incoming/new.png", label);
+
+        const local = (service as any).localAssetsManager;
+        local.writeAssetContentFromPath = async () => ({ success: false, error: "disk", refusal: { kind: "copyFailed", fsCode: "NO_SPACE" } });
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+        try {
+            history.undo(projectHistoryScope());
+            await history.settled();
+        } finally {
+            warn.mockRestore();
+        }
+
+        expect(fakeDisk.get("assets/content/asset-1")).toBe("NEW");
+        expect(notifications).toHaveLength(1);
+    });
+
     it("writes nothing and leaves no step when the current file cannot be copied aside", async () => {
         const asset = imageAsset("asset-1");
         seedPayload("asset-1", "OLD");

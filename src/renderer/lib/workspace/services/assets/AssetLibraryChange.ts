@@ -7,6 +7,14 @@ type AnyAsset = Asset<AssetType, AssetSource>;
 /** A folder taken out of the library by an undo: its record, and where it was listed among its siblings. */
 export type TakenFolder = { record: AssetGroup; orderIndex: number };
 
+/**
+ * The name and extension an asset's record had while it held a given set of bytes. They go back with
+ * the bytes exactly as they were - a record with no extension and a name like `classroom`, which the
+ * starter template's assets have, comes back as `classroom` and not as whatever its bytes would be
+ * named today.
+ */
+export type AssetIdentity = { name: string; ext?: string };
+
 /** Why an asset's bytes could not be held aside, by the asset's name. */
 export type AssetKeepFailure = { name: string; refusal: AssetImportRefusal };
 
@@ -26,8 +34,11 @@ export interface AssetLibraryChangePort<P> {
     lookup(type: AssetType, assetId: string): AnyAsset | undefined;
     /** Copy an asset's current bytes aside, leaving them in place. */
     keep(asset: AnyAsset): Promise<AssetKeepAnswer>;
-    /** Write bytes held aside over the asset's own, through the same steps a replacement takes. */
-    write(asset: AnyAsset, token: string): Promise<RefusableStatus<unknown>>;
+    /**
+     * Write bytes held aside over the asset's own, through the same steps a replacement takes, and
+     * give the record back the name and extension it had with them.
+     */
+    write(asset: AnyAsset, token: string, identity: AssetIdentity): Promise<RefusableStatus<unknown>>;
     /** Let bytes held aside go. Never throws. */
     release(type: AssetType, token: string): void;
     /** Take an asset out of the library, keeping what puts it back. Null when that cannot be done. */
@@ -65,9 +76,15 @@ type HeldContent = {
     assetId: string;
     type: AssetType;
     token: string;
+    /** What the record was called while it held the bytes in the slot. */
+    identity: AssetIdentity;
     /** Which side the asset's file holds: the operation's bytes, or the ones it wrote over. */
     live: "after" | "before";
 };
+
+function identityOf(asset: AnyAsset): AssetIdentity {
+    return asset.ext === undefined ? { name: asset.name } : { name: asset.name, ext: asset.ext };
+}
 
 type ImportedAsset<P> = {
     type: AssetType;
@@ -98,11 +115,13 @@ type CreatedFolder = {
  *
  * # Undo and redo
  *
- * Both write through the library's own replace path (`AssetsService.replaceAssetContent`), so an undo
+ * Both write through the library's replace steps (`AssetsService.restoreKeptContent`), so an undo
  * refreshes thumbnails, previews and waveforms exactly as the replacement did - the hash moves, the
- * cached thumbnail goes, `updated` is announced. Each step first copies aside every file it is about to
+ * cached thumbnail goes, `updated` is announced - and the record gets back the name and extension it
+ * had with those bytes ({@link AssetIdentity}). Each step first copies aside every file it is about to
  * write over, so the step after it has them; a copy that cannot be made stops the step before anything
- * is written, tells the author which asset and why, and leaves the step where it was on the stack.
+ * is written, tells the author which asset and why, and leaves the step where it was on the stack. A
+ * write that fails after that is told too.
  *
  * Imported assets are taken out of the library on undo and put back on redo, through the same trash a
  * deletion uses. An operation that imports and replaces is one gesture, and taking back half of it
@@ -153,7 +172,7 @@ export class AssetLibraryChange<P = unknown> {
                 return { ok: false, name: asset.name, refusal: answer.refusal };
             }
             if ("token" in answer) {
-                fresh.push({ assetId: asset.id, type: asset.type, token: answer.token, live: "before" });
+                fresh.push({ assetId: asset.id, type: asset.type, token: answer.token, identity: identityOf(asset), live: "before" });
             }
         }
         fresh.forEach(entry => this.held.set(entry.assetId, entry));
@@ -278,12 +297,12 @@ export class AssetLibraryChange<P = unknown> {
      *
      * Every copy is made before any file is written, which is what lets a failed copy stop the step
      * with every asset still as it was. A write that fails after that leaves its asset on the side it
-     * was on, with its copy untouched; the asset's own `live` says which side that is, so the next
-     * step in either direction treats it correctly.
+     * was on, with its copy untouched, and the author is told which asset; the asset's own `live` says
+     * which side it is on, so the next step in either direction treats it correctly.
      */
     private async swap(target: HeldContent["live"]): Promise<void> {
         const moving = [...this.held.values()].filter(entry => entry.live !== target);
-        const plan: { entry: HeldContent; asset: AnyAsset; next: string | null }[] = [];
+        const plan: { entry: HeldContent; asset: AnyAsset; next: string | null; identity: AssetIdentity }[] = [];
         for (const entry of moving) {
             const asset = this.port.lookup(entry.type, entry.assetId);
             if (!asset) {
@@ -297,19 +316,21 @@ export class AssetLibraryChange<P = unknown> {
                 this.port.report(failure);
                 throw new AssetKeepError(failure);
             }
-            plan.push({ entry, asset, next: "token" in answer ? answer.token : null });
+            plan.push({ entry, asset, next: "token" in answer ? answer.token : null, identity: identityOf(asset) });
         }
 
-        for (const { entry, asset, next } of plan) {
-            const written = await this.port.write(asset, entry.token);
+        for (const { entry, asset, next, identity } of plan) {
+            const written = await this.port.write(asset, entry.token, entry.identity);
             if (!written.success) {
                 console.warn(`[AssetLibraryChange] could not restore ${asset.name}`, written.error);
                 if (next !== null) {
                     this.port.release(entry.type, next);
                 }
+                this.port.report({ name: asset.name, refusal: written.refusal ?? { kind: "copyFailed" } });
                 continue;
             }
             this.port.release(entry.type, entry.token);
+            entry.identity = identity;
             entry.live = target;
             if (next === null) {
                 // The file had gone missing, so there is no other side to hold: this asset leaves
