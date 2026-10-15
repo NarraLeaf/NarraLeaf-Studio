@@ -35,6 +35,8 @@ import { useTranslation } from "@/lib/i18n";
 import { SearchBox } from "./SearchBox";
 import { FilterSystem, type ActiveFilter } from "./FilterSystem";
 import { ImportQueueStrip } from "./ImportQueueStrip";
+import { ModelImportWizard, type ModelImportSelection } from "./ModelImportWizard";
+import type { ModelFamily } from "@shared/utils/modelImportScan";
 import { useAssetData } from "../state/useAssetData";
 import { useAssetFilters } from "../state/useAssetFilters";
 import { useAssetSetNaming } from "../state/useAssetSetNaming";
@@ -96,6 +98,11 @@ export interface AssetSelectorProps {
      * Return null/undefined to fall back to the default fetch path.
      */
     resolveAssetPreviewUrl?: (asset: Asset) => Promise<string | null | undefined>;
+    /**
+     * For a model picker: the kind of model the caller draws, which the import wizard opens on. Left
+     * out, the wizard asks.
+     */
+    modelFamily?: ModelFamily;
     onClose: () => void;
     onConfirm: (assets: Asset[]) => void;
 }
@@ -111,6 +118,7 @@ export function AssetSelector({
     virtualGroups,
     virtualGroupsPlacement = "before",
     resolveAssetPreviewUrl,
+    modelFamily,
     onClose,
     onConfirm,
 }: AssetSelectorProps) {
@@ -170,17 +178,31 @@ export function AssetSelector({
     const hostDocument = useHostDocument();
     const hostWindow = useHostWindow();
 
+    /**
+     * Whether the model import wizard is up in the picker's place. A model is imported through the
+     * wizard here as everywhere else - its scan is what catches a folder one level too high and an
+     * export short a texture - and the picker steps aside while it is open: the wizard is a dialog,
+     * and the picker a layer on the window's body that would draw over it.
+     */
+    const [modelWizardOpen, setModelWizardOpen] = useState(false);
+    useEffect(() => {
+        if (!visible) {
+            setModelWizardOpen(false);
+        }
+    }, [visible]);
+
     // A dialog that positions against its trigger rather than centring, so it is not a `Modal`, but
     // it dims the window like one and keeps a `Modal`'s keyboard behaviour: focus goes to the search
     // field when it opens, Tab cannot walk out to the page behind the dim, Escape closes the picker
     // and nothing it was opened from, the arrows walk the folders and assets (ArrowDown from the
     // search field enters the list), and closing gives focus back to the control that opened it.
+    // While the model import wizard is up the layer stands down, and the wizard's own keys rule.
     //
     // Escape used to reach the search field first, which cleared the query and let the key go on to
     // close the picker. The layer hears it before the field now, so the query is cleared here to keep
     // what an Escape leaves behind the same: the next visit starts from the whole list.
     useFloatingLayer({
-        open: visible,
+        open: visible && !modelWizardOpen,
         onClose: () => {
             setSearchQuery("");
             onClose();
@@ -231,6 +253,26 @@ export function AssetSelector({
         return () => cancelAnimationFrame(frame);
         // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by value, like the effect above
     }, [selectedIdsKey, visible, hasLoaded]);
+
+    /**
+     * A row a single-select import brought in, scrolled to and focused once the list has it. The tick
+     * stays on the caller's answer, so this is how the author finds what they imported - one click,
+     * or Enter, from choosing it.
+     */
+    const [revealAssetId, setRevealAssetId] = useState<string | null>(null);
+    useEffect(() => {
+        if (!visible || !revealAssetId) {
+            return;
+        }
+        const row = [...(panelRef.current?.querySelectorAll<HTMLElement>("[data-asset-id]") ?? [])]
+            .find(candidate => candidate.dataset.assetId === revealAssetId);
+        if (!row) {
+            return;
+        }
+        row.scrollIntoView({ block: "nearest" });
+        row.focus();
+        setRevealAssetId(null);
+    }, [assets, revealAssetId, visible]);
 
     // The selector still picks exactly one `AssetType`, but the browser's lists are keyed by the
     // sidebar section that type is filed under, so each one is narrowed back down here. The folder
@@ -694,7 +736,7 @@ export function AssetSelector({
      * This used to report nothing at all. A file that was refused left the picker exactly as it was,
      * and the only record of why was a line in the console - an import gesture that simply vanished.
      */
-    const runPickerImport = useCallback(async (paths: string[]) => {
+    const runPickerImport = useCallback(async (paths: string[], entryByPath?: Readonly<Record<string, string>>) => {
         if (!assetsService || paths.length === 0) return;
         importQueue.start({ category: assetCategory, total: paths.length });
         // Whether the strip has the per-file verdicts, so a throw after them cannot blame every file.
@@ -710,28 +752,70 @@ export function AssetSelector({
                 reported = true;
                 return;
             }
-            importQueue.finish(collectImportFailures(paths, result.data, t)
-                .map(failure => ({ path: failure.path, ...(failure.reason ? { error: failure.reason } : {}) })));
+            // A model's entry, read off its manifest by the wizard, is written as the asset panel
+            // writes it, while the result still lines up with the folder it came from. A model whose
+            // entry could not be recorded draws nothing, so it is listed as a failure of that folder.
+            const entryFailures: string[] = [];
+            if (entryByPath) {
+                for (const [index, entry] of result.data.entries()) {
+                    const modelEntry = entryByPath[paths[index]];
+                    if (!entry.success || !entry.data || !modelEntry) {
+                        continue;
+                    }
+                    const recorded = await assetsService.patchAssetExtras(entry.data as Asset, { modelEntry });
+                    if (!recorded.success) {
+                        console.warn(`[assets] could not record the entry of ${entry.data.name}`, recorded.error);
+                        entryFailures.push(paths[index]);
+                    }
+                }
+            }
+            importQueue.finish([
+                ...collectImportFailures(paths, result.data, t)
+                    .map(failure => ({ path: failure.path, ...(failure.reason ? { error: failure.reason } : {}) })),
+                ...entryFailures.map(path => ({ path })),
+            ]);
             reported = true;
 
             await loadAssets();
-            // Selected as well as imported: the author opened this picker to choose one, and the
-            // file they just brought in is the answer.
-            const newAssetIds = result.data.flatMap(entry => (entry.success ? [entry.data.id] : []));
-            if (newAssetIds.length > 0) {
+            const newAssetIds = result.data.flatMap((entry, index) => (
+                entry.success && !entryFailures.includes(paths[index]) ? [entry.data.id] : []
+            ));
+            if (newAssetIds.length === 0) {
+                return;
+            }
+            if (multiple) {
+                // Ticked as well as imported: the author opened this picker to choose, and the files
+                // they just brought in are part of the answer until they untick them.
                 setSelection(prev => {
                     const next = new Set(prev);
                     newAssetIds.forEach(id => next.add(id));
                     return next;
                 });
+                return;
             }
+            // One answer at a time. The tick stays on what the caller has, which a click on a row
+            // replaces, and the import is brought into view to be clicked. Ticking it as well put
+            // two ticks on a list that can only mean one: a character using Hiyori showed the
+            // Hiyori-1 just imported ticked beside it, while it went on using Hiyori.
+            setRevealAssetId(newAssetIds[0]);
         } catch (error) {
             console.error("[assets] the picker's import threw", error);
             if (!reported) {
                 importQueue.finish(paths.map(path => ({ path })));
             }
         }
-    }, [assetsService, assetCategory, assetType, importQueue, loadAssets, t]);
+    }, [assetsService, assetCategory, assetType, importQueue, loadAssets, multiple, t]);
+
+    /** The entries of the last folders the wizard handed over, so a retry of one still records it. */
+    const modelEntriesRef = useRef<Readonly<Record<string, string>> | undefined>(undefined);
+    const completeModelImport = useCallback((selection: ModelImportSelection[]) => {
+        setModelWizardOpen(false);
+        // Asked again rather than trusted from the click that opened the wizard: the wizard is a
+        // conversation, and a freeze can arm while it is on screen.
+        if (freeze.frozen || selection.length === 0) return;
+        modelEntriesRef.current = Object.fromEntries(selection.map(entry => [entry.rootPath, entry.entry]));
+        void runPickerImport(selection.map(entry => entry.rootPath), modelEntriesRef.current);
+    }, [freeze.frozen, runPickerImport]);
 
     const handleImportAssets = useCallback(async () => {
         if (!assetsService) return;
@@ -741,6 +825,11 @@ export function AssetSelector({
         // has already written; and this picker is a portal on the window's body, so a freeze that arms
         // while it is open reaches nothing that would have closed it.
         if (freeze.frozen) return;
+
+        if (assetType === AssetType.Model) {
+            setModelWizardOpen(true);
+            return;
+        }
 
         // A bundle is authored as a folder, so it is picked as one. Going through `selectFile` with an
         // extension filter is exactly what would import a model as eighteen loose assets.
@@ -756,8 +845,21 @@ export function AssetSelector({
     }, [assetsService, assetType, context, freeze.frozen, runPickerImport, t]);
 
     const retryPickerImport = useCallback(() => {
-        void runPickerImport(importState.failures.map(failure => failure.path));
-    }, [importState.failures, runPickerImport]);
+        void runPickerImport(
+            importState.failures.map(failure => failure.path),
+            assetType === AssetType.Model ? modelEntriesRef.current : undefined,
+        );
+    }, [assetType, importState.failures, runPickerImport]);
+
+    const modelWizard = assetType === AssetType.Model ? (
+        <ModelImportWizard
+            visible={visible && modelWizardOpen}
+            family={modelFamily}
+            tickLoneModel
+            onClose={() => setModelWizardOpen(false)}
+            onImport={completeModelImport}
+        />
+    ) : null;
 
     if (!visible) {
         return null;
@@ -901,7 +1003,8 @@ export function AssetSelector({
 
     return createPortal(
         <>
-            {panel}
+            {modelWizardOpen ? null : panel}
+            {modelWizard}
             {previewState && (
                 <div
                     style={{

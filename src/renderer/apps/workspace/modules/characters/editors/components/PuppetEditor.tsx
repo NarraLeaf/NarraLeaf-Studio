@@ -512,6 +512,7 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
                     anchorRef={anchorMemo}
                     title={t("characters.editor.puppet.selectModel")}
                     multiple={false}
+                    modelFamily={MODEL_FAMILY_BY_KIND[appearance.getKind()]}
                 />
             </div>
         );
@@ -626,6 +627,7 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
                 anchorRef={anchorMemo}
                 title={t("characters.editor.puppet.selectModel")}
                 multiple={false}
+                modelFamily={MODEL_FAMILY_BY_KIND[appearance.getKind()]}
             />
         </div>
     );
