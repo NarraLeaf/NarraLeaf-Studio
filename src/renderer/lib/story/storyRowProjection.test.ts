@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { commandI18nStore, i18nStore } from "@/lib/i18n";
+import { commandI18nStore, i18nStore, translate, translateCommand } from "@/lib/i18n";
+import type { TranslationKey } from "@shared/i18n";
 import { LOCALIZED_COMMANDS_DEFAULT } from "@/lib/settings/commandLanguageOptions";
 import type { StoryBlock, StoryDocument, StoryScene } from "@shared/types/story";
 import {
@@ -531,6 +532,18 @@ describe("the subject line of a staging row, in zh", () => {
         expect(describeStoryBlock(text, bare)).toBe("Create text title");
         // Every other operation still reads as its own command.
         expect(describeStoryBlock(action({ action: "vfx", operation: "show", objectName: "rain" }), bare)).toBe("Show ambience rain");
+    });
+
+    it("calls a camera reset by the verb its line is written with", () => {
+        // The line says 重置 (`/reset camera`); the subject and the inspector said 复位.
+        const reset = action({ action: "camera", operation: "reset" });
+        for (const [locale, subject] of [["zh", "重置镜头"], ["en", "Reset camera"], ["ja", "カメラをリセット"]] as const) {
+            i18nStore.setLocale(locale);
+            expect(describeStoryBlock(reset, bare), locale).toBe(subject);
+            const verb = translateCommand("story.command.reset.label" as TranslationKey);
+            expect(subject.toLowerCase(), locale).toContain(verb.toLowerCase());
+            expect(translate("storyInspector.cameraOperation.reset" as TranslationKey).toLowerCase(), locale).toContain(verb.toLowerCase());
+        }
     });
 
     it("names a transform's subject as the author knows it", () => {

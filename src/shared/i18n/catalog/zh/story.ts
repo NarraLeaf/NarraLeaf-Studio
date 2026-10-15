@@ -762,7 +762,7 @@ export const story = {
         darken: "压暗",
         look: "色调",
         motion: "运镜",
-        reset: "复位",
+        reset: "重置",
         // `/camera look` 的色调名。命令行既按这些词显示、也接受它们输入。
         memory: "回忆",
         monologue: "心理独白",
@@ -1446,7 +1446,7 @@ export const story = {
             transform: "镜头",
             look: "色调",
             motion: "运镜",
-            reset: "复位",
+            reset: "重置镜头",
         },
         condition: "条件",
         branch: "{branch}分支",
