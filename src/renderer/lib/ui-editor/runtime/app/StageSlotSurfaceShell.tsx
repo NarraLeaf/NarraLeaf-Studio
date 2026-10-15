@@ -31,8 +31,8 @@ import {
     type GameHostSurfaceBinding,
 } from "./gameHostApiOptions";
 import { stageSlotRuntimeScopeId } from "./stageSlots";
-import { isStageSlotConcealedByPage } from "./layers/stageOcclusion";
-import { useStageCovered, useStageCoveredByPage } from "./stageConcealment";
+import { isStageSlotConcealedByPage, isStageSlotConcealedByVideo } from "./layers/stageOcclusion";
+import { useStageCovered, useStageCoveredByPage, useStageHeldByVideo } from "./stageConcealment";
 import type { AmbientSurfaceTargets } from "./ambientSurfaceEvents";
 import { createNestedSurfaceHost } from "./nestedSurfaceHost";
 import { staticSurfaceHostAdapter, type SurfaceStateAccessors } from "./types";
@@ -313,7 +313,12 @@ export function StageSlotSurfaceBody(props: {
     const { options, surface, runtime, surfacePointerEvents, passive, navigable = false } = props;
     // Stepped off the screen, not unmounted, while a page is up: the line keeps revealing and the
     // graphs keep their state, so closing the page brings back exactly what it covered.
-    const concealed = useStageCoveredByPage() && isStageSlotConcealedByPage(surface.mount.slotId);
+    // And while the story holds on a clip it waits out, which is the screen then (see
+    // `isStageSlotConcealedByVideo`).
+    const coveredByPage = useStageCoveredByPage();
+    const heldByVideo = useStageHeldByVideo();
+    const concealed = (coveredByPage && isStageSlotConcealedByPage(surface.mount.slotId))
+        || (heldByVideo && isStageSlotConcealedByVideo(surface.mount.slotId));
     // The keys leave the whole stage with the story, notifications included: a page or a modal layer
     // over it owns them (see `keyboardOwner`), and a key head on a widget down here answering the same
     // press would be a second owner. They come back as the cover goes.
