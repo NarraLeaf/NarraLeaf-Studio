@@ -358,6 +358,11 @@ function finiteOr(value: number | undefined, fallback: number): number {
     return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+/** A `/play` row: at its own row the game is showing its clip. */
+function isVideoPlayRow(block: StoryBlock): boolean {
+    return block.kind === "action" && block.payload.action === "video" && block.payload.operation === "play";
+}
+
 /**
  * "Every saved variable" for a runtime consumer: the project registry's `saved` entries unioned with
  * the story's own `/save` declaration rows. The view also carries the cross-surface name
@@ -842,6 +847,11 @@ class SnapshotWalker {
             this.reachedTarget = true;
             this.nvl = insideNvl;
             this.targetCamera = this.cameraAfter(block);
+            // At its own row a play is the clip on screen, whatever it does when it ends: the still
+            // is the stage under it, so it is said here too (see `reportUndrawnMedia`).
+            if (!block.disabled && this.inert === 0 && isVideoPlayRow(block)) {
+                this.diagnostic(block.id, translate("story.preview.diagnostics.videoSkipped"));
+            }
             return;
         }
         // A disabled row is compiled out with everything under it, so a playthrough never runs it.
