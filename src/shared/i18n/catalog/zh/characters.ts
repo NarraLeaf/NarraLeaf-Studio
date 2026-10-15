@@ -85,6 +85,7 @@ export const characters = {
             redescribe: "重新读取模型",
             previewFailed: "无法绘制该模型",
             setupTitle: "还需准备两项",
+            setupTitleOne: "还需准备：{item}",
             stepRuntime: "绘制运行时",
             stepModel: "模型",
             runtimeInstalled: "已安装",

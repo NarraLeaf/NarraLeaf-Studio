@@ -19,6 +19,8 @@ import { PuppetEditor } from "./PuppetEditor";
 
 /** Flipped per case; read by the mocked hook below. */
 let frozen = false;
+/** Whether this character's runtime is installed, per case; read by the mocked disk read below. */
+let runtimeStatus: "absent" | "installed" = "absent";
 const FREEZE_REASON = "frozen-reason";
 
 const importFromPaths = vi.fn(async (): Promise<unknown> => ({ success: true as const, data: [] }));
@@ -60,10 +62,11 @@ vi.mock("@/apps/workspace/components/ui/freezeGuard", async () => {
 });
 
 vi.mock("@/apps/workspace/context", () => {
-    // One stub answers every service the inspector asks for: the library, and the notices.
+    // One stub answers every service the inspector asks for: the library, the notices, and the model
+    // reading a chosen model starts (left pending: what it says is not what these cases look at).
     stable.context = {
         project: "/proj",
-        services: { get: () => ({ getAssets: () => ({}), importFromPaths, patchAssetExtras, showNotification }) },
+        services: { get: () => ({ getAssets: () => ({}), importFromPaths, patchAssetExtras, showNotification, describe: () => new Promise(() => undefined) }) },
     };
     return { useWorkspace: () => ({ context: stable.context }) };
 });
@@ -76,7 +79,7 @@ vi.mock("@/lib/workspace/hooks/useAssetLibraryRevision", () => ({
 // and the one where the inspector offers the import rather than an empty picker.
 vi.mock("@/lib/workspace/services/puppet/projectPuppetRuntimes", () => ({
     listProjectPuppetRuntimes: async () => [],
-    readPuppetRuntimeInstallState: async () => ({ status: "absent" }),
+    readPuppetRuntimeInstallState: async () => ({ status: runtimeStatus }),
 }));
 
 // The wizard has its own scan and its own pickers; what is pinned here is how the inspector opens it
@@ -92,9 +95,9 @@ vi.mock("@/apps/workspace/modules/assets/components/ModelImportWizard", () => ({
 vi.mock("./PuppetPreview", () => ({ PuppetPreview: () => null }));
 vi.mock("@/apps/workspace/modules/assets/components/AssetSelector", () => ({ AssetSelector: () => null }));
 
-function appearanceStub(kind = "live2d"): CharacterAppearance {
+function appearanceStub(kind = "live2d", puppet: { backend?: string; assetId?: string | null } = {}): CharacterAppearance {
     return {
-        getPuppet: () => ({ backend: "", assetId: null, entry: null, size: null, options: {} }),
+        getPuppet: () => ({ backend: "", assetId: null, entry: null, size: null, options: {}, ...puppet }),
         getPuppetDefaultState: () => ({ motion: null, expression: null, skin: null }),
         getKind: () => kind,
         setPuppetAsset,
@@ -105,6 +108,7 @@ function appearanceStub(kind = "live2d"): CharacterAppearance {
 afterEach(() => {
     cleanup();
     frozen = false;
+    runtimeStatus = "absent";
     stable.wizard = null;
     importFromPaths.mockClear();
     patchAssetExtras.mockClear();
@@ -112,9 +116,9 @@ afterEach(() => {
     setPuppetAsset.mockClear();
 });
 
-async function mount(kind?: string): Promise<void> {
+async function mount(kind?: string, puppet?: { backend?: string; assetId?: string | null }): Promise<void> {
     await act(async () => {
-        render(<PuppetEditor appearance={appearanceStub(kind)} />);
+        render(<PuppetEditor appearance={appearanceStub(kind, puppet)} />);
     });
 }
 
@@ -220,5 +224,28 @@ describe("PuppetEditor model import that fails", () => {
 
         expect(showNotification).toHaveBeenCalledWith("assets.import.failedTitle", "error");
         expect(setPuppetAsset).not.toHaveBeenCalled();
+    });
+});
+
+describe("PuppetEditor setup heading", () => {
+    it("promises two things while neither is in place", async () => {
+        await mount("live2d", { backend: "live2d" });
+
+        expect(screen.getByText("characters.editor.puppet.setupTitle")).not.toBeNull();
+    });
+
+    it("names the model once the runtime is installed", async () => {
+        runtimeStatus = "installed";
+        await mount("live2d", { backend: "live2d" });
+
+        expect(screen.queryByText("characters.editor.puppet.setupTitle")).toBeNull();
+        expect(screen.getByText(`characters.editor.puppet.setupTitleOne${JSON.stringify({ item: "characters.editor.puppet.stepModel" })}`)).not.toBeNull();
+    });
+
+    it("names the runtime once a model is chosen", async () => {
+        await mount("live2d", { backend: "live2d", assetId: "model-1" });
+
+        expect(screen.queryByText("characters.editor.puppet.setupTitle")).toBeNull();
+        expect(screen.getByText(`characters.editor.puppet.setupTitleOne${JSON.stringify({ item: "characters.editor.puppet.stepRuntime" })}`)).not.toBeNull();
     });
 });
