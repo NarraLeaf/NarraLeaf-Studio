@@ -634,7 +634,7 @@ export const lint = {
         storyTagNameShared: {
             title: "Tag name on two axes",
             description: "A character with layered sprites using one tag name on two axes",
-            message: "The tag {tag} is on both {first} and {second}",
+            message: "The tag \"{tag}\" is on both \"{first}\" and \"{second}\"",
             help:
                 "A character with layered sprites has a tag of the same name on two of its axes, such as Blue under "
                 + "Outfit and under Hair. Names are compared ignoring case.\n"

@@ -624,7 +624,7 @@ export const lint = {
         storyTagNameShared: {
             title: "複数の軸にある同名のタグ",
             description: "レイヤー式の立ち絵のキャラクターで、2 つの軸に同じ名前のタグがある",
-            message: "{first} と {second} の両方の軸に {tag} という名前のタグがある",
+            message: "「{first}」と「{second}」の両方の軸に「{tag}」という名前のタグがある",
             help:
                 "レイヤー式の立ち絵のキャラクターの 2 つの軸に、同じ名前のタグがある。たとえば「服装」と「髪型」の両方に"
                 + "「青」がある。名前の大文字と小文字は区別しない\n"
