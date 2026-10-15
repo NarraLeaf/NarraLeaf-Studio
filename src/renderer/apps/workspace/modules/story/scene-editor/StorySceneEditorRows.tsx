@@ -2553,7 +2553,13 @@ export function InsertRow(props: {
                                 }
                                 return;
                             }
-                            chooser === "none" ? props.onDiscardSlot() : props.onDismissChooser();
+                            // A committed row opened as its line (F2, Edit as text) is given back by
+                            // the first press while no menu is on screen: there is no candidate rung
+                            // to take first, and a press that changed nothing visible looked dead.
+                            const menuShown = argMenuOpen || actionMenuOpen || chooser === "character";
+                            chooser === "none" || (props.mode.slot.rewritesRow && !menuShown)
+                                ? props.onDiscardSlot()
+                                : props.onDismissChooser();
                             return;
                         }
                         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
