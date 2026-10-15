@@ -182,6 +182,14 @@ export const workspace = {
                 other: "テイク {count} 件",
             },
             importFailed: "音声ファイルを読み込めなかった",
+            // 読み込むファイルの名前が、すでにテイクのある行に対応するときに尋ねる（追加収録）
+            replaceTakesTitle: "既存のテイクを差し替える",
+            replaceTakesMessage: {
+                other: "{count} 件のファイルが、すでにテイクのある行に対応している",
+            },
+            replaceTakesDetail: "差し替えると元のテイクのファイルは残らない。新しい音声として読み込むと、元のテイクはどの行にも結びつかないままアセットライブラリに残る",
+            replaceTakesImport: "新しい音声として読み込む",
+            replaceTakesReplace: "テイクを差し替える",
             importScript: "収録台本を読み込む…",
             importScriptCounts: "{applied}を反映した（変更なし {unchanged}、ボイス対象外 {unknown}）",
             scriptRowCount: {

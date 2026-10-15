@@ -208,3 +208,38 @@ export function matchImportedFiles(paths: readonly string[], keyMap: Map<string,
     }
     return { matched, unmatched };
 }
+
+/** A returned file whose line already has a take: its file can replace that take's. */
+export type TakeReplacement = ImportedFileMatch & { assetId: string };
+
+/**
+ * Split a batch of returned files into the ones that would re-record a line that already has a
+ * take, and the rest.
+ *
+ * A pickup comes back under the same name as the take it replaces - the name is the line's - so
+ * importing it as a new asset leaves the library holding `…-1.wav` linked to the line and the old
+ * take linked to nothing. These are the files that can instead replace the linked take's file.
+ * A take whose asset is gone (`hasAsset` false) has nothing to replace, and two files for one take
+ * replace it once: the first one wins, the second is imported.
+ */
+export function planTakeReplacements(
+    paths: readonly string[],
+    keyMap: Map<string, VoiceNameKey>,
+    takes: Readonly<Record<string, { assetId: string } | undefined>>,
+    hasAsset: (assetId: string) => boolean,
+): { replacements: TakeReplacement[]; imports: string[] } {
+    const replacements: TakeReplacement[] = [];
+    const imports: string[] = [];
+    const claimed = new Set<string>();
+    for (const path of paths) {
+        const hit = keyMap.get(matchKeyForFilename(path));
+        const assetId = hit ? takes[hit.unitId]?.assetId : undefined;
+        if (hit && assetId && hasAsset(assetId) && !claimed.has(assetId)) {
+            claimed.add(assetId);
+            replacements.push({ path, unitId: hit.unitId, sourceText: hit.sourceText, assetId });
+        } else {
+            imports.push(path);
+        }
+    }
+    return { replacements, imports };
+}

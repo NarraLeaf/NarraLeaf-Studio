@@ -201,6 +201,15 @@ export const workspace = {
                 other: "{count} takes",
             },
             importFailed: "Could not import the audio files",
+            // Asked when an imported file is named for a line that already has a take: a pickup.
+            replaceTakesTitle: "Replace existing takes",
+            replaceTakesMessage: {
+                one: "{count} file is named for a line that already has a take.",
+                other: "{count} files are named for lines that already have a take.",
+            },
+            replaceTakesDetail: "Replacing does not keep the old takes' files. Importing as new audio leaves the old takes in the asset library, linked to no line.",
+            replaceTakesImport: "Import as new audio",
+            replaceTakesReplace: "Replace takes",
             importScript: "Import recording script…",
             // `{applied}` is a whole count with its noun, from `scriptRowCount`.
             importScriptCounts: "Applied {applied} ({unchanged} unchanged, {unknown} not voiced)",

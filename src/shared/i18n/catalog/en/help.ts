@@ -512,7 +512,7 @@ export const help = {
                 + "column, Line ID, is what Import recording script uses to bring notes and statuses back to "
                 + "their lines, and is not to be edited.\n"
                 + "- A line whose text changed after its clip was assigned is marked Outdated, and Export pickup "
-                + "script writes only those lines.\n"
+                + "script writes only those lines. When the pickups are imported, their files can replace the old takes' files.\n"
                 + "- Choice options become lines to record only while Voice choice options is on.",
         },
         localization: {

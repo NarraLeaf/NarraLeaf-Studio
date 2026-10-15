@@ -7,6 +7,7 @@ import {
     buildVoiceNameKeyMap,
     buildAssetNameKeyMap,
     matchImportedFiles,
+    planTakeReplacements,
     voiceLineSpeaker,
     voiceMatchKeyForEntry,
     voiceMatchKeysForEntry,
@@ -189,5 +190,36 @@ describe("the speaker a narration line is named by", () => {
         };
         const [row] = buildRecordingScriptRows([entry], PATTERN, "zh", undefined);
         expect(row.filename).toBe("放学后_001_旁白");
+    });
+});
+
+describe("a pickup imported under the name its take already has", () => {
+    const keyMap = buildVoiceNameKeyMap(ENTRIES, PATTERN, "ja");
+
+    it("is offered as a replacement for the linked take's file", () => {
+        const plan = planTakeReplacements(
+            ["pickup/Rooftop_002_Aoi.wav", "Hallway_001_Aoi.wav", "leftover.wav"],
+            keyMap,
+            { "t-d1": { assetId: "a-old" } },
+            assetId => assetId === "a-old",
+        );
+        expect(plan.replacements).toEqual([
+            { path: "pickup/Rooftop_002_Aoi.wav", unitId: "t-d1", sourceText: "We should go.", assetId: "a-old" },
+        ]);
+        // A line with no take yet, and a file no line answers to, import as before.
+        expect(plan.imports).toEqual(["Hallway_001_Aoi.wav", "leftover.wav"]);
+    });
+
+    it("imports as new when the linked asset is gone, or a second file names the same take", () => {
+        const gone = planTakeReplacements(["Rooftop_002_Aoi.wav"], keyMap, { "t-d1": { assetId: "a-gone" } }, () => false);
+        expect(gone).toEqual({ replacements: [], imports: ["Rooftop_002_Aoi.wav"] });
+        const twice = planTakeReplacements(
+            ["Rooftop_002_Aoi.wav", "Rooftop_002_Aoi.ogg"],
+            keyMap,
+            { "t-d1": { assetId: "a-old" } },
+            () => true,
+        );
+        expect(twice.replacements.map(entry => entry.path)).toEqual(["Rooftop_002_Aoi.wav"]);
+        expect(twice.imports).toEqual(["Rooftop_002_Aoi.ogg"]);
     });
 });

@@ -178,6 +178,14 @@ export const workspace = {
                 other: "{count} 条",
             },
             importFailed: "无法导入音频文件",
+            // 导入的文件按名称对应到已有录音的行时询问：补录交回的文件
+            replaceTakesTitle: "替换已有录音",
+            replaceTakesMessage: {
+                other: "{count} 个文件对应的行已有录音",
+            },
+            replaceTakesDetail: "替换后不保留原录音的文件；导入为新音频时，原录音留在资产库中，不再关联到行",
+            replaceTakesImport: "导入为新音频",
+            replaceTakesReplace: "替换录音",
             importScript: "导入录音脚本…",
             importScriptCounts: "应用了 {applied}（{unchanged} 行未变，{unknown} 行没有语音）",
             scriptRowCount: {
