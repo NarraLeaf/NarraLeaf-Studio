@@ -119,7 +119,7 @@ import {
 } from "./preview/storyPreviewDockLayout";
 import { useStoryPreviewDockStacked } from "./preview/useStoryPreviewDockStacked";
 import { getStoryPreviewHub, useStoryPreviewLayout } from "./preview/storyPreviewHub";
-import { createDefaultStoryPreviewFloatRect, readRectInArea } from "./preview/storyPreviewFloatGeometry";
+import { createDefaultStoryPreviewFloatRect, readStoryPreviewFloatAnchor } from "./preview/storyPreviewFloatGeometry";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 /**
@@ -1684,7 +1684,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             previewHub.patchLayout({
                 open: true,
                 mode,
-                float: createDefaultStoryPreviewFloatRect(bounds, readRectInArea(editorBodyRef.current, area)),
+                float: createDefaultStoryPreviewFloatRect(bounds, readStoryPreviewFloatAnchor(editorBodyRef.current, area)),
             });
             return;
         }
