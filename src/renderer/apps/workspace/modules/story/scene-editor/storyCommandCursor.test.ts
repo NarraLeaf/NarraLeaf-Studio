@@ -305,6 +305,18 @@ describe("getCommandCandidates", () => {
         expect(values("/stop |")).toEqual(["bgm", "sound", "music", "intro"]);
     });
 
+    it("puts a name the query begins ahead of one it only occurs in, across the groups", () => {
+        // The reserved words lead an empty query, but 「N」 is the start of Narra, not the `n` inside
+        // `background`: the first row is the one Enter takes.
+        const context = { ...CONTEXT, characters: [{ id: "c9", name: "Narra" }] };
+        const first = (marked: string) => getCommandCandidates(at(marked), context, {})[0]?.value;
+        expect(first("/transform |")).toBe("camera");
+        expect(first("/transform N|")).toBe("Narra");
+        expect(getCommandCandidates(at("/transform N|"), context, {}).map(candidate => candidate.value))
+            .toEqual(["Narra", "background", "backgroundLayer"]);
+        expect(first("/transform b|")).toBe("background");
+    });
+
     it("says which world a name lives in when the slot spans several", () => {
         // `/pause intro` pausing a clip rather than the music is only right if "intro" was visibly a
         // video. Read off `accepts`, so a single-kind slot stays label-free. The KIND is carried, not a

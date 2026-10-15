@@ -220,6 +220,15 @@ function targetCandidates(
             entry => ({ kind: "asset", assetType, assetId: entry.id }),
         ));
     }
+    // A name the query begins outranks one it only occurs in, whichever group either comes from: the
+    // first row is the one Enter takes, and 「N」 on the way to Narra lit `background` because the
+    // reserved words lead and each has an `n` inside it. Within each tier the order above stands.
+    if (query.trim()) {
+        const leads = (candidate: StoryCommandCandidate) => startsWithFold(candidate.label, query)
+            || (candidate.mark?.kind === "reservedTarget" && candidate.detail !== undefined && startsWithFold(candidate.detail, query));
+        const ranked = [...candidates.filter(leads), ...candidates.filter(candidate => !leads(candidate))];
+        candidates.splice(0, candidates.length, ...ranked);
+    }
     // Offer the typed name back only where a free name is legal - the same rule resolution applies,
     // so the list never offers a name that then fails. A never-empty list keeps Tab and Enter
     // single-meaning there.
