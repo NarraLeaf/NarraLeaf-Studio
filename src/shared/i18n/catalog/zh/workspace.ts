@@ -226,6 +226,7 @@ export const workspace = {
             replace: "替换音频",
             remove: "移除配音",
             play: "播放录音",
+            showInStory: "在故事中显示",
             stop: "停止播放",
             approve: "通过",
             reject: "退回",

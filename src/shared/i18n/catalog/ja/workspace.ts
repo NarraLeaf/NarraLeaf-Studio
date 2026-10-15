@@ -229,6 +229,7 @@ export const workspace = {
             replace: "音声を差し替える",
             remove: "ボイスを外す",
             play: "テイクを再生",
+            showInStory: "ストーリーで表示",
             stop: "テイクを停止",
             approve: "承認",
             reject: "差し戻す",

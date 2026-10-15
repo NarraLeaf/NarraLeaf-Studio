@@ -19,6 +19,9 @@ import type { EditorComponentProps } from "../types";
 import { EmptyState, Select, type SelectOption } from "@/lib/components/elements";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { useWorkspace } from "../../context";
+import { useRegistry } from "../../registry";
+import { createStorySceneEditorTab } from "../story/scene-editor/openStorySceneEditorTab";
+import { nextStoryRevealToken } from "../story/scene-editor/storySceneEditorTabId";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useKeybinding, whenEditorFocused } from "@/apps/workspace/hooks";
 import { TableFindOverlay } from "@/apps/workspace/components/ui/TableFindOverlay";
@@ -74,10 +77,11 @@ const VOICE_ROW_HEIGHT_PX = 37;
  * `speaker` is the column's word, in the interface language; `naming` is what the line's take is
  * named by, which is the project's (`voiceLineSpeaker`) and the same in every Studio.
  */
-type TableRow = VoiceTableRow & { speaker: string; naming: VoiceLineSpeaker; indexInScene: number };
+type TableRow = VoiceTableRow & { speaker: string; naming: VoiceLineSpeaker; indexInScene: number; blockId: string };
 
 export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<VoiceEditorTabPayload | undefined>) {
     const { context, isInitialized } = useWorkspace();
+    const { openEditorTab } = useRegistry();
     const { t, tn } = useTranslation();
     // The rows guard themselves (see `VoiceRows`); the cast name in the group header is the one
     // writing control this shell owns.
@@ -256,6 +260,7 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
                         ...(scriptText !== row.sourceText ? { authoredText: row.sourceText } : {}),
                         sceneId: row.sceneId,
                         sceneName: row.sceneName,
+                        blockId: row.blockId,
                         indexInScene: row.indexInScene,
                         role: row.role,
                         ...(row.characterId ? { characterId: row.characterId } : {}),
@@ -753,7 +758,19 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
         statusApproved: t("workspace.voice.table.statusApproved"),
         statusOutdated: t("workspace.voice.table.statusOutdated"),
         notePlaceholder: t("workspace.voice.table.notePlaceholder"),
+        showInStory: t("workspace.voice.table.showInStory"),
     }), [t]);
+
+    /** The line's row in the story editor, deep-linked the way a search hit is. */
+    const showInStory = useCallback((row: TableRow) => {
+        if (!storyId || storyId === ORPHANS_SOURCE_VALUE) {
+            return;
+        }
+        openEditorTab(createStorySceneEditorTab(
+            { storyId, sceneId: row.sceneId, activeBlockId: row.blockId, revealToken: nextStoryRevealToken() },
+            row.sceneName,
+        ));
+    }, [openEditorTab, storyId]);
 
     const localeDisplayName = useMemo(() => {
         const config = voiceService?.getConfiguration();
@@ -1063,6 +1080,7 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
                                     onApprove={() => writeUnit(row.unitId, row.sourceText, { status: "approved" })}
                                     onReturn={() => writeUnit(row.unitId, row.sourceText, { status: "linked" })}
                                     onDropAsset={assetId => assignAsset(row.unitId, row.sourceText, assetId)}
+                                    onShowInStory={() => showInStory(row)}
                                 />
                             );
                         })() : null}

@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { Check, Play, Plus, RotateCcw, Square, Trash2 } from "lucide-react";
+import { Check, ExternalLink, Play, Plus, RotateCcw, Square, Trash2 } from "lucide-react";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import type { CompiledMatcher } from "@/lib/workspace/services/search/textMatcher";
 import { MarkedText } from "@/apps/workspace/components/ui/FindMarks";
@@ -49,6 +49,7 @@ type VoiceRowStrings = {
     statusApproved: string;
     statusOutdated: string;
     notePlaceholder: string;
+    showInStory: string;
 };
 
 type VoiceRowProps = {
@@ -83,6 +84,8 @@ type VoiceRowProps = {
     onReturn: () => void;
     onDropAsset: (assetId: string) => void;
     onNoteChange: (note: string) => void;
+    /** Open the line's row in the story editor. Absent where the line has no row to open. */
+    onShowInStory?: () => void;
 };
 
 const STATUS_DOT: Record<VoiceUnitState, string> = {
@@ -172,6 +175,19 @@ export function VoiceRow(props: VoiceRowProps) {
                     ? <MarkedText text={row.sourceText} matcher={props.matcher} active={props.matchActive} />
                     : "—"}
             </span>
+            {/* The way back to the line: the story row opens this table at it, and this opens the
+                story at the row. Laid out on every row so revealing it moves nothing. */}
+            {props.onShowInStory ? (
+                <button
+                    type="button"
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-fg focus-visible:opacity-100 group-hover:opacity-100"
+                    data-tip={strings.showInStory}
+                    aria-label={strings.showInStory}
+                    onClick={props.onShowInStory}
+                >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                </button>
+            ) : null}
 
             {hasClip ? (
                 <>

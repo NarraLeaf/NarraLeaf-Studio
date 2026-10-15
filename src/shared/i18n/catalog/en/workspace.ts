@@ -255,6 +255,7 @@ export const workspace = {
             replace: "Replace audio",
             remove: "Remove voice",
             play: "Play take",
+            showInStory: "Show in story",
             stop: "Stop take",
             approve: "Approve",
             reject: "Return",
