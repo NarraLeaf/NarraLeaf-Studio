@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { UISurface } from "@shared/types/ui-editor/document";
-import { scenePropertySchema, type SceneEditorContext } from "./sceneSchema";
+import { getSurfaceKindNoun, scenePropertySchema, type SceneEditorContext } from "./sceneSchema";
 
 function surface(kind: UISurface["kind"], backgroundColor?: string): UISurface {
     const base = {
@@ -66,5 +66,13 @@ describe("page music section", () => {
         const section = fields().find(item => item.id === "scene.music");
         expect(section?.hidden?.({ surface: surface("appSurface") } as SceneEditorContext)).toBe(false);
         expect(section?.hidden?.({ surface: surface("stageSurface") } as SceneEditorContext)).toBe(true);
+    });
+});
+
+describe("surface kind noun", () => {
+    it("names a page Page and a Game UI Game UI, not the story's Scene", () => {
+        const t = (key: string) => key;
+        expect(getSurfaceKindNoun(surface("appSurface"), t)).toBe("properties.scene.typePage");
+        expect(getSurfaceKindNoun(surface("stageSurface"), t)).toBe("properties.scene.typeGameUi");
     });
 });

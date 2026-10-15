@@ -56,12 +56,18 @@ const isGameUi = (surface: UISurface): surface is UIStageSurface => surface.kind
 const isEntryPage = (data: SceneEditorContext): boolean =>
     isEntrySurface(data.documentService.getDocument(), data.surface.id);
 
+/**
+ * What a surface is, as one noun: Page or Game UI. The word the inspector's subject row prints
+ * beside the surface's name - the story's own word, Scene, belongs to story scenes only.
+ */
+export const getSurfaceKindNoun = (surface: UISurface, t: TranslateFn): string =>
+    isGameUi(surface) ? t("properties.scene.typeGameUi") : t("properties.scene.typePage");
+
 const getInterfaceTypeLabel = (data: SceneEditorContext, t: TranslateFn): string => {
-    const surface = data.surface;
     if (isEntryPage(data)) {
         return t("uiEditor.surfaceKind.mainPage");
     }
-    return isGameUi(surface) ? t("properties.scene.typeGameUi") : t("properties.scene.typePage");
+    return getSurfaceKindNoun(data.surface, t);
 };
 
 const getGameUiSlotLabel = (surface: UISurface, t: TranslateFn): string => {
