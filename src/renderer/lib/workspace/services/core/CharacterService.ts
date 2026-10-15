@@ -85,6 +85,43 @@ export type CharacterOpSink = {
     handle(op: LiveCharacterOp): boolean;
 };
 
+type AvatarStampTable = Record<string, { baked?: string } & Record<string, unknown>>;
+
+/**
+ * `record` with each avatar's `baked` stamp taken from `live`: an entry the live character has a
+ * bake for keeps that stamp, and one it has none for has none. An entry only the live character has
+ * comes along as its stamp alone, so the next bake still finds the file it would otherwise leave
+ * behind. Everything the author sets on an entry - its crop, its override - is the record's.
+ */
+function withLiveAvatarStamps(record: StoredCharacter, live: StoredCharacter): StoredCharacter {
+    const next = structuredClone(record);
+    const appearance = next.profile.appearance as { avatars?: AvatarStampTable } | undefined;
+    const liveAvatars = (live.profile.appearance as { avatars?: AvatarStampTable } | undefined)?.avatars ?? {};
+    if (!appearance || (!appearance.avatars && Object.keys(liveAvatars).length === 0)) {
+        return next;
+    }
+    const avatars: AvatarStampTable = { ...(appearance.avatars ?? {}) };
+    for (const [key, entry] of Object.entries(avatars)) {
+        const { baked: _restored, ...authored } = entry;
+        const stamp = liveAvatars[key]?.baked;
+        if (stamp) {
+            avatars[key] = { ...authored, baked: stamp };
+        } else if (Object.keys(authored).length > 0) {
+            avatars[key] = authored;
+        } else {
+            // An entry is dropped once it carries nothing, as the bake itself drops one.
+            delete avatars[key];
+        }
+    }
+    for (const [key, entry] of Object.entries(liveAvatars)) {
+        if (!avatars[key] && entry.baked) {
+            avatars[key] = { baked: entry.baked };
+        }
+    }
+    appearance.avatars = avatars;
+    return next;
+}
+
 export class CharacterService extends Service<CharacterService> implements ICharacterService {
     private readonly characters: Record<string, Character> = {};
     private readonly characterOrder: string[] = [];
@@ -338,13 +375,23 @@ export class CharacterService extends Service<CharacterService> implements IChar
         });
     }
 
-    /** Put a whole record onto the live character, and tell everyone holding it. */
+    /**
+     * Put a whole record onto the live character, and tell everyone holding it. What an undo step
+     * restores.
+     *
+     * ⚠ **The avatars' `baked` stamps stay the live ones.** A stamp says which inputs the avatar file
+     * on disk was rendered from, and a step does not put that file back - so restoring the stamp from
+     * the record would vouch for a file that now shows something else. Seen after a PSD re-import:
+     * the re-bake drew the new art, Ctrl+Z put the old pixels and the old stamp back, the stamp
+     * matched the old pixels, and the dialog avatar went on showing the new art. Kept live, the stamp
+     * no longer matches what the record draws, and the next bake renders it again.
+     */
     private adoptRecord(id: string, record: StoredCharacter): void {
         const current = this.characters[id];
         if (!current) {
             return;
         }
-        current.adopt(record);
+        current.adopt(withLiveAvatarStamps(record, current.toJSON() as StoredCharacter));
         this.markDirty();
         this.emitChange();
         current.notifySubscribers();

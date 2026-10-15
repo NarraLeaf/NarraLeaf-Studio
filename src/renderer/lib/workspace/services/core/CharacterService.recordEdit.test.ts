@@ -148,6 +148,26 @@ describe("CharacterService.recordCharacterEdit", () => {
         expect(mei.toJSON()).toEqual(before);
     });
 
+    it("keeps the avatars' bake stamps live, so a step never vouches for a file it did not put back", async () => {
+        const { service, history } = createHarness();
+        const mei = service.createCharacter("Mei");
+        importInto(mei);
+        const appearance = mei.profile.appearance;
+        appearance.setAvatar("calm", { baked: "stamp-of-old-art", portrait: { x: 0, y: 0, w: 0.5, h: 0.5 } });
+        const before = structuredClone(mei.toJSON()) as StoredCharacter;
+
+        // The re-import, then the bake that drew the new art into the same file.
+        appearance.setLayerAsset(appearance.getLayers()[0].id, "asset-body-2");
+        service.recordCharacterEdit(mei.profile.getId(), before, LABEL, libraryStub([]));
+        appearance.setAvatar("calm", { baked: "stamp-of-new-art", portrait: { x: 0, y: 0, w: 0.5, h: 0.5 } });
+
+        history.undo(projectHistoryScope());
+        await history.settled();
+        // The layer is back; the stamp still describes the file on disk, so the next bake redraws it.
+        expect(appearance.getLayers()[0].assetId).toBe("asset-body");
+        expect(appearance.getAvatar("calm")).toEqual({ baked: "stamp-of-new-art", portrait: { x: 0, y: 0, w: 0.5, h: 0.5 } });
+    });
+
     it("lets the library's half go when the step leaves the stack", () => {
         const { service, history } = createHarness();
         const mei = service.createCharacter("Mei");
