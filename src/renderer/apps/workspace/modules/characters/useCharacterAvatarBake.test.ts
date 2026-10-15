@@ -1,6 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Character } from "@/lib/workspace/services/character/Character";
-import { avatarBakeInputs, resolveAvatarBakePortrait, shouldBakeCharacterAvatars } from "./useCharacterAvatarBake";
+import {
+    avatarBakeInputs,
+    bakeStaleAvatarsBeforeLaunch,
+    resetAvatarBakeStateForTests,
+    resolveAvatarBakePortrait,
+    shouldBakeCharacterAvatars,
+} from "./useCharacterAvatarBake";
 
 describe("shouldBakeCharacterAvatars", () => {
     it("bakes when the panel is open and the workspace is writable", () => {
@@ -91,5 +97,66 @@ describe("avatarBakeInputs", () => {
         appearance.setAvatarPortrait("p1", { x: 0.5, y: 0, w: 0.2, h: 0.2 });
         seen.add(avatarBakeInputs([character]));
         expect(seen.size).toBe(6);
+    });
+});
+
+/**
+ * The bake that runs before Dev Mode, Preview or a build reads the project.
+ *
+ * Without it a bake made by an older rule went on showing and shipping in every project whose author
+ * never opened the character panel. It runs a pass only when none has run on the cast as it stands,
+ * so a launch after the panel baked - or after a previous launch did - does nothing.
+ */
+describe("bakeStaleAvatarsBeforeLaunch", () => {
+    /** One character whose only pose draws `assetId` - what a bake reads, unlike her name. */
+    function castOf(assetId: string) {
+        const character = Character.fromJSON({
+            profile: {
+                id: "c1",
+                name: "Narra",
+                description: "",
+                tags: [],
+                attributes: {},
+                nicknames: [],
+                thumbnail: null,
+                appearance: { kind: "preset", defaultPoseId: "p1", poses: [{ id: "p1", name: "Default", assetId }], avatars: {} },
+            },
+        } as never);
+        return { listCharacter: () => [character] };
+    }
+
+    beforeEach(() => {
+        resetAvatarBakeStateForTests();
+    });
+
+    it("runs a pass on a project no bake has run on in this window", async () => {
+        const bake = vi.fn(async () => undefined);
+        expect(await bakeStaleAvatarsBeforeLaunch({ characters: castOf("a1"), frozen: false, bake })).toBe(true);
+        expect(bake).toHaveBeenCalledTimes(1);
+    });
+
+    it("runs none again until the cast changes", async () => {
+        const bake = vi.fn(async () => undefined);
+        const cast = castOf("a1");
+        await bakeStaleAvatarsBeforeLaunch({ characters: cast, frozen: false, bake });
+        expect(await bakeStaleAvatarsBeforeLaunch({ characters: cast, frozen: false, bake })).toBe(false);
+        expect(await bakeStaleAvatarsBeforeLaunch({ characters: castOf("a2"), frozen: false, bake })).toBe(true);
+        expect(bake).toHaveBeenCalledTimes(2);
+    });
+
+    it("writes nothing while the workspace is frozen", async () => {
+        const bake = vi.fn(async () => undefined);
+        expect(await bakeStaleAvatarsBeforeLaunch({ characters: castOf("a1"), frozen: true, bake })).toBe(false);
+        expect(bake).not.toHaveBeenCalled();
+    });
+
+    it("tries again on the next launch when a pass fails", async () => {
+        const failing = vi.fn(async () => {
+            throw new Error("disk full");
+        });
+        const cast = castOf("a1");
+        await expect(bakeStaleAvatarsBeforeLaunch({ characters: cast, frozen: false, bake: failing })).rejects.toThrow("disk full");
+        const bake = vi.fn(async () => undefined);
+        expect(await bakeStaleAvatarsBeforeLaunch({ characters: cast, frozen: false, bake })).toBe(true);
     });
 });

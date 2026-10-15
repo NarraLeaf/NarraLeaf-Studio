@@ -244,7 +244,85 @@ export function useCharacterAvatarBake(enabled: boolean): {
     return { rebake, running: state.running, summary: state.summary };
 }
 
-/** One pass over the whole cast. Only {@link useCharacterAvatarBake}'s `rebake` calls it. */
+/**
+ * Bring every avatar up to date before Dev Mode, Preview or a build reads the project, unless a bake
+ * pass has already run on the cast as it stands. Returns whether it ran one.
+ *
+ * The panel's open-bake and the edit-driven bake both need the character panel or editor to have
+ * been mounted, and an author who never opens either never gets one: a bake made by an older rule
+ * (a different framing, a different recipe) went on showing in Dev Mode and shipping in builds. A
+ * pass over a cast whose avatars are current only reads, so this is a re-bake of exactly the stale
+ * ones. Once per set of inputs: a launch after the panel baked, or after a previous launch did, does
+ * no work at all. Nothing while frozen - it writes, and a past version is not the author's to write.
+ *
+ * `bake` is the pass itself, injected for the test; production passes {@link bakeAll}.
+ */
+export async function bakeStaleAvatarsBeforeLaunch(input: {
+    characters: Pick<CharacterService, "listCharacter">;
+    frozen: boolean;
+    bake: () => Promise<void>;
+}): Promise<boolean> {
+    if (!isDeferredWriteAllowed(input.frozen)) {
+        return false;
+    }
+    if (runningBake) {
+        await runningBake;
+    }
+    const inputs = avatarBakeInputs(input.characters.listCharacter());
+    if (inputs === bakedInputs) {
+        return false;
+    }
+    // This pass covers whatever an edit still owed.
+    cancelOwedBake();
+    bakedInputs = inputs;
+    runningBake = input.bake()
+        .catch(error => {
+            // A pass that did not finish has not made anything current; the next launch tries again.
+            bakedInputs = null;
+            throw error;
+        })
+        .finally(() => {
+            runningBake = null;
+        });
+    await runningBake;
+    return true;
+}
+
+/** Forget every bake this window ran, for tests that start from a fresh window. */
+export function resetAvatarBakeStateForTests(): void {
+    cancelOwedBake();
+    runningBake = null;
+    bakedInputs = null;
+    bakeState = { running: false, summary: null };
+}
+
+/**
+ * Register {@link bakeStaleAvatarsBeforeLaunch} as derived work for the cast's flush, for the life of
+ * the workspace - which is what Dev Mode (a row's ▶ included), Preview and a build wait on before
+ * they read the project. Mounted once, by the workspace itself, so it does not depend on any
+ * character surface ever having been opened. Nothing runs when the project opens.
+ */
+export function useAvatarBakeBeforeLaunch(): void {
+    const { context, isInitialized } = useWorkspace();
+    const frozen = useWorkspaceFrozen();
+    const frozenRef = useRef(frozen);
+    frozenRef.current = frozen;
+    useEffect(() => {
+        if (!context || !isInitialized) {
+            return;
+        }
+        const characters = context.services.get<CharacterService>(Services.Character);
+        return characters.registerPendingDerivedWork(async () => {
+            await bakeStaleAvatarsBeforeLaunch({
+                characters,
+                frozen: frozenRef.current,
+                bake: () => bakeAll(context),
+            });
+        });
+    }, [context, isInitialized]);
+}
+
+/** One pass over the whole cast. {@link useCharacterAvatarBake}'s `rebake` and the pre-launch pass call it. */
 async function bakeAll(context: WorkspaceContext): Promise<void> {
     setBakeState({ running: true, summary: bakeState.summary });
     const byCharacter: Record<string, AvatarBakeReport> = {};
