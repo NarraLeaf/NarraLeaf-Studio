@@ -126,18 +126,40 @@ describe("computeStoryStageSnapshot", () => {
         expect(snapshot(document, "target").displayables).toEqual([]);
     });
 
-    it("warns that a /vfx overlay is not previewed, as it does for a video", () => {
-        // An ambience overlay is a real visual the snapshot cannot settle. Silence would leave the
-        // author reading a row-precise launch as complete when a layer of it is simply missing.
+    it("warns that a /vfx overlay or a clip is not previewed while it is on screen at the target", () => {
+        // An overlay showing, or a clip held on its last frame, is a real visual the snapshot cannot
+        // settle. Silence would leave the author reading the still as complete when a layer of it is
+        // simply missing. Each is said about the row that left it there.
         const document = baseDocument({
             rain: block("rain", "action", { action: "vfx", operation: "create", objectName: "rain", assetId: "asset-rain" }),
-            clip: block("clip", "action", { action: "video", operation: "create", objectName: "intro", assetId: "asset-intro" }),
+            showRain: block("showRain", "action", { action: "vfx", operation: "show", objectName: "rain" }),
+            clip: block("clip", "action", { action: "video", operation: "play", objectName: "intro", assetId: "asset-intro", hideOnEnd: false }),
             target: say("target"),
-        }, ["rain", "clip", "target"]);
+        }, ["rain", "showRain", "clip", "target"]);
         const result = snapshot(document, "target");
         expect(result.diagnostics).toEqual([
-            { level: "warning", blockId: "rain", message: "Ambience effects are not previewed." },
             { level: "warning", blockId: "clip", message: "Videos are not previewed." },
+            { level: "warning", blockId: "showRain", message: "Ambience effects are not previewed." },
+        ]);
+    });
+
+    it("says nothing about a clip that played and went, or an overlay not showing", () => {
+        // The opening clip plays, waits, fades and leaves; every row after it carried
+        // 「预览不播放视频」 although nothing of it is on screen there.
+        const document = baseDocument({
+            op: block("op", "action", { action: "video", operation: "play", objectName: "op", assetId: "asset-op" }),
+            rain: block("rain", "action", { action: "vfx", operation: "create", objectName: "rain", assetId: "asset-rain" }),
+            line: say("line"),
+            target: say("target"),
+        }, ["op", "rain", "line", "target"]);
+        expect(snapshot(document, "target").diagnostics).toEqual([]);
+        // A clip the story does not wait for is still running further on, so that one is said.
+        const running = baseDocument({
+            bgv: block("bgv", "action", { action: "video", operation: "play", objectName: "bgv", assetId: "asset-bgv", waitForEnd: false }),
+            target: say("target"),
+        }, ["bgv", "target"]);
+        expect(snapshot(running, "target").diagnostics).toEqual([
+            { level: "warning", blockId: "bgv", message: "Videos are not previewed." },
         ]);
     });
 
