@@ -192,6 +192,8 @@ export function ModelImportWizard(props: {
                 return t("assets.modelImport.problem.atlasEmpty", { path: problem.path });
             case "nestedModel":
                 return t("assets.modelImport.problem.nestedModel", { path: problem.path });
+            case "cubism2":
+                return t("assets.modelImport.problem.cubism2", { path: problem.path });
         }
     }, [t]);
 

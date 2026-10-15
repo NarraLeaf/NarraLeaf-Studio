@@ -232,7 +232,7 @@ export const assets = {
         familyNoRuntime: "此处不安装运行时；绘制所用的运行时在角色上设置",
         family: {
             live2d: "Live2D Cubism",
-            live2dHint: "含有 .model3.json 的文件夹，或 Cubism 2 的 model.json",
+            live2dHint: "含有 .model3.json 的文件夹（Cubism 3 及以后）",
             spine: "Spine",
             spineHint: "含有 .skel 或 .json 骨架、并与 .atlas 放在一起的文件夹",
         },
@@ -259,7 +259,7 @@ export const assets = {
             one: "导入 {count} 个模型",
             other: "导入 {count} 个模型",
         },
-        blockedHint: "缺少文件的模型默认不勾选；勾选后按当前状态导入",
+        blockedHint: "标为红色的模型默认不勾选；勾选后按当前状态导入",
         problemCount: {
             one: "{count} 个问题",
             other: "{count} 个问题",
@@ -271,6 +271,7 @@ export const assets = {
             atlasMissing: "骨架同级目录没有图集，应当存在 {path}",
             atlasEmpty: "{path} 没有指明任何图片",
             nestedModel: "其中还包含另一个模型 {path}，会随该文件夹一并导入",
+            cubism2: "{path} 为 Cubism 2 模型；Live2D Cubism 运行时只绘制 Cubism 3 及以后的模型",
         },
         role: {
             moc: "模型文件",
