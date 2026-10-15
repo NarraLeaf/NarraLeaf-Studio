@@ -213,9 +213,13 @@ function targetCandidates(
     // different things the line could mean, and the menu says which is which by picturing the file and
     // drawing a glyph for the object (see `storyCandidateMark`). Hiding either would leave the author
     // looking at a list that does not contain what they are about to type.
+    // A layered character's own layer pictures are not offered as things to put on stage: they still
+    // resolve when named, but listing 美绪's body and face layers among the backgrounds invited a
+    // single layer onto the stage as a picture.
+    const layerAssets = new Set(context.characterLayerAssetIds ?? []);
     for (const assetType of type.assets ?? []) {
         candidates.push(...refCandidates(
-            assetChoices(context, assetType, true),
+            assetChoices(context, assetType, true).filter(entry => assetType !== "image" || !layerAssets.has(entry.id)),
             query,
             entry => ({ kind: "asset", assetType, assetId: entry.id }),
         ));

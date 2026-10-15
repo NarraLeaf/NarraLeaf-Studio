@@ -403,9 +403,19 @@ export function buildStoryCommandContext(input: {
     // refs at all, and instead lands here - which is what lets `/face` keep one slot for all three
     // appearance kinds and `/motion` / `/skin` refuse the two Studio draws itself.
     const puppetCharacterIds = listPuppetCharacterIds(input.characters);
+    const characterLayerAssetIds = new Set<string>();
     const characters: StoryCommandNamedRef[] = input.characters.map(character => {
         const id = character.profile.getId();
         const appearance = character.profile.appearance;
+        if (appearance.getKind() === "layered") {
+            for (const layer of appearance.getLayers()) {
+                for (const assetId of [layer.assetId, ...Object.values(layer.options ?? {})]) {
+                    if (assetId) {
+                        characterLayerAssetIds.add(assetId);
+                    }
+                }
+            }
+        }
         appearanceByCharacterId[id] = appearance.getKind() === "preset"
             ? appearance.getPoses().map(pose => ({ id: pose.id, name: pose.name }))
             // Every tag of every axis, flat: the engine resolves a tag against the group that owns
@@ -418,6 +428,7 @@ export function buildStoryCommandContext(input: {
 
     return {
         images: assetRefs(input.assets, AssetType.Image),
+        characterLayerAssetIds: [...characterLayerAssetIds],
         audio: assetRefs(input.assets, AssetType.Audio),
         videos: assetRefs(input.assets, AssetType.Video),
         assetSets: (input.assetSets ?? []).map(set => ({
