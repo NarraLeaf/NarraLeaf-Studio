@@ -548,8 +548,9 @@ function writeLine(def: StoryCommandDef | null, verb: string, args: readonly (Ar
         }
         const param = def ? findParam(def, entry.param) : null;
         source += " ";
-        if (!entry.positional) {
-            source += `${def && param ? localizedParamKey(def, param) : entry.param}=`;
+        const key = entry.positional ? null : def && param ? localizedParamKey(def, param) : entry.param;
+        if (key !== null) {
+            source += `${key}=`;
         }
         const start = source.length;
         if (entry.ornament) {
@@ -559,7 +560,10 @@ function writeLine(def: StoryCommandDef | null, verb: string, args: readonly (Ar
         // Only a NUMBER takes the unit — `/wait click` fills the same slot as `/wait 2` and must not
         // come back as `clicks`. It rides INSIDE the edit span: a click on `1s` opens the editor a
         // click on `1` would, and a span stopping short of it would leave a dead half-token beside it.
-        source += entry.enum || !NUMERIC.test(entry.value) ? "" : unitOf(param);
+        const unit = entry.enum || !NUMERIC.test(entry.value) ? "" : unitOf(param);
+        // A key that already names the unit is not followed by it again: ja's duration key is 秒, and
+        // the row printed 「秒=0.6秒」. The bare number reads back the same.
+        source += unit && key !== null && key.endsWith(unit) ? "" : unit;
         const control = entry.apply ? controlFor(param, entry) : null;
         if (control && entry.apply) {
             edits.push({ span: { start, end: source.length }, control, value: entry.editValue ?? entry.value, apply: entry.apply });

@@ -772,6 +772,20 @@ describe("projectStoryCommandLine", () => {
             expect(comparable(build(line!.source)), `${source} → ${line!.source}`).toEqual(comparable(first));
         }
     });
+
+    it("does not repeat a unit its key already names — ja printed 「秒=0.6秒」", () => {
+        i18nStore.setLocale("ja");
+        const row = build("/hide Alice out=fade d=0.6");
+        const line = projectStoryCommandLine(row, LOOKUPS)!.source;
+        expect(line).toContain("秒=0.6");
+        expect(line).not.toContain("秒=0.6秒");
+        expect(comparable(build(line))).toEqual(comparable(row));
+        // zh and en keep the unit: their keys do not name it.
+        i18nStore.setLocale("zh");
+        expect(projectStoryCommandLine(build("/hide Alice out=fade d=0.6"), LOOKUPS)!.source).toContain("=0.6秒");
+        i18nStore.setLocale("en");
+        expect(projectStoryCommandLine(build("/hide Alice out=fade d=0.6"), LOOKUPS)!.source).toContain("d=0.6s");
+    });
 });
 
 /**
