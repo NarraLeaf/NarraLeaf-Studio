@@ -2699,6 +2699,9 @@ export function GameApp(props: GameAppProps): ReactNode {
         currentDialogNametagRef,
         dialogClickTargets: nlrDialogClickTargets,
         resolveSpeakerAvatar: sourceName => resolveSpeakerAvatarRef.current(sourceName),
+        // The face a backlog line was shown with, by the URL the engine recorded: the compile's own
+        // url-to-asset inverse, which is what turns the dialog's live avatar into an asset too.
+        resolveRecordedAvatar: url => toBlueprintImageAsset(nlrCompiledRef.current?.avatarAssetIdByUrl.get(url) ?? null),
         displaySpeakerName,
         // The same answer Play Voice acts on, so a backlog row offers a replay exactly when one plays.
         canReplayVoice: unitId => Boolean(nlrCompiledRef.current?.getVoicePlayback?.(unitId)),
