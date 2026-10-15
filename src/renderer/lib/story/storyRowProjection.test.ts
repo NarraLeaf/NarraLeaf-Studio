@@ -519,4 +519,17 @@ describe("the subject line of a staging row, in zh", () => {
         i18nStore.setLocale("en");
         expect(describeStoryBlock(action({ action: "wait", mode: "duration", durationMs: 1000 }), bare)).toBe("Wait 1s");
     });
+
+    it("says what a create row does, not the command's noun twice", () => {
+        const vfx = action({ action: "vfx", operation: "create", objectName: "樱花" });
+        const text = action({ action: "text", operation: "create", objectName: "title" });
+        i18nStore.setLocale("zh");
+        expect(describeStoryBlock(vfx, bare)).toBe("创建 氛围特效 樱花");
+        i18nStore.setLocale("ja");
+        expect(describeStoryBlock(vfx, bare)).toBe("環境演出 樱花 を作成");
+        i18nStore.setLocale("en");
+        expect(describeStoryBlock(text, bare)).toBe("Create text title");
+        // Every other operation still reads as its own command.
+        expect(describeStoryBlock(action({ action: "vfx", operation: "show", objectName: "rain" }), bare)).toBe("Show ambience rain");
+    });
 });

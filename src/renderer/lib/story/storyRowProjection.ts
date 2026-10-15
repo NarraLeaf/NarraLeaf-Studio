@@ -806,6 +806,18 @@ function verbWord(payload: StoryActionPayload, whenUnowned: string): string {
 }
 
 /**
+ * The operation word of a stage-object row, for a template that names the kind itself
+ * (`{operation} 氛围特效 {name}`).
+ *
+ * A `create` row's command is called after its kind - `/vfx`, `/image`, `/text` - so its verb word is
+ * that same noun, and the subject read 「氛围特效 氛围特效 樱花」 / "Text text title". Such a row says
+ * what the inspector's 操作 field says it does instead.
+ */
+function stageObjectOperationWord(payload: StoryActionPayload & { operation: string }): string {
+    return payload.operation === "create" ? translate("common.create") : verbWord(payload, payload.operation);
+}
+
+/**
  * A player's-hands row in words. The action a wait names IS the row, as a page is a quit's: three
  * rows reading only "Wait for input" would leave the author opening each one to find which gesture.
  */
@@ -907,9 +919,9 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
         // The stage-object rows all read their subject off the reference rather than off their own
         // `objectName` - see `displayableSubjectWord` for why, and for what a row with no reference
         // (a `create` row, an older document) falls back to.
-        if (payload.action === "image") return translate("story.describe.image", { operation: verbWord(payload, payload.operation), name: displayableSubjectWord(scene, payload.target, payload.objectName) || translate("story.describe.unnamed") });
+        if (payload.action === "image") return translate("story.describe.image", { operation: stageObjectOperationWord(payload), name: displayableSubjectWord(scene, payload.target, payload.objectName) || translate("story.describe.unnamed") });
         if (payload.action === "displayable") return `${verbWord(payload, payload.operation)} ${resolveDisplayableTargetRef(scene, payload.target).label || translate("story.describe.targetFallback")}`;
-        if (payload.action === "text") return translate("story.describe.text", { operation: verbWord(payload, payload.operation), name: displayableSubjectWord(scene, payload.target, payload.objectName) || translate("story.describe.unnamed") });
+        if (payload.action === "text") return translate("story.describe.text", { operation: stageObjectOperationWord(payload), name: displayableSubjectWord(scene, payload.target, payload.objectName) || translate("story.describe.unnamed") });
         if (payload.action === "layer") {
             const layerName = storyLayerLabel(resolveStoryLayerRef(scene, layerActionTargetRef(payload.target, payload.objectName)));
             if (payload.operation === "setZIndex") {
@@ -918,7 +930,7 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
             return translate("story.describe.layer", { operation: verbWord(payload, payload.operation), name: layerName });
         }
         if (payload.action === "video") return translate("story.describe.video", { operation: verbWord(payload, payload.operation), name: actionableSubjectWord(scene, payload.target, "video", payload.objectName) || translate("story.describe.unnamed") });
-        if (payload.action === "vfx") return translate("story.describe.vfx", { operation: verbWord(payload, payload.operation), name: actionableSubjectWord(scene, payload.target, "vfx", payload.objectName) || translate("story.describe.unnamed") });
+        if (payload.action === "vfx") return translate("story.describe.vfx", { operation: stageObjectOperationWord(payload), name: actionableSubjectWord(scene, payload.target, "vfx", payload.objectName) || translate("story.describe.unnamed") });
         if (payload.action === "nvl") return translate("story.describe.nvl");
         if (payload.action === "blueprint") {
             // The blueprint IS the row, as the name is a label's: ten rows reading only "Blueprint"
