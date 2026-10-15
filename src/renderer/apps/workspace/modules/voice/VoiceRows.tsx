@@ -202,7 +202,7 @@ export function VoiceRow(props: VoiceRowProps) {
                     </button>
                     <span
                         className={`w-32 shrink-0 truncate text-2xs ${asset ? "text-fg-subtle" : "text-warning"}`}
-                        data-tip={state === "stale" ? strings.outdatedHint : (asset?.name ?? strings.clipMissing)}
+                        data-tip={asset?.name ?? strings.clipMissing}
                     >
                         {asset
                             ? <MarkedText text={asset.name} matcher={props.matcher} active={props.matchActive} />
@@ -237,7 +237,12 @@ export function VoiceRow(props: VoiceRowProps) {
                             aria-label={strings.notePlaceholder}
                         />
                     ) : null}
-                    <span className="flex w-16 shrink-0 items-center gap-1 text-2xs text-fg-subtle">
+                    {/* Outdated is the one status a reader cannot work out from its word alone, so it
+                        carries what happened and what clears it - on the status, where the eye is. */}
+                    <span
+                        className="flex w-16 shrink-0 items-center gap-1 text-2xs text-fg-subtle"
+                        data-tip={state === "stale" ? strings.outdatedHint : undefined}
+                    >
                         <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[state]}`} />
                         {statusLabel}
                     </span>

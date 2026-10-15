@@ -24,14 +24,18 @@ const STRINGS = {
     notePlaceholder: "notePlaceholder", showInStory: "showInStory",
 };
 
-function row(onShowInStory?: () => void, state: "missing" | "linked" = "missing") {
+function row(
+    onShowInStory?: () => void,
+    state: "missing" | "linked" | "stale" = "missing",
+    asset: { id: string; name: string } | null = null,
+) {
     return render(
         <VoiceRow
             row={{ unitId: "u1", sourceText: "那就一起走吧。", sceneId: "s1", sceneName: "放学后", role: "dialogue" }}
             locale="zh"
             speaker="Narra"
             state={state}
-            asset={null}
+            asset={asset as never}
             duration=""
             note=""
             mode="assign"
@@ -62,5 +66,19 @@ describe("a voice table row", () => {
     it("offers no such button where the line has nothing to open", () => {
         row();
         expect(screen.queryByRole("button", { name: "showInStory" })).toBeNull();
+    });
+});
+
+describe("an outdated take", () => {
+    it("explains itself on its status, and its file name names the file", () => {
+        row(undefined, "stale", { id: "a1", name: "放学后_003_Narra.wav" });
+        const status = screen.getByText("statusOutdated");
+        expect(status.getAttribute("data-tip")).toBe("outdatedHint");
+        expect(screen.getByText("放学后_003_Narra.wav").closest("[data-tip]")?.getAttribute("data-tip")).toBe("放学后_003_Narra.wav");
+    });
+
+    it("leaves a voiced take's status without a tooltip", () => {
+        row(undefined, "linked", { id: "a1", name: "放学后_002_Narra.wav" });
+        expect(screen.getByText("statusVoiced").getAttribute("data-tip")).toBeNull();
     });
 });
