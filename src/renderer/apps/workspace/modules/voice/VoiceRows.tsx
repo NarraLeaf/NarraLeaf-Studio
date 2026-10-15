@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import { Check, ExternalLink, Play, Plus, RotateCcw, Square, Trash2 } from "lucide-react";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import type { CompiledMatcher } from "@/lib/workspace/services/search/textMatcher";
-import { MarkedText } from "@/apps/workspace/components/ui/FindMarks";
+import { MarkedText, markedFragments } from "@/apps/workspace/components/ui/FindMarks";
 import type { VoiceUnitState } from "@/lib/workspace/services/voice/voiceModel";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { voiceDocumentFreezeScope } from "../localization/localizationLiveSession";
@@ -165,8 +165,10 @@ export function VoiceRow(props: VoiceRowProps) {
             <span className="w-24 shrink-0 truncate text-2xs text-fg-subtle" data-tip={speaker}>
                 <MarkedText text={speaker} matcher={props.matcher} active={props.matchActive} />
             </span>
+            {/* A floor under the line, so a narrow table cuts the file name in the middle before the
+                line itself is gone (see `TakeFileName`). */}
             <span
-                className="min-w-0 flex-1 truncate text-fg"
+                className="min-w-24 flex-1 truncate text-fg"
                 data-tip={row.authoredText && row.authoredText !== row.sourceText
                     ? `${row.sourceText}\n${row.authoredText}`
                     : row.sourceText}
@@ -201,12 +203,12 @@ export function VoiceRow(props: VoiceRowProps) {
                         {isPlaying ? <Square className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
                     </button>
                     <span
-                        className={`w-32 shrink-0 truncate text-2xs ${asset ? "text-fg-subtle" : "text-warning"}`}
+                        className={`flex w-48 min-w-20 shrink text-2xs ${asset ? "text-fg-subtle" : "text-warning"}`}
                         data-tip={asset?.name ?? strings.clipMissing}
                     >
                         {asset
-                            ? <MarkedText text={asset.name} matcher={props.matcher} active={props.matchActive} />
-                            : strings.clipMissing}
+                            ? <TakeFileName name={asset.name} matcher={props.matcher} active={props.matchActive} />
+                            : <span className="truncate">{strings.clipMissing}</span>}
                     </span>
                     <span className="w-10 shrink-0 text-right text-2xs tabular-nums text-fg-subtle">
                         {props.duration}
@@ -303,6 +305,52 @@ export function VoiceRow(props: VoiceRowProps) {
                 </button>
             )}
         </div>
+    );
+}
+
+/**
+ * Where a take's file name may be cut: everything before `tail` gives way first.
+ *
+ * The tail is what tells two takes apart - the index, the speaker and the extension of the default
+ * `{scene}_{index}_{character}` name, all of which come after the scene. A plain trailing ellipsis
+ * ate exactly that part, so `Afterschool_002_Narra.wav` and `Afterschool_003_Narra.wav` both read
+ * `Afterschool_00…`. The tail starts at the last `_<digits>_` (the index); a name without one keeps
+ * its extension; a name with neither is cut at its end like any other text.
+ */
+export function splitTakeFileName(name: string): { head: string; tail: string } {
+    let cut = -1;
+    const index = /_\d+_/g;
+    for (let match = index.exec(name); match; match = index.exec(name)) {
+        cut = match.index;
+        index.lastIndex = match.index + 1;
+    }
+    if (cut < 0) {
+        const dot = name.lastIndexOf(".");
+        cut = dot > 0 ? dot : name.length;
+    }
+    return { head: name.slice(0, cut), tail: name.slice(cut) };
+}
+
+/**
+ * A take's file name, cut in the middle when the column is too narrow for it: the head truncates,
+ * the tail ({@link splitTakeFileName}) stays whole - unless it alone is wider than the column, when
+ * it is cut at its end too. The find's hits are marked across both halves.
+ */
+function TakeFileName(props: { name: string; matcher: CompiledMatcher | null; active: boolean }) {
+    const { head, tail } = splitTakeFileName(props.name);
+    return (
+        <>
+            {head ? (
+                <span className="min-w-0 truncate">
+                    {markedFragments(props.name, props.matcher, props.active, { start: 0, end: head.length })}
+                </span>
+            ) : null}
+            {tail ? (
+                <span className="max-w-full shrink-0 truncate">
+                    {markedFragments(props.name, props.matcher, props.active, { start: head.length, end: props.name.length })}
+                </span>
+            ) : null}
+        </>
     );
 }
 

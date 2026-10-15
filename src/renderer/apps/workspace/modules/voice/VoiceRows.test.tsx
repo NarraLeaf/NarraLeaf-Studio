@@ -6,7 +6,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { VoiceRow } from "./VoiceRows";
+import { splitTakeFileName, VoiceRow } from "./VoiceRows";
 
 vi.mock("@/apps/workspace/components/ui/freezeGuard", async () => {
     const actual = await vi.importActual<typeof import("@/apps/workspace/components/ui/freezeGuard")>(
@@ -74,11 +74,36 @@ describe("an outdated take", () => {
         row(undefined, "stale", { id: "a1", name: "放学后_003_Narra.wav" });
         const status = screen.getByText("statusOutdated");
         expect(status.getAttribute("data-tip")).toBe("outdatedHint");
-        expect(screen.getByText("放学后_003_Narra.wav").closest("[data-tip]")?.getAttribute("data-tip")).toBe("放学后_003_Narra.wav");
+        expect(screen.getByText("_003_Narra.wav").closest("[data-tip]")?.getAttribute("data-tip")).toBe("放学后_003_Narra.wav");
     });
 
     it("leaves a voiced take's status without a tooltip", () => {
         row(undefined, "linked", { id: "a1", name: "放学后_002_Narra.wav" });
         expect(screen.getByText("statusVoiced").getAttribute("data-tip")).toBeNull();
+    });
+});
+
+describe("a take's file name", () => {
+    it("keeps the index, the speaker and the extension of a default name whole", () => {
+        expect(splitTakeFileName("Afterschool_003_Narra.wav")).toEqual({ head: "Afterschool", tail: "_003_Narra.wav" });
+        expect(splitTakeFileName("放学后_001_旁白.wav")).toEqual({ head: "放学后", tail: "_001_旁白.wav" });
+    });
+
+    it("cuts at the last index when the scene name has digits of its own", () => {
+        expect(splitTakeFileName("Day_2_Night_014_Aoi.ogg")).toEqual({ head: "Day_2_Night", tail: "_014_Aoi.ogg" });
+    });
+
+    it("keeps the extension of a name with no index, and cuts a bare name at its end", () => {
+        expect(splitTakeFileName("pickup-final.wav")).toEqual({ head: "pickup-final", tail: ".wav" });
+        expect(splitTakeFileName("pickup")).toEqual({ head: "pickup", tail: "" });
+    });
+
+    it("draws the name in two boxes, the head first, so a narrow column cuts the head", () => {
+        row(undefined, "linked", { id: "a1", name: "Afterschool_003_Narra.wav" });
+        const tail = screen.getByText("_003_Narra.wav");
+        const head = screen.getByText("Afterschool");
+        expect(head.nextElementSibling).toBe(tail);
+        expect(head.className).toContain("truncate");
+        expect(tail.className).toContain("shrink-0");
     });
 });
