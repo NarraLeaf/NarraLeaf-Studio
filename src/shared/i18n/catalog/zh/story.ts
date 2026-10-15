@@ -991,8 +991,8 @@ export const story = {
         createCharacterUnavailable: "实时会话期间不可用，改选已有角色",
         voiceOutdated: "配音待更新，打开配音表",
         voiceManage: "打开配音表",
-        voicePlay: "试听配音",
-        voiceStop: "停止试听",
+        voicePlay: "播放录音",
+        voiceStop: "停止播放",
     },
     sceneEditor: {
         defaultSceneName: "未命名场景",

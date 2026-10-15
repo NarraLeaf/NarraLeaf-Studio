@@ -499,7 +499,7 @@ export const help = {
         voice: {
             title: "Voice-over",
             body:
-                "A voice language holds one clip per spoken line. The panel lists the voice languages with how "
+                "A voice language holds one clip per line of narration and dialogue. The panel lists the voice languages with how "
                 + "much of the story each covers, and opening one shows its voice table.\n"
                 + "\n"
                 + "- Studio imports existing clips. It does not record.\n"

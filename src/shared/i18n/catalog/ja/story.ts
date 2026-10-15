@@ -1032,9 +1032,9 @@ export const story = {
         createCharacterUnavailable: "ライブセッション中は使えない。既存のキャラクターを選ぶ",
         voiceOutdated: "ボイスが古い。ボイスの表を開く",
         voiceManage: "ボイスの表を開く",
-        voicePlay: "ボイスのテイクを再生",
+        voicePlay: "テイクを再生",
         // 「停止」だけでは、行の中のアイコンボタンの読み上げ名として何を止めるか分からなかった。
-        voiceStop: "ボイスのテイクを停止",
+        voiceStop: "テイクを停止",
     },
     sceneEditor: {
         defaultSceneName: "無題のシーン",

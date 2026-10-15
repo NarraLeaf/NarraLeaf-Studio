@@ -1151,9 +1151,9 @@ export const story = {
         createCharacterUnavailable: "Unavailable in a live session. Choose an existing character.",
         voiceOutdated: "Voice outdated, open voice table",
         voiceManage: "Open voice table",
-        voicePlay: "Play voice take",
+        voicePlay: "Play take",
         // "Stop" alone was the accessible name of a mid-row icon button; it now says what stops.
-        voiceStop: "Stop voice take",
+        voiceStop: "Stop take",
     },
     sceneEditor: {
         defaultSceneName: "Untitled Scene",
