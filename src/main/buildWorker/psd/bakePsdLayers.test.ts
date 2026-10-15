@@ -121,6 +121,22 @@ describe("bakeLayers with a merge", () => {
         expect(decoded.rgba[3]).toBe(255);
     });
 
+    it("names each file as its layer, so the asset it becomes is called that", async () => {
+        // The library names an asset after its file; a position prefix made every PSD layer
+        // `000-…`, `001-…`. Two layers of one name still land in two files.
+        const written = new Map<string, Uint8Array>();
+        const write = async (name: string, png: Uint8Array) => { written.set(name, png); return name; };
+        const baked = await bakeLayers(
+            psdWithBlend("multiply"),
+            [{ path: ["Body"], name: "Mio_Body" }, { path: ["Shade"], name: "Mio_Body" }],
+            deflate,
+            write,
+        );
+        const basenames = baked.map(layer => layer.filePath.split("/").pop());
+        expect(basenames).toEqual(["Mio_Body.png", "Mio_Body.png"]);
+        expect(new Set(baked.map(layer => layer.filePath)).size).toBe(2);
+    });
+
     it("leaves the base alone when nothing is merged onto it", async () => {
         const written = new Map<string, Uint8Array>();
         const write = async (name: string, png: Uint8Array) => { written.set(name, png); return name; };
