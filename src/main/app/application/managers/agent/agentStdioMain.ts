@@ -263,6 +263,7 @@ export function startAgentStdioBridge(electronApp: ElectronApp, argv: readonly s
         launchStudio: launchStudio ? () => launchStudio() : null,
         sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
         now: () => Date.now(),
+        version: () => electronApp.getVersion(),
     }).then(
         () => exitAfterFlush(0),
         error => {

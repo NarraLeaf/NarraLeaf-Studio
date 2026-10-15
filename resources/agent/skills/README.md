@@ -113,8 +113,9 @@ may change anything at all.
 #### Claude Desktop
 
 Claude Desktop's configuration file starts local programs, and Studio can be that program: started
-with `--mcp-stdio`, it opens no window and forwards the connection to the Studio you have open
-(starting Studio first if it is not running). In Studio, *Copy connection configuration -> Claude
+with `--mcp-stdio`, it opens no window and forwards the connection to the Studio you have open.
+Connecting does not start Studio - Claude Desktop connects whenever it starts - but the agent's
+first tool call does, when Studio is not running. In Studio, *Copy connection configuration -> Claude
 Desktop* gives the entry with the path to Studio filled in; merge it, or
 `mcp-configs/claude-desktop.json` with `<STUDIO_EXECUTABLE>` replaced, into
 `claude_desktop_config.json` (*Settings -> Developer -> Edit Config*) and restart Claude Desktop.
