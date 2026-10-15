@@ -53,9 +53,11 @@ import {
 // which read assets. A value import here would close that loop; the instance is resolved from the
 // service registry at call time instead.
 import type { ReferenceService } from "../references/ReferenceService";
-import { dirname } from "@shared/utils/path";
+import { dirname, extname } from "@shared/utils/path";
 import type { TranslationKey } from "@shared/i18n";
 import { AssetTrash } from "../assets/AssetTrash";
+import { AssetLibraryChange } from "../assets/AssetLibraryChange";
+import { describeRestoreNotKept } from "@/lib/workspace/assets/importFailure";
 import { HistoryService } from "../history/HistoryService";
 import type { HistoryLabel } from "../history/historyModel";
 import { projectHistoryScope } from "../history/historyScopes";
@@ -64,7 +66,7 @@ import { projectHistoryScope } from "../history/historyScopes";
  * What one deleted asset needs to come back: its bytes (in the trash, under `trashToken`), its
  * record, and where it sat in the order file. See `AssetsService.removeAssetForRestore`.
  */
-type AssetRestorePlan = {
+export type AssetRestorePlan = {
     record: Asset<AssetType, AssetSource>;
     /** Null for a remote asset, or when the payload was already missing. */
     trashToken: string | null;
@@ -2720,6 +2722,61 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     }
 
     /**
+     * Start recording what one operation does to the library - the bytes it writes over and the
+     * files it imports - so that a single undo step can take it back. See {@link AssetLibraryChange}.
+     *
+     * The caller keeps the assets it is about to replace ({@link AssetLibraryChange.keep}) before
+     * calling {@link replaceAssetContent}, and writes over none of them when that fails.
+     *
+     * Null inside a live session. The room's undo is a stack of operations every machine can take
+     * back, and replacing bytes has never been one of them (`content-replaced`): the bytes would have
+     * to be kept on every machine, not only this one.
+     */
+    public beginLibraryChange(): AssetLibraryChange<AssetRestorePlan> | null {
+        if (this.opSink) {
+            return null;
+        }
+        const trash = this.getAssetTrash();
+        return new AssetLibraryChange<AssetRestorePlan>({
+            lookup: (type, assetId) => this.getAssetsMetadataManager().getAssets()[type]?.[assetId],
+            keep: async asset => {
+                const kept = await trash.keep(
+                    asset.id,
+                    asset.type,
+                    this.getLocalAssetsManager().getLocalAssetPath(asset.id),
+                    asset.ext ?? (extname(asset.name).slice(1).toLowerCase() || undefined),
+                );
+                if (kept.kept) {
+                    return { token: kept.token };
+                }
+                return kept.missing ? { missing: true } : { refusal: { kind: "notKept", fsCode: kept.fsCode } };
+            },
+            write: (asset, token) => this.replaceAssetContent(asset, trash.pathOf(token)),
+            release: (type, token) => trash.purge(token, type),
+            takeBack: async asset => {
+                const plan = await this.removeAssetForRestore(asset);
+                if (!plan.result.success) {
+                    this.purgeAssetRestorePlan(plan);
+                    return null;
+                }
+                return plan;
+            },
+            putBack: plan => this.restoreAssetFromPlan(plan),
+            forgetTaken: plan => this.purgeAssetRestorePlan(plan),
+            report: failure => {
+                try {
+                    this.getContext().services.get<UIService>(Services.UI).notifications.show({
+                        type: NotificationType.Error,
+                        message: describeRestoreNotKept(failure.name, failure.refusal, translate),
+                    });
+                } catch {
+                    // No UI service in this window. The undo stays where it was, which is the record.
+                }
+            },
+        });
+    }
+
+    /**
      * Swap the bytes behind an existing asset, keeping its id.
      *
      * References store the asset id, never a path, so every place that pointed at this asset follows
@@ -2736,8 +2793,11 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
      *  4. write the record, then announce `updated` — last, so nobody wakes up and re-reads a stale
      *     thumbnail that step 3 was about to delete.
      *
-     * There is no asset-level history: this cannot be undone. The UI expresses that with the button
-     * hierarchy on the confirm, not with a sentence.
+     * This records no history of its own. An operation whose replacement has to be undoable copies the
+     * asset's bytes aside first ({@link beginLibraryChange}) and leaves the step itself - the PSD
+     * re-import and the voice pickup do. Replace File… and the media conversion do not: they cannot
+     * be undone, and the UI expresses that with the button hierarchy on the confirm, not with a
+     * sentence.
      */
     public async replaceAssetContent<T extends AssetType>(
         asset: Asset<T, AssetSource>,

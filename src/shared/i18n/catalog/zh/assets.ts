@@ -16,6 +16,7 @@ export const assets = {
     history: {
         deleteAsset: "删除 {name}",
         deleteGroup: "删除文件夹 {name}",
+        restoreFailed: "无法恢复“{name}”",
     },
     delete: {
         inUseTitle: "这些资产仍在被使用",
@@ -48,6 +49,10 @@ export const assets = {
         confirmAction: "替换",
         failedTitle: "替换资产内容失败",
         remoteUnsupported: "远程资产没有可替换的本地文件",
+        notKept: "无法替换“{name}”",
+        reason: {
+            notKept: "无法保存当前文件的副本",
+        },
     },
     types: {
         image: "图片",

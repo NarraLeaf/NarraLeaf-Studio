@@ -20,6 +20,7 @@ export const assets = {
     history: {
         deleteAsset: "{name} の削除",
         deleteGroup: "フォルダ {name} の削除",
+        restoreFailed: "「{name}」を復元できなかった",
     },
     delete: {
         inUseTitle: "これらのアセットはまだ使われている",
@@ -78,6 +79,10 @@ export const assets = {
         confirmAction: "差し替える",
         failedTitle: "アセットの中身を差し替えられなかった",
         remoteUnsupported: "リモートアセットには差し替える手元のファイルがない",
+        notKept: "「{name}」を差し替えられなかった",
+        reason: {
+            notKept: "現在のファイルのコピーを保存できなかった",
+        },
     },
     /** 種類ごとのラベル。`AssetType` の値をキーにする。1 つの種類を名指しする場所で使う。 */
     types: {
