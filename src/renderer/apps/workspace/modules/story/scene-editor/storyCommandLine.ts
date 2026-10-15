@@ -980,13 +980,17 @@ function appearanceChoice(
     return {
         choices: options.map(option => ({ value: option.id, label: option.name })),
         ...(current ? { editValue: current } : {}),
-        // A layered character keeps one tag per axis and an expression changes only the axes it names,
-        // so the pick MERGES; a preset character has one pose and it is replaced.
+        // A preset character has one pose and it is replaced. A layered row whose slot holds one tag
+        // (a `/face`, changing the axes it names) has it replaced too, whichever axis the new tag is
+        // on: merging put a second tag beside the first, and a row holding two prints no value. A row
+        // holding the whole look (an entrance, every axis resolved) changes the one axis picked.
         apply: next => {
             const axisId = options.find(option => option.id === next)?.axisId;
-            return axisId
-                ? { ...payload, tags: { ...payload.tags, [axisId]: next } }
-                : { ...payload, pose: next };
+            if (!axisId) {
+                return { ...payload, pose: next };
+            }
+            const held = payload.tags ?? {};
+            return { ...payload, tags: Object.keys(held).length <= 1 ? { [axisId]: next } : { ...held, [axisId]: next } };
         },
     };
 }

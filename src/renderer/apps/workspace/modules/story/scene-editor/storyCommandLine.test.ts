@@ -766,6 +766,42 @@ describe("projectStoryCommandLine", () => {
  * compiler had already moved on. Its own describe because it needs a scene with declarations in it,
  * which the fixture above deliberately does not have.
  */
+describe("projectStoryCommandLine — a layered character's look", () => {
+    /**
+     * A `/char` row changes the axes it names and nothing else, and its value is one tag. Picking a
+     * tag of ANOTHER axis on that value merged it in beside the first, so the row went from
+     * 「@外观 美绪 笑」 to holding two tags - and a row with two prints no value at all: 「@外观 美绪」.
+     */
+    const options = [
+        { id: "smile", name: "笑", axisId: "face" },
+        { id: "calm", name: "平静", axisId: "face" },
+        { id: "navy", name: "蓝卫衣", axisId: "outfit" },
+    ];
+    const lookups: StoryCommandLineLookups = {
+        ...LOOKUPS,
+        character: id => (id === "c3" ? { id: "c3", name: "Mio" } : LOOKUPS.character(id)),
+        appearanceName: (characterId, refId) => (characterId === "c3" ? options.find(option => option.id === refId)?.name ?? null : null),
+        appearanceOptions: characterId => (characterId === "c3" ? options : []),
+    };
+    const row = (tags: Record<string, string>) => ({
+        id: "r", parentId: null, childrenIds: [], kind: "action",
+        payload: { action: "character", operation: "expression", characterId: "c3", tags },
+    }) as unknown as StoryBlock;
+
+    it("replaces the one tag it holds, whichever axis the new one is on", () => {
+        const block = row({ face: "smile" });
+        const line = projectStoryCommandLine(block, lookups)!;
+        expect(line.source).toBe("/char Mio 笑");
+        const look = line.edits.find(entry => entry.value === "smile")!;
+        const picked = look.apply("navy") as Extract<StoryBlock, { kind: "action" }>["payload"];
+        expect(picked).toMatchObject({ action: "character" });
+        expect((picked as { tags?: unknown }).tags).toEqual({ outfit: "navy" });
+        expect(projectStoryCommandLine({ ...block, payload: picked } as StoryBlock, lookups)!.source).toBe("/char Mio 蓝卫衣");
+        // The same axis is a replacement too, as it always was.
+        expect(look.apply("calm")).toMatchObject({ tags: { face: "calm" } });
+    });
+});
+
 describe("projectStoryCommandLine — after a rename", () => {
     const DECLARED_SCENE = {
         id: "s1",
