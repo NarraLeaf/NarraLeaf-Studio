@@ -89,7 +89,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "Two sounds for the presses that sound only on a condition: an unlocked scene card, CG or recollection entry plays confirm and a locked one stays silent, and the confirm dialog plays confirm on the answer that acts and back on the others. Those blueprints call these functions with Call Fn after their check, and the Confirm page calls UI back cue when Escape backs out of a question, since a key has no element to carry a sound. A sound that always plays when an element is pressed or hovered is set in that element's Sound section instead and needs no blueprint. Both kinds play on the SFX track, so the Sound effects slider on the Config page sets their volume.",
+                      "text": "Two sounds for the presses that sound only on a condition: an unlocked scene card, CG or recollection entry plays confirm and a locked one stays silent, and the confirm dialog plays confirm on the answer that acts and back on the others. Those blueprints call these functions with Call Fn after their check, and the Confirm page calls UI back cue when Escape backs out of a question, since a key has no element to carry a sound. A sound that always plays when an element is pressed or hovered is set in that element's Sound section instead and needs no blueprint. Both kinds play on the SFX track, so the SFX slider on the Config page sets their volume.",
                       "width": 560,
                       "height": 270
                     },
@@ -6053,7 +6053,7 @@
       },
       "002bb2fb-5187-4d39-80b7-463093287369": {
         "id": "002bb2fb-5187-4d39-80b7-463093287369",
-        "name": "BGM label",
+        "name": "Music label",
         "owner": {
           "kind": "widgetMain",
           "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
@@ -6074,7 +6074,7 @@
       },
       "5efa31db-1807-43d3-9079-732269c7f6f8": {
         "id": "5efa31db-1807-43d3-9079-732269c7f6f8",
-        "name": "BGM rule",
+        "name": "Music rule",
         "owner": {
           "kind": "widgetMain",
           "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
@@ -6095,7 +6095,7 @@
       },
       "aaad450e-2c85-488a-ae8f-149fa08f2ee9": {
         "id": "aaad450e-2c85-488a-ae8f-149fa08f2ee9",
-        "name": "Sound effects label",
+        "name": "SFX label",
         "owner": {
           "kind": "widgetMain",
           "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
@@ -6116,7 +6116,7 @@
       },
       "a9534092-9b83-42a6-aa94-9446d9473fc4": {
         "id": "a9534092-9b83-42a6-aa94-9446d9473fc4",
-        "name": "Sound effects rule",
+        "name": "SFX rule",
         "owner": {
           "kind": "widgetMain",
           "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
@@ -6263,7 +6263,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "One blueprint for the BGM, Sound effects and Voice rows of the Config page: each row is an instance of this component and picks its track from the list in the Audio track param, which Get Component Param reads for the instance being run. To add a slider for another track, place this component in a row and pick that track in Audio track. The slider's 0–100 becomes the volume's 0 to 1 (divide by 100). Memo keeps the value because one output can feed only one input, and two nodes use it here.",
+                      "text": "One blueprint for the Music, SFX and Voice rows of the Config page: each row is an instance of this component and picks its track from the list in the Audio track param, which Get Component Param reads for the instance being run. To add a slider for another track, place this component in a row and pick that track in Audio track. The slider's 0–100 becomes the volume's 0 to 1 (divide by 100). Memo keeps the value because one output can feed only one input, and two nodes use it here.",
                       "width": 1100,
                       "height": 160
                     },
@@ -13366,7 +13366,7 @@
       },
       "6898bd58-6ff2-460b-995a-6a87bf220bb0": {
         "id": "6898bd58-6ff2-460b-995a-6a87bf220bb0",
-        "name": "BGM row",
+        "name": "Music row",
         "owner": {
           "kind": "widgetMain",
           "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
@@ -13387,7 +13387,7 @@
       },
       "9e70612f-35ea-4596-bb30-63ee2dd58479": {
         "id": "9e70612f-35ea-4596-bb30-63ee2dd58479",
-        "name": "Sound effects row",
+        "name": "SFX row",
         "owner": {
           "kind": "widgetMain",
           "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
@@ -22074,7 +22074,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "Runs when a row is pressed. A locked row does nothing; an unlocked one plays the row's track on the Music track, so the BGM slider on the Config page sets its volume. Voice rows does the same on the Voice track. The two are not one component: the track is picked on Play Sound and has no pin, so a param cannot set it.",
+                      "text": "Runs when a row is pressed. A locked row does nothing; an unlocked one plays the row's track on the Music track, so the Music slider on the Config page sets its volume. Voice rows does the same on the Voice track. The two are not one component: the track is picked on Play Sound and has no pin, so a param cannot set it.",
                       "width": 1100,
                       "height": 130
                     },
@@ -24132,7 +24132,8 @@
         },
         "graphs": {
           "eventIds": [
-            "ad0f5348-62bc-49b4-98ac-d15de6f6aed8"
+            "ad0f5348-62bc-49b4-98ac-d15de6f6aed8",
+            "58977fe1-bca6-4f3c-a776-7753f17f6bc5"
           ],
           "events": {
             "ad0f5348-62bc-49b4-98ac-d15de6f6aed8": {
@@ -24210,6 +24211,229 @@
                     "to": {
                       "nodeId": "play",
                       "port": "voiceId"
+                    }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
+            },
+            "58977fe1-bca6-4f3c-a776-7753f17f6bc5": {
+              "id": "58977fe1-bca6-4f3c-a776-7753f17f6bc5",
+              "name": "Show the button's name",
+              "graph": {
+                "nodes": {
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Shows the button's name while the pointer is over the button or the focus is on it. Mouse Enter and Focus show Replay voice hint, the text above the button in the same row; Mouse Leave and Blur hide it.",
+                      "width": 1000,
+                      "height": 110
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "caption": {
+                    "id": "caption",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "8a607acd-95dd-4af7-9994-686c20891c18",
+                      "elementId": "209f9970-6eeb-4e70-8f74-d940ed351171",
+                      "elementType": "nl.text"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 260,
+                        "y": 674
+                      }
+                    }
+                  },
+                  "hovered": {
+                    "id": "hovered",
+                    "type": "blueprint.event.head.mouseEnter",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 261
+                      }
+                    }
+                  },
+                  "showOnHover": {
+                    "id": "showOnHover",
+                    "type": "blueprint.element.displayable.setProperty",
+                    "params": {
+                      "property": "visible",
+                      "value": true
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 530,
+                        "y": 150
+                      }
+                    }
+                  },
+                  "focused": {
+                    "id": "focused",
+                    "type": "blueprint.event.head.focus",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 583
+                      }
+                    }
+                  },
+                  "showOnFocus": {
+                    "id": "showOnFocus",
+                    "type": "blueprint.element.displayable.setProperty",
+                    "params": {
+                      "property": "visible",
+                      "value": true
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 530,
+                        "y": 472
+                      }
+                    }
+                  },
+                  "left": {
+                    "id": "left",
+                    "type": "blueprint.event.head.mouseLeave",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 1085
+                      }
+                    }
+                  },
+                  "hideOnLeave": {
+                    "id": "hideOnLeave",
+                    "type": "blueprint.element.displayable.setProperty",
+                    "params": {
+                      "property": "visible",
+                      "value": false
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 530,
+                        "y": 975
+                      }
+                    }
+                  },
+                  "blurred": {
+                    "id": "blurred",
+                    "type": "blueprint.event.head.blur",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 1408
+                      }
+                    }
+                  },
+                  "hideOnBlur": {
+                    "id": "hideOnBlur",
+                    "type": "blueprint.element.displayable.setProperty",
+                    "params": {
+                      "property": "visible",
+                      "value": false
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 530,
+                        "y": 1297
+                      }
+                    }
+                  }
+                },
+                "edges": [
+                  {
+                    "from": {
+                      "nodeId": "hovered",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "showOnHover",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "focused",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "showOnFocus",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "left",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "hideOnLeave",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "blurred",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "hideOnBlur",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "caption",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "showOnHover",
+                      "port": "element"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "caption",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "showOnFocus",
+                      "port": "element"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "caption",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "hideOnLeave",
+                      "port": "element"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "caption",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "hideOnBlur",
+                      "port": "element"
                     }
                   }
                 ],
@@ -24749,6 +24973,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-10-10T07:50:46.630Z"
+    "updatedAt": "2026-10-15T20:09:47.109Z"
   }
 }

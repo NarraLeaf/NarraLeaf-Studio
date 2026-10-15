@@ -30,7 +30,8 @@ const translationOrphans = (count: number): Message => ({
 
 const recordingOrphans = (count: number): Message => ({
     messageKey: "lint.rule.voiceOrphan.message",
-    messageParams: { count, locale: "ja" },
+    // The rule names the language as the Voice panel lists it; a language with no display name is its code.
+    messageParams: { count, locale: "ja", language: "ja" },
     messageParamCounts: { recordings: { key: "lint.rule.voiceOrphan.recordingCount", count } },
 });
 

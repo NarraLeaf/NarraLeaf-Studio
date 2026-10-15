@@ -3,7 +3,7 @@ import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
 import { deleteBlockFromScene, insertBlockInScene, moveBlocksInScene } from "@/lib/workspace/services/story/storyModel";
-import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isReadableAccentColor, nextSelectionAfterDelete, planBlockGroupMove, planRowBackspaceReplacement, planSelectionNudge, readableAccentColor } from "./storySceneBlockUtils";
+import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isReadableAccentColor, nextSelectionAfterDelete, planBlockGroupMove, planRowBackspaceReplacement, planSelectionNudge, readableAccentColor, rewritesRowInPlace, storyRowActivation, storyRowLineEdit, characterRowAppearances, characterRowLook, getDefaultAppendTarget } from "./storySceneBlockUtils";
 import { dialogueOnlyStoryRowFilter, storyRowPassesFilter } from "./storyRowFilter";
 import type { VisibleStoryRow } from "./storySceneEditorTypes";
 
@@ -672,5 +672,101 @@ describe("planSelectionNudge", () => {
         ], ["a", "g"]);
         expect(nudged(live, ["g", "g1"], "up")).toEqual(["g", "a"]);
         expect(live.blocks.g.childrenIds).toEqual(["g1"]);
+    });
+});
+
+describe("activating a selected row", () => {
+    /**
+     * Enter on a command row and the row menu's 打开检查器 made the row the inspector's subject and
+     * did nothing else, so with 属性 closed both gestures looked dead. Opening a row's inspector
+     * brings the panel onto the screen, as the double-click always did.
+     */
+    it("opens a command row's inspector and shows the property panel", () => {
+        const row = characterAction("r", { action: "character", operation: "expression", characterId: "c1" });
+        expect(storyRowActivation(row, false)).toEqual({ kind: "inspector", revealsPanel: true });
+        // Read-only, the inspector is still the row's face.
+        expect(storyRowActivation(row, true)).toEqual({ kind: "inspector", revealsPanel: true });
+    });
+
+    it("keeps the rows without a card on their own operations", () => {
+        expect(storyRowActivation({ id: "e", kind: "empty", parentId: null, childrenIds: [] } as unknown as StoryBlock, false)).toEqual({ kind: "editLine", seed: "" });
+        expect(storyRowActivation(control({ control: "condition" } as never), false)).toEqual({ kind: "toggleFold" });
+        expect(storyRowActivation({ id: "i", kind: "invalid", parentId: null, childrenIds: [], payload: { source: "/nope" } } as unknown as StoryBlock, true)).toEqual({ kind: "nothing" });
+    });
+});
+
+describe("the look a character row pictures", () => {
+    /**
+     * 「@外观 美绪 蓝卫衣」 changes the hoodie and keeps the smile an earlier row chose. Its face drew
+     * the payload alone, which filled the face axis with its default: she read calm while smiling.
+     */
+    const rows = [
+        characterAction("enter", { action: "character", operation: "enter", characterId: "mio", tags: { face: "calm", outfit: "white" } }),
+        characterAction("smile", { action: "character", operation: "expression", characterId: "mio", tags: { face: "smile" } }),
+        characterAction("navy", { action: "character", operation: "expression", characterId: "mio", tags: { outfit: "navy" } }),
+        characterAction("exit", { action: "character", operation: "exit", characterId: "mio" }),
+    ];
+    const staged = scene(rows, rows.map(row => row.id));
+
+    it("is what is on stage once the row has run", () => {
+        expect(characterRowLook(staged, rows[2])?.tags).toEqual({ face: "smile", outfit: "navy" });
+        expect(characterRowLook(staged, rows[1])?.tags).toEqual({ face: "smile", outfit: "white" });
+    });
+
+    it("is what she wore as she left, on the row that takes her off", () => {
+        expect(characterRowLook(staged, rows[3])?.tags).toEqual({ face: "smile", outfit: "navy" });
+    });
+
+    it("keeps the look before the row, for the inspector to preview the row's own tags over", () => {
+        expect(characterRowAppearances(staged).get("navy")?.before?.tags).toEqual({ face: "smile", outfit: "white" });
+        // One pass per scene object.
+        expect(characterRowAppearances(staged)).toBe(characterRowAppearances(staged));
+    });
+});
+
+describe("where rows land that nothing anchors", () => {
+    // A paste with no row selected went after the scene's 「@结局」, where nothing ever plays it.
+    const ending = control({ control: "ending", name: "Fin" } as never);
+    it("goes ahead of the ending, the jump or the quit that closes the scene", () => {
+        const rows = [narration("n1"), narration("n2"), { ...ending, id: "end" }];
+        expect(getDefaultAppendTarget(scene(rows, ["n1", "n2", "end"]))).toEqual({ parentId: null, beforeBlockId: "end" });
+        const jump = { id: "j", kind: "jump", parentId: null, childrenIds: [], payload: { targetSceneId: "s2" } } as unknown as StoryBlock;
+        expect(getDefaultAppendTarget(scene([narration("n1"), jump], ["n1", "j"]))).toEqual({ parentId: null, beforeBlockId: "j" });
+    });
+
+    it("is the end of a scene that does not close, or whose closing row is disabled", () => {
+        expect(getDefaultAppendTarget(scene([narration("n1")], ["n1"]))).toEqual({ parentId: null, beforeBlockId: null });
+        const off = { ...ending, id: "end", disabled: true };
+        expect(getDefaultAppendTarget(scene([narration("n1"), off], ["n1", "end"]))).toEqual({ parentId: null, beforeBlockId: null });
+    });
+});
+
+describe("editing a row as text", () => {
+    /**
+     * A committed command row could not be continued at its end: a click only selected it, and
+     * Backspace cleared it. F2 and the row menu's 以文本形式编辑 open it as its own line, standing in its
+     * place, and the commit knows it is editing a committed row.
+     */
+    it("opens a command row as its line, in place of the row", () => {
+        const row = characterAction("r", { action: "character", operation: "expression", characterId: "c1" });
+        expect(storyRowLineEdit(row, "@外观 Narra 微笑 转场=淡入", false)).toEqual({ kind: "line", seed: "@外观 Narra 微笑 转场=淡入", rewritesRow: true });
+        // No line owns the row (a container header, a blueprint call): nothing opens.
+        expect(storyRowLineEdit(row, null, false)).toEqual({ kind: "nothing" });
+        // Frozen, no caret the author could not keep.
+        expect(storyRowLineEdit(row, "@外观 Narra 微笑", true)).toEqual({ kind: "nothing" });
+    });
+
+    it("opens the rows that are text already as Enter does", () => {
+        expect(storyRowLineEdit(narration("n"), null, false)).toEqual({ kind: "text" });
+        expect(storyRowLineEdit({ id: "e", kind: "empty", parentId: null, childrenIds: [] } as unknown as StoryBlock, null, false)).toEqual({ kind: "line", seed: "", rewritesRow: false });
+        expect(storyRowLineEdit({ id: "i", kind: "invalid", parentId: null, childrenIds: [], payload: { source: "/nope" } } as unknown as StoryBlock, null, false)).toEqual({ kind: "line", rewritesRow: false });
+    });
+
+    it("keeps the row's own block only for a line that still builds a row of its kind", () => {
+        const row = characterAction("r", { action: "character", operation: "expression", characterId: "c1" });
+        const rebuilt = characterAction("new", { action: "character", operation: "expression", characterId: "c2" });
+        expect(rewritesRowInPlace(row, rebuilt)).toBe(true);
+        expect(rewritesRowInPlace(row, narration("n"))).toBe(false);
+        expect(rewritesRowInPlace(group("g", []), group("h", []))).toBe(false);
     });
 });

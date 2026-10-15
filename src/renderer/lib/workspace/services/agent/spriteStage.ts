@@ -61,6 +61,26 @@ export function standingEntrance(sprite: PixelSize, stage: PixelSize): StoryTran
 }
 
 /**
+ * The entrance defaults a character takes when its first art lands, or `undefined` to leave them.
+ *
+ * Only a character that had no art and states no defaults is fitted: its first picture would
+ * otherwise come on at its own pixels centred on the stage - a full-size PSD 1.6 times the height of
+ * the stage, head cut off by the top - and nothing would say why. Defaults an author set are theirs,
+ * and so is a character whose art is being replaced. The same rule the agent's tools apply.
+ */
+export function entranceForFirstArt(input: {
+    hadArt: boolean;
+    current: StoryTransformProps | undefined;
+    sprite: PixelSize | null;
+    stage: PixelSize;
+}): StoryTransformProps | undefined {
+    if (input.hadArt || input.current !== undefined || !input.sprite) {
+        return undefined;
+    }
+    return standingEntrance(input.sprite, input.stage);
+}
+
+/**
  * The box a sprite occupies when a row places it with `pos=center`, in design pixels from the
  * stage's top-left - what an agent would otherwise have to take a screenshot to learn.
  */

@@ -32,6 +32,7 @@ import {
 } from "@shared/types/ui-editor/navigation";
 import { SurfaceBlueprintEntrySection } from "../blueprint/SurfaceBlueprintEntrySection";
 import { SurfaceBackgroundImageField } from "../fields/SurfaceBackgroundImageField";
+import { SurfaceMusicField } from "../fields/SurfaceMusicField";
 import { SurfaceInputActionsField } from "../fields/SurfaceInputActionsField";
 import { SurfaceEntryPageField } from "../fields/SurfaceEntryPageField";
 import { SurfacePageParamsField } from "../PageParamsEditor";
@@ -55,12 +56,18 @@ const isGameUi = (surface: UISurface): surface is UIStageSurface => surface.kind
 const isEntryPage = (data: SceneEditorContext): boolean =>
     isEntrySurface(data.documentService.getDocument(), data.surface.id);
 
+/**
+ * What a surface is, as one noun: Page or Game UI. The word the inspector's subject row prints
+ * beside the surface's name - the story's own word, Scene, belongs to story scenes only.
+ */
+export const getSurfaceKindNoun = (surface: UISurface, t: TranslateFn): string =>
+    isGameUi(surface) ? t("properties.scene.typeGameUi") : t("properties.scene.typePage");
+
 const getInterfaceTypeLabel = (data: SceneEditorContext, t: TranslateFn): string => {
-    const surface = data.surface;
     if (isEntryPage(data)) {
         return t("uiEditor.surfaceKind.mainPage");
     }
-    return isGameUi(surface) ? t("properties.scene.typeGameUi") : t("properties.scene.typePage");
+    return getSurfaceKindNoun(data.surface, t);
 };
 
 const getGameUiSlotLabel = (surface: UISurface, t: TranslateFn): string => {
@@ -207,6 +214,22 @@ export const scenePropertySchema = (t: TranslateFn) =>
             // A Game UI is drawn over the running scene, and its whole job is to let that scene
             // through. A full-bleed picture there would cover the one thing the slot exists to sit
             // on top of, so the offer is not made.
+            hidden: data => isGameUi(data.surface),
+        }),
+        defineField<SceneEditorContext, SectionFieldDefinition<SceneEditorContext>>({
+            id: "scene.music",
+            type: "section",
+            // A section of its own, as an element's sounds have: the clip and the options folded
+            // under it are one thing, and the page's other sections sit beside it the same way.
+            title: t("properties.music.title"),
+            fields: [
+                defineField<SceneEditorContext, CustomFieldDefinition<SceneEditorContext>>({
+                    id: "scene.music.editor",
+                    type: "custom",
+                    component: SurfaceMusicField,
+                }),
+            ],
+            // A Game UI is drawn over the running scene, and the scene's music is what plays there.
             hidden: data => isGameUi(data.surface),
         }),
         defineField<SceneEditorContext, SectionFieldDefinition<SceneEditorContext>>({

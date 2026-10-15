@@ -5975,6 +5975,7 @@
         "0185d569-9ab3-460a-9f35-107e559c105c",
         "465a62e7-7bbc-475d-8002-929ada7ee70b",
         "795ee5ba-6640-4f54-8961-3ea7d2f0b4c7",
+        "209f9970-6eeb-4e70-8f74-d940ed351171",
         "352f20e9-3f47-41f2-85f0-3f5d95799d96"
       ],
       "layout": {
@@ -19733,7 +19734,7 @@
     "e86d48d1-4c15-4bd4-8251-5cd2b9125319": {
       "id": "e86d48d1-4c15-4bd4-8251-5cd2b9125319",
       "type": "nl.container",
-      "name": "主音量行",
+      "name": "总音量行",
       "parentId": "dd2a6fc5-4096-4982-96b4-3aeeb619f0c7",
       "childrenIds": [
         "dcb8cbdb-9393-4132-a936-3685c7edba15",
@@ -20109,7 +20110,7 @@
     "dcb8cbdb-9393-4132-a936-3685c7edba15": {
       "id": "dcb8cbdb-9393-4132-a936-3685c7edba15",
       "type": "nl.text",
-      "name": "主音量标签",
+      "name": "总音量标签",
       "parentId": "e86d48d1-4c15-4bd4-8251-5cd2b9125319",
       "childrenIds": [],
       "layout": {
@@ -20297,7 +20298,7 @@
     "c91eb37e-b2db-4211-b6ff-a112f6f6a339": {
       "id": "c91eb37e-b2db-4211-b6ff-a112f6f6a339",
       "type": "nl.slider",
-      "name": "主音量滑块",
+      "name": "总音量滑块",
       "parentId": "e86d48d1-4c15-4bd4-8251-5cd2b9125319",
       "childrenIds": [
         "a6e05bcd-cd1f-4c28-b428-8e328be841fd",
@@ -21072,7 +21073,7 @@
     "7277d1ea-17fb-43d4-b9d1-30272854913f": {
       "id": "7277d1ea-17fb-43d4-b9d1-30272854913f",
       "type": "nl.text",
-      "name": "主音量数值",
+      "name": "总音量数值",
       "parentId": "e86d48d1-4c15-4bd4-8251-5cd2b9125319",
       "childrenIds": [],
       "layout": {
@@ -21260,7 +21261,7 @@
     "2757d920-3e3e-4399-9804-9e12dd3946e7": {
       "id": "2757d920-3e3e-4399-9804-9e12dd3946e7",
       "type": "nl.container",
-      "name": "主音量分隔线",
+      "name": "总音量分隔线",
       "parentId": "e86d48d1-4c15-4bd4-8251-5cd2b9125319",
       "childrenIds": [],
       "layout": {
@@ -21631,7 +21632,7 @@
     "b15fa747-fe45-4bf2-8562-c343ac387293": {
       "id": "b15fa747-fe45-4bf2-8562-c343ac387293",
       "type": "nl.container",
-      "name": "BGM 行",
+      "name": "音乐行",
       "parentId": "dd2a6fc5-4096-4982-96b4-3aeeb619f0c7",
       "childrenIds": [
         "903a5c25-5f2c-4bab-96eb-19a1df827f88",
@@ -22006,7 +22007,7 @@
     "903a5c25-5f2c-4bab-96eb-19a1df827f88": {
       "id": "903a5c25-5f2c-4bab-96eb-19a1df827f88",
       "type": "nl.text",
-      "name": "BGM 标签",
+      "name": "音乐标签",
       "parentId": "b15fa747-fe45-4bf2-8562-c343ac387293",
       "childrenIds": [],
       "layout": {
@@ -22194,7 +22195,7 @@
     "f07c5a12-03c2-4aba-92fa-ba23da92f04a": {
       "id": "f07c5a12-03c2-4aba-92fa-ba23da92f04a",
       "type": "nl.container",
-      "name": "BGM 分隔线",
+      "name": "音乐分隔线",
       "parentId": "b15fa747-fe45-4bf2-8562-c343ac387293",
       "childrenIds": [],
       "layout": {
@@ -49135,7 +49136,7 @@
     "config-bgm-volume": {
       "id": "config-bgm-volume",
       "type": "nl.container",
-      "name": "BGM 滑块",
+      "name": "音乐滑块",
       "parentId": "b15fa747-fe45-4bf2-8562-c343ac387293",
       "childrenIds": [],
       "layout": {
@@ -50688,6 +50689,200 @@
           "fieldId": "hasVoice"
         }
       }
+    },
+    "209f9970-6eeb-4e70-8f74-d940ed351171": {
+      "id": "209f9970-6eeb-4e70-8f74-d940ed351171",
+      "type": "nl.text",
+      "name": "重播配音提示",
+      "parentId": "e1e45cc5-f9bf-48da-b126-555dcc1abcf6",
+      "childrenIds": [],
+      "layout": {
+        "x": 1040,
+        "y": 4,
+        "width": 350,
+        "height": 28,
+        "opacity": 1,
+        "visible": false
+      },
+      "props": {
+        "fontSize": 18,
+        "color": "nlbrand:text.muted",
+        "fontWeight": "normal",
+        "fontStyle": "normal",
+        "textAlign": "right",
+        "textVerticalAlign": "center",
+        "lineHeight": 1.4,
+        "fontAssetId": null,
+        "textWrapMode": "nowrap",
+        "textAutoFit": false,
+        "textAutoFitMinFontSize": 12,
+        "writingMode": "horizontal-tb",
+        "textOrientation": "mixed",
+        "tateChuYoko": true,
+        "tateChuYokoMaxLength": 2,
+        "transformOffsetX": 0,
+        "transformOffsetY": 0,
+        "transformScale": 1,
+        "transformRotation": 0,
+        "transformOpacity": 1,
+        "effects": {
+          "effectBlur": 0,
+          "effectBackgroundBlur": 0,
+          "effectShadow": null,
+          "effectTextShadow": null,
+          "effectInnerShadow": null,
+          "effectBlend": "",
+          "effectGlow": null,
+          "effectFilter": null
+        },
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "默认",
+              "propertyGroups": [
+                {
+                  "key": "fontAssetId",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "fontSize",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 18
+                    }
+                  ]
+                },
+                {
+                  "key": "fontWeight",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "normal"
+                    }
+                  ]
+                },
+                {
+                  "key": "fontStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "normal"
+                    }
+                  ]
+                },
+                {
+                  "key": "color",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:text.muted"
+                    }
+                  ]
+                },
+                {
+                  "key": "lineHeight",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1.4
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOffsetX",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOffsetY",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformScale",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "transformRotation",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBlur",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "effectTextShadow",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBlend",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": ""
+                    }
+                  ]
+                },
+                {
+                  "key": "effectFilter",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "localizationKey": "log.replayVoice"
+      }
     }
   },
   "actions": {
@@ -50901,7 +51096,7 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-10-11T01:02:35.591Z"
+    "updatedAt": "2026-10-15T20:09:10.724Z"
   },
   "structs": {},
   "entrySurfaceId": "5107c0a1-0000-4000-8000-000000000500"

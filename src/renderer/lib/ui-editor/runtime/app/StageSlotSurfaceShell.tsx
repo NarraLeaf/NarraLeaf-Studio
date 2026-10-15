@@ -9,6 +9,7 @@ import {
     type MutableRefObject,
     type SetStateAction,
 } from "react";
+import { flushSync } from "react-dom";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { UIStageSlotId, UIStageSurface } from "@shared/types/ui-editor/document";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
@@ -31,8 +32,8 @@ import {
     type GameHostSurfaceBinding,
 } from "./gameHostApiOptions";
 import { stageSlotRuntimeScopeId } from "./stageSlots";
-import { isStageSlotConcealedByPage } from "./layers/stageOcclusion";
-import { useStageCovered, useStageCoveredByPage } from "./stageConcealment";
+import { isStageSlotConcealedByPage, isStageSlotConcealedByVideo } from "./layers/stageOcclusion";
+import { useStageCovered, useStageCoveredByPage, useStageHeldByVideo } from "./stageConcealment";
 import type { AmbientSurfaceTargets } from "./ambientSurfaceEvents";
 import { createNestedSurfaceHost } from "./nestedSurfaceHost";
 import { staticSurfaceHostAdapter, type SurfaceStateAccessors } from "./types";
@@ -117,8 +118,16 @@ export type StageSlotSurfaceRuntime = {
     runtimeScopeId: string;
     hostAdapter: UIHostAdapter;
     hostAdapterRef: MutableRefObject<UIHostAdapter | null>;
-    /** Dispatches `flush` to every element of this surface with value bindings or flush logic. */
-    flushSlotElements: () => void;
+    /**
+     * Dispatches `flush` to every element of this surface with value bindings or flush logic, and
+     * resolves once their graphs have run.
+     *
+     * Queued for the next frame like every flush, unless `now` is set: then the queue runs at once,
+     * and when the graphs are done the widgets they changed are drawn before the frame is painted.
+     * For the dialog's line beat (see `DialogStateBridge`): queued, the box painted its new line for
+     * a frame or two with what the previous line's flush had set - the last speaker's avatar.
+     */
+    flushSlotElements: (options?: { now?: boolean }) => Promise<void>;
 };
 
 /** Widget-runtime store key for a slot surface element (matches `scopedWidgetRuntimeKey`). */
@@ -250,8 +259,9 @@ export function useStageSlotSurfaceRuntime(input: {
         }),
         [bundle.ui.localBlueprints, document, surface],
     );
-    const flushSlotElements = useCallback(() => {
+    const flushSlotElements = useCallback((flushOptions?: { now?: boolean }): Promise<void> => {
         const runtime = hostAdapterRef.current?.blueprintRuntime;
+        const dispatched: Promise<void>[] = [];
         for (const elementId of flushElementIds) {
             const element = document.elements[elementId];
             if (!element || !runtime) {
@@ -272,10 +282,19 @@ export function useStageSlotSurfaceRuntime(input: {
                 ? runtime.drawings?.everyDrawingOf(elementId) ?? [{}]
                 : [{}];
             for (const drawing of drawings) {
-                void runtime.dispatchElementBlueprintEvent(elementId, "flush", payload, drawing);
+                dispatched.push(runtime.dispatchElementBlueprintEvent(elementId, "flush", payload, drawing));
             }
         }
-    }, [bundle.ui.localBlueprints, document, flushElementIds, surface.id]);
+        if (!flushOptions?.now || dispatched.length === 0) {
+            return Promise.all(dispatched).then(() => undefined);
+        }
+        void runtime?.drainPendingFlushes?.();
+        return Promise.all(dispatched).then(() => {
+            // Drawn now rather than when React next gets round to the state the graphs set: the
+            // whole point of `now` is that the frame showing this beat shows its flush too.
+            flushSync(() => setWidgetPatchesByScope(widgetPatchesByScopeRef.current));
+        });
+    }, [bundle.ui.localBlueprints, document, flushElementIds, setWidgetPatchesByScope, surface.id, widgetPatchesByScopeRef]);
 
     return { runtimeScopeId, hostAdapter, hostAdapterRef, flushSlotElements };
 }
@@ -313,7 +332,12 @@ export function StageSlotSurfaceBody(props: {
     const { options, surface, runtime, surfacePointerEvents, passive, navigable = false } = props;
     // Stepped off the screen, not unmounted, while a page is up: the line keeps revealing and the
     // graphs keep their state, so closing the page brings back exactly what it covered.
-    const concealed = useStageCoveredByPage() && isStageSlotConcealedByPage(surface.mount.slotId);
+    // And while the story holds on a clip it waits out, which is the screen then (see
+    // `isStageSlotConcealedByVideo`).
+    const coveredByPage = useStageCoveredByPage();
+    const heldByVideo = useStageHeldByVideo();
+    const concealed = (coveredByPage && isStageSlotConcealedByPage(surface.mount.slotId))
+        || (heldByVideo && isStageSlotConcealedByVideo(surface.mount.slotId));
     // The keys leave the whole stage with the story, notifications included: a page or a modal layer
     // over it owns them (see `keyboardOwner`), and a key head on a widget down here answering the same
     // press would be a second owner. They come back as the cover goes.

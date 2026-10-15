@@ -63,12 +63,12 @@ export class DialogService {
     }
 
     /**
-     * Confirm something irreversible: deleting an asset, overwriting its bytes.
+     * Confirm something the author should weigh before it happens: deleting an asset still in use,
+     * replacing a file inside a live session, where nothing can take the replacement back.
      *
      * Same shape as {@link confirm}, inverted hierarchy — the way out is the primary button and the
      * keyboard default, the destructive action is a danger-coloured secondary the author has to aim
-     * at. Nothing here is undoable (there is no asset history), so the button layout is what says so;
-     * see the U3b card's ruling against spelling it out in prose.
+     * at. The button layout is what says so, rather than a sentence spelling it out in prose.
      */
     public async confirmDestructive(message: string, detail: string | undefined, confirmLabel: string): Promise<boolean> {
         return new Promise<boolean>(resolve => {
@@ -152,7 +152,12 @@ export class DialogService {
     }
 
     /**
-     * Show a dialog and wait for result
+     * Show a dialog and wait for result.
+     *
+     * Resolves with the pressed button's `result`, or `undefined` when the dialog is dismissed
+     * (Esc, the close button, the backdrop). The button's answer is settled before the dialog
+     * closes: closing runs `onClose`, and an `onClose` that answered first would turn every button
+     * into a dismissal.
      */
     public async showAndWait<T = any>(options: {
         title: string;
@@ -164,6 +169,13 @@ export class DialogService {
         height?: string | number;
     }): Promise<T | undefined> {
         return new Promise<T | undefined>(resolve => {
+            let settled = false;
+            const settle = (value: T | undefined) => {
+                if (!settled) {
+                    settled = true;
+                    resolve(value);
+                }
+            };
             const id = this.createDialog({
                 ...options,
                 buttons: options.buttons?.map(btn => ({
@@ -172,11 +184,16 @@ export class DialogService {
                         if (btn.onClick) {
                             await btn.onClick();
                         }
+                        // Dismissed while the button's own handler ran: the dismissal stands and
+                        // the dialog is already gone.
+                        if (settled) {
+                            return;
+                        }
+                        settle(btn.result);
                         this.close(id);
-                        resolve((btn as any).result);
                     },
                 })),
-                onClose: () => resolve(undefined),
+                onClose: () => settle(undefined),
             });
         });
     }

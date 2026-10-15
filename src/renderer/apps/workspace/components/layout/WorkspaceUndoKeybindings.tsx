@@ -3,8 +3,9 @@ import { useKeybindings } from "@/apps/workspace/hooks";
 import { useWorkspace } from "../../context";
 import { useFreezeGuard } from "../ui/freezeGuard";
 import { HistoryService } from "@/lib/workspace/services/history/HistoryService";
+import type { HistoryScopeId } from "@/lib/workspace/services/history/historyModel";
 import { projectHistoryScope } from "@/lib/workspace/services/history/historyScopes";
-import { resolveWorkspaceUndoScope } from "@/lib/workspace/services/history/workspaceUndoTarget";
+import { isSearchPanelFocus, resolveWorkspaceUndoScope } from "@/lib/workspace/services/history/workspaceUndoTarget";
 import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
@@ -28,6 +29,7 @@ import { FocusArea, type FocusContext } from "@/lib/workspace/services/ui/types"
  * menu cannot name a different step from the one the keystroke would take. Usually that is the
  * project's - pressing Ctrl+Z in the assets panel must not rewrite a scene the author cannot see -
  * but not in the property inspector, whose edits go into the active editor's stack and belong to it.
+ * The Search panel has keys of its own (`SearchUndoKeybindings`), so this one stands down there too.
  *
  * This used to call `projectHistoryScope()` directly, which is how the two answers drifted apart
  * without anyone noticing: the menu offered "Undo change background colour" while the keystroke
@@ -46,6 +48,64 @@ import { FocusArea, type FocusContext } from "@/lib/workspace/services/ui/types"
  * it does in the story editor, which routes to the same place for the same reason.
  */
 export function WorkspaceUndoKeybindings() {
+    const { context } = useWorkspace();
+    const history = useMemo(
+        () => (context ? context.services.get<HistoryService>(Services.History) : null),
+        [context],
+    );
+    const [focus, setFocus] = useState<FocusContext | null>(null);
+
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const uiService = context.services.get<UIService>(Services.UI);
+        setFocus(uiService.focus.getFocus());
+        return uiService.focus.onFocusChange(setFocus);
+    }, [context]);
+
+    const scopeId = useMemo(
+        () => (history && focus ? resolveWorkspaceUndoScope(history, focus) : projectHistoryScope()),
+        [focus, history],
+    );
+
+    const outsideEditorsAndSearch = useCallback(
+        (next: FocusContext) => next.area !== FocusArea.Editor && !isSearchPanelFocus(next),
+        [],
+    );
+    const step = useHistoryStepHandlers(scopeId);
+
+    const keybindings = useMemo(
+        () => [
+            {
+                id: "undo",
+                key: "mod+z",
+                description: "Undo the last project-level change",
+                when: outsideEditorsAndSearch,
+                handler: step.undo,
+            },
+            {
+                id: "redo",
+                key: "mod+shift+z",
+                description: "Redo the last project-level change",
+                when: outsideEditorsAndSearch,
+                handler: step.redo,
+            },
+        ],
+        [outsideEditorsAndSearch, step],
+    );
+
+    useKeybindings({ keybindings, idPrefix: "workspace-history", catalogPrefix: "workspace." });
+
+    return null;
+}
+
+/**
+ * What an Undo or Redo key does to one stack: the stack's step, refused while the project is frozen
+ * - or, inside a live session, the session's own inverse, for the reasons above. Shared with the
+ * Search panel's keys, which differ from these only in the stack they name.
+ */
+export function useHistoryStepHandlers(scopeId: HistoryScopeId): { undo: () => void; redo: () => void } {
     const { context } = useWorkspace();
     const freeze = useFreezeGuard();
     const history = useMemo(
@@ -67,63 +127,27 @@ export function WorkspaceUndoKeybindings() {
         read();
         return live.onChanged(read);
     }, [live]);
-    const [focus, setFocus] = useState<FocusContext | null>(null);
 
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const uiService = context.services.get<UIService>(Services.UI);
-        setFocus(uiService.focus.getFocus());
-        return uiService.focus.onFocusChange(setFocus);
-    }, [context]);
-
-    const scopeId = useMemo(
-        () => (history && focus ? resolveWorkspaceUndoScope(history, focus) : projectHistoryScope()),
-        [focus, history],
+    return useMemo(
+        () => ({
+            // Deliberately outside `freeze.run` in a session: the freeze is the session's own, and
+            // sending the inverse of one's own operation is the one write it exists to allow.
+            // Everywhere else the guard still refuses, which is what a frozen project is.
+            undo: inSession
+                ? () => {
+                    live?.undo();
+                }
+                : freeze.run(() => {
+                    history?.undo(scopeId);
+                }),
+            redo: inSession
+                ? () => {
+                    live?.redo();
+                }
+                : freeze.run(() => {
+                    history?.redo(scopeId);
+                }),
+        }),
+        [freeze, history, inSession, live, scopeId],
     );
-
-    const outsideAnEditor = useCallback(
-        (next: FocusContext) => next.area !== FocusArea.Editor,
-        [],
-    );
-
-    const keybindings = useMemo(
-        () => [
-            {
-                id: "undo",
-                key: "mod+z",
-                description: "Undo the last project-level change",
-                when: outsideAnEditor,
-                // Deliberately outside `freeze.run` in a session: the freeze is the session's own,
-                // and sending the inverse of one's own operation is the one write it exists to
-                // allow. Everywhere else the guard still refuses, which is what a frozen project is.
-                handler: inSession
-                    ? () => {
-                        live?.undo();
-                    }
-                    : freeze.run(() => {
-                        history?.undo(scopeId);
-                    }),
-            },
-            {
-                id: "redo",
-                key: "mod+shift+z",
-                description: "Redo the last project-level change",
-                when: outsideAnEditor,
-                handler: inSession
-                    ? () => {
-                        live?.redo();
-                    }
-                    : freeze.run(() => {
-                        history?.redo(scopeId);
-                    }),
-            },
-        ],
-        [freeze, history, inSession, live, outsideAnEditor, scopeId],
-    );
-
-    useKeybindings({ keybindings, idPrefix: "workspace-history", catalogPrefix: "workspace." });
-
-    return null;
 }

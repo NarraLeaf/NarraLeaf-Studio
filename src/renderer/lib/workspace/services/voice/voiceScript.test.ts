@@ -7,7 +7,10 @@ import {
     buildVoiceNameKeyMap,
     buildAssetNameKeyMap,
     matchImportedFiles,
+    planTakeReplacements,
+    voiceLineSpeaker,
     voiceMatchKeyForEntry,
+    voiceMatchKeysForEntry,
     withSceneIndices,
     type VoiceScriptEntry,
 } from "./voiceScript";
@@ -62,6 +65,25 @@ describe("buildVoiceNameKeyMap + matchImportedFiles", () => {
         expect(result.matched.map(m => m.unitId)).toEqual(["t-d1", "t-d2"]);
         expect(result.matched[0].sourceText).toBe("We should go.");
         expect(result.unmatched).toEqual(["leftover_take.wav"]);
+    });
+
+    /**
+     * A speaker whose name has a dot. Reading `.Hara` off the expected name as an extension made the
+     * line expect `…_ms`, so the booth's correctly named file never matched.
+     */
+    it("matches a speaker whose name has a dot", () => {
+        const dotted: VoiceScriptEntry[] = [
+            { unitId: "t-h", sceneName: "Walk together", indexInScene: 5, speaker: "Ms. Hara", sourceText: "Morning." },
+            { unitId: "t-m", sceneName: "Walk together", indexInScene: 6, speaker: "Ms", sourceText: "Hi." },
+        ];
+        const keyMap = buildVoiceNameKeyMap(dotted, PATTERN, "en");
+        const result = matchImportedFiles(["Walktogether_005_Ms.Hara.wav", "Walktogether_006_Ms.wav"], keyMap);
+
+        expect(result.matched.map(m => m.unitId)).toEqual(["t-h", "t-m"]);
+        expect(voiceMatchKeyForEntry(dotted[0], PATTERN, "en")).toBe("walktogether005mshara");
+        // An asset keeps the extension it was imported with, and is matched with it dropped.
+        expect(buildAssetNameKeyMap([{ id: "a1", name: "Walktogether_005_Ms.Hara.wav" }])
+            .get(voiceMatchKeyForEntry(dotted[0], PATTERN, "en"))).toBe("a1");
     });
 
     it("drops ambiguous keys rather than mis-linking", () => {
@@ -122,5 +144,82 @@ describe("assign-time name matching", () => {
 
     it("ignores an asset whose name reduces to nothing", () => {
         expect(buildAssetNameKeyMap([{ id: "a1", name: "---" }]).size).toBe(0);
+    });
+});
+
+describe("the speaker a narration line is named by", () => {
+    const narration = { role: "narration" as const };
+    const noCharacter = () => undefined;
+
+    it("is the project's word for narration, not the interface's", () => {
+        expect(voiceLineSpeaker(narration, noCharacter, "zh-CN").speaker).toBe("旁白");
+        expect(voiceLineSpeaker(narration, noCharacter, "en").speaker).toBe("Narration");
+        expect(voiceLineSpeaker(narration, noCharacter, "ja").speaker).toBe("地の文");
+    });
+
+    it("is a character's own name on her lines", () => {
+        const line = voiceLineSpeaker({ role: "dialogue", characterId: "c1" }, () => "Narra", "zh");
+        expect(line).toEqual({ speaker: "Narra", speakerAliases: [] });
+    });
+
+    /** Both directions: a take named under another language's word still finds its line. */
+    it.each([
+        ["zh-CN", "放学后_001_Narration.wav"],
+        ["zh-CN", "放学后_001_地の文.wav"],
+        ["en", "放学后_001_旁白.wav"],
+        ["ja", "放学后_001_Narration.wav"],
+    ])("in a %s project still matches %s", (sourceLocale, file) => {
+        const entry: VoiceScriptEntry = {
+            unitId: "t-n",
+            sceneName: "放学后",
+            indexInScene: 1,
+            ...voiceLineSpeaker(narration, noCharacter, sourceLocale),
+            sourceText: "走廊的灯一盏一盏熄了。",
+        };
+        const keyMap = buildVoiceNameKeyMap([entry], PATTERN, "zh");
+        expect(matchImportedFiles([file], keyMap).matched.map(m => m.unitId)).toEqual(["t-n"]);
+        // The assign picker's preselection answers the same.
+        const assets = buildAssetNameKeyMap([{ id: "a1", name: file }]);
+        expect(voiceMatchKeysForEntry(entry, PATTERN, "zh").map(key => assets.get(key)).filter(Boolean)).toEqual(["a1"]);
+    });
+
+    it("is exported under the project's word, so the script and the import agree", () => {
+        const entry: VoiceScriptEntry = {
+            unitId: "t-n", sceneName: "放学后", indexInScene: 1,
+            ...voiceLineSpeaker(narration, noCharacter, "zh-CN"), sourceText: "…",
+        };
+        const [row] = buildRecordingScriptRows([entry], PATTERN, "zh", undefined);
+        expect(row.filename).toBe("放学后_001_旁白");
+    });
+});
+
+describe("a pickup imported under the name its take already has", () => {
+    const keyMap = buildVoiceNameKeyMap(ENTRIES, PATTERN, "ja");
+
+    it("is offered as a replacement for the linked take's file", () => {
+        const plan = planTakeReplacements(
+            ["pickup/Rooftop_002_Aoi.wav", "Hallway_001_Aoi.wav", "leftover.wav"],
+            keyMap,
+            { "t-d1": { assetId: "a-old" } },
+            assetId => assetId === "a-old",
+        );
+        expect(plan.replacements).toEqual([
+            { path: "pickup/Rooftop_002_Aoi.wav", unitId: "t-d1", sourceText: "We should go.", assetId: "a-old" },
+        ]);
+        // A line with no take yet, and a file no line answers to, import as before.
+        expect(plan.imports).toEqual(["Hallway_001_Aoi.wav", "leftover.wav"]);
+    });
+
+    it("imports as new when the linked asset is gone, or a second file names the same take", () => {
+        const gone = planTakeReplacements(["Rooftop_002_Aoi.wav"], keyMap, { "t-d1": { assetId: "a-gone" } }, () => false);
+        expect(gone).toEqual({ replacements: [], imports: ["Rooftop_002_Aoi.wav"] });
+        const twice = planTakeReplacements(
+            ["Rooftop_002_Aoi.wav", "Rooftop_002_Aoi.ogg"],
+            keyMap,
+            { "t-d1": { assetId: "a-old" } },
+            () => true,
+        );
+        expect(twice.replacements.map(entry => entry.path)).toEqual(["Rooftop_002_Aoi.wav"]);
+        expect(twice.imports).toEqual(["Rooftop_002_Aoi.ogg"]);
     });
 });

@@ -255,6 +255,13 @@ export type StoryCommandContext = {
     /** Per character: its poses (preset) or every tag across its axes (layered). */
     appearanceByCharacterId: Readonly<Record<string, readonly StoryCommandAppearanceRef[]>>;
     /**
+     * The pictures a layered character is drawn from - each layer's image under every tag. They are
+     * ordinary image assets, and still resolve wherever a row names one, but a slot that offers the
+     * library as things to put on stage leaves them out: a single layer of 美绪 is not a picture an
+     * author means to show. Omitted, nothing is left out.
+     */
+    characterLayerAssetIds?: readonly string[];
+    /**
      * The characters a runtime draws (`puppet` appearance) - the ones whose motion / expression / skin
      * are named by the model rather than enumerated in the project.
      *

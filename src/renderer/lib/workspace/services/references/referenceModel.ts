@@ -6,6 +6,7 @@ import { hasScriptLayer } from "@shared/blueprint/blueprintLayers";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { VoiceDocument } from "@shared/types/voice";
 import { isAppearanceModel, type AppearanceVariant } from "@shared/types/ui-editor/appearance";
+import { readUIPageMusic } from "@shared/types/ui-editor/pageMusic";
 import { blueprintImageAssetId } from "@shared/types/blueprint/valueTypes";
 import { BUILTIN_EDITOR_FONT_ID_PREFIX } from "@/lib/ui-editor/fonts/builtinVirtualEditorFonts";
 import { DEV_MODE_SAVE_PREVIEW_ASSET_ID_PREFIX } from "@shared/types/devModeSave";
@@ -1202,6 +1203,22 @@ export function extractUIDocumentAssetReferences(
             kind: "uiElement",
             label: surface.name,
             field: "backgroundImage",
+            target: { kind: "uiSurface", surfaceId: surface.id },
+        });
+    }
+    // A page's music is held by the page in the same way, and is the one audio asset the interface
+    // document names outside its elements.
+    for (const surface of document.surfaces ?? []) {
+        const assetId = readUIPageMusic(surface)?.assetId;
+        if (!isLibraryAssetId(assetId)) {
+            continue;
+        }
+        references.push({
+            id: `ui:surface:${surface.id}:music`,
+            assetId: assetId.trim(),
+            kind: "uiElement",
+            label: surface.name,
+            field: "music",
             target: { kind: "uiSurface", surfaceId: surface.id },
         });
     }

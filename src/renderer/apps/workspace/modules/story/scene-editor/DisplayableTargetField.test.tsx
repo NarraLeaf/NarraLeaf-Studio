@@ -3,6 +3,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { StoryDisplayableTargetRef, StoryDocument } from "@shared/types/story";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
+import { Character } from "@/lib/workspace/services/character/Character";
+import { CharacterProfile } from "@/lib/workspace/services/character/CharacterProfile";
 import { DisplayableTargetField } from "./DisplayableTargetField";
 
 /**
@@ -93,5 +95,60 @@ describe("DisplayableTargetField", () => {
             name: "Scene background",
             label: "Scene background",
         });
+    });
+});
+
+describe("a character walked on without a stage name", () => {
+    /**
+     * Her reference is labelled with the placeholder "Character", so the field read 「Character 角色」
+     * on `@变换 Narra 位置=左` while the row's line and the inspector's header named her Narra.
+     */
+    const withNarra: StoryDocument = {
+        ...DOCUMENT,
+        scenes: {
+            [SCENE_ID]: {
+                ...DOCUMENT.scenes[SCENE_ID],
+                rootBlockIds: ["b_enter", "b_move"],
+                blocks: {
+                    b_enter: {
+                        id: "b_enter",
+                        kind: "action",
+                        parentId: null,
+                        childrenIds: [],
+                        payload: { action: "character", operation: "enter", characterId: "narra" },
+                    },
+                    b_move: {
+                        id: "b_move",
+                        kind: "action",
+                        parentId: null,
+                        childrenIds: [],
+                        payload: {
+                            action: "displayable",
+                            operation: "transform",
+                            target: { name: "narra", label: "Character", kind: "character", sourceBlockId: "b_enter" },
+                        },
+                    },
+                },
+            },
+        },
+    } as StoryDocument;
+
+    it("is named by her cast name, in the field and in its list", () => {
+        const narra = Character.fromJSON({ profile: CharacterProfile.create("narra", "Narra", "preset").toJSON() });
+        render(
+            <DisplayableTargetField
+                document={withNarra}
+                sceneId={SCENE_ID}
+                blockId="b_move"
+                target={{ name: "narra", label: "Character", kind: "character", sourceBlockId: "b_enter" }}
+                characters={[narra]}
+                onChange={() => undefined}
+            />,
+        );
+        const trigger = screen.getAllByRole("button")[0];
+        // The name, then the kind word (Character in English, 角色 in Chinese), not the placeholder.
+        expect(trigger.querySelector(".truncate")?.textContent).toBe("Narra");
+        fireEvent.click(trigger);
+        expect(screen.getByRole("option", { name: /Narra/ })).toBeTruthy();
     });
 });

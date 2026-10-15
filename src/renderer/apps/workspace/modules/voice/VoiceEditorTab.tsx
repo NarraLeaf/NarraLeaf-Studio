@@ -19,6 +19,9 @@ import type { EditorComponentProps } from "../types";
 import { EmptyState, Select, type SelectOption } from "@/lib/components/elements";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { useWorkspace } from "../../context";
+import { useRegistry } from "../../registry";
+import { createStorySceneEditorTab } from "../story/scene-editor/openStorySceneEditorTab";
+import { nextStoryRevealToken } from "../story/scene-editor/storySceneEditorTabId";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useKeybinding, whenEditorFocused } from "@/apps/workspace/hooks";
 import { TableFindOverlay } from "@/apps/workspace/components/ui/TableFindOverlay";
@@ -42,7 +45,13 @@ import type { Asset } from "@/lib/workspace/services/assets/types";
 import type { StoryLibraryEntry } from "@shared/types/story";
 import { clipVolume, normalizeAudioClipRegion } from "@shared/types/audio";
 import type { VoiceConfiguration, VoiceDocument } from "@shared/types/voice";
-import { buildAssetNameKeyMap, voiceMatchKeyForEntry, withSceneIndices } from "@/lib/workspace/services/voice/voiceScript";
+import {
+    buildAssetNameKeyMap,
+    voiceLineSpeaker,
+    voiceMatchKeysForEntry,
+    withSceneIndices,
+    type VoiceLineSpeaker,
+} from "@/lib/workspace/services/voice/voiceScript";
 import type { VoiceEditorTabPayload } from "./voiceEditorTabId";
 import { VoiceRow, type VoiceTableRow } from "./VoiceRows";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
@@ -64,10 +73,15 @@ const CHOICE_GROUP_KEY = "__choice__";
 const GROUP_ROW_HEIGHT_PX = 26;
 const VOICE_ROW_HEIGHT_PX = 37;
 
-type TableRow = VoiceTableRow & { speaker: string; indexInScene: number };
+/**
+ * `speaker` is the column's word, in the interface language; `naming` is what the line's take is
+ * named by, which is the project's (`voiceLineSpeaker`) and the same in every Studio.
+ */
+type TableRow = VoiceTableRow & { speaker: string; naming: VoiceLineSpeaker; indexInScene: number; blockId: string };
 
 export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<VoiceEditorTabPayload | undefined>) {
     const { context, isInitialized } = useWorkspace();
+    const { openEditorTab } = useRegistry();
     const { t, tn } = useTranslation();
     // The rows guard themselves (see `VoiceRows`); the cast name in the group header is the one
     // writing control this shell owns.
@@ -144,6 +158,11 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
         }
         return t("workspace.voice.table.narrationSpeaker");
     }, [characterService, t]);
+    const namingSpeakerFor = useCallback((row: StoryTranslationRow) => voiceLineSpeaker(
+        row,
+        characterId => characterService?.getCharacter(characterId)?.profile.getName(),
+        localizationService?.getConfiguration().sourceLocale,
+    ), [characterService, localizationService]);
 
     // Story list + default selection.
     useEffect(() => {
@@ -241,10 +260,12 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
                         ...(scriptText !== row.sourceText ? { authoredText: row.sourceText } : {}),
                         sceneId: row.sceneId,
                         sceneName: row.sceneName,
+                        blockId: row.blockId,
                         indexInScene: row.indexInScene,
                         role: row.role,
                         ...(row.characterId ? { characterId: row.characterId } : {}),
                         speaker: speakerNameFor(row),
+                        naming: namingSpeakerFor(row),
                     };
                 }));
             } catch {
@@ -271,7 +292,7 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
             unsubscribeStory();
             unsubscribeTranslation?.();
         };
-    }, [voiceService, storyService, localizationService, storyId, locale, speakerNameFor, characters, config?.voiceChoices]);
+    }, [voiceService, storyService, localizationService, storyId, locale, speakerNameFor, namingSpeakerFor, characters, config?.voiceChoices]);
 
     // Voice document for this language, read again if the language comes back to the list.
     useEffect(() => {
@@ -448,14 +469,20 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
         if (!config) {
             return undefined;
         }
-        const key = voiceMatchKeyForEntry({
+        const keys = voiceMatchKeysForEntry({
             unitId: row.unitId,
             sceneName: row.sceneName,
             indexInScene: row.indexInScene,
-            speaker: row.speaker,
+            ...row.naming,
             sourceText: row.sourceText,
         }, config.namingPattern, locale);
-        return key ? assetNameKeys.get(key) : undefined;
+        for (const key of keys) {
+            const assetId = assetNameKeys.get(key);
+            if (assetId) {
+                return assetId;
+            }
+        }
+        return undefined;
     }, [assetNameKeys, config, locale]);
 
     const rowStates = useMemo(() => {
@@ -731,7 +758,19 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
         statusApproved: t("workspace.voice.table.statusApproved"),
         statusOutdated: t("workspace.voice.table.statusOutdated"),
         notePlaceholder: t("workspace.voice.table.notePlaceholder"),
+        showInStory: t("workspace.voice.table.showInStory"),
     }), [t]);
+
+    /** The line's row in the story editor, deep-linked the way a search hit is. */
+    const showInStory = useCallback((row: TableRow) => {
+        if (!storyId || storyId === ORPHANS_SOURCE_VALUE) {
+            return;
+        }
+        openEditorTab(createStorySceneEditorTab(
+            { storyId, sceneId: row.sceneId, activeBlockId: row.blockId, revealToken: nextStoryRevealToken() },
+            row.sceneName,
+        ));
+    }, [openEditorTab, storyId]);
 
     const localeDisplayName = useMemo(() => {
         const config = voiceService?.getConfiguration();
@@ -1041,6 +1080,7 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
                                     onApprove={() => writeUnit(row.unitId, row.sourceText, { status: "approved" })}
                                     onReturn={() => writeUnit(row.unitId, row.sourceText, { status: "linked" })}
                                     onDropAsset={assetId => assignAsset(row.unitId, row.sourceText, assetId)}
+                                    onShowInStory={() => showInStory(row)}
                                 />
                             );
                         })() : null}

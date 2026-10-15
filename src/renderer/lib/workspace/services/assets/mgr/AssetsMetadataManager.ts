@@ -268,6 +268,41 @@ export class AssetsMetadataManager {
     }
 
     /**
+     * Record bytes an undo or redo put back into an asset, with the name and extension the record had
+     * while it held them - exactly, rather than derived from the bytes as {@link applyReplacedContent}
+     * does. When another asset of the type has taken that name in the meantime, the name is the
+     * current one fitted to the extension, as a replacement names it.
+     */
+    public applyRestoredContent<T extends AssetType>(
+        asset: Asset<T, AssetSource>,
+        hash: string,
+        identity: { name: string; ext?: string },
+    ): RequestStatus<Asset<T, AssetSource>> {
+        const existingAsset = this.getAssets()[asset.type][asset.id];
+        if (!existingAsset) {
+            return {
+                success: false,
+                error: `Asset not found: ${asset.id}`,
+            };
+        }
+
+        existingAsset.hash = hash;
+        const taken = Object.values(this.getAssets()[asset.type])
+            .some(candidate => candidate.id !== asset.id && candidate.name === identity.name);
+        existingAsset.name = taken
+            ? this.resolveNameForExtension(asset.type, existingAsset.name, asset.id, identity.ext)
+            : identity.name;
+        setAssetExtension(existingAsset, identity.ext);
+
+        this.assetsService.markDirty(asset.type);
+
+        return {
+            success: true,
+            data: existingAsset,
+        };
+    }
+
+    /**
      * Record what a refresh learned about a remote asset: always the new provenance, and the new
      * digest only when the bytes actually moved.
      *

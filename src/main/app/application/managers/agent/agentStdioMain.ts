@@ -55,6 +55,21 @@ export function studioLaunchCommand(electronApp: ElectronApp): AgentStdioCommand
     return { command: process.execPath, args: [path.join(electronApp.getAppPath(), "index.js"), "--dev"] };
 }
 
+/**
+ * What a Studio started by the bridge needs on its command line to serve agents. A packaged one
+ * follows the profile's switch and port and needs nothing. A development one serves only when its
+ * command line says so - `--agent` and `--agent-port` decide there, whatever the profile remembers -
+ * so it is told to, on the port this profile names: the address it then writes back is the one the
+ * bridge reads. `settings` is the profile's `agent-mcp.json`, parsed, or null.
+ */
+export function agentLaunchArgs(isPackaged: boolean, settings: unknown): string[] {
+    if (isPackaged) {
+        return [];
+    }
+    const port = settings && typeof settings === "object" ? (settings as { port?: unknown }).port : undefined;
+    return typeof port === "number" && Number.isInteger(port) && port > 0 && port <= 65535 ? [`--agent-port=${port}`] : ["--agent"];
+}
+
 /** The command a stdio-only MCP client runs: the launch above, as the bridge. */
 export function agentStdioCommand(electronApp: ElectronApp): AgentStdioCommand {
     const launch = studioLaunchCommand(electronApp);
@@ -203,10 +218,17 @@ export function startAgentStdioBridge(electronApp: ElectronApp, argv: readonly s
     // line - an ordinary launch takes no profile flag - so with one, the bridge only connects.
     const launch = overridden ? null : studioLaunchCommand(electronApp);
     let lastLaunchAt = 0;
+    const readSettingsNow = (): unknown => {
+        try {
+            return JSON.parse(fs.readFileSync(path.join(profileDir, AGENT_SETTINGS_FILE_NAME), "utf8"));
+        } catch {
+            return null;
+        }
+    };
     const launchStudio = launch
         ? (extraArgs: string[] = []) => {
             lastLaunchAt = Date.now();
-            const child = spawn(launch.command, [...launch.args, ...extraArgs], {
+            const child = spawn(launch.command, [...launch.args, ...agentLaunchArgs(electronApp.isPackaged, readSettingsNow()), ...extraArgs], {
                 detached: true,
                 stdio: "ignore",
                 cwd: os.homedir(),
@@ -263,6 +285,8 @@ export function startAgentStdioBridge(electronApp: ElectronApp, argv: readonly s
         launchStudio: launchStudio ? () => launchStudio() : null,
         sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
         now: () => Date.now(),
+        version: () => electronApp.getVersion(),
+        accessFollowsLaunch: !electronApp.isPackaged,
     }).then(
         () => exitAfterFlush(0),
         error => {

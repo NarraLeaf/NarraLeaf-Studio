@@ -17,6 +17,7 @@ export {
 export {
     type SceneEditorContext,
     scenePropertySchema,
+    getSurfaceKindNoun,
 } from "./sceneSchema";
 
 export {

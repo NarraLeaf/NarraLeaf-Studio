@@ -195,9 +195,8 @@ export const story = {
         // Deleting an asset is not something a session can do, so this is the file having gone
         // before the session started or after it ended - not a step somebody took inside one.
         undoAssetGone: "That asset is gone.",
-        // The same answer replacing an asset's contents has always given, in a session or out of
-        // one: the bytes that were there are not kept, so there is nothing to point the record back
-        // at.
+        // Inside a session the bytes a replacement wrote over are not kept, so there is nothing to
+        // point the record back at. Outside one, Replace File… is an ordinary step of undo.
         undoContentReplaced: "Replacing a file cannot be taken back.",
         undoConfigEntryGone: "That entry is no longer in this project.",
         undoConfigEntryRestored: "That entry is back in this project.",
@@ -525,6 +524,24 @@ export const story = {
     stage: {
         notOnStage: "Not on stage",
         builtin: "Built-in",
+        // The stage singletons a target slot names by a reserved word (`camera`, `background`,
+        // `backgroundLayer`, `displayableLayer`). The word stays on the line; these are the names
+        // the menus and the inspector show beside it.
+        reserved: {
+            camera: "Camera",
+            background: "Scene background",
+            backgroundLayer: "Background layer",
+            displayableLayer: "Base layer",
+        },
+        // The name a `/text` row takes when the line gives none: one token, as a target slot reads it.
+        defaultName: {
+            text: "text",
+        },
+        reservedHint: {
+            background: "The scene's background image",
+            backgroundLayer: "Built-in layer, behind everything",
+            displayableLayer: "Built-in default layer",
+        },
     },
     targetField: {
         label: "Target",
@@ -678,10 +695,6 @@ export const story = {
         removeStarred: "Remove from starred",
         starredEmpty: "Starred commands are listed first in the “/” menu.",
     },
-    music: {
-        missingAudio: "Missing audio",
-        none: "No music",
-    },
     background: {
         missingImage: "Missing image",
         none: "No background",
@@ -707,7 +720,7 @@ export const story = {
         // Stage and media
         character: "Character",
         speaker: "Speaker",
-        form: "Expression",
+        form: "Appearance",
         motion: "Motion",
         skin: "Skin",
         puppetParam: "Parameter",
@@ -1039,9 +1052,9 @@ export const story = {
             video: "Video asset",
             character: "Character",
             characterOrName: "Character, or any name",
-            characterForm: "One of that character's expressions",
+            characterForm: "One of that character's appearances",
             puppet: {
-                motion: "A motion provided by the runtime (blank returns it to rest)",
+                motion: "A motion provided by the runtime, played in a loop (blank returns it to rest)",
                 expression: "An expression provided by the runtime (blank clears it)",
                 skin: "A skin provided by the runtime (blank restores the default)",
                 param: "A numeric parameter of the model, by id",
@@ -1133,9 +1146,9 @@ export const story = {
         createCharacterUnavailable: "Unavailable in a live session. Choose an existing character.",
         voiceOutdated: "Voice outdated, open voice table",
         voiceManage: "Open voice table",
-        voicePlay: "Play voice take",
+        voicePlay: "Play take",
         // "Stop" alone was the accessible name of a mid-row icon button; it now says what stops.
-        voiceStop: "Stop voice take",
+        voiceStop: "Stop take",
     },
     sceneEditor: {
         defaultSceneName: "Untitled Scene",
@@ -1148,17 +1161,6 @@ export const story = {
         noDescription: "No description",
         defaultBackground: "Default background",
         clearBackground: "Clear background",
-        sceneMusic: "Scene music",
-        clearSceneMusic: "Clear scene music",
-        selectSceneMusic: "Select Scene Music",
-        sceneMusicVolume: "Volume",
-        sceneMusicLoop: "Loop",
-        sceneMusicFade: "Fade in (s)",
-        sceneMusicLoopRegion: "Loops {from}s to {to}s",
-        // Intro→loop: the head plays once, then the body repeats. Three markers, still one line.
-        sceneMusicIntroLoop: "Plays {from}s, loops {loop}s to {to}s",
-        sceneMusicFromIn: "Starts at {from}s",
-        sceneMusicWholeClip: "Whole clip",
         selectDefaultBackground: "Select Default Background",
         tabInvalid: "Story scene editor tab is invalid.",
         loadingScene: "Loading story scene…",
@@ -1457,14 +1459,14 @@ export const story = {
         show: { label: "Show", detail: "Show a character, a stage object, or an image from the asset library" },
         hide: { label: "Hide", detail: "Hide a character or a stage object" },
         face: { label: "Appearance", detail: "Change which of a character's looks is showing" },
-        motion: { label: "Motion", detail: "Set the motion a runtime-drawn character plays" },
+        motion: { label: "Motion", detail: "Set the motion a runtime-drawn character loops until another row changes it" },
         param: { label: "Parameter", detail: "Set one numeric parameter of a runtime-drawn character's model" },
         skin: { label: "Skin", detail: "Set the skin a runtime-drawn character wears" },
         rename: { label: "Rename", detail: "Change the name a character speaks under" },
         say: { label: "Say", detail: "A line of dialogue" },
         image: { label: "Image", detail: "Declare an image on stage; /show reveals it" },
         text: { label: "Text", detail: "Declare text on stage; /show reveals it" },
-        vfx: { label: "Ambience", detail: "Declare a looping full-screen overlay: petals, rain, dust, light" },
+        vfx: { label: "Ambience", detail: "Declare a looping full-screen overlay (petals, rain, dust, light); /show reveals it" },
         layer: { label: "Layer", detail: "Add a layer to this scene" },
         swap: { label: "Swap", detail: "Replace an object's image or text" },
         play: { label: "Play", detail: "Play a video from the asset library, or play a video again" },
@@ -1710,6 +1712,7 @@ export const story = {
         // in a list that shows only names.
         speakerNameOnly: "{name} (name only)",
         openInspector: "Open inspector",
+        editAsText: "Edit as text",
         delete: "Delete",
     },
     // Names for the undo steps these edits leave behind ("Undo delete scene At the Station").
@@ -1787,6 +1790,7 @@ export const story = {
         undo: "Undo story scene edit",
         redo: "Redo story scene edit",
         editRow: "Edit the active row (or open its inspector)",
+        editRowAsText: "Edit the active row as text",
         closeInspector: "Close the property editor",
         insertRow: "Insert a new story row below the active row",
         indent: "Indent selected story rows",

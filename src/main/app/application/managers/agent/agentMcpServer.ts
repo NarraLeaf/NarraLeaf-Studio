@@ -411,10 +411,6 @@ export class AgentMcpServer {
     }
 
     private initialize(params: Record<string, unknown>): { result: unknown; session: string } {
-        const asked = typeof params.protocolVersion === "string" ? params.protocolVersion : "";
-        const protocolVersion = (AGENT_MCP_PROTOCOL_VERSIONS as readonly string[]).includes(asked)
-            ? asked
-            : AGENT_MCP_PROTOCOL_VERSIONS[0];
         const clientInfo = params.clientInfo && typeof params.clientInfo === "object"
             ? params.clientInfo as Record<string, unknown>
             : {};
@@ -424,20 +420,9 @@ export class AgentMcpServer {
         while (this.sessions.size > MAX_SESSIONS) {
             this.sessions.delete(this.sessions.keys().next().value as string);
         }
-        this.options.host.log("info", `[Agent] ${clientName ?? "A client"} connected (protocol ${protocolVersion})`);
-        return {
-            session,
-            result: {
-                protocolVersion,
-                capabilities: {
-                    tools: { listChanged: true },
-                    resources: { listChanged: false, subscribe: false },
-                    prompts: { listChanged: false },
-                },
-                serverInfo: { name: AGENT_MCP_SERVER_NAME, title: "NarraLeaf Studio", version: this.options.host.version() },
-                instructions: AGENT_MCP_INSTRUCTIONS,
-            },
-        };
+        const result = agentInitializeResult(params, this.options.host.version());
+        this.options.host.log("info", `[Agent] ${clientName ?? "A client"} connected (protocol ${result.protocolVersion})`);
+        return { session, result };
     }
 
     private async call(method: string, params: Record<string, unknown>, sessionHeader: string | null): Promise<unknown> {
@@ -452,12 +437,7 @@ export class AgentMcpServer {
                 const plugins = (await this.options.host.listPluginGuides?.().catch(() => [])) ?? [];
                 return {
                     resources: [
-                        ...AGENT_GUIDE_CHAPTERS.map(chapter => ({
-                            uri: `${GUIDE_URI_PREFIX}${chapter}`,
-                            name: chapter,
-                            title: GUIDE_TITLES[chapter],
-                            mimeType: "text/markdown",
-                        })),
+                        ...agentGuideResources(),
                         ...plugins.map(guide => ({
                             uri: `${AGENT_PLUGIN_GUIDE_URI_PREFIX}${guide.pluginId}`,
                             name: `plugin:${guide.pluginId}`,
@@ -496,18 +476,7 @@ export class AgentMcpServer {
                 };
             }
             case "prompts/list":
-                return {
-                    prompts: [{
-                        name: MAKE_GAME_PROMPT,
-                        title: "Make a game",
-                        description: "Make a complete visual novel in NarraLeaf Studio, from a brief to a playable build.",
-                        arguments: [{
-                            name: "brief",
-                            description: "What the game is: title, story or script, art style, language, number of endings.",
-                            required: false,
-                        }],
-                    }],
-                };
+                return { prompts: AGENT_MCP_PROMPTS };
             case "prompts/get": {
                 if (params.name !== MAKE_GAME_PROMPT) {
                     throw new RpcError(-32602, `Unknown prompt: ${String(params.name)}`);
@@ -569,6 +538,50 @@ export class AgentMcpServer {
         return toToolResult(result);
     }
 }
+
+/**
+ * The answer to `initialize`: the protocol version both sides speak (the client's, when Studio speaks
+ * it), what the server offers and who it is. Also given by the stdio bridge while Studio is not yet
+ * running, so it must say only what holds before a project is open.
+ */
+export function agentInitializeResult(params: Record<string, unknown>, version: string) {
+    const asked = typeof params.protocolVersion === "string" ? params.protocolVersion : "";
+    const protocolVersion = (AGENT_MCP_PROTOCOL_VERSIONS as readonly string[]).includes(asked)
+        ? asked
+        : AGENT_MCP_PROTOCOL_VERSIONS[0];
+    return {
+        protocolVersion,
+        capabilities: {
+            tools: { listChanged: true },
+            resources: { listChanged: false, subscribe: false },
+            prompts: { listChanged: false },
+        },
+        serverInfo: { name: AGENT_MCP_SERVER_NAME, title: "NarraLeaf Studio", version },
+        instructions: AGENT_MCP_INSTRUCTIONS,
+    };
+}
+
+/** The guide's chapters as `resources/list` names them; a plugin's own chapter is added by the endpoint. */
+export function agentGuideResources() {
+    return AGENT_GUIDE_CHAPTERS.map(chapter => ({
+        uri: `${GUIDE_URI_PREFIX}${chapter}`,
+        name: chapter,
+        title: GUIDE_TITLES[chapter],
+        mimeType: "text/markdown",
+    }));
+}
+
+/** What `prompts/list` offers. */
+export const AGENT_MCP_PROMPTS = [{
+    name: MAKE_GAME_PROMPT,
+    title: "Make a game",
+    description: "Make a complete visual novel in NarraLeaf Studio, from a brief to a playable build.",
+    arguments: [{
+        name: "brief",
+        description: "What the game is: title, story or script, art style, language, number of endings.",
+        required: false,
+    }],
+}];
 
 /** A tool as `tools/list` describes it. */
 export function describeTool(tool: AgentToolDescriptor) {

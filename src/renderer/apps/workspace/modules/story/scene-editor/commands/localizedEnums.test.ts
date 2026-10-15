@@ -133,6 +133,30 @@ describe("localizedEnumValue", () => {
         }
     });
 
+    it("writes a Latin word in lower case, as every other word on the line", () => {
+        // The inspector labels a slide "Push"; on the line it is a word like `fade` and `wipe`.
+        i18nStore.setLocale("en");
+        const swap = enumType("face", "t");
+        const slide = swap.options.find(option => option.value === "slide")!;
+        expect(localizedEnumValue(swap, slide)).toBe("push");
+        expect(matchEnumOptionLocalized(swap, "push")?.value).toBe("slide");
+        for (const def of listCommandDefs()) {
+            for (const param of def.params) {
+                for (const type of paramTypes(param)) {
+                    if (type.kind !== "enum") {
+                        continue;
+                    }
+                    for (const option of type.options) {
+                        const spelling = localizedEnumValue(type, option);
+                        if (spelling !== option.value) {
+                            expect(spelling, `${def.token}.${param.name}`).toBe(spelling.toLowerCase());
+                        }
+                    }
+                }
+            }
+        }
+    });
+
     it("falls back to the canonical value where a locale adds no word of its own", () => {
         i18nStore.setLocale("en");
         expect(localizedEnumValue(enumType("bg", "t"), { value: "fade" })).toBe("fade");

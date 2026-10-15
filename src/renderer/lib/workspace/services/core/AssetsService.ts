@@ -53,9 +53,11 @@ import {
 // which read assets. A value import here would close that loop; the instance is resolved from the
 // service registry at call time instead.
 import type { ReferenceService } from "../references/ReferenceService";
-import { dirname } from "@shared/utils/path";
+import { dirname, extname } from "@shared/utils/path";
 import type { TranslationKey } from "@shared/i18n";
 import { AssetTrash } from "../assets/AssetTrash";
+import { AssetLibraryChange, type AssetIdentity, type TakenFolder } from "../assets/AssetLibraryChange";
+import { describeRestoreNotKept } from "@/lib/workspace/assets/importFailure";
 import { HistoryService } from "../history/HistoryService";
 import type { HistoryLabel } from "../history/historyModel";
 import { projectHistoryScope } from "../history/historyScopes";
@@ -64,7 +66,7 @@ import { projectHistoryScope } from "../history/historyScopes";
  * What one deleted asset needs to come back: its bytes (in the trash, under `trashToken`), its
  * record, and where it sat in the order file. See `AssetsService.removeAssetForRestore`.
  */
-type AssetRestorePlan = {
+export type AssetRestorePlan = {
     record: Asset<AssetType, AssetSource>;
     /** Null for a remote asset, or when the payload was already missing. */
     trashToken: string | null;
@@ -2665,6 +2667,66 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     }
 
     /**
+     * Take a folder an operation made back out of the library, when nothing is in it: no asset of its
+     * section and no folder below it. Null otherwise, and the folder stays. What an
+     * {@link AssetLibraryChange} asks on undo, about folders the operation itself created.
+     */
+    private async takeBackEmptyFolder(category: AssetCategory, groupId: string): Promise<TakenFolder | null> {
+        const groupManager = this.getGroupAssetsManager();
+        const folders = groupManager.assetsGroups?.[category];
+        const record = folders?.[groupId];
+        if (!folders || !record) {
+            return null;
+        }
+        const holdsFolder = Object.values(folders).some(folder => folder.parentGroupId === groupId);
+        if (holdsFolder || groupManager.collectGroupAssets(category, groupId).length > 0) {
+            return null;
+        }
+        let orderIndex = -1;
+        try {
+            orderIndex = this.getAssetOrderManager().getGroupIds(category).indexOf(groupId);
+        } catch {
+            // The order file is not up; the folder still comes back, listed last.
+        }
+        const taken: TakenFolder = { record: cloneRecord(record), orderIndex };
+        // Empty, so this removes the record and nothing else.
+        const removed = await groupManager.deleteGroup(category, groupId, false);
+        if (!removed.success && folders[groupId]) {
+            return null;
+        }
+        // A folder list that could not be written still lost the folder on screen, and the
+        // save-status surface has said the library was not saved: redo puts it back either way.
+        return taken;
+    }
+
+    /** Put a folder {@link takeBackEmptyFolder} took out back, under its own id and where it was listed. */
+    private async putBackFolder(taken: TakenFolder): Promise<void> {
+        const groupManager = this.getGroupAssetsManager();
+        const category = taken.record.category;
+        const folders = groupManager.assetsGroups?.[category];
+        if (!folders) {
+            return;
+        }
+        if (!folders[taken.record.id]) {
+            folders[taken.record.id] = cloneRecord(taken.record);
+            await groupManager.persistGroups(category);
+        }
+        if (taken.orderIndex >= 0) {
+            try {
+                const orderManager = this.getAssetOrderManager();
+                const order = [...orderManager.getGroupIds(category)];
+                if (!order.includes(taken.record.id)) {
+                    order.splice(Math.min(taken.orderIndex, order.length), 0, taken.record.id);
+                    await orderManager.write(category, orderManager.getAssetIds(category), order);
+                }
+            } catch (error) {
+                console.warn(`[AssetsService] restored the folder ${taken.record.id} but not its place in the list`, error);
+            }
+        }
+        this.getEvents().emit("groupsUpdated", { category, groupId: taken.record.id });
+    }
+
+    /**
      * Delete a group and everything under it as ONE undo step.
      *
      * The cascade calls back into {@link deleteAsset} once per file, and each of those would
@@ -2720,6 +2782,148 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     }
 
     /**
+     * Start recording what one operation does to the library - the bytes it writes over and the
+     * files it imports - so that a single undo step can take it back. See {@link AssetLibraryChange}.
+     *
+     * The caller keeps the assets it is about to replace ({@link AssetLibraryChange.keep}) before
+     * calling {@link replaceAssetContent}, and writes over none of them when that fails.
+     *
+     * Null inside a live session. The room's undo is a stack of operations every machine can take
+     * back, and replacing bytes has never been one of them (`content-replaced`): the bytes would have
+     * to be kept on every machine, not only this one.
+     */
+    public beginLibraryChange(): AssetLibraryChange<AssetRestorePlan> | null {
+        if (this.opSink) {
+            return null;
+        }
+        const trash = this.getAssetTrash();
+        return new AssetLibraryChange<AssetRestorePlan>({
+            lookup: (type, assetId) => this.getAssetsMetadataManager().getAssets()[type]?.[assetId],
+            keep: async asset => {
+                const kept = await trash.keep(
+                    asset.id,
+                    asset.type,
+                    this.getLocalAssetsManager().getLocalAssetPath(asset.id),
+                    asset.ext ?? (extname(asset.name).slice(1).toLowerCase() || undefined),
+                );
+                if (kept.kept) {
+                    return { token: kept.token };
+                }
+                return kept.missing ? { missing: true } : { refusal: { kind: "notKept", fsCode: kept.fsCode } };
+            },
+            write: (asset, token, identity) => this.restoreKeptContent(asset, trash.pathOf(token), identity),
+            release: (type, token) => trash.purge(token, type),
+            takeBack: async asset => {
+                const plan = await this.removeAssetForRestore(asset);
+                if (!plan.result.success) {
+                    this.purgeAssetRestorePlan(plan);
+                    return null;
+                }
+                return plan;
+            },
+            putBack: plan => this.restoreAssetFromPlan(plan),
+            forgetTaken: plan => this.purgeAssetRestorePlan(plan),
+            takeBackFolder: (category, groupId) => this.takeBackEmptyFolder(category, groupId),
+            putBackFolder: taken => this.putBackFolder(taken),
+            report: failure => {
+                try {
+                    this.getContext().services.get<UIService>(Services.UI).notifications.show({
+                        type: NotificationType.Error,
+                        message: describeRestoreNotKept(failure.name, failure.refusal, translate),
+                    });
+                } catch {
+                    // No UI service in this window. The undo stays where it was, which is the record.
+                }
+            },
+        });
+    }
+
+    /**
+     * Put bytes kept for undo back into an asset, with the name and extension its record had while it
+     * held them. {@link replaceAssetContent}'s four steps in its order, so thumbnails, previews and
+     * waveforms refresh as they did for the replacement; what differs is that the bytes are the
+     * asset's own, so no format check stands in their way, and the record's name and extension are
+     * put back as they were rather than derived from the file (`AssetsMetadataManager.applyRestoredContent`).
+     */
+    private async restoreKeptContent<T extends AssetType>(
+        asset: Asset<T, AssetSource>,
+        sourcePath: string,
+        identity: AssetIdentity,
+    ): Promise<RefusableStatus<Asset<T, AssetSource>>> {
+        if (asset.source !== AssetSource.Local) {
+            return { success: false, error: "Restoring the contents of a remote asset is not supported" };
+        }
+        const written = await this.getLocalAssetsManager()
+            .writeAssetContentFromPath(asset as Asset<T, AssetSource.Local>, sourcePath, { ownBytes: true });
+        if (!written.success || !written.data) {
+            return { success: false, error: written.error, refusal: written.refusal };
+        }
+
+        try {
+            await this.clearThumbnailCache(asset.id);
+        } catch (error) {
+            console.warn(`Failed to clear thumbnail cache for asset: ${asset.id}`, error);
+        }
+
+        const applied = this.getAssetsMetadataManager().applyRestoredContent(asset, written.data.hash, identity);
+        if (!applied.success || !applied.data) {
+            return { success: false, error: applied.error };
+        }
+
+        this.getEvents().emit("updated", applied.data);
+
+        return { success: true, data: applied.data };
+    }
+
+    /**
+     * {@link replaceAssetContent}, leaving one step on the project's stack that takes it back: what
+     * Replace File… and the media conversion do.
+     *
+     * The asset's current bytes are copied aside first. When that copy cannot be made, nothing is
+     * written and the answer is refused with `notKept`, which the caller words for the author with the
+     * disk's reason. Undo writes the old bytes back, and with them the old extension and name (an
+     * `intro.avi` converted to `intro.webm` is `intro.avi` again); redo writes the new ones in again.
+     *
+     * No step when there was nothing to keep - the asset's file was already missing - and none inside a
+     * live session, where the room's undo has no step for replaced bytes (see {@link beginLibraryChange}).
+     */
+    public async replaceAssetContentUndoably<T extends AssetType>(
+        asset: Asset<T, AssetSource>,
+        sourcePath: string,
+        label: HistoryLabel,
+    ): Promise<RefusableStatus<Asset<T, AssetSource>>> {
+        const change = asset.source === AssetSource.Local ? this.beginLibraryChange() : null;
+        if (!change) {
+            return this.replaceAssetContent(asset, sourcePath);
+        }
+        const kept = await change.keep([asset as Asset<AssetType, AssetSource>]);
+        if (!kept.ok) {
+            return {
+                success: false,
+                error: `Could not keep the current file of ${asset.id} for undo, so nothing was written`,
+                refusal: kept.refusal,
+            };
+        }
+        const replaced = await this.replaceAssetContent(asset, sourcePath);
+        if (!replaced.success) {
+            change.dispose();
+            return replaced;
+        }
+        change.replaced(asset.id);
+        if (change.isEmpty()) {
+            return replaced;
+        }
+        const history = this.getContext().services.get<HistoryService>(Services.History);
+        history.pushCommand(projectHistoryScope(), {
+            label,
+            undo: () => change.undo(),
+            redo: () => change.redo(),
+            dispose: () => change.dispose(),
+        });
+        return replaced;
+    }
+
+    /**
      * Swap the bytes behind an existing asset, keeping its id.
      *
      * References store the asset id, never a path, so every place that pointed at this asset follows
@@ -2736,8 +2940,10 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
      *  4. write the record, then announce `updated` — last, so nobody wakes up and re-reads a stale
      *     thumbnail that step 3 was about to delete.
      *
-     * There is no asset-level history: this cannot be undone. The UI expresses that with the button
-     * hierarchy on the confirm, not with a sentence.
+     * This records no history of its own. An operation whose replacement has to be undoable copies the
+     * asset's bytes aside first ({@link beginLibraryChange}) and leaves the step itself - the PSD
+     * re-import and the voice pickup do, and Replace File… and the media conversion go through
+     * {@link replaceAssetContentUndoably}, which does both for one asset.
      */
     public async replaceAssetContent<T extends AssetType>(
         asset: Asset<T, AssetSource>,

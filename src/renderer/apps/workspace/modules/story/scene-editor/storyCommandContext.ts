@@ -316,6 +316,21 @@ export function valueBlueprintRefs(document: BlueprintDocument | null | undefine
     return refs;
 }
 
+/**
+ * The characters an author-supplied runtime draws, in cast order: every puppet kind, not only the
+ * one spelled `puppet`.
+ *
+ * One answer for the two places that ask. The scene editor asks it to decide whose models to
+ * describe, and the command context asks it to decide who may take `/motion` and `/skin` - and when
+ * the first asked `getKind() === "puppet"` on its own, a Live2D or Spine character was a puppet to
+ * the command line and never had its model described, so `/motion` offered nothing to pick.
+ */
+export function listPuppetCharacterIds(characters: readonly Pick<Character, "profile">[]): string[] {
+    return characters
+        .filter(character => isPuppetAppearanceKind(character.profile.appearance.getKind()))
+        .map(character => character.profile.getId());
+}
+
 export function buildStoryCommandContext(input: {
     assets: AssetsMap | undefined;
     /**
@@ -387,12 +402,19 @@ export function buildStoryCommandContext(input: {
     // what it is doing are named by the model its backend loaded. So it contributes no appearance
     // refs at all, and instead lands here - which is what lets `/face` keep one slot for all three
     // appearance kinds and `/motion` / `/skin` refuse the two Studio draws itself.
-    const puppetCharacterIds: string[] = [];
+    const puppetCharacterIds = listPuppetCharacterIds(input.characters);
+    const characterLayerAssetIds = new Set<string>();
     const characters: StoryCommandNamedRef[] = input.characters.map(character => {
         const id = character.profile.getId();
         const appearance = character.profile.appearance;
-        if (isPuppetAppearanceKind(appearance.getKind())) {
-            puppetCharacterIds.push(id);
+        if (appearance.getKind() === "layered") {
+            for (const layer of appearance.getLayers()) {
+                for (const assetId of [layer.assetId, ...Object.values(layer.options ?? {})]) {
+                    if (assetId) {
+                        characterLayerAssetIds.add(assetId);
+                    }
+                }
+            }
         }
         appearanceByCharacterId[id] = appearance.getKind() === "preset"
             ? appearance.getPoses().map(pose => ({ id: pose.id, name: pose.name }))
@@ -406,6 +428,7 @@ export function buildStoryCommandContext(input: {
 
     return {
         images: assetRefs(input.assets, AssetType.Image),
+        characterLayerAssetIds: [...characterLayerAssetIds],
         audio: assetRefs(input.assets, AssetType.Audio),
         videos: assetRefs(input.assets, AssetType.Video),
         assetSets: (input.assetSets ?? []).map(set => ({

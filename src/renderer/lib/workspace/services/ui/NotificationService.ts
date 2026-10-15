@@ -77,6 +77,12 @@ export class NotificationService {
     private static readonly PersistDebounceMs = 500;
 
     private store: UIStore;
+    /**
+     * Ids key the history as well as the cards, and the history is restored from the last session.
+     * A counter that started from 1 in every session gave new notices the ids of restored ones, and
+     * the notification centre drew entries twice and out of order. The prefix is this session's.
+     */
+    private readonly idPrefix = `notification-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     private nextId = 1;
     private history: NotificationHistoryEntry[] = [];
     private readonly historyListeners = new Set<() => void>();
@@ -140,12 +146,20 @@ export class NotificationService {
 
     /** Replace the current buffer (used when seeding from persistence). */
     public seedHistory(entries: NotificationHistoryEntry[]): void {
-        this.history = entries.slice(0, NotificationService.HistoryLimit).map(entry => ({
-            ...entry,
-            // v1 rows predate read-tracking: treat restored history as already read so reopening a
-            // project never resurrects the bell badge for notifications the user has moved past.
-            read: entry.read ?? true,
-        }));
+        // Logs written before ids were unique per session hold several entries under one id; the
+        // later ones are renamed so every entry can be told apart again.
+        const seen = new Set<string>();
+        this.history = entries.slice(0, NotificationService.HistoryLimit).map(entry => {
+            const id = seen.has(entry.id) ? this.newId() : entry.id;
+            seen.add(id);
+            return {
+                ...entry,
+                id,
+                // v1 rows predate read-tracking: treat restored history as already read so reopening a
+                // project never resurrects the bell badge for notifications the user has moved past.
+                read: entry.read ?? true,
+            };
+        });
         this.emitHistoryChanged();
     }
 
@@ -191,6 +205,10 @@ export class NotificationService {
         const rest = previous ? this.history.filter(candidate => candidate !== previous) : this.history;
         this.history = [next, ...rest].slice(0, NotificationService.HistoryLimit);
         this.emitHistoryChanged();
+    }
+
+    private newId(): string {
+        return `${this.idPrefix}-${this.nextId++}`;
     }
 
     private emitHistoryChanged(): void {
@@ -256,7 +274,7 @@ export class NotificationService {
         const live = key
             ? this.store.getNotifications().find(candidate => candidate.coalesceKey === key)
             : undefined;
-        const id = live?.id ?? `notification-${this.nextId++}`;
+        const id = live?.id ?? this.newId();
 
         const notification: Notification = {
             id,

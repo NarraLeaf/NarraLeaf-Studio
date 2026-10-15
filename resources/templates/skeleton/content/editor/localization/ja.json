@@ -153,9 +153,9 @@
       "target": "自動送りの待ち時間"
     },
     "key:config.bgm": {
-      "sourceHash": "fnv1a:e26859b1",
+      "sourceHash": "fnv1a:584a1d74",
       "status": "translated",
-      "target": "BGM"
+      "target": "音楽"
     },
     "key:config.categorySound": {
       "sourceHash": "fnv1a:b3ca9a34",
@@ -185,7 +185,7 @@
     "key:config.masterVolume": {
       "sourceHash": "fnv1a:55ee5043",
       "status": "translated",
-      "target": "全体音量"
+      "target": "全体の音量"
     },
     "key:config.muteOnBlur": {
       "sourceHash": "fnv1a:cbde85a0",
@@ -228,7 +228,7 @@
       "target": "既読のみ"
     },
     "key:config.soundEffects": {
-      "sourceHash": "fnv1a:d40ba662",
+      "sourceHash": "fnv1a:52f943dc",
       "status": "translated",
       "target": "効果音"
     },
@@ -377,6 +377,11 @@
       "status": "translated",
       "target": "ロード"
     },
+    "key:log.replayVoice": {
+      "sourceHash": "fnv1a:7c04c358",
+      "status": "translated",
+      "target": "ボイス再生"
+    },
     "key:log.title": {
       "sourceHash": "fnv1a:a1dd7bf1",
       "status": "translated",
@@ -408,7 +413,7 @@
       "target": "セーブ"
     },
     "key:menu.settings": {
-      "sourceHash": "fnv1a:4b058728",
+      "sourceHash": "fnv1a:6a12e0e7",
       "status": "translated",
       "target": "設定"
     },

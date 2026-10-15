@@ -186,6 +186,7 @@ import {
 } from "./gameUiSlots";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { createSoundTransport } from "./soundTransport";
+import { createPageMusicController, pageMusicCueFor } from "./pageMusic";
 import { attachAudioBusPersistence, audioTracksToBusDeclarations } from "./audioBusRuntime";
 import {
     attachPlayerPreferences,
@@ -305,8 +306,8 @@ import { LayerStackController, mountSurfaceLayer, type SurfaceLayerEntry } from 
 import { useLayerStack } from "./layers/useLayerStack";
 import { resolveCompositeInput } from "./layers/compositeInput";
 import { buildCompositeView, listStageSurfaces } from "./layers/compositeView";
-import { isPageEntryDrawn, isStageCovered, isStageCoveredByPage } from "./layers/stageOcclusion";
-import { StageCoveredByPageContext, StageCoveredContext } from "./stageConcealment";
+import { actionHoldsForVideo, isPageEntryDrawn, isStageCovered, isStageCoveredByPage } from "./layers/stageOcclusion";
+import { StageCoveredByPageContext, StageCoveredContext, StageHeldByVideoContext } from "./stageConcealment";
 import { useStageCoverCapture } from "./stageCoverCapture";
 import { createStageAdvanceHolder, holdStageAdvance, type StageAdvanceHolder } from "./stageAdvanceHold";
 import { SurfaceStackBox } from "./SurfaceStackBox";
@@ -1320,6 +1321,8 @@ export function GameApp(props: GameAppProps): ReactNode {
     const nlrCurrentActionTokenRef = useRef<{ cancel(): void } | null>(null);
     const currentActionListenersRef = useRef<Set<(actionId: string | null) => void>>(new Set());
     const nlrCompiledRef = useRef<CompiledNlrStory | null>(null);
+    /** Whether the story is holding on a clip it waits out; read off the play head as it moves. */
+    const [stageHeldByVideo, setStageHeldByVideo] = useState(false);
     /**
      * The play head, holding both the engine's raw action id and the last row it could name.
      *
@@ -2697,6 +2700,9 @@ export function GameApp(props: GameAppProps): ReactNode {
         currentDialogNametagRef,
         dialogClickTargets: nlrDialogClickTargets,
         resolveSpeakerAvatar: sourceName => resolveSpeakerAvatarRef.current(sourceName),
+        // The face a backlog line was shown with, by the URL the engine recorded: the compile's own
+        // url-to-asset inverse, which is what turns the dialog's live avatar into an asset too.
+        resolveRecordedAvatar: url => toBlueprintImageAsset(nlrCompiledRef.current?.avatarAssetIdByUrl.get(url) ?? null),
         displaySpeakerName,
         // The same answer Play Voice acts on, so a backlog row offers a replay exactly when one plays.
         canReplayVoice: unitId => Boolean(nlrCompiledRef.current?.getVoicePlayback?.(unitId)),
@@ -2748,6 +2754,69 @@ export function GameApp(props: GameAppProps): ReactNode {
     }), [bundle, host, waitForLiveGame]);
 
     useEffect(() => () => soundTransport.dispose(), [soundTransport]);
+
+    /**
+     * True while a game start is under way. Starting a game takes the music from the pages before
+     * any state says a game is running - the compile and the mount come first - so the start says
+     * so itself, and the page's music fades out as the press lands (see `pageMusic.ts`).
+     */
+    const pageMusicHeldForStartRef = useRef(false);
+    /**
+     * The page's music, on a transport of its own: a graph's Stop Sound with no handle stops every
+     * sound a blueprint started, and the page's music is not one of them. Built once and read
+     * through refs, so a hot reload of the bundle does not throw away the music that is playing.
+     */
+    const pageMusicTransport = useMemo(() => createSoundTransport({
+        getLiveGame: () => nlrLiveGameRef.current,
+        waitForLiveGame,
+        resolveAssetUrl: (assetId, assetType) => hostRef.current.resolveStoryAssetUrl(assetId, assetType),
+        getAudioTracks: () => currentBundleRef.current.audio?.tracks,
+        createSound: ({ busId, ...config }) => new Sound({ ...config, type: busId }),
+        getClip: assetId => currentBundleRef.current.audio?.clips?.[assetId],
+        log: (level, message) => hostRef.current.log(level, message),
+    }), [waitForLiveGame]);
+    const pageMusic = useMemo(() => createPageMusicController({
+        play: cue => pageMusicTransport.play({
+            assetId: cue.assetId,
+            audioTrackId: cue.audioTrackId,
+            volume: cue.volume,
+            loop: cue.loop ?? null,
+            fadeInMs: cue.fadeMs,
+        }),
+        stop: (handle, fadeMs) => {
+            void pageMusicTransport.stop(handle, fadeMs);
+        },
+        setVolume: (handle, volume, fadeMs) => {
+            void pageMusicTransport.setVolume(handle, volume, fadeMs);
+        },
+        currentEngine: () => nlrLiveGameRef.current,
+        isHeld: () => pageMusicHeldForStartRef.current
+            || gameEnteredRef.current
+            || gameStageVisibleRef.current
+            || studioPageHiddenForGameRef.current,
+    }), [pageMusicTransport]);
+    useEffect(() => () => {
+        pageMusic.dispose();
+        pageMusicTransport.dispose();
+    }, [pageMusic, pageMusicTransport]);
+    /** The music the pages on screen call for: the layers over the page stack first, each lane top first. */
+    const pageMusicCue = useMemo(() => {
+        const surfaceById = (surfaceId: string) => bundle.ui.uidoc.surfaces.find(surface => surface.id === surfaceId);
+        return pageMusicCueFor({
+            surfaces: [
+                ...[...layers].reverse().map(layer => surfaceById(layer.surfaceId)),
+                ...[...navStack].reverse().map(entry => surfaceById(entry.surfaceId)),
+            ],
+            tracks: bundle.audio?.tracks,
+            locale: readGameLocale(),
+            sourceLocale: bundle.localization?.sourceLocale,
+        });
+    }, [bundle, layers, navStack, readGameLocale]);
+    // The game-held states are dependencies because the rule reads them (through refs) to decide
+    // whether the pages have the music at all, and the session because a new one is a new engine.
+    useEffect(() => {
+        pageMusic.update(pageMusicCue);
+    }, [pageMusic, pageMusicCue, gameStageVisible, studioPageHiddenForGame, nlrSession]);
 
     /**
      * A take that would not play, said to both channels a host has.
@@ -5103,26 +5172,36 @@ export function GameApp(props: GameAppProps): ReactNode {
             pendingCarriedSaveRef.current = options.inheritSavedGame as SavedGame;
         }
 
-        // Fast path: the environment is already mounted with this story from the boot preload and
-        // has not entered a game yet. Just enter it (newGame + reveal) — no recompile, no re-mount,
-        // and gameReady does not fire again. A row-precise launch never fast-paths: the pre-posed
-        // entry scene depends on the target row, so it must recompile.
-        if (
-            !options?.forceReinit &&
-            !startBlockId &&
-            nlrLiveGameRef.current &&
-            !gameEnteredRef.current &&
-            activeStoryRequestRef.current?.storyId === storyId &&
-            activeStoryRequestRef.current?.sceneId === sceneId
-        ) {
-            await enterMountedGame();
-            return;
-        }
+        // The game takes the music from the pages now, while it compiles and mounts, rather than at
+        // the moment it is on screen: the title's music fades out as the press lands, and nothing
+        // the session swap below does can start it again. Given back if the start fails.
+        pageMusicHeldForStartRef.current = true;
+        pageMusic.refresh();
+        try {
+            // Fast path: the environment is already mounted with this story from the boot preload and
+            // has not entered a game yet. Just enter it (newGame + reveal) — no recompile, no re-mount,
+            // and gameReady does not fire again. A row-precise launch never fast-paths: the pre-posed
+            // entry scene depends on the target row, so it must recompile.
+            if (
+                !options?.forceReinit &&
+                !startBlockId &&
+                nlrLiveGameRef.current &&
+                !gameEnteredRef.current &&
+                activeStoryRequestRef.current?.storyId === storyId &&
+                activeStoryRequestRef.current?.sceneId === sceneId
+            ) {
+                await enterMountedGame();
+                return;
+            }
 
-        const compiled = await compileStoryRequest({ storyId, sceneId, startBlockId, snapshotId });
-        await mountNlrSession(compiled, { storyRequest: { storyId, sceneId, startBlockId, snapshotId } });
-        await enterMountedGame();
-    }, [activeSurface, compileStoryRequest, core, enterMountedGame, mountNlrSession]);
+            const compiled = await compileStoryRequest({ storyId, sceneId, startBlockId, snapshotId });
+            await mountNlrSession(compiled, { storyRequest: { storyId, sceneId, startBlockId, snapshotId } });
+            await enterMountedGame();
+        } finally {
+            pageMusicHeldForStartRef.current = false;
+            pageMusic.refresh();
+        }
+    }, [activeSurface, compileStoryRequest, core, enterMountedGame, mountNlrSession, pageMusic]);
 
     // Boot-time init of the default scene environment: mount + preheat, WITHOUT entering the game.
     const initDefaultSceneEnvironment = useCallback(async (
@@ -6966,8 +7045,10 @@ export function GameApp(props: GameAppProps): ReactNode {
                 // and fan it out to panel subscribers. Re-bound per session; the fan-out set is stable.
                 nlrCurrentActionTokenRef.current?.cancel();
                 playHead.observe(liveGame.getCurrentActionId());
+                setStageHeldByVideo(actionHoldsForVideo(nlrCompiledRef.current?.actionIdBindings, liveGame.getCurrentActionId()));
                 nlrCurrentActionTokenRef.current = liveGame.onCurrentActionChange(({ actionId }) => {
                     playHead.observe(actionId);
+                    setStageHeldByVideo(actionHoldsForVideo(nlrCompiledRef.current?.actionIdBindings, actionId));
                     // The same row the Dev Mode timeline shows, kept where the crash screen can read
                     // it after this tree is gone. There is no second tracker for "the current line".
                     recordStoryRow(playHead.blockId());
@@ -7060,7 +7141,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             >
                 <StageCoveredByPageContext.Provider value={stageCover.concealed}>
                     <StageCoveredContext.Provider value={stageCovered}>
-                        {nlrStageLayer}
+                        <StageHeldByVideoContext.Provider value={stageHeldByVideo}>
+                            {nlrStageLayer}
+                        </StageHeldByVideoContext.Provider>
                     </StageCoveredContext.Provider>
                 </StageCoveredByPageContext.Provider>
                 {/* Runtime plugin overlays: above the game stage, below the app surface

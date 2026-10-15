@@ -549,10 +549,14 @@ export function planAutoLink(
     }
     // The panel's own map, for the unambiguous half: the same answer the Assign picker preselects.
     const unique = buildAssetNameKeyMap(candidates);
+    // A line answers to every key a take of it may carry (the narration word in each language), so a
+    // take named from another Studio's script is found, and two lines that share any key share it.
+    const keysOf = (line: AgentVoiceLine): readonly string[] =>
+        line.matchKeys?.length ? line.matchKeys : line.matchKey ? [line.matchKey] : [];
     const linesByKey = new Map<string, AgentVoiceLine[]>();
     for (const line of allLines) {
-        if (line.matchKey) {
-            linesByKey.set(line.matchKey, [...(linesByKey.get(line.matchKey) ?? []), line]);
+        for (const key of keysOf(line)) {
+            linesByKey.set(key, [...(linesByKey.get(key) ?? []), line]);
         }
     }
     const plan: AutoLinkPlan = { matched: [], alreadyLinked: 0, keptOtherTake: [], ambiguous: [], missing: [], unmatchedAssets: [] };
@@ -561,8 +565,10 @@ export function planAutoLink(
         if (!scope(line)) {
             continue;
         }
-        const assets = assetsByKey.get(line.matchKey) ?? [];
-        const sharing = linesByKey.get(line.matchKey) ?? [];
+        // The rule's own name first; another language's word only when no asset carries that one.
+        const key = keysOf(line).find(candidate => assetsByKey.has(candidate)) ?? line.matchKey;
+        const assets = assetsByKey.get(key) ?? [];
+        const sharing = linesByKey.get(key) ?? [];
         const take = takes[line.unitId];
         if (assets.length === 0) {
             if (!take) {
@@ -570,9 +576,9 @@ export function planAutoLink(
             }
             continue;
         }
-        if (assets.length > 1 || sharing.length > 1 || !unique.has(line.matchKey)) {
-            if (!reportedAmbiguous.has(line.matchKey)) {
-                reportedAmbiguous.add(line.matchKey);
+        if (assets.length > 1 || sharing.length > 1 || !unique.has(key)) {
+            if (!reportedAmbiguous.has(key)) {
+                reportedAmbiguous.add(key);
                 plan.ambiguous.push({ expect: line.expectedName, lines: sharing, assets });
             }
             continue;

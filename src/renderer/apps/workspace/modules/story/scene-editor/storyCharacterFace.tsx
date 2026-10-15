@@ -1,6 +1,8 @@
 import { useCallback } from "react";
 import type { StoryBlock, StoryCharacterTagSelection } from "@shared/types/story";
 import { representativeAssetId } from "@shared/utils/characterVariant";
+import { parseCharacterAvatarAssetId, resolveOffStageCharacterAvatarAssetId } from "@shared/utils/characterAvatar";
+import { mapCharacterStoreEntriesToSummaries } from "@shared/utils/characterSummaries";
 import { HeadThumbnail } from "@/apps/workspace/modules/characters/editors/components/HeadThumbnail";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useCompositedSprite } from "@/lib/workspace/hooks/useCompositedSprite";
@@ -33,25 +35,33 @@ export type StoryFaceSurface = "plate" | "inline";
  * Which character and appearance a row pictures on `surface`, and whether to resolve a
  * differential-specific sprite (vs. fall straight through to the profile thumbnail).
  *
- * A character action row (`/show`, `/face`…) pictures its own payload's form/variants — inline only. A
- * dialogue row pictures the speaker's accumulated appearance — on its plate only, and only when
- * one exists; a speaker who has not been shown keeps the plain thumbnail, so a line before any `/show`
- * does not invent a look.
+ * A character action row (`/show`, `/face`…) pictures the look on stage once it has run, inline only:
+ * `appearance` is that look when the caller has the scene (`characterRowLook`), and the row's own
+ * payload otherwise. A `/face` names only the axes it changes, so its payload alone left every other
+ * axis at its default. A dialogue row pictures the speaker's accumulated appearance — on its plate
+ * only, and only when one exists. A speaker with no portrait on stage is pictured as the game's
+ * dialogue box shows her then (`offStage`): her default avatar, or her default look's.
  */
 function getFaceSpec(
     block: StoryBlock,
     appearance: CharacterAppearanceRef | undefined,
     surface: StoryFaceSurface,
-): { characterId: string; pose?: string; tags?: StoryCharacterTagSelection; resolveVariant: boolean } | null {
+): { characterId: string; pose?: string; tags?: StoryCharacterTagSelection; resolveVariant: boolean; offStage?: boolean } | null {
     if (surface === "inline") {
         return block.kind === "action" && block.payload.action === "character" && block.payload.characterId
-            ? { characterId: block.payload.characterId, pose: block.payload.pose, tags: block.payload.tags, resolveVariant: true }
+            ? {
+                characterId: block.payload.characterId,
+                pose: appearance?.pose ?? block.payload.pose,
+                tags: appearance?.tags ?? block.payload.tags,
+                resolveVariant: true,
+            }
             : null;
     }
     if (block.kind === "nodeAction" && block.payload.action === "dialogue" && block.payload.characterId) {
         // Only a *shown* appearance pictures an avatar — a placement-only appearance (a `/move` on a
         // never-shown speaker, used by the group-header dropdown) must not invent a look.
-        return { characterId: block.payload.characterId, pose: appearance?.pose, tags: appearance?.tags, resolveVariant: appearance?.shown === true };
+        const shown = appearance?.shown === true;
+        return { characterId: block.payload.characterId, pose: appearance?.pose, tags: appearance?.tags, resolveVariant: shown, offStage: !shown };
     }
     return null;
 }
@@ -106,7 +116,17 @@ export function useCharacterFace(
         pose: spec?.pose,
         tags: spec?.tags,
         resolveVariant: spec?.resolveVariant === true,
+        offStage: spec?.offStage === true,
     });
+}
+
+/**
+ * The avatar the game's dialogue box shows for a character with no portrait on stage, by the rule the
+ * compiler uses (`resolveOffStageCharacterAvatarAssetId`), or null when it shows none.
+ */
+function offStageAvatarAssetId(character: Character): string | null {
+    const [summary] = mapCharacterStoreEntriesToSummaries([character.toJSON()]);
+    return resolveOffStageCharacterAvatarAssetId(summary);
 }
 
 /**
@@ -127,6 +147,12 @@ export function useCharacterAvatar(
         /** Resolve the sprite for that look at all. False leaves the profile thumbnail as the only source. */
         resolveVariant: boolean;
         preferThumbnail?: boolean;
+        /**
+         * The line is spoken with no portrait of hers on stage: picture what the game's dialogue box
+         * shows then, ahead of the thumbnail. A row used to fall to her initials while the game showed
+         * her default look's avatar.
+         */
+        offStage?: boolean;
     },
 ): { url: string | null; frame?: NormalizedCrop; showingSprite: boolean } {
     // The appearance stores asset ids; the image cache needs the `Asset` record to fetch bytes, so
@@ -148,11 +174,17 @@ export function useCharacterAvatar(
     const resolved = character && pictureLook
         ? resolveCharacterFaceImage(character, spec.pose, spec.tags, lookupAsset)
         : { asset: null as Asset<AssetType.Image> | null, frame: undefined };
+    const offStageId = spec.offStage && character && !resolved.asset ? offStageAvatarAssetId(character) : null;
+    const offStageAsset = offStageId ? lookupAsset(offStageId) : null;
+    const offStage: BadgeImageSource | null = offStageAsset
+        ? { kind: "project", asset: offStageAsset }
+        : offStageId && parseCharacterAvatarAssetId(offStageId)
+            ? { kind: "bakedAvatar", assetId: offStageId }
+            : null;
     const source: BadgeImageSource | null = resolved.asset
         ? { kind: "project", asset: resolved.asset }
-        : thumbnailId
-            ? { kind: "editor", fileId: thumbnailId }
-            : null;
+        : offStage
+            ?? (thumbnailId ? { kind: "editor", fileId: thumbnailId } : null);
     const fallbackUrl = useBadgeImageUrl(source);
     // A layered character is a stack, so the face shows the whole thing composited. The single-asset
     // path above still runs: it is what the face shows while the composite is being drawn, which
@@ -175,8 +207,13 @@ export function useCharacterAvatar(
  * border. It renders nothing at all when the character has no picture, which leaves the line the plain
  * words it always was rather than a hole where a face should be.
  */
-export function StoryLineCharacterFace({ block, characters }: { block: StoryBlock; characters: Character[] }) {
-    const { url, frame, showingSprite } = useCharacterFace(block, undefined, characters, "inline");
+export function StoryLineCharacterFace({ block, characters, appearance }: {
+    block: StoryBlock;
+    characters: Character[];
+    /** The look on stage after the row (`characterRowLook`); the row's payload when omitted. */
+    appearance?: CharacterAppearanceRef;
+}) {
+    const { url, frame, showingSprite } = useCharacterFace(block, appearance, characters, "inline");
     if (!url) {
         return null;
     }

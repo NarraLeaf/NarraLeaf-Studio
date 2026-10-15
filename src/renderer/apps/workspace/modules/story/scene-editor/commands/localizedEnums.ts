@@ -126,9 +126,12 @@ export function localizedEnumValue(type: EnumType, option: StoryCommandEnumOptio
     // First spelling that survived the drop rules for THIS option — the inspector's word when it has
     // one, else the vocabulary's own. Whatever comes back is a key of the accept table, so the menu
     // still shows only what it would take back.
+    //
+    // A Latin word is written in lower case, as every other word on a line is: the inspector labels
+    // its options in title case, and en's slide went onto the line as the one capitalised `Push`.
     for (const spelling of spellingsOf(option)) {
         if (table.get(spelling.toLowerCase()) === option) {
-            return spelling;
+            return /^[\x20-\x7e]+$/.test(spelling) ? spelling.toLowerCase() : spelling;
         }
     }
     return option.value;

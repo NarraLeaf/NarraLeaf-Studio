@@ -476,7 +476,10 @@ export type StorySceneBgm = {
     volume?: number;
     /** Absent = whatever the track's own loop default says (`music` loops). */
     loop?: boolean;
-    /** Cross-fade into this track, in milliseconds. Absent = the track's fade-in. */
+    /**
+     * In milliseconds: the fade this music comes in with as the scene starts, and the fade the scene's
+     * music goes out with when the story leaves the scene. Absent = 0, a hard cut.
+     */
     fadeMs?: number;
 };
 

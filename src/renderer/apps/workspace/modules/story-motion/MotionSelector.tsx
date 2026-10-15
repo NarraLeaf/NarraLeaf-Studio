@@ -2,6 +2,12 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useFloatingLayer, useHostDocument } from "@/lib/components/layout";
+import {
+    ANCHORED_PANEL_MARGIN,
+    placeAnchoredPanel,
+    type AnchoredPanelPlacement,
+    type AnchoredPanelSide,
+} from "@/lib/components/layout/anchoredPanelPlacement";
 import { Check, Edit3, Plus, Search, Spline, X } from "lucide-react";
 import type {
     StoryAnimationAsset,
@@ -88,7 +94,9 @@ export function MotionSelector(props: {
     const [query, setQuery] = useState("");
     const [tab, setTab] = useState<MotionSelectorTab>("project");
     const [hovered, setHovered] = useState<{ id: string; top: number; left: number } | null>(null);
-    const [anchorStyle, setAnchorStyle] = useState({ top: 0, left: 0, width: 360 });
+    const [anchorStyle, setAnchorStyle] = useState<{ top: number; left: number; width: number } & Partial<AnchoredPanelPlacement>>({ top: 0, left: 0, width: 360 });
+    /** The side of its trigger the picker opened on, kept until it closes (see `anchoredPanelPlacement`). */
+    const anchoredSideRef = useRef<AnchoredPanelSide | undefined>(undefined);
     const panelRef = useRef<HTMLDivElement | null>(null);
     const hoverTimer = useRef<number | null>(null);
 
@@ -142,30 +150,33 @@ export function MotionSelector(props: {
         }
     }, []);
 
+    useEffect(() => {
+        if (!props.visible) {
+            anchoredSideRef.current = undefined;
+        }
+    }, [props.visible]);
+
     useLayoutEffect(() => {
         if (!props.visible) {
             return;
         }
-        const viewportMargin = 12;
-        const viewportTop = WINDOW_TITLEBAR_HEIGHT + viewportMargin;
-        const maxPanelHeight = 420;
+        const viewportTop = WINDOW_TITLEBAR_HEIGHT + ANCHORED_PANEL_MARGIN;
+        const maxPanelHeight = 420; // matches max-h
         const updatePosition = () => {
-            const viewportWidth = window.innerWidth;
-            const viewportHeight = window.innerHeight;
-            const panelHeight = Math.min(panelRef.current?.offsetHeight ?? maxPanelHeight, maxPanelHeight);
             const anchor = props.anchorRef.current;
             if (!anchor) {
                 return;
             }
-            const rect = anchor.getBoundingClientRect();
-            const width = clamp(rect.width, 320, 460);
-            const availableBelow = viewportHeight - rect.bottom - viewportMargin;
-            const availableAbove = rect.top - viewportTop;
-            const openDown = availableBelow >= panelHeight || availableBelow >= availableAbove;
-            let top = openDown ? rect.bottom + 8 : rect.top - panelHeight - 8;
-            top = clamp(top, viewportTop, Math.max(viewportTop, viewportHeight - viewportMargin - panelHeight));
-            const left = clamp(rect.left, viewportMargin, viewportWidth - viewportMargin - width);
-            setAnchorStyle({ top, left, width });
+            const placement = placeAnchoredPanel({
+                anchor: anchor.getBoundingClientRect(),
+                viewport: { width: window.innerWidth, height: window.innerHeight, top: viewportTop },
+                minWidth: 320,
+                maxWidth: 460,
+                maxHeight: maxPanelHeight,
+                side: anchoredSideRef.current,
+            });
+            anchoredSideRef.current = placement.side;
+            setAnchorStyle(placement);
         };
         updatePosition();
         window.addEventListener("resize", updatePosition);
@@ -275,7 +286,14 @@ export function MotionSelector(props: {
         >
             <div
                 ref={panelRef}
-                style={{ position: "fixed", top: anchorStyle.top, left: anchorStyle.left, width: anchorStyle.width }}
+                style={{
+                    position: "fixed",
+                    top: anchorStyle.top,
+                    left: anchorStyle.left,
+                    width: anchorStyle.width,
+                    maxHeight: anchorStyle.maxHeight,
+                    height: anchorStyle.height,
+                }}
                 className="flex max-h-[420px] flex-col overflow-hidden rounded-lg border border-edge-strong bg-surface-overlay shadow-2xl"
                 onMouseDown={event => event.stopPropagation()}
             >

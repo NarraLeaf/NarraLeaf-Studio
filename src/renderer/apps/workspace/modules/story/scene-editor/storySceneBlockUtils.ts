@@ -48,8 +48,67 @@ function placementOf(preset: string | undefined): StoryStagePlacement | undefine
 }
 
 export function buildDialogueAppearances(scene: StoryScene): Map<StoryBlockId, CharacterAppearanceRef> {
-    const current = new Map<string, CharacterAppearanceRef>();
     const result = new Map<StoryBlockId, CharacterAppearanceRef>();
+    walkStageAppearances(scene, {
+        dialogue: (block, appearance) => {
+            if (appearance) {
+                result.set(block.id, appearance);
+            }
+        },
+    });
+    return result;
+}
+
+/** A character row's look just before it runs and just after. Either is absent while nothing was shown. */
+export type CharacterRowAppearance = { before?: CharacterAppearanceRef; after?: CharacterAppearanceRef };
+
+const characterRowAppearanceCache = new WeakMap<StoryScene, Map<StoryBlockId, CharacterRowAppearance>>();
+
+/**
+ * Each character action row's look before and after it, from the same document-order pass as
+ * {@link buildDialogueAppearances}.
+ *
+ * A `/face` row names only the axes it changes, so its own payload is not what is on stage after it:
+ * 「@外观 美绪 蓝卫衣」 changes the hoodie and keeps the smile an earlier row chose. Its face in the row,
+ * and the stack the inspector previews for it, are drawn from `after` - drawing the payload alone
+ * filled every axis it does not name with that axis's default, so the row showed her calm while she
+ * smiles. Cached per scene object: a scene is replaced, never mutated, on every edit.
+ */
+export function characterRowAppearances(scene: StoryScene): ReadonlyMap<StoryBlockId, CharacterRowAppearance> {
+    const cached = characterRowAppearanceCache.get(scene);
+    if (cached) {
+        return cached;
+    }
+    const result = new Map<StoryBlockId, CharacterRowAppearance>();
+    walkStageAppearances(scene, {
+        character: (block, before, after) => {
+            result.set(block.id, { before, after });
+        },
+    });
+    characterRowAppearanceCache.set(scene, result);
+    return result;
+}
+
+/**
+ * The look a character row pictures: what is on stage once the row has run, or, for the row that
+ * takes her off, what she wore as she left. Undefined for a row outside `scene` or before any look.
+ */
+export function characterRowLook(scene: StoryScene | undefined, block: StoryBlock): CharacterAppearanceRef | undefined {
+    if (!scene || block.kind !== "action" || block.payload.action !== "character") {
+        return undefined;
+    }
+    const entry = characterRowAppearances(scene).get(block.id);
+    return block.payload.operation === "exit" ? entry?.before : entry?.after;
+}
+
+function walkStageAppearances(
+    scene: StoryScene,
+    visitors: {
+        character?: (block: StoryBlock, before: CharacterAppearanceRef | undefined, after: CharacterAppearanceRef | undefined) => void;
+        dialogue?: (block: StoryBlock, appearance: CharacterAppearanceRef | undefined) => void;
+    },
+): void {
+    const current = new Map<string, CharacterAppearanceRef>();
     const visit = (blockId: StoryBlockId) => {
         const block = scene.blocks[blockId];
         if (!block) {
@@ -57,6 +116,7 @@ export function buildDialogueAppearances(scene: StoryScene): Map<StoryBlockId, C
         }
         if (block.kind === "action" && block.payload.action === "character" && block.payload.characterId) {
             const characterId = block.payload.characterId;
+            const before = current.get(characterId);
             const position = placementOf(placementWordFor(block.payload.transform?.to?.position) ?? undefined);
             if (block.payload.operation === "exit") {
                 current.delete(characterId);
@@ -84,16 +144,13 @@ export function buildDialogueAppearances(scene: StoryScene): Map<StoryBlockId, C
                 // coordinate/scale-only move carries no placement and leaves the accumulated one untouched.
                 current.set(characterId, { ...current.get(characterId), position, positionSourceId: block.id });
             }
+            visitors.character?.(block, before, current.get(characterId));
         } else if (block.kind === "nodeAction" && block.payload.action === "dialogue" && block.payload.characterId) {
-            const appearance = current.get(block.payload.characterId);
-            if (appearance) {
-                result.set(block.id, appearance);
-            }
+            visitors.dialogue?.(block, current.get(block.payload.characterId));
         }
         block.childrenIds.forEach(visit);
     };
     scene.rootBlockIds.forEach(visit);
-    return result;
 }
 
 /**
@@ -318,6 +375,37 @@ export function getInsertionTargetAfter(scene: StoryScene, afterBlockId: StoryBl
     return { parentId: block.parentId, beforeBlockId: siblings[index + 1] ?? null };
 }
 
+/**
+ * Where rows land that nothing anchors - a paste with no row selected: the end of the scene, but
+ * ahead of the rows that end it.
+ *
+ * A scene that closes on an ending, a jump or a quit plays nothing written after them, so appending
+ * past one put every pasted line where it could never play, with nothing saying so. The trailing run
+ * of such rows (enabled ones; a disabled row ends nothing) stays last.
+ */
+export function getDefaultAppendTarget(scene: StoryScene): StoryBlockTarget {
+    let index = scene.rootBlockIds.length;
+    while (index > 0) {
+        const block = scene.blocks[scene.rootBlockIds[index - 1]];
+        if (!block || !endsScene(block)) {
+            break;
+        }
+        index -= 1;
+    }
+    return { parentId: null, beforeBlockId: scene.rootBlockIds[index] ?? null };
+}
+
+/** An enabled row the scene does not play past: an ending, a quit, a jump to another scene. */
+function endsScene(block: StoryBlock): boolean {
+    if (block.disabled) {
+        return false;
+    }
+    if (block.kind === "jump") {
+        return true;
+    }
+    return block.kind === "control" && (block.payload.control === "ending" || block.payload.control === "quit");
+}
+
 /** Where a moving group lands, and the order its rows are inserted in. See {@link planBlockGroupMove}. */
 export interface StoryBlockGroupMove {
     /** The roots to move, in document order. Every one is inserted at {@link target}, in this order. */
@@ -497,6 +585,98 @@ export function hasInspector(block: StoryBlock): boolean {
         return false;
     }
     return true;
+}
+
+/**
+ * What activating a selected row does: Enter on it, its row menu's 打开检查器 / Open inspector, or a
+ * double-click on an action row.
+ *
+ *  - An invalid row is the author's own text, kept verbatim because it did not resolve. Its only
+ *    sensible edit is to that text, so it re-opens the line editor seeded with the source - a card of
+ *    fields for a row that has no fields yet is a dead end.
+ *  - A blank line's whole content is the line not written yet, so it opens the line editor in place,
+ *    empty: the same slot the Backspace demote opens.
+ *  - A row with a real inspector opens it, and brings the property panel onto the screen with it.
+ *    All three gestures ask to see the row's fields; with the panel closed, setting the inspector
+ *    as the subject alone changed nothing an author could see, and Enter and 打开检查器 looked dead.
+ *  - The condition container, which only manages branches, folds; any other card-less container (a
+ *    condition branch, incl. else) adds a line in its body.
+ *
+ * Frozen (read-only), nothing that would open a caret the author cannot keep.
+ */
+export type StoryRowActivation =
+    | { kind: "editLine"; seed?: string }
+    | { kind: "inspector"; revealsPanel: true }
+    | { kind: "toggleFold" }
+    | { kind: "insertInside" }
+    | { kind: "nothing" };
+
+export function storyRowActivation(block: StoryBlock, frozen: boolean): StoryRowActivation {
+    if (block.kind === "invalid") {
+        return frozen ? { kind: "nothing" } : { kind: "editLine" };
+    }
+    if (block.kind === "empty") {
+        return frozen ? { kind: "nothing" } : { kind: "editLine", seed: "" };
+    }
+    if (hasInspector(block)) {
+        return { kind: "inspector", revealsPanel: true };
+    }
+    if (block.kind === "control" && block.payload.control === "condition") {
+        return { kind: "toggleFold" };
+    }
+    return canAcceptChildren(block) && !frozen ? { kind: "insertInside" } : { kind: "nothing" };
+}
+
+/**
+ * What "edit as text" does to a row: F2, or the row menu's 以文本形式编辑 / Edit as text.
+ *
+ * `line` is the row's own command line as the row prints it (`@外观 Narra 微笑 转场=淡入`), or null
+ * when no command line owns the row - a container header, which holds children no line can carry,
+ * and a `/blueprint` row, whose line says nothing of what the row does.
+ *
+ *  - A text row opens its own editor with the caret at the end, as Enter does.
+ *  - A blank line and a draft row are already lines: the line editor opens on them, as Enter does.
+ *  - A command row opens the line editor on its line, caret at the end, standing in the row's place.
+ *    Committing reads the line as a newly typed one; Escape leaves the row as it was. `rewritesRow`
+ *    is what tells that commit it is editing a committed row rather than replacing a draft.
+ *
+ * Frozen (read-only), nothing: every outcome is a caret the author could not keep.
+ */
+export type StoryRowLineEdit =
+    | { kind: "text" }
+    | { kind: "line"; seed?: string; rewritesRow: boolean }
+    | { kind: "nothing" };
+
+export function storyRowLineEdit(block: StoryBlock, line: string | null, frozen: boolean): StoryRowLineEdit {
+    if (frozen) {
+        return { kind: "nothing" };
+    }
+    if (isTextEditableBlock(block)) {
+        return { kind: "text" };
+    }
+    if (block.kind === "empty") {
+        return { kind: "line", seed: "", rewritesRow: false };
+    }
+    if (block.kind === "invalid") {
+        return { kind: "line", rewritesRow: false };
+    }
+    return line === null ? { kind: "nothing" } : { kind: "line", seed: line, rewritesRow: true };
+}
+
+/**
+ * Whether a re-committed command row keeps its own block, taking the rebuilt payload in place.
+ *
+ * It does when the line still builds the same kind of row and neither is a container: the edit is
+ * then a change to what the row says, exactly as the inspector makes one, so the row keeps its id -
+ * the name its steps go by in a saved game - and its disabled flag. Anything else (the line now
+ * builds a container, or a different kind of row) takes the row's place as a new row would.
+ */
+export function rewritesRowInPlace(row: StoryBlock, built: StoryBlock): boolean {
+    return row.kind === built.kind
+        && row.childrenIds.length === 0
+        && built.childrenIds.length === 0
+        && !canAcceptChildren(row)
+        && !canAcceptChildren(built);
 }
 
 /**

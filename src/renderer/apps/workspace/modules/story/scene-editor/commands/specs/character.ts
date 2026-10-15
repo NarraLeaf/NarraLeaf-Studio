@@ -362,7 +362,9 @@ export const show = defineStoryCommand({
         // worked straight away - one verb with a boundary nothing on screen drew. A clip is the one
         // thing it refuses: a story video comes on with `/play`, which reveals and runs it together.
         target: targetParam(SHOW_ACCEPTS, { core: true, assets: ["image"], namedBy: "name", refuses: ["video"] }),
-        form: { hint: "form", type: { kind: "characterForm", dependsOn: "target" }, positional: true },
+        // 表情 is what a zh or ja author typed for this key while the slot was named 表情; it keeps
+        // parsing now that the slot is named 外观 / 見た目, as every look - a pose, a tag - is one.
+        form: { hint: "form", aliases: ["表情"], type: { kind: "characterForm", dependsOn: "target" }, positional: true },
         // What the element this row creates is called on stage, for the rows that address it later.
         // Only meaningful on the library form - `validate` refuses it on anything already on stage,
         // which is a thing that has a name of its own already - and omitting it is the ordinary case:
@@ -534,6 +536,8 @@ export const face = defineStoryCommand({
         // it, having nothing to offer), and its name is stored verbatim because there is no id.
         form: {
             hint: "form",
+            // The slot's zh and ja name before it was 外观 / 見た目; see `/show`'s `form`.
+            aliases: ["表情"],
             type: [
                 { kind: "characterForm", dependsOn: "character" },
                 { kind: "puppetName", channel: "expression", dependsOn: "character" },
@@ -624,6 +628,7 @@ function validatePuppetCharacter(
 export const motion = defineStoryCommand({
     id: "motion",
     token: "motion",
+    runtimeDrawnOnly: true,
     aliases: ["anim"],
     category: "character",
     icon: PersonStanding,
@@ -639,6 +644,7 @@ export const motion = defineStoryCommand({
 export const skin = defineStoryCommand({
     id: "skin",
     token: "skin",
+    runtimeDrawnOnly: true,
     aliases: ["costume"],
     category: "character",
     icon: Shirt,
@@ -670,6 +676,7 @@ export const skin = defineStoryCommand({
 export const param = defineStoryCommand({
     id: "param",
     token: "param",
+    runtimeDrawnOnly: true,
     category: "character",
     icon: SlidersHorizontal,
     examples: ["/param Doll ParamAngleX 12"],

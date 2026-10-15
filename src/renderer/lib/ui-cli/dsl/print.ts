@@ -199,19 +199,25 @@ export function printElementTree(
     if (compact?.defaults && compact.without.length > 0) {
         lines.push(`${inner}${COMPACT_WITHOUT_KEYWORD} ${compact.without.join(" ")}`);
     }
+    // A key held as `undefined` is not on the record - a saved page has no such key - and has no
+    // spelling: `undefined` would read back as the word, a string. An element made in this session
+    // holds `layout.rotation` so, and an agent writing a page back after reading it stored "undefined".
     for (const [key, value] of Object.entries(layout)) {
-        if (key === "x" || key === "y" || key === "width" || key === "height" || compact?.omittedLayout.has(key)) {
+        if (value === undefined || key === "x" || key === "y" || key === "width" || key === "height" || compact?.omittedLayout.has(key)) {
             continue;
         }
         lines.push(`${inner}layout.${key} = ${printValue(value)}`);
     }
     for (const [key, value] of Object.entries(element.style ?? {})) {
+        if (value === undefined) {
+            continue;
+        }
         lines.push(`${inner}style.${key} = ${printValue(value)}`);
     }
     // Every prop that names a key: a plugin's widget can read several of its words from keys.
     const keyProps = new Set(uiTextSitesOf(element.type).map(site => site.keyProp).filter(Boolean));
     for (const [key, stored] of Object.entries(element.props ?? {})) {
-        if (compact?.omittedProps.has(key)) {
+        if (stored === undefined || compact?.omittedProps.has(key)) {
             continue;
         }
         const value = key === "appearance" && compact?.appearance !== undefined ? compact.appearance : stored;
@@ -257,7 +263,7 @@ export function printElementTree(
         }
     }
     for (const [key, value] of Object.entries(element.extra ?? {})) {
-        if (key === "componentLink" && link) {
+        if (value === undefined || (key === "componentLink" && link)) {
             continue;
         }
         lines.push(`${inner}extra.${key} = ${printValue(value)}`);

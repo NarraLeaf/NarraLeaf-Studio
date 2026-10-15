@@ -153,9 +153,9 @@
       "target": "自动前进等待时间"
     },
     "key:config.bgm": {
-      "sourceHash": "fnv1a:e26859b1",
+      "sourceHash": "fnv1a:e76cd5ed",
       "status": "translated",
-      "target": "背景音乐"
+      "target": "音乐"
     },
     "key:config.categorySound": {
       "sourceHash": "fnv1a:e61140de",
@@ -183,9 +183,9 @@
       "target": "开启"
     },
     "key:config.masterVolume": {
-      "sourceHash": "fnv1a:1e467146",
+      "sourceHash": "fnv1a:d00d0aa0",
       "status": "translated",
-      "target": "主音量"
+      "target": "总音量"
     },
     "key:config.muteOnBlur": {
       "sourceHash": "fnv1a:d976032e",
@@ -376,6 +376,11 @@
       "sourceHash": "fnv1a:48ff805f",
       "status": "translated",
       "target": "加载"
+    },
+    "key:log.replayVoice": {
+      "sourceHash": "fnv1a:c882cb74",
+      "status": "translated",
+      "target": "重播语音"
     },
     "key:log.title": {
       "sourceHash": "fnv1a:39b03058",

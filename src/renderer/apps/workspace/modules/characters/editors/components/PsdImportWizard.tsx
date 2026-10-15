@@ -5,13 +5,19 @@ import { Modal, dialogFooterButtonClass } from "@/lib/components/elements/Modal"
 import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { AssetCategory, AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { Services } from "@/lib/workspace/services/services";
 import type { CharacterAppearance } from "@/lib/workspace/services/character/CharacterAppearance";
+import type { StoredCharacter } from "@/lib/workspace/services/character/types";
+import { describeReplaceNotKept } from "@/lib/workspace/assets/importFailure";
+import type { TranslationKey } from "@shared/i18n";
+import { fileUnderCharacterFolder } from "@/lib/workspace/services/character/psdImportFolder";
 import {
     applyPsdPlan,
     nameBakeTargets,
+    psdRefreshTargets,
     summarisePlan,
 } from "@/lib/workspace/services/character/psdImportBuilder";
 import type { BlendResolution, PsdDocument } from "@shared/types/psdImport";
@@ -46,7 +52,17 @@ const DROP_REASON_KEYS = {
  * so the Import button stays disabled while any is undecided. That gate is the interception.
  *
  * Nothing here is destructive. A PSD Studio still recognises refreshes the layers it made last time
- * and leaves their names, order and axis bindings alone; anything else is added.
+ * and leaves their names, order and axis bindings alone; anything else is added. A refreshed layer
+ * keeps its image: the new bytes are written into the image the last import made, so an update
+ * leaves no second copy of every layer in the library. A new layer, and a slot the author has since
+ * pointed at an image of their own, get a file of their own instead.
+ *
+ * The whole import is one step of undo, on the project's stack (`CharacterService.recordCharacterEdit`):
+ * Ctrl+Z puts the character back as it was, takes the new images out of the library and writes the
+ * refreshed images' previous pixels back in. Those pixels are copied aside before anything is written
+ * over them (`AssetLibraryChange`), and an image that cannot be copied stops the import with nothing
+ * replaced. The character's image folder is taken back too when this import made it and nothing else
+ * is in it by then.
  *
  * ## The freeze
  *
@@ -57,11 +73,20 @@ const DROP_REASON_KEYS = {
  * would otherwise find the button live, and Import bakes every layer to disk and copies each one into
  * the library before anything downstream could refuse it.
  */
+/** A baked layer's file name without its extension: the name the library gives the image. */
+function bakedFileStem(filePath: string): string {
+    return (filePath.split(/[\\/]/).pop() ?? "").replace(/\.png$/i, "");
+}
+
 export function PsdImportWizard(props: {
     open: boolean;
     onClose: () => void;
+    /** The character whose appearance this is: the import's undo step restores its record. */
+    characterId: string;
     appearance: CharacterAppearance;
     characterName: string;
+    /** After a successful import, with whether the character had any art before it. */
+    onImported?: (hadArt: boolean) => void;
 }) {
     const { t, tn } = useTranslation();
     const { context } = useWorkspace();
@@ -114,10 +139,18 @@ export function PsdImportWizard(props: {
 
     const runImport = useCallback(async () => {
         const assetsService = context?.services.get<AssetsService>(Services.Assets);
-        if (!assetsService || !filePath || !document || freeze.frozen) return;
+        const characterService = context?.services.get<CharacterService>(Services.Character);
+        const character = characterService?.getCharacter(props.characterId);
+        if (!assetsService || !characterService || !character || !filePath || !document || freeze.frozen) return;
         setBusy("importing");
         setError(null);
+        // What the import does to the library - images it writes over, files it brings in - kept for
+        // the one undo step it leaves. Null in a live session, which takes no such step.
+        const change = assetsService.beginLibraryChange();
+        let recorded = false;
         try {
+            // Read before anything moves: the step puts the character back to exactly this.
+            const before = structuredClone(character.toJSON()) as StoredCharacter;
             const targets = nameBakeTargets(toBakeTargets(plan), plan, props.characterName);
             const baked = await getInterface().bakePsd({ filePath, layers: targets });
             if (!baked.success) {
@@ -128,25 +161,73 @@ export function PsdImportWizard(props: {
                 return;
             }
             const layers = baked.data.layers;
-            const imported = await assetsService.importFromPaths(
-                AssetType.Image,
-                layers.map(layer => layer.filePath),
+            // A layer the last import made is refreshed in place: same image, new bytes. The bake's
+            // file names are what the library named that import's images after.
+            const images = assetsService.getAssets()[AssetType.Image] ?? {};
+            const refresh = psdRefreshTargets(
+                props.appearance,
+                plan,
+                new Map(layers.map(layer => [joinPath(layer.path), bakedFileStem(layer.filePath)])),
+                id => images[id]?.name ?? null,
             );
+            // Every image about to be written over is copied aside first, all of them before any is
+            // written: one that cannot be copied stops the import with nothing replaced, because a
+            // refresh that cannot be undone is not one this import makes.
+            const refreshed = [...new Set(refresh.values())].flatMap(id => (images[id] ? [images[id]] : []));
+            if (change && refreshed.length > 0) {
+                const kept = await change.keep(refreshed);
+                if (!kept.ok) {
+                    setError(describeReplaceNotKept(kept.name, kept.refusal, t));
+                    return;
+                }
+            }
+            const assetIds = new Map<string, string>();
+            const fresh: typeof layers = [];
+            for (const layer of layers) {
+                const key = joinPath(layer.path);
+                const image = images[refresh.get(key) ?? ""];
+                if (image) {
+                    const replaced = await assetsService.replaceAssetContent(image, layer.filePath);
+                    if (replaced.success) {
+                        change?.replaced(image.id);
+                        assetIds.set(key, image.id);
+                        continue;
+                    }
+                    // A file of its own instead, as for a new layer: the import still lands.
+                    console.warn(`[psd] could not refresh ${image.name} in place`, replaced.error);
+                    change?.forget(image.id);
+                }
+                fresh.push(layer);
+            }
+            const imported = fresh.length > 0
+                ? await assetsService.importFromPaths(AssetType.Image, fresh.map(layer => layer.filePath))
+                : { success: true as const, data: [] };
             if (!imported.success) {
                 // The library's refusal is the log's; the title is what the author can read.
                 console.warn("[psd] could not import the baked layers", imported.error);
                 setError(t("characters.editor.psd.failed"));
                 return;
             }
+            const importedAssets = imported.data.flatMap(result => (result.success && result.data ? [result.data] : []));
+            change?.noteImported(importedAssets);
             // `importFromPaths` answers one result per path, in order, which is what lets a baked
             // layer be matched back to the asset it became.
-            const assetIds = new Map<string, string>();
-            layers.forEach((layer, index) => {
+            fresh.forEach((layer, index) => {
                 const result = imported.data[index];
                 if (result?.success) {
                     assetIds.set(joinPath(layer.path), result.data.id);
                 }
             });
+            // Into the character's own folder, not the section's root. The layers are imported by
+            // now, so a folder that could not be made or used leaves them where they landed. A
+            // refreshed image stays wherever it is.
+            const filed = await fileUnderCharacterFolder(assetsService, importedAssets, props.characterName);
+            if (!filed.success) {
+                console.warn("[psd] could not file the layers under the character's folder", filed.error);
+            } else if (filed.data?.created) {
+                // Made for this import, so its undo takes the folder back once the layers are out of it.
+                change?.noteCreatedFolder(AssetCategory.Image, filed.data.id);
+            }
 
             const fingerprint = props.appearance.getPsdFingerprint();
             const sameFile = fingerprint?.fileName === document.fileName;
@@ -156,6 +237,7 @@ export function PsdImportWizard(props: {
                 props.appearance.setCanvas({ width: document.width, height: document.height });
             }
 
+            const hadArt = props.appearance.getLayers().some(layer => Boolean(layer.assetId) || Object.values(layer.options ?? {}).some(Boolean));
             const slots = applyPsdPlan(props.appearance, plan, path => assetIds.get(joinPath(path)) ?? null);
             props.appearance.setPsdFingerprint({
                 fileName: document.fileName,
@@ -164,11 +246,30 @@ export function PsdImportWizard(props: {
                 slots,
                 importedAt: Date.now(),
             });
+            // One step for the whole import, on the project's stack where every recorded change to a
+            // character goes: the layers and their bindings, the images it wrote over, the files it
+            // brought in. The step owns `change` from here on, recorded or not.
+            characterService.recordCharacterEdit(
+                props.characterId,
+                before,
+                { key: "workspace.history.entry.importPsd" as TranslationKey },
+                change ?? undefined,
+            );
+            recorded = true;
+            props.onImported?.(hadArt);
             close();
         } catch (thrown: unknown) {
             console.warn("[psd] import failed", thrown);
             setError(t("characters.editor.psd.failed"));
         } finally {
+            if (change && !recorded) {
+                // An import that stopped partway takes back what it had already written or brought
+                // in, so a failed import leaves the library as it found it.
+                await change.undo().catch(error => {
+                    console.warn("[psd] could not take back a failed import", error);
+                });
+                change.dispose();
+            }
             setBusy(null);
         }
     }, [close, context, document, filePath, freeze.frozen, plan, props, t]);

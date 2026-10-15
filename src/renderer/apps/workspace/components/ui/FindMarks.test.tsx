@@ -2,7 +2,7 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { compileMatcher } from "@/lib/workspace/services/search/textMatcher";
-import { MarkedText, TextareaMarkLayer } from "./FindMarks";
+import { MarkedText, markedFragments, TextareaMarkLayer } from "./FindMarks";
 
 const PLAIN = { caseSensitive: false, wholeWord: false, regex: false };
 
@@ -107,5 +107,23 @@ describe("TextareaMarkLayer", () => {
             .container.innerHTML).toBe("");
         cleanup();
         expect(render(<TextareaMarkLayer value="The corridor" matcher={null} />).container.innerHTML).toBe("");
+    });
+});
+
+describe("markedFragments over a slice", () => {
+    it("marks a hit that crosses the cut on both sides of it", () => {
+        const name = "Afterschool_003_Narra.wav";
+        const matcher = compileMatcher("school_003", PLAIN);
+        const { container: head } = render(<span>{markedFragments(name, matcher, false, { start: 0, end: 11 })}</span>);
+        expect(head.textContent).toBe("Afterschool");
+        expect(head.querySelector("mark")?.textContent).toBe("school");
+        cleanup();
+        const { container: tail } = render(<span>{markedFragments(name, matcher, false, { start: 11, end: name.length })}</span>);
+        expect(tail.textContent).toBe("_003_Narra.wav");
+        expect(tail.querySelector("mark")?.textContent).toBe("_003");
+    });
+
+    it("returns the slice alone when nothing is searched", () => {
+        expect(markedFragments("Afterschool_003_Narra.wav", null, false, { start: 11, end: 25 })).toBe("_003_Narra.wav");
     });
 });
