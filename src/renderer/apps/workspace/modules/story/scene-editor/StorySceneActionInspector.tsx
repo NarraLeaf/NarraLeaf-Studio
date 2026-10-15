@@ -1556,6 +1556,15 @@ const AUDIO_OPERATION_FIELDS: Record<AudioActionPayload["operation"], readonly A
     seekSound: ["name", "seekTime"],
 };
 
+/**
+ * What an audio row uses for a field it leaves empty - the compiler's answers, shown greyed in the
+ * empty box so the row reads as what it plays rather than as blanks. A fade left empty is a hard cut
+ * (`rowFadeMs`), a volume the clip's full level (`resolveAudioTrackPlayback`), a rate normal speed and
+ * a seek the start. Shown, never stored: the row keeps "not set", and an author who types a value
+ * replaces it.
+ */
+export const AUDIO_ROW_DEFAULTS = Object.freeze({ fadeMs: 0, volume: 1, rate: 1, seekMs: 0 });
+
 /** The bus an operation falls back to - the same split the compiler applies (`setBgm` is music). */
 function audioRowFallbackChannel(operation: AudioActionPayload["operation"]): AudioTrackChannel {
     return operation === "setBgm" ? "bgm" : "sound";
@@ -1636,7 +1645,7 @@ function resolveAudioRowTrack(
  * the row that no field on screen can show. See {@link audioBusStatusLine}. Values only, one line,
  * no labels.
  */
-function AudioActionEditor(props: {
+export function AudioActionEditor(props: {
     payload: AudioActionPayload;
     scene: StoryScene | null;
     blockId: StoryBlockId;
@@ -1697,6 +1706,7 @@ function AudioActionEditor(props: {
                     <SecondsField
                         label={t("storyInspector.audio.fade")}
                         value={payload.fadeMs}
+                        placeholderMs={AUDIO_ROW_DEFAULTS.fadeMs}
                         onChange={fadeMs => props.onChange({ ...payload, fadeMs: fadeMs === undefined ? undefined : Math.max(0, fadeMs) })}
                     />
                 ) : null}
@@ -1704,6 +1714,7 @@ function AudioActionEditor(props: {
                     <SecondsField
                         label={t("storyInspector.audio.seekTime")}
                         value={payload.timeMs}
+                        placeholderMs={AUDIO_ROW_DEFAULTS.seekMs}
                         onChange={timeMs => props.onChange({ ...payload, timeMs: timeMs === undefined ? undefined : Math.max(0, timeMs) })}
                     />
                 ) : null}
@@ -1711,6 +1722,7 @@ function AudioActionEditor(props: {
                     <NumberField
                         label={t("storyInspector.audio.volume")}
                         value={payload.volume}
+                        placeholder={AUDIO_ROW_DEFAULTS.volume}
                         // Clamped on commit: a gain node takes 0..1, and an authored 3 used to be
                         // stored, shown back, and silently floored by the engine. Nothing in the mixer
                         // amplifies either - a bus attenuates - so 1 is the loudest a clip can be.
@@ -1721,6 +1733,7 @@ function AudioActionEditor(props: {
                     <NumberField
                         label={t("storyInspector.audio.rate")}
                         value={payload.rate}
+                        placeholder={AUDIO_ROW_DEFAULTS.rate}
                         onChange={rate => props.onChange({ ...payload, rate: rate === undefined ? undefined : Math.max(0, rate) })}
                     />
                 ) : null}
