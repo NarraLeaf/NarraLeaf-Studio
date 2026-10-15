@@ -264,23 +264,90 @@ export class CharacterService extends Service<CharacterService> implements IChar
         if (this.handedToSink({ op: "update-character", characterId: id, character: after })) {
             return true;
         }
-        const adopt = (next: StoredCharacter) => {
-            const current = this.characters[id];
-            if (!current) {
-                return;
-            }
-            current.adopt(next);
-            this.markDirty();
-            this.emitChange();
-            current.notifySubscribers();
-        };
-        adopt(after);
+        this.adoptRecord(id, after);
         this.getHistoryService().pushCommand(projectHistoryScope(), {
             label,
-            undo: () => adopt(before),
-            redo: () => adopt(after),
+            undo: () => this.adoptRecord(id, before),
+            redo: () => this.adoptRecord(id, after),
         });
         return true;
+    }
+
+    /**
+     * Leave one step of undo on the project stack for edits a caller has just made to a character in
+     * place, through the setters the editor uses - together with whatever the same gesture did outside
+     * the cast (`library`: the images a PSD import wrote over and the ones it brought in).
+     *
+     * The twin of {@link commitCharacterRecord} for a caller that could not build the record off to
+     * one side first. `before` is the record as it stood when the gesture began; the step restores it
+     * wholesale, which is exact for the same reason it is there.
+     *
+     * ⚠ **What redo brings back is the record as it was when undo ran, not as the gesture left it.**
+     * The character editor's own edits leave no steps, so an author can go on editing after the
+     * gesture; taking it back then also takes back those edits, and redo has to give them back too.
+     * Read at undo time, the record is the honest "after" - the same rule a checkpoint follows.
+     *
+     * Undo writes the record before taking back the library's half, so no frame draws a layer whose
+     * image has just been taken out of the library; when the library's half refuses (a file that could
+     * not be kept aside), the record goes back to what it was and the step stays where it was. Redo
+     * runs the other way round.
+     *
+     * Returns false, and lets `library` go, when no step is left: inside a live session, whose own
+     * undo is the room's (the edits were handed to it as they were made), or when nothing changed.
+     */
+    public recordCharacterEdit(
+        id: string,
+        before: StoredCharacter,
+        label: HistoryLabel,
+        library?: { undo(): Promise<void>; redo(): Promise<void>; dispose(): void; isEmpty(): boolean },
+    ): boolean {
+        const character = this.characters[id];
+        if (this.opSink || !character) {
+            library?.dispose();
+            return false;
+        }
+        const snapshot = () => structuredClone(character.toJSON()) as StoredCharacter;
+        let after = snapshot();
+        if (JSON.stringify(before) === JSON.stringify(after) && (!library || library.isEmpty())) {
+            library?.dispose();
+            return false;
+        }
+        const stored = structuredClone(before);
+        return this.getHistoryService().pushCommand(projectHistoryScope(), {
+            label,
+            undo: async () => {
+                const live = this.characters[id] ? snapshot() : null;
+                this.adoptRecord(id, stored);
+                try {
+                    await library?.undo();
+                } catch (error) {
+                    if (live) {
+                        this.adoptRecord(id, live);
+                    }
+                    throw error;
+                }
+                if (live) {
+                    after = live;
+                }
+            },
+            redo: async () => {
+                await library?.redo();
+                this.adoptRecord(id, after);
+            },
+            dispose: () => library?.dispose(),
+        });
+    }
+
+    /** Put a whole record onto the live character, and tell everyone holding it. */
+    private adoptRecord(id: string, record: StoredCharacter): void {
+        const current = this.characters[id];
+        if (!current) {
+            return;
+        }
+        current.adopt(record);
+        this.markDirty();
+        this.emitChange();
+        current.notifySubscribers();
     }
 
     /**

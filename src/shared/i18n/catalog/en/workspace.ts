@@ -445,6 +445,7 @@ export const workspace = {
             replaceText: "text replacement",
             agentEdit: "agent edit",
             agentPluginEdit: "agent: {tool}",
+            importPsd: "PSD import",
         },
     },
     // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.

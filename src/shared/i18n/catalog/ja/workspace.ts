@@ -412,6 +412,7 @@ export const workspace = {
             replaceText: "テキストの置換",
             agentEdit: "エージェントの編集",
             agentPluginEdit: "エージェント: {tool}",
+            importPsd: "PSD の読み込み",
         },
     },
     // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.
