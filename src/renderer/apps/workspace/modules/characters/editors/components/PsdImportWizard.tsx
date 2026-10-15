@@ -13,6 +13,7 @@ import { fileUnderCharacterFolder } from "@/lib/workspace/services/character/psd
 import {
     applyPsdPlan,
     nameBakeTargets,
+    psdRefreshTargets,
     summarisePlan,
 } from "@/lib/workspace/services/character/psdImportBuilder";
 import type { BlendResolution, PsdDocument } from "@shared/types/psdImport";
@@ -47,7 +48,10 @@ const DROP_REASON_KEYS = {
  * so the Import button stays disabled while any is undecided. That gate is the interception.
  *
  * Nothing here is destructive. A PSD Studio still recognises refreshes the layers it made last time
- * and leaves their names, order and axis bindings alone; anything else is added.
+ * and leaves their names, order and axis bindings alone; anything else is added. A refreshed layer
+ * keeps its image: the new bytes are written into the image the last import made, so an update
+ * leaves no second copy of every layer in the library. A new layer, and a slot the author has since
+ * pointed at an image of their own, get a file of their own instead.
  *
  * ## The freeze
  *
@@ -58,6 +62,11 @@ const DROP_REASON_KEYS = {
  * would otherwise find the button live, and Import bakes every layer to disk and copies each one into
  * the library before anything downstream could refuse it.
  */
+/** A baked layer's file name without its extension: the name the library gives the image. */
+function bakedFileStem(filePath: string): string {
+    return (filePath.split(/[\\/]/).pop() ?? "").replace(/\.png$/i, "");
+}
+
 export function PsdImportWizard(props: {
     open: boolean;
     onClose: () => void;
@@ -131,10 +140,34 @@ export function PsdImportWizard(props: {
                 return;
             }
             const layers = baked.data.layers;
-            const imported = await assetsService.importFromPaths(
-                AssetType.Image,
-                layers.map(layer => layer.filePath),
+            // A layer the last import made is refreshed in place: same image, new bytes. The bake's
+            // file names are what the library named that import's images after.
+            const images = assetsService.getAssets()[AssetType.Image] ?? {};
+            const refresh = psdRefreshTargets(
+                props.appearance,
+                plan,
+                new Map(layers.map(layer => [joinPath(layer.path), bakedFileStem(layer.filePath)])),
+                id => images[id]?.name ?? null,
             );
+            const assetIds = new Map<string, string>();
+            const fresh: typeof layers = [];
+            for (const layer of layers) {
+                const key = joinPath(layer.path);
+                const image = images[refresh.get(key) ?? ""];
+                if (image) {
+                    const replaced = await assetsService.replaceAssetContent(image, layer.filePath);
+                    if (replaced.success) {
+                        assetIds.set(key, image.id);
+                        continue;
+                    }
+                    // A file of its own instead, as for a new layer: the import still lands.
+                    console.warn(`[psd] could not refresh ${image.name} in place`, replaced.error);
+                }
+                fresh.push(layer);
+            }
+            const imported = fresh.length > 0
+                ? await assetsService.importFromPaths(AssetType.Image, fresh.map(layer => layer.filePath))
+                : { success: true as const, data: [] };
             if (!imported.success) {
                 // The library's refusal is the log's; the title is what the author can read.
                 console.warn("[psd] could not import the baked layers", imported.error);
@@ -143,15 +176,15 @@ export function PsdImportWizard(props: {
             }
             // `importFromPaths` answers one result per path, in order, which is what lets a baked
             // layer be matched back to the asset it became.
-            const assetIds = new Map<string, string>();
-            layers.forEach((layer, index) => {
+            fresh.forEach((layer, index) => {
                 const result = imported.data[index];
                 if (result?.success) {
                     assetIds.set(joinPath(layer.path), result.data.id);
                 }
             });
             // Into the character's own folder, not the section's root. The layers are imported by
-            // now, so a folder that could not be made or used leaves them where they landed.
+            // now, so a folder that could not be made or used leaves them where they landed. A
+            // refreshed image stays wherever it is.
             const filed = await fileUnderCharacterFolder(
                 assetsService,
                 imported.data.flatMap(result => (result.success && result.data ? [result.data] : [])),

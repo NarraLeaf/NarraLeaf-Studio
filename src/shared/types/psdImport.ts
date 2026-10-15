@@ -102,6 +102,11 @@ export type PsdFingerprintSlot = {
     layerId: string;
     /** The tag it feeds, when that layer is bound to an axis. Absent for a constant layer. */
     tagId?: string;
+    /**
+     * The image this import put in that slot. A re-import writes the layer's new bytes into it, as
+     * long as the slot still shows it. Absent in a fingerprint written before it was recorded.
+     */
+    assetId?: string;
 };
 
 /**

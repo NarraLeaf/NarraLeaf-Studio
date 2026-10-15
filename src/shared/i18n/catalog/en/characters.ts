@@ -100,6 +100,8 @@ export const characters = {
             // The guided state a puppet character starts in. Until a runtime and a model are both
             // there, the state fields below them cannot mean anything, so they are not shown.
             setupTitle: "Two things to set up",
+            // Once one of the two is in place, the heading names the one that is left.
+            setupTitleOne: "Left to set up: {item}",
             stepRuntime: "Drawing runtime",
             stepModel: "Model",
             runtimeInstalled: "Installed",

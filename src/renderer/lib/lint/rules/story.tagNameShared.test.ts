@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import type { TranslationKey } from "@shared/i18n";
+import { createTranslator } from "@shared/i18n/translator";
 import { createTestLintContext } from "../testContext";
 import type { LintCharacterEntry } from "../context";
 import { STORY_LINT_RULES } from "./story";
@@ -45,6 +47,20 @@ describe("story/tag-name-shared", () => {
         ])]);
         expect(findings).toHaveLength(1);
         expect(findings[0]).toMatchObject({ messageParams: { tag: "blue", first: "Outfit", second: "Hair" } });
+    });
+
+    // The three names are the author's own words, set off from the sentence the way each language
+    // quotes a name: bare, "表情 与 服装 两个轴上都有名为 笑 的标签" reads as one run of words.
+    it.each([
+        ["en", "The tag \"笑\" is on both \"表情\" and \"服装\""],
+        ["zh", "「表情」与「服装」两个轴上都有名为「笑」的标签"],
+        ["ja", "「表情」と「服装」の両方の軸に「笑」という名前のタグがある"],
+    ] as const)("quotes each name in its %s message", async (locale, expected) => {
+        const [finding] = await run([mio([
+            { name: "表情", tags: ["笑"] },
+            { name: "服装", tags: ["笑"] },
+        ])]);
+        expect(createTranslator(locale).t(finding.messageKey as TranslationKey, finding.messageParams)).toBe(expected);
     });
 
     it("leaves alone a name repeated on one axis, distinct names, and characters with no axes", async () => {

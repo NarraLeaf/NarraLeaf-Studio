@@ -1,7 +1,8 @@
 import { PROPERTIES_PANEL_ID } from "@/apps/workspace/modules/properties/propertiesPanelId";
+import { SEARCH_PANEL_ID } from "@/apps/workspace/modules/search/searchPanelId";
 import { FocusArea, type FocusContext } from "../ui/types";
 import type { HistoryScopeId } from "./historyModel";
-import { projectHistoryScope } from "./historyScopes";
+import { projectHistoryScope, searchReplaceHistoryScope } from "./historyScopes";
 import type { HistoryService } from "./HistoryService";
 
 /**
@@ -25,6 +26,17 @@ export function isEditorOwnedFocus(focus: FocusContext, tabId?: string): boolean
 }
 
 /**
+ * Whether focus is on the Search panel, where Undo takes back the panel's last replace.
+ *
+ * Wherever the panel is docked. Focus inside one of its text boxes is still this, as far as the stack
+ * goes: the box's own keystrokes never reach the workspace bindings, so only a menu item or a key
+ * pressed on the panel itself asks.
+ */
+export function isSearchPanelFocus(focus: FocusContext): boolean {
+    return focus.area !== FocusArea.Editor && focus.targetId === SEARCH_PANEL_ID;
+}
+
+/**
  * Which stack a plain "Undo" acts on, given where the author is.
  *
  * One function because two surfaces ask the question - the shell keybinding and the Edit menu - and
@@ -36,10 +48,17 @@ export function isEditorOwnedFocus(focus: FocusContext, tabId?: string): boolean
  * fall back to the active editor scope when the project stack is empty - would mean pressing Ctrl+Z
  * in the assets panel rewrites a scene the author is not looking at. "Nothing to undo here" is the
  * correct answer to that keystroke.
+ *
+ * One panel has a stack of its own: the Search panel, whose replaces are taken back there, across
+ * every scene each one touched (`storyReplace.applyStoryReplace`). It is the panel's own undo, as an
+ * editor's is, so the project's steps stay with the other panels.
  */
 export function resolveWorkspaceUndoScope(history: HistoryService, focus: FocusContext): HistoryScopeId {
     if (isEditorOwnedFocus(focus)) {
         return history.getActiveScopeId() ?? projectHistoryScope();
+    }
+    if (isSearchPanelFocus(focus)) {
+        return searchReplaceHistoryScope();
     }
     return projectHistoryScope();
 }

@@ -8,7 +8,11 @@ import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { CONTROL_SIZE_CLASS } from "@/lib/components/elements/controlSize";
 import { TooltipGroup } from "@/lib/tooltip";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { useTextFieldUndo } from "@/apps/workspace/hooks/useTextFieldUndo";
+import { useShortcutLabels } from "@/apps/workspace/hooks/useShortcutLabels";
 import { Services } from "@/lib/workspace/services/services";
+import type { UIService } from "@/lib/workspace/services/core/UIService";
+import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { SearchService } from "@/lib/workspace/services/search/SearchService";
 import { parseSearchQuery } from "@/lib/workspace/services/search/searchIndexModel";
 import type { SearchGroup, SearchGroupResult } from "@/lib/workspace/services/search/searchIndexModel";
@@ -104,8 +108,8 @@ function editKey(storyId: string, sceneId: string, blockId: string): string {
  * # Replace
  *
  * The replace field turns the same query into a project-wide rewrite of story prose, planned by
- * `services/search/storyReplace` and applied as one undo step in each scene it touched. Three things
- * about it are load bearing:
+ * `services/search/storyReplace` and applied as one undo step in each scene it touched, plus one in
+ * this panel that takes those back together. Three things about it are load bearing:
  *
  *  - **the button counts occurrences, not rows and not visible rows.** Groups cap at 20 (500
  *    expanded) because the list renders eagerly, and one line can contain the query twice. A button
@@ -113,11 +117,13 @@ function editKey(storyId: string, sceneId: string, blockId: string): string {
  *    on, and it is a lie. It comes from `plan.occurrences`, computed over the uncapped candidate set.
  *  - **planning is opt-in.** The replace row is folded away behind the replace switch, and nothing
  *    here runs while it is, so an author who only ever searches pays for nothing.
- *  - **no confirmation dialog.** Undo is the safety net: one press in a scene takes the replace back
- *    there, as the newest step of that scene's own history.
+ *  - **no confirmation dialog.** Undo is the safety net: one press in this panel takes the replace
+ *    back in every scene (`SearchUndoKeybindings`), and one press in a scene takes it back there, as
+ *    the newest step of that scene's own history.
  */
 export function SearchPanel() {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
+    const shortcuts = useShortcutLabels();
     const { context } = useWorkspace();
     const { openEditorTab, setPanelVisibility } = useRegistry();
     const freeze = useFreezeGuard();
@@ -149,6 +155,18 @@ export function SearchPanel() {
     const queryInputRef = useRef<HTMLInputElement | null>(null);
     const expandedRef = useRef(expandedGroups);
     expandedRef.current = expandedGroups;
+
+    /**
+     * Ctrl+Z in either box is that box's own text undo, and nothing else's. The browser's one stack
+     * for the whole page put the replace box's typing back while the caret was in the search box;
+     * with focus on the panel itself, Ctrl+Z is the replace's undo (`SearchUndoKeybindings`).
+     */
+    const attachQueryUndo = useTextFieldUndo(query, setQuery);
+    const attachReplacementUndo = useTextFieldUndo(replacement, setReplacement);
+    const attachQueryInput = useCallback((element: HTMLInputElement | null) => {
+        queryInputRef.current = element;
+        attachQueryUndo(element);
+    }, [attachQueryUndo]);
 
     /**
      * Take the caret when ⇧⌘F asks for it - on mount for a request that arrived while this panel
@@ -268,16 +286,51 @@ export function SearchPanel() {
         [openEditorTab, setPanelVisibility, context],
     );
 
+    /**
+     * Say what Replace all changed, and which key takes it back.
+     *
+     * The rows it rewrote leave the list as they change, and most of them are in scenes the author
+     * is not looking at, so without this the only trace of the sweep is an emptier panel. The detail
+     * line is where the panel's Ctrl+Z is told: the one moment it is about to be wanted.
+     */
+    const announceReplace = useCallback(
+        (done: ReplacePlan) => {
+            if (!context) {
+                return;
+            }
+            const first = done.edits[0];
+            let scene: string | undefined;
+            if (done.sceneCount === 1 && first) {
+                try {
+                    scene = context.services.get<StoryService>(Services.Story)
+                        .getStoryDocument(first.storyId).scenes[first.sceneId]?.name;
+                } catch {
+                    scene = undefined;
+                }
+            }
+            const message = scene !== undefined
+                ? tn("workspace.shell.search.replacedInScene", done.occurrences, { scene })
+                : tn("workspace.shell.search.replacedInScenes", done.occurrences, { scenes: done.sceneCount });
+            context.services.get<UIService>(Services.UI).showNotification(message, "info", {
+                detail: t("workspace.shell.search.replacedUndoHint", { key: shortcuts.forBinding("search.undo") ?? "" }),
+            });
+        },
+        [context, shortcuts, t, tn],
+    );
+
     const applyPlan = useCallback(
-        (target: ReplacePlan | null) => {
+        (target: ReplacePlan | null, announce = false) => {
             if (!context || !target) {
                 return;
             }
             if (applyStoryReplace(context, target, REPLACE_HISTORY_LABEL)) {
                 setPlanNonce(nonce => nonce + 1);
+                if (announce) {
+                    announceReplace(target);
+                }
             }
         },
-        [context],
+        [announceReplace, context],
     );
 
     const toggleGroup = useCallback((group: SearchGroup) => {
@@ -343,7 +396,7 @@ export function SearchPanel() {
                     <SearchBox
                         value={query}
                         onChange={setQuery}
-                        inputRef={queryInputRef}
+                        inputRef={attachQueryInput}
                         size="sm"
                         placeholder={t("workspace.shell.search.placeholder")}
                         className="min-w-[7.5rem] flex-1"
@@ -410,6 +463,7 @@ export function SearchPanel() {
                     // and the button beside it wraps under rather than squeezing it away.
                     <div className="flex flex-wrap items-center gap-1.5">
                         <input
+                            ref={attachReplacementUndo}
                             // Autofocused: the only way this row appears is the author asking for it.
                             autoFocus
                             value={replacement}
@@ -425,7 +479,7 @@ export function SearchPanel() {
                         />
                         <button
                             type="button"
-                            onClick={() => applyPlan(plan)}
+                            onClick={() => applyPlan(plan, true)}
                             {...freeze.writes(!replaceReady, replaceTitle)}
                             className={cn(
                                 "inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-md",

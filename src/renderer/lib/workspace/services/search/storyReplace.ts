@@ -4,12 +4,15 @@ import {
     replaceRangesInSegment,
     segmentPlainText,
 } from "@/apps/workspace/modules/story/scene-editor/storyFindReplace";
+import type { PluralKey } from "@shared/i18n";
 import { getProjectWriteFreeze } from "@/lib/app/writeFreeze";
+import { i18nStore, translateN } from "@/lib/i18n";
 import { Services, type WorkspaceContext } from "../services";
+import type { UIService } from "../core/UIService";
 import { StoryService } from "../story/StoryService";
-import { HistoryService } from "../history/HistoryService";
-import type { HistoryLabel } from "../history/historyModel";
-import { storySceneHistoryScope } from "../history/historyScopes";
+import { HistoryService, type HistoryGroupStep } from "../history/HistoryService";
+import type { HistoryLabel, HistoryScopeId } from "../history/historyModel";
+import { searchReplaceHistoryScope, storySceneHistoryScope } from "../history/historyScopes";
 import { SearchService } from "./SearchService";
 import { passesFilters, type SearchFilters } from "./searchIndexModel";
 import type { CompiledMatcher } from "./textMatcher";
@@ -227,7 +230,8 @@ export function planForEdit(edit: StoryReplaceEdit): ReplacePlan {
 }
 
 /**
- * Phase 2: write the plan, as one batch per story and one undo step on each scene it touched.
+ * Phase 2: write the plan, as one batch per story, one undo step on each scene it touched, and one
+ * step in the Search panel that takes those back together.
  *
  * Returns whether anything was written. False covers a plan phase 1 refused, an empty plan, and a
  * frozen workspace - in all of them nothing is written and no history is recorded, which is the
@@ -243,6 +247,14 @@ export function planForEdit(edit: StoryReplaceEdit): ReplacePlan {
  * removing the rows, while the replace's own step still sits on another stack waiting to "undo" a
  * change that is already gone. Recorded in the scene, the replace is simply the newest step there:
  * Ctrl+Z in the scene takes back exactly the replace, and the next one takes back the paste.
+ *
+ * # And the Search panel's step on top
+ *
+ * Ctrl+Z in the Search panel takes the whole replace back at once, as it did when the replace was
+ * one project step. It does so through the scene steps above (`HistoryService.pushGroup`): a scene
+ * whose newest step is still the replace has that step taken, exactly as Ctrl+Z in the scene would;
+ * a scene edited since keeps the replace, and the author is told which, because taking it back there
+ * would undo out of order with the later edit.
  */
 export function applyStoryReplace(ctx: WorkspaceContext, plan: ReplacePlan, label: HistoryLabel): boolean {
     if (!plan.applicable || plan.edits.length === 0) {
@@ -266,9 +278,13 @@ export function applyStoryReplace(ctx: WorkspaceContext, plan: ReplacePlan, labe
      * moment they run - see {@link writeSegments} - so taking the step back after an unrelated edit
      * to another row of the scene still puts back only the text this replace touched.
      */
-    for (const sceneEdits of groupByScene(written)) {
+    const scenes = new Map<HistoryScopeId, { storyId: StoryId; sceneId: StorySceneId }>();
+    const members = groupByScene(written).map(sceneEdits => {
         const { storyId, sceneId } = sceneEdits[0];
-        historyService.pushCommand(storySceneHistoryScope(storyId, sceneId), {
+        const scopeId = storySceneHistoryScope(storyId, sceneId);
+        scenes.set(scopeId, { storyId, sceneId });
+        return {
+            scopeId,
             label,
             undo: () => {
                 writeSegments(storyService, sceneEdits, "before");
@@ -276,9 +292,52 @@ export function applyStoryReplace(ctx: WorkspaceContext, plan: ReplacePlan, labe
             redo: () => {
                 writeSegments(storyService, sceneEdits, "after");
             },
-        });
-    }
+        };
+    });
+    historyService.pushGroup(searchReplaceHistoryScope(), {
+        label,
+        members,
+        onStep: step => reportSkippedScenes(ctx, step, scenes),
+    });
     return true;
+}
+
+/**
+ * Tell the author which scenes a Search panel undo or redo left as they were.
+ *
+ * Info, not a warning: the author did nothing wrong by editing a scene after replacing in it. A
+ * scene that has since been deleted is not named - there is nothing left in it to take back.
+ */
+function reportSkippedScenes(
+    ctx: WorkspaceContext,
+    step: HistoryGroupStep,
+    scenes: ReadonlyMap<HistoryScopeId, { storyId: StoryId; sceneId: StorySceneId }>,
+): void {
+    if (step.skipped.length === 0) {
+        return;
+    }
+    const storyService = ctx.services.get<StoryService>(Services.Story);
+    const documents = new Map<StoryId, StoryDocument | null>();
+    const names: string[] = [];
+    for (const scopeId of step.skipped) {
+        const scene = scenes.get(scopeId);
+        const name = scene ? resolveDocument(storyService, documents, scene.storyId)?.scenes[scene.sceneId]?.name : undefined;
+        if (name !== undefined) {
+            names.push(name);
+        }
+    }
+    if (names.length === 0) {
+        return;
+    }
+    const message = translateN(
+        step.direction === "undo"
+            ? "workspace.shell.search.undoSkipped" as PluralKey
+            : "workspace.shell.search.redoSkipped" as PluralKey,
+        names.length,
+    );
+    ctx.services.get<UIService>(Services.UI).showNotification(message, "info", {
+        detail: i18nStore.getTranslator().formatList(names),
+    });
 }
 
 /** The edits of each scene together, in the order the scenes first appear. */

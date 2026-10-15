@@ -137,6 +137,7 @@ export const KEYBINDING_CATEGORY = {
     localization: "workspace.shell.keybindings.categories.localization" as TranslationKey,
     voice: "workspace.shell.keybindings.categories.voice" as TranslationKey,
     lint: "workspace.shell.keybindings.categories.lint" as TranslationKey,
+    search: "workspace.shell.keybindings.categories.search" as TranslationKey,
 } as const;
 
 const CATEGORY = KEYBINDING_CATEGORY;
@@ -223,6 +224,13 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     // already searches the scene in front of you, so `mod+shift+f` widening that to the project is
     // the distinction VS Code draws with the same two chords.
     entry("panel:narraleaf-studio:search", "mod+shift+f", "placeholders.moduleTitles.search", CATEGORY.view, Search),
+
+    // --- Search panel -------------------------------------------------------
+    // The panel's replaces, taken back across every scene each one touched. Only with focus on the
+    // panel and not in one of its boxes, where the chord stays that box's own text undo; anywhere else
+    // `workspace.undo` has it. See `SearchUndoKeybindings`.
+    entry("search.undo", "mod+z", "workspace.shell.keybindings.catalog.search.undo", CATEGORY.search, Undo2),
+    entry("search.redo", "mod+shift+z", "workspace.shell.keybindings.catalog.search.redo", CATEGORY.search, Redo2),
 
     // --- Story scene editor (idle mode) ------------------------------------
     entry("story.find", "mod+f", "story.keybindings.find", CATEGORY.story, Search),

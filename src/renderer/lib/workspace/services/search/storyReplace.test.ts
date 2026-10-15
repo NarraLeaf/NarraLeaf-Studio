@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TranslationKey } from "@shared/i18n";
 import type { StoryBlock, StoryDocument, StoryScene } from "@shared/types/story";
 import { HistoryService } from "../history/HistoryService";
-import { projectHistoryScope, storySceneHistoryScope } from "../history/historyScopes";
+import { projectHistoryScope, searchReplaceHistoryScope, storySceneHistoryScope } from "../history/historyScopes";
 import { Services, type WorkspaceContext } from "../services";
 import { applyStoryReplace, planForEdit, planStoryReplace } from "./storyReplace";
 import { indexEntries, type SearchIndexEntry } from "./searchIndexModel";
@@ -126,6 +126,15 @@ function makeContext(documents: StoryDocument[], entries?: SearchIndexEntry[]) {
 
     const searchService = { listEntries: () => indexed };
 
+    /** Every notification raised, as the author would read it. */
+    const notices: Array<{ message: string; type: string; detail?: string }> = [];
+    const uiService = {
+        showNotification(message: string, type: string, options?: { detail?: string }) {
+            notices.push({ message, type, detail: options?.detail });
+            return `n${notices.length}`;
+        },
+    };
+
     const ctx = {
         project: {} as never,
         services: {
@@ -133,13 +142,14 @@ function makeContext(documents: StoryDocument[], entries?: SearchIndexEntry[]) {
                 if (id === Services.Story) return storyService;
                 if (id === Services.Search) return searchService;
                 if (id === Services.History) return history;
+                if (id === Services.UI) return uiService;
                 throw new Error(`Unexpected service ${id}`);
             },
         },
     } as unknown as WorkspaceContext;
 
     history.setContext(ctx);
-    return { ctx, history, batches, byId, documents };
+    return { ctx, history, batches, byId, documents, notices };
 }
 
 function textOf(document: StoryDocument, sceneId: string, blockId: string): string {
@@ -406,7 +416,7 @@ describe("applyStoryReplace - undo", () => {
         return { ...makeContext([one, two]), one, two };
     }
 
-    it("leaves one step on each scene it touched, and none on the project's stack", () => {
+    it("leaves one step on each scene it touched and one in the Search panel, and none on the project's stack", () => {
         const { ctx, history } = twoStoryWorkspace();
         const plan = planStoryReplace(ctx, { matcher: matcher("hello"), replacement: "hi" });
         expect(plan.occurrences).toBe(6);
@@ -417,6 +427,7 @@ describe("applyStoryReplace - undo", () => {
             [storySceneHistoryScope("s1", "sc1")]: 1,
             [storySceneHistoryScope("s1", "sc2")]: 1,
             [storySceneHistoryScope("s2", "sc3")]: 1,
+            [searchReplaceHistoryScope()]: 1,
         });
         expect(history.canUndo(projectHistoryScope())).toBe(false);
         expect(history.peekUndo(storySceneHistoryScope("s1", "sc2"))).toEqual(LABEL);
@@ -546,5 +557,129 @@ describe("applyStoryReplace - undo", () => {
         expect(plan.applicable).toBe(false);
         expect(applyStoryReplace(ctx, plan, LABEL)).toBe(false);
         expect(history.describe()).toEqual([]);
+    });
+});
+
+/**
+ * Ctrl+Z in the Search panel: the whole replace at once, taken back through the scene steps so that
+ * a scene's own Ctrl+Z and the panel's never disagree about what has been undone.
+ */
+describe("applyStoryReplace - undo from the Search panel", () => {
+    const SEARCH = searchReplaceHistoryScope();
+    const OPENING = storySceneHistoryScope("s1", "sc1");
+    const CORRIDOR = storySceneHistoryScope("s1", "sc2");
+    const CAFE = storySceneHistoryScope("s2", "sc3");
+
+    function replaced() {
+        const one = storyDocument("s1", "Prologue", [
+            scene("sc1", "Opening", [{ id: "b1", text: "hello there" }]),
+            scene("sc2", "Corridor", [{ id: "b2", text: "say hello" }]),
+        ]);
+        const two = storyDocument("s2", "Side", [scene("sc3", "Cafe", [{ id: "b3", text: "hello hello" }])]);
+        const harness = makeContext([one, two]);
+        const plan = planStoryReplace(harness.ctx, { matcher: matcher("hello"), replacement: "hi" });
+        expect(applyStoryReplace(harness.ctx, plan, LABEL)).toBe(true);
+        const texts = () => [textOf(one, "sc1", "b1"), textOf(one, "sc2", "b2"), textOf(two, "sc3", "b3")];
+        expect(texts()).toEqual(["hi there", "say hi", "hi hi"]);
+        return { ...harness, one, two, texts };
+    }
+
+    /** An edit made in a scene after the replace: a step of the scene's own, above the replace's. */
+    function editAfterwards(history: HistoryService, scopeId: string, apply: () => void) {
+        history.pushCommand(scopeId, { label: LABEL, undo: () => {}, redo: apply });
+        apply();
+    }
+
+    it("takes the replace back in every scene at once, and puts it back again", () => {
+        const { history, texts, notices } = replaced();
+
+        expect(history.undo(SEARCH)).toBe(true);
+        expect(texts()).toEqual(["hello there", "say hello", "hello hello"]);
+        expect(history.redo(SEARCH)).toBe(true);
+        expect(texts()).toEqual(["hi there", "say hi", "hi hi"]);
+        expect(history.undo(SEARCH)).toBe(true);
+        expect(texts()).toEqual(["hello there", "say hello", "hello hello"]);
+        expect(notices).toEqual([]);
+    });
+
+    it("moves each scene's step exactly as Ctrl+Z in the scene would, so the scenes can redo it", () => {
+        const { history, texts } = replaced();
+
+        history.undo(SEARCH);
+        for (const scopeId of [OPENING, CORRIDOR, CAFE]) {
+            expect(history.canUndo(scopeId)).toBe(false);
+            expect(history.canRedo(scopeId)).toBe(true);
+        }
+        // Redo in one scene: that scene alone comes back.
+        expect(history.redo(CORRIDOR)).toBe(true);
+        expect(texts()).toEqual(["hello there", "say hi", "hello hello"]);
+    });
+
+    it("leaves a scene edited after the replace as it is, undoes the rest, and names the scene", () => {
+        const { history, texts, one, notices } = replaced();
+        editAfterwards(history, CORRIDOR, () => {
+            one.scenes.sc2.name = "Corridor";
+        });
+
+        expect(history.undo(SEARCH)).toBe(true);
+        expect(texts()).toEqual(["hello there", "say hi", "hello hello"]);
+        // The corridor's stack is untouched: its newest step is the later edit, then the replace.
+        expect(history.describe().find(entry => entry.scopeId === CORRIDOR)).toMatchObject({ undo: 2, redo: 0 });
+        expect(notices).toEqual([{
+            message: "Replace not undone in 1 scene edited after it",
+            type: "info",
+            detail: "Corridor",
+        }]);
+    });
+
+    it("lets the skipped scene take the replace back later, in order, through its own Ctrl+Z", () => {
+        const { history, texts, one } = replaced();
+        editAfterwards(history, CORRIDOR, () => {
+            one.scenes.sc2.name = "Corridor";
+        });
+        history.undo(SEARCH);
+
+        expect(history.undo(CORRIDOR)).toBe(true);
+        expect(texts()).toEqual(["hello there", "say hi", "hello hello"]);
+        expect(history.undo(CORRIDOR)).toBe(true);
+        expect(texts()).toEqual(["hello there", "say hello", "hello hello"]);
+    });
+
+    it("passes over a scene whose replace was already taken back there, without a word", () => {
+        const { history, texts, notices } = replaced();
+        expect(history.undo(CAFE)).toBe(true);
+
+        expect(history.undo(SEARCH)).toBe(true);
+        expect(texts()).toEqual(["hello there", "say hello", "hello hello"]);
+        expect(notices).toEqual([]);
+    });
+
+    it("redoes every scene still waiting for it, and names one edited since the undo", () => {
+        const { history, texts, notices, two } = replaced();
+        history.undo(SEARCH);
+        // Typing in the cafe after the undo: the cafe's redo branch is gone.
+        editAfterwards(history, CAFE, () => {
+            two.scenes.sc3.name = "Cafe";
+        });
+
+        expect(history.redo(SEARCH)).toBe(true);
+        expect(texts()).toEqual(["hi there", "say hi", "hello hello"]);
+        expect(notices).toEqual([{
+            message: "Replace not redone in 1 scene edited after the undo",
+            type: "info",
+            detail: "Cafe",
+        }]);
+    });
+
+    it("keeps the scene steps of a replace through the cap on stacks no editor holds", () => {
+        const { history, texts } = replaced();
+        // Ten editors opened and closed afterwards would push three unregistered scene stacks past
+        // the retention cap - and with them the steps the panel's undo has to take.
+        for (let i = 0; i < 10; i++) {
+            history.registerScope({ id: `story-scene:other:${i}`, label: LABEL, capture: () => i, apply: () => {} })();
+        }
+
+        expect(history.undo(SEARCH)).toBe(true);
+        expect(texts()).toEqual(["hello there", "say hello", "hello hello"]);
     });
 });

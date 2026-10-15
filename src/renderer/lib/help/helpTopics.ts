@@ -179,7 +179,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "search",
         section: "start",
-        shortcuts: ["workspace-command-palette", "workspace-quick-open", "story.find"],
+        shortcuts: ["workspace-command-palette", "workspace-quick-open", "story.find", "search.undo", "search.redo"],
         related: ["storyScene"],
     },
     {
