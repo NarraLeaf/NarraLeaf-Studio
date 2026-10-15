@@ -506,3 +506,17 @@ describe("a jump to a scene that is gone", () => {
         expect(sentence).toContain("unknown scene");
     });
 });
+
+describe("the subject line of a staging row, in zh", () => {
+    /**
+     * What the inspector's header and the row list say about a row. Each of these read wrong in a
+     * Chinese project: an English unit, the command's own noun where the verb goes, and an English
+     * placeholder where the character's name belongs.
+     */
+    it("writes a wait in seconds as the rest of the interface does", () => {
+        i18nStore.setLocale("zh");
+        expect(describeStoryBlock(action({ action: "wait", mode: "duration", durationMs: 1000 }), bare)).toBe("等待 1 秒");
+        i18nStore.setLocale("en");
+        expect(describeStoryBlock(action({ action: "wait", mode: "duration", durationMs: 1000 }), bare)).toBe("Wait 1s");
+    });
+});

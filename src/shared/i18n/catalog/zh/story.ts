@@ -1422,7 +1422,7 @@ export const story = {
             setSkin: "皮肤",
             setParams: "参数",
         },
-        waitDuration: "等待 {seconds}s",
+        waitDuration: "等待 {seconds} 秒",
         waitClick: "等待点击",
         unnamed: "未命名",
         puppetNone: "无",
