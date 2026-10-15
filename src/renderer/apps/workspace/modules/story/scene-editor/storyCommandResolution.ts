@@ -120,7 +120,7 @@ export function parseLiteral(raw: string): StoryLiteralValue {
 
 
 /** The character an owner param resolved to, whether it came through a `character` or a `target` slot. */
-function ownerCharacterId(owner: StoryCommandValue | undefined): string | null {
+export function ownerCharacterId(owner: StoryCommandValue | undefined): string | null {
     if (owner?.kind === "character") {
         return owner.characterId;
     }

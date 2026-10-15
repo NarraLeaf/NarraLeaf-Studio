@@ -259,6 +259,37 @@ describe("getCommandLineReason", () => {
             i18nStore.setLocale("en");
         }
     });
+
+    /**
+     * `/char` on a Live2D model with no expressions offered an empty list and, on Enter, said only
+     * that the slot was empty. Its model was asked and listed none, so the line says that.
+     */
+    it("says a model has no expressions where an appearance is still to be named", () => {
+        const withModels: StoryCommandContext = {
+            ...CONTEXT,
+            characters: [...CONTEXT.characters, { id: "c2", name: "Hiyori" }, { id: "c3", name: "Mao" }, { id: "c4", name: "Rice" }],
+            puppetCharacterIds: ["c2", "c3", "c4"],
+            puppetByCharacterId: {
+                c2: { motions: ["Idle_0"], expressions: [], skins: [], params: [] },
+                c3: { motions: [], expressions: ["smile"], skins: [], params: [] },
+                // c4's model has not answered.
+            },
+        };
+        const typing = (source: string) => getCommandLineReason(source, withModels, { typing: true });
+        const reason = getCommandLineReason("/char Hiyori", withModels);
+        expect(reason?.key).toBe("storyExpr.reason.puppetNoExpressions");
+        expect(reason?.params).toEqual({ value: "Hiyori" });
+        // In the slot, once the name is finished.
+        expect(typing("/char Hiyori ")?.key).toBe("storyExpr.reason.puppetNoExpressions");
+        expect(typing("/char Hiyori")).toBeNull();
+        // A name typed into it is the author's to vouch for, and is checked once committed.
+        expect(getCommandLineReason("/char Hiyori smile", withModels)).toBeNull();
+        // A model that has expressions, or one that has not answered, says nothing of the kind.
+        expect(getCommandLineReason("/char Mao", withModels)).toBeNull();
+        expect(getCommandLineReason("/char Rice", withModels)).toBeNull();
+        // `/motion` names no core slot: a bare one means "back to rest".
+        expect(getCommandLineReason("/motion Hiyori", withModels)).toBeNull();
+    });
 });
 
 /**

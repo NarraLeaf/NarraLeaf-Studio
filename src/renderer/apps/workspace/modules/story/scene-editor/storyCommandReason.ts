@@ -1,10 +1,11 @@
 import type { TranslationKey } from "@shared/i18n";
 import { i18nStore } from "@/lib/i18n";
 import { missingCoreParams, parseCommandLine, type StoryCommandIssue, type StoryCommandLine } from "./storyCommandParser";
-import { paramHintKey } from "./storyCommandGrammar";
+import { paramHintKey, paramTypes } from "./storyCommandGrammar";
 import { localizedCommandToken, suggestCommandDef } from "./commands/registry";
 import type { StoryExpressionIssue } from "@shared/utils/storyExpressionParser";
-import { resolveCommandLine, type StoryCommandContext, type StoryCommandResolutionIssue } from "./storyCommandResolution";
+import { ownerCharacterId, resolveCommandLine, type StoryCommandContext, type StoryCommandResolutionIssue } from "./storyCommandResolution";
+import { puppetChannelNames, type StoryCommandValue } from "./storyCommandValues";
 import { formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
 
 /**
@@ -125,9 +126,14 @@ export function getCommandLineReason(
     if (parserIssue) {
         return parserReason(line, parserIssue);
     }
-    const resolutionIssue = resolveCommandLine(line, context).issues[0];
+    const resolution = resolveCommandLine(line, context);
+    const resolutionIssue = resolution.issues[0];
     if (!resolutionIssue) {
-        return null;
+        // Said once the slot is reached - after the space that ends the character's name - and on a
+        // committed line: before that, the name may still be on its way to another character's.
+        return !options.typing || /\s$/.test(source)
+            ? emptyPuppetChannelReason(line, context, resolution.args)
+            : null;
     }
     // The same rule for a name as for the command word above, and the same signal: the value at the
     // end of the line with nothing after it is still being typed (`/show N` toward `/show Narra`,
@@ -166,6 +172,40 @@ export function getCommandLineDraftReason(source: string, context: StoryCommandC
         params: { token: line.token ?? "", slot: hint },
         paramHintKey: `story.paramHint.${hint}` as TranslationKey,
     };
+}
+
+/**
+ * The line still needs a name its character's model was asked for and has none of - `/char` on a
+ * Live2D model that defines no expressions. The slot offers nothing and nothing typed would be
+ * one of the model's names, so the line says why instead of only that the slot is empty.
+ *
+ * Only for a model that answered: a model nobody could ask (no runtime here, still loading) has no
+ * list either, and saying it has no expressions would be a guess.
+ */
+function emptyPuppetChannelReason(
+    line: Extract<StoryCommandLine, { kind: "command" }>,
+    context: StoryCommandContext,
+    resolved: Readonly<Record<string, StoryCommandValue>>,
+): StoryCommandReason | null {
+    const missing = missingCoreParams(line)[0];
+    if (!missing) {
+        return null;
+    }
+    for (const type of paramTypes(missing)) {
+        if (type.kind !== "puppetName" || type.channel !== "expression") {
+            continue;
+        }
+        const characterId = ownerCharacterId(resolved[type.dependsOn]);
+        if (!characterId || !context.puppetCharacterIds.includes(characterId) || !context.puppetByCharacterId[characterId]) {
+            continue;
+        }
+        if (puppetChannelNames(context, characterId, type.channel).length > 0) {
+            continue;
+        }
+        const name = context.characters.find(entry => entry.id === characterId)?.name ?? "";
+        return { key: reasonKey("puppetNoExpressions"), params: { value: name } };
+    }
+    return null;
 }
 
 /**
