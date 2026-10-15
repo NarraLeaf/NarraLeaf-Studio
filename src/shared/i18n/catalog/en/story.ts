@@ -1059,7 +1059,7 @@ export const story = {
             characterOrName: "Character, or any name",
             characterForm: "One of that character's appearances",
             puppet: {
-                motion: "A motion provided by the runtime (blank returns it to rest)",
+                motion: "A motion provided by the runtime, played in a loop (blank returns it to rest)",
                 expression: "An expression provided by the runtime (blank clears it)",
                 skin: "A skin provided by the runtime (blank restores the default)",
                 param: "A numeric parameter of the model, by id",
@@ -1475,7 +1475,7 @@ export const story = {
         show: { label: "Show", detail: "Show a character, a stage object, or an image from the asset library" },
         hide: { label: "Hide", detail: "Hide a character or a stage object" },
         face: { label: "Appearance", detail: "Change which of a character's looks is showing" },
-        motion: { label: "Motion", detail: "Set the motion a runtime-drawn character plays" },
+        motion: { label: "Motion", detail: "Set the motion a runtime-drawn character loops until another row changes it" },
         param: { label: "Parameter", detail: "Set one numeric parameter of a runtime-drawn character's model" },
         skin: { label: "Skin", detail: "Set the skin a runtime-drawn character wears" },
         rename: { label: "Rename", detail: "Change the name a character speaks under" },

@@ -434,7 +434,7 @@ export const help = {
                 + "- Preset sprites: one finished image per pose.\n"
                 + "- Layered sprite: layers switched by tags on axes, so a costume and an expression change "
                 + "independently.\n"
-                + "- Custom runtime: a model, drawn by a runtime installed in this project.\n"
+                + "- Drawn by a runtime: a model drawn by Live2D Cubism, Spine or a custom runtime installed in this project. Story rows set its state with Motion, Appearance, Skin and Parameter; a motion loops until another row changes it and cannot be set to play once.\n"
                 + "\n"
                 + "For preset and layered sprites, the dialog avatar is generated from the drawn result and by default changes with every axis; "
                 + "an axis with Avatar varies with this axis switched off leaves it unchanged. Where no differential gives one, dialogue shows the Default dialog avatar "

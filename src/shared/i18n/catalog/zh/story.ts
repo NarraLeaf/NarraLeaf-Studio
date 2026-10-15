@@ -913,7 +913,7 @@ export const story = {
             characterOrName: "角色，或任意名字",
             characterForm: "该角色的某个外观",
             puppet: {
-                motion: "运行时提供的动作名（为空时恢复静止）",
+                motion: "运行时提供的动作名，循环播放（为空时恢复静止）",
                 expression: "运行时提供的表情名（为空时清除）",
                 skin: "运行时提供的皮肤名（为空时恢复默认）",
                 param: "模型中的数值参数 id",
@@ -1284,7 +1284,7 @@ export const story = {
         show: { label: "显示", detail: "显示角色、舞台对象，或资产库中的图片" },
         hide: { label: "隐藏", detail: "隐藏角色或舞台对象" },
         face: { label: "外观", detail: "切换角色显示的外观：姿态、差分或表情" },
-        motion: { label: "动作", detail: "设置由运行时绘制的角色所播放的动作" },
+        motion: { label: "动作", detail: "设置由运行时绘制的角色循环播放的动作，直到另一行更改" },
         param: { label: "参数", detail: "设置由运行时绘制的角色模型上的一个数值参数" },
         skin: { label: "皮肤", detail: "设置由运行时绘制的角色所穿的皮肤" },
         rename: { label: "改名", detail: "改变角色说话时显示的名字" },
