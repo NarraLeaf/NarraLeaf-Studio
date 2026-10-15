@@ -12,11 +12,16 @@ import {
 import type { CustomFieldProps } from "@/apps/workspace/modules/properties/framework/types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
-import { Select } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { AssetPickerRow } from "../assets/AssetPickerRow";
 import { useProjectAudioTracks } from "./useProjectAudioTracks";
-import { formatSoundVolume, SoundOptionLabel, SoundOptionsFold, SoundVolumeControl } from "./SoundPlaybackOptions";
+import {
+    formatSoundVolume,
+    SoundOptionLabel,
+    SoundOptionsFold,
+    SoundTrackOption,
+    SoundVolumeControl,
+} from "./SoundPlaybackOptions";
 import { audioTrackDisplayName } from "@shared/types/audioTrack";
 
 /**
@@ -121,14 +126,12 @@ function SoundPlaybackOptions({
         <SoundOptionsFold summary={summary} label={t("properties.interactionSound.options")}>
             <SoundOptionLabel>{volumeLabel}</SoundOptionLabel>
             <SoundVolumeControl volume={volume} label={volumeLabel} onChange={next => onChange({ volume: next })} readOnly={readOnly} />
-            <SoundOptionLabel>{t("properties.interactionSound.track")}</SoundOptionLabel>
-            <Select
-                size="sm"
-                fullWidth
-                value={trackId}
-                disabled={readOnly}
-                options={tracks.map(track => ({ value: track.id, label: audioTrackDisplayName(track, t) }))}
-                onChange={value => onChange({ audioTrackId: value ? String(value) : null })}
+            <SoundTrackOption
+                tracks={tracks}
+                trackId={trackId}
+                fallbackChannel={UI_INTERACTION_SOUND_DEFAULT_TRACK_ID}
+                onChange={id => onChange({ audioTrackId: id || null })}
+                readOnly={readOnly}
             />
         </SoundOptionsFold>
     );
