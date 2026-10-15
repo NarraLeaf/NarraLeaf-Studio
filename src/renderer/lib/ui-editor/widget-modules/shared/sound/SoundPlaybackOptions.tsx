@@ -39,10 +39,12 @@ export function SoundOptionsFold({ summary, label, children }: { summary: string
                 aria-expanded={open}
                 aria-label={`${label}: ${summary}`}
                 onClick={() => setOpen(value => !value)}
-                className="flex w-fit min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-2xs text-fg-subtle hover:bg-fill hover:text-fg-muted"
+                // As wide as the line and no wider than the section: a line longer than the section
+                // wraps rather than running out of it, so every value stays in sight.
+                className="flex w-fit min-w-0 max-w-full items-start gap-1 rounded-md px-1 py-0.5 text-left text-2xs text-fg-subtle hover:bg-fill hover:text-fg-muted"
             >
-                <ChevronRight className={cn("h-3 w-3 shrink-0 transition-transform duration-150", open && "rotate-90")} />
-                <span className="truncate">{summary}</span>
+                <ChevronRight className={cn("mt-0.5 h-3 w-3 shrink-0 transition-transform duration-150", open && "rotate-90")} />
+                <span className="min-w-0">{summary}</span>
             </button>
             {open ? (
                 <div className="grid grid-cols-[minmax(2.5rem,auto)_minmax(0,1fr)] items-center gap-2 pl-4">
