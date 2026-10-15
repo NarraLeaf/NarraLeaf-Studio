@@ -9,6 +9,7 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
 import type { CharacterAppearance } from "@/lib/workspace/services/character/CharacterAppearance";
+import { fileUnderCharacterFolder } from "@/lib/workspace/services/character/psdImportFolder";
 import {
     applyPsdPlan,
     nameBakeTargets,
@@ -149,6 +150,16 @@ export function PsdImportWizard(props: {
                     assetIds.set(joinPath(layer.path), result.data.id);
                 }
             });
+            // Into the character's own folder, not the section's root. The layers are imported by
+            // now, so a folder that could not be made or used leaves them where they landed.
+            const filed = await fileUnderCharacterFolder(
+                assetsService,
+                imported.data.flatMap(result => (result.success && result.data ? [result.data] : [])),
+                props.characterName,
+            );
+            if (!filed.success) {
+                console.warn("[psd] could not file the layers under the character's folder", filed.error);
+            }
 
             const fingerprint = props.appearance.getPsdFingerprint();
             const sameFile = fingerprint?.fileName === document.fileName;
