@@ -86,6 +86,10 @@ and the `content.<locale>/` overlays only).
   own **Mouse Click**: a press on it is that control's, and the list's Item Click answers presses
   anywhere else on the row. A control only some rows have is shown by binding its visibility to a
   boolean field of the row (the replay button reads `hasVoice`).
+- A control that shows only a symbol is named in the game's words: a hidden text beside it, keyed
+  like every other word on the page, shown on its **Mouse Enter** and **Focus** and hidden on
+  **Mouse Leave** and **Blur** (the Log's replay button and `Replay voice hint`). Set Element
+  Property on an element of the same row writes that row's copy.
 - Before **Ask Confirm**, fetch the texts last-asked first: cancel, then the answer, then the
   question. Each text's wire then runs forwards into its own input, and none crosses another.
   Where the answer is handled, read the pressed row's `index` field with **Get Item Field** rather

@@ -236,8 +236,16 @@ function assertClickSound(
 
 function assertHoverSound(element: Element): void {
     expect(soundOf(element, "hover"), `${element.name} hover sound`).toBe(CLIP["ui-hover"]);
-    // A hover head left behind would be the sound twice, or a graph with nothing left to do.
-    expect(graphsFor(element.id, BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_ENTER)).toHaveLength(0);
+    // A hover head that plays a cue would be the sound twice, and one left with nothing to run is a
+    // graph with nothing left to do. A head that answers the pointer some other way stays: the Log
+    // page's replay button shows its name.
+    for (const graph of graphsFor(element.id, BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_ENTER)) {
+        for (const head of Object.values(graph.nodes).filter(node => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_ENTER)) {
+            const acted = next(graph, head.id, "then");
+            expect(isCueCall(acted), `${element.name} hover head plays a cue`).toBe(false);
+            expect(acted.type.startsWith("blueprint.sound."), `${element.name} hover head plays a sound`).toBe(false);
+        }
+    }
 }
 
 /**

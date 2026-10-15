@@ -138,6 +138,9 @@
     "load.title": {
       "sourceText": "加载"
     },
+    "log.replayVoice": {
+      "sourceText": "重播语音"
+    },
     "log.title": {
       "sourceText": "记录"
     },

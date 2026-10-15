@@ -52,7 +52,10 @@ describe.each(["content", "content.zh", "content.ja"])("the Log page's replay bu
             blueprint => blueprint.owner.kind === "widgetMain" && blueprint.owner.elementId === REPLAY,
         );
         expect(owned).toHaveLength(1);
-        const graphs = Object.values(owned[0]!.graphs.events).map(event => event.graph);
+        // The layer that answers the press. The button's other layer shows its name on hover and focus.
+        const graphs = Object.values(owned[0]!.graphs.events)
+            .map(event => event.graph)
+            .filter(graph => Object.values(graph.nodes).some(node => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK));
         expect(graphs).toHaveLength(1);
         const nodes = graphs[0]?.nodes ?? {};
         const edges = graphs[0]?.edges ?? [];

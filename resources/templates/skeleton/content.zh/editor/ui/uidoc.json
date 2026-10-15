@@ -5975,6 +5975,7 @@
         "0185d569-9ab3-460a-9f35-107e559c105c",
         "465a62e7-7bbc-475d-8002-929ada7ee70b",
         "795ee5ba-6640-4f54-8961-3ea7d2f0b4c7",
+        "209f9970-6eeb-4e70-8f74-d940ed351171",
         "352f20e9-3f47-41f2-85f0-3f5d95799d96"
       ],
       "layout": {
@@ -50688,6 +50689,200 @@
           "fieldId": "hasVoice"
         }
       }
+    },
+    "209f9970-6eeb-4e70-8f74-d940ed351171": {
+      "id": "209f9970-6eeb-4e70-8f74-d940ed351171",
+      "type": "nl.text",
+      "name": "重播配音提示",
+      "parentId": "e1e45cc5-f9bf-48da-b126-555dcc1abcf6",
+      "childrenIds": [],
+      "layout": {
+        "x": 1040,
+        "y": 4,
+        "width": 350,
+        "height": 28,
+        "opacity": 1,
+        "visible": false
+      },
+      "props": {
+        "fontSize": 18,
+        "color": "nlbrand:text.muted",
+        "fontWeight": "normal",
+        "fontStyle": "normal",
+        "textAlign": "right",
+        "textVerticalAlign": "center",
+        "lineHeight": 1.4,
+        "fontAssetId": null,
+        "textWrapMode": "nowrap",
+        "textAutoFit": false,
+        "textAutoFitMinFontSize": 12,
+        "writingMode": "horizontal-tb",
+        "textOrientation": "mixed",
+        "tateChuYoko": true,
+        "tateChuYokoMaxLength": 2,
+        "transformOffsetX": 0,
+        "transformOffsetY": 0,
+        "transformScale": 1,
+        "transformRotation": 0,
+        "transformOpacity": 1,
+        "effects": {
+          "effectBlur": 0,
+          "effectBackgroundBlur": 0,
+          "effectShadow": null,
+          "effectTextShadow": null,
+          "effectInnerShadow": null,
+          "effectBlend": "",
+          "effectGlow": null,
+          "effectFilter": null
+        },
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "默认",
+              "propertyGroups": [
+                {
+                  "key": "fontAssetId",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "fontSize",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 18
+                    }
+                  ]
+                },
+                {
+                  "key": "fontWeight",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "normal"
+                    }
+                  ]
+                },
+                {
+                  "key": "fontStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "normal"
+                    }
+                  ]
+                },
+                {
+                  "key": "color",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:text.muted"
+                    }
+                  ]
+                },
+                {
+                  "key": "lineHeight",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1.4
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOffsetX",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOffsetY",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformScale",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "transformRotation",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBlur",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "effectTextShadow",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBlend",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": ""
+                    }
+                  ]
+                },
+                {
+                  "key": "effectFilter",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "localizationKey": "log.replayVoice"
+      }
     }
   },
   "actions": {
@@ -50901,7 +51096,7 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-10-11T01:02:35.591Z"
+    "updatedAt": "2026-10-15T20:09:10.724Z"
   },
   "structs": {},
   "entrySurfaceId": "5107c0a1-0000-4000-8000-000000000500"

@@ -138,6 +138,9 @@
     "load.title": {
       "sourceText": "Load"
     },
+    "log.replayVoice": {
+      "sourceText": "Replay voice"
+    },
     "log.title": {
       "sourceText": "Log"
     },

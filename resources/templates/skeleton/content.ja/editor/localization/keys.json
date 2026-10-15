@@ -138,6 +138,9 @@
     "load.title": {
       "sourceText": "ロード"
     },
+    "log.replayVoice": {
+      "sourceText": "ボイス再生"
+    },
     "log.title": {
       "sourceText": "ログ"
     },

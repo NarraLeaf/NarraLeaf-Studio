@@ -377,6 +377,11 @@
       "status": "translated",
       "target": "ロード"
     },
+    "key:log.replayVoice": {
+      "sourceHash": "fnv1a:736862cf",
+      "status": "translated",
+      "target": "ボイス再生"
+    },
     "key:log.title": {
       "sourceHash": "fnv1a:2c9d9f0e",
       "status": "translated",

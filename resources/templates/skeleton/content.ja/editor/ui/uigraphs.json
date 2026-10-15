@@ -24132,7 +24132,8 @@
         },
         "graphs": {
           "eventIds": [
-            "ad0f5348-62bc-49b4-98ac-d15de6f6aed8"
+            "ad0f5348-62bc-49b4-98ac-d15de6f6aed8",
+            "58977fe1-bca6-4f3c-a776-7753f17f6bc5"
           ],
           "events": {
             "ad0f5348-62bc-49b4-98ac-d15de6f6aed8": {
@@ -24210,6 +24211,229 @@
                     "to": {
                       "nodeId": "play",
                       "port": "voiceId"
+                    }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
+            },
+            "58977fe1-bca6-4f3c-a776-7753f17f6bc5": {
+              "id": "58977fe1-bca6-4f3c-a776-7753f17f6bc5",
+              "name": "ボタン名を表示",
+              "graph": {
+                "nodes": {
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "ポインターがボタンの上にある間、またはフォーカスがある間はボタンの名前を表示する。「マウスが入った」と「フォーカスされた」が同じ行のボタンの上にあるテキスト「ボイス再生ヒント」を表示し、「マウスが出た」と「フォーカスが外れた」が隠す。",
+                      "width": 1000,
+                      "height": 110
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "caption": {
+                    "id": "caption",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "8a607acd-95dd-4af7-9994-686c20891c18",
+                      "elementId": "209f9970-6eeb-4e70-8f74-d940ed351171",
+                      "elementType": "nl.text"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 260,
+                        "y": 674
+                      }
+                    }
+                  },
+                  "hovered": {
+                    "id": "hovered",
+                    "type": "blueprint.event.head.mouseEnter",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 261
+                      }
+                    }
+                  },
+                  "showOnHover": {
+                    "id": "showOnHover",
+                    "type": "blueprint.element.displayable.setProperty",
+                    "params": {
+                      "property": "visible",
+                      "value": true
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 530,
+                        "y": 150
+                      }
+                    }
+                  },
+                  "focused": {
+                    "id": "focused",
+                    "type": "blueprint.event.head.focus",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 583
+                      }
+                    }
+                  },
+                  "showOnFocus": {
+                    "id": "showOnFocus",
+                    "type": "blueprint.element.displayable.setProperty",
+                    "params": {
+                      "property": "visible",
+                      "value": true
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 530,
+                        "y": 472
+                      }
+                    }
+                  },
+                  "left": {
+                    "id": "left",
+                    "type": "blueprint.event.head.mouseLeave",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 1085
+                      }
+                    }
+                  },
+                  "hideOnLeave": {
+                    "id": "hideOnLeave",
+                    "type": "blueprint.element.displayable.setProperty",
+                    "params": {
+                      "property": "visible",
+                      "value": false
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 530,
+                        "y": 975
+                      }
+                    }
+                  },
+                  "blurred": {
+                    "id": "blurred",
+                    "type": "blueprint.event.head.blur",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 1408
+                      }
+                    }
+                  },
+                  "hideOnBlur": {
+                    "id": "hideOnBlur",
+                    "type": "blueprint.element.displayable.setProperty",
+                    "params": {
+                      "property": "visible",
+                      "value": false
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 530,
+                        "y": 1297
+                      }
+                    }
+                  }
+                },
+                "edges": [
+                  {
+                    "from": {
+                      "nodeId": "hovered",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "showOnHover",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "focused",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "showOnFocus",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "left",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "hideOnLeave",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "blurred",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "hideOnBlur",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "caption",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "showOnHover",
+                      "port": "element"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "caption",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "showOnFocus",
+                      "port": "element"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "caption",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "hideOnLeave",
+                      "port": "element"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "caption",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "hideOnBlur",
+                      "port": "element"
                     }
                   }
                 ],
@@ -24749,6 +24973,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-10-10T07:50:46.630Z"
+    "updatedAt": "2026-10-15T20:09:47.109Z"
   }
 }

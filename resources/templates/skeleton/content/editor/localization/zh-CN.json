@@ -377,6 +377,11 @@
       "status": "translated",
       "target": "加载"
     },
+    "key:log.replayVoice": {
+      "sourceHash": "fnv1a:7c04c358",
+      "status": "translated",
+      "target": "重播语音"
+    },
     "key:log.title": {
       "sourceHash": "fnv1a:a1dd7bf1",
       "status": "translated",
