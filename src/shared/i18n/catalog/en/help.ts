@@ -436,8 +436,8 @@ export const help = {
                 + "independently.\n"
                 + "- Custom runtime: a model, drawn by a runtime installed in this project.\n"
                 + "\n"
-                + "The dialog avatar is generated from the drawn result, and can follow one axis so it changes "
-                + "with the character. Where no differential gives one, dialogue shows the Default dialog avatar "
+                + "The dialog avatar is generated from the drawn result and by default changes with every axis; "
+                + "an axis with Avatar varies with this axis switched off leaves it unchanged. Where no differential gives one, dialogue shows the Default dialog avatar "
                 + "from the character's properties.",
         },
         puppetRuntimes: {

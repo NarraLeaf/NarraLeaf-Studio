@@ -168,6 +168,15 @@ describe("help that states what the product does", () => {
             expect(keys.get(helpBodyKey("storyPaste")), locale).toContain(phrase[locale]);
         }
     });
+
+    // The character editor has the avatar switch on every axis, all on; the help described one axis.
+    it("names the avatar switch each axis has", () => {
+        for (const [locale, keys] of [["en", enKeys], ["zh", zhKeys], ["ja", jaKeys]] as const) {
+            const toggle = keys.get("characters.editor.avatarAxis");
+            expect(toggle, locale).toBeTruthy();
+            expect(keys.get(helpBodyKey("appearances")), locale).toContain(toggle!);
+        }
+    });
 });
 
 describe("help body parser", () => {
