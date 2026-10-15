@@ -175,6 +175,8 @@ export const help = {
                 + "Typing writes a line. Typing a slash at the start of a row selects a command instead.\n"
                 + "\n"
                 + "- The right panel edits the selected row.\n"
+                + "- F2, or Edit as text in a row's menu, opens a command row as its command line with the caret at the end. "
+                + "Enter commits the line as a newly typed one; Escape leaves the row unchanged.\n"
                 + "- Rows can be moved, duplicated, indented and deleted from the keyboard.\n"
                 + "- On an empty row, a ・, ／ or ＃ confirmed from an input method becomes / or #. Escape straight after restores the character.\n"
                 + "- The live preview shows the stage at the selected row. Clicking it selects the next row the "

@@ -628,6 +628,58 @@ export function storyRowActivation(block: StoryBlock, frozen: boolean): StoryRow
 }
 
 /**
+ * What "edit as text" does to a row: F2, or the row menu's 以文本形式编辑 / Edit as text.
+ *
+ * `line` is the row's own command line as the row prints it (`@外观 Narra 微笑 转场=淡入`), or null
+ * when no command line owns the row - a container header, which holds children no line can carry,
+ * and a `/blueprint` row, whose line says nothing of what the row does.
+ *
+ *  - A text row opens its own editor with the caret at the end, as Enter does.
+ *  - A blank line and a draft row are already lines: the line editor opens on them, as Enter does.
+ *  - A command row opens the line editor on its line, caret at the end, standing in the row's place.
+ *    Committing reads the line as a newly typed one; Escape leaves the row as it was. `rewritesRow`
+ *    is what tells that commit it is editing a committed row rather than replacing a draft.
+ *
+ * Frozen (read-only), nothing: every outcome is a caret the author could not keep.
+ */
+export type StoryRowLineEdit =
+    | { kind: "text" }
+    | { kind: "line"; seed?: string; rewritesRow: boolean }
+    | { kind: "nothing" };
+
+export function storyRowLineEdit(block: StoryBlock, line: string | null, frozen: boolean): StoryRowLineEdit {
+    if (frozen) {
+        return { kind: "nothing" };
+    }
+    if (isTextEditableBlock(block)) {
+        return { kind: "text" };
+    }
+    if (block.kind === "empty") {
+        return { kind: "line", seed: "", rewritesRow: false };
+    }
+    if (block.kind === "invalid") {
+        return { kind: "line", rewritesRow: false };
+    }
+    return line === null ? { kind: "nothing" } : { kind: "line", seed: line, rewritesRow: true };
+}
+
+/**
+ * Whether a re-committed command row keeps its own block, taking the rebuilt payload in place.
+ *
+ * It does when the line still builds the same kind of row and neither is a container: the edit is
+ * then a change to what the row says, exactly as the inspector makes one, so the row keeps its id -
+ * the name its steps go by in a saved game - and its disabled flag. Anything else (the line now
+ * builds a container, or a different kind of row) takes the row's place as a new row would.
+ */
+export function rewritesRowInPlace(row: StoryBlock, built: StoryBlock): boolean {
+    return row.kind === built.kind
+        && row.childrenIds.length === 0
+        && built.childrenIds.length === 0
+        && !canAcceptChildren(row)
+        && !canAcceptChildren(built);
+}
+
+/**
  * A block that owns nested children and should render as an accordion container (a titled header +
  * an indented, collapsible body) rather than a plain action row. Equivalent to `canAcceptChildren`;
  * kept as a distinct name so rendering intent reads clearly at call sites.

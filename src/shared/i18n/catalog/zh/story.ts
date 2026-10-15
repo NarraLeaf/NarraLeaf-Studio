@@ -1507,6 +1507,7 @@ export const story = {
         changeSpeaker: "更改说话人",
         speakerNameOnly: "{name}（仅名称）",
         openInspector: "打开检查器",
+        editAsText: "以文本形式编辑",
         delete: "删除",
     },
     // 这几处改动留下的撤销步骤叫什么（"撤销 删除场景 At the Station"）。
@@ -1566,6 +1567,7 @@ export const story = {
         undo: "撤销故事场景编辑",
         redo: "重做故事场景编辑",
         editRow: "编辑当前行（或打开其检查器）",
+        editRowAsText: "以文本形式编辑当前行",
         closeInspector: "关闭属性编辑器",
         insertRow: "在当前行下方插入新的故事行",
         indent: "增加选中故事行的缩进",

@@ -84,7 +84,9 @@ import {
     getInsertionTargetAfter,
     getTextSegment,
     hasInspector,
+    rewritesRowInPlace,
     storyRowActivation,
+    storyRowLineEdit,
     isTextEditableBlock,
     selectRange,
     updateTextPayload,
@@ -1070,8 +1072,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      *
      * Declared up here, above the gesture that needs it: the mouseup handler is registered in an
      * effect further down, and an effect's dependency list is read during render.
+     *
+     * `rewritesRow` marks a committed command row opened as its line (see `InsertSlot.rewritesRow`).
      */
-    const startLineEdit = useCallback((block: StoryBlock, seed?: string, caret?: number) => {
+    const startLineEdit = useCallback((block: StoryBlock, seed?: string, caret?: number, rewritesRow?: boolean) => {
         if (!scene) {
             return;
         }
@@ -1086,6 +1090,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
                 focusToken: Date.now(),
                 target: { parentId: block.parentId, beforeBlockId: block.id },
                 replaceBlockId: block.id,
+                ...(rewritesRow ? { rewritesRow: true as const } : {}),
             },
             initialValue: insertDraftRef.current,
             // Reopening a draft row lands with its completion menu open: the author is here
@@ -1626,6 +1631,23 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (options?.keepSelection) {
             return;
         }
+        setActiveBlockId(block.id);
+        setSelectedBlockIds(new Set([block.id]));
+        setEditorMode(openInspector ? { kind: "inspector", blockId: block.id } : { kind: "idle" });
+    }, [recordHistory, revealRowInFilter, scene, sceneId, storyId, storyService]);
+
+    /**
+     * Write a re-committed row's rebuilt payload into the row's own block (see `rewritesRowInPlace`):
+     * one undo step, the row keeping its id, its place and its disabled flag. Otherwise ends as
+     * {@link insertBlock} does.
+     */
+    const rewriteRowInPlace = useCallback((block: StoryBlock, openInspector: boolean) => {
+        if (!storyService || !storyId || !sceneId || !scene?.blocks[block.id]) {
+            return;
+        }
+        recordHistory();
+        storyService.updateBlock(storyId, sceneId, block.id, block.payload);
+        revealRowInFilter(block);
         setActiveBlockId(block.id);
         setSelectedBlockIds(new Set([block.id]));
         setEditorMode(openInspector ? { kind: "inspector", blockId: block.id } : { kind: "idle" });
@@ -2281,6 +2303,33 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         activateBlockForInspectorOrOp(activeBlockId);
     }, [activeBlockId, activateBlockForInspectorOrOp, frozen, scene, startInsertAfter]);
 
+    /**
+     * Open a row as text, caret at the end: F2 and the row menu's 以文本形式编辑 / Edit as text. `line` is
+     * the row's own command line as it prints, which only the rows' line context can spell (see
+     * `StoryCommandLineReader`); what each kind of row does is {@link storyRowLineEdit}'s to say.
+     * Returns whether anything opened.
+     */
+    const editRowAsText = useCallback((blockId: StoryBlockId, line: string | null): boolean => {
+        const block = scene?.blocks[blockId];
+        if (!block) {
+            return false;
+        }
+        const edit = storyRowLineEdit(block, line, frozen);
+        if (edit.kind === "nothing") {
+            return false;
+        }
+        setActiveBlockId(blockId);
+        setSelectedBlockIds(new Set([blockId]));
+        selectionAnchorRef.current = blockId;
+        if (edit.kind === "text") {
+            const segment = getTextSegment(block);
+            setEditorMode({ kind: "text", blockId, value: segment?.value ?? "", rich: segment?.rich, caret: "end" });
+            return true;
+        }
+        startLineEdit(block, edit.seed, Number.MAX_SAFE_INTEGER, edit.rewritesRow);
+        return true;
+    }, [frozen, scene, startLineEdit]);
+
     const commitNarrationFromInsert = useCallback((focusNext: boolean) => {
         if (editorMode.kind !== "insert" || slotDiscardedRef.current) {
             return;
@@ -2616,10 +2665,18 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
                 return { parentId: replacing.parentId, beforeBlockId: index === -1 ? null : siblings[index + 1] ?? null };
             })()
             : null;
-        const block = spec.build(args, { generateId: () => uuidService.generate(), context: commandContext });
+        const built = spec.build(args, { generateId: () => uuidService.generate(), context: commandContext });
+        // A committed row opened as its line stays that row when the line still builds one of its
+        // kind: the new payload goes into the row's own block, as an edit in the inspector would.
+        const rewritten = editorMode.slot.rewritesRow && replacing && rewritesRowInPlace(replacing, built) ? replacing : null;
+        const block = rewritten ? { ...built, id: rewritten.id, parentId: rewritten.parentId } : built;
         const openInspector = opensInspectorAfterCommit(spec, block);
-        insertBlock(block, editorMode.slot.afterBlockId, openInspector, { target: editorMode.slot.target, replaceBlockId: editorMode.slot.replaceBlockId });
-        scaffoldContainer(block, args.test?.kind === "expression" ? args.test.expression : undefined);
+        if (rewritten) {
+            rewriteRowInPlace(block, openInspector);
+        } else {
+            insertBlock(block, editorMode.slot.afterBlockId, openInspector, { target: editorMode.slot.target, replaceBlockId: editorMode.slot.replaceBlockId });
+            scaffoldContainer(block, args.test?.kind === "expression" ? args.test.expression : undefined);
+        }
         if (openInspector) {
             return true;
         }
@@ -2667,7 +2724,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             ? `✓ ${toDisplayedCommandLine(confirmation.source, slashAtAlias ? ALT_ACTION_TRIGGER : ACTION_TRIGGER)}`
             : undefined);
         return true;
-    }, [commandContext, createBlock, editorMode, focusRoot, insertBlock, scaffoldContainer, scene, sceneId, setSceneLayers, slashAtAlias, startInsertAfter, storyId, storyService, uuidService]);
+    }, [commandContext, createBlock, editorMode, focusRoot, insertBlock, rewriteRowInPlace, scaffoldContainer, scene, sceneId, setSceneLayers, slashAtAlias, startInsertAfter, storyId, storyService, uuidService]);
 
     /**
      * A pick from the slash menu. A spec command routes through the same commit path a typed line
@@ -3865,7 +3922,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         dismissInsertChooser, discardInsertSlot, resolveInsertLine, commitInvalidFromInsert, chooseTempSpeakerForInsert, tempSpeakers,
         createActionFromSidebar, addInsideContainer, addConditionBranch,
         navigateFromTextEdit, resetGoalColumn, handleBackspaceAtEmptyStart, startCharacterActionSlot, enterEditOrInspectorForActive,
-        activateBlockForInspectorOrOp, closeInspector, revealInspectorPanel,
+        editRowAsText, activateBlockForInspectorOrOp, closeInspector, revealInspectorPanel,
         extendRowSelection, moveSelectedRows, duplicateSelection, jumpRowSelection, pageRowSelection,
         beginBlockDrag, endBlockDrag, moveDraggedBlocksToSortablePosition,
         setSceneLayers, createSceneLayer, sceneLayersCommitted, slashAtAlias,
