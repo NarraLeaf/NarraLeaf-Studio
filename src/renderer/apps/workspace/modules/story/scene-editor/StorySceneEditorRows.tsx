@@ -653,19 +653,19 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                         that is about the words rather than about the container: hearing this line
                         while reading it. The mark itself is absent until a take exists. */}
                     {containerInfo?.role === "option" ? (
-                        <div className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
+                        <div data-story-row-trailing="" className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
                             <RowProblemMark findings={rowProblems} legacyCode={null} />
                             <StoryVoiceIndicator block={block} />
                         </div>
                     ) : containerInfo && rowProblems.length > 0 ? (
                         // A choice or a condition header: no voice to hear, but the checks can still
                         // have something to say about it (a choice with no options, a cut point).
-                        <div className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
+                        <div data-story-row-trailing="" className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
                             <RowProblemMark findings={rowProblems} legacyCode={null} />
                         </div>
                     ) : null}
                     {containerInfo ? null : (
-                        <div className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
+                        <div data-story-row-trailing="" className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
                             {/* Mounted only on the rows that are cut points, unlike the two beside it:
                                 a component that answers "not me" still costs a translation
                                 subscription on every row of the screenful. */}
@@ -678,6 +678,9 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                     )}
                     <div
                         aria-hidden={!showRowActions}
+                        // The row's controls, not its line: the rich-text strip of the row below
+                        // measures where this row's words end without them (`RichTextToolbar`).
+                        data-story-row-trailing=""
                         // Who the cluster is showing for. In a narrow group it floats over the words
                         // (`.nl-story-row-actions`), and there it shows for the pointer only.
                         data-shown-for={hovered || actionsFocused ? "pointer" : active ? "active" : undefined}
