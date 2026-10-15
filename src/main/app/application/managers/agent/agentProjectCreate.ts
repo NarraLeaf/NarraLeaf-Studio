@@ -9,6 +9,14 @@ import { stageOrientation, type StageSize } from "@shared/types/stageSize";
 import { PROJECT_DEPENDENCY_SCHEMA_VERSION, type ProjectPluginDependency } from "@shared/types/pluginDependencies";
 import { NEW_PROJECT_DIRECTORIES, newProjectFiles } from "@shared/project/newProject";
 import { listProjectTemplates, scaffoldProjectFromTemplate, type ScaffoldResult } from "../projectTemplates";
+import {
+    appIdCollisionKey,
+    authorNameForAppId,
+    isValidNewAppId,
+    prefixAppIdWithAuthor,
+    uniqueAppId,
+} from "@shared/project/appIdSuggestion";
+import type { LocalAppId } from "../localAppIds";
 
 /**
  * `project_create`: write a new project on disk, the way the project wizard writes one.
@@ -45,6 +53,12 @@ export type AgentProjectCreateInput = {
     languages?: readonly string[];
     width: number;
     height: number;
+    /**
+     * The app ID to give the project, when the agent names one. Permanent once the project exists,
+     * so one another project on this machine uses is refused. Absent, one is suggested the way the
+     * wizard suggests it.
+     */
+    appId?: string;
 };
 
 export type InstalledPluginInfo = {
@@ -63,6 +77,10 @@ export async function writeAgentProject(
         templatesDir: string;
         installedPlugins: () => Promise<InstalledPluginInfo[]>;
         createId?: () => string;
+        /** The app IDs the projects on this machine use, to keep this one apart from (`App.listLocalAppIds`). */
+        localAppIds?: () => Promise<readonly LocalAppId[]>;
+        /** The author line this installation was set up with (`project.defaultAuthor`), as the wizard offers it. */
+        defaultAuthor?: string;
     },
 ): Promise<AgentProjectCreateResult> {
     const name = input.name.trim();
@@ -112,7 +130,39 @@ export async function writeAgentProject(
         }
     }
 
-    const appId = suggestAppId(name);
+    // An app ID cannot change once the project exists, so a collision is prevented here or not at
+    // all: the suggestion steps around every ID a project on this machine uses, and one the agent
+    // names is refused when a project already has it.
+    const author = (deps.defaultAuthor ?? "").trim();
+    const inUse = new Map((await deps.localAppIds?.().catch(() => []) ?? []).map(entry => [entry.key, entry] as const));
+    const takenBy = (candidate: string) => inUse.get(appIdCollisionKey(candidate, name));
+    const requested = input.appId?.trim() ?? "";
+    let appId: string;
+    if (requested) {
+        if (!isValidNewAppId(requested)) {
+            return {
+                ok: false,
+                code: "invalid_args",
+                message: `appId: "${requested}" is not an app ID.`,
+                hint: "Lower-case letters, digits and hyphens (`my-game`), or a reverse-domain ID (`com.studio.game`).",
+            };
+        }
+        const owner = takenBy(requested);
+        if (owner) {
+            return {
+                ok: false,
+                code: "invalid_args",
+                message: `appId: "${requested}" is already used by the project "${owner.projectName}" (${owner.projectPath}). Two games with one app ID share their saves and settings on a player's machine, and an app ID cannot be changed later.`,
+                hint: "Name another app ID, or leave appId out to have one suggested.",
+            };
+        }
+        appId = requested;
+    } else {
+        appId = uniqueAppId(
+            prefixAppIdWithAuthor(suggestAppId(name), appIdSlug(authorNameForAppId(author))),
+            candidate => takenBy(candidate) !== undefined,
+        );
+    }
     const projectPath = path.join(path.resolve(input.parentDir), appId);
     const existing = await fs.readdir(projectPath).catch(() => null);
     if (existing && existing.length > 0) {
@@ -131,7 +181,9 @@ export async function writeAgentProject(
         identifier: appId,
         metadata: {
             description: "",
-            author: "",
+            // The wizard offers this installation's author line to every new project; the ID above
+            // starts with it, so the project says whose it is.
+            author,
             website: "",
             // Without it the build preflight refuses (`version-missing`).
             version: "1.0.0",
@@ -267,12 +319,17 @@ async function registerTemplateDependencies(
  * folder called `-`.
  */
 export function suggestAppId(name: string): string {
-    const id = transliterate(name)
+    return appIdSlug(name) || `game-${crypto.randomBytes(3).toString("hex")}`;
+}
+
+/** The wizard's slug rule alone: transliterated, lower case, `[a-z0-9-]`, or "" for nothing usable. */
+function appIdSlug(text: string): string {
+    return transliterate(text)
         .toLowerCase()
         .replace(/[^a-z0-9\s-]/g, "")
         .replace(/\s+/g, "-")
         .replace(/-+/g, "-")
         .replace(/^-|-$/g, "")
-        .substring(0, 50);
-    return id || `game-${crypto.randomBytes(3).toString("hex")}`;
+        .substring(0, 50)
+        .replace(/-$/, "");
 }

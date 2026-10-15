@@ -187,7 +187,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     main(
         "project_create",
         "Create a project",
-        "Creates a new NarraLeaf project from a template and opens it in Studio. Use the `skeleton` template for a game: it ships a title page, dialogue box, save/load, settings and history that work out of the box, which you then restyle. The skeleton is laid out for 1920x1080 only and refuses another size; for another size use the `empty` template. `dir` is the PARENT directory: the project folder is created inside it, named after a lower-case ASCII slug of `name` (末班车 becomes `mo-ban-che`); the result gives the full path. The skeleton's pages, scenes, variables and folders are named in `language`. The game carries `language` only, plus any `languages` you list (the skeleton's sample translations of other languages are not kept).",
+        "Creates a new NarraLeaf project from a template and opens it in Studio. Use the `skeleton` template for a game: it ships a title page, dialogue box, save/load, settings and history that work out of the box, which you then restyle. The skeleton is laid out for 1920x1080 only and refuses another size; for another size use the `empty` template. `dir` is the PARENT directory: the project folder is created inside it, named after the project's app ID; the result gives the full path and the ID. The app ID identifies the released game on players' devices and cannot be changed once the project exists: by default it is a lower-case ASCII slug of `name` (末班车 becomes `mo-ban-che`), led by the author line Studio was set up with when there is one, and numbered (`-2`) when a project on this machine already uses it. Pass `appId` to choose it instead; one another project on this machine uses is refused. The skeleton's pages, scenes, variables and folders are named in `language`. The game carries `language` only, plus any `languages` you list (the skeleton's sample translations of other languages are not kept).",
         {
             name: { type: "string", description: "Project (and game) name." },
             dir: { type: "string", description: "Absolute PARENT directory; the project folder is created inside it. Defaults to Studio's default projects directory." },
@@ -196,6 +196,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
             languages: { type: "array", items: { type: "string" }, description: "Further languages the game offers, untranslated at first. Defaults to none; project_settings_set can add or remove languages later." },
             width: { type: "integer", description: "Design width in pixels.", default: 1920 },
             height: { type: "integer", description: "Design height in pixels.", default: 1080 },
+            appId: { type: "string", description: "App ID: lower-case letters, digits and hyphens (`my-game`), or a reverse-domain ID (`com.studio.game`). Permanent. Leave out to have one suggested." },
         },
         ["name"],
         true,

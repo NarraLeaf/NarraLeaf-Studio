@@ -297,6 +297,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     selectProjectPackage: () => ipcClient.invoke(IPCEventType.projectWizardSelectPackage, {}),
     registerCreatedProject: (projectPath: string) =>
         ipcClient.invoke(IPCEventType.projectWizardCreated, { projectPath }),
+    listLocalAppIds: (folders: string[]) =>
+        ipcClient.invoke(IPCEventType.projectWizardListAppIds, { folders }),
     
     // Workspace
     selectFolder: () => ipcClient.invoke(IPCEventType.workspaceSelectFolder, {}),
