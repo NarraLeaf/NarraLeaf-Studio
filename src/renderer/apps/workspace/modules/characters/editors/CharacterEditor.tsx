@@ -47,6 +47,7 @@ import { EditorComponentProps } from "../../types";
 import { LayerStackPreview, type PreviewLayer } from "./components/LayerStackPreview";
 import { CombinationGrid } from "./components/CombinationGrid";
 import { PsdImportWizard } from "./components/PsdImportWizard";
+import { EditorProjectUndoKeybindings } from "@/apps/workspace/components/layout/EditorProjectUndoKeybindings";
 import { PuppetEditor } from "./components/PuppetEditor";
 import { InlineName, nextAutoName } from "./components/InlineName";
 import { PoseFilmstrip } from "./components/PoseFilmstrip";
@@ -226,8 +227,8 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
         () =>
             character?.subscribe(() => {
                 setVersion(current => current + 1);
-                // Nothing a character editor writes goes on an undo stack, so the workspace-wide
-                // rule that promotes a preview tab on an edit cannot see this one. Saying so here
+                // The editor's own setters leave no undo step, so the workspace-wide rule that
+                // promotes a preview tab on an edit cannot see this one. Saying so here
                 // is what keeps a character the author has started changing from being taken over
                 // by the next name they click in the list.
                 uiService?.editor.promote(tabId);
@@ -469,8 +470,8 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
     }, [appearance, inputDialog, t]);
 
     /**
-     * Deleting a pose, an axis, a tag, a layer or a snapshot is unrecoverable - this module has no
-     * history service - and every one of them used to happen on the first click of a 14px glyph
+     * Deleting a pose, an axis, a tag, a layer or a snapshot is unrecoverable - the editor's own
+     * edits leave no undo step - and every one of them used to happen on the first click of a 14px glyph
      * sitting beside four others. The list already confirms before deleting a character; this is the
      * same bargain, one level down.
      */
@@ -1206,9 +1207,12 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
                 </div>
             </div>
 
+            <EditorProjectUndoKeybindings tabId={tabId} />
+
             <PsdImportWizard
                 open={psdOpen}
                 onClose={() => setPsdOpen(false)}
+                characterId={character.profile.getId()}
                 appearance={appearance}
                 characterName={character.profile.getProfile().name}
                 onImported={hadArt => void fitFirstArt(hadArt)}

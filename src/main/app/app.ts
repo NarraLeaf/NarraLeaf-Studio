@@ -44,6 +44,7 @@ import { UpdateManager } from "./application/managers/updateManager";
 import { AgentManager } from "./application/managers/agent/agentManager";
 import { SpellcheckManager } from "./application/managers/spellcheck/spellcheckManager";
 import { ProjectSessionLockManager } from "./application/managers/projectSessionLockManager";
+import { emptyUndoTrash } from "./application/utils/undoTrash";
 import { SPELLCHECK_LANGUAGE_KEY } from "@shared/types/spellcheck";
 import { STORE_SOURCE_KEY } from "@shared/constants/storeSource";
 import { resolveStartupProject } from "./application/startupProject";
@@ -265,6 +266,9 @@ export class App extends BaseApp {
             userDataDir: this.getUserDataDir(),
             logger: this.logger,
             onTakenOver: (projectPath, holder) => this.handleProjectTakenOver(projectPath, holder),
+            // No window of the project is left, so neither is any undo step that could reach the
+            // bytes its trash holds.
+            onRelease: projectPath => emptyUndoTrash(projectPath, this.logger),
         });
         // Everything is read through a function rather than captured: this constructor runs before
         // Electron is ready, and `getCacheRootDir` has no answer until it is.

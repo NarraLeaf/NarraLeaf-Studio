@@ -183,7 +183,7 @@ export const workspace = {
             replaceTakesMessage: {
                 other: "{count} 个文件对应的行已有录音",
             },
-            replaceTakesDetail: "替换后不保留原录音的文件；导入为新音频时，原录音留在资产库中，不再关联到行",
+            replaceTakesDetail: "替换时，新文件写入对应的原录音；导入为新音频时，原录音留在资产库中，不再关联到行",
             replaceTakesImport: "导入为新音频",
             replaceTakesReplace: "替换录音",
             importScript: "导入录音脚本…",
@@ -401,6 +401,8 @@ export const workspace = {
             replaceText: "文本替换",
             agentEdit: "Agent 编辑",
             agentPluginEdit: "Agent：{tool}",
+            importPsd: "PSD 导入",
+            importAudio: "音频导入",
         },
     },
     // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.

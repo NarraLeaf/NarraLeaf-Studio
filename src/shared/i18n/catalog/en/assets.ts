@@ -16,6 +16,9 @@ export const assets = {
     history: {
         deleteAsset: "delete {name}",
         deleteGroup: "delete folder {name}",
+        // An undo or redo that left the asset as it was. A reason from `replace.reason` or the
+        // disk's own follows it.
+        restoreFailed: "Could not restore “{name}”.",
     },
     delete: {
         inUseTitle: "These assets are still in use",
@@ -83,6 +86,11 @@ export const assets = {
         confirmAction: "Replace",
         failedTitle: "Failed to replace asset contents",
         remoteUnsupported: "Remote assets have no local file to replace.",
+        // An operation that stopped before writing over this asset. A reason follows it.
+        notKept: "Could not replace “{name}”.",
+        reason: {
+            notKept: "A copy of the current file could not be saved.",
+        },
     },
     /** Per-type labels, keyed by the `AssetType` enum value. Used where a single type is named. */
     types: {

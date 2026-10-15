@@ -187,7 +187,7 @@ export const workspace = {
             replaceTakesMessage: {
                 other: "{count} 件のファイルが、すでにテイクのある行に対応している",
             },
-            replaceTakesDetail: "差し替えると元のテイクのファイルは残らない。新しい音声として読み込むと、元のテイクはどの行にも結びつかないままアセットライブラリに残る",
+            replaceTakesDetail: "差し替えると、新しいファイルが対応するテイクに書き込まれる。新しい音声として読み込むと、元のテイクはどの行にも結びつかないままアセットライブラリに残る",
             replaceTakesImport: "新しい音声として読み込む",
             replaceTakesReplace: "テイクを差し替える",
             importScript: "収録台本を読み込む…",
@@ -412,6 +412,8 @@ export const workspace = {
             replaceText: "テキストの置換",
             agentEdit: "エージェントの編集",
             agentPluginEdit: "エージェント: {tool}",
+            importPsd: "PSD の読み込み",
+            importAudio: "音声の読み込み",
         },
     },
     // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.
