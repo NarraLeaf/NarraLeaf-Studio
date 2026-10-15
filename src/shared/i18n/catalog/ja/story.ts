@@ -441,6 +441,17 @@ export const story = {
     stage: {
         notOnStage: "舞台に出ていない",
         builtin: "組み込み",
+        reserved: {
+            camera: "カメラ",
+            background: "背景",
+            backgroundLayer: "背景のレイヤー",
+            displayableLayer: "基準レイヤー",
+        },
+        reservedHint: {
+            background: "シーンの背景画像",
+            backgroundLayer: "組み込みのレイヤー。すべての後ろにある",
+            displayableLayer: "組み込みの既定のレイヤー",
+        },
     },
     targetField: {
         label: "対象",

@@ -525,6 +525,20 @@ export const story = {
     stage: {
         notOnStage: "Not on stage",
         builtin: "Built-in",
+        // The stage singletons a target slot names by a reserved word (`camera`, `background`,
+        // `backgroundLayer`, `displayableLayer`). The word stays on the line; these are the names
+        // the menus and the inspector show beside it.
+        reserved: {
+            camera: "Camera",
+            background: "Scene background",
+            backgroundLayer: "Background layer",
+            displayableLayer: "Base layer",
+        },
+        reservedHint: {
+            background: "The scene's background image",
+            backgroundLayer: "Built-in layer, behind everything",
+            displayableLayer: "Built-in default layer",
+        },
     },
     targetField: {
         label: "Target",

@@ -5,6 +5,7 @@ import { enumFreeformValue, freeTargetKind, paramHintKey, paramTypes, type Story
 import { listCommandDefs } from "./commands/registry";
 import { localizedParamKey, paramMatchesQuery } from "./commands/localizedParams";
 import { localizedEnumValue, matchEnumOptionLocalized } from "./commands/localizedEnums";
+import { reservedTargetName } from "./commands/reservedTargetNames";
 import type { StoryCommandCursor } from "./storyCommandCursor";
 import { assetChoices, BGM_OBJECT_NAME, puppetChannelNames, type StoryCommandContext, type StoryCommandNamedRef, type StoryCommandStageObjectKind, type StoryPuppetChannel, type StoryCommandValue } from "./storyCommandValues";
 
@@ -175,11 +176,23 @@ function targetCandidates(
     // The reserved words lead, the way `bgm` leads the audio list: they are the stage singletons an
     // author cannot discover by looking at what they have created, so a slot that answers to them has
     // to say so the moment the slot opens.
-    candidates.push(...refCandidates(
-        (type.reserved ?? []).map(name => ({ id: name, name })),
-        query,
-        () => ({ kind: "reservedTarget" }),
-    ));
+    //
+    // Each carries its name in the command language as the detail (`camera` · 镜头), and the filter
+    // reads that name too, so an author who types the word they know finds the target. The word is
+    // still what is inserted: it is the spelling the row prints and every locale parses.
+    const reserved = (type.reserved ?? []).map(name => ({ name, localized: reservedTargetName(name) }));
+    const spells = (entry: { name: string; localized: string | null }, match: (haystack: string, needle: string) => boolean) =>
+        match(entry.name, query) || (entry.localized !== null && match(entry.localized, query));
+    const prefixReserved = reserved.filter(entry => !query || spells(entry, startsWithFold));
+    const restReserved = query ? reserved.filter(entry => !spells(entry, startsWithFold) && spells(entry, containsFold)) : [];
+    for (const entry of [...prefixReserved, ...restReserved]) {
+        candidates.push({
+            value: entry.name,
+            label: entry.name,
+            ...(entry.localized ? { detail: entry.localized } : {}),
+            mark: { kind: "reservedTarget" },
+        });
+    }
     if (type.accepts.includes("character")) {
         candidates.push(...refCandidates(context.characters, query, entry => ({ kind: "character", characterId: entry.id })));
     }

@@ -408,6 +408,17 @@ export const story = {
     stage: {
         notOnStage: "不在舞台上",
         builtin: "内置",
+        reserved: {
+            camera: "镜头",
+            background: "背景",
+            backgroundLayer: "背景图层",
+            displayableLayer: "基准图层",
+        },
+        reservedHint: {
+            background: "场景的背景图片",
+            backgroundLayer: "内置图层，位于所有内容之后",
+            displayableLayer: "内置的默认图层",
+        },
     },
     targetField: {
         label: "目标",
