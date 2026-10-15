@@ -1603,6 +1603,60 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
             return findings;
         },
     },
+    {
+        /**
+         * A layered character with one tag name on two axes - `蓝` under Outfit and under Hair.
+         *
+         * A typed story row names a look by its tag alone (`@外观 美绪 蓝`), and a name two axes share
+         * resolves to the first axis that has it: the other tag is out of reach of the line, and a
+         * row that stores it prints a line that reads back as the first. Nothing is broken in the
+         * game - every row plays the tag it stores - so `warning`, not `error`: the cost is a look the
+         * author cannot type, not a picture that differs from the script (see the severity criterion
+         * every rule here is held to).
+         *
+         * One finding per shared name, naming the first two axes that hold it, in the axes' order.
+         * Compared as the editor compares tag names within one axis - trimmed, case folded - so the
+         * same two spellings that are "the same tag" there are the same here.
+         */
+        id: "story/tag-name-shared",
+        category: "story",
+        defaultSeverity: "warning",
+        slug: "storyTagNameShared",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            for (const character of ctx.characters) {
+                const firstAxis = new Map<string, string>();
+                const reported = new Set<string>();
+                for (const axis of character.axes ?? []) {
+                    const own = new Set<string>();
+                    for (const tag of axis.tags) {
+                        const key = tag.trim().toLowerCase();
+                        if (!key || own.has(key)) {
+                            continue;
+                        }
+                        own.add(key);
+                        const holder = firstAxis.get(key);
+                        if (holder === undefined) {
+                            firstAxis.set(key, axis.name);
+                            continue;
+                        }
+                        if (reported.has(key)) {
+                            continue;
+                        }
+                        reported.add(key);
+                        findings.push({
+                            ruleId: "story/tag-name-shared",
+                            messageKey: "lint.rule.storyTagNameShared.message",
+                            messageParams: { tag: tag.trim(), first: holder, second: axis.name },
+                            location: { kind: "character", characterId: character.id, characterName: character.name },
+                            target: { kind: "character", characterId: character.id },
+                        });
+                    }
+                }
+            }
+            return findings;
+        },
+    },
 ];
 
 /** Either half of what a background can be. Asset and colour never compare equal. */

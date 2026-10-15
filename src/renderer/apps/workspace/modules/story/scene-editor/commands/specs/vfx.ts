@@ -109,9 +109,9 @@ export const vfx = defineStoryCommand({
         };
         return { id: ctx.generateId(), parentId: null, childrenIds: [], kind: "action", payload };
     },
-    // Blend mode is the choice that decides whether the material looks right at all, and it is not
-    // something to guess from a filename - the create row opens on it.
-    inspectorAfterCommit: true,
+    // No `inspectorAfterCommit`: the row is complete as typed, so the commit moves on to a new line as
+    // every other command's does. With 属性 closed the jump to the inspector showed nothing at all, and
+    // the author was left with no line to type the `/show` into.
 });
 
 export const VFX_COMMANDS = [vfx];

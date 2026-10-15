@@ -1728,6 +1728,7 @@ export const story = {
         // in a list that shows only names.
         speakerNameOnly: "{name} (name only)",
         openInspector: "Open inspector",
+        editAsText: "Edit as text",
         delete: "Delete",
     },
     // Names for the undo steps these edits leave behind ("Undo delete scene At the Station").
@@ -1805,6 +1806,7 @@ export const story = {
         undo: "Undo story scene edit",
         redo: "Redo story scene edit",
         editRow: "Edit the active row (or open its inspector)",
+        editRowAsText: "Edit the active row as text",
         closeInspector: "Close the property editor",
         insertRow: "Insert a new story row below the active row",
         indent: "Indent selected story rows",

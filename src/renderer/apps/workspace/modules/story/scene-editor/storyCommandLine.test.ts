@@ -7,6 +7,7 @@ import { resolveCommandLine, type StoryCommandContext } from "./storyCommandReso
 import { getCommandSpec } from "./commands/registry";
 import { projectStoryCommandLine, type StoryCommandLineLookups } from "./storyCommandLine";
 import { storyCommandLineParts } from "./StoryCommandLineView";
+import { rewritesRowInPlace } from "./storySceneBlockUtils";
 
 /**
  * The row reads back as the line that made it.
@@ -740,6 +741,22 @@ describe("projectStoryCommandLine", () => {
         }
     });
 
+    /**
+     * Edit as text (F2): the row opens as its line, and committing it unchanged must hand back the row
+     * it came from - the same payload, built into a block the row can take in place, so the row keeps
+     * its id and its disabled flag. A line edited into a container takes the row's place instead.
+     */
+    it("a row opened as its line commits back into the same row", () => {
+        for (const source of ["/char Alice smile t=fade d=0.4", "/bg forest_day t=fade d=0.5", "/vfx intro name=petals"]) {
+            const row = build(source);
+            const line = projectStoryCommandLine(row, LOOKUPS);
+            const again = build(line!.source);
+            expect(rewritesRowInPlace(row, again), source).toBe(true);
+            expect(comparable(again), source).toEqual(comparable(row));
+        }
+        expect(rewritesRowInPlace(build("/char Alice smile"), build("/parallel"))).toBe(false);
+    });
+
     it("round-trips in Chinese too — the localized line is a line the parser takes", () => {
         i18nStore.setLocale("zh");
         for (const source of [
@@ -754,6 +771,20 @@ describe("projectStoryCommandLine", () => {
             const line = projectStoryCommandLine(first, LOOKUPS);
             expect(comparable(build(line!.source)), `${source} → ${line!.source}`).toEqual(comparable(first));
         }
+    });
+
+    it("does not repeat a unit its key already names — ja printed 「秒=0.6秒」", () => {
+        i18nStore.setLocale("ja");
+        const row = build("/hide Alice out=fade d=0.6");
+        const line = projectStoryCommandLine(row, LOOKUPS)!.source;
+        expect(line).toContain("秒=0.6");
+        expect(line).not.toContain("秒=0.6秒");
+        expect(comparable(build(line))).toEqual(comparable(row));
+        // zh and en keep the unit: their keys do not name it.
+        i18nStore.setLocale("zh");
+        expect(projectStoryCommandLine(build("/hide Alice out=fade d=0.6"), LOOKUPS)!.source).toContain("=0.6秒");
+        i18nStore.setLocale("en");
+        expect(projectStoryCommandLine(build("/hide Alice out=fade d=0.6"), LOOKUPS)!.source).toContain("d=0.6s");
     });
 });
 

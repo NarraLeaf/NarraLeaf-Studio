@@ -631,6 +631,19 @@ export const lint = {
                 + "its transition. A cut takes no time.\n"
                 + "- Otherwise delete the row, or choose a different image.",
         },
+        storyTagNameShared: {
+            title: "Tag name on two axes",
+            description: "A character with layered sprites using one tag name on two axes",
+            message: "The tag {tag} is on both {first} and {second}",
+            help:
+                "A character with layered sprites has a tag of the same name on two of its axes, such as Blue under "
+                + "Outfit and under Hair. Names are compared ignoring case.\n"
+                + "\n"
+                + "A typed row such as /char names a look by its tag alone, so the name reaches only the tag on the "
+                + "earlier axis. The other tag can be chosen only in the row's Properties.\n"
+                + "\n"
+                + "- Rename one of the two tags in the character editor.",
+        },
         blueprintReferenceMissing: {
             title: "Missing target",
             description: "A node naming something the project no longer has",

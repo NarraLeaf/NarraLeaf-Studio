@@ -3,7 +3,7 @@ import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
 import { deleteBlockFromScene, insertBlockInScene, moveBlocksInScene } from "@/lib/workspace/services/story/storyModel";
-import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isReadableAccentColor, nextSelectionAfterDelete, planBlockGroupMove, planRowBackspaceReplacement, planSelectionNudge, readableAccentColor, storyRowActivation, characterRowAppearances, characterRowLook, getDefaultAppendTarget } from "./storySceneBlockUtils";
+import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isReadableAccentColor, nextSelectionAfterDelete, planBlockGroupMove, planRowBackspaceReplacement, planSelectionNudge, readableAccentColor, rewritesRowInPlace, storyRowActivation, storyRowLineEdit, characterRowAppearances, characterRowLook, getDefaultAppendTarget } from "./storySceneBlockUtils";
 import { dialogueOnlyStoryRowFilter, storyRowPassesFilter } from "./storyRowFilter";
 import type { VisibleStoryRow } from "./storySceneEditorTypes";
 
@@ -738,5 +738,35 @@ describe("where rows land that nothing anchors", () => {
         expect(getDefaultAppendTarget(scene([narration("n1")], ["n1"]))).toEqual({ parentId: null, beforeBlockId: null });
         const off = { ...ending, id: "end", disabled: true };
         expect(getDefaultAppendTarget(scene([narration("n1"), off], ["n1", "end"]))).toEqual({ parentId: null, beforeBlockId: null });
+    });
+});
+
+describe("editing a row as text", () => {
+    /**
+     * A committed command row could not be continued at its end: a click only selected it, and
+     * Backspace cleared it. F2 and the row menu's 以文本形式编辑 open it as its own line, standing in its
+     * place, and the commit knows it is editing a committed row.
+     */
+    it("opens a command row as its line, in place of the row", () => {
+        const row = characterAction("r", { action: "character", operation: "expression", characterId: "c1" });
+        expect(storyRowLineEdit(row, "@外观 Narra 微笑 转场=淡入", false)).toEqual({ kind: "line", seed: "@外观 Narra 微笑 转场=淡入", rewritesRow: true });
+        // No line owns the row (a container header, a blueprint call): nothing opens.
+        expect(storyRowLineEdit(row, null, false)).toEqual({ kind: "nothing" });
+        // Frozen, no caret the author could not keep.
+        expect(storyRowLineEdit(row, "@外观 Narra 微笑", true)).toEqual({ kind: "nothing" });
+    });
+
+    it("opens the rows that are text already as Enter does", () => {
+        expect(storyRowLineEdit(narration("n"), null, false)).toEqual({ kind: "text" });
+        expect(storyRowLineEdit({ id: "e", kind: "empty", parentId: null, childrenIds: [] } as unknown as StoryBlock, null, false)).toEqual({ kind: "line", seed: "", rewritesRow: false });
+        expect(storyRowLineEdit({ id: "i", kind: "invalid", parentId: null, childrenIds: [], payload: { source: "/nope" } } as unknown as StoryBlock, null, false)).toEqual({ kind: "line", rewritesRow: false });
+    });
+
+    it("keeps the row's own block only for a line that still builds a row of its kind", () => {
+        const row = characterAction("r", { action: "character", operation: "expression", characterId: "c1" });
+        const rebuilt = characterAction("new", { action: "character", operation: "expression", characterId: "c2" });
+        expect(rewritesRowInPlace(row, rebuilt)).toBe(true);
+        expect(rewritesRowInPlace(row, narration("n"))).toBe(false);
+        expect(rewritesRowInPlace(group("g", []), group("h", []))).toBe(false);
     });
 });

@@ -1298,6 +1298,7 @@ function ActionPayloadFields(props: {
                         sceneId={props.sceneId}
                         blockId={props.block.id}
                         target={payload.target}
+                        characters={props.characters}
                         onChange={target => props.onChange({ ...payload, target })}
                     />
                 </FieldGrid>
@@ -2555,6 +2556,20 @@ export function CharacterActionEditor(props: {
             ) : (
                 <div className="text-xs text-fg-subtle">{t("storyInspector.character.chooseHint")}</div>
             )}
+            {/* A transition only applies where the image source is set (NLR `char(src, transition)`),
+                i.e. changing a visible character's appearance. `exit` (`hide()`) and `move`
+                (`transform()`) take a transform, not a transition; `enter`'s entrance is driven by
+                its transform preset. So the transition editor is only meaningful for `expression`.
+                It comes before the transform: a change of look is what the row is for, and its
+                transition is the setting reached for with it - below the transform it sat under the
+                panel's fold. */}
+            {payload.operation === "expression" ? (
+                <TransitionEditor
+                    value={payload.transition}
+                    context="expression"
+                    onChange={transition => onChange({ ...payload, transition })}
+                />
+            ) : null}
             <TransformPresetEditor
                 value={payload.transform}
                 motionTargetKind="character"
@@ -2572,17 +2587,6 @@ export function CharacterActionEditor(props: {
                 storyName={props.storyName}
                 onChange={transform => onChange({ ...payload, transform })}
             />
-            {/* A transition only applies where the image source is set (NLR `char(src, transition)`),
-                i.e. changing a visible character's appearance. `exit` (`hide()`) and `move`
-                (`transform()`) take a transform, not a transition; `enter`'s entrance is driven by
-                its transform preset. So the transition editor is only meaningful for `expression`. */}
-            {payload.operation === "expression" ? (
-                <TransitionEditor
-                    value={payload.transition}
-                    context="expression"
-                    onChange={transition => onChange({ ...payload, transition })}
-                />
-            ) : null}
             <Disclosure title={t("storyInspector.advanced")}>
                 <div className="max-w-sm">
                     <AssetField

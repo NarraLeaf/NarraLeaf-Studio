@@ -27,6 +27,14 @@ export function CharacterAvatarField({ data }: CustomFieldProps<CharacterEditorC
     const profile = data.character.profile;
     const [assetId, setAssetId] = useState<string | null>(profile.getDefaultAvatarAssetId());
     const [open, setOpen] = useState(false);
+    // Read again for each character the panel moves to, as the colour field beside it is: kept, the
+    // previous character's avatar stood in the frame of one with none.
+    const characterId = profile.getId();
+    const [heldFor, setHeldFor] = useState(characterId);
+    if (heldFor !== characterId) {
+        setHeldFor(characterId);
+        setAssetId(profile.getDefaultAvatarAssetId());
+    }
     const anchorRef = useRef<HTMLButtonElement | null>(null);
     const { url } = useAssetObjectUrl(assetId);
     const { context, isInitialized } = useWorkspace();

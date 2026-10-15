@@ -1561,6 +1561,7 @@ export const story = {
         changeSpeaker: "話者を変更",
         speakerNameOnly: "{name}（名前だけ）",
         openInspector: "インスペクタを開く",
+        editAsText: "テキストとして編集",
         delete: "削除",
     },
     // これらの変更が履歴に残す名前（「シーン 駅にて の削除を元に戻す」）。
@@ -1620,6 +1621,7 @@ export const story = {
         undo: "ストーリーのシーンの編集を元に戻す",
         redo: "ストーリーのシーンの編集をやり直す",
         editRow: "現在の行を編集する、またはそのインスペクタを開く",
+        editRowAsText: "現在の行をテキストとして編集",
         closeInspector: "プロパティの編集を閉じる",
         insertRow: "現在の行の下に新しい行を挿入",
         indent: "選択中のストーリーの行を字下げ",

@@ -200,6 +200,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         section: "story",
         shortcuts: [
             "story.edit-active",
+            "story.edit-line",
             "story.edit.enter",
             "story.insert-blank-after-selection",
             "story.row.range-select",

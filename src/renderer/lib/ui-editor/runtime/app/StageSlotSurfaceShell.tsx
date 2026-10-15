@@ -9,6 +9,7 @@ import {
     type MutableRefObject,
     type SetStateAction,
 } from "react";
+import { flushSync } from "react-dom";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { UIStageSlotId, UIStageSurface } from "@shared/types/ui-editor/document";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
@@ -117,8 +118,16 @@ export type StageSlotSurfaceRuntime = {
     runtimeScopeId: string;
     hostAdapter: UIHostAdapter;
     hostAdapterRef: MutableRefObject<UIHostAdapter | null>;
-    /** Dispatches `flush` to every element of this surface with value bindings or flush logic. */
-    flushSlotElements: () => void;
+    /**
+     * Dispatches `flush` to every element of this surface with value bindings or flush logic, and
+     * resolves once their graphs have run.
+     *
+     * Queued for the next frame like every flush, unless `now` is set: then the queue runs at once,
+     * and when the graphs are done the widgets they changed are drawn before the frame is painted.
+     * For the dialog's line beat (see `DialogStateBridge`): queued, the box painted its new line for
+     * a frame or two with what the previous line's flush had set - the last speaker's avatar.
+     */
+    flushSlotElements: (options?: { now?: boolean }) => Promise<void>;
 };
 
 /** Widget-runtime store key for a slot surface element (matches `scopedWidgetRuntimeKey`). */
@@ -250,8 +259,9 @@ export function useStageSlotSurfaceRuntime(input: {
         }),
         [bundle.ui.localBlueprints, document, surface],
     );
-    const flushSlotElements = useCallback(() => {
+    const flushSlotElements = useCallback((flushOptions?: { now?: boolean }): Promise<void> => {
         const runtime = hostAdapterRef.current?.blueprintRuntime;
+        const dispatched: Promise<void>[] = [];
         for (const elementId of flushElementIds) {
             const element = document.elements[elementId];
             if (!element || !runtime) {
@@ -272,10 +282,19 @@ export function useStageSlotSurfaceRuntime(input: {
                 ? runtime.drawings?.everyDrawingOf(elementId) ?? [{}]
                 : [{}];
             for (const drawing of drawings) {
-                void runtime.dispatchElementBlueprintEvent(elementId, "flush", payload, drawing);
+                dispatched.push(runtime.dispatchElementBlueprintEvent(elementId, "flush", payload, drawing));
             }
         }
-    }, [bundle.ui.localBlueprints, document, flushElementIds, surface.id]);
+        if (!flushOptions?.now || dispatched.length === 0) {
+            return Promise.all(dispatched).then(() => undefined);
+        }
+        void runtime?.drainPendingFlushes?.();
+        return Promise.all(dispatched).then(() => {
+            // Drawn now rather than when React next gets round to the state the graphs set: the
+            // whole point of `now` is that the frame showing this beat shows its flush too.
+            flushSync(() => setWidgetPatchesByScope(widgetPatchesByScopeRef.current));
+        });
+    }, [bundle.ui.localBlueprints, document, flushElementIds, setWidgetPatchesByScope, surface.id, widgetPatchesByScopeRef]);
 
     return { runtimeScopeId, hostAdapter, hostAdapterRef, flushSlotElements };
 }

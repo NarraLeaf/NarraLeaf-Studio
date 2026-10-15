@@ -1247,8 +1247,9 @@ describe("logic and effects", () => {
         // The row reveals nothing, so it carries no fade: `d=` is not a parameter of it, and a stored
         // duration would be a number the compile does not read.
         expect(commandLineIssues("/vfx intro d=1.2")).toEqual(["unknownParam"]);
-        // Blend mode decides whether the material reads at all, so the create row opens the inspector.
-        expect(getCommandSpec("vfx")?.inspectorAfterCommit).toBe(true);
+        // The row is complete as typed, so its commit leaves a new line under it like every other
+        // command's; with 属性 closed, opening the inspector instead showed nothing at all.
+        expect(opensInspectorAfterCommit(getCommandSpec("vfx"), build("/vfx intro"))).toBe(false);
     });
 
     it("/vfx takes a weather word as its source, and the word names the row", () => {

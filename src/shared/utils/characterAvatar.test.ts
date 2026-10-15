@@ -8,6 +8,7 @@ import {
     characterAvatarSelection,
     parseCharacterAvatarAssetId,
     resolveCharacterAvatarAssetId,
+    resolveOffStageCharacterAvatarAssetId,
 } from "./characterAvatar";
 
 const preset: CharacterAppearanceSummary = {
@@ -142,5 +143,26 @@ describe("resolveCharacterAvatarAssetId", () => {
 
     it("answers null rather than substituting the sprite", () => {
         expect(resolveCharacterAvatarAssetId({ id: "bob", appearance: preset }, "p1")).toBeNull();
+    });
+});
+
+describe("resolveOffStageCharacterAvatarAssetId", () => {
+    /**
+     * What the game's dialogue box shows while she has no portrait on stage, which is also what the
+     * story editor's row pictures for that line: the profile's avatar, else her default look's.
+     */
+    const baked = { ...preset, avatars: { p1: { baked: true } } } as CharacterAppearanceSummary;
+
+    it("takes the profile's avatar first", () => {
+        expect(resolveOffStageCharacterAvatarAssetId({ id: "mio", appearance: baked, defaultAvatarAssetId: "asset-avatar" })).toBe("asset-avatar");
+    });
+
+    it("falls to the default look's avatar when the profile has none", () => {
+        expect(resolveOffStageCharacterAvatarAssetId({ id: "mio", appearance: baked })).toBe(characterAvatarAssetId("mio", "p1"));
+    });
+
+    it("answers nothing for a character with neither", () => {
+        expect(resolveOffStageCharacterAvatarAssetId({ id: "aoi", appearance: preset })).toBeNull();
+        expect(resolveOffStageCharacterAvatarAssetId(undefined)).toBeNull();
     });
 });

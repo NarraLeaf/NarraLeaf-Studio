@@ -163,6 +163,26 @@ describe("computeStoryStageSnapshot", () => {
         ]);
     });
 
+    it("says it at the play row itself, where the game is showing the clip", () => {
+        // `@播放 op` selected: the game is playing the clip there, and the preview drew the stage
+        // under it with no note - with 播放结束后隐藏 on and off alike.
+        for (const hideOnEnd of [true, false]) {
+            const document = baseDocument({
+                op: block("op", "action", { action: "video", operation: "play", objectName: "op", assetId: "asset-op", hideOnEnd }),
+                line: say("line"),
+            }, ["op", "line"]);
+            expect(snapshot(document, "op").diagnostics, `hideOnEnd ${hideOnEnd}`).toEqual([
+                { level: "warning", blockId: "op", message: "Videos are not previewed." },
+            ]);
+        }
+        // A play row compiled out shows nothing there, so it says nothing.
+        const disabled = baseDocument({
+            op: { ...block("op", "action", { action: "video", operation: "play", objectName: "op", assetId: "asset-op" }), disabled: true } as StoryBlock,
+            line: say("line"),
+        }, ["op", "line"]);
+        expect(snapshot(disabled, "op").diagnostics).toEqual([]);
+    });
+
     it("records the settled camera pose before the target and clamps degenerate values", () => {
         // The stage camera is a story-level singleton whose pose the runtime carries into a
         // row-precise launch. A launch that pre-poses everything else but leaves the camera neutral

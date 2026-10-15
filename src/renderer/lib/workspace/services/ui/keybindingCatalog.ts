@@ -230,6 +230,7 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     entry("story.page-down", "pagedown", "story.keybindings.pageDown", CATEGORY.story, ChevronsDown),
     entry("story.page-up", "pageup", "story.keybindings.pageUp", CATEGORY.story, ChevronsUp),
     entry("story.edit-active", "enter", "story.keybindings.editRow", CATEGORY.story, Pencil),
+    entry("story.edit-line", "f2", "story.keybindings.editRowAsText", CATEGORY.story, PenLine),
     entry("story.insert-blank-after-selection", "shift+enter", "story.keybindings.insertRow", CATEGORY.story, Plus),
     entry("story.delete", "delete", "story.keybindings.deleteRows", CATEGORY.story, Trash2),
     entry("story.backspace", "backspace", "story.keybindings.deleteRowsConfirm", CATEGORY.story, Trash2),

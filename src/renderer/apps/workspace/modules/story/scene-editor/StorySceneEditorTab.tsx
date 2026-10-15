@@ -74,7 +74,7 @@ import { previewCameraRowPayload, type StoryPreviewCameraApi } from "./preview/s
 import { createBlockForCommand } from "./storyActionCommands";
 import { appendDeveloperIdSection } from "@/lib/developer";
 import { EMPTY_STORY_ROW_FILTER, storyRowFilterSize } from "./storyRowFilter";
-import { StoryCommandLineProvider } from "./StoryCommandLineView";
+import { StoryCommandLineProvider, StoryCommandLineReader } from "./StoryCommandLineView";
 import { StoryRefNavigationProvider } from "./StoryRefNavigationProvider";
 import {
     getSegmentSlot,
@@ -119,7 +119,7 @@ import {
 } from "./preview/storyPreviewDockLayout";
 import { useStoryPreviewDockStacked } from "./preview/useStoryPreviewDockStacked";
 import { getStoryPreviewHub, useStoryPreviewLayout } from "./preview/storyPreviewHub";
-import { createDefaultStoryPreviewFloatRect, readRectInArea } from "./preview/storyPreviewFloatGeometry";
+import { createDefaultStoryPreviewFloatRect, readStoryPreviewFloatAnchor } from "./preview/storyPreviewFloatGeometry";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 /**
@@ -130,6 +130,7 @@ import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 const STORY_ROW_MENU_SHORTCUTS: Readonly<Record<string, string>> = {
     "insert-below": "story.insert-blank-after-selection",
     duplicate: "story.duplicate",
+    "edit-as-text": "story.edit-line",
     delete: "story.delete",
 };
 
@@ -567,6 +568,18 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // The find bar's opener lives with the rest of the find state, further down; the binding table is
     // built before it exists, so it reaches the current one through a ref.
     const openFindRef = useRef<() => void>(() => {});
+    /** Reads a row's line as the row prints it; published by the {@link StoryCommandLineReader} below. */
+    const rowLineReaderRef = useRef<((block: StoryBlock) => string | null) | null>(null);
+    const rowLineOf = useCallback((blockId: StoryBlockId): string | null => {
+        const block = editor.scene?.blocks[blockId];
+        return block ? rowLineReaderRef.current?.(block) ?? null : null;
+    }, [editor.scene]);
+    /** F2 and the row menu's 以文本形式编辑: the row opened as text, caret at the end. */
+    const editRowAsText = useCallback((blockId: StoryBlockId | null) => {
+        if (blockId) {
+            editor.editRowAsText(blockId, rowLineOf(blockId));
+        }
+    }, [editor.editRowAsText, rowLineOf]);
 
     const keybindings = useMemo<KeybindingDefinition[]>(() => [
         {
@@ -615,6 +628,12 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             key: "enter",
             description: t("story.keybindings.editRow"),
             handler: editor.enterEditOrInspectorForActive,
+        },
+        {
+            id: "edit-line",
+            key: "f2",
+            description: t("story.keybindings.editRowAsText"),
+            handler: () => editRowAsText(editor.activeBlockId),
         },
         {
             // The inspector's own Escape only fires with focus inside it; opened via Enter, focus stays
@@ -729,6 +748,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             handler: () => editor.pageRowSelection("up"),
         },
     ], [
+        editRowAsText,
+        editor.activeBlockId,
         editor.closeInspector,
         editor.deleteSelection,
         editor.duplicateSelection,
@@ -1663,7 +1684,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             previewHub.patchLayout({
                 open: true,
                 mode,
-                float: createDefaultStoryPreviewFloatRect(bounds, readRectInArea(editorBodyRef.current, area)),
+                float: createDefaultStoryPreviewFloatRect(bounds, readStoryPreviewFloatAnchor(editorBodyRef.current, area)),
             });
             return;
         }
@@ -2317,6 +2338,14 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         { id: "sep-op", separator: true },
         { id: "play", label: t("story.rowMenu.playFromHere"), onClick: () => playFromRow(menuTarget) },
         { id: "inspector", label: t("story.rowMenu.openInspector"), onClick: () => editor.activateBlockForInspectorOrOp(menuTarget) },
+        // Only on a row a command line owns: a text row, a blank line and a draft row are text already,
+        // and a container header has no line that could carry its children.
+        ...(rowLineOf(menuTarget) !== null ? [{
+            id: "edit-as-text",
+            label: t("story.rowMenu.editAsText"),
+            ...freeze.menuRow(),
+            onClick: () => editRowAsText(menuTarget),
+        }] : []),
         { id: "sep-del", separator: true },
         { id: "delete", label: t("story.rowMenu.delete"), ...freeze.menuRow(), onClick: () => void editor.deleteRows(editor.selectedBlockIds.size > 0 ? [...editor.selectedBlockIds] : [menuTarget]) },
     ] : [];
@@ -2341,6 +2370,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         {/* Following a name to the thing it names is READING, so it sits outside the row-action
             surface above and keeps working while the workspace is frozen — that is the state in which
             looking a reference up is all there is left to do. */}
+        <StoryCommandLineReader readerRef={rowLineReaderRef} characters={editor.characters} scene={scene} scenes={document.scenes} />
         <StoryRefNavigationProvider document={document} sceneId={scene.id}>
         {/* Which document the rows below write, for the handful of their controls that ask. They
             ask one at a time on purpose: the rows also hold a control that creates a character,
