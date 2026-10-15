@@ -301,7 +301,11 @@ export class CharacterService extends Service<CharacterService> implements IChar
         if (this.handedToSink({ op: "update-character", characterId: id, character: after })) {
             return true;
         }
-        this.adoptRecord(id, after);
+        // The caller shaped `after` on a copy of the live record, so its stamps are the live ones but
+        // where it dropped one on purpose - an override replaces its differential's entry, bake and
+        // all, as the character editor writes it. The write lands as written; only the steps that
+        // later restore a record keep the live stamps.
+        this.adoptRecord(id, after, "as-written");
         this.getHistoryService().pushCommand(projectHistoryScope(), {
             label,
             undo: () => this.adoptRecord(id, before),
@@ -385,13 +389,16 @@ export class CharacterService extends Service<CharacterService> implements IChar
      * the re-bake drew the new art, Ctrl+Z put the old pixels and the old stamp back, the stamp
      * matched the old pixels, and the dialog avatar went on showing the new art. Kept live, the stamp
      * no longer matches what the record draws, and the next bake renders it again.
+     *
+     * `"as-written"` is for the one write that is not a restore: a record just built from the live
+     * one, landed by {@link commitCharacterRecord}.
      */
-    private adoptRecord(id: string, record: StoredCharacter): void {
+    private adoptRecord(id: string, record: StoredCharacter, stamps: "live" | "as-written" = "live"): void {
         const current = this.characters[id];
         if (!current) {
             return;
         }
-        current.adopt(withLiveAvatarStamps(record, current.toJSON() as StoredCharacter));
+        current.adopt(stamps === "live" ? withLiveAvatarStamps(record, current.toJSON() as StoredCharacter) : record);
         this.markDirty();
         this.emitChange();
         current.notifySubscribers();
