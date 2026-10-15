@@ -801,7 +801,7 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                         >
                             <input
                                 autoFocus
-                                className={`${INPUT_CLASS} w-24 flex-none`}
+                                className={`${INPUT_CLASS} w-32 flex-none`}
                                 value={codeDraft}
                                 placeholder={t("workspace.voice.panel.codePlaceholder")}
                                 onChange={event => handleCodeDraftChange(event.target.value)}
