@@ -46,6 +46,7 @@ import {
     characterAvatarKeyFromTags,
     resolveCharacterAvatarAssetId,
     resolveDefaultCharacterAvatarAssetId,
+    resolveOffStageCharacterAvatarAssetId,
 } from "@shared/utils/characterAvatar";
 import type {
     StoryActionableKind,
@@ -7597,7 +7598,7 @@ async function bindOffstageDefaultAvatars(params: {
         const summary = params.characterSummaries.get(key);
         // The profile's avatar, or her default look's when it has none: the picture the backlog and
         // `Get Character` show for the same line.
-        const assetId = summary?.defaultAvatarAssetId?.trim() || resolveDefaultCharacterAvatarAssetId(summary) || undefined;
+        const assetId = resolveOffStageCharacterAvatarAssetId(summary) || undefined;
         if (!summary || !assetId || params.avatarBoundCharacterIds.has(summary.id)) {
             continue;
         }

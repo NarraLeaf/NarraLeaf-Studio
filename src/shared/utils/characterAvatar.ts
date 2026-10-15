@@ -237,3 +237,17 @@ export function resolveDefaultCharacterAvatarAssetId(
     }
     return resolveCharacterAvatarAssetId(character, characterAvatarKey(character.appearance, {}));
 }
+
+/**
+ * The avatar a character's line shows while she has no portrait on stage: the profile's default
+ * avatar, or when it has none, her default look's ({@link resolveDefaultCharacterAvatarAssetId}).
+ *
+ * What the game's dialogue box shows off stage (`storyCompiler`'s `offStage`), and so what the story
+ * editor's row pictures for such a line: one answer for the two, or the row names a face the game
+ * does not show.
+ */
+export function resolveOffStageCharacterAvatarAssetId(
+    character: Pick<DevModeCharacterSummary, "id" | "appearance" | "defaultAvatarAssetId"> | undefined,
+): string | null {
+    return character?.defaultAvatarAssetId?.trim() || resolveDefaultCharacterAvatarAssetId(character);
+}
