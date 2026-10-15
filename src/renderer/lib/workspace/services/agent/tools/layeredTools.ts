@@ -87,11 +87,9 @@ import {
     describeCharacter,
     findCharacter,
     readEntrance,
-    readImageFacts,
-    stageSize,
     type EntranceInput,
-    type ImageFacts,
 } from "./castTools";
+import { readImageFacts, stageSize, type ImageFacts } from "../spriteFacts";
 import { loadAllStories } from "./textFormat";
 
 type PixelSize = { width: number; height: number };
