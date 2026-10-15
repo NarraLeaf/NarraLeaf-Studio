@@ -3,7 +3,7 @@ import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
 import { deleteBlockFromScene, insertBlockInScene, moveBlocksInScene } from "@/lib/workspace/services/story/storyModel";
-import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isReadableAccentColor, nextSelectionAfterDelete, planBlockGroupMove, planRowBackspaceReplacement, planSelectionNudge, readableAccentColor } from "./storySceneBlockUtils";
+import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isReadableAccentColor, nextSelectionAfterDelete, planBlockGroupMove, planRowBackspaceReplacement, planSelectionNudge, readableAccentColor, storyRowActivation } from "./storySceneBlockUtils";
 import { dialogueOnlyStoryRowFilter, storyRowPassesFilter } from "./storyRowFilter";
 import type { VisibleStoryRow } from "./storySceneEditorTypes";
 
@@ -672,5 +672,25 @@ describe("planSelectionNudge", () => {
         ], ["a", "g"]);
         expect(nudged(live, ["g", "g1"], "up")).toEqual(["g", "a"]);
         expect(live.blocks.g.childrenIds).toEqual(["g1"]);
+    });
+});
+
+describe("activating a selected row", () => {
+    /**
+     * Enter on a command row and the row menu's 打开检查器 made the row the inspector's subject and
+     * did nothing else, so with 属性 closed both gestures looked dead. Opening a row's inspector
+     * brings the panel onto the screen, as the double-click always did.
+     */
+    it("opens a command row's inspector and shows the property panel", () => {
+        const row = characterAction("r", { action: "character", operation: "expression", characterId: "c1" });
+        expect(storyRowActivation(row, false)).toEqual({ kind: "inspector", revealsPanel: true });
+        // Read-only, the inspector is still the row's face.
+        expect(storyRowActivation(row, true)).toEqual({ kind: "inspector", revealsPanel: true });
+    });
+
+    it("keeps the rows without a card on their own operations", () => {
+        expect(storyRowActivation({ id: "e", kind: "empty", parentId: null, childrenIds: [] } as unknown as StoryBlock, false)).toEqual({ kind: "editLine", seed: "" });
+        expect(storyRowActivation(control({ control: "condition" } as never), false)).toEqual({ kind: "toggleFold" });
+        expect(storyRowActivation({ id: "i", kind: "invalid", parentId: null, childrenIds: [], payload: { source: "/nope" } } as unknown as StoryBlock, true)).toEqual({ kind: "nothing" });
     });
 });

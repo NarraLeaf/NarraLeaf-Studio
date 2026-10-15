@@ -500,6 +500,46 @@ export function hasInspector(block: StoryBlock): boolean {
 }
 
 /**
+ * What activating a selected row does: Enter on it, its row menu's 打开检查器 / Open inspector, or a
+ * double-click on an action row.
+ *
+ *  - An invalid row is the author's own text, kept verbatim because it did not resolve. Its only
+ *    sensible edit is to that text, so it re-opens the line editor seeded with the source - a card of
+ *    fields for a row that has no fields yet is a dead end.
+ *  - A blank line's whole content is the line not written yet, so it opens the line editor in place,
+ *    empty: the same slot the Backspace demote opens.
+ *  - A row with a real inspector opens it, and brings the property panel onto the screen with it.
+ *    All three gestures ask to see the row's fields; with the panel closed, setting the inspector
+ *    as the subject alone changed nothing an author could see, and Enter and 打开检查器 looked dead.
+ *  - The condition container, which only manages branches, folds; any other card-less container (a
+ *    condition branch, incl. else) adds a line in its body.
+ *
+ * Frozen (read-only), nothing that would open a caret the author cannot keep.
+ */
+export type StoryRowActivation =
+    | { kind: "editLine"; seed?: string }
+    | { kind: "inspector"; revealsPanel: true }
+    | { kind: "toggleFold" }
+    | { kind: "insertInside" }
+    | { kind: "nothing" };
+
+export function storyRowActivation(block: StoryBlock, frozen: boolean): StoryRowActivation {
+    if (block.kind === "invalid") {
+        return frozen ? { kind: "nothing" } : { kind: "editLine" };
+    }
+    if (block.kind === "empty") {
+        return frozen ? { kind: "nothing" } : { kind: "editLine", seed: "" };
+    }
+    if (hasInspector(block)) {
+        return { kind: "inspector", revealsPanel: true };
+    }
+    if (block.kind === "control" && block.payload.control === "condition") {
+        return { kind: "toggleFold" };
+    }
+    return canAcceptChildren(block) && !frozen ? { kind: "insertInside" } : { kind: "nothing" };
+}
+
+/**
  * A block that owns nested children and should render as an accordion container (a titled header +
  * an indented, collapsible body) rather than a plain action row. Equivalent to `canAcceptChildren`;
  * kept as a distinct name so rendering intent reads clearly at call sites.

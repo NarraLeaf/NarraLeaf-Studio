@@ -84,6 +84,7 @@ import {
     getInsertionTargetAfter,
     getTextSegment,
     hasInspector,
+    storyRowActivation,
     isTextEditableBlock,
     selectRange,
     updateTextPayload,
@@ -2198,58 +2199,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [commitTextEdit, editorMode, focusRoot, openRowForEditing, rowIndexById, startInsertAfter, visibleRows]);
 
     /**
-     * A selected non-text row was activated (Enter, double-click). A block with a real inspector opens
-     * it; a card-less one (see {@link hasInspector}) runs its own operation instead. A condition branch
-     * - where Enter into a placeholder card would be a dead end - adds a line inside its body, the
-     * common next step when building an if/else; the condition container, which only manages branches,
-     * folds. (Collapse is inlined rather than calling `toggleCollapsed`, which is declared later.)
-     */
-    const activateBlockForInspectorOrOp = useCallback((blockId: StoryBlockId) => {
-        const block = scene?.blocks[blockId];
-        if (!block) {
-            return;
-        }
-        // An invalid row is the author's own text, kept verbatim because it did not resolve. Its only
-        // sensible edit is to that text, so it re-opens the line editor seeded with the source rather
-        // than a property inspector — a card of fields for a row that has no fields yet is a dead end,
-        // and it was the first thing anyone hit after mistyping a command.
-        if (block.kind === "invalid") {
-            // Frozen: nothing to fall back to (an invalid row HAS no inspector), so the row stays put
-            // rather than opening a line editor whose text would be discarded on thaw.
-            if (!frozen) {
-                startLineEdit(block);
-            }
-            return;
-        }
-        if (block.kind === "empty") {
-            // The whole content of a blank line is the line the author has not written yet, so opening
-            // it means opening the editor for that line - in place, and empty. Committing replaces the
-            // blank row; Escape leaves it exactly where it was. Same slot the Backspace demote opens,
-            // reached by Enter or a double-click instead.
-            if (!frozen) {
-                startLineEdit(block, "");
-            }
-            return;
-        }
-        if (hasInspector(block)) {
-            setEditorMode({ kind: "inspector", blockId });
-            return;
-        }
-        if (block.kind === "control" && block.payload.control === "condition") {
-            setCollapsedBlockIds(previous => {
-                const next = new Set(previous);
-                next.has(blockId) ? next.delete(blockId) : next.add(blockId);
-                return next;
-            });
-            return;
-        }
-        // Any other card-less container (a condition branch, incl. else) adds a line in its body.
-        if (canAcceptChildren(block) && !frozen) {
-            startInsertInside(blockId);
-        }
-    }, [frozen, scene, startInsertInside]);
-
-    /**
      * Bring the property editor onto the screen. Visibility only — no focus moves, so the caret and the
      * keyboard stay in the scene exactly where the gesture left them, and the author sees the row's
      * fields without losing the row.
@@ -2263,6 +2212,42 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const revealInspectorPanel = useCallback(() => {
         uiService?.panels.show(PROPERTIES_PANEL_ID);
     }, [uiService]);
+
+    /**
+     * A selected non-text row was activated (Enter, the row menu's 打开检查器, a double-click). What
+     * that does is {@link storyRowActivation}'s to say. (Collapse is inlined rather than calling
+     * `toggleCollapsed`, which is declared later.)
+     */
+    const activateBlockForInspectorOrOp = useCallback((blockId: StoryBlockId) => {
+        const block = scene?.blocks[blockId];
+        if (!block) {
+            return;
+        }
+        const activation = storyRowActivation(block, frozen);
+        switch (activation.kind) {
+            case "editLine":
+                startLineEdit(block, activation.seed);
+                return;
+            case "inspector":
+                setEditorMode({ kind: "inspector", blockId });
+                if (activation.revealsPanel) {
+                    revealInspectorPanel();
+                }
+                return;
+            case "toggleFold":
+                setCollapsedBlockIds(previous => {
+                    const next = new Set(previous);
+                    next.has(blockId) ? next.delete(blockId) : next.add(blockId);
+                    return next;
+                });
+                return;
+            case "insertInside":
+                startInsertInside(blockId);
+                return;
+            case "nothing":
+                return;
+        }
+    }, [frozen, revealInspectorPanel, scene, startInsertInside, startLineEdit]);
 
     /** Escape's inspector rung: close the property editor, keeping the row selected. */
     const closeInspector = useCallback(() => {
