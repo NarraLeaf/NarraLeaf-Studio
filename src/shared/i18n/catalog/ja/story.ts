@@ -1559,7 +1559,7 @@ export const story = {
         mergeWithNext: "次のシーンと結合",
         mergeIntoPrevious: "前のシーンに結合",
         changeSpeaker: "話者を変更",
-        speakerNameOnly: "{name}（名前のみ）",
+        speakerNameOnly: "{name}（名前だけ）",
         openInspector: "インスペクタを開く",
         delete: "削除",
     },
