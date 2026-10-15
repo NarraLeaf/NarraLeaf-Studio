@@ -7,10 +7,10 @@ import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrac
 /**
  * The project's audio tracks, live.
  *
- * Three story surfaces need the same list - the action inspector's Track select, the scene rail's
- * music control, and the command line's candidate source - and each of them needs it to follow an
- * edit made over in Project → Audio without a reload. One hook rather than three copies of the
- * subscribe/unsubscribe pair, because the copies would drift on which of them re-reads.
+ * Story surfaces need the same list - the action inspector's Track select and the command line's
+ * candidate source among them - and each of them needs it to follow an edit made over in Project →
+ * Audio without a reload. One hook rather than a copy of the subscribe/unsubscribe pair in each,
+ * because the copies would drift on which of them re-reads.
  *
  * Falls back to {@link BUILTIN_AUDIO_TRACKS} before services are up, so a caller never has to render
  * an empty select: those three are what an unset reference resolves to anyway, so the fallback names

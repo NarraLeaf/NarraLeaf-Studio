@@ -604,10 +604,6 @@ export const story = {
         removeStarred: "お気に入りから外す",
         starredEmpty: "お気に入りのコマンドは「/」メニューの先頭に並ぶ",
     },
-    music: {
-        missingAudio: "音声が見つからない",
-        none: "音楽なし",
-    },
     background: {
         missingImage: "画像が見つからない",
         none: "背景なし",
@@ -1047,17 +1043,7 @@ export const story = {
         noDescription: "説明なし",
         defaultBackground: "既定の背景",
         clearBackground: "背景を外す",
-        sceneMusic: "シーンの音楽",
-        clearSceneMusic: "シーンの音楽を外す",
-        selectSceneMusic: "シーンの音楽を選択",
-        sceneMusicVolume: "音量",
-        sceneMusicLoop: "ループ",
-        sceneMusicFade: "フェードイン（秒）",
-        sceneMusicLoopRegion: "{from} 秒から {to} 秒をループ",
         // イントロからループへ。頭は 1 回だけ鳴り、その後ろが繰り返す。印は 3 つで、表示は 1 行のまま。
-        sceneMusicIntroLoop: "{from} 秒から再生し、{loop} 秒から {to} 秒をループ",
-        sceneMusicFromIn: "{from} 秒から始める",
-        sceneMusicWholeClip: "クリップ全体",
         selectDefaultBackground: "既定の背景を選択",
         tabInvalid: "ストーリーのシーンエディタのタブが不正",
         loadingScene: "ストーリーのシーンを読み込んでいる…",

@@ -696,10 +696,6 @@ export const story = {
         removeStarred: "Remove from starred",
         starredEmpty: "Starred commands are listed first in the “/” menu.",
     },
-    music: {
-        missingAudio: "Missing audio",
-        none: "No music",
-    },
     background: {
         missingImage: "Missing image",
         none: "No background",
@@ -1166,17 +1162,6 @@ export const story = {
         noDescription: "No description",
         defaultBackground: "Default background",
         clearBackground: "Clear background",
-        sceneMusic: "Scene music",
-        clearSceneMusic: "Clear scene music",
-        selectSceneMusic: "Select Scene Music",
-        sceneMusicVolume: "Volume",
-        sceneMusicLoop: "Loop",
-        sceneMusicFade: "Fade in (s)",
-        sceneMusicLoopRegion: "Loops {from}s to {to}s",
-        // Intro→loop: the head plays once, then the body repeats. Three markers, still one line.
-        sceneMusicIntroLoop: "Plays {from}s, loops {loop}s to {to}s",
-        sceneMusicFromIn: "Starts at {from}s",
-        sceneMusicWholeClip: "Whole clip",
         selectDefaultBackground: "Select Default Background",
         tabInvalid: "Story scene editor tab is invalid.",
         loadingScene: "Loading story scene…",
