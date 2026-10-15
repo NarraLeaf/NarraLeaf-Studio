@@ -407,7 +407,7 @@ export function ModelImportWizard(props: {
                         </button>
                     )}
                     <button
-                        className={dialogFooterButtonClass({ variant: "secondary" })}
+                        className={dialogFooterButtonClass({ variant: "secondary", disabled: phase.step === "scanning" })}
                         disabled={phase.step === "scanning"}
                         onClick={close}
                     >
