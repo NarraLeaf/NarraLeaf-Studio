@@ -3,7 +3,7 @@ import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
 import { deleteBlockFromScene, insertBlockInScene, moveBlocksInScene } from "@/lib/workspace/services/story/storyModel";
-import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isReadableAccentColor, nextSelectionAfterDelete, planBlockGroupMove, planRowBackspaceReplacement, planSelectionNudge, readableAccentColor, storyRowActivation, characterRowAppearances, characterRowLook } from "./storySceneBlockUtils";
+import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isReadableAccentColor, nextSelectionAfterDelete, planBlockGroupMove, planRowBackspaceReplacement, planSelectionNudge, readableAccentColor, storyRowActivation, characterRowAppearances, characterRowLook, getDefaultAppendTarget } from "./storySceneBlockUtils";
 import { dialogueOnlyStoryRowFilter, storyRowPassesFilter } from "./storyRowFilter";
 import type { VisibleStoryRow } from "./storySceneEditorTypes";
 
@@ -721,5 +721,22 @@ describe("the look a character row pictures", () => {
         expect(characterRowAppearances(staged).get("navy")?.before?.tags).toEqual({ face: "smile", outfit: "white" });
         // One pass per scene object.
         expect(characterRowAppearances(staged)).toBe(characterRowAppearances(staged));
+    });
+});
+
+describe("where rows land that nothing anchors", () => {
+    // A paste with no row selected went after the scene's 「@结局」, where nothing ever plays it.
+    const ending = control({ control: "ending", name: "Fin" } as never);
+    it("goes ahead of the ending, the jump or the quit that closes the scene", () => {
+        const rows = [narration("n1"), narration("n2"), { ...ending, id: "end" }];
+        expect(getDefaultAppendTarget(scene(rows, ["n1", "n2", "end"]))).toEqual({ parentId: null, beforeBlockId: "end" });
+        const jump = { id: "j", kind: "jump", parentId: null, childrenIds: [], payload: { targetSceneId: "s2" } } as unknown as StoryBlock;
+        expect(getDefaultAppendTarget(scene([narration("n1"), jump], ["n1", "j"]))).toEqual({ parentId: null, beforeBlockId: "j" });
+    });
+
+    it("is the end of a scene that does not close, or whose closing row is disabled", () => {
+        expect(getDefaultAppendTarget(scene([narration("n1")], ["n1"]))).toEqual({ parentId: null, beforeBlockId: null });
+        const off = { ...ending, id: "end", disabled: true };
+        expect(getDefaultAppendTarget(scene([narration("n1"), off], ["n1", "end"]))).toEqual({ parentId: null, beforeBlockId: null });
     });
 });

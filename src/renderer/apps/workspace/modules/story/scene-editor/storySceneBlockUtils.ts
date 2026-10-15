@@ -375,6 +375,37 @@ export function getInsertionTargetAfter(scene: StoryScene, afterBlockId: StoryBl
     return { parentId: block.parentId, beforeBlockId: siblings[index + 1] ?? null };
 }
 
+/**
+ * Where rows land that nothing anchors - a paste with no row selected: the end of the scene, but
+ * ahead of the rows that end it.
+ *
+ * A scene that closes on an ending, a jump or a quit plays nothing written after them, so appending
+ * past one put every pasted line where it could never play, with nothing saying so. The trailing run
+ * of such rows (enabled ones; a disabled row ends nothing) stays last.
+ */
+export function getDefaultAppendTarget(scene: StoryScene): StoryBlockTarget {
+    let index = scene.rootBlockIds.length;
+    while (index > 0) {
+        const block = scene.blocks[scene.rootBlockIds[index - 1]];
+        if (!block || !endsScene(block)) {
+            break;
+        }
+        index -= 1;
+    }
+    return { parentId: null, beforeBlockId: scene.rootBlockIds[index] ?? null };
+}
+
+/** An enabled row the scene does not play past: an ending, a quit, a jump to another scene. */
+function endsScene(block: StoryBlock): boolean {
+    if (block.disabled) {
+        return false;
+    }
+    if (block.kind === "jump") {
+        return true;
+    }
+    return block.kind === "control" && (block.payload.control === "ending" || block.payload.control === "quit");
+}
+
 /** Where a moving group lands, and the order its rows are inserted in. See {@link planBlockGroupMove}. */
 export interface StoryBlockGroupMove {
     /** The roots to move, in document order. Every one is inserted at {@link target}, in this order. */

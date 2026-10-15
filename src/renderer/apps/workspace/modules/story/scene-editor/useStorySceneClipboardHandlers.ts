@@ -50,7 +50,7 @@ import {
     listSerializedBlocks,
     treatForeignCharacterRefs,
 } from "./storyForeignPaste";
-import { filterOutSelectedDescendants, getInsertionTargetAfter } from "./storySceneBlockUtils";
+import { filterOutSelectedDescendants, getDefaultAppendTarget, getInsertionTargetAfter } from "./storySceneBlockUtils";
 import {
     blueprintIdsNamedByStories,
     collectCarriedBlueprints,
@@ -435,7 +435,8 @@ export function useStorySceneClipboardHandlers(params: {
             ? editorMode.blockId
             : getPasteAnchorId(params.visibleRows, params.selectedBlockIds, params.activeBlockId);
         return {
-            target: getInsertionTargetAfter(scene, afterBlockId),
+            // Nothing selected: the end of the scene, ahead of an ending or jump that closes it.
+            target: afterBlockId ? getInsertionTargetAfter(scene, afterBlockId) : getDefaultAppendTarget(scene),
             plain: plainAnchorFor(afterBlockId ? scene.blocks[afterBlockId] : undefined),
         };
     }, [params]);
