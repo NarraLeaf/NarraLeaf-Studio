@@ -617,6 +617,9 @@ export class LintService extends Service<LintService> implements ILintService {
                     id: character.profile.getId(),
                     name: character.profile.getName(),
                     assetIds: [...ids],
+                    ...(appearance.getKind() === "layered"
+                        ? { axes: appearance.getAxes().map(axis => ({ name: axis.name, tags: axis.tags.map(tag => tag.name) })) }
+                        : {}),
                 };
             });
         } catch (error) {
