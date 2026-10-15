@@ -137,6 +137,11 @@ export type LintLocalizationContext = {
 
 export type LintVoiceContext = {
     voicedLocales: readonly string[];
+    /**
+     * Each voice language's display name, as the Voice panel lists it - what a message names the
+     * language by. A code missing here is named by the code.
+     */
+    voicedLocaleNames?: ReadonlyMap<string, string>;
     documents: ReadonlyMap<string, VoiceDocument>;
     /**
      * Project setting: whether choice options are lines an actor records.

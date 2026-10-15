@@ -1355,7 +1355,7 @@ export const lint = {
         voiceMissing: {
             title: "Missing voice",
             description: "A line with no recording in a voiced language",
-            message: "No {locale} recording",
+            message: "No {language} recording",
             help:
                 "A spoken line has no recording in one of the project's voice languages. Narration and "
                 + "dialogue rows are checked, and choice options too while Voice choice options is on. Prompts, "
@@ -1373,7 +1373,7 @@ export const lint = {
         voiceStale: {
             title: "Stale voice",
             description: "The line changed after it was recorded",
-            message: "{locale} recording is older than the line",
+            message: "{language} recording predates a change to the line",
             help:
                 "A recording was linked to a line whose text has changed since. The text compared is what "
                 + "that language's actor reads: the translation into that language if the project has one, "
@@ -1393,8 +1393,8 @@ export const lint = {
             description: "A recording whose line no longer exists",
             message: "{recordings} with no line",
             recordingCount: {
-                one: "{count} {locale} recording",
-                other: "{count} {locale} recordings",
+                one: "{count} {language} recording",
+                other: "{count} {language} recordings",
             },
             help:
                 "A voice language holds recordings linked to lines that are no longer in any story: lines "
