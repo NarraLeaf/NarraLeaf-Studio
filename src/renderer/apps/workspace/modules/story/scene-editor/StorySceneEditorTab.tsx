@@ -37,6 +37,7 @@ import { launchStoryRowInDevMode } from "./storyRowLaunch";
 import { getSpeakerCandidates, InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
 import { useStableVisibleRows } from "./storyRowIdentity";
 import { useStoryRowReveal } from "./useStoryRowReveal";
+import { useRowFilterChange } from "./useRowFilterChange";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { ShortcutContextMenu } from "@/apps/workspace/components/ui/ShortcutContextMenu";
 import { publishStoryInspectorState } from "./storyInspectorBridge";
@@ -1124,21 +1125,18 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
      * that used to surround the active row may all be gone, so it is placed for reading rather than
      * nudged to whichever edge it is nearest.
      *
-     * Deliberately keyed on the filter alone. `visibleRows` changes identity on every keystroke, and
-     * listing it would turn this into "yank the scroll on every edit"; the effect body reads it from
-     * the closure of the render the filter change produced, which is the one set of values it wants.
+     * Keyed on the filter alone - not on the tab being shown, which would move the page on every
+     * return to the tab (see `useRowFilterChange`) - and not on `visibleRows`, which changes identity
+     * on every keystroke and would turn this into "yank the scroll on every edit". The body reads both
+     * from the render the filter change produced, which is the one set of values it wants.
      */
-    useEffect(() => {
-        if (!active) {
-            return;
-        }
+    useRowFilterChange(active, editor.rowFilter, () => {
         if (editor.activeBlockId && rowIndexOf(editor.activeBlockId) >= 0) {
             editor.revealRow({ kind: "row", blockId: editor.activeBlockId }, "jump");
             return;
         }
         editor.scrollContainerRef.current?.scrollTo({ top: 0 });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [active, editor.rowFilter]);
+    });
 
     /**
      * The right rail follows the selected row.
