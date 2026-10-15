@@ -260,6 +260,16 @@ describe("getCommandCandidates", () => {
         expect(values("/bg forest_day t=fad|")).toEqual(["fade", "fade-in"]);
     });
 
+    it("puts the word a value spells ahead of words that only contain it", () => {
+        // The first row is the one Enter takes. On a portrait swap `blur` (alias `blurdissolve`) is
+        // listed before `dissolve`, and a typed `dissolve` used to light it and write `t=blur`.
+        expect(values("/char Alice smile t=dissolve|")[0]).toBe("dissolve");
+        expect(values("/char Alice smile t=dissolve|")).toContain("blur");
+        // Words the query begins come before words it occurs inside.
+        expect(values("/char Alice smile t=f|")[0]).toBe("fade");
+        expect(values("/char Alice smile t=f|").indexOf("fan")).toBeLessThan(values("/char Alice smile t=f|").indexOf("wipe"));
+    });
+
     it("offers the remaining param names", () => {
         expect(values("/bg forest_day |")).toEqual(["t", "rule", "d", "hold"]);
         expect(values("/bg forest_day t=fade |")).toEqual(["rule", "d", "hold"]);

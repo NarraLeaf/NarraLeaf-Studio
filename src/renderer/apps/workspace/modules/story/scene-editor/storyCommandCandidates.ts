@@ -1,7 +1,7 @@
 import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
 import { STORY_EXPR_FUNCTIONS, STORY_VISITED_CALLS, type StoryVariableValueType, type StoryVisitedCall } from "@shared/types/story";
 import { formatStoryExpressionName } from "@shared/utils/storyExpressionParser";
-import { enumFreeformValue, freeTargetKind, paramHintKey, paramTypes, type StoryCommandParam, type StoryCommandParamType } from "./storyCommandGrammar";
+import { enumFreeformValue, freeTargetKind, paramHintKey, paramTypes, type StoryCommandEnumOption, type StoryCommandParam, type StoryCommandParamType } from "./storyCommandGrammar";
 import { listCommandDefs } from "./commands/registry";
 import { localizedParamKey, paramMatchesQuery } from "./commands/localizedParams";
 import { localizedEnumValue, matchEnumOptionLocalized } from "./commands/localizedEnums";
@@ -377,12 +377,21 @@ function candidatesForType(
             // The filter has to see the translated spelling too, or the list empties the moment the
             // author types the word they were just shown. `matchEnumOptionLocalized` covers the exact
             // hit; `containsFold` over the same spelling covers the partial one.
+            //
+            // And the first row is the one Enter takes, so the word the query spells comes first, then
+            // the words it begins, then the rest in the vocabulary's order. Matching in vocabulary order
+            // alone lit `blur` for a typed `dissolve`: its alias `blurdissolve` contains the word and
+            // `blur` is listed before `dissolve`.
+            const exact = query ? matchEnumOptionLocalized(type, query) : null;
+            const spellings = (option: StoryCommandEnumOption) => [option.value, localizedEnumValue(type, option), ...(option.aliases ?? [])];
+            const rank = (option: StoryCommandEnumOption) => (option === exact ? 0 : spellings(option).some(word => startsWithFold(word, query)) ? 1 : 2);
             return [
                 ...freeform,
                 ...type.options
-                    .filter(option => !query || matchEnumOptionLocalized(type, query) === option || containsFold(option.value, query)
-                        || containsFold(localizedEnumValue(type, option), query)
-                        || (option.aliases ?? []).some(alias => containsFold(alias, query)))
+                    .filter(option => !query || option === exact || spellings(option).some(word => containsFold(word, query)))
+                    .map((option, index) => ({ option, index }))
+                    .sort((a, b) => (query ? rank(a.option) - rank(b.option) : 0) || a.index - b.index)
+                    .map(entry => entry.option)
                     // The mark is keyed on the CANONICAL value while the row shows this locale's word, so
                     // 向左滑动 and `slide-left` draw the same arrow.
                     .map(option => ({ value: localizedEnumValue(type, option), label: localizedEnumValue(type, option), detail: option.aliases?.[0], mark: { kind: "word" as const, value: option.value } })),
