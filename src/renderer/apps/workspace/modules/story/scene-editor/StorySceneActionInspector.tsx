@@ -1298,6 +1298,7 @@ function ActionPayloadFields(props: {
                         sceneId={props.sceneId}
                         blockId={props.block.id}
                         target={payload.target}
+                        characters={props.characters}
                         onChange={target => props.onChange({ ...payload, target })}
                     />
                 </FieldGrid>
