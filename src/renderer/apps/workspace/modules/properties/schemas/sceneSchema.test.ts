@@ -53,7 +53,7 @@ describe("page music section", () => {
     it("is a section of its own, titled Music, holding the music field", () => {
         const section = fields().find(item => item.id === "scene.music");
         expect(section?.type).toBe("section");
-        expect(section?.title).toBe("properties.pageMusic.title");
+        expect(section?.title).toBe("properties.music.title");
         expect(section?.fields?.map(item => item.id)).toEqual(["scene.music.editor"]);
     });
 

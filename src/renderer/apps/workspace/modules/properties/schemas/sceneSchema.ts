@@ -215,7 +215,7 @@ export const scenePropertySchema = (t: TranslateFn) =>
             type: "section",
             // A section of its own, as an element's sounds have: the clip and the options folded
             // under it are one thing, and the page's other sections sit beside it the same way.
-            title: t("properties.pageMusic.title"),
+            title: t("properties.music.title"),
             fields: [
                 defineField<SceneEditorContext, CustomFieldDefinition<SceneEditorContext>>({
                     id: "scene.music.editor",
