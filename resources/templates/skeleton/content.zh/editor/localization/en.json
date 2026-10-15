@@ -410,7 +410,7 @@
     "key:menu.settings": {
       "sourceHash": "fnv1a:f3c259dd",
       "status": "translated",
-      "target": "Settings"
+      "target": "Config"
     },
     "key:menu.start": {
       "sourceHash": "fnv1a:22696cbc",
