@@ -1014,16 +1014,51 @@ describe("AssetsService.replaceAssetContentUndoably", () => {
 
         const local = (service as any).localAssetsManager;
         local.writeAssetContentFromPath = async () => ({ success: false, error: "disk", refusal: { kind: "copyFailed", fsCode: "NO_SPACE" } });
-        const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+        const quiet = [vi.spyOn(console, "warn").mockImplementation(() => undefined), vi.spyOn(console, "error").mockImplementation(() => undefined)];
         try {
             history.undo(projectHistoryScope());
             await history.settled();
         } finally {
-            warn.mockRestore();
+            quiet.forEach(spy => spy.mockRestore());
         }
 
         expect(fakeDisk.get("assets/content/asset-1")).toBe("NEW");
         expect(notifications).toHaveLength(1);
+    });
+
+    it("keeps the step when an undo could not write the old file back, so it can be tried again", async () => {
+        const asset = imageAsset("asset-1", { name: "room.png" });
+        seedPayload("asset-1", "OLD");
+        fakeDisk.set("C:/incoming/room.png", "NEW");
+        const { service, metadata, history } = createHarness([asset]);
+        await service.replaceAssetContentUndoably(asset, "C:/incoming/room.png", label);
+
+        const local = (service as any).localAssetsManager;
+        const write = local.writeAssetContentFromPath;
+        local.writeAssetContentFromPath = async () => ({ success: false, error: "disk", refusal: { kind: "copyFailed", fsCode: "NO_SPACE" } });
+        const quiet = [vi.spyOn(console, "warn").mockImplementation(() => undefined), vi.spyOn(console, "error").mockImplementation(() => undefined)];
+        try {
+            history.undo(projectHistoryScope());
+            await history.settled();
+        } finally {
+            quiet.forEach(spy => spy.mockRestore());
+        }
+
+        // Still the next thing undo does, and not on the redo side.
+        expect(fakeDisk.get("assets/content/asset-1")).toBe("NEW");
+        expect(history.canUndo(projectHistoryScope())).toBe(true);
+        expect(history.canRedo(projectHistoryScope())).toBe(false);
+
+        local.writeAssetContentFromPath = write;
+        history.undo(projectHistoryScope());
+        await history.settled();
+        expect(fakeDisk.get("assets/content/asset-1")).toBe("OLD");
+        expect(metadata[AssetType.Image]["asset-1"].hash).toBe("hash-of-bytes:OLD");
+        expect(history.canRedo(projectHistoryScope())).toBe(true);
+
+        history.redo(projectHistoryScope());
+        await history.settled();
+        expect(fakeDisk.get("assets/content/asset-1")).toBe("NEW");
     });
 
     it("writes nothing and leaves no step when the current file cannot be copied aside", async () => {

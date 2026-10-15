@@ -66,6 +66,17 @@ export class AssetKeepError extends Error {
 }
 
 /**
+ * An undo or redo that could not write some of the files back. The ones it did write are on their
+ * new side; the ones named here are still where they were, so the step stays to be tried again.
+ */
+export class AssetWriteBackError extends Error {
+    constructor(public readonly failures: readonly AssetKeepFailure[]) {
+        super(`Could not write back ${failures.map(failure => failure.name).join(", ")}`);
+        this.name = "AssetWriteBackError";
+    }
+}
+
+/**
  * One asset whose bytes the operation replaced, and the bytes on the other side of that replacement.
  *
  * Only one copy is held, never two: whichever side is not in the asset's file right now is in the
@@ -121,7 +132,8 @@ type CreatedFolder = {
  * had with those bytes ({@link AssetIdentity}). Each step first copies aside every file it is about to
  * write over, so the step after it has them; a copy that cannot be made stops the step before anything
  * is written, tells the author which asset and why, and leaves the step where it was on the stack. A
- * write that fails after that is told too.
+ * write that fails after that is told too, and also leaves the step on the stack: the assets it did
+ * write are on their new side, and trying the step again moves only the ones still behind.
  *
  * Imported assets are taken out of the library on undo and put back on redo, through the same trash a
  * deletion uses. An operation that imports and replaces is one gesture, and taking back half of it
@@ -223,7 +235,8 @@ export class AssetLibraryChange<P = unknown> {
      * the folders it made, when nothing is left in them.
      *
      * Throws {@link AssetKeepError} when a file about to be written over could not be copied aside
-     * first; nothing has been written then.
+     * first; nothing has been written then. Throws {@link AssetWriteBackError} when a file could not be
+     * written back; the others have been, and the imports and folders are left as they are.
      */
     public async undo(): Promise<void> {
         if (this.disposed) {
@@ -298,7 +311,9 @@ export class AssetLibraryChange<P = unknown> {
      * Every copy is made before any file is written, which is what lets a failed copy stop the step
      * with every asset still as it was. A write that fails after that leaves its asset on the side it
      * was on, with its copy untouched, and the author is told which asset; the asset's own `live` says
-     * which side it is on, so the next step in either direction treats it correctly.
+     * which side it is on, so the next step in either direction treats it correctly. The swap then
+     * throws once the other writes are done, so the history keeps the step for the author to retry
+     * rather than counting it as taken.
      */
     private async swap(target: HeldContent["live"]): Promise<void> {
         const moving = [...this.held.values()].filter(entry => entry.live !== target);
@@ -319,6 +334,7 @@ export class AssetLibraryChange<P = unknown> {
             plan.push({ entry, asset, next: "token" in answer ? answer.token : null, identity: identityOf(asset) });
         }
 
+        const unwritten: AssetKeepFailure[] = [];
         for (const { entry, asset, next, identity } of plan) {
             const written = await this.port.write(asset, entry.token, entry.identity);
             if (!written.success) {
@@ -326,7 +342,9 @@ export class AssetLibraryChange<P = unknown> {
                 if (next !== null) {
                     this.port.release(entry.type, next);
                 }
-                this.port.report({ name: asset.name, refusal: written.refusal ?? { kind: "copyFailed" } });
+                const failure = { name: asset.name, refusal: written.refusal ?? { kind: "copyFailed" as const } };
+                this.port.report(failure);
+                unwritten.push(failure);
                 continue;
             }
             this.port.release(entry.type, entry.token);
@@ -339,6 +357,9 @@ export class AssetLibraryChange<P = unknown> {
             } else {
                 entry.token = next;
             }
+        }
+        if (unwritten.length > 0) {
+            throw new AssetWriteBackError(unwritten);
         }
     }
 }
