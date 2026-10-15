@@ -334,4 +334,47 @@ describe("buildStoryCommandContext - runtime-drawn characters", () => {
         const candidates = getCommandCandidates(getCommandCursor(typed, typed.length), context, resolved.args);
         expect(candidates.map(candidate => candidate.value)).toEqual(["Idle_0", "Idle_6", "TapBody_0"]);
     });
+
+    /**
+     * A Live2D motion's name is `<group>_<index>`, which says nothing about the motion; the list
+     * shows the file's name where Studio could read one, and still inserts the name a row stores.
+     */
+    it("lists a motion by its file's name with the motion's own beside it, and inserts the motion's", () => {
+        const context = buildStoryCommandContext({
+            assets: undefined,
+            characters: [characterOf("hiyori", "Hiyori", "live2d")],
+            document: null,
+            sceneId: null,
+            scene: null,
+            puppetByCharacterId: {
+                hiyori: {
+                    motions: ["Idle_0", "Idle_3", "TapBody_0", "Flick_0"],
+                    motionLabels: { Idle_0: "Hiyori m01", Idle_3: "Hiyori m05", TapBody_0: "Hiyori m04" },
+                    expressions: [],
+                    skins: [],
+                    params: [],
+                },
+            },
+        });
+        const offered = (typed: string) => {
+            const line = parseCommandLine(typed.trimEnd());
+            if (line.kind !== "command") {
+                throw new Error("not a command");
+            }
+            const resolved = resolveCommandLine(line, context);
+            return getCommandCandidates(getCommandCursor(typed, typed.length), context, resolved.args)
+                .map(candidate => ({ value: candidate.value, label: candidate.label, detail: candidate.detail }));
+        };
+
+        expect(offered("/motion Hiyori ")).toEqual([
+            { value: "Idle_0", label: "Hiyori m01", detail: "Idle_0" },
+            { value: "Idle_3", label: "Hiyori m05", detail: "Idle_3" },
+            { value: "TapBody_0", label: "Hiyori m04", detail: "TapBody_0" },
+            // A motion with no label is listed by its name, as before.
+            { value: "Flick_0", label: "Flick_0", detail: undefined },
+        ]);
+        // Typed as the file or as the motion, the same one is found.
+        expect(offered("/motion Hiyori m05").map(candidate => candidate.value)).toEqual(["Idle_3"]);
+        expect(offered("/motion Hiyori Tap").map(candidate => candidate.value)).toEqual(["TapBody_0"]);
+    });
 });

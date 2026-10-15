@@ -121,7 +121,7 @@ import {
     puppetDescriptionRequestFor,
     usePuppetDescription,
 } from "@/lib/workspace/hooks/usePuppetDescription";
-import { puppetChoiceOptions } from "@/lib/workspace/services/puppet/puppetDescriptionModel";
+import { puppetChoiceOptions, puppetNameOption } from "@/lib/workspace/services/puppet/puppetDescriptionModel";
 import { CameraActionEditor } from "./CameraActionEditor";
 import { AssetField } from "./AssetField";
 import { TransformChannelEditor } from "./TransformChannelEditor";
@@ -2152,7 +2152,11 @@ function PuppetChannelControl(props: {
     // re-exported model shows the author what went missing instead of silently rewriting the row.
     const names = puppetChoiceOptions(available ?? [], props.value || null);
     const options: SelectOption[] | undefined = names.length > 0
-        ? [{ value: "", label: placeholder }, ...names.map(name => ({ value: name, label: name }))]
+        ? [
+            { value: "", label: placeholder },
+            // A motion is named by its file where Studio could read one, with the stored name beside it.
+            ...names.map(name => puppetNameOption(name, props.channel === "motion" ? description?.motionLabels : undefined)),
+        ]
         : undefined;
 
     /** The state the preview is put in: the character's resting pose with this row's channel applied. */

@@ -65,10 +65,22 @@ export type PuppetDescriptionUnavailableReason =
     /** The backend threw, rejected, timed out, or returned something that is not a description. */
     | "failed";
 
+/**
+ * A description as Studio hands it on: the model's own answer, plus what Studio read beside it.
+ *
+ * `motionLabels` names a motion for a list - a Live2D motion by its file's name (see
+ * `@shared/utils/live2dMotionLabels`) - keyed by the motion's name, which is still what a row
+ * stores. Absent, or without an entry for a name, the list shows the name. Never written to the
+ * cache: it is a reading of the manifest, which is cheap to read again and is not the backend's.
+ */
+export type DescribedPuppet = PuppetDescription & {
+    motionLabels?: Readonly<Record<string, string>>;
+};
+
 export type PuppetDescriptionResult =
     | {
         status: "ok";
-        description: PuppetDescription;
+        description: DescribedPuppet;
         /** Whether this answer came off disk or out of a model that was mounted just now. */
         origin: "memory" | "disk" | "live";
         fingerprint: string;
@@ -290,4 +302,16 @@ export function puppetChoiceOptions(available: readonly string[], current: strin
         return [];
     }
     return value && !available.includes(value) ? [value, ...available] : [...available];
+}
+
+/**
+ * One name a model reported, as a list shows it: by its label when Studio has one, with the name
+ * itself beside it - the name is what the row stores and what the engine plays, so it stays in view.
+ */
+export function puppetNameOption(
+    name: string,
+    labels: Readonly<Record<string, string>> | undefined,
+): { value: string; label: string; secondaryLabel?: string } {
+    const label = labels?.[name];
+    return label ? { value: name, label, secondaryLabel: name } : { value: name, label: name };
 }

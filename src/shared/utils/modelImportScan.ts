@@ -2,9 +2,10 @@
  * The format rules the model import wizard needs: what a Live2D or Spine model looks like on disk,
  * and which sibling files its manifest names.
  *
- * This is the one place in Studio that reads inside a model file, and the licence for doing so is
- * narrow: **only the text manifests** - `*.model3.json`, Cubism 2's `model.json`, and Spine's
- * `.atlas` - and only to learn *file names*. Nothing here opens a `.moc3` or a `.skel`, nothing
+ * This is one of the two places in Studio that read inside a model file, and the licence for doing
+ * so is narrow: **only the text manifests** - `*.model3.json`, Cubism 2's `model.json`, and Spine's
+ * `.atlas` - and only to learn *file names*. The other is `live2dMotionLabels`, which names a
+ * motion in a list by the file the manifest gives for it, under the same licence. Nothing here opens a `.moc3` or a `.skel`, nothing
  * here understands geometry, and nothing downstream may start depending on it to: the manifest is
  * still authoritative at runtime and Studio's copy of the tree is still verbatim. What this buys is
  * the one thing an author cannot get any other way - being told at import time that a texture is

@@ -323,8 +323,26 @@ function candidatesForType(
             // model does not list is overwhelmingly a typo - and offering it as a candidate would
             // dress the typo up as a choice. It still commits (Enter submits an empty menu), and the
             // row then carries the `unknownPuppetName` mark, which is where a wrong name belongs.
-            const names = puppetChannelNames(context, ownerCharacterId(resolved[type.dependsOn]) ?? undefined, type.channel);
-            return nameCandidates(names, query, { kind: "puppetChannel", channel: type.channel });
+            const owner = ownerCharacterId(resolved[type.dependsOn]) ?? undefined;
+            const names = puppetChannelNames(context, owner, type.channel);
+            const labels = type.channel === "motion" && owner ? context.puppetByCharacterId[owner]?.motionLabels : undefined;
+            if (!labels) {
+                return nameCandidates(names, query, { kind: "puppetChannel", channel: type.channel });
+            }
+            // A motion its file names is shown by that name, with the motion's own beside it - the
+            // completion still inserts the motion's name, which is what the row stores. Either one
+            // finds it.
+            const labelOf = (name: string) => labels[name] ?? name;
+            const prefix = names.filter(name => startsWithFold(name, query) || startsWithFold(labelOf(name), query));
+            const rest = query
+                ? names.filter(name => !prefix.includes(name) && (containsFold(name, query) || containsFold(labelOf(name), query)))
+                : [];
+            return [...prefix, ...rest].map(name => ({
+                value: name,
+                label: labelOf(name),
+                ...(labels[name] ? { detail: name } : {}),
+                mark: { kind: "puppetChannel" as const, channel: type.channel },
+            }));
         }
         case "puppetParam": {
             // The ids the model reported, each showing the range it accepts - which is the whole reason
