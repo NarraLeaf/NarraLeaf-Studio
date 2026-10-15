@@ -202,6 +202,7 @@ import {
 } from "./storyCompilePass";
 import { getStoryPluginAction } from "./storyPluginActions";
 import { createStoryAwaitedAction } from "./storyAwaitedAction";
+import { waitForPuppetModel } from "./puppetEntranceWait";
 import {
     createStoryVisitedPersistent,
     isStoryVisited,
@@ -4218,7 +4219,20 @@ async function compileCharacterPuppetAction(
             ? withCharacterEntranceDefaults(entranceDefaults, payload.transform)
             : payload.transform;
     const chain = await compileDisplayableOperation(puppet, operation, transform, ctx, block.id);
-    return chain ? [recordStatement(ctx, chain, block)] : [];
+    if (!chain) {
+        return [];
+    }
+    if (payload.operation !== "enter") {
+        return [recordStatement(ctx, chain, block)];
+    }
+    // The model has been loading since the scene put the box on stage; the entrance waits for it to
+    // be drawn, or the box fades in empty and the character appears after the fade is over. See
+    // `puppetEntranceWait.ts`.
+    // Recorded after the entrance although it runs before it, so the entrance keeps the action id it
+    // has always had: a save that names it still finds it.
+    const shown = recordStatement(ctx, chain, block);
+    const awaitModel = createStoryAwaitedAction({ run: (_scriptCtx, signal) => waitForPuppetModel(puppet, signal) });
+    return [recordStatement(ctx, awaitModel, block), shown];
 }
 
 /**

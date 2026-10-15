@@ -3830,6 +3830,41 @@ describe("puppet characters", () => {
         });
     });
 
+    /**
+     * The scene mounts the box and starts the model loading at its top; nothing waited for the load
+     * to end, so an entrance near the top faded an empty box in and the model popped in after it.
+     */
+    it("waits for the model before the entrance, and keeps the entrance's action id", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(characterBlock("enter"), ["row"]),
+            sceneId: "scene-1",
+            characters: [PUPPET],
+            resolveAssetUrl: async assetId => `nlr://bundle/${assetId}/model.json`,
+        });
+        const bindings = compiled.actionIdBindings.filter(binding => binding.blockId === "row");
+        const wait = bindings.find(binding => (binding.action as unknown as { type: string }).type === "service:action");
+        expect(wait).toBeDefined();
+        // The entrance's own actions keep the ids they had before the wait existed: the wait is last.
+        expect(bindings.indexOf(wait!)).toBe(bindings.length - 1);
+        expect(bindings[0].staticId.endsWith(":0")).toBe(true);
+        expect((bindings[0].action as unknown as { type: string }).type).not.toBe("service:action");
+
+        const puppet = compiled.sceneElements?.["scene-1"]?.puppets.get("char-doll") as unknown as { _setStatus(status: string): void };
+        puppet._setStatus("loading");
+        const fakeGameState = {
+            game: { getLiveGame: () => ({ getStorable: () => ({ getNamespace: () => ({}) }) }) },
+            logger: { warn: () => undefined },
+            events: { on: () => ({ cancel: () => undefined }) },
+        };
+        const awaitable = (wait!.action as unknown as { executeAction(...args: unknown[]): { isSettled(): boolean } })
+            .executeAction(fakeGameState, {});
+        await new Promise(resolve => setTimeout(resolve, 20));
+        expect(awaitable.isSettled()).toBe(false);
+        puppet._setStatus("ready");
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(awaitable.isSettled()).toBe(true);
+    });
+
     it("resolves an entry override against the bundle the asset resolved to", async () => {
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument(characterBlock("enter"), ["row"]),
