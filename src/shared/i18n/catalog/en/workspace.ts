@@ -279,6 +279,18 @@ export const workspace = {
                 unknown: "A story cannot be read, so orphan voice is not listed.",
             },
         },
+        // The recording script's column headers. The last is the line's id, which the import reads.
+        script: {
+            column: {
+                filename: "File name",
+                character: "Speaker",
+                scene: "Scene",
+                line: "Line",
+                status: "Status",
+                note: "Note",
+                unitId: "Line ID",
+            },
+        },
     },
     // The one notice after a project's interface document is upgraded to v13: the widgets whose
     // source of words changed in a way the inspector shows, each with a button to it.

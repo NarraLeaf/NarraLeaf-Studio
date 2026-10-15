@@ -249,6 +249,18 @@ export const workspace = {
                 unknown: "有故事无法读取，暂不列出孤立的语音",
             },
         },
+        // 录音脚本的列名；最后一列是行的 ID，导入时按它对应到行
+        script: {
+            column: {
+                filename: "文件名",
+                character: "说话人",
+                scene: "场景",
+                line: "文本",
+                status: "状态",
+                note: "备注",
+                unitId: "行 ID",
+            },
+        },
     },
     textSourceMigration: {
         message: {

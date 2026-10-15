@@ -252,6 +252,18 @@ export const workspace = {
                 unknown: "読み込めないストーリーがあるため、対応する行のない録音は表示しない",
             },
         },
+        // 収録台本の列名。最後の列は行の ID で、読み込み時にこれで行と対応づける
+        script: {
+            column: {
+                filename: "ファイル名",
+                character: "話者",
+                scene: "シーン",
+                line: "テキスト",
+                status: "状態",
+                note: "メモ",
+                unitId: "行 ID",
+            },
+        },
     },
     textSourceMigration: {
         message: {

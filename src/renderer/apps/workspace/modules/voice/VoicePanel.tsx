@@ -50,7 +50,7 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { DEFAULT_VOICE_NAMING_PATTERN, isValidLocaleCode, type VoiceConfiguration } from "@shared/types/voice";
 import { localeAutonym as autonymFor } from "@shared/types/localization";
-import { parseVoiceCsv, serializeVoiceCsv } from "@shared/utils/voiceCsv";
+import { parseVoiceCsv, serializeVoiceCsv, voiceCsvLocaleFor } from "@shared/utils/voiceCsv";
 import { matchKeyForFilename, VOICE_NAME_TOKENS } from "@shared/utils/voiceNaming";
 import { readAudioDuration } from "@/lib/workspace/services/voice/audioDuration";
 import { createVoiceEditorTab } from "./openVoiceEditorTab";
@@ -104,7 +104,7 @@ const NAMING_TOKEN_HINT = VOICE_NAME_TOKENS.filter(token => token !== "unitId").
 export function VoicePanel({ panelId }: PanelComponentProps) {
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
-    const { t, tn } = useTranslation();
+    const { t, tn, locale: interfaceLocale } = useTranslation();
     // Adding and removing a voice language write `.nlproj`, and importing audio writes the asset
     // library; no partial freeze exempts either. Auditioning, switching locale and exporting a
     // recording script write nothing at all.
@@ -425,12 +425,16 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                 uiService?.showNotification(t("workspace.voice.panel.pickupEmpty"), "info");
                 return;
             }
-            const csv = serializeVoiceCsv(buildRecordingScriptRows(selected, config.namingPattern, code, document));
+            // Headers and status words in the interface language, the one this panel and F1 name them in.
+            const csv = serializeVoiceCsv(
+                buildRecordingScriptRows(selected, config.namingPattern, code, document),
+                voiceCsvLocaleFor(interfaceLocale),
+            );
             await writeCsvToChosenFile(`${code}-voice-${pickupOnly ? "pickup" : "script"}.csv`, csv);
         } catch (error) {
             uiService?.showError(error instanceof Error ? error : String(error));
         }
-    }, [voiceService, config, gatherEntries, writeCsvToChosenFile, uiService, t]);
+    }, [voiceService, config, gatherEntries, writeCsvToChosenFile, uiService, t, interfaceLocale]);
 
     /** Fill in take lengths after a batch link. Best-effort and unattended - a file that will not decode is skipped. */
     const measureDurations = useCallback(async (

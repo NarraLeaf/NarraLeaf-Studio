@@ -508,7 +508,9 @@ export const help = {
                 + "- Import audio takes several files at once, and links each file whose name follows the "
                 + "Recording filename pattern to its line.\n"
                 + "- Export recording script writes the lines to record as a spreadsheet file for the person "
-                + "recording them.\n"
+                + "recording them. It lists each line's file name, speaker, scene, text, status and note; the last "
+                + "column, Line ID, is what Import recording script uses to bring notes and statuses back to "
+                + "their lines, and is not to be edited.\n"
                 + "- A line whose text changed after its clip was assigned is marked Outdated, and Export pickup "
                 + "script writes only those lines.\n"
                 + "- Choice options become lines to record only while Voice choice options is on.",
