@@ -16,6 +16,12 @@ import {
     FolderOpen,
 } from "lucide-react";
 import { useFloatingLayer, useHostDocument, useHostWindow } from "@/lib/components/layout";
+import {
+    ANCHORED_PANEL_MARGIN,
+    placeAnchoredPanel,
+    type AnchoredPanelPlacement,
+    type AnchoredPanelSide,
+} from "@/lib/components/layout/anchoredPanelPlacement";
 import { getInterface } from "@/lib/app/bridge";
 import { collectImportFailures } from "@/lib/workspace/assets/importFailure";
 import { Asset } from "@/lib/workspace/services/assets/types";
@@ -162,7 +168,9 @@ export function AssetSelector({
 
     const [searchQuery, setSearchQuery] = useState("");
     const [selection, setSelection] = useState<Set<string>>(new Set(selectedIds));
-    const [anchorStyle, setAnchorStyle] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 420 });
+    const [anchorStyle, setAnchorStyle] = useState<{ top: number; left: number; width: number } & Partial<AnchoredPanelPlacement>>({ top: 0, left: 0, width: 420 });
+    /** The side of its trigger the picker opened on, kept until it closes (see `anchoredPanelPlacement`). */
+    const anchoredSideRef = useRef<AnchoredPanelSide | undefined>(undefined);
     const panelRef = useRef<HTMLDivElement | null>(null);
     const previewTimerRef = useRef<number | null>(null);
     const previewTargetRef = useRef<HTMLElement | null>(null);
@@ -371,40 +379,40 @@ export function AssetSelector({
 
     const virtualAssetCount = useMemo(() => virtualGroups?.reduce((n, g) => n + g.assets.length, 0) ?? 0, [virtualGroups]);
 
+    useEffect(() => {
+        if (!visible) {
+            anchoredSideRef.current = undefined;
+        }
+    }, [visible]);
+
     useLayoutEffect(() => {
         if (!visible) return;
 
         const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
-        const viewportMargin = 12;
+        const viewportMargin = ANCHORED_PANEL_MARGIN;
         const viewportTop = WINDOW_TITLEBAR_HEIGHT + viewportMargin;
         const maxPanelHeight = 560; // matches max-h
 
         const updatePosition = () => {
             const viewportWidth = hostWindow.innerWidth;
             const viewportHeight = hostWindow.innerHeight;
-            const panelHeight = Math.min(panelRef.current?.offsetHeight ?? maxPanelHeight, maxPanelHeight);
 
             if (anchorRef?.current) {
-                const rect = anchorRef.current.getBoundingClientRect();
-                const width = clamp(rect.width, 320, 480);
-                const availableBelow = viewportHeight - rect.bottom - viewportMargin;
-                const availableAbove = rect.top - viewportTop;
-
-                const shouldOpenDown = availableBelow >= panelHeight || availableBelow >= availableAbove;
-                let top = shouldOpenDown ? rect.bottom + 8 : rect.top - panelHeight - 8;
-                top = clamp(top, viewportTop, Math.max(viewportTop, viewportHeight - viewportMargin - panelHeight));
-                const left = clamp(rect.left, viewportMargin, viewportWidth - viewportMargin - width);
-
-                setAnchorStyle({
-                    top,
-                    left,
-                    width,
+                const placement = placeAnchoredPanel({
+                    anchor: anchorRef.current.getBoundingClientRect(),
+                    viewport: { width: viewportWidth, height: viewportHeight, top: viewportTop },
+                    minWidth: 320,
+                    maxWidth: 480,
+                    maxHeight: maxPanelHeight,
+                    side: anchoredSideRef.current,
                 });
+                anchoredSideRef.current = placement.side;
+                setAnchorStyle(placement);
             } else {
                 const width = 420;
                 const left = clamp((viewportWidth - width) / 2, viewportMargin, viewportWidth - viewportMargin - width);
                 const top = clamp(96, viewportTop, Math.max(viewportTop, viewportHeight - viewportMargin - maxPanelHeight));
-                setAnchorStyle((prev) => ({ ...prev, top, left, width }));
+                setAnchorStyle({ top, left, width });
             }
         };
 
@@ -879,7 +887,16 @@ export function AssetSelector({
         >
             <div
                 ref={panelRef}
-                style={anchorRef?.current ? { position: "fixed", top: anchorStyle.top, left: anchorStyle.left, width: anchorStyle.width } : { width: anchorStyle.width }}
+                style={anchorRef?.current
+                    ? {
+                        position: "fixed",
+                        top: anchorStyle.top,
+                        left: anchorStyle.left,
+                        width: anchorStyle.width,
+                        maxHeight: anchorStyle.maxHeight,
+                        height: anchorStyle.height,
+                    }
+                    : { width: anchorStyle.width }}
                 className={`${anchorRef?.current ? "" : "mt-12 mx-auto"} bg-surface-overlay border border-edge-strong rounded-lg shadow-2xl text-fg max-h-[560px] flex flex-col ${className}`}
                 onMouseDown={(e) => e.stopPropagation()}
             >
