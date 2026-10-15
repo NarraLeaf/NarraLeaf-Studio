@@ -478,6 +478,8 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
         });
     };
 
+    blueprintRuntime.drainPendingFlushes = drainFlushQueue;
+
     blueprintRuntime.dispatchElementBlueprintEvent = async (elementId, eventName, eventPayload, eventOptions) => {
         if (eventName === "flush") {
             await enqueueElementFlush(elementId, eventPayload, eventOptions);
