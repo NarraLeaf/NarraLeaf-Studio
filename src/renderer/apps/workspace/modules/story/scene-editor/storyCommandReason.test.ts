@@ -212,6 +212,26 @@ describe("getCommandLineReason", () => {
         // A committed line (a draft row's reason) is reported whatever its end looks like.
         expect(getCommandLineReason("/show Zoe", CONTEXT)?.key).toBe("storyExpr.reason.unknownTarget");
     });
+
+    it("waits for a value or a key being typed at the end of the line", () => {
+        // 「「淡」不适用于此位置」 sat under the slot while 淡 was on its way to 淡入 and the menu
+        // was already lighting it; `t` the same, on its way to `t=`.
+        const typing = (source: string) => getCommandLineReason(source, CONTEXT, { typing: true })?.key ?? null;
+        expect(typing("/bg forest t=fa")).toBeNull();
+        expect(typing("/char Alice smile t")).toBeNull();
+        // A space after it is the decision, and a committed line is reported.
+        expect(typing("/bg forest t=fa ")).toBe("storyExpr.reason.badValue");
+        expect(typing("/char Alice smile t ")).toBe("storyExpr.reason.extraPositional");
+        expect(getCommandLineReason("/bg forest t=fa", CONTEXT)?.key).toBe("storyExpr.reason.badValue");
+        // Whatever else the line says still shows while the last word is typed.
+        expect(typing("/bg nowhere t=fa")).toBe("storyExpr.reason.unknownAssetOrSet");
+        i18nStore.setLocale("zh");
+        try {
+            expect(typing("/外观 Alice smile 转场=淡")).toBeNull();
+        } finally {
+            i18nStore.setLocale("en");
+        }
+    });
 });
 
 /**

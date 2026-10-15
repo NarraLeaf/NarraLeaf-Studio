@@ -89,6 +89,9 @@ const NAME_LOOKUP_CODES: ReadonlySet<StoryCommandResolutionIssue["code"]> = new 
     "unknownTarget",
 ]);
 
+/** The parser issues a word at the end of the line raises while it is still being typed. */
+const TYPED_WORD_CODES: ReadonlySet<StoryCommandIssue["code"]> = new Set<StoryCommandIssue["code"]>(["badValue", "extraPositional"]);
+
 /**
  * The first problem with this line, or null when it is fine (or is not a command at all).
  *
@@ -113,7 +116,12 @@ export function getCommandLineReason(
         const unknown = line.issues.find(issue => issue.code === "unknownCommand");
         return unknown && looksComplete(source) ? parserReason(line, unknown) : null;
     }
-    const parserIssue = line.issues[0];
+    // A word at the end of the line is still being typed: `t=淡` on its way to 淡入 while the menu
+    // already lights it, or `转` on its way to `转场=`. The same signal as for a name below - a space
+    // after it is the decision - so it is not reported yet, and whatever else the line says still is.
+    const stillTyped = (issue: (typeof line.issues)[number]) =>
+        Boolean(options.typing) && TYPED_WORD_CODES.has(issue.code) && issue.span.end >= source.length;
+    const parserIssue = line.issues.find(issue => !stillTyped(issue));
     if (parserIssue) {
         return parserReason(line, parserIssue);
     }
