@@ -11,6 +11,7 @@ import type { CharacterAvatarTarget } from "@shared/utils/characterAvatar";
 import type { PortraitCrop } from "@/lib/workspace/services/character/types";
 import { bakeCharacterAvatars, type AvatarBakeIO, type AvatarBakeReport } from "./avatarBake";
 import { createAvatarRenderer } from "./avatarRenderer";
+import { inheritedPosePortrait, measurePosePictures } from "@/lib/workspace/services/character/poseFraming";
 import { useWorkspaceFrozen } from "@/apps/workspace/hooks/useWorkspaceFrozen";
 import { isDeferredWriteAllowed } from "@/apps/workspace/components/ui/freezeGuard";
 
@@ -26,7 +27,8 @@ export function shouldBakeCharacterAvatars(enabled: boolean, frozen: boolean): b
 }
 
 /**
- * Which framing a differential is baked with: **entry → pose → profile**.
+ * Which framing a differential is baked with: **entry → pose → profile → inherited**, and the
+ * automatic head crop when none of them answers.
  *
  * The entry's crop is the specific one — it is written against a single avatar key, which is the
  * only address a `layered` character has for one tag combination. Without it at the head of the
@@ -43,8 +45,14 @@ export function resolveAvatarBakePortrait(input: {
     entry?: PortraitCrop | null;
     pose?: PortraitCrop | null;
     profile?: PortraitCrop | null;
+    /**
+     * A `preset` pose framed by nothing above it takes the framing of a pose whose picture is the same
+     * size (`inheritedPosePortrait`): the same picture with another face, so the face is in the same
+     * place. Last, because the three above are the author's word about this picture.
+     */
+    inherited?: PortraitCrop | null;
 }): PortraitCrop | undefined {
-    return input.entry ?? input.pose ?? input.profile ?? undefined;
+    return input.entry ?? input.pose ?? input.profile ?? input.inherited ?? undefined;
 }
 
 /**
@@ -276,6 +284,9 @@ async function bakeAll(context: WorkspaceContext): Promise<void> {
                 continue;
             }
             const appearance = profile.appearance;
+            // Read only where an inherited framing could apply: a preset character with a framed pose.
+            const poses = appearance.getKind() === "preset" ? appearance.getPoses() : [];
+            const poseSizes = poses.some(pose => pose.portrait) ? await measurePosePictures(assets, poses) : {};
             const report = await bakeCharacterAvatars(io, render, {
                 characterId: summary.id,
                 appearance: {
@@ -293,6 +304,14 @@ async function bakeAll(context: WorkspaceContext): Promise<void> {
                             ? appearance.getPose(target.selection.poseId)?.portrait
                             : undefined,
                         profile: profile.getPortrait(),
+                        inherited: target.selection.poseId
+                            ? inheritedPosePortrait({
+                                poses,
+                                defaultPoseId: appearance.getDefaultPoseId(),
+                                poseId: target.selection.poseId,
+                                sizeOf: assetId => poseSizes[assetId],
+                            })
+                            : undefined,
                     }),
                 },
             });

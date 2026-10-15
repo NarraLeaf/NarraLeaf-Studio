@@ -6,6 +6,8 @@ import { mapCharacterStoreEntriesToSummaries } from "@shared/utils/characterSumm
 import { HeadThumbnail } from "@/apps/workspace/modules/characters/editors/components/HeadThumbnail";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useCompositedSprite } from "@/lib/workspace/hooks/useCompositedSprite";
+import { usePosePictureSizes } from "@/lib/workspace/hooks/usePosePictureSizes";
+import { inheritedPosePortrait, type ImageSize } from "@/lib/workspace/services/character/poseFraming";
 import type { NormalizedCrop } from "@/lib/utils/headCrop";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
@@ -88,13 +90,23 @@ function resolveCharacterFaceImage(
     pose: string | undefined,
     tags: StoryCharacterTagSelection | undefined,
     lookupAsset: (assetId: string) => Asset<AssetType.Image> | null,
+    poseSizes: Readonly<Record<string, ImageSize>>,
 ): { asset: Asset<AssetType.Image> | null; frame?: NormalizedCrop } {
     const appearance = character.profile.appearance;
     const summary = appearance.getKind() === "preset"
         ? { kind: "preset" as const, poses: appearance.getPoses().map(p => ({ id: p.id, name: p.name, assetId: p.assetId })), defaultPoseId: appearance.getDefaultPoseId() }
         : { kind: "layered" as const, canvas: appearance.getCanvas(), axes: appearance.getAxes(), layers: appearance.getLayers() };
     const assetId = representativeAssetId(summary, { poseId: pose, tags });
-    const frame = (pose ? appearance.getPose(pose)?.portrait : undefined) ?? character.profile.getPortrait();
+    // Framed as the bake frames the avatar: the pose, the character, then a same-size pose's framing.
+    const inherited = pose && appearance.getKind() === "preset"
+        ? inheritedPosePortrait({
+            poses: appearance.getPoses(),
+            defaultPoseId: appearance.getDefaultPoseId(),
+            poseId: pose,
+            sizeOf: id => poseSizes[id],
+        })
+        : undefined;
+    const frame = (pose ? appearance.getPose(pose)?.portrait : undefined) ?? character.profile.getPortrait() ?? inherited;
     return { asset: assetId ? lookupAsset(assetId) : null, frame };
 }
 
@@ -171,8 +183,13 @@ export function useCharacterAvatar(
     // for a sprite nobody will look at is work: skip the resolve and the composite both.
     const thumbnailWins = spec.preferThumbnail === true && thumbnailId !== null;
     const pictureLook = character !== null && character !== undefined && spec.resolveVariant && !thumbnailWins;
+    const poseSizes = usePosePictureSizes(
+        pictureLook && character?.profile.appearance.getKind() === "preset" && spec.pose && !character.profile.appearance.getPose(spec.pose)?.portrait
+            ? character.profile.appearance.getPoses()
+            : null,
+    );
     const resolved = character && pictureLook
-        ? resolveCharacterFaceImage(character, spec.pose, spec.tags, lookupAsset)
+        ? resolveCharacterFaceImage(character, spec.pose, spec.tags, lookupAsset, poseSizes)
         : { asset: null as Asset<AssetType.Image> | null, frame: undefined };
     const offStageId = spec.offStage && character && !resolved.asset ? offStageAvatarAssetId(character) : null;
     const offStageAsset = offStageId ? lookupAsset(offStageId) : null;

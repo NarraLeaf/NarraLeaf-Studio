@@ -81,6 +81,11 @@ export function AvatarSection(props: {
     selection: SpriteSelection;
     /** The framing in force for this differential, or undefined while the head is being located. */
     crop: PortraitCrop | undefined;
+    /**
+     * Whether there is a framing of the author's to take back - this differential's own, or the
+     * character's. A framing inherited from another pose is not one, and reset leaves it showing.
+     */
+    cropResettable: boolean;
     /** True when that framing is this differential's own rather than the character's default. */
     cropScoped: boolean;
     /**
@@ -181,7 +186,7 @@ export function AvatarSection(props: {
                             className={ICON_BTN}
                             onClick={props.onResetCrop}
                             aria-label={t("characters.preview.resetPortrait")}
-                            {...writes(props.crop === undefined, t("characters.preview.resetPortrait"))}
+                            {...writes(!props.cropResettable, t("characters.preview.resetPortrait"))}
                         >
                             <RotateCcw className="w-3.5 h-3.5" />
                         </button>

@@ -32,8 +32,15 @@ describe("resolveAvatarBakePortrait", () => {
         expect(resolveAvatarBakePortrait({ pose, profile })).toBe(pose);
     });
 
-    it("falls back to the character-wide crop last", () => {
+    it("falls back to the character-wide crop", () => {
         expect(resolveAvatarBakePortrait({ profile })).toBe(profile);
+    });
+
+    it("takes a same-size pose's framing only where the author framed nothing for this one", () => {
+        const inherited = { x: 0.4, y: 0.4, w: 0.2, h: 0.1 };
+        expect(resolveAvatarBakePortrait({ inherited })).toBe(inherited);
+        expect(resolveAvatarBakePortrait({ profile, inherited })).toBe(profile);
+        expect(resolveAvatarBakePortrait({ pose, inherited })).toBe(pose);
     });
 
     it("reports nothing rather than a guess, so the head detector runs", () => {
