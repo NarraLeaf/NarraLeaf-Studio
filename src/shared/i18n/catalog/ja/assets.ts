@@ -20,6 +20,7 @@ export const assets = {
     history: {
         deleteAsset: "{name} の削除",
         deleteGroup: "フォルダ {name} の削除",
+        replaceContent: "{name} の差し替え",
         restoreFailed: "「{name}」を復元できなかった",
     },
     delete: {

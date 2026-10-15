@@ -195,9 +195,8 @@ export const story = {
         // Deleting an asset is not something a session can do, so this is the file having gone
         // before the session started or after it ended - not a step somebody took inside one.
         undoAssetGone: "That asset is gone.",
-        // The same answer replacing an asset's contents has always given, in a session or out of
-        // one: the bytes that were there are not kept, so there is nothing to point the record back
-        // at.
+        // Inside a session the bytes a replacement wrote over are not kept, so there is nothing to
+        // point the record back at. Outside one, Replace File… is an ordinary step of undo.
         undoContentReplaced: "Replacing a file cannot be taken back.",
         undoConfigEntryGone: "That entry is no longer in this project.",
         undoConfigEntryRestored: "That entry is back in this project.",

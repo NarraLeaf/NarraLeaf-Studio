@@ -16,6 +16,7 @@ export const assets = {
     history: {
         deleteAsset: "删除 {name}",
         deleteGroup: "删除文件夹 {name}",
+        replaceContent: "替换 {name}",
         restoreFailed: "无法恢复“{name}”",
     },
     delete: {

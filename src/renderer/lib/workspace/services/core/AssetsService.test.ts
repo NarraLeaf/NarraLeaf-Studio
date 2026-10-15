@@ -940,3 +940,86 @@ describe("AssetsService library changes", () => {
         expect(groupMap[AssetCategory.Image]["folder-hero"]).toBeDefined();
     });
 });
+
+/**
+ * Replace File… and the media conversion: one asset's bytes replaced as one step on the project's
+ * stack, with the bytes it wrote over copied aside first.
+ */
+describe("AssetsService.replaceAssetContentUndoably", () => {
+    beforeEach(() => {
+        fakeDisk.clear();
+        copyRefusal = null;
+    });
+
+    const label = { key: "assets.history.replaceContent" as never, params: { name: "room.png" } };
+
+    it("leaves one step that writes the old file back, and the new one in again", async () => {
+        const asset = imageAsset("asset-1", { name: "room.png" });
+        seedPayload("asset-1", "OLD");
+        fakeDisk.set("C:/incoming/room.jpg", "NEW");
+        const { service, metadata, history } = createHarness([asset]);
+
+        const result = await service.replaceAssetContentUndoably(asset, "C:/incoming/room.jpg", label);
+        expect(result.success).toBe(true);
+        expect(fakeDisk.get("assets/content/asset-1")).toBe("NEW");
+        expect(metadata[AssetType.Image]["asset-1"].name).toBe("room.jpg");
+        expect(history.canUndo(projectHistoryScope())).toBe(true);
+
+        history.undo(projectHistoryScope());
+        await history.settled();
+        expect(fakeDisk.get("assets/content/asset-1")).toBe("OLD");
+        expect(metadata[AssetType.Image]["asset-1"].hash).toBe("hash-of-bytes:OLD");
+        // The name and extension come back with the bytes.
+        expect(metadata[AssetType.Image]["asset-1"].name).toBe("room.png");
+        expect(metadata[AssetType.Image]["asset-1"].ext).toBe("png");
+
+        history.redo(projectHistoryScope());
+        await history.settled();
+        expect(fakeDisk.get("assets/content/asset-1")).toBe("NEW");
+        expect(metadata[AssetType.Image]["asset-1"].name).toBe("room.jpg");
+    });
+
+    it("writes nothing and leaves no step when the current file cannot be copied aside", async () => {
+        const asset = imageAsset("asset-1");
+        seedPayload("asset-1", "OLD");
+        fakeDisk.set("C:/incoming/new.png", "NEW");
+        const { service, metadata, history, calls } = createHarness([asset]);
+
+        copyRefusal = "NO_SPACE";
+        const result = await service.replaceAssetContentUndoably(asset, "C:/incoming/new.png", label);
+
+        // Refused in the terms the surfaces word for the author: the disk's reason travels with it.
+        expect(result).toMatchObject({ success: false, refusal: { kind: "notKept", fsCode: "NO_SPACE" } });
+        expect(calls).not.toContain("write-bytes");
+        expect(fakeDisk.get("assets/content/asset-1")).toBe("OLD");
+        expect(metadata[AssetType.Image]["asset-1"].hash).toBe("hash-asset-1");
+        expect(history.canUndo(projectHistoryScope())).toBe(false);
+    });
+
+    it("leaves no step when the asset's file was already missing, since nothing was there to put back", async () => {
+        const asset = imageAsset("asset-1");
+        fakeDisk.set("C:/incoming/new.png", "NEW");
+        const { service, history } = createHarness([asset]);
+
+        const result = await service.replaceAssetContentUndoably(asset, "C:/incoming/new.png", label);
+
+        expect(result.success).toBe(true);
+        expect(fakeDisk.get("assets/content/asset-1")).toBe("NEW");
+        expect(history.canUndo(projectHistoryScope())).toBe(false);
+    });
+
+    it("lets the copy go when the replacement itself is refused", async () => {
+        const asset = imageAsset("asset-1");
+        seedPayload("asset-1", "OLD");
+        const { service, history } = createHarness([asset]);
+        const local = (service as any).localAssetsManager;
+        local.writeAssetContentFromPath = async () => ({ success: false, error: "not an image", refusal: { kind: "undecodable" } });
+
+        const result = await service.replaceAssetContentUndoably(asset, "C:/incoming/fake.png", label);
+
+        expect(result).toMatchObject({ success: false, refusal: { kind: "undecodable" } });
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect([...fakeDisk.keys()].filter(key => key.startsWith(".nlstudio/trash/"))).toEqual([]);
+        expect(history.canUndo(projectHistoryScope())).toBe(false);
+    });
+});

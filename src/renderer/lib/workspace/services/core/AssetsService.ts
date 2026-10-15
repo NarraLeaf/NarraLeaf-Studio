@@ -2839,6 +2839,54 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     }
 
     /**
+     * {@link replaceAssetContent}, leaving one step on the project's stack that takes it back: what
+     * Replace File… and the media conversion do.
+     *
+     * The asset's current bytes are copied aside first. When that copy cannot be made, nothing is
+     * written and the answer is refused with `notKept`, which the caller words for the author with the
+     * disk's reason. Undo writes the old bytes back, and with them the old extension and name (an
+     * `intro.avi` converted to `intro.webm` is `intro.avi` again); redo writes the new ones in again.
+     *
+     * No step when there was nothing to keep - the asset's file was already missing - and none inside a
+     * live session, where the room's undo has no step for replaced bytes (see {@link beginLibraryChange}).
+     */
+    public async replaceAssetContentUndoably<T extends AssetType>(
+        asset: Asset<T, AssetSource>,
+        sourcePath: string,
+        label: HistoryLabel,
+    ): Promise<RefusableStatus<Asset<T, AssetSource>>> {
+        const change = asset.source === AssetSource.Local ? this.beginLibraryChange() : null;
+        if (!change) {
+            return this.replaceAssetContent(asset, sourcePath);
+        }
+        const kept = await change.keep([asset as Asset<AssetType, AssetSource>]);
+        if (!kept.ok) {
+            return {
+                success: false,
+                error: `Could not keep the current file of ${asset.id} for undo, so nothing was written`,
+                refusal: kept.refusal,
+            };
+        }
+        const replaced = await this.replaceAssetContent(asset, sourcePath);
+        if (!replaced.success) {
+            change.dispose();
+            return replaced;
+        }
+        change.replaced(asset.id);
+        if (change.isEmpty()) {
+            return replaced;
+        }
+        const history = this.getContext().services.get<HistoryService>(Services.History);
+        history.pushCommand(projectHistoryScope(), {
+            label,
+            undo: () => change.undo(),
+            redo: () => change.redo(),
+            dispose: () => change.dispose(),
+        });
+        return replaced;
+    }
+
+    /**
      * Swap the bytes behind an existing asset, keeping its id.
      *
      * References store the asset id, never a path, so every place that pointed at this asset follows
@@ -2857,9 +2905,8 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
      *
      * This records no history of its own. An operation whose replacement has to be undoable copies the
      * asset's bytes aside first ({@link beginLibraryChange}) and leaves the step itself - the PSD
-     * re-import and the voice pickup do. Replace File… and the media conversion do not: they cannot
-     * be undone, and the UI expresses that with the button hierarchy on the confirm, not with a
-     * sentence.
+     * re-import and the voice pickup do, and Replace File… and the media conversion go through
+     * {@link replaceAssetContentUndoably}, which does both for one asset.
      */
     public async replaceAssetContent<T extends AssetType>(
         asset: Asset<T, AssetSource>,

@@ -16,6 +16,8 @@ export const assets = {
     history: {
         deleteAsset: "delete {name}",
         deleteGroup: "delete folder {name}",
+        // Replace File… on an asset. `name` is the asset's name before the step.
+        replaceContent: "replace {name}",
         // An undo or redo that left the asset as it was. A reason from `replace.reason` or the
         // disk's own follows it.
         restoreFailed: "Could not restore “{name}”.",

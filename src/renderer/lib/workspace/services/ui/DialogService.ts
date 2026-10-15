@@ -63,12 +63,12 @@ export class DialogService {
     }
 
     /**
-     * Confirm something irreversible: deleting an asset, overwriting its bytes.
+     * Confirm something the author should weigh before it happens: deleting an asset still in use,
+     * replacing a file inside a live session, where nothing can take the replacement back.
      *
      * Same shape as {@link confirm}, inverted hierarchy — the way out is the primary button and the
      * keyboard default, the destructive action is a danger-coloured secondary the author has to aim
-     * at. Nothing here is undoable (there is no asset history), so the button layout is what says so;
-     * see the U3b card's ruling against spelling it out in prose.
+     * at. The button layout is what says so, rather than a sentence spelling it out in prose.
      */
     public async confirmDestructive(message: string, detail: string | undefined, confirmLabel: string): Promise<boolean> {
         return new Promise<boolean>(resolve => {

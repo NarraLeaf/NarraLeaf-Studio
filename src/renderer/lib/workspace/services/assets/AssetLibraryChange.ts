@@ -91,9 +91,9 @@ type CreatedFolder = {
  * also why nothing used to be able to take a replacement back: the file is still there, and what it
  * held before is gone. So before an operation writes over an asset, {@link keep} copies the asset's
  * current bytes into the project's undo trash (`AssetTrash`), and nothing may be written over an asset
- * whose copy could not be made. One mechanism for every operation that replaces bytes: the PSD
- * re-import that refreshes the images it made last time, and the voice pickup that writes a new
- * recording into a take.
+ * whose copy could not be made. One mechanism for every operation that replaces bytes: Replace File…
+ * (`AssetsService.replaceAssetContentUndoably`), the PSD re-import that refreshes the images it made
+ * last time, and the voice pickup that writes a new recording into a take.
  *
  * # Undo and redo
  *
