@@ -33,10 +33,12 @@ export type StoryFaceSurface = "plate" | "inline";
  * Which character and appearance a row pictures on `surface`, and whether to resolve a
  * differential-specific sprite (vs. fall straight through to the profile thumbnail).
  *
- * A character action row (`/show`, `/face`…) pictures its own payload's form/variants — inline only. A
- * dialogue row pictures the speaker's accumulated appearance — on its plate only, and only when
- * one exists; a speaker who has not been shown keeps the plain thumbnail, so a line before any `/show`
- * does not invent a look.
+ * A character action row (`/show`, `/face`…) pictures the look on stage once it has run, inline only:
+ * `appearance` is that look when the caller has the scene (`characterRowLook`), and the row's own
+ * payload otherwise. A `/face` names only the axes it changes, so its payload alone left every other
+ * axis at its default. A dialogue row pictures the speaker's accumulated appearance — on its plate
+ * only, and only when one exists; a speaker who has not been shown keeps the plain thumbnail, so a
+ * line before any `/show` does not invent a look.
  */
 function getFaceSpec(
     block: StoryBlock,
@@ -45,7 +47,12 @@ function getFaceSpec(
 ): { characterId: string; pose?: string; tags?: StoryCharacterTagSelection; resolveVariant: boolean } | null {
     if (surface === "inline") {
         return block.kind === "action" && block.payload.action === "character" && block.payload.characterId
-            ? { characterId: block.payload.characterId, pose: block.payload.pose, tags: block.payload.tags, resolveVariant: true }
+            ? {
+                characterId: block.payload.characterId,
+                pose: appearance?.pose ?? block.payload.pose,
+                tags: appearance?.tags ?? block.payload.tags,
+                resolveVariant: true,
+            }
             : null;
     }
     if (block.kind === "nodeAction" && block.payload.action === "dialogue" && block.payload.characterId) {
@@ -175,8 +182,13 @@ export function useCharacterAvatar(
  * border. It renders nothing at all when the character has no picture, which leaves the line the plain
  * words it always was rather than a hole where a face should be.
  */
-export function StoryLineCharacterFace({ block, characters }: { block: StoryBlock; characters: Character[] }) {
-    const { url, frame, showingSprite } = useCharacterFace(block, undefined, characters, "inline");
+export function StoryLineCharacterFace({ block, characters, appearance }: {
+    block: StoryBlock;
+    characters: Character[];
+    /** The look on stage after the row (`characterRowLook`); the row's payload when omitted. */
+    appearance?: CharacterAppearanceRef;
+}) {
+    const { url, frame, showingSprite } = useCharacterFace(block, appearance, characters, "inline");
     if (!url) {
         return null;
     }

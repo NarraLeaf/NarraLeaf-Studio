@@ -103,7 +103,7 @@ import { ConditionEditor, EMPTY_EXPRESSION_CONDITION } from "./ConditionEditor";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { useAssetFieldNotice } from "@/lib/workspace/hooks/useAssetFieldNotice";
 import type { StoryRowLookups } from "@/lib/story/storyRowProjection";
-import { describeBlockSubject, getBlockBadgeInfo } from "./storySceneBlockUtils";
+import { characterRowAppearances, describeBlockSubject, getBlockBadgeInfo } from "./storySceneBlockUtils";
 import { useStoryBlueprintNames } from "./useStoryBlueprintNames";
 import { useStoryMotionNames } from "./useStoryMotionNames";
 import { useStoryVoiceState } from "./useStoryVoiceState";
@@ -1182,6 +1182,7 @@ function ActionPayloadFields(props: {
                 payload={payload}
                 storyId={props.document.id}
                 sceneId={props.sceneId}
+                scene={props.document.scenes[props.sceneId]}
                 blockId={props.block.id}
                 storyName={props.document.name}
                 characters={props.characters}
@@ -2375,6 +2376,8 @@ export function CharacterActionEditor(props: {
     payload: CharacterActionPayload;
     storyId: string;
     sceneId: StorySceneId;
+    /** The row's scene, for the look already on stage before it. */
+    scene?: StoryScene;
     blockId: string;
     storyName: string;
     characters: Character[];
@@ -2543,6 +2546,9 @@ export function CharacterActionEditor(props: {
                         character={selectedCharacter}
                         pose={payload.pose}
                         tags={payload.tags}
+                        baseTags={payload.operation === "expression" && props.scene
+                            ? characterRowAppearances(props.scene).get(props.blockId)?.before?.tags
+                            : undefined}
                         onChange={next => onChange({ ...payload, pose: next.pose, tags: next.tags })}
                     />
                 </Section>

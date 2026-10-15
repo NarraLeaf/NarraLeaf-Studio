@@ -3,7 +3,7 @@ import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
 import { deleteBlockFromScene, insertBlockInScene, moveBlocksInScene } from "@/lib/workspace/services/story/storyModel";
-import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isReadableAccentColor, nextSelectionAfterDelete, planBlockGroupMove, planRowBackspaceReplacement, planSelectionNudge, readableAccentColor, storyRowActivation } from "./storySceneBlockUtils";
+import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isReadableAccentColor, nextSelectionAfterDelete, planBlockGroupMove, planRowBackspaceReplacement, planSelectionNudge, readableAccentColor, storyRowActivation, characterRowAppearances, characterRowLook } from "./storySceneBlockUtils";
 import { dialogueOnlyStoryRowFilter, storyRowPassesFilter } from "./storyRowFilter";
 import type { VisibleStoryRow } from "./storySceneEditorTypes";
 
@@ -692,5 +692,34 @@ describe("activating a selected row", () => {
         expect(storyRowActivation({ id: "e", kind: "empty", parentId: null, childrenIds: [] } as unknown as StoryBlock, false)).toEqual({ kind: "editLine", seed: "" });
         expect(storyRowActivation(control({ control: "condition" } as never), false)).toEqual({ kind: "toggleFold" });
         expect(storyRowActivation({ id: "i", kind: "invalid", parentId: null, childrenIds: [], payload: { source: "/nope" } } as unknown as StoryBlock, true)).toEqual({ kind: "nothing" });
+    });
+});
+
+describe("the look a character row pictures", () => {
+    /**
+     * 「@外观 美绪 蓝卫衣」 changes the hoodie and keeps the smile an earlier row chose. Its face drew
+     * the payload alone, which filled the face axis with its default: she read calm while smiling.
+     */
+    const rows = [
+        characterAction("enter", { action: "character", operation: "enter", characterId: "mio", tags: { face: "calm", outfit: "white" } }),
+        characterAction("smile", { action: "character", operation: "expression", characterId: "mio", tags: { face: "smile" } }),
+        characterAction("navy", { action: "character", operation: "expression", characterId: "mio", tags: { outfit: "navy" } }),
+        characterAction("exit", { action: "character", operation: "exit", characterId: "mio" }),
+    ];
+    const staged = scene(rows, rows.map(row => row.id));
+
+    it("is what is on stage once the row has run", () => {
+        expect(characterRowLook(staged, rows[2])?.tags).toEqual({ face: "smile", outfit: "navy" });
+        expect(characterRowLook(staged, rows[1])?.tags).toEqual({ face: "smile", outfit: "white" });
+    });
+
+    it("is what she wore as she left, on the row that takes her off", () => {
+        expect(characterRowLook(staged, rows[3])?.tags).toEqual({ face: "smile", outfit: "navy" });
+    });
+
+    it("keeps the look before the row, for the inspector to preview the row's own tags over", () => {
+        expect(characterRowAppearances(staged).get("navy")?.before?.tags).toEqual({ face: "smile", outfit: "white" });
+        // One pass per scene object.
+        expect(characterRowAppearances(staged)).toBe(characterRowAppearances(staged));
     });
 });

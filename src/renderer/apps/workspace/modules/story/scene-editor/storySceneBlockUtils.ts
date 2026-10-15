@@ -48,8 +48,67 @@ function placementOf(preset: string | undefined): StoryStagePlacement | undefine
 }
 
 export function buildDialogueAppearances(scene: StoryScene): Map<StoryBlockId, CharacterAppearanceRef> {
-    const current = new Map<string, CharacterAppearanceRef>();
     const result = new Map<StoryBlockId, CharacterAppearanceRef>();
+    walkStageAppearances(scene, {
+        dialogue: (block, appearance) => {
+            if (appearance) {
+                result.set(block.id, appearance);
+            }
+        },
+    });
+    return result;
+}
+
+/** A character row's look just before it runs and just after. Either is absent while nothing was shown. */
+export type CharacterRowAppearance = { before?: CharacterAppearanceRef; after?: CharacterAppearanceRef };
+
+const characterRowAppearanceCache = new WeakMap<StoryScene, Map<StoryBlockId, CharacterRowAppearance>>();
+
+/**
+ * Each character action row's look before and after it, from the same document-order pass as
+ * {@link buildDialogueAppearances}.
+ *
+ * A `/face` row names only the axes it changes, so its own payload is not what is on stage after it:
+ * 「@外观 美绪 蓝卫衣」 changes the hoodie and keeps the smile an earlier row chose. Its face in the row,
+ * and the stack the inspector previews for it, are drawn from `after` - drawing the payload alone
+ * filled every axis it does not name with that axis's default, so the row showed her calm while she
+ * smiles. Cached per scene object: a scene is replaced, never mutated, on every edit.
+ */
+export function characterRowAppearances(scene: StoryScene): ReadonlyMap<StoryBlockId, CharacterRowAppearance> {
+    const cached = characterRowAppearanceCache.get(scene);
+    if (cached) {
+        return cached;
+    }
+    const result = new Map<StoryBlockId, CharacterRowAppearance>();
+    walkStageAppearances(scene, {
+        character: (block, before, after) => {
+            result.set(block.id, { before, after });
+        },
+    });
+    characterRowAppearanceCache.set(scene, result);
+    return result;
+}
+
+/**
+ * The look a character row pictures: what is on stage once the row has run, or, for the row that
+ * takes her off, what she wore as she left. Undefined for a row outside `scene` or before any look.
+ */
+export function characterRowLook(scene: StoryScene | undefined, block: StoryBlock): CharacterAppearanceRef | undefined {
+    if (!scene || block.kind !== "action" || block.payload.action !== "character") {
+        return undefined;
+    }
+    const entry = characterRowAppearances(scene).get(block.id);
+    return block.payload.operation === "exit" ? entry?.before : entry?.after;
+}
+
+function walkStageAppearances(
+    scene: StoryScene,
+    visitors: {
+        character?: (block: StoryBlock, before: CharacterAppearanceRef | undefined, after: CharacterAppearanceRef | undefined) => void;
+        dialogue?: (block: StoryBlock, appearance: CharacterAppearanceRef | undefined) => void;
+    },
+): void {
+    const current = new Map<string, CharacterAppearanceRef>();
     const visit = (blockId: StoryBlockId) => {
         const block = scene.blocks[blockId];
         if (!block) {
@@ -57,6 +116,7 @@ export function buildDialogueAppearances(scene: StoryScene): Map<StoryBlockId, C
         }
         if (block.kind === "action" && block.payload.action === "character" && block.payload.characterId) {
             const characterId = block.payload.characterId;
+            const before = current.get(characterId);
             const position = placementOf(placementWordFor(block.payload.transform?.to?.position) ?? undefined);
             if (block.payload.operation === "exit") {
                 current.delete(characterId);
@@ -84,16 +144,13 @@ export function buildDialogueAppearances(scene: StoryScene): Map<StoryBlockId, C
                 // coordinate/scale-only move carries no placement and leaves the accumulated one untouched.
                 current.set(characterId, { ...current.get(characterId), position, positionSourceId: block.id });
             }
+            visitors.character?.(block, before, current.get(characterId));
         } else if (block.kind === "nodeAction" && block.payload.action === "dialogue" && block.payload.characterId) {
-            const appearance = current.get(block.payload.characterId);
-            if (appearance) {
-                result.set(block.id, appearance);
-            }
+            visitors.dialogue?.(block, current.get(block.payload.characterId));
         }
         block.childrenIds.forEach(visit);
     };
     scene.rootBlockIds.forEach(visit);
-    return result;
 }
 
 /**
