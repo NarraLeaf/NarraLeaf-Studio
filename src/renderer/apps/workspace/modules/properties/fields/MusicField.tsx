@@ -2,7 +2,7 @@ import { Music } from "lucide-react";
 import { normalizeAudioClipRegion } from "@shared/types/audio";
 import { AUDIO_TRACK_ID_BGM, audioTrackDisplayName, resolveAudioTrack } from "@shared/types/audioTrack";
 import { useTranslation } from "@/lib/i18n";
-import { Select, Switch } from "@/lib/components/elements";
+import { Switch } from "@/lib/components/elements";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
@@ -10,11 +10,11 @@ import type { AssetsService } from "@/lib/workspace/services/core/AssetsService"
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { resolveEditorAssetSetMember } from "@/lib/workspace/assets/resolveWorkspaceAssetUrl";
 import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
-import { audioBusStatusLine } from "@/lib/story/audioBusStatus";
 import { AssetPickerRow } from "@/lib/ui-editor/widget-modules/shared/assets/AssetPickerRow";
 import {
     SoundOptionLabel,
     SoundOptionsFold,
+    SoundTrackOption,
     SoundVolumeControl,
 } from "@/lib/ui-editor/widget-modules/shared/sound/SoundPlaybackOptions";
 import { useProjectAudioTracks } from "@/lib/ui-editor/widget-modules/shared/sound/useProjectAudioTracks";
@@ -52,15 +52,12 @@ export function MusicField({
     music,
     onChange,
     chooseLabel,
-    showBus = false,
     readOnly,
 }: {
     music: MusicSetting | null;
     onChange: (next: MusicSetting | null, edit: MusicEdit) => void;
     /** The picker row's empty-state action and the picker's title. */
     chooseLabel: string;
-    /** End the open options with where the music goes: its track chain and the player's volume for it. */
-    showBus?: boolean;
     readOnly?: boolean;
 }) {
     const { t } = useTranslation();
@@ -77,7 +74,7 @@ export function MusicField({
                 onChange={next => (next ? onChange({ ...(music ?? {}), assetId: next }, "asset") : onChange(null, "clear"))}
                 readOnly={readOnly}
             />
-            {music ? <MusicOptions music={music} onChange={onChange} showBus={showBus} readOnly={readOnly} /> : null}
+            {music ? <MusicOptions music={music} onChange={onChange} readOnly={readOnly} /> : null}
         </div>
     );
 }
@@ -85,12 +82,10 @@ export function MusicField({
 function MusicOptions({
     music,
     onChange,
-    showBus,
     readOnly,
 }: {
     music: MusicSetting;
     onChange: (next: MusicSetting, edit: MusicEdit) => void;
-    showBus: boolean;
     readOnly?: boolean;
 }) {
     const { t } = useTranslation();
@@ -137,24 +132,13 @@ function MusicOptions({
                 onChange={next => patch({ volume: next ?? undefined }, "volume")}
                 readOnly={readOnly}
             />
-            <SoundOptionLabel>{t("properties.interactionSound.track")}</SoundOptionLabel>
-            <Select
-                size="sm"
-                fullWidth
-                value={track.id}
-                disabled={readOnly}
-                options={tracks.map(entry => ({ value: entry.id, label: audioTrackDisplayName(entry, t) }))}
-                onChange={value => {
-                    const id = value ? String(value) : "";
-                    patch({ audioTrackId: id && id !== AUDIO_TRACK_ID_BGM ? id : undefined }, "track");
-                }}
+            <SoundTrackOption
+                tracks={tracks}
+                trackId={track.id}
+                fallbackChannel="bgm"
+                onChange={id => patch({ audioTrackId: id && id !== AUDIO_TRACK_ID_BGM ? id : undefined }, "track")}
+                readOnly={readOnly}
             />
-            {showBus ? (
-                // Under the track it reads as the track's: its chain, then which player volume governs it.
-                <span className="col-start-2 min-w-0 truncate text-2xs text-fg-subtle">
-                    {audioBusStatusLine(t, tracks, track.id, "bgm")}
-                </span>
-            ) : null}
             <SoundOptionLabel>{loopLabel}</SoundOptionLabel>
             <div className="flex">
                 <Switch

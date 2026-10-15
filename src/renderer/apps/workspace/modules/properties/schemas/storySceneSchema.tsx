@@ -132,9 +132,7 @@ function SceneDefaultBackgroundField({ data }: CustomFieldProps<StorySceneEditor
  * The scene's opening music, the body of the scene inspector's Music section: the same picker row and
  * folded options as a page's music ({@link MusicField}).
  *
- * Writes the whole record through the scene editor's own commit, which records the undo step. The
- * options end with the bus line, because which of the player's volumes reaches this music follows
- * from where its track sits among the project's tracks, on another surface.
+ * Writes the whole record through the scene editor's own commit, which records the undo step.
  */
 function SceneMusicField({ data, readOnly }: CustomFieldProps<StorySceneEditorContext>) {
     const { t } = useTranslation();
@@ -145,7 +143,6 @@ function SceneMusicField({ data, readOnly }: CustomFieldProps<StorySceneEditorCo
                 data.onUpdateScene({ bgm: next });
             }}
             chooseLabel={t("properties.music.chooseScene")}
-            showBus
             readOnly={readOnly}
         />
     );

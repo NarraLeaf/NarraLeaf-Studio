@@ -1,7 +1,10 @@
 import { useState, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
-import { Slider, useSliderDraft } from "@/lib/components/elements";
+import { audioTrackDisplayName, type AudioTrackChannel, type ProjectAudioTrack } from "@shared/types/audioTrack";
+import { Select, Slider, useSliderDraft } from "@/lib/components/elements";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
+import { useTranslation } from "@/lib/i18n";
+import { audioBusStatusLine } from "@/lib/story/audioBusStatus";
 import { cn } from "@/lib/utils/cn";
 
 /** The increment the volume slider moves on. The box beside it takes any value in 0..1. */
@@ -58,6 +61,53 @@ export function SoundOptionsFold({ summary, label, children }: { summary: string
 /** The left-hand cell of one {@link SoundOptionsFold} row. */
 export function SoundOptionLabel({ children }: { children: ReactNode }) {
     return <span className="whitespace-nowrap text-xs text-fg-muted">{children}</span>;
+}
+
+/**
+ * The track row of a {@link SoundOptionsFold}: the track picker, and under it where the sound goes,
+ * its bus chain and then the player volume that governs it ({@link audioBusStatusLine}).
+ *
+ * Every sound's track row ends with that line, because the picker cannot say it: it names one track,
+ * and which of the player's volumes reaches that track follows from where it sits among the project's
+ * tracks, on another surface. One row for every sound, so the same picker never says it in one
+ * inspector and keeps quiet in the next.
+ */
+export function SoundTrackOption({
+    tracks,
+    trackId,
+    fallbackChannel,
+    onChange,
+    readOnly,
+}: {
+    tracks: readonly ProjectAudioTrack[];
+    /** The track the sound plays on, as the caller resolved it: the one the picker shows. */
+    trackId: string;
+    /** The seeded track a sound of this kind plays on when it names none. */
+    fallbackChannel: AudioTrackChannel;
+    /** The picked track's id; empty when the picker hands back nothing. */
+    onChange: (trackId: string) => void;
+    readOnly?: boolean;
+}) {
+    const { t } = useTranslation();
+    const label = t("properties.interactionSound.track");
+    return (
+        <>
+            <SoundOptionLabel>{label}</SoundOptionLabel>
+            <Select
+                size="sm"
+                fullWidth
+                value={trackId}
+                disabled={readOnly}
+                ariaLabel={label}
+                options={tracks.map(track => ({ value: track.id, label: audioTrackDisplayName(track, t) }))}
+                onChange={value => onChange(value ? String(value) : "")}
+            />
+            {/* Under the track it reads as the track's: its chain, then which player volume governs it. */}
+            <span className="col-start-2 min-w-0 truncate text-2xs text-fg-subtle">
+                {audioBusStatusLine(t, tracks, trackId, fallbackChannel)}
+            </span>
+        </>
+    );
 }
 
 /**
