@@ -1344,7 +1344,7 @@ export const story = {
         say: { label: "台詞", detail: "台詞を 1 行" },
         image: { label: "画像", detail: "舞台に画像を宣言する。表示は /show" },
         text: { label: "テキスト", detail: "舞台にテキストを宣言する。表示は /show" },
-        vfx: { label: "環境演出", detail: "全画面でループする重ね描きを宣言。花びら、雨、埃、光" },
+        vfx: { label: "環境演出", detail: "全画面でループする重ね描き（花びら、雨、埃、光）を宣言する。表示は /show" },
         layer: { label: "レイヤー", detail: "このシーンにレイヤーを追加" },
         swap: { label: "差し替え", detail: "オブジェクトの画像やテキストを入れ替える" },
         play: { label: "再生", detail: "アセットライブラリの動画を再生する。再生済みの動画をもう一度再生する" },

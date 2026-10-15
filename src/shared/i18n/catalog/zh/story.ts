@@ -1291,7 +1291,7 @@ export const story = {
         say: { label: "对白", detail: "写一行对白" },
         image: { label: "图片", detail: "在舞台上声明图片，由 /show 显示" },
         text: { label: "文本", detail: "在舞台上声明文本，由 /show 显示" },
-        vfx: { label: "氛围特效", detail: "声明全屏循环叠加：落花、雨雪、尘埃、光斑" },
+        vfx: { label: "氛围特效", detail: "声明全屏循环叠加（落花、雨雪、尘埃、光斑），由 /show 显示" },
         layer: { label: "图层", detail: "向本场景添加图层" },
         swap: { label: "替换", detail: "替换对象的图片或文本内容" },
         play: { label: "播放", detail: "播放资产库中的视频，或再次播放视频" },

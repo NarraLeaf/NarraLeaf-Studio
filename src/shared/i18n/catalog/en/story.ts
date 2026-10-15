@@ -1482,7 +1482,7 @@ export const story = {
         say: { label: "Say", detail: "A line of dialogue" },
         image: { label: "Image", detail: "Declare an image on stage; /show reveals it" },
         text: { label: "Text", detail: "Declare text on stage; /show reveals it" },
-        vfx: { label: "Ambience", detail: "Declare a looping full-screen overlay: petals, rain, dust, light" },
+        vfx: { label: "Ambience", detail: "Declare a looping full-screen overlay (petals, rain, dust, light); /show reveals it" },
         layer: { label: "Layer", detail: "Add a layer to this scene" },
         swap: { label: "Swap", detail: "Replace an object's image or text" },
         play: { label: "Play", detail: "Play a video from the asset library, or play a video again" },

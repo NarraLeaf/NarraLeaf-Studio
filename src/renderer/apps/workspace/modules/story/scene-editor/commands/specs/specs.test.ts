@@ -7,7 +7,8 @@ import { resolveCommandLine, type StoryCommandContext } from "../../storyCommand
 import { getCommandDef, getCommandSpec, listCommandSpecs } from "../registry";
 import { opensInspectorAfterCommit } from "../spec";
 import { declarationFromArgs } from "./variables";
-import { i18nStore } from "@/lib/i18n";
+import type { TranslationKey } from "@shared/i18n";
+import { i18nStore, translate } from "@/lib/i18n";
 
 /**
  * The line → block contract, pinned end-to-end: parse → resolve → spec.build. This is the suite the
@@ -1195,6 +1196,24 @@ describe("logic and effects", () => {
             i18nStore.setLocale("en");
         }
         expect(build("/transform camera 运镜").payload).toEqual(canonicalCamera);
+    });
+
+    it("says in the menu that a declaring command needs a /show", () => {
+        // `/image`, `/text` and `/vfx` put nothing on screen; the author learns that from the command
+        // menu's one line or not at all. `/vfx` was the one whose line did not say it.
+        const declaring = listCommandSpecs().filter(spec => spec.sequence?.lines[0]?.startsWith(`/${spec.token} `)
+            && spec.sequence.lines.some(line => line.startsWith("/show ")));
+        expect(declaring.map(spec => spec.id).sort()).toEqual(["image", "text", "vfx"]);
+        for (const locale of ["en", "zh", "ja"] as const) {
+            i18nStore.setLocale(locale);
+            try {
+                for (const spec of declaring) {
+                    expect(translate(`story.command.${spec.id}.detail` as TranslationKey), `${locale} ${spec.id}`).toContain("/show");
+                }
+            } finally {
+                i18nStore.setLocale("en");
+            }
+        }
     });
 
     it("names an unnamed overlay or text in the words the author writes", () => {
