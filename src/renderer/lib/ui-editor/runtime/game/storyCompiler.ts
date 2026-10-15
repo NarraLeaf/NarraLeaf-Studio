@@ -3178,6 +3178,13 @@ async function compilePreviewTargetOwnStatements(
         if (block.payload.action === "nvl") {
             return compileNvl(ctx, block);
         }
+        if (block.payload.action === "vfx") {
+            // The preview draws no overlay (the walk that poses its stage says the same), so it has
+            // none registered: compiling the row looked the overlay up, found nothing, and reported
+            // 「樱花」 as not on stage - a fault in the author's scene that is not there.
+            diagnostic(ctx, "warning", block.id, say("story.preview.diagnostics.ambienceSkipped"));
+            return [];
+        }
         return compileStoryAction(ctx, block);
     }
     if (block.kind === "control") {
