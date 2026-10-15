@@ -152,7 +152,12 @@ export class DialogService {
     }
 
     /**
-     * Show a dialog and wait for result
+     * Show a dialog and wait for result.
+     *
+     * Resolves with the pressed button's `result`, or `undefined` when the dialog is dismissed
+     * (Esc, the close button, the backdrop). The button's answer is settled before the dialog
+     * closes: closing runs `onClose`, and an `onClose` that answered first would turn every button
+     * into a dismissal.
      */
     public async showAndWait<T = any>(options: {
         title: string;
@@ -164,6 +169,13 @@ export class DialogService {
         height?: string | number;
     }): Promise<T | undefined> {
         return new Promise<T | undefined>(resolve => {
+            let settled = false;
+            const settle = (value: T | undefined) => {
+                if (!settled) {
+                    settled = true;
+                    resolve(value);
+                }
+            };
             const id = this.createDialog({
                 ...options,
                 buttons: options.buttons?.map(btn => ({
@@ -172,11 +184,16 @@ export class DialogService {
                         if (btn.onClick) {
                             await btn.onClick();
                         }
+                        // Dismissed while the button's own handler ran: the dismissal stands and
+                        // the dialog is already gone.
+                        if (settled) {
+                            return;
+                        }
+                        settle(btn.result);
                         this.close(id);
-                        resolve((btn as any).result);
                     },
                 })),
-                onClose: () => resolve(undefined),
+                onClose: () => settle(undefined),
             });
         });
     }

@@ -359,6 +359,13 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
      */
     const runtimeReady = installState.status === "installed";
     const setupDone = runtimeReady && Boolean(puppet.assetId);
+    // The heading counts what is left: with one of the two in place it names the other, rather than
+    // still promising two things to an author who has done one.
+    const setupTitle = runtimeReady
+        ? t("characters.editor.puppet.setupTitleOne", { item: t("characters.editor.puppet.stepModel") })
+        : puppet.assetId
+            ? t("characters.editor.puppet.setupTitleOne", { item: t("characters.editor.puppet.stepRuntime") })
+            : t("characters.editor.puppet.setupTitle");
 
     const runtimeStatusLabel = !puppet.backend
         ? t("characters.editor.puppet.runtimeUnchosen")
@@ -486,7 +493,7 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
         return (
             <div className="space-y-1.5">
                 <p className="px-1 text-2xs tracking-wide text-fg-muted">
-                    {t("characters.editor.puppet.setupTitle")}
+                    {setupTitle}
                 </p>
                 {runtimeRow}
                 {modelRow}
@@ -505,6 +512,7 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
                     anchorRef={anchorMemo}
                     title={t("characters.editor.puppet.selectModel")}
                     multiple={false}
+                    modelFamily={MODEL_FAMILY_BY_KIND[appearance.getKind()]}
                 />
             </div>
         );
@@ -619,6 +627,7 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
                 anchorRef={anchorMemo}
                 title={t("characters.editor.puppet.selectModel")}
                 multiple={false}
+                modelFamily={MODEL_FAMILY_BY_KIND[appearance.getKind()]}
             />
         </div>
     );

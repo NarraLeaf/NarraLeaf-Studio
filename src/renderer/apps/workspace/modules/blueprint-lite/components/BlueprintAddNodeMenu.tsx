@@ -27,6 +27,7 @@ import { useCategoryRowScroll } from "./useCategoryRowScroll";
 import { useDeveloperMode } from "@/lib/developer";
 import { getBlueprintCategoryVisual } from "./blueprintCategoryVisuals";
 import { blueprintNodeFamilyOf } from "@/lib/ui-editor/blueprint-nodes/blueprintNodeFamilies";
+import { usePointerHighlight, type MenuPointer } from "@/apps/workspace/modules/story/scene-editor/storyMenuPointer";
 
 const MENU_W = 440;
 const MENU_MAX_H = 520;
@@ -104,6 +105,12 @@ export function BlueprintAddNodeMenu({
     const listRef = useRef<HTMLDivElement>(null);
     const menuRef = useRef<HTMLDivElement>(null);
     const navStateRef = useRef({ activeFlatIndex: -1, itemCount: 0 });
+    // The highlight is what Enter takes, so it follows the pointer only when the pointer moves: a
+    // wheel over the open list slides rows under a pointer that stays put, and a row lit by that
+    // would change the node Enter adds while the author was only scrolling to read. The grey hover
+    // tint follows the same rule. See `usePointerHighlight`.
+    const pointer = usePointerHighlight(key => setActiveFlatIndex(Number(key)));
+    const resetPointer = pointer.reset;
 
     // A floating layer for what the menu's own keys below do not cover: focus goes into the search
     // field when it opens, Escape closes the menu and nothing it was portalled out of, Tab out of it
@@ -124,8 +131,9 @@ export function BlueprintAddNodeMenu({
             setQuery("");
             setActiveCategoryId(openOnFields ? BLUEPRINT_ADD_NODE_FIELDS_CATEGORY_ID : BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID);
             setActiveFlatIndex(-1);
+            resetPointer();
         }
-    }, [open, openOnFields]);
+    }, [open, openOnFields, resetPointer]);
 
     useEffect(() => {
         setActiveFlatIndex(-1);
@@ -457,6 +465,7 @@ export function BlueprintAddNodeMenu({
                     aria-label={t("blueprint.addNode.listLabel")}
                     className="nl-no-scrollbar min-h-0 flex-1 overflow-y-auto px-2"
                     style={{ maxHeight: listMaxHeight }}
+                    {...pointer.listProps}
                 >
                     {itemCount === 0 ? (
                         <div className="my-2 rounded-md border border-edge bg-fill-subtle px-3 py-3 text-sm text-fg-subtle">
@@ -480,7 +489,8 @@ export function BlueprintAddNodeMenu({
                                         itemCount={itemCount}
                                         offsetY={item.start}
                                         onPick={pickEntry}
-                                        onHover={setActiveFlatIndex}
+                                        onPointerMove={pointer.move}
+                                        hoverTint={pointer.live}
                                         showTypeId={showTypeIds}
                                     />
                                 );
@@ -507,7 +517,10 @@ const BlueprintAddNodeRow = memo(function BlueprintAddNodeRow(props: {
     /** Where the windowed list puts this row inside its sizer. */
     offsetY: number;
     onPick: (entry: PaletteEntry) => void;
-    onHover: (flatIndex: number) => void;
+    /** The menu's pointer, told of every move over this row with the row's index as its key. */
+    onPointerMove: MenuPointer["move"];
+    /** Whether the row may wear the grey hover tint: the pointer has moved since rows last moved under it. */
+    hoverTint: boolean;
     showTypeId: boolean;
 }) {
     const { t } = useTranslation();
@@ -547,7 +560,8 @@ const BlueprintAddNodeRow = memo(function BlueprintAddNodeRow(props: {
         <div
             className={[
                 "group absolute left-0 top-0 flex h-[52px] w-full items-center rounded-md transition-colors",
-                props.active ? "bg-fill" : "hover:bg-fill",
+                // The highlight is the story menus' tint, so it never reads as the grey a hover leaves.
+                props.active ? "bg-primary/15" : props.hoverTint ? "hover:bg-fill" : "",
             ].join(" ")}
             style={{ transform: `translateY(${props.offsetY}px)` }}
         >
@@ -562,7 +576,7 @@ const BlueprintAddNodeRow = memo(function BlueprintAddNodeRow(props: {
                 className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-2 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
                 data-tip={title}
                 onClick={() => props.onPick(props.entry)}
-                onMouseEnter={() => props.onHover(props.flatIndex)}
+                onMouseMove={event => props.onPointerMove(String(props.flatIndex), event)}
             >
                 <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle">
                     <Icon className="h-4 w-4" style={{ color: visual.color }} aria-hidden />

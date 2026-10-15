@@ -554,7 +554,7 @@ export const lint = {
         storyTagNameShared: {
             title: "多个轴上的同名标签",
             description: "分层立绘角色的两个轴上有同名标签",
-            message: "{first} 与 {second} 两个轴上都有名为 {tag} 的标签",
+            message: "「{first}」与「{second}」两个轴上都有名为「{tag}」的标签",
             help:
                 "分层立绘角色有两个轴含有同名标签，例如「服装」与「发型」下都有「蓝」。比较名称时不区分大小写\n"
                 + "\n"

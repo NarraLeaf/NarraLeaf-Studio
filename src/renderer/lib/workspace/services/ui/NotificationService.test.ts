@@ -78,4 +78,63 @@ describe("NotificationService history", () => {
         expect(service.getHistory()).toHaveLength(1);
         expect(service.getHistory()[0]).toMatchObject({ id: "notification-old", count: 4, read: false });
     });
+
+    const restored = (id: string, message: string, timestamp: number) => ({
+        id,
+        type: NotificationType.Info,
+        message,
+        timestamp,
+        read: true,
+    });
+
+    it("gives a new notice an id no restored entry has", () => {
+        // What the last session wrote: its counter started from 1, as this session's would.
+        const service = new NotificationService(new UIStore());
+        service.seedHistory([
+            restored("notification-3", "Third", 3),
+            restored("notification-2", "Second", 2),
+            restored("notification-1", "First", 1),
+        ]);
+
+        for (let index = 0; index < 4; index += 1) {
+            raise(service, `New ${index}`);
+        }
+
+        const ids = service.getHistory().map(entry => entry.id);
+        expect(new Set(ids).size).toBe(ids.length);
+        expect(service.getHistory().map(entry => entry.message)).toEqual([
+            "New 3", "New 2", "New 1", "New 0", "Third", "Second", "First",
+        ]);
+    });
+
+    it("tells apart restored entries that were written under one id", () => {
+        const service = new NotificationService(new UIStore());
+        service.seedHistory([
+            restored("notification-2", "Later session, second", 4),
+            restored("notification-1", "Later session, first", 3),
+            restored("notification-2", "Earlier session, second", 2),
+            restored("notification-1", "Earlier session, first", 1),
+        ]);
+
+        const history = service.getHistory();
+        expect(new Set(history.map(entry => entry.id)).size).toBe(4);
+        // The first of each id keeps it; order and content are untouched.
+        expect(history.map(entry => entry.id).slice(0, 2)).toEqual(["notification-2", "notification-1"]);
+        expect(history.map(entry => entry.message)).toEqual([
+            "Later session, second", "Later session, first", "Earlier session, second", "Earlier session, first",
+        ]);
+    });
+
+    it("does not reuse ids across two sessions of the same project", () => {
+        const first = new NotificationService(new UIStore());
+        raise(first, "One");
+        raise(first, "Two");
+        vi.advanceTimersByTime(1);
+        const second = new NotificationService(new UIStore());
+        second.seedHistory([...first.getHistory()]);
+        raise(second, "Three");
+
+        const ids = second.getHistory().map(entry => entry.id);
+        expect(new Set(ids).size).toBe(3);
+    });
 });

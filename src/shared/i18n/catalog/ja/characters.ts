@@ -100,6 +100,7 @@ export const characters = {
             // ランタイム式のキャラクターが最初に置かれる案内つきの状態。ランタイムとモデルが
             // 両方そろうまで、その下の状態の項目は意味を持てないので出さない。
             setupTitle: "用意するものが 2 つある",
+            setupTitleOne: "未準備：{item}",
             stepRuntime: "描画ランタイム",
             stepModel: "モデル",
             runtimeInstalled: "インストール済み",
