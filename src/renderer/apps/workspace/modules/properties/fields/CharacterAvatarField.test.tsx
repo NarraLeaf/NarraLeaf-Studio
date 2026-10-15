@@ -38,6 +38,7 @@ function fieldFor(kind: CharacterAppearanceKind) {
     const data = {
         character: {
             profile: {
+                getId: () => "narra",
                 getDefaultAvatarAssetId: () => null,
                 setDefaultAvatarAssetId: () => undefined,
                 appearance: { getKind: () => kind },
