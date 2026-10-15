@@ -1015,7 +1015,8 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                 <button
                                     type="button"
                                     className="p-1 hover:text-primary"
-                                    title={t("common.refresh")}
+                                    data-tip={t("common.refresh")}
+                                    aria-label={t("common.refresh")}
                                     onClick={refreshLibrary}
                                 >
                                     <RefreshCw className="h-3 w-3" />
@@ -1087,7 +1088,8 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                     <button
                                         type="button"
                                         className="p-1 hover:text-primary"
-                                        title={t("story.flow.action.openFlow")}
+                                        data-tip={t("story.flow.action.openFlow")}
+                                        aria-label={t("story.flow.action.openFlow")}
                                         onClick={() => handleOpenSceneFlow(selectedEntry)}
                                     >
                                         <Waypoints className="h-3 w-3" />
@@ -1159,7 +1161,8 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                                             <button
                                                                 type="button"
                                                                 className="p-1 text-fg-muted hover:text-fg"
-                                                                title={t("story.panel.chapterActions")}
+                                                                data-tip={t("story.panel.chapterActions")}
+                                                                aria-label={t("story.panel.chapterActions")}
                                                                 onClick={event => handleOpenChapterMenu(event, chapter)}
                                                             >
                                                                 <MoreVertical className="h-3.5 w-3.5" />

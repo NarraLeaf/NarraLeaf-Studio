@@ -3840,7 +3840,8 @@ function VoiceInspectorSection({ block }: { block: StoryBlock }) {
                 <button
                     type="button"
                     className="grid h-6 w-6 place-items-center rounded-md text-fg-muted transition-colors hover:bg-fill hover:text-fg"
-                    title={t("storyInspector.voice.openTable")}
+                    data-tip={t("storyInspector.voice.openTable")}
+                    aria-label={t("storyInspector.voice.openTable")}
                     onClick={voice.openVoiceTable}
                 >
                     <ExternalLink className="h-3.5 w-3.5" />

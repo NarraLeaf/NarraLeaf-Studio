@@ -700,7 +700,8 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
                                 </button>
                                 <button
                                     className={onionAxisId ? ICON_BTN_ON : ICON_BTN}
-                                    title={t("characters.editor.onionSkin")}
+                                    data-tip={t("characters.editor.onionSkin")}
+                                    aria-label={t("characters.editor.onionSkin")}
                                     onClick={() => patchView({
                                         onionAxisId: onionAxisId ? null : (axes.find(axis => axis.tags.length > 1)?.id ?? null),
                                     })}
