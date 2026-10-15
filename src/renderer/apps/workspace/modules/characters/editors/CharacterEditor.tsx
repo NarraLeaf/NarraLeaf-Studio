@@ -58,7 +58,7 @@ import { useCharacterAvatarBake } from "../useCharacterAvatarBake";
 import { syncCharacterEditorTabTitle } from "../state/useCharacterFocus";
 import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
 import { combinationKey, enumerateCombinations } from "@/lib/workspace/services/character/characterCombinations";
-import { characterAvatarAxisIds, characterAvatarKey } from "@shared/utils/characterAvatar";
+import { characterAvatarAxisIds, characterAvatarKey, characterAvatarSelection } from "@shared/utils/characterAvatar";
 import { readableAccentColor } from "@/apps/workspace/modules/story/scene-editor/storySceneBlockUtils";
 import {
     CHARACTER_INSPECTOR_DEFAULT_WIDTH,
@@ -308,18 +308,19 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
 
     // The baker's own keying, asked of the shared rule rather than re-derived, so what the avatar
     // section shows and what gets baked cannot drift apart.
-    const avatarAxisIds = useMemo(
+    const avatarSummary = useMemo(
         () => (appearance && kind === "layered"
-            ? characterAvatarAxisIds({
-                kind: "layered",
+            ? {
+                kind: "layered" as const,
                 canvas: null,
                 layers: [],
                 axes: appearance.getAxes(),
                 avatarAxisIds: appearance.getAvatarAxisIds(),
-            })
-            : []),
+            }
+            : undefined),
         [appearance, kind, version],
     );
+    const avatarAxisIds = useMemo(() => characterAvatarAxisIds(avatarSummary), [avatarSummary]);
 
     /**
      * The avatar key a look maps to. Several looks can map to one key: a combination varies on
@@ -527,7 +528,8 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
     // ------------------------------------------------------------------ avatar
 
     const avatarKey = kind === "preset" ? previewPoseId : avatarKeyOf(tags);
-    const avatarSelection = kind === "preset" ? { poseId: previewPoseId } : { tags: previewTags };
+    // Drawn as the bake draws it: the avatar axes' tags, every other axis at its default.
+    const avatarSelection = kind === "preset" ? { poseId: previewPoseId } : characterAvatarSelection(avatarSummary, previewTags);
     const profilePortrait = character.profile.getPortrait();
 
     /**

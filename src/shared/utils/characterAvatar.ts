@@ -65,6 +65,20 @@ export function characterAvatarAxisIds(appearance: CharacterAppearanceSummary | 
 }
 
 /**
+ * What the avatar of a look is drawn from: the look's tags on the avatar axes, every other axis left
+ * to its default - which is what the bake draws ({@link characterAvatarTargets} enumerates exactly
+ * those selections). Handing the editor's avatar box the whole look drew the outfit an avatar does
+ * not vary with, so the box showed a picture the game never would.
+ */
+export function characterAvatarSelection(
+    appearance: CharacterAppearanceSummary | undefined,
+    tags: Readonly<Record<string, string>>,
+): { tags: Record<string, string> } {
+    const axisIds = new Set(characterAvatarAxisIds(appearance));
+    return { tags: Object.fromEntries(Object.entries(tags).filter(([axisId]) => axisIds.has(axisId))) };
+}
+
+/**
  * The avatar key of one differential.
  *
  * Tag ids are **sorted** into the key. The insertion order of a tag map is an accident of which row

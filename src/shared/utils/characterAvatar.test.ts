@@ -5,6 +5,7 @@ import {
     characterAvatarKey,
     characterAvatarKeyFromTags,
     characterAvatarKeys,
+    characterAvatarSelection,
     parseCharacterAvatarAssetId,
     resolveCharacterAvatarAssetId,
 } from "./characterAvatar";
@@ -30,6 +31,16 @@ const layered: CharacterAppearanceSummary = {
         { id: "l2", name: "Face", axisId: "mood", options: { happy: "asset-happy", sad: "asset-sad" } },
     ],
 };
+
+describe("characterAvatarSelection", () => {
+    it("keeps only the avatar axes' tags, so the box draws what the bake draws", () => {
+        // The avatar varies with the mood only: the coat the character wears now is not on it.
+        const moodOnly = { ...layered, avatarAxisIds: ["mood"] } as CharacterAppearanceSummary;
+        expect(characterAvatarSelection(moodOnly, { mood: "sad", outfit: "coat" })).toEqual({ tags: { mood: "sad" } });
+        // Every axis by default.
+        expect(characterAvatarSelection(layered, { mood: "sad", outfit: "coat" })).toEqual({ tags: { mood: "sad", outfit: "coat" } });
+    });
+});
 
 describe("characterAvatarKey", () => {
     it("keys a preset differential on its pose, falling back to the default pose", () => {
