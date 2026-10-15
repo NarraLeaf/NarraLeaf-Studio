@@ -1762,6 +1762,14 @@ export const workspace = {
             replaceStale: "项目内容刚发生变更，请重新搜索",
             // 在面板中按 Ctrl+Z 时，最新一步仍是该次替换的场景撤销替换；替换后有改动的场景保留替换后的文本，
             // 由下面两条说明是哪些场景（场景名列在通知的详情行）。
+            // 「全部替换」完成后的通知；详情行给出撤销该次替换的按键。
+            replacedInScene: {
+                other: "已在 {scene} 中替换 {count} 处",
+            },
+            replacedInScenes: {
+                other: "已在 {scenes} 个场景中替换 {count} 处",
+            },
+            replacedUndoHint: "在搜索面板中按 {key} 可在所有场景中撤销",
             undoSkipped: {
                 other: "{count} 个场景在替换后有改动，其中的替换未撤销",
             },

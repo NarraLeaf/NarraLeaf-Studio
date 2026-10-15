@@ -127,6 +127,10 @@ export const help = {
                 + "- Interface text is searched in the project's source language. Selecting it opens the page or "
                 + "component with the widget selected. Sample text is marked Sample text after its place.\n"
                 + "- The Search panel can replace story text across the whole project.\n"
+                + "- Undo in the Search panel takes back its last replace in every scene that replace changed. A scene "
+                + "edited after the replace keeps it, and a notice names the scene. Undo in a scene takes back the "
+                + "replace in that scene alone.\n"
+                + "- In the search and replace boxes, Undo applies to that box's own text.\n"
                 + "- In the title bar's search box, a query that starts with > finds commands by name.\n"
                 + "- Quick Open opens scenes, characters, screens, assets and blueprints by name.",
         },

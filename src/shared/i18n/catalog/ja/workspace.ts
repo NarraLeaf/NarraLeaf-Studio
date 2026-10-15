@@ -1814,6 +1814,14 @@ export const workspace = {
             replaceStale: "プロジェクトが変わった。検索し直す",
             // パネルで Ctrl+Z を押すと、最新の手順がまだその置換であるシーンで置換を元に戻す。置換の後に
             // 編集したシーンは置換後のテキストのまま残り、下の 2 つがそのシーンを示す（シーン名は通知の詳細行）。
+            // 「すべて置換」の後の通知。詳細行は、その置換を元に戻すキーを示す。
+            replacedInScene: {
+                other: "{scene} で {count} 箇所を置換した",
+            },
+            replacedInScenes: {
+                other: "{scenes} 個のシーンで {count} 箇所を置換した",
+            },
+            replacedUndoHint: "検索パネルで {key} を押すと、すべてのシーンで元に戻る",
             undoSkipped: {
                 other: "置換の後に編集された {count} 個のシーンでは、置換を元に戻していない",
             },

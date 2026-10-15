@@ -9,7 +9,10 @@ import { CONTROL_SIZE_CLASS } from "@/lib/components/elements/controlSize";
 import { TooltipGroup } from "@/lib/tooltip";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useTextFieldUndo } from "@/apps/workspace/hooks/useTextFieldUndo";
+import { useShortcutLabels } from "@/apps/workspace/hooks/useShortcutLabels";
 import { Services } from "@/lib/workspace/services/services";
+import type { UIService } from "@/lib/workspace/services/core/UIService";
+import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { SearchService } from "@/lib/workspace/services/search/SearchService";
 import { parseSearchQuery } from "@/lib/workspace/services/search/searchIndexModel";
 import type { SearchGroup, SearchGroupResult } from "@/lib/workspace/services/search/searchIndexModel";
@@ -119,7 +122,8 @@ function editKey(storyId: string, sceneId: string, blockId: string): string {
  *    the newest step of that scene's own history.
  */
 export function SearchPanel() {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
+    const shortcuts = useShortcutLabels();
     const { context } = useWorkspace();
     const { openEditorTab, setPanelVisibility } = useRegistry();
     const freeze = useFreezeGuard();
@@ -282,16 +286,51 @@ export function SearchPanel() {
         [openEditorTab, setPanelVisibility, context],
     );
 
+    /**
+     * Say what Replace all changed, and which key takes it back.
+     *
+     * The rows it rewrote leave the list as they change, and most of them are in scenes the author
+     * is not looking at, so without this the only trace of the sweep is an emptier panel. The detail
+     * line is where the panel's Ctrl+Z is told: the one moment it is about to be wanted.
+     */
+    const announceReplace = useCallback(
+        (done: ReplacePlan) => {
+            if (!context) {
+                return;
+            }
+            const first = done.edits[0];
+            let scene: string | undefined;
+            if (done.sceneCount === 1 && first) {
+                try {
+                    scene = context.services.get<StoryService>(Services.Story)
+                        .getStoryDocument(first.storyId).scenes[first.sceneId]?.name;
+                } catch {
+                    scene = undefined;
+                }
+            }
+            const message = scene !== undefined
+                ? tn("workspace.shell.search.replacedInScene", done.occurrences, { scene })
+                : tn("workspace.shell.search.replacedInScenes", done.occurrences, { scenes: done.sceneCount });
+            context.services.get<UIService>(Services.UI).showNotification(message, "info", {
+                detail: t("workspace.shell.search.replacedUndoHint", { key: shortcuts.forBinding("search.undo") ?? "" }),
+            });
+        },
+        [context, shortcuts, t, tn],
+    );
+
     const applyPlan = useCallback(
-        (target: ReplacePlan | null) => {
+        (target: ReplacePlan | null, announce = false) => {
             if (!context || !target) {
                 return;
             }
             if (applyStoryReplace(context, target, REPLACE_HISTORY_LABEL)) {
                 setPlanNonce(nonce => nonce + 1);
+                if (announce) {
+                    announceReplace(target);
+                }
             }
         },
-        [context],
+        [announceReplace, context],
     );
 
     const toggleGroup = useCallback((group: SearchGroup) => {
@@ -440,7 +479,7 @@ export function SearchPanel() {
                         />
                         <button
                             type="button"
-                            onClick={() => applyPlan(plan)}
+                            onClick={() => applyPlan(plan, true)}
                             {...freeze.writes(!replaceReady, replaceTitle)}
                             className={cn(
                                 "inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-md",

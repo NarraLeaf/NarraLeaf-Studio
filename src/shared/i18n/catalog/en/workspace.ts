@@ -2083,6 +2083,16 @@ export const workspace = {
             // Ctrl+Z in the panel takes a replace back in every scene whose newest step is still
             // that replace. A scene edited after it keeps the replaced text, and these say which;
             // the notice's detail line lists the scene names.
+            // Raised by Replace all. The detail line names the key that takes the replace back.
+            replacedInScene: {
+                one: "Replaced {count} occurrence in {scene}",
+                other: "Replaced {count} occurrences in {scene}",
+            },
+            replacedInScenes: {
+                one: "Replaced {count} occurrence in {scenes} scenes",
+                other: "Replaced {count} occurrences in {scenes} scenes",
+            },
+            replacedUndoHint: "{key} in the Search panel undoes it in every scene.",
             undoSkipped: {
                 one: "Replace not undone in {count} scene edited after it",
                 other: "Replace not undone in {count} scenes edited after it",
