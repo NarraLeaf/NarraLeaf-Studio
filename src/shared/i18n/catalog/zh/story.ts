@@ -414,6 +414,9 @@ export const story = {
             backgroundLayer: "背景图层",
             displayableLayer: "基准图层",
         },
+        defaultName: {
+            text: "文本",
+        },
         reservedHint: {
             background: "场景的背景图片",
             backgroundLayer: "内置图层，位于所有内容之后",

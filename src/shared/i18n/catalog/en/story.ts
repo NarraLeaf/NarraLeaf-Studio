@@ -534,6 +534,10 @@ export const story = {
             backgroundLayer: "Background layer",
             displayableLayer: "Base layer",
         },
+        // The name a `/text` row takes when the line gives none: one token, as a target slot reads it.
+        defaultName: {
+            text: "text",
+        },
         reservedHint: {
             background: "The scene's background image",
             backgroundLayer: "Built-in layer, behind everything",

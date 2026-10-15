@@ -447,6 +447,9 @@ export const story = {
             backgroundLayer: "背景のレイヤー",
             displayableLayer: "基準レイヤー",
         },
+        defaultName: {
+            text: "テキスト",
+        },
         reservedHint: {
             background: "シーンの背景画像",
             backgroundLayer: "組み込みのレイヤー。すべての後ろにある",

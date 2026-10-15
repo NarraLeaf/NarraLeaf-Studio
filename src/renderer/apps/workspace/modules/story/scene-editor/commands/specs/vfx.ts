@@ -3,6 +3,7 @@ import type { StoryActionPayload, StoryBlock } from "@shared/types/story";
 import { WEATHER_SEED_IDS, type WeatherSeedId } from "@shared/weather/model";
 import { asEnum, asNumber, asText, defineStoryCommand } from "../spec";
 import { deriveObjectName } from "../payloadHelpers";
+import type { StoryCommandParamType } from "../../storyCommandGrammar";
 
 /**
  * `/vfx` - a full-screen ambience overlay.
@@ -51,6 +52,9 @@ function seedOf(value: { kind: string } | undefined): WeatherSeedId | null {
     return word && (WEATHER_SEED_IDS as readonly string[]).includes(word) ? (word as WeatherSeedId) : null;
 }
 
+/** The weather words a `/vfx` source slot reserves; the row is named after the one it names. */
+const WEATHER_WORDS: Extract<StoryCommandParamType, { kind: "enum" }> = { kind: "enum", options: WEATHER_SEED_IDS.map(value => ({ value })) };
+
 export const vfx = defineStoryCommand({
     id: "vfx",
     token: "vfx",
@@ -73,7 +77,7 @@ export const vfx = defineStoryCommand({
             // the inspector; the alternative - letting a library name shadow a built-in - would mean
             // the same line does different things in two projects.
             type: [
-                { kind: "enum", options: WEATHER_SEED_IDS.map(value => ({ value })) },
+                WEATHER_WORDS,
                 { kind: "asset", assetType: "video", allowSets: true },
             ],
             positional: true,
@@ -88,7 +92,7 @@ export const vfx = defineStoryCommand({
     },
     // Same auto-name rule as `/image` and `/video`: `/vfx petals.webm` lands an overlay called
     // `petals`, and `/vfx snow` one called `snow`.
-    deriveArgs: deriveObjectName("vfx", "clip", "vfx"),
+    deriveArgs: deriveObjectName("vfx", "clip", "vfx", WEATHER_WORDS),
     build(args, ctx): StoryBlock {
         const payload: Extract<StoryActionPayload, { action: "vfx" }> = {
             action: "vfx",

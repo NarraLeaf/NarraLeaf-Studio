@@ -1197,6 +1197,26 @@ describe("logic and effects", () => {
         expect(build("/transform camera 运镜").payload).toEqual(canonicalCamera);
     });
 
+    it("names an unnamed overlay or text in the words the author writes", () => {
+        // The weather word the author typed is the name they will address it by: a zh 樱花 overlay
+        // was named `sakura`, and the next `/show 樱花` found nothing. A `/text` with no name is 文本.
+        i18nStore.setLocale("zh");
+        try {
+            expect(build("/氛围特效 樱花")).toMatchObject({ payload: { action: "vfx", objectName: "樱花", seed: { seed: "sakura" } } });
+            expect(build("/文本 欢迎")).toMatchObject({ payload: { action: "text", objectName: "文本", text: "欢迎" } });
+        } finally {
+            i18nStore.setLocale("en");
+        }
+        i18nStore.setLocale("ja");
+        try {
+            expect(build("/テキスト ようこそ")).toMatchObject({ payload: { action: "text", objectName: "テキスト" } });
+        } finally {
+            i18nStore.setLocale("en");
+        }
+        expect(build("/vfx sakura")).toMatchObject({ payload: { action: "vfx", objectName: "sakura" } });
+        expect(build("/text Hello")).toMatchObject({ payload: { action: "text", objectName: "text" } });
+    });
+
     it("/vfx declares a looping overlay and names it off the clip", () => {
         expect(build("/vfx intro")).toMatchObject({
             kind: "action",
