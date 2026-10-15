@@ -2,7 +2,7 @@
  * Audio: sounds for a page.
  *
  * A widget's own hover and click sounds are not here: those are the element's Sound section in the
- * inspector. Nor is a page's music: that is the page's Page Music in the inspector, which also hands
+ * inspector. Nor is a page's music: that is the page's Music section in the inspector, which also hands
  * over to the next page's music and to the game's.
  *
  * Comments in English per project convention.

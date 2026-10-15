@@ -22,10 +22,6 @@ export const properties = {
         typePage: "页面",
         backgroundColor: "背景颜色",
         backgroundImage: "背景图片",
-        // 该页面显示时播放的音乐，对应场景检视器的「场景音乐」
-        music: "页面音乐",
-        clearMusic: "清除页面音乐",
-        selectMusic: "选择页面音乐",
         animation: "动画",
         logic: "逻辑",
         navigation: {
@@ -112,6 +108,19 @@ export const properties = {
         chooseHover: "选择悬停音效",
         chooseClick: "选择点击音效",
         missing: "音效缺失",
+    },
+    pageMusic: {
+        title: "音乐",
+        none: "未选择音乐",
+        choose: "选择页面音乐",
+        missing: "音乐缺失",
+        loop: "循环",
+        fade: "淡入淡出",
+        loops: "循环",
+        loopRegion: "循环 {from}s 至 {to}s",
+        loopToEnd: "循环 {from}s 至结尾",
+        once: "播放一次",
+        fadeSummary: "淡入淡出 {seconds}s",
     },
     linkedComponent: {
         missing: "组件缺失",

@@ -158,7 +158,7 @@ function validate(owner: BlueprintOwnerRef, name: string, ir: BlueprintGraphIr) 
 
 describe("blueprint layer templates", () => {
     it("shows each kind of blueprint its commonest needs first", () => {
-        // A page's music is its Page Music property, not a template.
+        // A page's music is its Music section in the inspector, not a template.
         expect(featuredFor(OWNERS.page)).toEqual(["splash", "pressAnyKey", "escapeBack", "timedPage"]);
         expect(featuredFor(OWNERS.game).slice(0, 3)).toEqual(["confirmClose", "fullscreenKey", "screenshotKey"]);
         expect(featuredFor(OWNERS.button)).toEqual(["openPage", "goBack", "startGame", "quitApp"]);

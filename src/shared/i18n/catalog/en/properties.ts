@@ -21,10 +21,6 @@ export const properties = {
         typePage: "Page",
         backgroundColor: "Background Color",
         backgroundImage: "Background Image",
-        // What the page plays while it is the page on screen; the scene inspector's Scene music for a page.
-        music: "Page Music",
-        clearMusic: "Clear page music",
-        selectMusic: "Select Page Music",
         animation: "Animation",
         logic: "Logic",
         navigation: {
@@ -118,6 +114,22 @@ export const properties = {
         chooseHover: "Choose hover sound",
         chooseClick: "Choose click sound",
         missing: "Missing sound",
+    },
+    pageMusic: {
+        // The page inspector's section for what the page plays while it is on screen: an element
+        // sound's playback options, plus loop and fade.
+        title: "Music",
+        none: "No music",
+        choose: "Choose page music",
+        missing: "Missing music",
+        loop: "Loop",
+        fade: "Fade",
+        // The folded line's parts after "Volume {volume} · {track}".
+        loops: "Loops",
+        loopRegion: "Loops {from}s to {to}s",
+        loopToEnd: "Loops {from}s to the end",
+        once: "Plays once",
+        fadeSummary: "Fade {seconds}s",
     },
     linkedComponent: {
         missing: "Missing component",

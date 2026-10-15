@@ -45,3 +45,26 @@ describe("surface navigation section", () => {
         expect(schema.fields.find(item => item.id === "scene.navigation")?.helpTopic).toBe("focusNavigationSettings");
     });
 });
+
+describe("page music section", () => {
+    type Field = { id: string; type: string; title?: string; fields?: Field[]; hidden?: (data: SceneEditorContext) => boolean };
+    const fields = () => (scenePropertySchema((key: string) => key) as unknown as { fields: Field[] }).fields;
+
+    it("is a section of its own, titled Music, holding the music field", () => {
+        const section = fields().find(item => item.id === "scene.music");
+        expect(section?.type).toBe("section");
+        expect(section?.title).toBe("properties.pageMusic.title");
+        expect(section?.fields?.map(item => item.id)).toEqual(["scene.music.editor"]);
+    });
+
+    it("sits with the page's other sections, right before Animation", () => {
+        const ids = fields().map(item => item.id);
+        expect(ids.indexOf("scene.pageAnimation") - ids.indexOf("scene.music")).toBe(1);
+    });
+
+    it("is offered on a page and not on a Game UI, which plays the scene's music", () => {
+        const section = fields().find(item => item.id === "scene.music");
+        expect(section?.hidden?.({ surface: surface("appSurface") } as SceneEditorContext)).toBe(false);
+        expect(section?.hidden?.({ surface: surface("stageSurface") } as SceneEditorContext)).toBe(true);
+    });
+});

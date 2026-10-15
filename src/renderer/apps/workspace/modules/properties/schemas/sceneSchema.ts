@@ -210,11 +210,19 @@ export const scenePropertySchema = (t: TranslateFn) =>
             // on top of, so the offer is not made.
             hidden: data => isGameUi(data.surface),
         }),
-        defineField<SceneEditorContext, CustomFieldDefinition<SceneEditorContext>>({
+        defineField<SceneEditorContext, SectionFieldDefinition<SceneEditorContext>>({
             id: "scene.music",
-            type: "custom",
-            label: t("properties.scene.music"),
-            component: SurfaceMusicField,
+            type: "section",
+            // A section of its own, as an element's sounds have: the clip and the options folded
+            // under it are one thing, and the page's other sections sit beside it the same way.
+            title: t("properties.pageMusic.title"),
+            fields: [
+                defineField<SceneEditorContext, CustomFieldDefinition<SceneEditorContext>>({
+                    id: "scene.music.editor",
+                    type: "custom",
+                    component: SurfaceMusicField,
+                }),
+            ],
             // A Game UI is drawn over the running scene, and the scene's music is what plays there.
             hidden: data => isGameUi(data.surface),
         }),

@@ -13,7 +13,11 @@ import { useTranslation } from "@/lib/i18n";
 import { HintPopover } from "@/lib/components/elements";
 
 export type AssetPickerRowProps = {
-    label: string;
+    /**
+     * The slot's name above the row. Left out where the slot is the only one in its section, whose
+     * title already names it: the same word twice says nothing more.
+     */
+    label?: string;
     /** What the slot does, revealed from an info icon beside the label (a field's `tip`). */
     tip?: string;
     emptyLabel: string;
@@ -98,10 +102,12 @@ export function AssetPickerRow({
     return (
         <>
             <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-medium text-fg-muted">{label}</span>
-                    {tip ? <HintPopover text={tip} /> : null}
-                </div>
+                {label ? (
+                    <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-medium text-fg-muted">{label}</span>
+                        {tip ? <HintPopover text={tip} /> : null}
+                    </div>
+                ) : null}
                 <button
                     type="button"
                     ref={triggerRef}

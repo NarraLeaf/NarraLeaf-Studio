@@ -22,10 +22,6 @@ export const properties = {
         typePage: "ページ",
         backgroundColor: "背景色",
         backgroundImage: "背景画像",
-        // このページの表示中に流れる音楽。シーンのインスペクターの「シーンの音楽」に当たる
-        music: "ページの音楽",
-        clearMusic: "ページの音楽を外す",
-        selectMusic: "ページの音楽を選択",
         animation: "アニメーション",
         logic: "ロジック",
         navigation: {
@@ -112,6 +108,19 @@ export const properties = {
         chooseHover: "ホバー時の効果音を選ぶ",
         chooseClick: "クリック時の効果音を選ぶ",
         missing: "効果音が見つからない",
+    },
+    pageMusic: {
+        title: "音楽",
+        none: "音楽なし",
+        choose: "ページの音楽を選ぶ",
+        missing: "音楽が見つからない",
+        loop: "ループ",
+        fade: "フェード",
+        loops: "ループ",
+        loopRegion: "{from} 秒から {to} 秒をループ",
+        loopToEnd: "{from} 秒から最後までをループ",
+        once: "1 回再生",
+        fadeSummary: "フェード {seconds} 秒",
     },
     linkedComponent: {
         missing: "コンポーネントが見つからない",
