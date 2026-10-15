@@ -14,6 +14,7 @@ import { useKeybindings, whenFocused, type KeybindingDefinition } from "@/apps/w
 import { useShortcutLabels } from "../../../hooks/useShortcutLabels";
 import { useAssetReadNotice, type AssetReadFailure } from "./useAssetReadNotice";
 import { useFollowedAsset } from "./useFollowedAsset";
+import { EditorProjectUndoKeybindings } from "@/apps/workspace/components/layout/EditorProjectUndoKeybindings";
 import {
     ImagePixelPreview,
     type ImagePixelPreviewControls,
@@ -351,33 +352,32 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
         };
     }, [state.url]);
 
-    if (state.loading) {
-        return <LoadingState />;
-    }
-
-    if (notice) {
-        return <ErrorState error={notice} />;
-    }
-
-    if (!state.imageData || !state.url) {
-        return null;
-    }
-
     const renderToolbar = (controls: ImagePixelPreviewControls): ReactNode => (
         <PreviewToolbar imageData={state.imageData!} controls={controls} />
     );
 
     return (
-        <ImagePixelPreview
-            src={state.url}
-            alt={asset?.name}
-            initialSize={{
-                width: state.imageData.metadata.width,
-                height: state.imageData.metadata.height,
-            }}
-            resetKey={asset?.id ?? state.url}
-            controlsRef={controlsRef}
-            renderToolbar={renderToolbar}
-        />
+        <>
+            {/* The picture's own steps - Replace File…, a conversion - are on the project's stack, and
+                the preview is where the author looks at what they did. */}
+            <EditorProjectUndoKeybindings tabId={tabId} />
+            {state.loading ? (
+                <LoadingState />
+            ) : notice ? (
+                <ErrorState error={notice} />
+            ) : !state.imageData || !state.url ? null : (
+                <ImagePixelPreview
+                    src={state.url}
+                    alt={asset?.name}
+                    initialSize={{
+                        width: state.imageData.metadata.width,
+                        height: state.imageData.metadata.height,
+                    }}
+                    resetKey={asset?.id ?? state.url}
+                    controlsRef={controlsRef}
+                    renderToolbar={renderToolbar}
+                />
+            )}
+        </>
     );
 }
