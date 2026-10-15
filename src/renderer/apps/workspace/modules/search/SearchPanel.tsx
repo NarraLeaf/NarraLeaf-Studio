@@ -8,6 +8,7 @@ import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { CONTROL_SIZE_CLASS } from "@/lib/components/elements/controlSize";
 import { TooltipGroup } from "@/lib/tooltip";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { useTextFieldUndo } from "@/apps/workspace/hooks/useTextFieldUndo";
 import { Services } from "@/lib/workspace/services/services";
 import { SearchService } from "@/lib/workspace/services/search/SearchService";
 import { parseSearchQuery } from "@/lib/workspace/services/search/searchIndexModel";
@@ -150,6 +151,18 @@ export function SearchPanel() {
     const queryInputRef = useRef<HTMLInputElement | null>(null);
     const expandedRef = useRef(expandedGroups);
     expandedRef.current = expandedGroups;
+
+    /**
+     * Ctrl+Z in either box is that box's own text undo, and nothing else's. The browser's one stack
+     * for the whole page put the replace box's typing back while the caret was in the search box;
+     * with focus on the panel itself, Ctrl+Z is the replace's undo (`SearchUndoKeybindings`).
+     */
+    const attachQueryUndo = useTextFieldUndo(query, setQuery);
+    const attachReplacementUndo = useTextFieldUndo(replacement, setReplacement);
+    const attachQueryInput = useCallback((element: HTMLInputElement | null) => {
+        queryInputRef.current = element;
+        attachQueryUndo(element);
+    }, [attachQueryUndo]);
 
     /**
      * Take the caret when ⇧⌘F asks for it - on mount for a request that arrived while this panel
@@ -344,7 +357,7 @@ export function SearchPanel() {
                     <SearchBox
                         value={query}
                         onChange={setQuery}
-                        inputRef={queryInputRef}
+                        inputRef={attachQueryInput}
                         size="sm"
                         placeholder={t("workspace.shell.search.placeholder")}
                         className="min-w-[7.5rem] flex-1"
@@ -411,6 +424,7 @@ export function SearchPanel() {
                     // and the button beside it wraps under rather than squeezing it away.
                     <div className="flex flex-wrap items-center gap-1.5">
                         <input
+                            ref={attachReplacementUndo}
                             // Autofocused: the only way this row appears is the author asking for it.
                             autoFocus
                             value={replacement}

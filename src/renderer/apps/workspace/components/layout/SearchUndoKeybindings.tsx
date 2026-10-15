@@ -17,7 +17,7 @@ import { useHistoryStepHandlers } from "./WorkspaceUndoKeybindings";
  * an entry of its own. `workspace.undo` stands down on this panel so that only one of them is live.
  *
  * Focus in one of the panel's text boxes never reaches these: the keybinding service leaves keys to
- * a field being typed in, where Ctrl+Z is text undo.
+ * a field being typed in, where Ctrl+Z is that box's own text undo (`useTextFieldUndo`).
  */
 export function SearchUndoKeybindings() {
     const step = useHistoryStepHandlers(searchReplaceHistoryScope());
