@@ -19,10 +19,16 @@ export type MenuPointer = {
         onScroll: () => void;
         onMouseOver: (event: PointerPoint) => void;
     };
+    /**
+     * Forget the pointer, for a menu that stays mounted while closed and opens again: its next
+     * opening is under a resting pointer as much as its first was.
+     */
+    reset: () => void;
 };
 
 /**
- * Hover highlighting for a slot's menus that follows the pointer, and only the pointer.
+ * Hover highlighting for a slot's menus that follows the pointer, and only the pointer. The blueprint
+ * add-node menu follows the same rule, for the same reason.
  *
  * The highlight is Enter's pointer, so whatever lights it decides what Enter takes. Wiring it to
  * `mouseenter` let the list light a row the pointer never moved to: a wheel over the open menu
@@ -69,5 +75,10 @@ export function usePointerHighlight(onHighlight: (key: string) => void): MenuPoi
         },
     }), []);
 
-    return { move, live, listProps };
+    const reset = useCallback(() => {
+        last.current = null;
+        setLive(false);
+    }, []);
+
+    return { move, live, listProps, reset };
 }
