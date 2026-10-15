@@ -6,6 +6,7 @@ import type {
     StoryBlock,
     StoryBlockId,
     StoryConditionRef,
+    StoryDisplayableTargetRef,
     StoryDocument,
     StoryExpr,
     StoryInterpolationRef,
@@ -17,6 +18,7 @@ import type {
 } from "@shared/types/story";
 import {
     actionableSubjectWord,
+    authoredCharacterStageName,
     describeDeclaration,
     displayableSubjectWord,
     layerActionTargetRef,
@@ -806,6 +808,25 @@ function verbWord(payload: StoryActionPayload, whenUnowned: string): string {
 }
 
 /**
+ * What a `/transform`-family row's subject is called.
+ *
+ * Two of the reference's labels are not words for an author: a built-in's stored label is the English
+ * one ("Scene background"), and a character walked on without a typed stage name is labelled with the
+ * placeholder "Character", so the inspector header read 「变换 Character」. A built-in is named in the
+ * interface's language, and such a character by her cast name - the name the row's own line prints.
+ */
+function displayableTargetLabel(lookups: StoryRowLookups, target: StoryDisplayableTargetRef): string {
+    if (target.builtin) {
+        return translate(`story.stage.reserved.${target.builtin}` as TranslationKey);
+    }
+    const source = target.sourceBlockId ? lookups.scene?.blocks[target.sourceBlockId] : undefined;
+    if (source?.kind === "action" && source.payload.action === "character" && !authoredCharacterStageName(source.payload) && source.payload.characterId) {
+        return storyCharacterName(lookups, source.payload.characterId);
+    }
+    return resolveDisplayableTargetRef(lookups.scene, target).label || translate("story.describe.targetFallback");
+}
+
+/**
  * The operation word of a stage-object row, for a template that names the kind itself
  * (`{operation} 氛围特效 {name}`).
  *
@@ -920,7 +941,7 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
         // `objectName` - see `displayableSubjectWord` for why, and for what a row with no reference
         // (a `create` row, an older document) falls back to.
         if (payload.action === "image") return translate("story.describe.image", { operation: stageObjectOperationWord(payload), name: displayableSubjectWord(scene, payload.target, payload.objectName) || translate("story.describe.unnamed") });
-        if (payload.action === "displayable") return `${verbWord(payload, payload.operation)} ${resolveDisplayableTargetRef(scene, payload.target).label || translate("story.describe.targetFallback")}`;
+        if (payload.action === "displayable") return `${verbWord(payload, payload.operation)} ${displayableTargetLabel(lookups, payload.target)}`;
         if (payload.action === "text") return translate("story.describe.text", { operation: stageObjectOperationWord(payload), name: displayableSubjectWord(scene, payload.target, payload.objectName) || translate("story.describe.unnamed") });
         if (payload.action === "layer") {
             const layerName = storyLayerLabel(resolveStoryLayerRef(scene, layerActionTargetRef(payload.target, payload.objectName)));

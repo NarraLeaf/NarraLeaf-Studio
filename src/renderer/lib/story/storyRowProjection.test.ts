@@ -532,4 +532,21 @@ describe("the subject line of a staging row, in zh", () => {
         // Every other operation still reads as its own command.
         expect(describeStoryBlock(action({ action: "vfx", operation: "show", objectName: "rain" }), bare)).toBe("Show ambience rain");
     });
+
+    it("names a transform's subject as the author knows it", () => {
+        const enter = action({ action: "character", operation: "enter", characterId: "c1" }, "enter");
+        const scene = {
+            id: "s1", name: "Scene", runtimeName: "scene", rootBlockIds: ["enter"], blocks: { enter },
+        } as unknown as StoryScene;
+        const lookups: StoryRowLookups = { ...withCharacters({ c1: "Narra" }), scene };
+        const walk = action({ action: "displayable", operation: "transform", target: { kind: "character", name: "c1", label: "Character", sourceBlockId: "enter" } });
+        i18nStore.setLocale("zh");
+        // Walked on without a typed stage name: her cast name, not the placeholder "Character".
+        expect(describeStoryBlock(walk, lookups)).toBe("变换 Narra");
+        // A built-in in the interface's language, not its stored English label.
+        const camera = action({ action: "displayable", operation: "transform", target: { builtin: "background", kind: "image", name: "Scene background", label: "Scene background" } });
+        expect(describeStoryBlock(camera, lookups)).toBe("变换 背景");
+        i18nStore.setLocale("en");
+        expect(describeStoryBlock(camera, lookups)).toBe("Transform Scene background");
+    });
 });
