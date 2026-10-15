@@ -64,6 +64,56 @@ export function summarisePlan(
 }
 
 /**
+ * The image each layer of this import already has, by layer path (`joinPath`), for a re-import to
+ * write the layer's new bytes into instead of importing a second file beside it.
+ *
+ * A layer qualifies when the fingerprint still recognises its slot and the slot still shows the image
+ * the last import put there. Fingerprints record that image now; for a slot recorded before they did,
+ * the image qualifies when it still carries the name the import gave it - the bake's file name, which
+ * the library names an import after, with the `-1` it adds to a repeat and the `000-` an import once
+ * put in front of it. Anything else is left out and gets a file of its own: a layer new to the sheet,
+ * and a slot the author has since pointed at another image, which a re-import must never write over.
+ * An image two slots share is refreshed once.
+ */
+export function psdRefreshTargets(
+    appearance: CharacterAppearance,
+    plan: ImportPlan,
+    bakeNames: ReadonlyMap<string, string>,
+    assetNameOf: (assetId: string) => string | null,
+): Map<string, string> {
+    const recorded = new Map((appearance.getPsdFingerprint()?.slots ?? []).map(slot => [joinPath(slot.path), slot.assetId]));
+    const claimed = new Set<string>();
+    const targets = new Map<string, string>();
+    for (const leaf of artLeaves(plan)) {
+        const key = joinPath(leaf.path);
+        const hit = appearance.findPsdSlot(leaf.path);
+        const layer = hit ? appearance.getLayer(hit.layerId) : null;
+        const current = hit?.tagId ? layer?.options?.[hit.tagId] : layer?.assetId;
+        if (!current || claimed.has(current)) {
+            continue;
+        }
+        const madeHere = recorded.get(key);
+        const ours = madeHere !== undefined
+            ? madeHere === current
+            : isBakedName(assetNameOf(current), bakeNames.get(key));
+        if (ours) {
+            targets.set(key, current);
+            claimed.add(current);
+        }
+    }
+    return targets;
+}
+
+/** Whether an asset's name is the one the library gives a baked layer file, or a repeat of it. */
+function isBakedName(assetName: string | null, bakeName: string | undefined): boolean {
+    if (!assetName || !bakeName) {
+        return false;
+    }
+    const escaped = bakeName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`^(\\d{3}-)?${escaped}(-\\d+)?(\\.png)?$`, "i").test(assetName);
+}
+
+/**
  * Build the plan into the character, and report where every PSD layer landed.
  *
  * Additive by construction: a layer the fingerprint still recognises has its image replaced, and
@@ -71,7 +121,8 @@ export function summarisePlan(
  * the author's own work on a stack they have since renamed, reordered and rebound, which is the
  * entire reason the mapping is remembered rather than the file.
  *
- * The returned slots become the new fingerprint, so the next import can do the same again.
+ * The returned slots become the new fingerprint, so the next import can do the same again. Each
+ * records the image it was given, which is what lets the next import refresh that image in place.
  */
 export function applyPsdPlan(
     appearance: CharacterAppearance,
@@ -85,8 +136,9 @@ export function applyPsdPlan(
             const existing = appearance.findPsdSlot(slot.leaf.path);
             const layerId = existing?.layerId ?? appearance.createLayer(slot.name)?.id;
             if (!layerId) continue;
-            appearance.setLayerAsset(layerId, assetIdOf(slot.leaf.path));
-            built.push({ path: slot.leaf.path, layerId });
+            const assetId = assetIdOf(slot.leaf.path);
+            appearance.setLayerAsset(layerId, assetId);
+            built.push({ path: slot.leaf.path, layerId, ...(assetId ? { assetId } : {}) });
             continue;
         }
 
@@ -112,8 +164,9 @@ export function applyPsdPlan(
             // ignored; `createTag` is what keeps every layer on the axis listing it too.
             const tagId = hit?.tagId ?? appearance.createTag(axisId, option.tag)?.id;
             if (!tagId) continue;
-            appearance.setLayerOption(layerId, tagId, assetIdOf(option.leaf.path));
-            built.push({ path: option.leaf.path, layerId, tagId });
+            const assetId = assetIdOf(option.leaf.path);
+            appearance.setLayerOption(layerId, tagId, assetId);
+            built.push({ path: option.leaf.path, layerId, tagId, ...(assetId ? { assetId } : {}) });
         }
     }
 

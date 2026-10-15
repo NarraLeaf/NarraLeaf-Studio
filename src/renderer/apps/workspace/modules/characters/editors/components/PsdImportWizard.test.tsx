@@ -9,6 +9,9 @@
  *
  * Reading a PSD stays available while frozen: that is inspection, and the mapping is what the author
  * came to look at.
+ *
+ * And a re-import of the same sheet writes each layer into the image the last import made, rather
+ * than leaving a second copy of every layer in the library.
  */
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
@@ -35,8 +38,13 @@ const createGroup = vi.fn(async (_category: string, name: string) => ({
     data: { id: `folder-${name}`, name },
 }));
 const moveAssetsToGroup = vi.fn(async () => ({ success: true as const, data: undefined }));
+/** The image section of the library, by id: empty until a case puts the last import's image in it. */
+let images: Record<string, { id: string; name: string }> = {};
+const replaceAssetContent = vi.fn(async (asset: { id: string }) => ({ success: true as const, data: asset }));
 const assetsService = {
     importFromPaths,
+    getAssets: () => ({ image: images }),
+    replaceAssetContent,
     getGroupAssetsManager: () => ({ getGroups: () => [] }),
     createGroup,
     moveAssetsToGroup,
@@ -87,16 +95,23 @@ const DOCUMENT: PsdDocument = {
     ],
 };
 
-/** Enough of an appearance for the plan to be summarised and, when it runs, applied. */
-function appearanceStub(): CharacterAppearance {
+/**
+ * Enough of an appearance for the plan to be summarised and, when it runs, applied. `imported` is
+ * one the same sheet was imported into before: its base layer shows the image that import made.
+ */
+function appearanceStub(imported = false): CharacterAppearance {
+    const layer = { id: "layer-base", name: "base", axisId: null, assetId: "asset-base" };
     return {
-        findPsdSlot: () => null,
-        getLayers: () => [],
+        findPsdSlot: () => (imported ? { layerId: layer.id } : null),
+        getLayer: () => (imported ? layer : null),
+        getLayers: () => (imported ? [layer] : []),
         createLayer: (name: string) => ({ id: `layer-${name}` }),
         setLayerAsset: () => undefined,
         getCanvas: () => null,
         setCanvas: () => undefined,
-        getPsdFingerprint: () => null,
+        getPsdFingerprint: () => (imported
+            ? { fileName: "hero.psd", width: 1000, height: 2000, importedAt: 1, slots: [{ path: ["base"], layerId: layer.id, assetId: layer.assetId }] }
+            : null),
         setPsdFingerprint: () => undefined,
     } as unknown as CharacterAppearance;
 }
@@ -104,6 +119,8 @@ function appearanceStub(): CharacterAppearance {
 afterEach(() => {
     cleanup();
     frozen = false;
+    images = {};
+    replaceAssetContent.mockClear();
     bakePsd.mockClear();
     importFromPaths.mockClear();
     createGroup.mockClear();
@@ -111,9 +128,9 @@ afterEach(() => {
 });
 
 /** Open the wizard and read a PSD, the way the author does before deciding anything. */
-async function openWithDocument(onImported?: (hadArt: boolean) => void): Promise<ReturnType<typeof render>> {
+async function openWithDocument(onImported?: (hadArt: boolean) => void, imported = false): Promise<ReturnType<typeof render>> {
     const view = render(
-        <PsdImportWizard open onClose={() => undefined} appearance={appearanceStub()} characterName="Hero" onImported={onImported} />,
+        <PsdImportWizard open onClose={() => undefined} appearance={appearanceStub(imported)} characterName="Hero" onImported={onImported} />,
     );
     await act(async () => {
         fireEvent.click(screen.getByText("characters.editor.psd.choose"));
@@ -172,5 +189,32 @@ describe("PsdImportWizard while the workspace is frozen", () => {
 
         expect(screen.getByText("hero.psd")).not.toBeNull();
         expect(document.querySelector('[data-psd-constant="base"]')).not.toBeNull();
+    });
+});
+
+describe("PsdImportWizard importing a sheet again", () => {
+    it("writes each layer into the image the last import made, and imports no second copy", async () => {
+        images = { "asset-base": { id: "asset-base", name: "Hero_base.png" } };
+        await openWithDocument(undefined, true);
+
+        await act(async () => {
+            fireEvent.click(importButton());
+        });
+        expect(replaceAssetContent).toHaveBeenCalledWith(images["asset-base"], "/tmp/base.png");
+        expect(importFromPaths).not.toHaveBeenCalled();
+        // The refreshed image stays where it is; nothing new needs filing.
+        expect(moveAssetsToGroup).not.toHaveBeenCalled();
+    });
+
+    it("imports the layer as a file of its own when the image cannot be written in place", async () => {
+        images = { "asset-base": { id: "asset-base", name: "Hero_base.png" } };
+        replaceAssetContent.mockImplementationOnce(async () => ({ success: false, error: "in a session" }) as never);
+        await openWithDocument(undefined, true);
+
+        await act(async () => {
+            fireEvent.click(importButton());
+        });
+        expect(replaceAssetContent).toHaveBeenCalledTimes(1);
+        expect(importFromPaths).toHaveBeenCalledWith("image", ["/tmp/base.png"]);
     });
 });
