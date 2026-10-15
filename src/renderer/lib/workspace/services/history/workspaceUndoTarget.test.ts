@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { PROPERTIES_PANEL_ID } from "@/apps/workspace/modules/properties/propertiesPanelId";
+import { SEARCH_PANEL_ID } from "@/apps/workspace/modules/search/searchPanelId";
 import { FocusArea } from "../ui/types";
 import type { HistoryService } from "./HistoryService";
-import { projectHistoryScope } from "./historyScopes";
-import { isEditorOwnedFocus, resolveWorkspaceUndoScope } from "./workspaceUndoTarget";
+import { projectHistoryScope, searchReplaceHistoryScope } from "./historyScopes";
+import { isEditorOwnedFocus, isSearchPanelFocus, resolveWorkspaceUndoScope } from "./workspaceUndoTarget";
 
 function historyWithActiveScope(scopeId: string | null): HistoryService {
     return { getActiveScopeId: () => scopeId } as unknown as HistoryService;
@@ -41,6 +42,17 @@ describe("resolveWorkspaceUndoScope", () => {
             area: FocusArea.RightPanel,
             targetId: PROPERTIES_PANEL_ID,
         })).toBe("ui-surface:page-1");
+    });
+
+    it("takes the Search panel's own stack there, wherever the panel is docked", () => {
+        // Its replaces are undone where they were made, across every scene each one touched; the
+        // project's steps stay with the other panels.
+        const history = historyWithActiveScope("story-scene:s:1");
+        for (const area of [FocusArea.LeftPanel, FocusArea.RightPanel]) {
+            expect(resolveWorkspaceUndoScope(history, { area, targetId: SEARCH_PANEL_ID }))
+                .toBe(searchReplaceHistoryScope());
+        }
+        expect(isSearchPanelFocus({ area: FocusArea.Editor, targetId: SEARCH_PANEL_ID })).toBe(false);
     });
 
     it("still leaves other right-side panels on the project scope", () => {

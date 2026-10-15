@@ -1523,6 +1523,7 @@ export const workspace = {
                 localization: "翻译表",
                 voice: "配音表",
                 lint: "问题",
+                search: "搜索",
                 other: "其他",
             },
             // 此前没有自带 i18n key 的目录条目标签。
@@ -1582,6 +1583,11 @@ export const workspace = {
                     copy: "复制节点",
                     cut: "剪切节点",
                     paste: "粘贴节点",
+                },
+                // 搜索面板：撤销或重做一次替换，涉及它改过的每个场景。
+                search: {
+                    undo: "撤销替换",
+                    redo: "重做替换",
                 },
                 storyMotion: {
                     undo: "撤销",
@@ -1754,6 +1760,14 @@ export const workspace = {
             replaceRow: "替换这一行",
             // 计划里要改的东西已经被删掉或改过了。替换要么整体生效，要么什么都不做，所以这里直接拒绝。
             replaceStale: "项目内容刚发生变更，请重新搜索",
+            // 在面板中按 Ctrl+Z 时，最新一步仍是该次替换的场景撤销替换；替换后有改动的场景保留替换后的文本，
+            // 由下面两条说明是哪些场景（场景名列在通知的详情行）。
+            undoSkipped: {
+                other: "{count} 个场景在替换后有改动，其中的替换未撤销",
+            },
+            redoSkipped: {
+                other: "{count} 个场景在撤销后有改动，其中的替换未重做",
+            },
             // 实体分组排在前面：这个框先回答「打开叫 X 的东西」，再回答「找到写着 X 的那句」。
             groups: {
                 scene: "场景",

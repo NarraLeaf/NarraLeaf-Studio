@@ -104,8 +104,8 @@ function editKey(storyId: string, sceneId: string, blockId: string): string {
  * # Replace
  *
  * The replace field turns the same query into a project-wide rewrite of story prose, planned by
- * `services/search/storyReplace` and applied as one undo step in each scene it touched. Three things
- * about it are load bearing:
+ * `services/search/storyReplace` and applied as one undo step in each scene it touched, plus one in
+ * this panel that takes those back together. Three things about it are load bearing:
  *
  *  - **the button counts occurrences, not rows and not visible rows.** Groups cap at 20 (500
  *    expanded) because the list renders eagerly, and one line can contain the query twice. A button
@@ -113,8 +113,9 @@ function editKey(storyId: string, sceneId: string, blockId: string): string {
  *    on, and it is a lie. It comes from `plan.occurrences`, computed over the uncapped candidate set.
  *  - **planning is opt-in.** The replace row is folded away behind the replace switch, and nothing
  *    here runs while it is, so an author who only ever searches pays for nothing.
- *  - **no confirmation dialog.** Undo is the safety net: one press in a scene takes the replace back
- *    there, as the newest step of that scene's own history.
+ *  - **no confirmation dialog.** Undo is the safety net: one press in this panel takes the replace
+ *    back in every scene (`SearchUndoKeybindings`), and one press in a scene takes it back there, as
+ *    the newest step of that scene's own history.
  */
 export function SearchPanel() {
     const { t } = useTranslation();

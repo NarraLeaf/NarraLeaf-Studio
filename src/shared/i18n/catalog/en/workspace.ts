@@ -1834,6 +1834,7 @@ export const workspace = {
                 localization: "Translation Table",
                 voice: "Voice Table",
                 lint: "Problems",
+                search: "Search",
                 other: "Other",
             },
             // Labels for catalog entries that had no i18n key of their own.
@@ -1893,6 +1894,11 @@ export const workspace = {
                     copy: "Copy Nodes",
                     cut: "Cut Nodes",
                     paste: "Paste Nodes",
+                },
+                // The Search panel: its replaces, each taken back across every scene it touched.
+                search: {
+                    undo: "Undo Replace",
+                    redo: "Redo Replace",
                 },
                 storyMotion: {
                     undo: "Undo",
@@ -2074,6 +2080,17 @@ export const workspace = {
             // deleted or changed since. A replace applies completely or not at all, so this refuses
             // rather than writing what is left.
             replaceStale: "The project changed. Search again.",
+            // Ctrl+Z in the panel takes a replace back in every scene whose newest step is still
+            // that replace. A scene edited after it keeps the replaced text, and these say which;
+            // the notice's detail line lists the scene names.
+            undoSkipped: {
+                one: "Replace not undone in {count} scene edited after it",
+                other: "Replace not undone in {count} scenes edited after it",
+            },
+            redoSkipped: {
+                one: "Replace not redone in {count} scene edited after the undo",
+                other: "Replace not redone in {count} scenes edited after the undo",
+            },
             // Entity groups come first: the box answers "open the thing called X" before
             // "find the line that says X".
             groups: {
