@@ -708,7 +708,6 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
                                 >
                                     <Layers className="w-3.5 h-3.5" />
                                 </button>
-                                {gridToggle}
                                 <button
                                     className={ICON_BTN}
                                     onClick={() => setPsdOpen(true)}
@@ -717,6 +716,10 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
                                 >
                                     <FileImage className="w-3.5 h-3.5" />
                                 </button>
+                                {/* Last, because it is the one button the grid keeps: the grid's
+                                    toolbar is it alone, right-aligned, so in any other place it
+                                    jumped sideways under the pointer that had just pressed it. */}
+                                {gridToggle}
                             </>
                         ) : null}
                     />
