@@ -56,7 +56,7 @@ import type { ReferenceService } from "../references/ReferenceService";
 import { dirname, extname } from "@shared/utils/path";
 import type { TranslationKey } from "@shared/i18n";
 import { AssetTrash } from "../assets/AssetTrash";
-import { AssetLibraryChange } from "../assets/AssetLibraryChange";
+import { AssetLibraryChange, type TakenFolder } from "../assets/AssetLibraryChange";
 import { describeRestoreNotKept } from "@/lib/workspace/assets/importFailure";
 import { HistoryService } from "../history/HistoryService";
 import type { HistoryLabel } from "../history/historyModel";
@@ -2667,6 +2667,66 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     }
 
     /**
+     * Take a folder an operation made back out of the library, when nothing is in it: no asset of its
+     * section and no folder below it. Null otherwise, and the folder stays. What an
+     * {@link AssetLibraryChange} asks on undo, about folders the operation itself created.
+     */
+    private async takeBackEmptyFolder(category: AssetCategory, groupId: string): Promise<TakenFolder | null> {
+        const groupManager = this.getGroupAssetsManager();
+        const folders = groupManager.assetsGroups?.[category];
+        const record = folders?.[groupId];
+        if (!folders || !record) {
+            return null;
+        }
+        const holdsFolder = Object.values(folders).some(folder => folder.parentGroupId === groupId);
+        if (holdsFolder || groupManager.collectGroupAssets(category, groupId).length > 0) {
+            return null;
+        }
+        let orderIndex = -1;
+        try {
+            orderIndex = this.getAssetOrderManager().getGroupIds(category).indexOf(groupId);
+        } catch {
+            // The order file is not up; the folder still comes back, listed last.
+        }
+        const taken: TakenFolder = { record: cloneRecord(record), orderIndex };
+        // Empty, so this removes the record and nothing else.
+        const removed = await groupManager.deleteGroup(category, groupId, false);
+        if (!removed.success && folders[groupId]) {
+            return null;
+        }
+        // A folder list that could not be written still lost the folder on screen, and the
+        // save-status surface has said the library was not saved: redo puts it back either way.
+        return taken;
+    }
+
+    /** Put a folder {@link takeBackEmptyFolder} took out back, under its own id and where it was listed. */
+    private async putBackFolder(taken: TakenFolder): Promise<void> {
+        const groupManager = this.getGroupAssetsManager();
+        const category = taken.record.category;
+        const folders = groupManager.assetsGroups?.[category];
+        if (!folders) {
+            return;
+        }
+        if (!folders[taken.record.id]) {
+            folders[taken.record.id] = cloneRecord(taken.record);
+            await groupManager.persistGroups(category);
+        }
+        if (taken.orderIndex >= 0) {
+            try {
+                const orderManager = this.getAssetOrderManager();
+                const order = [...orderManager.getGroupIds(category)];
+                if (!order.includes(taken.record.id)) {
+                    order.splice(Math.min(taken.orderIndex, order.length), 0, taken.record.id);
+                    await orderManager.write(category, orderManager.getAssetIds(category), order);
+                }
+            } catch (error) {
+                console.warn(`[AssetsService] restored the folder ${taken.record.id} but not its place in the list`, error);
+            }
+        }
+        this.getEvents().emit("groupsUpdated", { category, groupId: taken.record.id });
+    }
+
+    /**
      * Delete a group and everything under it as ONE undo step.
      *
      * The cascade calls back into {@link deleteAsset} once per file, and each of those would
@@ -2763,6 +2823,8 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             },
             putBack: plan => this.restoreAssetFromPlan(plan),
             forgetTaken: plan => this.purgeAssetRestorePlan(plan),
+            takeBackFolder: (category, groupId) => this.takeBackEmptyFolder(category, groupId),
+            putBackFolder: taken => this.putBackFolder(taken),
             report: failure => {
                 try {
                     this.getContext().services.get<UIService>(Services.UI).notifications.show({

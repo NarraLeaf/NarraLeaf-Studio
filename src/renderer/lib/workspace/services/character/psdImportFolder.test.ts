@@ -39,16 +39,19 @@ describe("a PSD import's folder", () => {
 
         expect(createGroup).toHaveBeenCalledWith(AssetCategory.Image, "美绪");
         expect(moveAssetsToGroup).toHaveBeenCalledWith(LAYERS, "made-美绪");
-        expect(filed).toEqual({ success: true, data: "made-美绪" });
+        // Said to be made by this import: its undo takes the folder back once the layers are out of it.
+        expect(filed).toEqual({ success: true, data: { id: "made-美绪", created: true } });
     });
 
     it("is reused when it exists, so a re-import lands beside the first", async () => {
         const { service, createGroup, moveAssetsToGroup } = library([folder("mio", "美绪")]);
 
-        await fileUnderCharacterFolder(service, LAYERS, "美绪");
+        const filed = await fileUnderCharacterFolder(service, LAYERS, "美绪");
 
         expect(createGroup).not.toHaveBeenCalled();
         expect(moveAssetsToGroup).toHaveBeenCalledWith(LAYERS, "mio");
+        // The author's folder, or an earlier import's: not this one's to take back.
+        expect(filed).toEqual({ success: true, data: { id: "mio", created: false } });
     });
 
     it("prefers a top-level folder of that name, and otherwise takes one the author moved", () => {

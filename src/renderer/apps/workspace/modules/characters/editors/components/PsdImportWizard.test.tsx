@@ -51,15 +51,18 @@ const change = {
     replaced: vi.fn(),
     forget: vi.fn(),
     noteImported: vi.fn(),
+    noteCreatedFolder: vi.fn(),
     undo: vi.fn(async () => undefined),
     dispose: vi.fn(),
 };
+/** The image section's folders as the import finds them: none unless a case puts one there. */
+let folders: { id: string; name: string }[] = [];
 const assetsService = {
     importFromPaths,
     getAssets: () => ({ image: images }),
     replaceAssetContent,
     beginLibraryChange: () => change,
-    getGroupAssetsManager: () => ({ getGroups: () => [] }),
+    getGroupAssetsManager: () => ({ getGroups: () => folders }),
     createGroup,
     moveAssetsToGroup,
 };
@@ -142,6 +145,7 @@ afterEach(() => {
     cleanup();
     frozen = false;
     images = {};
+    folders = [];
     keepAnswer = { ok: true };
     Object.values(change).forEach(spy => spy.mockClear());
     recordCharacterEdit.mockClear();
@@ -214,6 +218,31 @@ describe("PsdImportWizard while the workspace is frozen", () => {
 
         expect(screen.getByText("hero.psd")).not.toBeNull();
         expect(document.querySelector('[data-psd-constant="base"]')).not.toBeNull();
+    });
+});
+
+describe("PsdImportWizard and the character's image folder", () => {
+    it("hands the folder it made to the import's undo step, which takes it back once the layers are out", async () => {
+        await openWithDocument();
+
+        await act(async () => {
+            fireEvent.click(importButton());
+        });
+        expect(createGroup).toHaveBeenCalledWith("image", "Hero");
+        expect(change.noteCreatedFolder).toHaveBeenCalledWith("image", "folder-Hero");
+        expect(recordCharacterEdit).toHaveBeenCalledWith("hero", characterRecord, { key: "workspace.history.entry.importPsd" }, change);
+    });
+
+    it("leaves a folder that was already there out of the step, so no undo takes it", async () => {
+        folders = [{ id: "hero-art", name: "Hero" }];
+        await openWithDocument();
+
+        await act(async () => {
+            fireEvent.click(importButton());
+        });
+        expect(createGroup).not.toHaveBeenCalled();
+        expect(moveAssetsToGroup).toHaveBeenCalledWith([{ id: "asset-base" }], "hero-art");
+        expect(change.noteCreatedFolder).not.toHaveBeenCalled();
     });
 });
 

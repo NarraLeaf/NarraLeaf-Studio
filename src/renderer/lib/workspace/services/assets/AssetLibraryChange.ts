@@ -1,8 +1,11 @@
 import type { AssetImportRefusal, RefusableStatus } from "./assetImportRefusal";
-import type { AssetType } from "./assetTypes";
-import type { Asset, AssetSource } from "./types";
+import type { AssetCategory, AssetType } from "./assetTypes";
+import type { Asset, AssetGroup, AssetSource } from "./types";
 
 type AnyAsset = Asset<AssetType, AssetSource>;
+
+/** A folder taken out of the library by an undo: its record, and where it was listed among its siblings. */
+export type TakenFolder = { record: AssetGroup; orderIndex: number };
 
 /** Why an asset's bytes could not be held aside, by the asset's name. */
 export type AssetKeepFailure = { name: string; refusal: AssetImportRefusal };
@@ -32,6 +35,13 @@ export interface AssetLibraryChangePort<P> {
     putBack(taken: P): Promise<void>;
     /** Let a taken-back asset go for good. Never throws. */
     forgetTaken(taken: P): void;
+    /**
+     * Take a folder out of the library, when it holds nothing: no asset and no folder. Null when it
+     * holds something or is already gone; it then stays as it is.
+     */
+    takeBackFolder(category: AssetCategory, groupId: string): Promise<TakenFolder | null>;
+    /** Put a taken-back folder back, under its own id and where it was listed. */
+    putBackFolder(taken: TakenFolder): Promise<void>;
     /** Tell the author that a step left an asset as it was, and why. */
     report(failure: AssetKeepFailure): void;
 }
@@ -66,6 +76,13 @@ type ImportedAsset<P> = {
     taken: P | null;
 };
 
+type CreatedFolder = {
+    category: AssetCategory;
+    groupId: string;
+    /** Set while the folder is taken back: what puts it where it was. */
+    taken: TakenFolder | null;
+};
+
 /**
  * What one operation did to the asset library, kept so that a single undo step can take it back: the
  * assets whose bytes it wrote over, and the files it imported.
@@ -90,6 +107,11 @@ type ImportedAsset<P> = {
  * deletion uses. An operation that imports and replaces is one gesture, and taking back half of it
  * would leave the files it brought in sitting in the library linked to nothing.
  *
+ * A folder the operation made to file its imports in goes the same way, after them: undo takes it
+ * out when nothing is left in it, and redo puts it back, under the same id, before the imports that
+ * name it. A folder that holds anything else by then - an asset the author moved in, a folder made
+ * inside it - stays, and so does one that was there before the operation, which is never noted.
+ *
  * # Lifetime
  *
  * The undo step owns this and calls {@link dispose} when it leaves the stack for good. What is let go
@@ -99,13 +121,14 @@ type ImportedAsset<P> = {
 export class AssetLibraryChange<P = unknown> {
     private readonly held = new Map<string, HeldContent>();
     private readonly imported: ImportedAsset<P>[] = [];
+    private readonly folders: CreatedFolder[] = [];
     private disposed = false;
 
     constructor(private readonly port: AssetLibraryChangePort<P>) {}
 
     /** Whether the operation did anything this change has to take back. */
     public isEmpty(): boolean {
-        return this.held.size === 0 && this.imported.length === 0;
+        return this.held.size === 0 && this.imported.length === 0 && this.folders.length === 0;
     }
 
     /**
@@ -166,7 +189,18 @@ export class AssetLibraryChange<P = unknown> {
     }
 
     /**
-     * Put back the bytes the operation wrote over, and take its imports out of the library.
+     * A folder the operation made, to file what it imported in. Only a folder the operation itself
+     * created belongs here: one that was already there is the author's, and no undo takes it.
+     */
+    public noteCreatedFolder(category: AssetCategory, groupId: string): void {
+        if (!this.folders.some(entry => entry.category === category && entry.groupId === groupId)) {
+            this.folders.push({ category, groupId, taken: null });
+        }
+    }
+
+    /**
+     * Put back the bytes the operation wrote over, take its imports out of the library, and then
+     * the folders it made, when nothing is left in them.
      *
      * Throws {@link AssetKeepError} when a file about to be written over could not be copied aside
      * first; nothing has been written then.
@@ -183,17 +217,32 @@ export class AssetLibraryChange<P = unknown> {
             const live = this.port.lookup(entry.type, entry.assetId);
             entry.taken = live ? await this.port.takeBack(live) : null;
         }
+        // After the imports, which are what was in them.
+        for (const entry of [...this.folders].reverse()) {
+            if (entry.taken === null) {
+                entry.taken = await this.port.takeBackFolder(entry.category, entry.groupId);
+            }
+        }
     }
 
     /**
-     * Put the operation's bytes in again and its imports back. Throws as {@link undo} does, before
-     * anything has changed.
+     * Put the operation's bytes in again, its folders back, and its imports back into them. Throws as
+     * {@link undo} does, before anything has changed.
      */
     public async redo(): Promise<void> {
         if (this.disposed) {
             return;
         }
         await this.swap("after");
+        // Before the imports: their records name the folder they were filed in.
+        for (const entry of this.folders) {
+            if (entry.taken === null) {
+                continue;
+            }
+            const taken = entry.taken;
+            entry.taken = null;
+            await this.port.putBackFolder(taken);
+        }
         for (const entry of this.imported) {
             if (entry.taken === null) {
                 continue;

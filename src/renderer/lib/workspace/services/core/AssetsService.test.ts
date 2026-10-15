@@ -844,4 +844,99 @@ describe("AssetsService library changes", () => {
         expect(metadata[AssetType.Image]["asset-new"]).toBeDefined();
         expect(fakeDisk.get("assets/content/asset-new")).toBe("LAYER");
     });
+
+    /** An import that filed what it brought in under a folder it made, as a first PSD import does. */
+    function importIntoNewFolder(service: AssetsService, history: HistoryService, imported: Asset<AssetType, AssetSource.Local>) {
+        const change = service.beginLibraryChange()!;
+        change.noteImported([imported]);
+        change.noteCreatedFolder(AssetCategory.Image, "folder-hero");
+        history.pushCommand(projectHistoryScope(), {
+            label: { key: "workspace.history.entry.importPsd" as never },
+            undo: () => change.undo(),
+            redo: () => change.redo(),
+            dispose: () => change.dispose(),
+        });
+        return change;
+    }
+
+    it("takes back the folder the operation made once its imports are out of it, and puts it back on redo", async () => {
+        const imported = imageAsset("asset-new", { groupId: "folder-hero" });
+        seedPayload("asset-new", "LAYER");
+        const { service, metadata, groupMap, history } = createHarness([imported], { groups: [imageGroup("folder-hero")] });
+
+        importIntoNewFolder(service, history, imported);
+
+        history.undo(projectHistoryScope());
+        await history.settled();
+        expect(metadata[AssetType.Image]["asset-new"]).toBeUndefined();
+        expect(groupMap[AssetCategory.Image]["folder-hero"]).toBeUndefined();
+
+        // The same folder, under the same id, and the import back inside it.
+        history.redo(projectHistoryScope());
+        await history.settled();
+        expect(groupMap[AssetCategory.Image]["folder-hero"]).toEqual(imageGroup("folder-hero"));
+        expect(metadata[AssetType.Image]["asset-new"]?.groupId).toBe("folder-hero");
+
+        // And again, since each step leaves the other side for the next.
+        history.undo(projectHistoryScope());
+        await history.settled();
+        expect(groupMap[AssetCategory.Image]["folder-hero"]).toBeUndefined();
+    });
+
+    it("leaves the folder it made when something else is in it by the time of the undo", async () => {
+        const imported = imageAsset("asset-new", { groupId: "folder-hero" });
+        const moved = imageAsset("asset-mine", { groupId: "folder-hero" });
+        seedPayload("asset-new", "LAYER");
+        seedPayload("asset-mine", "MINE");
+        const { service, metadata, groupMap, history } = createHarness([imported, moved], { groups: [imageGroup("folder-hero")] });
+
+        importIntoNewFolder(service, history, imported);
+
+        history.undo(projectHistoryScope());
+        await history.settled();
+        expect(metadata[AssetType.Image]["asset-new"]).toBeUndefined();
+        // The author's own image is in it: the folder is theirs as much as the import's now.
+        expect(groupMap[AssetCategory.Image]["folder-hero"]).toBeDefined();
+        expect(metadata[AssetType.Image]["asset-mine"].groupId).toBe("folder-hero");
+
+        history.redo(projectHistoryScope());
+        await history.settled();
+        expect(metadata[AssetType.Image]["asset-new"]?.groupId).toBe("folder-hero");
+    });
+
+    it("leaves the folder it made when a folder has been made inside it", async () => {
+        const imported = imageAsset("asset-new", { groupId: "folder-hero" });
+        seedPayload("asset-new", "LAYER");
+        const { service, groupMap, history } = createHarness([imported], {
+            groups: [imageGroup("folder-hero"), imageGroup("folder-poses", "folder-hero")],
+        });
+
+        importIntoNewFolder(service, history, imported);
+
+        history.undo(projectHistoryScope());
+        await history.settled();
+        expect(groupMap[AssetCategory.Image]["folder-hero"]).toBeDefined();
+        expect(groupMap[AssetCategory.Image]["folder-poses"]).toBeDefined();
+    });
+
+    it("never takes a folder the operation did not make", async () => {
+        const imported = imageAsset("asset-new", { groupId: "folder-hero" });
+        seedPayload("asset-new", "LAYER");
+        const { service, metadata, groupMap, history } = createHarness([imported], { groups: [imageGroup("folder-hero")] });
+
+        // Filed in a folder that was already there: nothing notes it.
+        const change = service.beginLibraryChange()!;
+        change.noteImported([imported]);
+        history.pushCommand(projectHistoryScope(), {
+            label: { key: "workspace.history.entry.importPsd" as never },
+            undo: () => change.undo(),
+            redo: () => change.redo(),
+            dispose: () => change.dispose(),
+        });
+
+        history.undo(projectHistoryScope());
+        await history.settled();
+        expect(metadata[AssetType.Image]["asset-new"]).toBeUndefined();
+        expect(groupMap[AssetCategory.Image]["folder-hero"]).toBeDefined();
+    });
 });

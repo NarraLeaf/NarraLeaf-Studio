@@ -5,7 +5,7 @@ import { Modal, dialogFooterButtonClass } from "@/lib/components/elements/Modal"
 import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { AssetCategory, AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { Services } from "@/lib/workspace/services/services";
@@ -61,7 +61,8 @@ const DROP_REASON_KEYS = {
  * Ctrl+Z puts the character back as it was, takes the new images out of the library and writes the
  * refreshed images' previous pixels back in. Those pixels are copied aside before anything is written
  * over them (`AssetLibraryChange`), and an image that cannot be copied stops the import with nothing
- * replaced.
+ * replaced. The character's image folder is taken back too when this import made it and nothing else
+ * is in it by then.
  *
  * ## The freeze
  *
@@ -223,6 +224,9 @@ export function PsdImportWizard(props: {
             const filed = await fileUnderCharacterFolder(assetsService, importedAssets, props.characterName);
             if (!filed.success) {
                 console.warn("[psd] could not file the layers under the character's folder", filed.error);
+            } else if (filed.data?.created) {
+                // Made for this import, so its undo takes the folder back once the layers are out of it.
+                change?.noteCreatedFolder(AssetCategory.Image, filed.data.id);
             }
 
             const fingerprint = props.appearance.getPsdFingerprint();
