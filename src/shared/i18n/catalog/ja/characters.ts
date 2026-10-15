@@ -261,6 +261,7 @@ export const characters = {
         thumbnail: "サムネイル",
         preview: "プレビュー",
         defaultAvatar: "既定のダイアログのアバター",
+        defaultAvatarRuntimeHint: "ランタイムで描くキャラクターにはアバターが作られない。ダイアログにはこのアバターを表示する",
         // このキャラクターのボイスが鳴るバス。ボイスのバスとその下のバスしか出さない。
         // エンジンはそれ以外の場所でボイスのクリップを受け付けない。
         voiceTrack: "ボイスのトラック",
@@ -303,7 +304,8 @@ export const characters = {
         variant: "バリアント：{name}",
         loading: "プレビューを読み込んでいる…",
         failed: "プレビューに失敗",
-        placeholder: "プレビューするには画像のあるバリアントを選ぶ",
+        emptyLayered: "画像のあるレイヤーを追加するか PSD を読み込むとプレビューを表示する",
+        emptyPreset: "このポーズに画像を設定するとプレビューを表示する",
         noSize: "大きさ不明",
         noMetadata: "メタデータなし",
         zoomOut: "縮小",

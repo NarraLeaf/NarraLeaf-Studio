@@ -358,6 +358,11 @@ function finiteOr(value: number | undefined, fallback: number): number {
     return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+/** A `/play` row: at its own row the game is showing its clip. */
+function isVideoPlayRow(block: StoryBlock): boolean {
+    return block.kind === "action" && block.payload.action === "video" && block.payload.operation === "play";
+}
+
 /**
  * "Every saved variable" for a runtime consumer: the project registry's `saved` entries unioned with
  * the story's own `/save` declaration rows. The view also carries the cross-surface name
@@ -549,6 +554,11 @@ class SnapshotWalker {
      */
     private inert = 0;
     private readonly diagnostics: StageSnapshotDiagnostic[] = [];
+    /**
+     * Clips a play the walk ran left running past its own row (it does not wait for the clip), and
+     * no row since hid or stopped: still on screen when the target is reached, for all the walk knows.
+     */
+    private readonly runningClips = new Set<StageSnapshotVideo>();
     private readonly variables: VariableStore = { scene: new Map(), saved: new Map() };
     private readonly assignedScene: Record<string, StoryLiteralValue> = {};
     private readonly assignedSaved: Record<string, StoryLiteralValue> = {};
@@ -607,6 +617,7 @@ class SnapshotWalker {
             if (!this.reachedTarget) {
                 this.diagnostic(this.targetBlockId, translate("story.preview.diagnostics.targetUnreachable"));
             }
+            this.reportUndrawnMedia();
         }
         this.collectDeclarations(this.scene.rootBlockIds);
         this.hideDeclarations();
@@ -836,6 +847,11 @@ class SnapshotWalker {
             this.reachedTarget = true;
             this.nvl = insideNvl;
             this.targetCamera = this.cameraAfter(block);
+            // At its own row a play is the clip on screen, whatever it does when it ends: the still
+            // is the stage under it, so it is said here too (see `reportUndrawnMedia`).
+            if (!block.disabled && this.inert === 0 && isVideoPlayRow(block)) {
+                this.diagnostic(block.id, translate("story.preview.diagnostics.videoSkipped"));
+            }
             return;
         }
         // A disabled row is compiled out with everything under it, so a playthrough never runs it.
@@ -1102,15 +1118,14 @@ class SnapshotWalker {
                 this.applySetVariable(block, payload);
                 return;
             case "video":
-                // The preview draws no clip, which is what the diagnostic says. The record is for a
-                // launch, whose tail has to be able to address the clip this row left on the stage.
-                this.diagnostic(block.id, translate("story.preview.diagnostics.videoSkipped"));
+                // The preview draws no clip; the record is for a launch, whose tail has to be able to
+                // address the clip this row left on the stage. Whether the target's still is missing
+                // one is answered once the walk is done (`reportUndrawnMedia`).
                 this.applyVideo(block, payload);
                 return;
             case "vfx":
-                // The preview draws no overlay, which is what the diagnostic says. The record is for a
-                // launch, which puts the overlay back the way this path left it.
-                this.diagnostic(block.id, translate("story.preview.diagnostics.ambienceSkipped"));
+                // The preview draws no overlay; the record is for a launch, which puts the overlay back
+                // the way this path left it. See `reportUndrawnMedia` for when that is said.
                 this.applyVfx(block, payload);
                 return;
             case "blueprint":
@@ -1251,10 +1266,18 @@ class SnapshotWalker {
         }
         if (payload.operation === "play") {
             record.staged = videoPlayWaits(payload) && !videoPlayHidesOnEnd(payload);
+            if (videoPlayWaits(payload)) {
+                this.runningClips.delete(record);
+            } else {
+                this.runningClips.add(record);
+            }
             return;
         }
         if (payload.operation === "hide") {
             record.staged = false;
+        }
+        if (payload.operation === "hide" || payload.operation === "stop") {
+            this.runningClips.delete(record);
         }
     }
 
@@ -1720,6 +1743,26 @@ class SnapshotWalker {
 
     private key(kind: "image" | "text" | "layer", objectName: string): string {
         return `${kind}:${normalizeObjectName(objectName)}`;
+    }
+
+    /**
+     * What the preview's still leaves out at the target row: a clip still on the stage there (one
+     * that held its last frame), an overlay still showing. Said once the walk is done, about the row
+     * that left it there, rather than by every media row the walk passed: a clip that played and
+     * went before the target is not missing from the still, and saying 「预览不播放视频」 under every
+     * later row of the scene named a picture nobody would see.
+     */
+    private reportUndrawnMedia(): void {
+        for (const record of this.videos.values()) {
+            if (record.staged || this.runningClips.has(record)) {
+                this.diagnostic(record.sourceBlockId, translate("story.preview.diagnostics.videoSkipped"));
+            }
+        }
+        for (const record of this.vfx.values()) {
+            if (record.staged && record.shownBy) {
+                this.diagnostic(record.shownBy, translate("story.preview.diagnostics.ambienceSkipped"));
+            }
+        }
     }
 
     private diagnostic(blockId: string | undefined, message: string): void {

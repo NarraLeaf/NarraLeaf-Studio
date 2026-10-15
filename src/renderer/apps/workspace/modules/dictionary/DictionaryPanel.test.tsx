@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { dictionary as enDictionary } from "@shared/i18n/catalog/en/dictionary";
 import {
@@ -104,13 +104,22 @@ class FakeDictionary {
 
 let service: FakeDictionary;
 
+/** The story library's change event, which is all the panel asks of it. */
+const storyListeners = new Set<(event: { storyId: string; document: unknown }) => void>();
+const stories = {
+    onDocumentChanged: (handler: (event: { storyId: string; document: unknown }) => void) => {
+        storyListeners.add(handler);
+        return () => storyListeners.delete(handler);
+    },
+};
+
 vi.mock("@/apps/workspace/context", () => ({
     useWorkspace: () => ({
         context: {
             services: {
                 get: (id: string) => (id === "workspaceFreeze"
                     ? { getReason: () => null, onChanged: () => () => undefined }
-                    : service),
+                    : id === "story" ? stories : service),
             },
         },
         isInitialized: true,
@@ -169,6 +178,7 @@ vi.mock("@/lib/i18n", () => ({
 const originalScrollIntoView = Element.prototype.scrollIntoView;
 beforeEach(() => {
     service = new FakeDictionary();
+    storyListeners.clear();
     scanFindings = [];
     jumps.length = 0;
     // jsdom has no layout and no `scrollIntoView`; nothing here asserts about it.
@@ -279,6 +289,45 @@ describe("the dictionary panel", () => {
         const row = await screen.findByText("The colour of the sky.");
         fireEvent.click(row);
         expect(jumps).toEqual([(scanFindings[0] as { target: unknown }).target]);
+    });
+
+    it("keeps its answer about the text as it now reads", async () => {
+        service.addTerm("color");
+        service.updateEntry("color", { variants: ["colour"] });
+        scanFindings = [{
+            term: "color", written: "colour", replacement: "color", preview: "The colour of the sky.",
+            target: { kind: "storyBlock", storyId: "s1", sceneId: "sc1", blockId: "b1", storyName: "Main", sceneName: "Opening" },
+        }];
+        panel();
+        fireEvent.click(screen.getByText(enDictionary.check));
+        await waitFor(() => expect(screen.getAllByText("1 row").length).toBeGreaterThan(0));
+
+        // A project replace fixes the row; the story says so.
+        const fixed = {
+            schemaVersion: 1, id: "s1", name: "Main",
+            chapters: [{ id: "ch", name: "Chapter", sceneIds: ["sc1"] }],
+            scenes: { sc1: { id: "sc1", name: "Opening", runtimeName: "opening", rootBlockIds: ["b1"], blocks: {
+                b1: { id: "b1", kind: "nodeAction", parentId: null, childrenIds: [],
+                    payload: { action: "narration", text: { textId: "t1", role: "narration", value: "The color of the sky." } } },
+            } } },
+        };
+        act(() => storyListeners.forEach(listener => listener({ storyId: "s1", document: fixed })));
+
+        await waitFor(() => expect(screen.getByText(enDictionary.checkClean)).toBeTruthy());
+        expect(screen.queryAllByText("1 row")).toHaveLength(0);
+    });
+
+    it("drops its answer when the dictionary it was run against changes", async () => {
+        service.addTerm("color");
+        panel();
+        fireEvent.click(screen.getByText(enDictionary.check));
+        await waitFor(() => expect(screen.getByText(enDictionary.checkClean)).toBeTruthy());
+
+        act(() => {
+            service.addTerm("grey");
+        });
+
+        expect(screen.queryByText(enDictionary.checkClean)).toBeNull();
     });
 
     it("says so when the project writes every term the project's way", async () => {

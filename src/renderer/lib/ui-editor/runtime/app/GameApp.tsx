@@ -306,8 +306,8 @@ import { LayerStackController, mountSurfaceLayer, type SurfaceLayerEntry } from 
 import { useLayerStack } from "./layers/useLayerStack";
 import { resolveCompositeInput } from "./layers/compositeInput";
 import { buildCompositeView, listStageSurfaces } from "./layers/compositeView";
-import { isPageEntryDrawn, isStageCovered, isStageCoveredByPage } from "./layers/stageOcclusion";
-import { StageCoveredByPageContext, StageCoveredContext } from "./stageConcealment";
+import { actionHoldsForVideo, isPageEntryDrawn, isStageCovered, isStageCoveredByPage } from "./layers/stageOcclusion";
+import { StageCoveredByPageContext, StageCoveredContext, StageHeldByVideoContext } from "./stageConcealment";
 import { useStageCoverCapture } from "./stageCoverCapture";
 import { createStageAdvanceHolder, holdStageAdvance, type StageAdvanceHolder } from "./stageAdvanceHold";
 import { SurfaceStackBox } from "./SurfaceStackBox";
@@ -1321,6 +1321,8 @@ export function GameApp(props: GameAppProps): ReactNode {
     const nlrCurrentActionTokenRef = useRef<{ cancel(): void } | null>(null);
     const currentActionListenersRef = useRef<Set<(actionId: string | null) => void>>(new Set());
     const nlrCompiledRef = useRef<CompiledNlrStory | null>(null);
+    /** Whether the story is holding on a clip it waits out; read off the play head as it moves. */
+    const [stageHeldByVideo, setStageHeldByVideo] = useState(false);
     /**
      * The play head, holding both the engine's raw action id and the last row it could name.
      *
@@ -2698,6 +2700,9 @@ export function GameApp(props: GameAppProps): ReactNode {
         currentDialogNametagRef,
         dialogClickTargets: nlrDialogClickTargets,
         resolveSpeakerAvatar: sourceName => resolveSpeakerAvatarRef.current(sourceName),
+        // The face a backlog line was shown with, by the URL the engine recorded: the compile's own
+        // url-to-asset inverse, which is what turns the dialog's live avatar into an asset too.
+        resolveRecordedAvatar: url => toBlueprintImageAsset(nlrCompiledRef.current?.avatarAssetIdByUrl.get(url) ?? null),
         displaySpeakerName,
         // The same answer Play Voice acts on, so a backlog row offers a replay exactly when one plays.
         canReplayVoice: unitId => Boolean(nlrCompiledRef.current?.getVoicePlayback?.(unitId)),
@@ -7040,8 +7045,10 @@ export function GameApp(props: GameAppProps): ReactNode {
                 // and fan it out to panel subscribers. Re-bound per session; the fan-out set is stable.
                 nlrCurrentActionTokenRef.current?.cancel();
                 playHead.observe(liveGame.getCurrentActionId());
+                setStageHeldByVideo(actionHoldsForVideo(nlrCompiledRef.current?.actionIdBindings, liveGame.getCurrentActionId()));
                 nlrCurrentActionTokenRef.current = liveGame.onCurrentActionChange(({ actionId }) => {
                     playHead.observe(actionId);
+                    setStageHeldByVideo(actionHoldsForVideo(nlrCompiledRef.current?.actionIdBindings, actionId));
                     // The same row the Dev Mode timeline shows, kept where the crash screen can read
                     // it after this tree is gone. There is no second tracker for "the current line".
                     recordStoryRow(playHead.blockId());
@@ -7134,7 +7141,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             >
                 <StageCoveredByPageContext.Provider value={stageCover.concealed}>
                     <StageCoveredContext.Provider value={stageCovered}>
-                        {nlrStageLayer}
+                        <StageHeldByVideoContext.Provider value={stageHeldByVideo}>
+                            {nlrStageLayer}
+                        </StageHeldByVideoContext.Provider>
                     </StageCoveredContext.Provider>
                 </StageCoveredByPageContext.Provider>
                 {/* Runtime plugin overlays: above the game stage, below the app surface

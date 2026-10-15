@@ -29,6 +29,18 @@ const importFromPaths = vi.fn(async () => ({
     success: true as const,
     data: [{ success: true as const, data: { id: "asset-base" } }],
 }));
+// The image section's folders: none yet, so the import makes the character's.
+const createGroup = vi.fn(async (_category: string, name: string) => ({
+    success: true as const,
+    data: { id: `folder-${name}`, name },
+}));
+const moveAssetsToGroup = vi.fn(async () => ({ success: true as const, data: undefined }));
+const assetsService = {
+    importFromPaths,
+    getGroupAssetsManager: () => ({ getGroups: () => [] }),
+    createGroup,
+    moveAssetsToGroup,
+};
 
 // Keys, not prose: what is asserted is which control is off, and English wording is free to change
 // without this file having an opinion.
@@ -54,7 +66,7 @@ vi.mock("@/lib/app/bridge", () => ({
 }));
 
 vi.mock("@/apps/workspace/context", () => ({
-    useWorkspace: () => ({ context: { services: { get: () => ({ importFromPaths }) } } }),
+    useWorkspace: () => ({ context: { services: { get: () => assetsService } } }),
 }));
 
 /** Two plain layers: no unsupported blend mode, so nothing is left undecided and Import is offered. */
@@ -79,6 +91,7 @@ const DOCUMENT: PsdDocument = {
 function appearanceStub(): CharacterAppearance {
     return {
         findPsdSlot: () => null,
+        getLayers: () => [],
         createLayer: (name: string) => ({ id: `layer-${name}` }),
         setLayerAsset: () => undefined,
         getCanvas: () => null,
@@ -93,12 +106,14 @@ afterEach(() => {
     frozen = false;
     bakePsd.mockClear();
     importFromPaths.mockClear();
+    createGroup.mockClear();
+    moveAssetsToGroup.mockClear();
 });
 
 /** Open the wizard and read a PSD, the way the author does before deciding anything. */
-async function openWithDocument(): Promise<ReturnType<typeof render>> {
+async function openWithDocument(onImported?: (hadArt: boolean) => void): Promise<ReturnType<typeof render>> {
     const view = render(
-        <PsdImportWizard open onClose={() => undefined} appearance={appearanceStub()} characterName="Hero" />,
+        <PsdImportWizard open onClose={() => undefined} appearance={appearanceStub()} characterName="Hero" onImported={onImported} />,
     );
     await act(async () => {
         fireEvent.click(screen.getByText("characters.editor.psd.choose"));
@@ -112,7 +127,8 @@ function importButton(): HTMLElement {
 
 describe("PsdImportWizard while the workspace is frozen", () => {
     it("bakes and imports when nothing is frozen", async () => {
-        await openWithDocument();
+        const onImported = vi.fn();
+        await openWithDocument(onImported);
 
         expect(importButton().matches(":disabled")).toBe(false);
         await act(async () => {
@@ -120,6 +136,11 @@ describe("PsdImportWizard while the workspace is frozen", () => {
         });
         expect(bakePsd).toHaveBeenCalledTimes(1);
         expect(importFromPaths).toHaveBeenCalledTimes(1);
+        // Filed in the image folder named after the character, not left in the section's root.
+        expect(createGroup).toHaveBeenCalledWith("image", "Hero");
+        expect(moveAssetsToGroup).toHaveBeenCalledWith([{ id: "asset-base" }], "folder-Hero");
+        // A character with no art before it: the editor stands her first picture on the floor.
+        expect(onImported).toHaveBeenCalledWith(false);
     });
 
     it("refuses before the bake when the freeze arrives with the wizard open", async () => {

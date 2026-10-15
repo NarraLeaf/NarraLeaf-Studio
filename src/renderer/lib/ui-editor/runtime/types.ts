@@ -89,6 +89,13 @@ export type UIHostAdapterBlueprintRuntime = {
         options?: UIHostAdapterElementEventOptions,
     ) => Promise<void>;
     /**
+     * Run the `flush` events queued so far now, instead of on the next frame; resolves when they
+     * have run. For a beat whose flush has to land in the frame that shows it - see
+     * `StageSlotSurfaceRuntime.flushSlotElements`. Optional because a host that queues nothing has
+     * nothing to run.
+     */
+    drainPendingFlushes?: () => Promise<void>;
+    /**
      * Whether a press on this element is handled by the element itself: its own blueprint has a
      * Mouse Click head, or an On Element Click head names it.
      *

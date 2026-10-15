@@ -9,6 +9,7 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
 import type { CharacterAppearance } from "@/lib/workspace/services/character/CharacterAppearance";
+import { fileUnderCharacterFolder } from "@/lib/workspace/services/character/psdImportFolder";
 import {
     applyPsdPlan,
     nameBakeTargets,
@@ -62,6 +63,8 @@ export function PsdImportWizard(props: {
     onClose: () => void;
     appearance: CharacterAppearance;
     characterName: string;
+    /** After a successful import, with whether the character had any art before it. */
+    onImported?: (hadArt: boolean) => void;
 }) {
     const { t, tn } = useTranslation();
     const { context } = useWorkspace();
@@ -147,6 +150,16 @@ export function PsdImportWizard(props: {
                     assetIds.set(joinPath(layer.path), result.data.id);
                 }
             });
+            // Into the character's own folder, not the section's root. The layers are imported by
+            // now, so a folder that could not be made or used leaves them where they landed.
+            const filed = await fileUnderCharacterFolder(
+                assetsService,
+                imported.data.flatMap(result => (result.success && result.data ? [result.data] : [])),
+                props.characterName,
+            );
+            if (!filed.success) {
+                console.warn("[psd] could not file the layers under the character's folder", filed.error);
+            }
 
             const fingerprint = props.appearance.getPsdFingerprint();
             const sameFile = fingerprint?.fileName === document.fileName;
@@ -156,6 +169,7 @@ export function PsdImportWizard(props: {
                 props.appearance.setCanvas({ width: document.width, height: document.height });
             }
 
+            const hadArt = props.appearance.getLayers().some(layer => Boolean(layer.assetId) || Object.values(layer.options ?? {}).some(Boolean));
             const slots = applyPsdPlan(props.appearance, plan, path => assetIds.get(joinPath(path)) ?? null);
             props.appearance.setPsdFingerprint({
                 fileName: document.fileName,
@@ -164,6 +178,7 @@ export function PsdImportWizard(props: {
                 slots,
                 importedAt: Date.now(),
             });
+            props.onImported?.(hadArt);
             close();
         } catch (thrown: unknown) {
             console.warn("[psd] import failed", thrown);

@@ -621,6 +621,19 @@ export const lint = {
                 + "切り替えなら時間はかからない\n"
                 + "- そうでなければ行を削除するか、別の画像を選ぶ",
         },
+        storyTagNameShared: {
+            title: "複数の軸にある同名のタグ",
+            description: "レイヤー式の立ち絵のキャラクターで、2 つの軸に同じ名前のタグがある",
+            message: "{first} と {second} の両方の軸に {tag} という名前のタグがある",
+            help:
+                "レイヤー式の立ち絵のキャラクターの 2 つの軸に、同じ名前のタグがある。たとえば「服装」と「髪型」の両方に"
+                + "「青」がある。名前の大文字と小文字は区別しない\n"
+                + "\n"
+                + "/char などの入力した行はタグの名前だけで見た目を指すため、その名前は先の軸のタグにしか届かない。"
+                + "もう一方のタグは、その行のプロパティでしか選べない\n"
+                + "\n"
+                + "- キャラクターエディタで、どちらかのタグの名前を変える",
+        },
         blueprintReferenceMissing: {
             title: "参照先の欠落",
             description: "プロジェクトに存在しない対象を指すノード",
@@ -1305,7 +1318,7 @@ export const lint = {
         voiceMissing: {
             title: "ボイスの欠落",
             description: "ボイスを収録する言語で録音のない行",
-            message: "{locale} の録音がない",
+            message: "{language} の録音がない",
             help:
                 "話される行に、プロジェクトのあるボイスの言語での録音が無い。地の文と台詞の行を検査し、"
                 + "「選択肢にボイスを付ける」がオンのときは選択肢も検査する。問いかけ、空の行、無効にした行は検査しない\n"
@@ -1322,7 +1335,7 @@ export const lint = {
         voiceStale: {
             title: "古いボイス",
             description: "録音した後に行が変わっている",
-            message: "{locale} の録音が行より古い",
+            message: "{language} の録音のあとに行が変更されている",
             help:
                 "録音を結びつけたあとに、その行のテキストが変わっている。比べるのはその言語の声優が読むテキストで、"
                 + "プロジェクトにその言語の訳文があれば訳文、無ければ原文\n"
@@ -1339,7 +1352,7 @@ export const lint = {
         voiceOrphan: {
             title: "対応する行のない録音",
             description: "対応する行が存在しない録音",
-            message: "対応する行のない {locale} の録音が {recordings}ある",
+            message: "対応する行のない {language} の録音が {recordings}ある",
             recordingCount: {
                 other: "{count} 件",
             },

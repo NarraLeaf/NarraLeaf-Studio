@@ -58,8 +58,10 @@ import { useCharacterAvatarBake } from "../useCharacterAvatarBake";
 import { syncCharacterEditorTabTitle } from "../state/useCharacterFocus";
 import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
 import { combinationKey, enumerateCombinations } from "@/lib/workspace/services/character/characterCombinations";
-import { characterAvatarAxisIds, characterAvatarKey } from "@shared/utils/characterAvatar";
+import { characterAvatarAxisIds, characterAvatarKey, characterAvatarSelection } from "@shared/utils/characterAvatar";
 import { readableAccentColor } from "@/apps/workspace/modules/story/scene-editor/storySceneBlockUtils";
+import { defaultSpriteSize, stageSize } from "@/lib/workspace/services/agent/tools/castTools";
+import { entranceForFirstArt } from "@/lib/workspace/services/agent/spriteStage";
 import {
     CHARACTER_INSPECTOR_DEFAULT_WIDTH,
     CHARACTER_INSPECTOR_MAX_FRACTION,
@@ -177,6 +179,17 @@ function DefaultStar(props: {
  * and which are locked. Hiding a layer to see the one under it must not change what ships, so it
  * cannot be persisted - `toLayeredDefinition` never learns about it.
  */
+/** Whether a look has a picture yet - a pose's image, a layer's - not counting avatar overrides. */
+function appearanceHasArt(appearance: CharacterAppearance): boolean {
+    if (appearance.getKind() === "preset") {
+        return appearance.getPoses().some(pose => Boolean(pose.assetId));
+    }
+    if (appearance.getKind() === "layered") {
+        return appearance.getLayers().some(layer => Boolean(layer.assetId) || Object.values(layer.options ?? {}).some(Boolean));
+    }
+    return true;
+}
+
 export function CharacterEditor({ tabId, payload }: EditorComponentProps<CharacterEditorPayload>) {
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
@@ -308,18 +321,19 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
 
     // The baker's own keying, asked of the shared rule rather than re-derived, so what the avatar
     // section shows and what gets baked cannot drift apart.
-    const avatarAxisIds = useMemo(
+    const avatarSummary = useMemo(
         () => (appearance && kind === "layered"
-            ? characterAvatarAxisIds({
-                kind: "layered",
+            ? {
+                kind: "layered" as const,
                 canvas: null,
                 layers: [],
                 axes: appearance.getAxes(),
                 avatarAxisIds: appearance.getAvatarAxisIds(),
-            })
-            : []),
+            }
+            : undefined),
         [appearance, kind, version],
     );
+    const avatarAxisIds = useMemo(() => characterAvatarAxisIds(avatarSummary), [avatarSummary]);
 
     /**
      * The avatar key a look maps to. Several looks can map to one key: a combination varies on
@@ -375,12 +389,33 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
         ));
     }, []);
 
+    /**
+     * Stand the character on the floor when her first art has just landed (`entranceForFirstArt`):
+     * without it a new character's picture comes on at its own pixels, centred on the stage.
+     */
+    const fitFirstArt = useCallback(async (hadArt: boolean) => {
+        if (hadArt || !context || !character || character.profile.getEntranceTransform() !== undefined) {
+            return;
+        }
+        const sprite = await defaultSpriteSize(context, character);
+        const entrance = entranceForFirstArt({
+            hadArt,
+            current: character.profile.getEntranceTransform(),
+            sprite,
+            stage: stageSize(context),
+        });
+        if (entrance) {
+            character.profile.setEntranceTransform(entrance);
+        }
+    }, [character, context]);
+
     const confirmAsset = useCallback((assets: Asset[]) => {
         const assetId = assets[0]?.id ?? null;
         if (!appearance || !slot) {
             setSlot(null);
             return;
         }
+        const hadArt = appearanceHasArt(appearance);
         if (slot.kind === "pose") {
             appearance.setPoseAsset(slot.poseId, assetId);
         } else if (slot.kind === "layer") {
@@ -393,7 +428,10 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
             appearance.setLayerOption(slot.layerId, slot.tagId, assetId);
         }
         setSlot(null);
-    }, [appearance, slot]);
+        if (assetId && slot.kind !== "avatar") {
+            void fitFirstArt(hadArt);
+        }
+    }, [appearance, fitFirstArt, slot]);
 
     const toggleAvatarAxis = useCallback((axisId: string) => {
         if (!appearance) return;
@@ -527,7 +565,8 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
     // ------------------------------------------------------------------ avatar
 
     const avatarKey = kind === "preset" ? previewPoseId : avatarKeyOf(tags);
-    const avatarSelection = kind === "preset" ? { poseId: previewPoseId } : { tags: previewTags };
+    // Drawn as the bake draws it: the avatar axes' tags, every other axis at its default.
+    const avatarSelection = kind === "preset" ? { poseId: previewPoseId } : characterAvatarSelection(avatarSummary, previewTags);
     const profilePortrait = character.profile.getPortrait();
 
     /**
@@ -673,6 +712,7 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
                         // the kind that has layers. A preset preview says which pose it is showing,
                         // which is the thing the author actually needs to read here.
                         caption={kind === "preset" ? (previewPose?.name ?? null) : undefined}
+                        emptyLabel={kind === "preset" ? t("characters.preview.emptyPreset") : t("characters.preview.emptyLayered")}
                         // Never drawn while frozen: the box is a gesture, and a gesture that picks
                         // up and refuses to write reads as a broken editor rather than as a freeze.
                         overlay={cropping && !freeze.frozen ? (
@@ -699,14 +739,14 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
                                 </button>
                                 <button
                                     className={onionAxisId ? ICON_BTN_ON : ICON_BTN}
-                                    title={t("characters.editor.onionSkin")}
+                                    data-tip={t("characters.editor.onionSkin")}
+                                    aria-label={t("characters.editor.onionSkin")}
                                     onClick={() => patchView({
                                         onionAxisId: onionAxisId ? null : (axes.find(axis => axis.tags.length > 1)?.id ?? null),
                                     })}
                                 >
                                     <Layers className="w-3.5 h-3.5" />
                                 </button>
-                                {gridToggle}
                                 <button
                                     className={ICON_BTN}
                                     onClick={() => setPsdOpen(true)}
@@ -715,6 +755,10 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
                                 >
                                     <FileImage className="w-3.5 h-3.5" />
                                 </button>
+                                {/* Last, because it is the one button the grid keeps: the grid's
+                                    toolbar is it alone, right-aligned, so in any other place it
+                                    jumped sideways under the pointer that had just pressed it. */}
+                                {gridToggle}
                             </>
                         ) : null}
                     />
@@ -1167,6 +1211,7 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
                 onClose={() => setPsdOpen(false)}
                 appearance={appearance}
                 characterName={character.profile.getProfile().name}
+                onImported={hadArt => void fitFirstArt(hadArt)}
             />
 
             <AssetSelector

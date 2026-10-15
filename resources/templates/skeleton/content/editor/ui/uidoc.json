@@ -21631,7 +21631,7 @@
     "b15fa747-fe45-4bf2-8562-c343ac387293": {
       "id": "b15fa747-fe45-4bf2-8562-c343ac387293",
       "type": "nl.container",
-      "name": "BGM row",
+      "name": "Music row",
       "parentId": "dd2a6fc5-4096-4982-96b4-3aeeb619f0c7",
       "childrenIds": [
         "903a5c25-5f2c-4bab-96eb-19a1df827f88",
@@ -22006,7 +22006,7 @@
     "903a5c25-5f2c-4bab-96eb-19a1df827f88": {
       "id": "903a5c25-5f2c-4bab-96eb-19a1df827f88",
       "type": "nl.text",
-      "name": "BGM label",
+      "name": "Music label",
       "parentId": "b15fa747-fe45-4bf2-8562-c343ac387293",
       "childrenIds": [],
       "layout": {
@@ -22194,7 +22194,7 @@
     "f07c5a12-03c2-4aba-92fa-ba23da92f04a": {
       "id": "f07c5a12-03c2-4aba-92fa-ba23da92f04a",
       "type": "nl.container",
-      "name": "BGM rule",
+      "name": "Music rule",
       "parentId": "b15fa747-fe45-4bf2-8562-c343ac387293",
       "childrenIds": [],
       "layout": {
@@ -22565,7 +22565,7 @@
     "82b912e8-3fc1-4ac4-bfad-d99209b94167": {
       "id": "82b912e8-3fc1-4ac4-bfad-d99209b94167",
       "type": "nl.container",
-      "name": "Sound effects row",
+      "name": "SFX row",
       "parentId": "dd2a6fc5-4096-4982-96b4-3aeeb619f0c7",
       "childrenIds": [
         "5cd19a3b-c72a-4a91-a6ff-306d92d205e8",
@@ -22940,7 +22940,7 @@
     "5cd19a3b-c72a-4a91-a6ff-306d92d205e8": {
       "id": "5cd19a3b-c72a-4a91-a6ff-306d92d205e8",
       "type": "nl.text",
-      "name": "Sound effects label",
+      "name": "SFX label",
       "parentId": "82b912e8-3fc1-4ac4-bfad-d99209b94167",
       "childrenIds": [],
       "layout": {
@@ -23128,7 +23128,7 @@
     "f3ff270e-4a97-47e2-8269-5fb1ce98bf6f": {
       "id": "f3ff270e-4a97-47e2-8269-5fb1ce98bf6f",
       "type": "nl.container",
-      "name": "Sound effects rule",
+      "name": "SFX rule",
       "parentId": "82b912e8-3fc1-4ac4-bfad-d99209b94167",
       "childrenIds": [],
       "layout": {
@@ -49135,7 +49135,7 @@
     "config-bgm-volume": {
       "id": "config-bgm-volume",
       "type": "nl.container",
-      "name": "BGM slider",
+      "name": "Music slider",
       "parentId": "b15fa747-fe45-4bf2-8562-c343ac387293",
       "childrenIds": [],
       "layout": {
@@ -49170,7 +49170,7 @@
     "config-sfx-volume": {
       "id": "config-sfx-volume",
       "type": "nl.container",
-      "name": "Sound effects slider",
+      "name": "SFX slider",
       "parentId": "82b912e8-3fc1-4ac4-bfad-d99209b94167",
       "childrenIds": [],
       "layout": {

@@ -103,7 +103,7 @@ import { ConditionEditor, EMPTY_EXPRESSION_CONDITION } from "./ConditionEditor";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { useAssetFieldNotice } from "@/lib/workspace/hooks/useAssetFieldNotice";
 import type { StoryRowLookups } from "@/lib/story/storyRowProjection";
-import { describeBlockSubject, getBlockBadgeInfo } from "./storySceneBlockUtils";
+import { characterRowAppearances, describeBlockSubject, getBlockBadgeInfo } from "./storySceneBlockUtils";
 import { useStoryBlueprintNames } from "./useStoryBlueprintNames";
 import { useStoryMotionNames } from "./useStoryMotionNames";
 import { useStoryVoiceState } from "./useStoryVoiceState";
@@ -1182,6 +1182,7 @@ function ActionPayloadFields(props: {
                 payload={payload}
                 storyId={props.document.id}
                 sceneId={props.sceneId}
+                scene={props.document.scenes[props.sceneId]}
                 blockId={props.block.id}
                 storyName={props.document.name}
                 characters={props.characters}
@@ -1297,6 +1298,7 @@ function ActionPayloadFields(props: {
                         sceneId={props.sceneId}
                         blockId={props.block.id}
                         target={payload.target}
+                        characters={props.characters}
                         onChange={target => props.onChange({ ...payload, target })}
                     />
                 </FieldGrid>
@@ -2117,7 +2119,7 @@ function PuppetChannelControl(props: {
 }) {
     const { t } = useTranslation();
     const appearance = props.character.profile.appearance;
-    const puppet = appearance.getKind() === "puppet" ? appearance.getPuppet() : null;
+    const puppet = appearance.getPuppet();
     // Memoised on the puppet's individual fields: the appearance object is mutable and keeps the same
     // reference across an edit, so depending on it alone would never re-ask.
     const request = useMemo(
@@ -2258,7 +2260,7 @@ function PuppetParamRows(props: {
 }) {
     const { t } = useTranslation();
     const appearance = props.character.profile.appearance;
-    const puppet = appearance.getKind() === "puppet" ? appearance.getPuppet() : null;
+    const puppet = appearance.getPuppet();
     const request = useMemo(
         () => puppetDescriptionRequestFor(appearance),
         [appearance, puppet?.assetId, puppet?.backend, puppet?.entry, puppet?.options, puppet?.size],
@@ -2370,10 +2372,13 @@ function PuppetParamRows(props: {
 
 type CharacterActionPayload = Extract<StoryActionPayload, { action: "character" }>;
 
-function CharacterActionEditor(props: {
+/** Exported for `storyPuppetRowInspector.test`, which renders the character rows on their own. */
+export function CharacterActionEditor(props: {
     payload: CharacterActionPayload;
     storyId: string;
     sceneId: StorySceneId;
+    /** The row's scene, for the look already on stage before it. */
+    scene?: StoryScene;
     blockId: string;
     storyName: string;
     characters: Character[];
@@ -2436,7 +2441,7 @@ function CharacterActionEditor(props: {
                         onChange={updateCharacter}
                     />
                 </FieldGrid>
-                {selectedCharacter && selectedCharacter.profile.appearance.getKind() === "puppet" ? (
+                {selectedCharacter && isPuppetAppearanceKind(selectedCharacter.profile.appearance.getKind()) ? (
                     <Section title={t("storyInspector.character.puppetParams")}>
                         <PuppetParamRows
                             character={selectedCharacter}
@@ -2468,7 +2473,7 @@ function CharacterActionEditor(props: {
                         onChange={updateCharacter}
                     />
                 </FieldGrid>
-                {selectedCharacter && selectedCharacter.profile.appearance.getKind() === "puppet" ? (
+                {selectedCharacter && isPuppetAppearanceKind(selectedCharacter.profile.appearance.getKind()) ? (
                     <Section title={t("storyInspector.section.appearance")}>
                         <PuppetChannelControl
                             character={selectedCharacter}
@@ -2542,12 +2547,29 @@ function CharacterActionEditor(props: {
                         character={selectedCharacter}
                         pose={payload.pose}
                         tags={payload.tags}
+                        baseTags={payload.operation === "expression" && props.scene
+                            ? characterRowAppearances(props.scene).get(props.blockId)?.before?.tags
+                            : undefined}
                         onChange={next => onChange({ ...payload, pose: next.pose, tags: next.tags })}
                     />
                 </Section>
             ) : (
                 <div className="text-xs text-fg-subtle">{t("storyInspector.character.chooseHint")}</div>
             )}
+            {/* A transition only applies where the image source is set (NLR `char(src, transition)`),
+                i.e. changing a visible character's appearance. `exit` (`hide()`) and `move`
+                (`transform()`) take a transform, not a transition; `enter`'s entrance is driven by
+                its transform preset. So the transition editor is only meaningful for `expression`.
+                It comes before the transform: a change of look is what the row is for, and its
+                transition is the setting reached for with it - below the transform it sat under the
+                panel's fold. */}
+            {payload.operation === "expression" ? (
+                <TransitionEditor
+                    value={payload.transition}
+                    context="expression"
+                    onChange={transition => onChange({ ...payload, transition })}
+                />
+            ) : null}
             <TransformPresetEditor
                 value={payload.transform}
                 motionTargetKind="character"
@@ -2565,17 +2587,6 @@ function CharacterActionEditor(props: {
                 storyName={props.storyName}
                 onChange={transform => onChange({ ...payload, transform })}
             />
-            {/* A transition only applies where the image source is set (NLR `char(src, transition)`),
-                i.e. changing a visible character's appearance. `exit` (`hide()`) and `move`
-                (`transform()`) take a transform, not a transition; `enter`'s entrance is driven by
-                its transform preset. So the transition editor is only meaningful for `expression`. */}
-            {payload.operation === "expression" ? (
-                <TransitionEditor
-                    value={payload.transition}
-                    context="expression"
-                    onChange={transition => onChange({ ...payload, transition })}
-                />
-            ) : null}
             <Disclosure title={t("storyInspector.advanced")}>
                 <div className="max-w-sm">
                     <AssetField
@@ -3839,7 +3850,8 @@ function VoiceInspectorSection({ block }: { block: StoryBlock }) {
                 <button
                     type="button"
                     className="grid h-6 w-6 place-items-center rounded-md text-fg-muted transition-colors hover:bg-fill hover:text-fg"
-                    title={t("storyInspector.voice.openTable")}
+                    data-tip={t("storyInspector.voice.openTable")}
+                    aria-label={t("storyInspector.voice.openTable")}
                     onClick={voice.openVoiceTable}
                 >
                     <ExternalLink className="h-3.5 w-3.5" />

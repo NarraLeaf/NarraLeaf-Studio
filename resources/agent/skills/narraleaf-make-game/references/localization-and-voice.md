@@ -117,10 +117,12 @@ takes; the text of a line in a voice language is its translation in that languag
 ### The file-name rule
 
 The default rule is `{scene}_{index}_{character}`: the scene name, the line's position among the
-voiced lines of its scene (`001`, `002`, ...), and the speaker. Narration and choice options have
-labels of their own. `voice_list {language}` gives every line's exact name as `expect` - hand that
-list to the author or the booth when files still need naming. Matching ignores case, spaces,
-punctuation, extensions and folders, so `Opening_001_Aoi.ogg`, `opening 001 aoi.wav` and
+voiced lines of its scene (`001`, `002`, ...), and the speaker. Narration and choice options are
+named with Studio's word for them in the project's source language (narration is `旁白` in a
+Chinese project, `Narration` in an English one, `地の文` in a Japanese one), and a take named with
+another language's word matches as well. `voice_list {language}` gives every line's exact name as
+`expect` - hand that list to the author or the booth when files still need naming. Matching ignores
+case, spaces, punctuation, audio extensions and folders, so `Opening_001_Aoi.ogg`, `opening 001 aoi.wav` and
 `voice/ja/Opening-001-Aoi.mp3` all match `Opening_001_Aoi`. It matches against an asset's **name in
 the library**, so a misnamed take can be fixed by renaming the asset.
 

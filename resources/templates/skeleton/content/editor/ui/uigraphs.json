@@ -89,7 +89,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "Two sounds for the presses that sound only on a condition: an unlocked scene card, CG or recollection entry plays confirm and a locked one stays silent, and the confirm dialog plays confirm on the answer that acts and back on the others. Those blueprints call these functions with Call Fn after their check, and the Confirm page calls UI back cue when Escape backs out of a question, since a key has no element to carry a sound. A sound that always plays when an element is pressed or hovered is set in that element's Sound section instead and needs no blueprint. Both kinds play on the SFX track, so the Sound effects slider on the Config page sets their volume.",
+                      "text": "Two sounds for the presses that sound only on a condition: an unlocked scene card, CG or recollection entry plays confirm and a locked one stays silent, and the confirm dialog plays confirm on the answer that acts and back on the others. Those blueprints call these functions with Call Fn after their check, and the Confirm page calls UI back cue when Escape backs out of a question, since a key has no element to carry a sound. A sound that always plays when an element is pressed or hovered is set in that element's Sound section instead and needs no blueprint. Both kinds play on the SFX track, so the SFX slider on the Config page sets their volume.",
                       "width": 560,
                       "height": 270
                     },
@@ -6053,7 +6053,7 @@
       },
       "002bb2fb-5187-4d39-80b7-463093287369": {
         "id": "002bb2fb-5187-4d39-80b7-463093287369",
-        "name": "BGM label",
+        "name": "Music label",
         "owner": {
           "kind": "widgetMain",
           "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
@@ -6074,7 +6074,7 @@
       },
       "5efa31db-1807-43d3-9079-732269c7f6f8": {
         "id": "5efa31db-1807-43d3-9079-732269c7f6f8",
-        "name": "BGM rule",
+        "name": "Music rule",
         "owner": {
           "kind": "widgetMain",
           "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
@@ -6095,7 +6095,7 @@
       },
       "aaad450e-2c85-488a-ae8f-149fa08f2ee9": {
         "id": "aaad450e-2c85-488a-ae8f-149fa08f2ee9",
-        "name": "Sound effects label",
+        "name": "SFX label",
         "owner": {
           "kind": "widgetMain",
           "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
@@ -6116,7 +6116,7 @@
       },
       "a9534092-9b83-42a6-aa94-9446d9473fc4": {
         "id": "a9534092-9b83-42a6-aa94-9446d9473fc4",
-        "name": "Sound effects rule",
+        "name": "SFX rule",
         "owner": {
           "kind": "widgetMain",
           "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
@@ -6263,7 +6263,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "One blueprint for the BGM, Sound effects and Voice rows of the Config page: each row is an instance of this component and picks its track from the list in the Audio track param, which Get Component Param reads for the instance being run. To add a slider for another track, place this component in a row and pick that track in Audio track. The slider's 0–100 becomes the volume's 0 to 1 (divide by 100). Memo keeps the value because one output can feed only one input, and two nodes use it here.",
+                      "text": "One blueprint for the Music, SFX and Voice rows of the Config page: each row is an instance of this component and picks its track from the list in the Audio track param, which Get Component Param reads for the instance being run. To add a slider for another track, place this component in a row and pick that track in Audio track. The slider's 0–100 becomes the volume's 0 to 1 (divide by 100). Memo keeps the value because one output can feed only one input, and two nodes use it here.",
                       "width": 1100,
                       "height": 160
                     },
@@ -13366,7 +13366,7 @@
       },
       "6898bd58-6ff2-460b-995a-6a87bf220bb0": {
         "id": "6898bd58-6ff2-460b-995a-6a87bf220bb0",
-        "name": "BGM row",
+        "name": "Music row",
         "owner": {
           "kind": "widgetMain",
           "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
@@ -13387,7 +13387,7 @@
       },
       "9e70612f-35ea-4596-bb30-63ee2dd58479": {
         "id": "9e70612f-35ea-4596-bb30-63ee2dd58479",
-        "name": "Sound effects row",
+        "name": "SFX row",
         "owner": {
           "kind": "widgetMain",
           "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
@@ -22074,7 +22074,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "Runs when a row is pressed. A locked row does nothing; an unlocked one plays the row's track on the Music track, so the BGM slider on the Config page sets its volume. Voice rows does the same on the Voice track. The two are not one component: the track is picked on Play Sound and has no pin, so a param cannot set it.",
+                      "text": "Runs when a row is pressed. A locked row does nothing; an unlocked one plays the row's track on the Music track, so the Music slider on the Config page sets its volume. Voice rows does the same on the Voice track. The two are not one component: the track is picked on Play Sound and has no pin, so a param cannot set it.",
                       "width": 1100,
                       "height": 130
                     },

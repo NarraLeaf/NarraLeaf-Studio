@@ -73,7 +73,7 @@ describe("voice/missing", () => {
         );
         expect(findings).toHaveLength(2);
         expect(findings[0].messageKey).toBe("lint.rule.voiceMissing.message");
-        expect(findings[0].messageParams).toEqual({ locale: "ja" });
+        expect(findings[0].messageParams).toEqual({ locale: "ja", language: "ja" });
         expect(findings.map(entry => entry.location)).toMatchObject([{ blockId: "b1" }, { blockId: "b2" }]);
     });
 
@@ -174,11 +174,30 @@ describe("voice/stale", () => {
         );
         expect(findings).toHaveLength(1);
         expect(findings[0].messageKey).toBe("lint.rule.voiceStale.message");
-        expect(findings[0].messageParams).toEqual({ locale: "ja" });
+        expect(findings[0].messageParams).toEqual({ locale: "ja", language: "ja" });
         // Filed under the line; opened at its row in the language's voice table, where the take is
         // linked.
         expect(findings[0].location).toMatchObject({ kind: "story", blockId: "b1" });
         expect(findings[0].target).toMatchObject({ kind: "voiceLine", locale: "ja", unitId: "t-1" });
+    });
+
+    it("names the language by its display name, the way the Voice panel lists it", async () => {
+        const context = createTestLintContext({
+            stories: singleSceneStories([dialogueBlock("b1", textSegment("t-1", "We should go home now.", "dialogue"))]),
+            voice: {
+                voicedLocales: ["ja"],
+                voicedLocaleNames: new Map([["ja", "日本語"]]),
+                voiceChoices: false,
+                documents: new Map([["ja", documentOf("ja", { "t-1": unit("asset-1", LINE) })]]),
+            },
+        });
+        const [stale] = await run("voice/stale", context);
+        expect(stale.messageParams).toEqual({ locale: "ja", language: "日本語" });
+        const [missing] = await run("voice/missing", createTestLintContext({
+            stories: singleSceneStories([dialogueBlock("b1", textSegment("t-1", LINE, "dialogue"))]),
+            voice: { ...context.voice!, documents: new Map([["ja", documentOf("ja", {})]]) },
+        }));
+        expect(missing.messageParams).toEqual({ locale: "ja", language: "日本語" });
     });
 
     /**
@@ -286,7 +305,7 @@ describe("voice/orphan", () => {
         );
         expect(findings).toHaveLength(1);
         expect(findings[0].messageKey).toBe("lint.rule.voiceOrphan.message");
-        expect(findings[0].messageParams).toEqual({ count: 1, locale: "ja" });
+        expect(findings[0].messageParams).toEqual({ count: 1, locale: "ja", language: "ja" });
         expect(findings[0].location).toEqual({ kind: "project" });
     });
 
@@ -300,7 +319,7 @@ describe("voice/orphan", () => {
             }),
         );
         expect(findings).toHaveLength(1);
-        expect(findings[0].messageParams).toEqual({ count: 2, locale: "ja" });
+        expect(findings[0].messageParams).toEqual({ count: 2, locale: "ja", language: "ja" });
     });
 
     it("says nothing at all about a locale with no orphans", async () => {

@@ -25,6 +25,7 @@ import { StoryLineValueToken } from "./StoryLineValueToken";
 import { keepStoryKeysInPopover } from "./PausePopover";
 import { StoryLineRefToken } from "./StoryLineRefToken";
 import { StoryLineCharacterFace } from "./storyCharacterFace";
+import { characterRowLook } from "./storySceneBlockUtils";
 import type { StoryCommandLineProjection } from "./storyCommandLine";
 import { storyActionRowFragments, type StoryRowFragment, type StoryRowLookups } from "@/lib/story/storyRowProjection";
 import type { Character } from "@/lib/workspace/services/character/Character";
@@ -114,6 +115,7 @@ export function BlockOverview(props: {
                 block={props.block}
                 characters={props.characters}
                 textStyle={props.textStyle}
+                scene={props.scene}
                 scenes={props.scenes}
                 onUpdatePayload={props.onUpdatePayload}
             />
@@ -157,6 +159,7 @@ function StoryCommandLineRow(props: {
     block: StoryBlock;
     characters: Character[];
     textStyle?: CSSProperties;
+    scene?: StoryScene;
     scenes?: Record<StorySceneId, StoryScene>;
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
 }) {
@@ -176,10 +179,15 @@ function StoryCommandLineRow(props: {
                     <StoryLineRefToken target={link.ref}>{content}</StoryLineRefToken>
                 )}
                 ornaments={props.line.ornaments}
-                // The block, not the ornament's id: the picture is of this row's own look — the pose
-                // and tags in its payload — and the id is what says the line names a character at all.
+                // The block, not the ornament's id: the picture is of this row's look — what is on stage
+                // once it has run — and the id is what says the line names a character at all.
                 renderOrnament={ornament => (
-                    <StoryLineCharacterFace key={ornament.id} block={props.block} characters={props.characters} />
+                    <StoryLineCharacterFace
+                        key={ornament.id}
+                        block={props.block}
+                        characters={props.characters}
+                        appearance={characterRowLook(props.scene, props.block)}
+                    />
                 )}
             />
         </StoryCommandLineBox>

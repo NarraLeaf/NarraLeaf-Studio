@@ -4,7 +4,7 @@
       "sourceText": "自动前进等待时间"
     },
     "config.bgm": {
-      "sourceText": "背景音乐"
+      "sourceText": "音乐"
     },
     "config.categorySound": {
       "sourceText": "声音"
@@ -22,7 +22,7 @@
       "sourceText": "开启"
     },
     "config.masterVolume": {
-      "sourceText": "主音量"
+      "sourceText": "总音量"
     },
     "config.muteOnBlur": {
       "sourceText": "失去焦点时静音"

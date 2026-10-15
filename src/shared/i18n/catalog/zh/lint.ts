@@ -551,6 +551,17 @@ export const lint = {
                 + "- 该行用于确定背景时（例如场景有多个入口），去掉它的转场，直接切换不占用时间\n"
                 + "- 否则删除该行，或改选其他图片",
         },
+        storyTagNameShared: {
+            title: "多个轴上的同名标签",
+            description: "分层立绘角色的两个轴上有同名标签",
+            message: "{first} 与 {second} 两个轴上都有名为 {tag} 的标签",
+            help:
+                "分层立绘角色有两个轴含有同名标签，例如「服装」与「发型」下都有「蓝」。比较名称时不区分大小写\n"
+                + "\n"
+                + "/char 等以文本输入的行只按标签名指定外观，该名称只能指向靠前的轴上的标签；另一个标签只能在该行的「属性」中选择\n"
+                + "\n"
+                + "- 在角色编辑器中重命名其中一个标签",
+        },
         blueprintReferenceMissing: {
             title: "目标缺失",
             description: "节点指向项目中已不存在的对象",
@@ -1163,7 +1174,7 @@ export const lint = {
         voiceMissing: {
             title: "缺少语音",
             description: "配音语言中没有该行的录音",
-            message: "缺少 {locale} 录音",
+            message: "缺少 {language} 录音",
             help:
                 "某一需要配音的行，在项目的某种配音语言中没有录音。检查旁白与对白行；开启「为选项配音」时也检查选项。"
                 + "提示语、空白行与已禁用的行不检查\n"
@@ -1179,7 +1190,7 @@ export const lint = {
         voiceStale: {
             title: "语音过期",
             description: "对白在录音之后发生过修改",
-            message: "{locale} 录音比对白旧",
+            message: "{language} 录音早于该行的修改",
             help:
                 "某段录音关联之后，对应行的文本有改动。比较的是该语言配音演员所读的文本：项目有该语言的译文时为译文，"
                 + "否则为源语言原文\n"
@@ -1195,7 +1206,7 @@ export const lint = {
             description: "对应的对白已不存在",
             message: "{recordings}没有对应的行",
             recordingCount: {
-                other: "{count} 条 {locale} 录音",
+                other: "{count} 条 {language} 录音",
             },
             help:
                 "某种配音语言中留有一些录音，它们关联的行已不在任何故事中：所在行已被删除、剪切后粘贴到别处或已禁用，"

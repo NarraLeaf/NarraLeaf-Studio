@@ -21,7 +21,8 @@ import {
     type PuppetRuntimeInstallState,
 } from "@/lib/workspace/services/puppet/projectPuppetRuntimes";
 import { knownPuppetRuntimeFor } from "@shared/utils/puppetRuntimes";
-import { getInterface } from "@/lib/app/bridge";
+import { ModelImportWizard, type ModelImportSelection } from "@/apps/workspace/modules/assets/components/ModelImportWizard";
+import type { ModelFamily } from "@shared/utils/modelImportScan";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { PuppetRuntimeInstaller, type PuppetRuntimeInstallTarget } from "./PuppetRuntimeInstaller";
 import {
@@ -47,6 +48,15 @@ import { PuppetPreview } from "./PuppetPreview";
  * it is: a puppet's model is a directory-shaped asset.
  */
 const MODEL_ASSET_TYPE = AssetType.Model;
+
+/**
+ * The kind of model a character's runtime draws, for the import wizard to open on. A custom runtime
+ * draws whatever its author built it for, so the wizard asks.
+ */
+const MODEL_FAMILY_BY_KIND: Readonly<Partial<Record<string, ModelFamily>>> = {
+    live2d: "live2d",
+    spine: "spine",
+};
 
 const ROW = "flex items-center gap-2 rounded-md border border-edge bg-fill-subtle px-2 py-1.5 text-xs";
 const ICON_BTN = "p-1 rounded-md text-fg-muted hover:text-fg hover:bg-fill transition-colors";
@@ -217,36 +227,34 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
     }, [assetLibraryRevision, context, puppet?.assetId]);
 
     /**
-     * Import a model bundle straight from here.
+     * Import a model bundle straight from here, through the model import wizard.
      *
-     * A directory picker rather than a file one, because a model *is* a directory — a manifest plus the
-     * textures and motions it names — which is also why the asset panel switches to one for this type.
      * Offered here because the alternative was an asset picker with nothing in it: the author who has
      * just made their first Live2D character has no model assets yet, and nothing on this surface said
-     * where they come from.
+     * where they come from. The wizard rather than a bare folder picker, because its scan is what
+     * catches the two mistakes a picker cannot see - the folder one level too high, and an export
+     * short a texture or a motion. It opens on the folder picker for this character's runtime, and a
+     * folder holding one model has it ticked, so the clean path is one confirming click longer.
      *
-     * The freeze is answered before the directory picker, not after the copy. A model bundle is a
-     * folder of textures and motions - hundreds of megabytes is ordinary - and the button being grey
-     * is not enough on its own: a session can begin while this inspector is on screen, and the click
-     * that follows would otherwise copy the whole bundle in before the library refused it.
+     * The freeze is answered before the wizard opens and again when it hands its folders back, not
+     * after the copy. A model bundle is a folder of textures and motions - hundreds of megabytes is
+     * ordinary - and the button being grey is not enough on its own: a session can begin while this
+     * inspector is on screen.
      *
      * A folder that does not become a model is said, by its name and why, in the words the asset
-     * panel's import strip uses. It used to say nothing at all: the row stayed as it was and the
-     * reason was a console line.
+     * panel's import strip uses.
      */
-    const importModel = useCallback(async () => {
+    const [importing, setImporting] = useState(false);
+    const importModel = useCallback(() => {
         if (!context || freeze.frozen) return;
+        setImporting(true);
+    }, [context, freeze.frozen]);
+
+    const completeImport = useCallback(async (selection: ModelImportSelection[]) => {
+        setImporting(false);
+        if (!context || freeze.frozen || selection.length === 0) return;
         const uiService = context.services.get<UIService>(Services.UI);
-        const picked = await getInterface().fs.selectDirectory(true);
-        if (!picked.success || !picked.data.ok) {
-            console.warn("[puppet] the folder dialog failed", picked);
-            uiService.showNotification(t("workspace.shell.fileDialogFailed"), "error");
-            return;
-        }
-        const paths = picked.data.data;
-        if (paths.length === 0) {
-            return;
-        }
+        const paths = selection.map(entry => entry.rootPath);
         const assetsService = context.services.get<AssetsService>(Services.Assets);
         const imported = await assetsService.importFromPaths(MODEL_ASSET_TYPE, paths);
         if (!imported.success) {
@@ -255,13 +263,28 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
             uiService.showNotification(t("assets.import.failedTitle"), "error");
             return;
         }
-        const first = imported.data.find(entry => entry.success);
+        // The entry the wizard read off the manifest, written as the asset panel writes it.
+        const entryFailures: string[] = [];
+        for (const [index, result] of imported.data.entries()) {
+            if (!result.success || !result.data) {
+                continue;
+            }
+            const recorded = await assetsService.patchAssetExtras(result.data as Asset, { modelEntry: selection[index].entry });
+            if (!recorded.success) {
+                console.warn(`[puppet] could not record the entry of ${result.data.name}`, recorded.error);
+                entryFailures.push(paths[index]);
+            }
+        }
+        const first = imported.data.find((entry, index) => entry.success && !entryFailures.includes(paths[index]));
         if (first?.success) {
             // Selected as well as imported: the author asked for a model for *this* character, and
             // making them then find it in a picker would be the same gap one step later.
             appearance.setPuppetAsset(first.data.id);
         }
-        const failures = collectImportFailures(paths, imported.data, t);
+        const failures = [
+            ...collectImportFailures(paths, imported.data, t),
+            ...entryFailures.map(path => ({ path, reason: null })),
+        ];
         if (failures.length > 0) {
             uiService.showNotification(
                 failures.length === 1
@@ -442,12 +465,21 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
     );
 
     const installer = (
-        <PuppetRuntimeInstaller
-            visible={installing !== null}
-            target={installing ?? installTarget}
-            onClose={() => setInstalling(null)}
-            onInstalled={onInstalled}
-        />
+        <>
+            <PuppetRuntimeInstaller
+                visible={installing !== null}
+                target={installing ?? installTarget}
+                onClose={() => setInstalling(null)}
+                onInstalled={onInstalled}
+            />
+            <ModelImportWizard
+                visible={importing}
+                family={MODEL_FAMILY_BY_KIND[appearance.getKind()]}
+                tickLoneModel
+                onClose={() => setImporting(false)}
+                onImport={selection => void completeImport(selection)}
+            />
+        </>
     );
 
     if (!setupDone) {

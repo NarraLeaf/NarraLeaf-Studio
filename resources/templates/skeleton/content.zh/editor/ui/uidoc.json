@@ -19733,7 +19733,7 @@
     "e86d48d1-4c15-4bd4-8251-5cd2b9125319": {
       "id": "e86d48d1-4c15-4bd4-8251-5cd2b9125319",
       "type": "nl.container",
-      "name": "主音量行",
+      "name": "总音量行",
       "parentId": "dd2a6fc5-4096-4982-96b4-3aeeb619f0c7",
       "childrenIds": [
         "dcb8cbdb-9393-4132-a936-3685c7edba15",
@@ -20109,7 +20109,7 @@
     "dcb8cbdb-9393-4132-a936-3685c7edba15": {
       "id": "dcb8cbdb-9393-4132-a936-3685c7edba15",
       "type": "nl.text",
-      "name": "主音量标签",
+      "name": "总音量标签",
       "parentId": "e86d48d1-4c15-4bd4-8251-5cd2b9125319",
       "childrenIds": [],
       "layout": {
@@ -20297,7 +20297,7 @@
     "c91eb37e-b2db-4211-b6ff-a112f6f6a339": {
       "id": "c91eb37e-b2db-4211-b6ff-a112f6f6a339",
       "type": "nl.slider",
-      "name": "主音量滑块",
+      "name": "总音量滑块",
       "parentId": "e86d48d1-4c15-4bd4-8251-5cd2b9125319",
       "childrenIds": [
         "a6e05bcd-cd1f-4c28-b428-8e328be841fd",
@@ -21072,7 +21072,7 @@
     "7277d1ea-17fb-43d4-b9d1-30272854913f": {
       "id": "7277d1ea-17fb-43d4-b9d1-30272854913f",
       "type": "nl.text",
-      "name": "主音量数值",
+      "name": "总音量数值",
       "parentId": "e86d48d1-4c15-4bd4-8251-5cd2b9125319",
       "childrenIds": [],
       "layout": {
@@ -21260,7 +21260,7 @@
     "2757d920-3e3e-4399-9804-9e12dd3946e7": {
       "id": "2757d920-3e3e-4399-9804-9e12dd3946e7",
       "type": "nl.container",
-      "name": "主音量分隔线",
+      "name": "总音量分隔线",
       "parentId": "e86d48d1-4c15-4bd4-8251-5cd2b9125319",
       "childrenIds": [],
       "layout": {
@@ -21631,7 +21631,7 @@
     "b15fa747-fe45-4bf2-8562-c343ac387293": {
       "id": "b15fa747-fe45-4bf2-8562-c343ac387293",
       "type": "nl.container",
-      "name": "BGM 行",
+      "name": "音乐行",
       "parentId": "dd2a6fc5-4096-4982-96b4-3aeeb619f0c7",
       "childrenIds": [
         "903a5c25-5f2c-4bab-96eb-19a1df827f88",
@@ -22006,7 +22006,7 @@
     "903a5c25-5f2c-4bab-96eb-19a1df827f88": {
       "id": "903a5c25-5f2c-4bab-96eb-19a1df827f88",
       "type": "nl.text",
-      "name": "BGM 标签",
+      "name": "音乐标签",
       "parentId": "b15fa747-fe45-4bf2-8562-c343ac387293",
       "childrenIds": [],
       "layout": {
@@ -22194,7 +22194,7 @@
     "f07c5a12-03c2-4aba-92fa-ba23da92f04a": {
       "id": "f07c5a12-03c2-4aba-92fa-ba23da92f04a",
       "type": "nl.container",
-      "name": "BGM 分隔线",
+      "name": "音乐分隔线",
       "parentId": "b15fa747-fe45-4bf2-8562-c343ac387293",
       "childrenIds": [],
       "layout": {
@@ -49135,7 +49135,7 @@
     "config-bgm-volume": {
       "id": "config-bgm-volume",
       "type": "nl.container",
-      "name": "BGM 滑块",
+      "name": "音乐滑块",
       "parentId": "b15fa747-fe45-4bf2-8562-c343ac387293",
       "childrenIds": [],
       "layout": {

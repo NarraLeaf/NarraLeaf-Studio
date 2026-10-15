@@ -585,6 +585,16 @@ const FIXTURES: Record<RegisteredLintRuleId, Case[]> = {
             narration("n1"),
         ], { defaultBackgroundAssetId: "asset-cafe" })])),
     }],
+    "story/tag-name-shared": [{
+        context: () => createTestLintContext({
+            characters: [{
+                id: "char-mio",
+                name: "Mio",
+                assetIds: [],
+                axes: [{ name: "Outfit", tags: ["White", "Blue"] }, { name: "Hair", tags: ["Long", "Blue"] }],
+            }],
+        }),
+    }],
 
     // --- blueprint ---
     "blueprint/reference-missing": [{

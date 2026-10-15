@@ -7,7 +7,8 @@ import { resolveCommandLine, type StoryCommandContext } from "../../storyCommand
 import { getCommandDef, getCommandSpec, listCommandSpecs } from "../registry";
 import { opensInspectorAfterCommit } from "../spec";
 import { declarationFromArgs } from "./variables";
-import { i18nStore } from "@/lib/i18n";
+import type { TranslationKey } from "@shared/i18n";
+import { i18nStore, translate } from "@/lib/i18n";
 
 /**
  * The line → block contract, pinned end-to-end: parse → resolve → spec.build. This is the suite the
@@ -1197,6 +1198,44 @@ describe("logic and effects", () => {
         expect(build("/transform camera 运镜").payload).toEqual(canonicalCamera);
     });
 
+    it("says in the menu that a declaring command needs a /show", () => {
+        // `/image`, `/text` and `/vfx` put nothing on screen; the author learns that from the command
+        // menu's one line or not at all. `/vfx` was the one whose line did not say it.
+        const declaring = listCommandSpecs().filter(spec => spec.sequence?.lines[0]?.startsWith(`/${spec.token} `)
+            && spec.sequence.lines.some(line => line.startsWith("/show ")));
+        expect(declaring.map(spec => spec.id).sort()).toEqual(["image", "text", "vfx"]);
+        for (const locale of ["en", "zh", "ja"] as const) {
+            i18nStore.setLocale(locale);
+            try {
+                for (const spec of declaring) {
+                    expect(translate(`story.command.${spec.id}.detail` as TranslationKey), `${locale} ${spec.id}`).toContain("/show");
+                }
+            } finally {
+                i18nStore.setLocale("en");
+            }
+        }
+    });
+
+    it("names an unnamed overlay or text in the words the author writes", () => {
+        // The weather word the author typed is the name they will address it by: a zh 樱花 overlay
+        // was named `sakura`, and the next `/show 樱花` found nothing. A `/text` with no name is 文本.
+        i18nStore.setLocale("zh");
+        try {
+            expect(build("/氛围特效 樱花")).toMatchObject({ payload: { action: "vfx", objectName: "樱花", seed: { seed: "sakura" } } });
+            expect(build("/文本 欢迎")).toMatchObject({ payload: { action: "text", objectName: "文本", text: "欢迎" } });
+        } finally {
+            i18nStore.setLocale("en");
+        }
+        i18nStore.setLocale("ja");
+        try {
+            expect(build("/テキスト ようこそ")).toMatchObject({ payload: { action: "text", objectName: "テキスト" } });
+        } finally {
+            i18nStore.setLocale("en");
+        }
+        expect(build("/vfx sakura")).toMatchObject({ payload: { action: "vfx", objectName: "sakura" } });
+        expect(build("/text Hello")).toMatchObject({ payload: { action: "text", objectName: "text" } });
+    });
+
     it("/vfx declares a looping overlay and names it off the clip", () => {
         expect(build("/vfx intro")).toMatchObject({
             kind: "action",
@@ -1208,8 +1247,9 @@ describe("logic and effects", () => {
         // The row reveals nothing, so it carries no fade: `d=` is not a parameter of it, and a stored
         // duration would be a number the compile does not read.
         expect(commandLineIssues("/vfx intro d=1.2")).toEqual(["unknownParam"]);
-        // Blend mode decides whether the material reads at all, so the create row opens the inspector.
-        expect(getCommandSpec("vfx")?.inspectorAfterCommit).toBe(true);
+        // The row is complete as typed, so its commit leaves a new line under it like every other
+        // command's; with 属性 closed, opening the inspector instead showed nothing at all.
+        expect(opensInspectorAfterCommit(getCommandSpec("vfx"), build("/vfx intro"))).toBe(false);
     });
 
     it("/vfx takes a weather word as its source, and the word names the row", () => {
