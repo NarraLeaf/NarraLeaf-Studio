@@ -99,6 +99,12 @@ export interface AgentStdioBridgeIo {
     version(): string;
     /** Defaults to {@link AGENT_BRIDGE_STARTUP_TIMEOUT_MS}. */
     startupTimeoutMs?: number;
+    /**
+     * In development a Studio serves agents when its command line says so, whatever the profile's
+     * switch - and a Studio the bridge starts is told to (`agentLaunchArgs`) - so the switch does not
+     * stop the bridge there. The profile's token is still needed. False when packaged.
+     */
+    accessFollowsLaunch?: boolean;
 }
 
 /**
@@ -597,7 +603,7 @@ class AgentStdioBridge {
 
     /** One look at the file and, when it names an address, one `ping` there. */
     private async look(): Promise<Resolution> {
-        const settings = readBridgeSettings(await this.io.readSettings().catch(() => null));
+        const settings = readBridgeSettings(await this.io.readSettings().catch(() => null), this.io.accessFollowsLaunch === true);
         if (!settings.enabled) {
             return { kind: "disabled" };
         }
@@ -658,10 +664,13 @@ function answerBeforeStudio(method: string, params: Record<string, unknown>, ver
     }
 }
 
-/** What the file says, reduced to what the bridge acts on. A token too short to be one is treated as no file. */
-function readBridgeSettings(raw: unknown): ReadSettings {
+/**
+ * What the file says, reduced to what the bridge acts on. A token too short to be one is treated as no
+ * file; the switch is not read when access follows the launch (see `accessFollowsLaunch`).
+ */
+function readBridgeSettings(raw: unknown, accessFollowsLaunch: boolean): ReadSettings {
     const record = raw && typeof raw === "object" ? raw as Record<string, unknown> : null;
-    if (!record || record.enabled !== true || typeof record.token !== "string" || record.token.length === 0) {
+    if (!record || (!accessFollowsLaunch && record.enabled !== true) || typeof record.token !== "string" || record.token.length === 0) {
         return { enabled: false };
     }
     return { enabled: true, url: typeof record.url === "string" && record.url ? record.url : null, token: record.token };

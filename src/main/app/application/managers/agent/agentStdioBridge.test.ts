@@ -277,6 +277,25 @@ describe("runAgentStdioBridge", () => {
         expect(studio.fetchImpl).not.toHaveBeenCalled();
     });
 
+    it("in development, starts Studio for a tool call whatever the profile's switch says", async () => {
+        // A development Studio serves agents by its command line, which the bridge's launch sets;
+        // its profile's switch may say off and is not what decides.
+        const studio = fakeStudio({ up: false });
+        let url: string | null = null;
+        const launchStudio = vi.fn(() => {
+            studio.state.up = true;
+            url = URL_A;
+        });
+        const { out } = await run(chunks(line({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "agent_status" } })), {
+            fetch: studio.fetchImpl as unknown as typeof fetch,
+            settings: () => ({ enabled: false, token: TOKEN, url }),
+            launchStudio,
+            accessFollowsLaunch: true,
+        });
+        expect(launchStudio).toHaveBeenCalledTimes(1);
+        expect(byId(out, 1).result.echo).toBe("tools/call");
+    });
+
     it("treats a missing settings file as agent access never switched on", async () => {
         const { out } = await run(chunks(line({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} })), {
             settings: () => null,
