@@ -14,11 +14,11 @@ afterEach(cleanup);
 
 const ITEMS: StoryCandidateItem[] = ["fade", "push", "circle", "wipe"].map(word => ({ key: word, value: word, label: word }));
 
-function renderMenu() {
+function renderMenu(items: StoryCandidateItem[] = ITEMS) {
     const onHighlight = vi.fn<(key: string) => void>();
     const view = render(
         <StoryCommandCandidateMenu
-            items={ITEMS}
+            items={items}
             activeKey={null}
             onHighlight={onHighlight}
             onChoose={() => {}}
@@ -56,5 +56,68 @@ describe("hovering the slot's candidate menu", () => {
         fireEvent.mouseEnter(row("wipe"), { clientX: 10, clientY: 10 });
         fireEvent.mouseMove(row("wipe"), { clientX: 10, clientY: 10 });
         expect(onHighlight).not.toHaveBeenCalled();
+    });
+});
+
+/**
+ * The hover tint is CSS `:hover`, which goes to whatever row is under the pointer. After a wheel that
+ * is the row that slid under it, while the highlighted row has scrolled out of view - and the grey
+ * read as the highlight. So rows carry their hover tint only while the pointer is what last moved.
+ */
+describe("the hover tint on the slot's candidate menu", () => {
+    const tinted = (element: Element) => element.className.split(" ").includes("hover:bg-fill");
+
+    it("is off when the menu opens under a resting pointer", () => {
+        const { row } = renderMenu();
+        fireEvent.mouseOver(row("wipe"), { clientX: 10, clientY: 10 });
+        fireEvent.mouseMove(row("wipe"), { clientX: 10, clientY: 10 });
+        expect(tinted(row("wipe"))).toBe(false);
+    });
+
+    it("comes on once the pointer moves", () => {
+        const { row } = renderMenu();
+        fireEvent.mouseMove(row("push"), { clientX: 40, clientY: 30 });
+        fireEvent.mouseMove(row("push"), { clientX: 42, clientY: 31 });
+        expect(tinted(row("push"))).toBe(true);
+    });
+
+    it("goes off when a wheel scrolls rows under the pointer, and back on when the pointer moves", () => {
+        const { row, getByRole } = renderMenu();
+        fireEvent.mouseMove(row("fade"), { clientX: 40, clientY: 30 });
+        fireEvent.mouseMove(row("fade"), { clientX: 40, clientY: 32 });
+        fireEvent.scroll(getByRole("listbox"));
+        fireEvent.mouseOver(row("circle"), { clientX: 40, clientY: 32 });
+        fireEvent.mouseMove(row("circle"), { clientX: 40, clientY: 32 });
+        expect(tinted(row("circle"))).toBe(false);
+        fireEvent.mouseMove(row("circle"), { clientX: 41, clientY: 33 });
+        expect(tinted(row("circle"))).toBe(true);
+    });
+
+    it("goes off when a row arrives under a pointer that has not moved", () => {
+        const { row } = renderMenu();
+        fireEvent.mouseMove(row("fade"), { clientX: 40, clientY: 30 });
+        fireEvent.mouseMove(row("fade"), { clientX: 40, clientY: 32 });
+        // The list re-filtered as the author typed, and another row now sits under the pointer.
+        fireEvent.mouseOver(row("wipe"), { clientX: 40, clientY: 32 });
+        expect(tinted(row("wipe"))).toBe(false);
+    });
+
+    it("stays on while the pointer moves from row to row", () => {
+        const { row } = renderMenu();
+        fireEvent.mouseMove(row("fade"), { clientX: 40, clientY: 30 });
+        fireEvent.mouseMove(row("fade"), { clientX: 40, clientY: 32 });
+        fireEvent.mouseOver(row("push"), { clientX: 40, clientY: 44 });
+        fireEvent.mouseMove(row("push"), { clientX: 40, clientY: 44 });
+        expect(tinted(row("push"))).toBe(true);
+    });
+
+    it("follows the same rule on the line saying nothing matches", () => {
+        const { getByRole } = renderMenu([]);
+        const line = getByRole("button");
+        fireEvent.mouseOver(line, { clientX: 10, clientY: 10 });
+        fireEvent.mouseMove(line, { clientX: 10, clientY: 10 });
+        expect(tinted(line)).toBe(false);
+        fireEvent.mouseMove(line, { clientX: 12, clientY: 11 });
+        expect(tinted(line)).toBe(true);
     });
 });

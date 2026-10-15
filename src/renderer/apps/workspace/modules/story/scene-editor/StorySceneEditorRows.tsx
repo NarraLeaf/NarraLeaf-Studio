@@ -112,7 +112,7 @@ import { RowProblemMark } from "./RowProblemMark";
 import { useRowProblems } from "../../lint/rowProblems";
 import { useReduceMotion } from "@/lib/appearance/useReduceMotion";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
-import { usePointerHighlight } from "./storyMenuPointer";
+import { usePointerHighlight, type MenuPointer } from "./storyMenuPointer";
 
 /**
  * One story row's data.
@@ -3012,8 +3012,8 @@ function ActionCommandMenuRow(props: {
     active: boolean;
     starred: boolean;
     abbreviations: readonly string[];
-    /** Called from the row's `mousemove`; see `usePointerHighlight`. */
-    onHighlight: (key: string, event: { clientX: number; clientY: number }) => void;
+    /** The menu's pointer; the row reports its `mousemove` to it. See `usePointerHighlight`. */
+    pointer: MenuPointer;
     onChoose: (commandId: string) => void;
     onToggleStarred: (commandId: string) => void;
 }) {
@@ -3024,7 +3024,7 @@ function ActionCommandMenuRow(props: {
     const Icon = command.icon;
     const starLabel = props.starred ? t("story.actionCreator.removeStarred") : t("story.actionCreator.addStarred");
     return (
-        <div className="relative" onMouseMove={event => props.onHighlight(props.stop.key, event)}>
+        <div className="relative" onMouseMove={event => props.pointer.move(props.stop.key, event)}>
             <button
                 type="button"
                 role="option"
@@ -3034,7 +3034,7 @@ function ActionCommandMenuRow(props: {
                     // Room for the star is kept on every row, so a label does not re-truncate under
                     // the pointer when the star comes up beside it.
                     "flex w-full items-center gap-2 rounded-md py-2 pl-2 pr-9 text-left transition-colors",
-                    props.active ? "bg-primary/15 text-fg" : "hover:bg-fill",
+                    props.active ? "bg-primary/15 text-fg" : props.pointer.live ? "hover:bg-fill" : "",
                 ].join(" ")}
                 onMouseDown={() => props.onChoose(command.id)}
             >
@@ -3050,8 +3050,9 @@ function ActionCommandMenuRow(props: {
                     <button
                         type="button"
                         className={[
-                            "pointer-events-auto grid h-7 w-7 place-items-center rounded-md transition-colors hover:bg-fill-strong",
-                            props.starred ? "text-warning" : "text-fg-subtle hover:text-warning",
+                            "pointer-events-auto grid h-7 w-7 place-items-center rounded-md transition-colors",
+                            props.starred ? "text-warning" : "text-fg-subtle",
+                            props.pointer.live ? "hover:bg-fill-strong hover:text-warning" : "",
                         ].join(" ")}
                         data-tip={starLabel}
                         aria-label={starLabel}
@@ -3138,7 +3139,7 @@ function ActionCommandMenu(props: {
     // follow the command language; the menu's own chrome ("no actions", the key strip) does not.
     const { t: ct } = useCommandTranslation();
     const listRef = useRef<HTMLDivElement | null>(null);
-    const pointerHighlight = usePointerHighlight(props.onHighlight);
+    const pointer = usePointerHighlight(props.onHighlight);
     // The scope header wears 角色's own glyph and hue — the same pair its category chip and every
     // committed character row wear, so a narrowed menu still says which subject it is narrowed to.
     const scopeCategory = getCommandCategory("character");
@@ -3191,7 +3192,12 @@ function ActionCommandMenu(props: {
                 // height, so a top-left line of text sits alone against a tall empty box and reads as
                 // a list that failed to draw rather than as the answer "there is nothing here".
                 <div className="flex h-full items-center justify-center">
-                    <button type="button" className="rounded-md px-3 py-2 text-center text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onCancel}>
+                    <button
+                        type="button"
+                        className={["rounded-md px-3 py-2 text-center text-sm text-fg-muted", pointer.live ? "hover:bg-fill" : ""].join(" ")}
+                        onMouseMove={event => pointer.move(null, event)}
+                        onMouseDown={props.onCancel}
+                    >
                         {t("story.actionCreator.noActions")}
                     </button>
                 </div>
@@ -3204,7 +3210,7 @@ function ActionCommandMenu(props: {
                         active={stop.key === props.activeKey}
                         starred={props.starredIds.has(stop.command.id)}
                         abbreviations={abbreviationsOf(stop.command.id, props.abbreviations)}
-                        onHighlight={pointerHighlight}
+                        pointer={pointer}
                         onChoose={props.onChoose}
                         onToggleStarred={props.onToggleStarred}
                     />
@@ -3226,7 +3232,7 @@ function ActionCommandMenu(props: {
                                 active={stop.key === props.activeKey}
                                 starred
                                 abbreviations={abbreviationsOf(stop.command.id, props.abbreviations)}
-                                onHighlight={pointerHighlight}
+                                pointer={pointer}
                                 onChoose={props.onChoose}
                                 onToggleStarred={props.onToggleStarred}
                             />
@@ -3260,7 +3266,7 @@ function ActionCommandMenu(props: {
                                         active={key === props.activeKey}
                                         starred={props.starredIds.has(command.id)}
                                         abbreviations={abbreviationsOf(command.id, props.abbreviations)}
-                                        onHighlight={pointerHighlight}
+                                        pointer={pointer}
                                         onChoose={props.onChoose}
                                         onToggleStarred={props.onToggleStarred}
                                     />
@@ -3292,7 +3298,7 @@ function ActionCommandMenu(props: {
                         <ScopeIcon className="h-3 w-3 shrink-0" style={{ color: scopeCategory.iconColor }} />
                         <span className="truncate">{props.scopeLabel}</span>
                     </div>
-                    <div ref={listRef} className="nl-no-scrollbar min-w-0 flex-1 overflow-auto p-1 pt-2">
+                    <div ref={listRef} className="nl-no-scrollbar min-w-0 flex-1 overflow-auto p-1 pt-2" {...pointer.listProps}>
                         {rows}
                     </div>
                 </div>
@@ -3331,7 +3337,7 @@ function ActionCommandMenu(props: {
                 {/* Both columns open at the same height — `pt-3` here and on the categories, and no
                     gap above the first section header, so a browse, a ranked list and the category
                     column all start on one line. */}
-                <div ref={listRef} className="nl-no-scrollbar min-w-0 flex-1 overflow-auto p-1 pt-3">
+                <div ref={listRef} className="nl-no-scrollbar min-w-0 flex-1 overflow-auto p-1 pt-3" {...pointer.listProps}>
                     {rows}
                 </div>
             </div>
@@ -3402,7 +3408,7 @@ function CharacterPicker(props: {
 }) {
     const { t } = useTranslation();
     const listRef = useRef<HTMLDivElement | null>(null);
-    const pointerHighlight = usePointerHighlight(props.onHighlight);
+    const pointer = usePointerHighlight(props.onHighlight);
 
     useEffect(() => {
         if (!props.activeCharacterId) {
@@ -3425,13 +3431,19 @@ function CharacterPicker(props: {
             }}
             className="nl-no-scrollbar z-[70] max-h-72 w-[320px] overflow-auto rounded-xl border border-edge bg-surface-raised p-1 shadow-xl"
             style={props.frame.style}
+            {...pointer.listProps}
             onMouseDown={event => {
                 event.preventDefault();
                 event.stopPropagation();
             }}
         >
             {props.characters.length === 0 ? (
-                <button type="button" className="w-full rounded-md px-2 py-2 text-left text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onClear}>
+                <button
+                    type="button"
+                    className={["w-full rounded-md px-2 py-2 text-left text-sm text-fg-muted", pointer.live ? "hover:bg-fill" : ""].join(" ")}
+                    onMouseMove={event => pointer.move(null, event)}
+                    onMouseDown={props.onClear}
+                >
                     {t("story.rows.noCharacterFound")}
                 </button>
             ) : (
@@ -3447,9 +3459,9 @@ function CharacterPicker(props: {
                             data-character-id={candidate.key}
                             className={[
                                 "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
-                                active ? "bg-primary/15 text-fg" : "hover:bg-fill",
+                                active ? "bg-primary/15 text-fg" : pointer.live ? "hover:bg-fill" : "",
                             ].join(" ")}
-                            onMouseMove={event => pointerHighlight(candidate.key, event)}
+                            onMouseMove={event => pointer.move(candidate.key, event)}
                             onMouseDown={() => props.onChoose(candidate)}
                         >
                             {/* A real character shows their face, exactly as the argument menu does in
@@ -3471,9 +3483,12 @@ function CharacterPicker(props: {
                         type="button"
                         className={cn(
                             "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
-                            props.createDisabled ? "cursor-not-allowed opacity-50" : "hover:bg-fill",
+                            props.createDisabled ? "cursor-not-allowed opacity-50" : pointer.live && "hover:bg-fill",
                         )}
                         disabled={props.createDisabled}
+                        // Not a highlight stop, but the same pointer: it scrolls under a resting
+                        // pointer like the rows above it, and is tinted only once the pointer moves.
+                        onMouseMove={event => pointer.move(null, event)}
                         // `data-tip` rather than `title`, like every other reason a freeze puts on a
                         // control: a disabled button receives no pointer events at all, and Studio's
                         // tooltip resolves this one by hit-testing the pointer instead.

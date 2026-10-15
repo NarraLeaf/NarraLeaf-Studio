@@ -98,7 +98,7 @@ export function StoryCommandCandidateMenu(props: {
 }) {
     const { t } = useTranslation();
     const listRef = useRef<HTMLDivElement | null>(null);
-    const pointerHighlight = usePointerHighlight(props.onHighlight);
+    const pointer = usePointerHighlight(props.onHighlight);
 
     useEffect(() => {
         if (!props.activeKey) {
@@ -116,6 +116,7 @@ export function StoryCommandCandidateMenu(props: {
             className="nl-no-scrollbar z-[70] max-h-72 w-[320px] overflow-auto rounded-xl border border-edge bg-surface-raised p-1 shadow-xl"
             style={props.frame.style}
             role="listbox"
+            {...pointer.listProps}
             onMouseDown={event => {
                 // Keep the caret in the slot: the menu is an extension of the line being typed.
                 event.preventDefault();
@@ -123,7 +124,12 @@ export function StoryCommandCandidateMenu(props: {
             }}
         >
             {props.items.length === 0 ? (
-                <button type="button" className="w-full rounded-md px-2 py-2 text-left text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onCancel}>
+                <button
+                    type="button"
+                    className={["w-full rounded-md px-2 py-2 text-left text-sm text-fg-muted", pointer.live ? "hover:bg-fill" : ""].join(" ")}
+                    onMouseMove={event => pointer.move(null, event)}
+                    onMouseDown={props.onCancel}
+                >
                     {t("story.rows.noCandidates")}
                 </button>
             ) : (
@@ -138,9 +144,9 @@ export function StoryCommandCandidateMenu(props: {
                             data-candidate-key={item.key}
                             className={[
                                 "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
-                                active ? "bg-primary/15 text-fg" : "hover:bg-fill",
+                                active ? "bg-primary/15 text-fg" : pointer.live ? "hover:bg-fill" : "",
                             ].join(" ")}
-                            onMouseMove={event => pointerHighlight(item.key, event)}
+                            onMouseMove={event => pointer.move(item.key, event)}
                             onMouseDown={() => props.onChoose(item)}
                         >
                             {item.mark ? <StoryCandidateMarkView mark={item.mark} characters={props.characters} /> : null}
