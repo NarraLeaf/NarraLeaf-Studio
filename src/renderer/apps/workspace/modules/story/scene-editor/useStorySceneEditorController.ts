@@ -66,7 +66,7 @@ import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalB
 import type { PuppetDescriptionService } from "@/lib/workspace/services/puppet/PuppetDescriptionService";
 import type { StoryPuppetVocabulary } from "./storyCommandValues";
 
-import { collectTempSpeakers, collectUnresolvedSpeakerRows, narrowToOneUnresolvedSpeaker, promoteTempSpeaker, rebindSpeakersInBlocks, setSpeakerOnBlocks } from "@/lib/workspace/services/story/storyModel";
+import { collectTempSpeakers, collectUnresolvedSpeakerRows, narrowToOneUnresolvedSpeaker, promoteTempSpeakerEdits, rebindSpeakersInBlocks, setSpeakerOnBlocks } from "@/lib/workspace/services/story/storyModel";
 import { CHARACTERS_PANEL_ID } from "../../characters";
 import { PROPERTIES_PANEL_ID } from "../../properties/propertiesPanelId";
 import {
@@ -2906,19 +2906,24 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         const created = characterService.createCharacter(trimmed);
         const characterId = created.profile.getId();
-        if (document) {
-            // Every other line already speaking as this name comes along; leaving them behind would
-            // fork one speaker into two that merely look alike.
-            //
-            // This reaches the live blocks - the document held here is a shallow copy - so it is the
-            // one edit in the editor that does not go through StoryService, and so it carries no
-            // document revision, no dirty flag and no undo step of its own.
-            promoteTempSpeaker(document, trimmed, characterId);
+        // Every other line already speaking as this name comes along; leaving them behind would fork
+        // one speaker into two that merely look alike. All of them, this row included, are one write
+        // through the story service: one revision, one save, and one undo step for this scene's rows.
+        // A line in another scene is rebound by the same write and keeps its character on undo here,
+        // as the character itself does.
+        const edits = document ? promoteTempSpeakerEdits(document, trimmed, characterId) : [];
+        const { characterId: _id, speakerName: _name, ...rest } = block.payload;
+        const own = { blockId: block.id, payload: { ...rest, characterId } as StoryBlock["payload"] };
+        if (storyService && storyId && sceneId) {
+            recordHistory();
+            storyService.updateBlocks(storyId, [
+                ...edits.filter(entry => entry.blockId !== block.id),
+                { sceneId, ...own },
+            ]);
         }
-        setDialogueSpeaker(block, { characterId });
         uiService?.panels.show(CHARACTERS_PANEL_ID);
         setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "", caret: "end" });
-    }, [characterService, document, frozenBeyondThisStory, setDialogueSpeaker, storyId, storyService, uiService]);
+    }, [characterService, document, frozenBeyondThisStory, recordHistory, sceneId, storyId, storyService, uiService]);
 
     /**
      * The rows among `blockIds` that speak as ONE unresolved speaker, and which speaker that is.
