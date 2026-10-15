@@ -67,10 +67,12 @@ import {
     describeImportFailure,
     fileLevelProblem,
     importReadFailureReason,
+    describeReplaceNotKept,
     summarizeImportFailures,
     summarizeSkippedEntries,
 } from "@/lib/workspace/assets/importFailure";
 import type { ExchangeProblem } from "@shared/utils/exchangeProblem";
+import type { TranslationKey } from "@shared/i18n";
 
 /** Where a skipped recording-script row sits, for listing them in file order; unplaced ones last. */
 function skippedRowOf(problem: ExchangeProblem): number {
@@ -451,11 +453,20 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
             if (!asset) {
                 continue;
             }
+            // Read now: the record is updated in place, so `asset.hash` after the read is the hash
+            // of whatever is there by then.
+            const hashAtRead = asset.hash;
             const result = await assetsService.fetch(asset);
             if (!result.success) {
                 continue;
             }
             const duration = await readAudioDuration(new Uint8Array((result.data as { data: Uint8Array }).data));
+            // An undo that landed while this was reading has put other bytes in the take, or taken
+            // the take out; a length measured from the file it replaced belongs to neither.
+            const now = assetsService.getAssets()[AssetType.Audio]?.[take.assetId];
+            if (!now || now.hash !== hashAtRead) {
+                continue;
+            }
             if (duration !== undefined) {
                 voiceService.updateUnit(code, take.unitId, take.sourceText, { duration });
             }
@@ -571,67 +582,109 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                 }
             }
             const importPaths = replacements.length > 0 ? plan.imports : paths;
-            let linked = 0;
-            let unmatched = 0;
-            /** The files that did not become assets, by name and why - the booth's to fix and resend. */
-            const failures: { path: string; reason: string | null }[] = [];
-            const measured: { unitId: string; sourceText: string; assetId: string }[] = [];
-            const importResult = importPaths.length > 0
-                ? await assetsService.importFromPaths(AssetType.Audio, importPaths)
-                : { success: true as const, data: [] };
-            if (!importResult.success) {
-                // The importer's own sentence is for the log: English, and it names paths.
-                console.warn("[voice] the audio import failed", importResult.error);
-                throw new Error(t("workspace.voice.panel.importFailed"));
-            }
-            importResult.data.forEach((result, index) => {
-                if (!result.success) {
-                    console.warn(`[voice] could not import ${importPaths[index]}`, result.error);
-                    failures.push({ path: importPaths[index], reason: describeAssetImportRefusal(result.refusal, t) });
-                    return;
+            // What the import does to the library - the takes it writes over, the files it brings in -
+            // kept for the one undo step it leaves. Null in a live session, which takes no such step.
+            const change = assetsService.beginLibraryChange();
+            let recorded = false;
+            try {
+                // Every take about to be written over is copied aside first, all of them before any is
+                // written: one that cannot be copied stops the import with nothing replaced.
+                if (change && replacements.length > 0) {
+                    const kept = await change.keep(replacements.flatMap(replacement => {
+                        const take = library[replacement.assetId];
+                        return take ? [take] : [];
+                    }));
+                    if (!kept.ok) {
+                        throw new Error(describeReplaceNotKept(kept.name, kept.refusal, t));
+                    }
                 }
-                const hit = keyMap.get(matchKeyForFilename(importPaths[index]));
-                if (!hit) {
-                    unmatched += 1;
-                    return;
+                let linked = 0;
+                let unmatched = 0;
+                /** The files that did not become assets, by name and why - the booth's to fix and resend. */
+                const failures: { path: string; reason: string | null }[] = [];
+                const measured: { unitId: string; sourceText: string; assetId: string }[] = [];
+                const importResult = importPaths.length > 0
+                    ? await assetsService.importFromPaths(AssetType.Audio, importPaths)
+                    : { success: true as const, data: [] };
+                if (!importResult.success) {
+                    // The importer's own sentence is for the log: English, and it names paths.
+                    console.warn("[voice] the audio import failed", importResult.error);
+                    throw new Error(t("workspace.voice.panel.importFailed"));
                 }
-                voiceService.updateUnit(code, hit.unitId, hit.sourceText, { assetId: result.data.id });
-                measured.push({ unitId: hit.unitId, sourceText: hit.sourceText, assetId: result.data.id });
-                linked += 1;
-            });
-            for (const replacement of replacements) {
-                const replaced = await assetsService.replaceAssetContent(library[replacement.assetId], replacement.path);
-                if (!replaced.success) {
-                    console.warn(`[voice] could not replace a take with ${replacement.path}`, replaced.error);
-                    failures.push({
-                        path: replacement.path,
-                        reason: describeAssetImportRefusal(replaced.refusal, t)
-                            ?? (replaced.code === REPLACE_REFUSED_IN_SESSION ? replaced.error ?? null : null),
+                change?.noteImported(importResult.data.flatMap(result => (result.success && result.data ? [result.data] : [])));
+                importResult.data.forEach((result, index) => {
+                    if (!result.success) {
+                        console.warn(`[voice] could not import ${importPaths[index]}`, result.error);
+                        failures.push({ path: importPaths[index], reason: describeAssetImportRefusal(result.refusal, t) });
+                        return;
+                    }
+                    const hit = keyMap.get(matchKeyForFilename(importPaths[index]));
+                    if (!hit) {
+                        unmatched += 1;
+                        return;
+                    }
+                    voiceService.updateUnit(code, hit.unitId, hit.sourceText, { assetId: result.data.id });
+                    measured.push({ unitId: hit.unitId, sourceText: hit.sourceText, assetId: result.data.id });
+                    linked += 1;
+                });
+                for (const replacement of replacements) {
+                    const replaced = await assetsService.replaceAssetContent(library[replacement.assetId], replacement.path);
+                    if (!replaced.success) {
+                        console.warn(`[voice] could not replace a take with ${replacement.path}`, replaced.error);
+                        change?.forget(replacement.assetId);
+                        failures.push({
+                            path: replacement.path,
+                            reason: describeAssetImportRefusal(replaced.refusal, t)
+                                ?? (replaced.code === REPLACE_REFUSED_IN_SESSION ? replaced.error ?? null : null),
+                        });
+                        continue;
+                    }
+                    change?.replaced(replacement.assetId);
+                    // The same asset, so the line keeps its link; relinking it stamps the line's text as
+                    // the one this take was recorded against, which is what clears 待更新.
+                    voiceService.updateUnit(code, replacement.unitId, replacement.sourceText, { assetId: replacement.assetId });
+                    measured.push({ unitId: replacement.unitId, sourceText: replacement.sourceText, assetId: replacement.assetId });
+                    linked += 1;
+                }
+                // One step for the whole import, on the project's stack: the lines it linked, the takes
+                // it wrote over, the files it brought in. `document` is the language as it was read
+                // before any of that. The step owns `change` from here on, recorded or not.
+                if (change) {
+                    voiceService.recordTakesEdit(
+                        code,
+                        [...new Set(measured.map(take => take.unitId))]
+                            .map(unitId => ({ unitId, unit: document.units[unitId] ?? null })),
+                        { key: "workspace.history.entry.importAudio" as TranslationKey },
+                        change,
+                    );
+                    recorded = true;
+                }
+                await voiceService.flushPendingChanges();
+                // The count alone said "3 failed" and left the author to find out which three and why;
+                // the detail names them, which is what the booth has to be told.
+                uiService?.showNotification(
+                    t("workspace.voice.panel.importCounts", {
+                        linked: tn("workspace.voice.panel.takeCount", linked),
+                        unmatched,
+                        failed: failures.length,
+                    }),
+                    failures.length > 0 ? "warning" : "success",
+                    failures.length > 0 ? { detail: summarizeImportFailures(failures, t) } : undefined,
+                );
+                setRefreshTick(tick => tick + 1);
+                // Lengths trail the import rather than gating it: a booth hands back hundreds of files
+                // at once and nobody should watch a spinner decode headers to learn the takes are linked.
+                void measureDurations(code, measured);
+            } finally {
+                if (change && !recorded) {
+                    // An import that stopped before its step was left takes back what it had already
+                    // written or brought in, so a failed import leaves the library as it found it.
+                    await change.undo().catch(error => {
+                        console.warn("[voice] could not take back a failed import", error);
                     });
-                    continue;
+                    change.dispose();
                 }
-                // The same asset, so the line keeps its link; relinking it stamps the line's text as the
-                // one this take was recorded against, which is what clears 待更新.
-                voiceService.updateUnit(code, replacement.unitId, replacement.sourceText, { assetId: replacement.assetId });
-                measured.push({ unitId: replacement.unitId, sourceText: replacement.sourceText, assetId: replacement.assetId });
-                linked += 1;
             }
-            await voiceService.flushPendingChanges();
-            // The count alone said "3 failed" and left the author to find out which three and why;
-            // the detail names them, which is what the booth has to be told.
-            uiService?.showNotification(
-                t("workspace.voice.panel.importCounts", {
-                    linked: tn("workspace.voice.panel.takeCount", linked),
-                    unmatched,
-                    failed: failures.length,
-                }),
-                failures.length > 0 ? "warning" : "success",
-                failures.length > 0 ? { detail: summarizeImportFailures(failures, t) } : undefined,
-            );
-            setRefreshTick(tick => tick + 1);
-            // Lengths trail the import rather than gating it: a booth hands back hundreds of files at
-            // once and nobody should watch a spinner decode headers to learn the takes are linked.
-            void measureDurations(code, measured);
         } catch (error) {
             uiService?.showError(error instanceof Error ? error : String(error));
         }

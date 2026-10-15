@@ -207,7 +207,7 @@ export const workspace = {
                 one: "{count} file is named for a line that already has a take.",
                 other: "{count} files are named for lines that already have a take.",
             },
-            replaceTakesDetail: "Replacing does not keep the old takes' files. Importing as new audio leaves the old takes in the asset library, linked to no line.",
+            replaceTakesDetail: "Replacing writes each new file into the take it matches. Importing as new audio leaves the old takes in the asset library, linked to no line.",
             replaceTakesImport: "Import as new audio",
             replaceTakesReplace: "Replace takes",
             importScript: "Import recording script…",
@@ -446,6 +446,7 @@ export const workspace = {
             agentEdit: "agent edit",
             agentPluginEdit: "agent: {tool}",
             importPsd: "PSD import",
+            importAudio: "audio import",
         },
     },
     // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.
