@@ -112,6 +112,7 @@ import { RowProblemMark } from "./RowProblemMark";
 import { useRowProblems } from "../../lint/rowProblems";
 import { useReduceMotion } from "@/lib/appearance/useReduceMotion";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
+import { usePointerHighlight } from "./storyMenuPointer";
 
 /**
  * One story row's data.
@@ -2995,7 +2996,8 @@ function ActionCommandMenuRow(props: {
     active: boolean;
     starred: boolean;
     abbreviations: readonly string[];
-    onHighlight: (key: string) => void;
+    /** Called from the row's `mousemove`; see `usePointerHighlight`. */
+    onHighlight: (key: string, event: { clientX: number; clientY: number }) => void;
     onChoose: (commandId: string) => void;
     onToggleStarred: (commandId: string) => void;
 }) {
@@ -3006,7 +3008,7 @@ function ActionCommandMenuRow(props: {
     const Icon = command.icon;
     const starLabel = props.starred ? t("story.actionCreator.removeStarred") : t("story.actionCreator.addStarred");
     return (
-        <div className="relative" onMouseEnter={() => props.onHighlight(props.stop.key)}>
+        <div className="relative" onMouseMove={event => props.onHighlight(props.stop.key, event)}>
             <button
                 type="button"
                 role="option"
@@ -3120,6 +3122,7 @@ function ActionCommandMenu(props: {
     // follow the command language; the menu's own chrome ("no actions", the key strip) does not.
     const { t: ct } = useCommandTranslation();
     const listRef = useRef<HTMLDivElement | null>(null);
+    const pointerHighlight = usePointerHighlight(props.onHighlight);
     // The scope header wears 角色's own glyph and hue — the same pair its category chip and every
     // committed character row wear, so a narrowed menu still says which subject it is narrowed to.
     const scopeCategory = getCommandCategory("character");
@@ -3185,7 +3188,7 @@ function ActionCommandMenu(props: {
                         active={stop.key === props.activeKey}
                         starred={props.starredIds.has(stop.command.id)}
                         abbreviations={abbreviationsOf(stop.command.id, props.abbreviations)}
-                        onHighlight={props.onHighlight}
+                        onHighlight={pointerHighlight}
                         onChoose={props.onChoose}
                         onToggleStarred={props.onToggleStarred}
                     />
@@ -3207,7 +3210,7 @@ function ActionCommandMenu(props: {
                                 active={stop.key === props.activeKey}
                                 starred
                                 abbreviations={abbreviationsOf(stop.command.id, props.abbreviations)}
-                                onHighlight={props.onHighlight}
+                                onHighlight={pointerHighlight}
                                 onChoose={props.onChoose}
                                 onToggleStarred={props.onToggleStarred}
                             />
@@ -3241,7 +3244,7 @@ function ActionCommandMenu(props: {
                                         active={key === props.activeKey}
                                         starred={props.starredIds.has(command.id)}
                                         abbreviations={abbreviationsOf(command.id, props.abbreviations)}
-                                        onHighlight={props.onHighlight}
+                                        onHighlight={pointerHighlight}
                                         onChoose={props.onChoose}
                                         onToggleStarred={props.onToggleStarred}
                                     />
@@ -3383,6 +3386,7 @@ function CharacterPicker(props: {
 }) {
     const { t } = useTranslation();
     const listRef = useRef<HTMLDivElement | null>(null);
+    const pointerHighlight = usePointerHighlight(props.onHighlight);
 
     useEffect(() => {
         if (!props.activeCharacterId) {
@@ -3429,7 +3433,7 @@ function CharacterPicker(props: {
                                 "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
                                 active ? "bg-primary/15 text-fg" : "hover:bg-fill",
                             ].join(" ")}
-                            onMouseEnter={() => props.onHighlight(candidate.key)}
+                            onMouseMove={event => pointerHighlight(candidate.key, event)}
                             onMouseDown={() => props.onChoose(candidate)}
                         >
                             {/* A real character shows their face, exactly as the argument menu does in

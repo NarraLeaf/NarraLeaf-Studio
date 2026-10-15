@@ -5,6 +5,7 @@ import type { Character } from "@/lib/workspace/services/character/Character";
 import { useTranslation } from "@/lib/i18n";
 import { StoryCandidateMarkView } from "./storyCandidateMark";
 import type { StoryCandidateMark } from "./storyCommandCandidates";
+import { usePointerHighlight } from "./storyMenuPointer";
 
 /**
  * The candidate list for a command-line *argument* — an asset, a scene, a transition, a param name.
@@ -97,6 +98,7 @@ export function StoryCommandCandidateMenu(props: {
 }) {
     const { t } = useTranslation();
     const listRef = useRef<HTMLDivElement | null>(null);
+    const pointerHighlight = usePointerHighlight(props.onHighlight);
 
     useEffect(() => {
         if (!props.activeKey) {
@@ -138,7 +140,7 @@ export function StoryCommandCandidateMenu(props: {
                                 "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
                                 active ? "bg-primary/15 text-fg" : "hover:bg-fill",
                             ].join(" ")}
-                            onMouseEnter={() => props.onHighlight(item.key)}
+                            onMouseMove={event => pointerHighlight(item.key, event)}
                             onMouseDown={() => props.onChoose(item)}
                         >
                             {item.mark ? <StoryCandidateMarkView mark={item.mark} characters={props.characters} /> : null}
