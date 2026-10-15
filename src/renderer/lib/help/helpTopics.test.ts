@@ -159,6 +159,17 @@ describe("help topic content", () => {
     }
 });
 
+describe("help that states what the product does", () => {
+    // The paste wizard keeps only the answers an author changed (`StoryPasteWizardModal`); the help
+    // said every name's answer was kept.
+    it("says the paste wizard remembers the answers that were changed", () => {
+        const phrase = { en: "changed", zh: "改选过", ja: "変更した" } as const;
+        for (const [locale, keys] of [["en", enKeys], ["zh", zhKeys], ["ja", jaKeys]] as const) {
+            expect(keys.get(helpBodyKey("storyPaste")), locale).toContain(phrase[locale]);
+        }
+    });
+});
+
 describe("help body parser", () => {
     it("reads a paragraph per line and joins consecutive bullets", () => {
         expect(parseHelpBody("One.\n\nTwo.\n\n- a\n- b\n\nThree.")).toEqual([

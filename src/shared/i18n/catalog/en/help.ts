@@ -270,8 +270,8 @@ export const help = {
                 + "- Each name found maps to one of four answers: an existing character, New character, Name only, "
                 + "or Not a speaker. A Name only row carries the name and no character. A Not a speaker line "
                 + "becomes narration exactly as pasted.\n"
-                + "- The answer chosen for a name is remembered by the project and used again the next time that "
-                + "name is pasted.\n"
+                + "- An answer changed for a name is remembered by the project and used again the next time that "
+                + "name is pasted. A name left as recognised is recognised again.\n"
                 + "- Confirming adds the rows below the current line as one undo step.",
         },
         sceneSnapshot: {
