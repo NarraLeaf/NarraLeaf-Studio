@@ -45,6 +45,7 @@ import { storyMarksToWordConfig } from "@shared/utils/storyTextMarks";
 import {
     characterAvatarKeyFromTags,
     resolveCharacterAvatarAssetId,
+    resolveDefaultCharacterAvatarAssetId,
 } from "@shared/utils/characterAvatar";
 import type {
     StoryActionableKind,
@@ -7405,6 +7406,13 @@ type CompiledCharacterAvatars = {
     poseByUrl: Map<string, string>;
     /** Shown when no differential resolves an avatar (off-stage, or nothing baked for this look). */
     fallback: string | null;
+    /**
+     * Shown while the character speaks with no portrait on stage: the profile's default avatar, or
+     * when it has none, her default look's - the picture the backlog and `Get Character` show for the
+     * same line ({@link resolveDefaultCharacterAvatarAssetId}). The box used to fall to the profile
+     * field alone, and stay empty for every character who only ever had baked avatars.
+     */
+    offStage: string | null;
 };
 
 async function compileCharacterAvatars(
@@ -7474,7 +7482,14 @@ async function compileCharacterAvatars(
     if (fallback && defaultAvatarAssetId) {
         ctx.avatarAssetIdByUrl.set(fallback, defaultAvatarAssetId);
     }
-    return { byKey, poseByUrl, fallback };
+    const defaultLookAssetId = fallback ? null : resolveDefaultCharacterAvatarAssetId(summary);
+    const defaultLook = defaultLookAssetId
+        ? await resolveAsset(ctx, defaultLookAssetId, "image", blockId, { owner: avatarOwner })
+        : null;
+    if (defaultLook && defaultLookAssetId) {
+        ctx.avatarAssetIdByUrl.set(defaultLook, defaultLookAssetId);
+    }
+    return { byKey, poseByUrl, fallback, offStage: fallback ?? defaultLook };
 }
 
 /**
@@ -7489,6 +7504,10 @@ function resolveCompiledAvatar(
     avatars: CompiledCharacterAvatars,
     context: Pick<DialogAvatarResolverContext, "currentSrc" | "tags">,
 ): string | null {
+    // No portrait on stage: the engine reports neither a src nor tags.
+    if (!context.currentSrc && !(context.tags?.length)) {
+        return avatars.offStage;
+    }
     const key = summary.appearance.kind === "layered"
         ? characterAvatarKeyFromTags(summary.appearance, context.tags)
         : context.currentSrc
@@ -7576,7 +7595,9 @@ async function bindOffstageDefaultAvatars(params: {
         // Temp speakers are keyed `name:<name>` and have no profile behind them; `UNKNOWN_CHARACTER_ID`
         // resolves to no summary either. Both fall out here.
         const summary = params.characterSummaries.get(key);
-        const assetId = summary?.defaultAvatarAssetId?.trim();
+        // The profile's avatar, or her default look's when it has none: the picture the backlog and
+        // `Get Character` show for the same line.
+        const assetId = summary?.defaultAvatarAssetId?.trim() || resolveDefaultCharacterAvatarAssetId(summary) || undefined;
         if (!summary || !assetId || params.avatarBoundCharacterIds.has(summary.id)) {
             continue;
         }

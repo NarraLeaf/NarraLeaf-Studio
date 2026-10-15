@@ -3413,6 +3413,43 @@ describe("dialog avatars", () => {
         expect(compiled.avatarAssetIdByUrl.get("nlr://asset-avatar-default")).toBe("asset-avatar-default");
     });
 
+    // With no profile avatar, the dialogue box stayed empty for a speaker off stage while the backlog
+    // and `Get Character` showed her default look's avatar for the same line. Both now answer alike.
+    it("gives an off-stage speaker with no profile avatar her default look's avatar", async () => {
+        const alice: DevModeCharacterSummary = {
+            id: "char-alice",
+            name: "Alice",
+            appearance: {
+                kind: "preset",
+                poses: [{ id: "pose-neutral", name: "Neutral", assetId: "asset-neutral" }, { id: "pose-smile", name: "Smile", assetId: "asset-smile" }],
+                defaultPoseId: "pose-neutral",
+                avatars: {
+                    "pose-neutral": { overrideAssetId: "asset-avatar-neutral" },
+                    "pose-smile": { overrideAssetId: "asset-avatar-smile" },
+                },
+            },
+        };
+        const neverShown = await compileStudioStoryToNlr({
+            document: baseDocument(sayBlock("char-alice"), ["say"]),
+            sceneId: "scene-1",
+            characters: [alice],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        expect(resolveAvatar(neverShown, "char-alice", {})).toBe("nlr://asset-avatar-neutral");
+
+        const staged = await compileStudioStoryToNlr({
+            document: baseDocument({ ...enterBlock("char-alice"), ...sayBlock("char-alice") }, ["enter", "say"]),
+            sceneId: "scene-1",
+            characters: [alice],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        // On stage the live look decides; off it, the default look.
+        expect(resolveAvatar(staged, "char-alice", { currentSrc: "nlr://asset-smile" })).toBe("nlr://asset-avatar-smile");
+        expect(resolveAvatar(staged, "char-alice", {})).toBe("nlr://asset-avatar-neutral");
+        // A src the appearance does not know is still not guessed at.
+        expect(resolveAvatar(staged, "char-alice", { currentSrc: "nlr://asset-stranger" })).toBeNull();
+    });
+
     // The other half of the same fix, and the one that must not regress: a character that IS staged
     // keeps the resolver reading the engine's live `Image`. A flat url would freeze the avatar at
     // compile time and break undo / load / skip, which is exactly what Studio must not mirror.
