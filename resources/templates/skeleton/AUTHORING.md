@@ -105,8 +105,8 @@ and the `content.<locale>/` overlays only).
 
 - Where several elements carry the same graph and differ only by a value a node input can take,
   they become instances of one component with a param, and the graph lives once, on the component
-  definition (`Get Component Param` reads the instance's value). The Config page's BGM, Sound
-  effects and Voice rows are instances of `Volume slider` with an `Audio track` param.
+  definition (`Get Component Param` reads the instance's value). The Config page's Music, SFX
+  and Voice rows are instances of `Volume slider` with an `Audio track` param.
 - Keep the copies, identical in shape, when the difference cannot go through a param, and say why
   in the note:
   - which node runs (the three toggle pairs each change their setting with a different node; the

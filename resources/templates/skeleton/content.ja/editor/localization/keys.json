@@ -4,7 +4,7 @@
       "sourceText": "自動送りの待ち時間"
     },
     "config.bgm": {
-      "sourceText": "BGM"
+      "sourceText": "音楽"
     },
     "config.categorySound": {
       "sourceText": "サウンド"
@@ -22,7 +22,7 @@
       "sourceText": "オン"
     },
     "config.masterVolume": {
-      "sourceText": "全体音量"
+      "sourceText": "全体の音量"
     },
     "config.muteOnBlur": {
       "sourceText": "非アクティブ時にミュート"

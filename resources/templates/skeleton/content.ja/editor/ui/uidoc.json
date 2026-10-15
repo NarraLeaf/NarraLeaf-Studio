@@ -19733,7 +19733,7 @@
     "e86d48d1-4c15-4bd4-8251-5cd2b9125319": {
       "id": "e86d48d1-4c15-4bd4-8251-5cd2b9125319",
       "type": "nl.container",
-      "name": "全体音量行",
+      "name": "全体の音量行",
       "parentId": "dd2a6fc5-4096-4982-96b4-3aeeb619f0c7",
       "childrenIds": [
         "dcb8cbdb-9393-4132-a936-3685c7edba15",
@@ -20109,7 +20109,7 @@
     "dcb8cbdb-9393-4132-a936-3685c7edba15": {
       "id": "dcb8cbdb-9393-4132-a936-3685c7edba15",
       "type": "nl.text",
-      "name": "全体音量ラベル",
+      "name": "全体の音量ラベル",
       "parentId": "e86d48d1-4c15-4bd4-8251-5cd2b9125319",
       "childrenIds": [],
       "layout": {
@@ -20297,7 +20297,7 @@
     "c91eb37e-b2db-4211-b6ff-a112f6f6a339": {
       "id": "c91eb37e-b2db-4211-b6ff-a112f6f6a339",
       "type": "nl.slider",
-      "name": "全体音量スライダー",
+      "name": "全体の音量スライダー",
       "parentId": "e86d48d1-4c15-4bd4-8251-5cd2b9125319",
       "childrenIds": [
         "a6e05bcd-cd1f-4c28-b428-8e328be841fd",
@@ -21072,7 +21072,7 @@
     "7277d1ea-17fb-43d4-b9d1-30272854913f": {
       "id": "7277d1ea-17fb-43d4-b9d1-30272854913f",
       "type": "nl.text",
-      "name": "全体音量数値",
+      "name": "全体の音量数値",
       "parentId": "e86d48d1-4c15-4bd4-8251-5cd2b9125319",
       "childrenIds": [],
       "layout": {
@@ -21260,7 +21260,7 @@
     "2757d920-3e3e-4399-9804-9e12dd3946e7": {
       "id": "2757d920-3e3e-4399-9804-9e12dd3946e7",
       "type": "nl.container",
-      "name": "全体音量区切り線",
+      "name": "全体の音量区切り線",
       "parentId": "e86d48d1-4c15-4bd4-8251-5cd2b9125319",
       "childrenIds": [],
       "layout": {
@@ -21631,7 +21631,7 @@
     "b15fa747-fe45-4bf2-8562-c343ac387293": {
       "id": "b15fa747-fe45-4bf2-8562-c343ac387293",
       "type": "nl.container",
-      "name": "BGM行",
+      "name": "音楽行",
       "parentId": "dd2a6fc5-4096-4982-96b4-3aeeb619f0c7",
       "childrenIds": [
         "903a5c25-5f2c-4bab-96eb-19a1df827f88",
@@ -22006,7 +22006,7 @@
     "903a5c25-5f2c-4bab-96eb-19a1df827f88": {
       "id": "903a5c25-5f2c-4bab-96eb-19a1df827f88",
       "type": "nl.text",
-      "name": "BGMラベル",
+      "name": "音楽ラベル",
       "parentId": "b15fa747-fe45-4bf2-8562-c343ac387293",
       "childrenIds": [],
       "layout": {
@@ -22194,7 +22194,7 @@
     "f07c5a12-03c2-4aba-92fa-ba23da92f04a": {
       "id": "f07c5a12-03c2-4aba-92fa-ba23da92f04a",
       "type": "nl.container",
-      "name": "BGM区切り線",
+      "name": "音楽区切り線",
       "parentId": "b15fa747-fe45-4bf2-8562-c343ac387293",
       "childrenIds": [],
       "layout": {
@@ -49135,7 +49135,7 @@
     "config-bgm-volume": {
       "id": "config-bgm-volume",
       "type": "nl.container",
-      "name": "BGMスライダー",
+      "name": "音楽スライダー",
       "parentId": "b15fa747-fe45-4bf2-8562-c343ac387293",
       "childrenIds": [],
       "layout": {
