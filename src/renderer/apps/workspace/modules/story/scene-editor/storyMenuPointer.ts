@@ -1,6 +1,25 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 type PointerPoint = { clientX: number; clientY: number };
+
+export type MenuPointer = {
+    /**
+     * Call from each row's `onMouseMove`, with the row's highlight key - or `null` for a row that is
+     * not a highlight stop (the speaker menu's "create" row, a "nothing matches" line), which still
+     * answers the pointer with its hover tint.
+     */
+    move: (key: string | null, event: PointerPoint) => void;
+    /**
+     * Whether rows may wear their hover tint: the pointer has moved since rows last moved under it.
+     * A row's `hover:` classes belong behind this.
+     */
+    live: boolean;
+    /** Spread on the element that scrolls the rows. */
+    listProps: {
+        onScroll: () => void;
+        onMouseOver: (event: PointerPoint) => void;
+    };
+};
 
 /**
  * Hover highlighting for a slot's menus that follows the pointer, and only the pointer.
@@ -14,17 +33,41 @@ type PointerPoint = { clientX: number; clientY: number };
  * move. The first move after the menu opens records where the pointer is and lights nothing: the
  * menu opening under a resting pointer is not the author choosing a row either.
  *
- * Returns `(key, event)`; call it from each row's `onMouseMove`.
+ * The hover tint follows the same rule. CSS `:hover` goes to whatever row is under the pointer, so
+ * after a wheel the row that slid under it wore the grey tint while the highlighted row had scrolled
+ * out of view, and the grey read as the highlight. The tint is therefore off until the pointer
+ * moves, and goes off again whenever rows move under it instead: on a scroll of the list (a wheel, or
+ * an arrow key bringing the highlight into view), and on a row arriving under a pointer that is
+ * where it was (the list re-filtered as the author typed).
  */
-export function usePointerHighlight(onHighlight: (key: string) => void): (key: string, event: PointerPoint) => void {
+export function usePointerHighlight(onHighlight: (key: string) => void): MenuPointer {
     const last = useRef<{ x: number; y: number } | null>(null);
     const latest = useRef(onHighlight);
     latest.current = onHighlight;
-    return useCallback((key: string, event: PointerPoint) => {
+    const [live, setLive] = useState(false);
+
+    const move = useCallback((key: string | null, event: PointerPoint) => {
         const previous = last.current;
         last.current = { x: event.clientX, y: event.clientY };
         if (previous && (previous.x !== event.clientX || previous.y !== event.clientY)) {
-            latest.current(key);
+            setLive(true);
+            if (key !== null) {
+                latest.current(key);
+            }
         }
     }, []);
+
+    const listProps = useMemo(() => ({
+        onScroll: () => setLive(false),
+        onMouseOver: (event: PointerPoint) => {
+            // A pointer that moves onto a row arrives somewhere new; a row that moves under the
+            // pointer finds it where the last move left it.
+            const at = last.current;
+            if (at && at.x === event.clientX && at.y === event.clientY) {
+                setLive(false);
+            }
+        },
+    }), []);
+
+    return { move, live, listProps };
 }
