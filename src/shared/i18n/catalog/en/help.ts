@@ -684,6 +684,26 @@ export const help = {
                 + "keyboard or a gamepad. A widget's Focus and Blur heads run when the focus arrives on it and when "
                 + "it leaves.",
         },
+        pageMusic: {
+            title: "Page music",
+            body:
+                "The Music section of a page's properties decides what music plays while the page is on screen.\n"
+                + "\n"
+                + "- Keep the current music changes nothing. Whatever was playing when the page opened goes on playing.\n"
+                + "- Play music plays the music chosen. If the same music is already playing on the same track, it "
+                + "carries on without a break. Otherwise the music playing fades out over its own fade and the new "
+                + "music fades in over the page's.\n"
+                + "- No music plays nothing while the page is on screen.\n"
+                + "\n"
+                + "Going back to a page underneath brings that page's music back. A page opened with Replace Page "
+                + "that keeps the current music goes on playing the music of the page it replaced.\n"
+                + "\n"
+                + "The Play Page Music and Stop Page Music blueprint nodes change a page's music while it is open, "
+                + "for example to the track pressed in a music room.\n"
+                + "\n"
+                + "While a game is running, the story decides the music. The page's music fades out when a game "
+                + "starts or a save is loaded, and pages opened during the game play no page music of their own.",
+        },
         focusNavigationSettings: {
             title: "Navigation settings",
             body:

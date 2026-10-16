@@ -51,11 +51,14 @@ export type MusicEdit = "asset" | "clear" | "volume" | "track" | "loop" | "fade"
 export function MusicField({
     music,
     onChange,
+    emptyLabel,
     chooseLabel,
     readOnly,
 }: {
     music: MusicSetting | null;
     onChange: (next: MusicSetting | null, edit: MusicEdit) => void;
+    /** What the picker row reads with no clip in it. Absent: "No music", which is what a scene without one has. */
+    emptyLabel?: string;
     /** The picker row's empty-state action and the picker's title. */
     chooseLabel: string;
     readOnly?: boolean;
@@ -64,7 +67,7 @@ export function MusicField({
     return (
         <div className="flex flex-col gap-1.5">
             <AssetPickerRow
-                emptyLabel={t("properties.music.none")}
+                emptyLabel={emptyLabel ?? t("properties.music.none")}
                 chooseLabel={chooseLabel}
                 missingLabel={t("properties.music.missing")}
                 icon={Music}

@@ -231,6 +231,8 @@ export const scenePropertySchema = (t: TranslateFn) =>
             ],
             // A Game UI is drawn over the running scene, and the scene's music is what plays there.
             hidden: data => isGameUi(data.surface),
+            // What happens across Back, Replace Page and a game starting cannot be read off the choice.
+            helpTopic: "pageMusic",
         }),
         defineField<SceneEditorContext, SectionFieldDefinition<SceneEditorContext>>({
             id: "scene.pageAnimation",

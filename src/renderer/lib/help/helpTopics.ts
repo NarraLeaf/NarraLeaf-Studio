@@ -75,6 +75,7 @@ export const HELP_TOPIC_IDS = [
     "inputActionsInBlueprints",
     "focusNavigation",
     "focusNavigationSettings",
+    "pageMusic",
     "uiComponents",
     "blueprints",
     "scripts",
@@ -405,6 +406,11 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         id: "focusNavigationSettings",
         section: "interface",
         related: ["focusNavigation", "uiSurfaces"],
+    },
+    {
+        id: "pageMusic",
+        section: "interface",
+        related: ["uiSurfaces", "blueprints"],
     },
     {
         id: "uiComponents",

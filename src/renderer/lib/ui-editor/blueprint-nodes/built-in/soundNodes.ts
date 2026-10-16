@@ -12,6 +12,10 @@
  * free, because the engine routes by `SoundType`. A host that owned its own
  * audio graph would produce sound the player's settings could not touch.
  *
+ * The one exception is the page's music (`Play Page Music` / `Stop Page Music`),
+ * which has to outlive the engine's sessions and so plays on the host's own
+ * graph with the mixer multiplied in (`runtime/app/pageMusicPlayer.ts`).
+ *
  * Comments in English per project convention.
  */
 
@@ -19,10 +23,12 @@ import {
     BLUEPRINT_NODE_TYPE_SOUND_IS_PLAYING,
     BLUEPRINT_NODE_TYPE_SOUND_PAUSE,
     BLUEPRINT_NODE_TYPE_SOUND_PLAY,
+    BLUEPRINT_NODE_TYPE_SOUND_PLAY_PAGE_MUSIC,
     BLUEPRINT_NODE_TYPE_SOUND_RESUME,
     BLUEPRINT_NODE_TYPE_SOUND_SEEK,
     BLUEPRINT_NODE_TYPE_SOUND_SET_VOLUME,
     BLUEPRINT_NODE_TYPE_SOUND_STOP,
+    BLUEPRINT_NODE_TYPE_SOUND_STOP_PAGE_MUSIC,
 } from "@shared/types/blueprint/graph";
 import {
     BLUEPRINT_VALUE_TYPE_SOUND_HANDLE,
@@ -30,6 +36,7 @@ import {
 } from "@shared/types/blueprint/valueTypes";
 import { DEFAULT_AUDIO_TRACK_ID } from "@shared/types/audioTrack";
 import {
+    BLUEPRINT_MUSIC_TRACK_OPTIONS_SOURCE,
     BLUEPRINT_SOUND_TRACK_OPTIONS_SOURCE,
     BLUEPRINT_SOUND_PARAM_TRACK as SOUND_PARAM_TRACK,
 } from "./audioTrackParams";
@@ -67,6 +74,7 @@ export const BLUEPRINT_SOUND_PARAM_ASSET = BLUEPRINT_SOUND_ASSET_PARAM_KEY;
  */
 export {
     BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE,
+    BLUEPRINT_MUSIC_TRACK_OPTIONS_SOURCE,
     BLUEPRINT_SOUND_PARAM_TRACK,
     BLUEPRINT_SOUND_TRACK_OPTIONS_SOURCE,
 } from "./audioTrackParams";
@@ -280,6 +288,12 @@ const audioTrackParam = {
     dynamicOptionsSource: BLUEPRINT_SOUND_TRACK_OPTIONS_SOURCE,
 };
 
+/** The same picker for page music, whose empty choice is the Music track, as on the page inspector. */
+const musicTrackParam = {
+    ...audioTrackParam,
+    dynamicOptionsSource: BLUEPRINT_MUSIC_TRACK_OPTIONS_SOURCE,
+};
+
 export const soundBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_SOUND_PLAY,
@@ -403,6 +417,64 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
                 requireHandle(ctx, "blueprint.node.seekSound"),
                 readSecondsAsMs(ctx, "time"),
             );
+            return { nextPort: "next" };
+        },
+    },
+    {
+        // The page's music, set from a graph: what the page inspector's Music setting is, changed for
+        // as long as this page is open. No handle, because there is nothing for a graph to hold on
+        // to - the music hands over to the next page that has some and comes back with Back, exactly
+        // as an inspector-set one does (`runtime/app/pageMusic.ts`). That is what a music room needs:
+        // a row pressed replaces the last one instead of playing over it, and leaving the room gives
+        // the title its theme back.
+        type: BLUEPRINT_NODE_TYPE_SOUND_PLAY_PAGE_MUSIC,
+        displayName: "Play Page Music",
+        description: "blueprint.nodeDescription.playPageMusic",
+        category: "Sound",
+        keywords: ["music", "bgm", "page", "theme", "title", "music room", "play", "track"],
+        graphKinds: [...SOUND_GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [execIn, assetIdIn, volumeIn, loopIn, fadeIn, execNext],
+        inspectorParams: [
+            { key: BLUEPRINT_SOUND_PARAM_ASSET, label: "Audio Clip", kind: "audioAsset" },
+            musicTrackParam,
+        ],
+        async execute(ctx) {
+            const assetId = resolveAssetId(ctx);
+            if (!assetId) {
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.pickClip", { node: translate("blueprint.node.playPageMusic") }),
+                    ctx.node.id,
+                );
+            }
+            await requireHostApi(ctx).sound.setPageMusic({
+                kind: "play",
+                assetId,
+                audioTrackId: resolveTrackId(ctx),
+                volume: readOptionalNumber(readPin(ctx, "volume")),
+                loop: readOptionalBoolean(readPin(ctx, "loop")),
+                fadeMs: readSecondsAsMs(ctx, "fade"),
+            });
+            return { nextPort: "next" };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_SOUND_STOP_PAGE_MUSIC,
+        displayName: "Stop Page Music",
+        description: "blueprint.nodeDescription.stopPageMusic",
+        category: "Sound",
+        keywords: ["music", "bgm", "page", "silence", "quiet", "stop", "mute"],
+        graphKinds: [...SOUND_GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [execIn, fadeIn, execNext],
+        async execute(ctx) {
+            // Unconnected, the music leaves with its own fade, as it does for a page set to Silence.
+            await requireHostApi(ctx).sound.setPageMusic({
+                kind: "stop",
+                fadeMs: readOptionalSecondsAsMs(ctx, "fade"),
+            });
             return { nextPort: "next" };
         },
     },

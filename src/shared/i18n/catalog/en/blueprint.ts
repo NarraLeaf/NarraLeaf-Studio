@@ -329,6 +329,7 @@ export const blueprint = {
         unknownVariant: "“{element}” has no such variant.",
         pageNotFound: "The page was not found in this project.",
         notALayer: "“{node}”: this page is not a layer, so nothing was closed.",
+        pageMusicInGame: "“{node}”: a game is running, and the story decides the music while it does. The page's music was not changed.",
         // Variables, saves and captured games.
         persistentVariableMissing: "The persistent variable this node uses no longer exists.",
         persistentVariableNoKey: "The persistent variable “{name}” has no storage key.",
@@ -1231,6 +1232,7 @@ export const blueprint = {
         getVoiceVolume: "Get Voice Volume",
         hasReadText: "Has Read Text",
         playSound: "Play Sound",
+        playPageMusic: "Play Page Music",
         setAutoForward: "Set Auto Forward",
         setAutoForwardDelay: "Set Auto Forward Delay",
         setTextRevealDuration: "Set Text Fade In",
@@ -1277,6 +1279,7 @@ export const blueprint = {
         setVoiceFadeDuration: "Set Voice Fade Duration",
         setVoiceVolume: "Set Voice Volume",
         stopSound: "Stop Sound",
+        stopPageMusic: "Stop Page Music",
         pauseSound: "Pause Sound",
         resumeSound: "Resume Sound",
         setSoundVolume: "Set Sound Volume",
@@ -1712,6 +1715,8 @@ export const blueprint = {
      * can mistake for one another.
      */
     nodeDescription: {
+        playPageMusic: "Makes this the music of the page this graph runs on, for as long as the page is open, in place of the music set in its properties. The music playing hands over to it, and the same music already playing carries on. Going back to a page underneath brings that page's music back. Does nothing while a game is running: the story decides the music then.",
+        stopPageMusic: "Silences the page this graph runs on, for as long as it is open. The music playing fades out over Fade (s), or over its own fade when Fade (s) is not connected. Does nothing while a game is running: the story decides the music then.",
         getComponentParam: "The value this placement sets for the chosen parameter, or the parameter's default when it sets none. A Text parameter that reads from a translation key gives the key's name; Translation Key Text gives its words.",
         getPageParam: "The value the page was opened with for the chosen param, or the param's default when it was given none. Params are declared in the page's properties.",
         compareEqual: "True when A and B are the same value of the same type. Lists and objects are compared by their contents, an element by which element it is. The number 1 and the text \"1\" are not equal; an input left unconnected counts as Null.",

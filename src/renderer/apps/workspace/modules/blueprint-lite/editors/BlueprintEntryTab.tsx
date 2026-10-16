@@ -34,6 +34,7 @@ import type { DlcService } from "@/lib/workspace/services/dlc/DlcService";
 import { DLC_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/dlcNodes";
 import {
     BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE,
+    BLUEPRINT_MUSIC_TRACK_OPTIONS_SOURCE,
     BLUEPRINT_SOUND_TRACK_OPTIONS_SOURCE,
 } from "@/lib/ui-editor/blueprint-nodes/built-in/soundNodes";
 import { BLUEPRINT_COMPONENT_PARAM_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/componentNodes";
@@ -43,7 +44,7 @@ import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEd
 import { blueprintTargetKeepingLayer, type BlueprintEntryTabPayload } from "../blueprintEntryTabId";
 import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import type { StoryDocument } from "@shared/types/story";
-import { AUDIO_TRACK_ID_SOUND, audioTrackDisplayName, resolveAudioTrack } from "@shared/types/audioTrack";
+import { AUDIO_TRACK_ID_BGM, AUDIO_TRACK_ID_SOUND, audioTrackDisplayName, resolveAudioTrack } from "@shared/types/audioTrack";
 import { listSceneIdsInDocumentOrder, listStoryEndings } from "@shared/types/story";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getUIComponentParams } from "@shared/types/ui-editor/document";
@@ -2232,6 +2233,16 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                     value: "",
                     label: t("storyInspector.audio.trackDefault", {
                         name: audioTrackDisplayName(resolveAudioTrack(audioTracks, undefined, AUDIO_TRACK_ID_SOUND), t),
+                    }),
+                },
+                ...audioTrackOptions,
+            ],
+            // `Play Page Music`'s: the same, under an empty one naming the Music track.
+            [BLUEPRINT_MUSIC_TRACK_OPTIONS_SOURCE]: [
+                {
+                    value: "",
+                    label: t("storyInspector.audio.trackDefault", {
+                        name: audioTrackDisplayName(resolveAudioTrack(audioTracks, undefined, AUDIO_TRACK_ID_BGM), t),
                     }),
                 },
                 ...audioTrackOptions,

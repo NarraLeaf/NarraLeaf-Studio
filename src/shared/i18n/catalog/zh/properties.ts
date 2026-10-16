@@ -112,6 +112,10 @@ export const properties = {
     music: {
         title: "音乐",
         none: "未选择音乐",
+        keep: "保持当前音乐",
+        play: "播放音乐",
+        silent: "无音乐",
+        notChosen: "未选择音乐",
         choosePage: "选择页面音乐",
         chooseScene: "选择场景音乐",
         missing: "音乐缺失",

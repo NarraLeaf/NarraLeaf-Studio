@@ -432,6 +432,8 @@ export function useStoryPreviewGameUi(input: {
             onSetSoundVolume: undefined,
             onSeekSound: undefined,
             onIsSoundPlaying: undefined,
+            // A story preview draws no pages, so there is no page whose music a graph could set.
+            onSetPageMusic: undefined,
             onGetTrackVolume: undefined,
             onSetTrackVolume: undefined,
             onNetworkFetch: undefined,
