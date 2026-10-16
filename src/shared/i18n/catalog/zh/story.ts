@@ -188,7 +188,6 @@ export const story = {
             blueprintAction: "该行由蓝图执行，蓝图没有对应的脚本写法",
             inputAction: "该行涉及玩家输入或手柄振动，没有对应的脚本写法",
             pageAction: "该行在剧情上方打开页面并等待其关闭，没有对应的脚本写法",
-
             blueprintCondition: "该条件由蓝图判定",
             blueprintInterpolation: "正文中有一处取值由蓝图计算",
             inlineEvent: "正文中带有逐字显示过程中触发的事件",
@@ -1451,7 +1450,6 @@ export const story = {
         quit: "退出到 {page}",
         page: "打开 {page}",
         pageUnset: "打开页面",
-
         rumble: "振动：{shape}",
         rumbleStop: "停止振动",
         inputLock: "锁定玩家输入",

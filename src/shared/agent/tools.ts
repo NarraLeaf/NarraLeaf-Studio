@@ -728,7 +728,6 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
         "Lists blueprints with their owner (surface/element) and event heads. Empty ones (no nodes) are left out unless `query` or `all` is given.",
         { query: { type: "string" }, all: { type: "boolean", description: "Also list blueprints that hold no nodes." } },
     ),
-
     ws(
         "blueprint_show",
         "Read a blueprint as text",
@@ -973,7 +972,6 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
             alt: { type: "boolean", description: "Hold Alt with the key." },
             meta: { type: "boolean", description: "Hold Cmd (Meta) with the key." },
             holdMs: { type: "integer", description: "Keep the key down this long, up to 8000 ms - e.g. `Control` held to skip." },
-
         },
         ["key"],
     )),
@@ -984,7 +982,6 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
         { query: { type: "string", description: "Only variables whose name contains this." } },
     ),
     drivesGame(ws("playtest_stop", "Stop playing", "Closes the Dev Mode game.")),
-
     ws("console_read", "Read Studio's console", "Recent lines from Studio's console. Channels: `build` (builds, and everything Dev Mode reports - the running game's errors land here), `blueprint`, `lint`, `storage`, `agent` (your own calls), and `story` while a scene's editor is open.", { channel: { type: "string" }, level: { type: "string", enum: ["debug", "info", "warning", "error"] }, limit: { type: "integer", default: 100 } }),
     main(
         "build",

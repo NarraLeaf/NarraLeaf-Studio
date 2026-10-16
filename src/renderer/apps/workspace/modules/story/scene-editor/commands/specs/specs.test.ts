@@ -1409,7 +1409,6 @@ describe("input commands", () => {
     });
 
     it("/input lock and unlock", () => {
-
         expect(build("/input lock")).toMatchObject({ payload: { action: "input", operation: "lock" } });
         expect(build("/input unlock")).toMatchObject({ payload: { action: "input", operation: "unlock" } });
     });

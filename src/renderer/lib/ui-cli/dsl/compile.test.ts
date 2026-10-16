@@ -222,8 +222,6 @@ describe("compiling a .ui file", () => {
     });
 
     it("reads a struct block", () => {
-
-
         const result = compile('struct demo.row\n    field caption: string label="Caption"\n    field shot: image\n');
         expect(result.structs["demo.row"]).toEqual({
             id: "demo.row",

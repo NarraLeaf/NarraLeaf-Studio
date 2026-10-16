@@ -3865,7 +3865,6 @@ function variableValueType(ctx: SceneCompileContext, ref: StoryVariableRef): Sto
     return Object.values(ctx.persistentVariables).find(entry => entry.storageKey === ref.variableId)?.valueType
         ?? ctx.persistentVariables[ref.variableId]?.valueType
         ?? null;
-
 }
 
 

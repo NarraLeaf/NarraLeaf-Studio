@@ -71,7 +71,6 @@ function resultParam(): StoryCommandParamSpec {
         type: { kind: "variable" },
         about: "A boolean variable: set to true when the player made it in time, false when the time limit passed first.",
     };
-
 }
 
 /** The fields the three waiting commands share, read off their args. */

@@ -976,7 +976,6 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
             return page ? translate("story.describe.page", { page }) : translate("story.describe.pageUnset");
         }
         return translate("story.badge.effect");
-
     }
     if (block.kind === "control") {
         if (block.payload.control === "condition") return translate("story.describe.condition");

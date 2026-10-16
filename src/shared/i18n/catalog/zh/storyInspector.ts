@@ -569,7 +569,6 @@ export const storyInspector = {
         quitHint: "本次游玩在此行结束，随后显示该页面，不记录结局。",
         pagePage: "页面",
         pageHint: "页面在剧情上方打开，剧情会等到页面用「关闭本叠加页面」关闭自己后再继续。关闭时返回的结果按变量类型写入结果变量；没有返回结果时变量保持原值",
-
         branch: "分支",
         elseHint: "当之前的分支均不匹配时，运行 Else 分支",
     },

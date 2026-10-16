@@ -434,7 +434,6 @@ const NODE_TITLE_KEYS: Record<string, TranslationKey> = {
     "On Window Focus Changed": "blueprint.node.onWindowFocusChanged",
     "On Saved Var Changed": "blueprint.node.onSavedVarChanged",
     "On Persistent Changed": "blueprint.node.onPersistentChanged",
-
     "Open Link": "blueprint.node.openLink",
     "Open Screenshots Folder": "blueprint.node.openScreenshotsFolder",
     "Save Screenshot": "blueprint.node.saveScreenshot",

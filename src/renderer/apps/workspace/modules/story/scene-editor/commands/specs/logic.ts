@@ -416,7 +416,6 @@ export const page = defineStoryCommand({
             about: "Takes the value the page closes with (Close This Layer's result), converted to the variable's type; "
                 + "a page closed with none, Back included, leaves the variable as it was. The page gets no parameters: its params take their defaults.",
         },
-
     },
     build(args, ctx): StoryBlock {
         return {
@@ -447,4 +446,3 @@ export const blueprint = defineStoryCommand({
 });
 
 export const LOGIC_COMMANDS = [ifCommand, menu, repeat, until, breakLoop, parallel, race, sequence, label, goto, cut, ending, quit, page, blueprint];
-

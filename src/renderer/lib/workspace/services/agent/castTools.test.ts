@@ -167,7 +167,6 @@ describe("variable_upsert", () => {
     });
 
     it("needs valueType only to create, and refuses a name another variable holds", async () => {
-
         const { refusal, run } = harness({ variables: [HONEST, { ...HONEST, id: "v-place", storageKey: "v-place", name: "地点" }] });
         expect((await refusal(variableUpsert, { name: "new_one" })).message).toMatch(/valueType.*required to create/);
         expect((await refusal(variableUpsert, { id: "v-honest", name: "地点" })).message).toMatch(/already called "地点"/);

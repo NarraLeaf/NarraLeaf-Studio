@@ -177,7 +177,6 @@ const WIDGET_HEARD_EVENTS: ReadonlySet<AmbientSurfaceEventName> = new Set([
     "persistentVariableChanged",
 ]);
 
-
 export type AmbientSurfaceDispatch = {
     blueprintDocument: BlueprintDocument;
     persistentVariables: PersistentVariableRuntimeTable;

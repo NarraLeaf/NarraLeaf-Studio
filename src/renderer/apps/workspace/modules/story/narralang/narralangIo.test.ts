@@ -47,7 +47,6 @@ const EVERY_REASON: Record<NarralangIssueReason, true> = {
     inputAction: true,
     pageAction: true,
     blueprintCondition: true,
-
     blueprintInterpolation: true,
     inlineEvent: true,
     invalidRow: true,

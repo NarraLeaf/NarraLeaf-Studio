@@ -140,7 +140,6 @@ function checkSlotsTaken(compiled: UiCompileResult, existing: UIDocument | null)
     return out;
 }
 
-
 /**
  * Page parameters read or given by name in the blocks this file writes: a list on a page showing a
  * page prop the page does not declare, and a Page widget giving its page a name the page does not

@@ -223,7 +223,6 @@ those you deliberately keep.
   The row passes the page no parameters, so the page's own `param`s take their defaults; give a page
   what it starts with as those defaults, or have its `init` blueprint read saved variables.
 
-
 - **Loops:** `/repeat 3`, `/until <expression>`, `/break` - rare in a VN.
 - **Together:** rows run one after another; rows indented under `/parallel` start at once, and the row
   after it waits for all of them - two characters crossing the stage together.

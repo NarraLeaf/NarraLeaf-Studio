@@ -112,7 +112,6 @@ const STORY_ROW_FACET_BY_BADGE: Record<StoryBlockBadgeId, StoryRowFacetId> = {
     rumble: "scene",
     input: "flow",
     page: "flow",
-
     variable: "data",
     declaration: "data",
     blueprint: "utils",

@@ -315,7 +315,6 @@ const WINDOW_EVENTS: readonly WidgetLogicEventDef[] = [
     },
 ];
 
-
 /**
  * The events the host raises on every widget on a page rather than the widget raising them itself:
  * a key press (heard from `window` by every widget that lists it), a broadcast, and the two window

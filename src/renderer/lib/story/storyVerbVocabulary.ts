@@ -167,7 +167,6 @@ export function storyVerbCommandId(payload: StoryActionPayload): CommandId | nul
         case "input": return INPUT[payload.operation] ?? null;
         case "page": return "page";
         default: return null;
-
     }
 }
 

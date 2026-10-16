@@ -19,6 +19,8 @@ import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import type { BlueprintGraphKind } from "@shared/types/blueprint/graph";
 import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes";
 import { buildBlueprintGraphContext } from "@/lib/ui-editor/blueprint-nodes/graphContext";
+import { isBlueprintNodeAllowedInGraphContext } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
+import { BUILTIN_WIDGET_LOGIC_APIS } from "@shared/types/ui-editor/widgetLogic";
 import type {
     BlueprintNodeDef,
     BlueprintNodeEditorCatalogEntry,
@@ -307,12 +309,31 @@ export type NodeDetail = {
     structs?: { id: string; fields: { key: string; type: string }[] }[];
 };
 
-/** The owner kinds whose palette offers the node, for any graph kind it declares and any widget it is scoped to. */
-function allowedOwnerKinds(def: { type: string; graphKinds: BlueprintGraphKind[]; scope?: { widgetElementTypes?: string[] } }): string[] {
-    const widgetTypes: (string | undefined)[] = [undefined, ...(def.scope?.widgetElementTypes ?? [])];
-    return (Object.keys(SYNTHETIC_OWNERS) as BlueprintOwnerRef["kind"][]).filter(kind =>
-        def.graphKinds.some(graphKind => widgetTypes.some(widgetElementType =>
-            paletteTypesFor({ ownerKind: kind, graphKind, widgetElementType }).has(def.type))));
+/**
+ * The owner kinds a graph may hold the node in, asked the way the graph validator asks it - so the
+ * answer includes what the scope cannot say, such as the host API a story call does not have.
+ *
+ * Widget owners are asked once per built-in widget type: a node scoped to `nl.text` belongs on a
+ * text element's blueprint, and an owner asked with no element type at all answers no for it.
+ * The validator rather than the palette, because the palette also hides a node that targets an
+ * element until the graph holds a reference to one - a question about one graph, not about owners.
+ */
+function allowedOwnerKinds(def: Parameters<typeof isBlueprintNodeAllowedInGraphContext>[0] & { graphKinds: BlueprintGraphKind[] }): string[] {
+    const widgetTypes = Object.keys(BUILTIN_WIDGET_LOGIC_APIS);
+    const widgetOwners = new Set(["widgetMain", "widgetValue", "componentWidgetMain"]);
+    return (Object.keys(SYNTHETIC_OWNERS) as BlueprintOwnerRef["kind"][]).filter(kind => {
+        const elementTypes: (string | undefined)[] = widgetOwners.has(kind) ? [undefined, ...widgetTypes] : [undefined];
+        return def.graphKinds.some(graphKind => elementTypes.some(widgetElementType => {
+            const owner = syntheticOwner(kind);
+            const context = buildBlueprintGraphContext({
+                graphKind,
+                owner,
+                widgetElementType,
+                isComponentDefinitionGraph: kind === "componentWidgetMain",
+            });
+            return isBlueprintNodeAllowedInGraphContext(def, context);
+        }));
+    });
 }
 
 export function describeNode(type: string, params?: Record<string, unknown>): NodeDetail | null {

@@ -1393,7 +1393,6 @@ describe("a wait's result variable", () => {
         expect(run("variables/read-never-written", ctx)).toEqual([]);
     });
 
-
     it("is a use, so the declaration is not unused and a deleted one is undeclared", () => {
         expect(run("variables/unused", createTestLintContext({
             stories: [story("s1", "Story", [scene("a", "A", [

@@ -348,7 +348,6 @@ export type StoryCommandParam = {
 };
 
 export type StoryCommandDef = {
-
     /** The canonical keyword. English, never translated. */
     token: string;
     /** The owning spec's id - keys `story.command.<id>.*` and the commit dispatch. */

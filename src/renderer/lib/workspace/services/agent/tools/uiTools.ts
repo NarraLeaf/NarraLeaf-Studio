@@ -175,7 +175,6 @@ function wiredBlueprints(ctx: WorkspaceContext): Map<string, string> {
 
 // ── ui_screenshot ────────────────────────────────────────────────────────────────────────────────
 
-
 function componentDesignSize(component: UIComponentDefinition): { width: number; height: number } {
     const root = component.elements[component.rootElementId];
     return {

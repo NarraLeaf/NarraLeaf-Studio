@@ -124,7 +124,6 @@ one is still running. "Nothing visible changed" means the element does not answe
 changed something not on screen (a setting): check with `playtest_screenshot` and
 `console_read {channel:"blueprint"}`.
 
-
 Verifying a button, the recipe:
 
 1. `playtest_start` (no scene) to begin on the title page, or `playtest_start {scene}` for the Game

@@ -34,9 +34,9 @@ import {
     keyDown,
     keyEventInit,
     keyUp,
-
     listDrawnSurfaces,
     readDrawnPageTexts,
+    describeGameFocus,
     PlaytestPointer,
     pressKey,
     resolveInputTarget,
@@ -630,6 +630,10 @@ type ScreenReading = {
     variables?: Record<string, unknown>;
     /** Blueprint executions running now, by id. */
     running?: string[];
+    /** Endings reached in this window so far, and the last one's name. */
+    endings?: { count: number; last: string | null };
+    /** Where the keyboard focus is (`describeGameFocus`). */
+    focus?: string | null;
 };
 
 function readVariableMap(controls: GameAppTestControls): Record<string, unknown> | undefined {
@@ -648,8 +652,11 @@ function readScreen(getControls: () => GameAppTestControls | null, environment: 
     const env = (environment ?? browserEnvironmentOf)(controls);
     const variables = readVariableMap(controls);
     const running = controls.runningBlueprints?.();
+    const raw = controls.readState();
     return {
-        state: toAgentGameState(controls.readState()),
+        state: toAgentGameState(raw),
+        endings: { count: raw.endings, last: raw.lastEnding },
+        ...(env ? { focus: describeGameFocus(env) } : {}),
         surfaces: env ? listDrawnSurfaces(env) : [],
         ...(env ? { texts: readDrawnPageTexts(env) } : {}),
         ...(variables ? { variables } : {}),
@@ -739,6 +746,13 @@ export function describeScreenChange(before: ScreenReading, after: ScreenReading
         changed.push("a choice menu came up");
     } else if (was.choices && !is.choices) {
         changed.push("the choice menu closed");
+    }
+    if (before.endings && after.endings && after.endings.count > before.endings.count) {
+        changed.push(after.endings.last ? `the ending "${after.endings.last}" was reached` : "an ending was reached");
+    }
+    // Only where it went: the focus leaving a control (a click elsewhere, a page closing) is noise.
+    if (after.focus && after.focus !== before.focus) {
+        changed.push(`the focus is now on ${after.focus}`);
     }
     // The words on a page that stayed open: a message appended, a value counted up.
     for (const [name, text] of Object.entries(after.texts ?? {})) {
@@ -852,7 +866,6 @@ async function runInputAction(
             state: after.state,
         },
     };
-
 }
 
 /**
@@ -954,13 +967,14 @@ async function runAgentDriveActionInner(
                 : game.read();
             const variables = action.variables ? getControls()?.readVariables?.() : undefined;
             return { success: true, data: { kind: "state", state: toAgentGameState(state), ...(variables ? { variables } : {}) } };
-
         } catch (error) {
             return { success: false, error: error instanceof Error ? error.message : String(error) };
         }
     }
 
     const memory = input.memory ?? windowMemory;
+    const environmentOf = input.environment ?? browserEnvironmentOf;
+    const screenBefore = readScreen(getControls, environmentOf);
     const outcome = await advanceLines(
         game,
         { steps: action.steps, choice: action.choice, ...(memory.endingsReported !== null ? { endingsSeen: memory.endingsReported } : {}) },
@@ -971,6 +985,11 @@ async function runAgentDriveActionInner(
     if (endedAt) {
         memory.endingsReported = endedAt.endings;
     }
+    // What a line or a row did besides the line: a `/page` row's page coming up over the story, a
+    // `/set` moving a variable. The line, the menu and the ending are in the answer already.
+    const screenAfter = readScreen(getControls, environmentOf);
+    const besides = describeScreenChange(screenBefore, screenAfter).filter(phrase =>
+        phrase.startsWith("now showing") || phrase.startsWith("no longer showing") || / variable "/.test(phrase));
     return {
         success: true,
         data: {
@@ -978,6 +997,7 @@ async function runAgentDriveActionInner(
             advanced: outcome.advanced,
             ...(outcome.error ? { error: outcome.error } : {}),
             ...(outcome.ending ? { ending: outcome.ending } : {}),
+            ...(besides.length > 0 ? { changed: besides } : {}),
             state: toAgentGameState(outcome.state),
         },
     };

@@ -174,7 +174,6 @@ export const DEV_MODE_AGENT_KEYS = [
     "Control", "Shift", "Alt", "Meta",
 ] as const;
 
-
 /** The pointer gestures `DevModeAgentAction.key` takes, which aim at the middle of the game. */
 export const DEV_MODE_AGENT_POINTER_KEYS = ["rightClick", "wheelUp", "wheelDown"] as const;
 
@@ -256,13 +255,14 @@ export type DevModeAgentResult =
           /** With `variables`: each saved and persistent variable and its value now. */
           variables?: { scope: "saved" | "persistent"; id: string; name: string; value: unknown }[];
       }
-
     | {
           kind: "advance";
           advanced: number;
           error?: string;
           /** An `/ending` row ran during the advance: its display name, or null for an unnamed one. */
           ending?: { name: string | null };
+          /** Pages that opened or closed (a `/page` row) and variables that changed, one phrase each. */
+          changed?: string[];
           state?: DevModeAgentGameState;
           issues?: DevModeAgentIssue[];
       }

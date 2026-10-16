@@ -115,7 +115,6 @@ describe("lint rule registry", () => {
     it("contains exactly the planned rule set", () => {
         expect([...LINT_RULES].map(rule => rule.id).sort()).toEqual([...EXPECTED_RULE_IDS].sort());
         expect(LINT_RULES).toHaveLength(84);
-
     });
 
     it("gives every rule a unique id", () => {

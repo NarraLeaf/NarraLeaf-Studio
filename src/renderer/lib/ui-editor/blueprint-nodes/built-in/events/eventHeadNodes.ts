@@ -885,6 +885,9 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
          * Ambient like the window heads, so a widget showing story state can place one too.
          */
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SAVED_VARIABLE_CHANGED,
+        // The value is whatever was written, from wherever: not followed back to its writer, so a name
+        // out of it used as an asset is refused where it is used (see `BlueprintAssetNameFlow`).
+        assetNames: "assembled",
         displayName: "On Saved Var Changed",
         category: "Events",
         keywords: ["variable", "saved", "changed", "story", "flag", "watch", "set", "value"],
@@ -898,6 +901,9 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_PERSISTENT_VARIABLE_CHANGED,
+        // The value is whatever was written, from wherever: not followed back to its writer, so a name
+        // out of it used as an asset is refused where it is used (see `BlueprintAssetNameFlow`).
+        assetNames: "assembled",
         displayName: "On Persistent Changed",
         category: "Events",
         keywords: ["variable", "persistent", "global", "changed", "watch", "set", "value"],
@@ -912,7 +918,6 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED,
         displayName: "On Fullscreen Changed",
-
         category: "Events",
         keywords: ["fullscreen", "full", "screen", "window", "app", "changed", "display", "maximize"],
         graphKinds: ["event"],

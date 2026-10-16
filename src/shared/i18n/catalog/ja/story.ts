@@ -203,7 +203,6 @@ export const story = {
             blueprintAction: "この行はブループリントが実行する。ブループリントにスクリプトの書き方は無い",
             inputAction: "この行はプレイヤーの入力またはコントローラーの振動を扱う。スクリプトの書き方は無い",
             pageAction: "この行はストーリーの上にページを開いて閉じるまで待つ。スクリプトの書き方は無い",
-
             blueprintCondition: "この条件はブループリントが決める",
             blueprintInterpolation: "文の中の値をブループリントが計算する",
             inlineEvent: "文が、表示していく途中で発生するイベントを持っている",
@@ -1506,7 +1505,6 @@ export const story = {
         quit: "{page} へ戻る",
         page: "{page} を開く",
         pageUnset: "ページを開く",
-
         rumble: "振動：{shape}",
         rumbleStop: "振動を停止",
         inputLock: "プレイヤーの入力をロック",

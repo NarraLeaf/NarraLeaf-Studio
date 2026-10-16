@@ -62,7 +62,6 @@ export class BlueprintExecutionManager {
     }
 
     public isScopeClosed(runtimeScopeId: string): boolean {
-
         return this.closedScopes.has(runtimeScopeId);
     }
 

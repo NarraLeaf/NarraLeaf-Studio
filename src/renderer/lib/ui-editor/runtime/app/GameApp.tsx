@@ -5490,7 +5490,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         return () => onTestControlsChanged(null);
     }, [activeSurface, bundle.ui.persistentVariables, bundle.ui.savedVariables, bundle.ui.uidoc, choiceMenus, core, getSavedVariableInGame, nextInGame, nlrSession, onTestControlsChanged, playHead, selectChoiceInGame, startStoryInGame]);
 
-
     const buildHostAdapterBundle = useCallback((entry: AppSurfaceLayerNavEntry, surface: UISurface) => {
         if (!core || !gameHostCapabilities) {
             return null;

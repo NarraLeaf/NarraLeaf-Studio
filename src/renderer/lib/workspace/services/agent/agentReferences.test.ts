@@ -75,7 +75,6 @@ describe("storyUsesNotFitting in expressions and waits", () => {
 });
 
 describe("storyUsesNotFitting", () => {
-
     it("names each row whose literal or test a number no longer fits, and leaves computed ones alone", () => {
         expect(storyUsesNotFitting(stories, VAR, "number")).toEqual([
             'story "Skeleton", scene "车厢", row 1: sets it to true',

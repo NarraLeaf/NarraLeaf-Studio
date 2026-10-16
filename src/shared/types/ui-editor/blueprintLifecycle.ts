@@ -112,7 +112,6 @@ const VARIABLE_CHANGE_EVENTS: readonly LifecycleEventDef[] = [
     },
 ];
 
-
 /**
  * Fires when the user asks to close the application window (native close box, OS shortcut). The
  * main process holds the close open while the blueprint runs, then lets it proceed; a handler that

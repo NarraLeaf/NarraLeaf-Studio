@@ -258,18 +258,24 @@ export const playtestAdvance: AgentToolHandler = async (args, { ctx }) => {
     if (result.data.kind !== "advance") {
         throw refuse("internal", "The game answered something other than an advance.");
     }
-    const { advanced, error, ending, state, issues } = result.data;
+    const { advanced, error, ending, changed, state, issues } = result.data;
     const where = state ? ` ${describeGameState(state)}` : "";
     const reported = describeIssues(issues);
+    const opened = changed?.some(phrase => phrase.startsWith("now showing")) === true;
+    // A `/page` row holds the story until its page closes, and reads to an advance as "no line came
+    // up": say what the wait is.
+    const besides = (changed?.length ? ` On the way: ${changed.join("; ")}.` : "")
+        + (opened && error ? " A page opened over the story is likely what it waits on: act on it (playtest_click, playtest_key), and the story goes on once it closes." : "");
     return answerJson(
         {
             advanced,
             ...(error ? { stoppedBecause: error } : {}),
             ...(ending ? { ending: ending.name } : {}),
+            ...(changed?.length ? { changed } : {}),
             ...(state ? gameStateData(state) : {}),
             ...(issues?.length ? { issues } : {}),
         },
-        `${describeAdvance(result.data)}${where}${reported ? `\n${reported}` : ""}`,
+        `${describeAdvance(result.data)}${besides}${where}${reported ? `\n${reported}` : ""}`,
     );
 };
 
@@ -372,7 +378,6 @@ export const playtestKey: AgentToolHandler = async (args, { ctx }) => {
         ...(meta ? { meta } : {}),
         ...(holdMs ? { holdMs } : {}),
     });
-
 };
 
 /**
@@ -403,7 +408,6 @@ export const playtestVariables: AgentToolHandler = async (args, { ctx }) => {
 };
 
 export const playtestStop: AgentToolHandler = async (_args, { ctx }) => {
-
     const status = await devMode(ctx).stop();
     return answer(`Dev Mode is ${status}.`, { status });
 };

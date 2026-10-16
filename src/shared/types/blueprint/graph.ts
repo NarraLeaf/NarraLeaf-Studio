@@ -592,7 +592,6 @@ function matchesDispatchPayload(
         return selected !== "" && selected === String(eventPayload?.variableId ?? "");
     }
     return true;
-
 }
 
 /** All node type ids that may start an event graph chain (for validation / normalization). */

@@ -277,7 +277,8 @@ and the story goes on knowing what they said. Four pieces; check each node with 
 round the phone, a dimming `nl.container` over the whole screen, the phone body on top):
 
 - A struct for one message: `struct chatMsg` with `field id: string`, `field text: string`,
-  `field them: boolean`, `field me: boolean`.
+  `field them: boolean`, `field me: boolean`. A `struct` block stands at the top level of the file,
+  beside the `surface` (not inside it); `param` lines go inside the `surface`, before its root.
 - A page param holding the opening messages as its default:
   `param messages messages type=list struct=chatMsg = [{"id":"o1","text":"在吗？","them":true,"me":false}]`.
   `/page` passes no parameters, so the default is what the page opens with; a different opening per
@@ -290,17 +291,25 @@ round the phone, a dimming `nl.container` over the whole screen, the phone body 
   pattern. Bubbles are a fixed size; size them for the longest line.
 - The replies: a second `nl.list` (struct `chatReply`: `id`, `text`, the answer `reply`, a `score`,
   a `tag`, a `round`), its rows containers with `navigation.focusable = always` so a pad or the
-  keyboard can pick one.
+  keyboard can pick one - and give that container a look for `{"conditions":{"focused":true}}`
+  (an appearance row, as hover looks are written; `ui-format`), or the player cannot see which reply
+  the focus is on.
 - A "put the phone down" `nl.button`, `layout.visible = false` until the last round.
 
-**2. The replies' blueprint** (on the reply list, `widgetMain`):
+**2. The replies' blueprint** (on the reply list, `widgetMain`). The list nodes come twice: the
+`blueprint.list.*` ones act on the list whose blueprint they are in, the `blueprint.element.list.*`
+ones on the list an `Element` node points at - use those for the history.
 
-- `init` -> `Set List Content` with round one's replies (a blueprint var of type array).
-- `Item Click` -> `Memo` the item -> `Make Object` a `chatMsg` (`them=false`, `me=true`, `text` from
-  the item) -> `Append List Item` on the history -> `Scroll To Bottom` -> `Delay` 0.8 -> the answer
-  as a `chatMsg` with `them=true` -> append -> scroll.
-- Record what was chosen with `Set Saved Var` (`Get Field` values are JSON: `To Float` before you
-  add a score). Branch on `round`: the next round's replies, or hide the list and show the button.
+- `blueprint.event.head.init` -> `blueprint.list.setItems` with round one's replies (a blueprint
+  var of type array).
+- `blueprint.event.head.itemClick` -> `blueprint.data.memo` the item -> read its fields with
+  `blueprint.data.jsonGet` (Get JSON Field, `path = text`) -> `blueprint.data.jsonMakeObject` a
+  `chatMsg` (`them=false`, `me=true`) -> `blueprint.element.list.appendItem` on the history ->
+  `blueprint.element.list.scrollToBottom` -> `blueprint.flow.delay` 0.8 -> the answer as a
+  `chatMsg` with `them=true` -> append -> scroll.
+- Record what was chosen with `blueprint.saved.set`. A field read out of the item is JSON: put
+  `blueprint.data.toFloat` before adding a score, `To String` before a `Concat`. Branch on `round`:
+  the next round's replies, or hide the list and show the button.
 
 **3. Closing**: the button's `Mouse Click` -> `Close This Layer` with a `result` (say `true`).
 
@@ -316,6 +325,9 @@ The phone buzzes on the desk.
 The story waits on the `/page` row until the page closes; `into=` gets the result (Back - Esc -
 closes it with none, and the variable keeps its default, which is how "put it down without
 answering" reads). The saved variables the replies set are there for every `/if` after it.
+
+A page opened over the story covers what is under it: a quick-menu element (an affection meter,
+say) sitting where the phone is drawn is hidden while it is open.
 
 **Check it**: `playtest_click` a reply row by `index`; the answer names the words the history
 gained and the variables that changed. `playtest_variables` shows them all.

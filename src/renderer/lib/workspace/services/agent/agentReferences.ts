@@ -267,7 +267,6 @@ function misfitIn(block: StoryBlock, id: string, valueType: StoryVariableValueTy
         }
     }
     return found;
-
 }
 
 /**

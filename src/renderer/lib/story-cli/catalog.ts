@@ -385,7 +385,6 @@ function formatParam(param: CommandParamDetail, named: boolean): string {
     return `${head.padEnd(28)}${head.length >= 28 ? "  " : ""}${types}${tail}${about}`;
 }
 
-
 export function formatCategories(): string {
     const counts = new Map<string, number>();
     for (const command of queryCommands()) {

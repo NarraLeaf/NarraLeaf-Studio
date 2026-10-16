@@ -1107,8 +1107,9 @@ function PageActionEditor(props: {
     const selected = payload.surfaceId;
     const pageOptions: SelectOption[] = [
         { value: "", label: t("storyInspector.control.quitPageUnset") },
-        ...surfaces.map(surface => ({ value: surface.id, label: surface.name })),
-        ...(selected && !surfaces.some(surface => surface.id === selected) ? [{ value: selected, label: selected }] : []),
+        // Pages only: a Game UI is drawn in its slot and cannot be opened over the story.
+        ...surfaces.filter(surface => surface.kind !== "stageSurface").map(surface => ({ value: surface.id, label: surface.name })),
+        ...(selected && !surfaces.some(surface => surface.id === selected && surface.kind !== "stageSurface") ? [{ value: selected, label: selected }] : []),
     ];
     // Keyed by scope and id together, as the input rows' are: two scopes may hold the same id-shaped word.
     const resultOptions: SelectOption[] = [
@@ -1140,7 +1141,6 @@ function PageActionEditor(props: {
 }
 
 function StoryActionBlueprintEditor(props: {
-
     payload: Extract<StoryActionPayload, { action: "blueprint" }>;
     onChange: (payload: StoryBlock["payload"]) => void;
 }) {

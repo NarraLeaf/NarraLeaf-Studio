@@ -60,7 +60,6 @@ const ASSIGN_TARGETS = new Map<string, UiAssignTarget>([
  */
 const ELEMENT_KEYS = new Set(["animation", "assetVariants", "navigation"]);
 
-
 /**
  * How a prop's key is written so that it reads back as that prop.
  *

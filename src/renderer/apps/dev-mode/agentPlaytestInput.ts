@@ -160,9 +160,62 @@ export function readDrawnPageTexts(env: InputEnvironment): Record<string, string
         if (!surface || surface.kind !== "appSurface" || surface.name in texts || !env.measure(shell)) {
             continue;
         }
-        texts[surface.name] = (shell.textContent ?? "").replace(/\s+/g, " ").trim();
+        texts[surface.name] = visibleWords(shell).replace(/\s+/g, " ").trim();
     }
     return texts;
+}
+
+/**
+ * Where the keyboard focus is in the game, in words - `row 2 of "Replies"`, `"Start"` - or null when
+ * it is on nothing in the game. What tells a driver that a Tab or an arrow did something when no
+ * page opened and no words changed.
+ */
+export function describeGameFocus(env: InputEnvironment): string | null {
+    const active = env.root.ownerDocument.activeElement;
+    if (!active || active === env.root.ownerDocument.body || !env.root.contains(active)) {
+        return null;
+    }
+    const nameOf = (node: Element | null): string | null => {
+        const owner = node?.closest(`[${ELEMENT_ID_ATTRIBUTE}]`);
+        const id = owner?.getAttribute(ELEMENT_ID_ATTRIBUTE);
+        if (!id) {
+            return null;
+        }
+        const element = env.document.elements[id];
+        return element?.name ?? element?.type ?? id;
+    };
+    const row = active.closest("[data-ui-list-item-index]");
+    if (row) {
+        const index = Number(row.getAttribute("data-ui-list-item-index"));
+        const list = nameOf(row.parentElement);
+        return `row ${Number.isFinite(index) ? index + 1 : "?"}${list ? ` of "${list}"` : ""}`;
+    }
+    const name = nameOf(active);
+    return name ? `"${name}"` : null;
+}
+
+/**
+ * The words under a node a player can read - its text, without the stylesheets a widget puts in
+ * the tree (a list's scrollbar rules), which `textContent` reads like any other text.
+ */
+function visibleWords(node: Node): string {
+    if (node.nodeType === 3) {
+        return node.textContent ?? "";
+    }
+    if (node.nodeType !== 1) {
+        return "";
+    }
+    const tag = (node as Element).tagName.toLowerCase();
+    if (tag === "style" || tag === "script" || tag === "template") {
+        return "";
+    }
+    let out = "";
+    for (const child of Array.from(node.childNodes)) {
+        out += visibleWords(child);
+        // Blocks read as separate words even when nothing between them is a space.
+        out += " ";
+    }
+    return out;
 }
 
 /** An element as a refusal lists it: where it is, its path, and its id to name it by. */
@@ -595,7 +648,6 @@ export function pressKey(env: InputEnvironment, init: { key: string; code: strin
     keyDown(env, init, held);
     keyUp(env, init, held);
 }
-
 
 /** The middle of the game, where a gesture that names no element aims. */
 export function gameCentre(env: InputEnvironment): { node: Element; x: number; y: number } | null {

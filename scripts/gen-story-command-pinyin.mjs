@@ -46,7 +46,6 @@ const PINYIN = {
     打: "da", 开: "kai",
 };
 
-
 /**
  * Pull `id: { label: "汉字" }` pairs out of the catalog's `command:` block.
  *

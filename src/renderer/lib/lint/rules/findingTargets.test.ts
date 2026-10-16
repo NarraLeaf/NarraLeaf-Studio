@@ -547,7 +547,6 @@ const FIXTURES: Record<RegisteredLintRuleId, Case[]> = {
         }),
     }],
     "story/input-action-missing": [{
-
         context: () => createTestLintContext({
             stories: [story("s1", "Main", [scene("sc1", "Chase", [action("w1", { action: "input", operation: "wait", actionId: "gone" })])])],
             uiDocument: uiDocument({ surfaces: [], elements: [], extra: { actions: {} } }),
