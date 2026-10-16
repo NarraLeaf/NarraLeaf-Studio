@@ -9,7 +9,7 @@ export const workspace = {
             languagesTitle: "Languages",
             languagesHint: "Languages of the game itself. The source language is the one the story is written in; the rest are translated against it.",
             addLanguage: "Add language",
-            codePlaceholder: "Code (en, ja, zh-CN…)",
+            codePlaceholder: "Code, e.g. ja",
             namePlaceholder: "Display name",
             invalidCode: "Language codes may only contain letters, digits, and hyphens.",
             sourceBadge: "Source",
@@ -178,7 +178,7 @@ export const workspace = {
             languagesTitle: "Voice languages",
             languagesHint: "Languages with voice-over. Independent of the text languages.",
             addLanguage: "Add voice language",
-            codePlaceholder: "Code (ja, en, zh-CN…)",
+            codePlaceholder: "Code, e.g. ja",
             namePlaceholder: "Display name",
             invalidCode: "Language codes may only contain letters, digits, and hyphens.",
             more: "More",
@@ -201,6 +201,15 @@ export const workspace = {
                 other: "{count} takes",
             },
             importFailed: "Could not import the audio files",
+            // Asked when an imported file is named for a line that already has a take: a pickup.
+            replaceTakesTitle: "Replace existing takes",
+            replaceTakesMessage: {
+                one: "{count} file is named for a line that already has a take.",
+                other: "{count} files are named for lines that already have a take.",
+            },
+            replaceTakesDetail: "Replacing writes each new file into the take it matches. Importing as new audio leaves the old takes in the asset library, linked to no line.",
+            replaceTakesImport: "Import as new audio",
+            replaceTakesReplace: "Replace takes",
             importScript: "Import recording script…",
             // `{applied}` is a whole count with its noun, from `scriptRowCount`.
             importScriptCounts: "Applied {applied} ({unchanged} unchanged, {unknown} not voiced)",
@@ -245,8 +254,9 @@ export const workspace = {
             assign: "Assign audio",
             replace: "Replace audio",
             remove: "Remove voice",
-            play: "Play",
-            stop: "Stop",
+            play: "Play take",
+            showInStory: "Show in story",
+            stop: "Stop take",
             approve: "Approve",
             reject: "Return",
             clipMissing: "Clip missing",
@@ -277,6 +287,18 @@ export const workspace = {
                 },
                 removeDetail: "The audio files stay in the asset library. A line that is enabled or restored later needs its audio assigned again.",
                 unknown: "A story cannot be read, so orphan voice is not listed.",
+            },
+        },
+        // The recording script's column headers. The last is the line's id, which the import reads.
+        script: {
+            column: {
+                filename: "File name",
+                character: "Speaker",
+                scene: "Scene",
+                line: "Line",
+                status: "Status",
+                note: "Note",
+                unitId: "Line ID",
             },
         },
     },
@@ -423,6 +445,8 @@ export const workspace = {
             replaceText: "text replacement",
             agentEdit: "agent edit",
             agentPluginEdit: "agent: {tool}",
+            importPsd: "PSD import",
+            importAudio: "audio import",
         },
     },
     // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.
@@ -1812,6 +1836,7 @@ export const workspace = {
                 localization: "Translation Table",
                 voice: "Voice Table",
                 lint: "Problems",
+                search: "Search",
                 other: "Other",
             },
             // Labels for catalog entries that had no i18n key of their own.
@@ -1871,6 +1896,11 @@ export const workspace = {
                     copy: "Copy Nodes",
                     cut: "Cut Nodes",
                     paste: "Paste Nodes",
+                },
+                // The Search panel: its replaces, each taken back across every scene it touched.
+                search: {
+                    undo: "Undo Replace",
+                    redo: "Redo Replace",
                 },
                 storyMotion: {
                     undo: "Undo",
@@ -2052,6 +2082,27 @@ export const workspace = {
             // deleted or changed since. A replace applies completely or not at all, so this refuses
             // rather than writing what is left.
             replaceStale: "The project changed. Search again.",
+            // Ctrl+Z in the panel takes a replace back in every scene whose newest step is still
+            // that replace. A scene edited after it keeps the replaced text, and these say which;
+            // the notice's detail line lists the scene names.
+            // Raised by Replace all. The detail line names the key that takes the replace back.
+            replacedInScene: {
+                one: "Replaced {count} occurrence in {scene}",
+                other: "Replaced {count} occurrences in {scene}",
+            },
+            replacedInScenes: {
+                one: "Replaced {count} occurrence in {scenes} scenes",
+                other: "Replaced {count} occurrences in {scenes} scenes",
+            },
+            replacedUndoHint: "{key} in the Search panel undoes it in every scene.",
+            undoSkipped: {
+                one: "Replace not undone in {count} scene edited after it",
+                other: "Replace not undone in {count} scenes edited after it",
+            },
+            redoSkipped: {
+                one: "Replace not redone in {count} scene edited after the undo",
+                other: "Replace not redone in {count} scenes edited after the undo",
+            },
             // Entity groups come first: the box answers "open the thing called X" before
             // "find the line that says X".
             groups: {

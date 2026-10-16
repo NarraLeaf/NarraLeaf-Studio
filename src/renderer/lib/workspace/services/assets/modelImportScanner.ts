@@ -80,7 +80,12 @@ export type ModelScanProblem =
     /** An atlas that parsed but named no page image, so the model has no textures at all. */
     | { kind: "atlasEmpty"; path: string }
     /** Another model of the same family lives inside this one's folder, and would be imported with it. */
-    | { kind: "nestedModel"; path: string };
+    | { kind: "nestedModel"; path: string }
+    /**
+     * A Cubism 2 model (`model.json` naming a `.moc`). The Live2D runtime Studio builds reads Cubism 3
+     * and later manifests only, so such a model imports and then draws nothing.
+     */
+    | { kind: "cubism2"; path: string };
 
 /**
  * Whether a problem is a reason not to import by default.
@@ -98,6 +103,7 @@ export function isBlockingModelProblem(problem: ModelScanProblem): boolean {
         case "manifestUnreadable":
         case "atlasMissing":
         case "atlasEmpty":
+        case "cubism2":
             return true;
         case "nestedModel":
             return false;
@@ -192,6 +198,12 @@ export async function scanFolderForModels(
         // claimed on the strength of what is inside rather than what it is called.
         if (hits.length === 0) {
             continue;
+        }
+
+        // Listed with the reason it will not draw, rather than dropped: an author who finds no row
+        // for the model they pointed at would take it for a scan that missed it.
+        if (hits[0].format === "live2d-cubism2") {
+            problems.push({ kind: "cubism2", path: fileNameOf(hits[0].path) });
         }
 
         // Checked against the whole tree rather than the model's own subtree: a manifest that

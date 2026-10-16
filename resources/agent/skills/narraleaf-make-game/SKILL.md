@@ -110,8 +110,11 @@ Checkpoint: a filled brief and, for a supplied script, an inventory and name map
   `en`, `ja`), `template: "skeleton"` and 1920x1080 - the only size the skeleton is laid out for; any
   other `width`/`height` is refused. A game that truly needs another size starts from the empty
   template and gets no ready-made screens (below). `dir` is the **parent** folder; the
-  project folder is created inside it, named after an ASCII slug of the name (`末班车` ->
-  `mo-ban-che`) - the result gives the full path. The game carries `language` only; add
+  project folder is created inside it, named after the project's app ID - by default an ASCII slug
+  of the name (`末班车` -> `mo-ban-che`), led by the author line Studio was set up with and numbered
+  when a project on this machine already uses it. The result gives the full path and the ID. The
+  app ID is the released game's identity on players' devices and can never be changed: when the
+  author has one (`com.studio.game`), pass it as `appId`. The game carries `language` only; add
   `languages: ["en"]` (or later `project_settings_set {languages}`) only for languages the author
   wants translated. The skeleton is a small working game: splash, title, dialogue box, choice menu,
   quick menu, save/load, settings, backlog, extras, and a three-scene demo story - all wired. You

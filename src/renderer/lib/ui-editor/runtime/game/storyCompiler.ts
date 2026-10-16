@@ -45,6 +45,8 @@ import { storyMarksToWordConfig } from "@shared/utils/storyTextMarks";
 import {
     characterAvatarKeyFromTags,
     resolveCharacterAvatarAssetId,
+    resolveDefaultCharacterAvatarAssetId,
+    resolveOffStageCharacterAvatarAssetId,
 } from "@shared/utils/characterAvatar";
 import type {
     StoryActionableKind,
@@ -201,6 +203,7 @@ import {
 } from "./storyCompilePass";
 import { getStoryPluginAction } from "./storyPluginActions";
 import { createStoryAwaitedAction } from "./storyAwaitedAction";
+import { waitForPuppetModel } from "./puppetEntranceWait";
 import {
     createStoryVisitedPersistent,
     isStoryVisited,
@@ -3178,6 +3181,13 @@ async function compilePreviewTargetOwnStatements(
         if (block.payload.action === "nvl") {
             return compileNvl(ctx, block);
         }
+        if (block.payload.action === "vfx") {
+            // The preview draws no overlay (the walk that poses its stage says the same), so it has
+            // none registered: compiling the row looked the overlay up, found nothing, and reported
+            // 「樱花」 as not on stage - a fault in the author's scene that is not there.
+            diagnostic(ctx, "warning", block.id, say("story.preview.diagnostics.ambienceSkipped"));
+            return [];
+        }
         return compileStoryAction(ctx, block);
     }
     if (block.kind === "control") {
@@ -4210,7 +4220,20 @@ async function compileCharacterPuppetAction(
             ? withCharacterEntranceDefaults(entranceDefaults, payload.transform)
             : payload.transform;
     const chain = await compileDisplayableOperation(puppet, operation, transform, ctx, block.id);
-    return chain ? [recordStatement(ctx, chain, block)] : [];
+    if (!chain) {
+        return [];
+    }
+    if (payload.operation !== "enter") {
+        return [recordStatement(ctx, chain, block)];
+    }
+    // The model has been loading since the scene put the box on stage; the entrance waits for it to
+    // be drawn, or the box fades in empty and the character appears after the fade is over. See
+    // `puppetEntranceWait.ts`.
+    // Recorded after the entrance although it runs before it, so the entrance keeps the action id it
+    // has always had: a save that names it still finds it.
+    const shown = recordStatement(ctx, chain, block);
+    const awaitModel = createStoryAwaitedAction({ run: (_scriptCtx, signal) => waitForPuppetModel(puppet, signal) });
+    return [recordStatement(ctx, awaitModel, block), shown];
 }
 
 /**
@@ -7398,6 +7421,13 @@ type CompiledCharacterAvatars = {
     poseByUrl: Map<string, string>;
     /** Shown when no differential resolves an avatar (off-stage, or nothing baked for this look). */
     fallback: string | null;
+    /**
+     * Shown while the character speaks with no portrait on stage: the profile's default avatar, or
+     * when it has none, her default look's - the picture the backlog and `Get Character` show for the
+     * same line ({@link resolveDefaultCharacterAvatarAssetId}). The box used to fall to the profile
+     * field alone, and stay empty for every character who only ever had baked avatars.
+     */
+    offStage: string | null;
 };
 
 async function compileCharacterAvatars(
@@ -7467,7 +7497,14 @@ async function compileCharacterAvatars(
     if (fallback && defaultAvatarAssetId) {
         ctx.avatarAssetIdByUrl.set(fallback, defaultAvatarAssetId);
     }
-    return { byKey, poseByUrl, fallback };
+    const defaultLookAssetId = fallback ? null : resolveDefaultCharacterAvatarAssetId(summary);
+    const defaultLook = defaultLookAssetId
+        ? await resolveAsset(ctx, defaultLookAssetId, "image", blockId, { owner: avatarOwner })
+        : null;
+    if (defaultLook && defaultLookAssetId) {
+        ctx.avatarAssetIdByUrl.set(defaultLook, defaultLookAssetId);
+    }
+    return { byKey, poseByUrl, fallback, offStage: fallback ?? defaultLook };
 }
 
 /**
@@ -7482,6 +7519,10 @@ function resolveCompiledAvatar(
     avatars: CompiledCharacterAvatars,
     context: Pick<DialogAvatarResolverContext, "currentSrc" | "tags">,
 ): string | null {
+    // No portrait on stage: the engine reports neither a src nor tags.
+    if (!context.currentSrc && !(context.tags?.length)) {
+        return avatars.offStage;
+    }
     const key = summary.appearance.kind === "layered"
         ? characterAvatarKeyFromTags(summary.appearance, context.tags)
         : context.currentSrc
@@ -7569,7 +7610,9 @@ async function bindOffstageDefaultAvatars(params: {
         // Temp speakers are keyed `name:<name>` and have no profile behind them; `UNKNOWN_CHARACTER_ID`
         // resolves to no summary either. Both fall out here.
         const summary = params.characterSummaries.get(key);
-        const assetId = summary?.defaultAvatarAssetId?.trim();
+        // The profile's avatar, or her default look's when it has none: the picture the backlog and
+        // `Get Character` show for the same line.
+        const assetId = resolveOffStageCharacterAvatarAssetId(summary) || undefined;
         if (!summary || !assetId || params.avatarBoundCharacterIds.has(summary.id)) {
             continue;
         }

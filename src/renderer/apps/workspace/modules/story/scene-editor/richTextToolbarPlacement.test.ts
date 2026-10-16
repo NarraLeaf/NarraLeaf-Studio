@@ -7,27 +7,25 @@ import { richTextToolbarPlacement } from "./RichTextToolbar";
  * The guarantee, in one sentence, and every case below is a way of checking it:
  *
  * > The strip is placed against the edge of the row it belongs to - above it, or beneath it when
- * > the pane has no room above - beginning at the first character of that row's line, and always
- * > wholly inside the pane.
+ * > the pane has no room above - beginning at the first character of that row's line, or past the
+ * > end of the line above when it lies above the row, and always wholly inside the pane.
  *
  * Three things follow from it, and they are what the author actually gets:
  *
  * 1. **Nothing of the edited row is covered**, at either edge, in either form of the strip. The
  *    line the caret is in stays completely legible while its tools are on screen.
- * 2. **The tools are at the words.** Horizontally the strip starts where the line starts;
- *    vertically it touches the row's own box. The distance from the caret to the nearest control
- *    is the height of one row plus however far along the line the caret has got - never the width
- *    of the column, which is what a placement in the row's trailing space costs.
+ * 2. **The tools are at the words.** Horizontally the strip starts where the line starts, or just
+ *    past the line above it; vertically it touches the row's own box.
  * 3. **No row's height depends on any of this.** The strip is a floating box; the placement is a
  *    function of rects it reads and never of anything a row is asked to reserve. That is not
  *    something a pure function can assert on its own, so it is asserted in the component and in the
  *    real app - but it is the reason this function is given rows rather than being allowed to
  *    change them.
  *
- * What it costs is the row above, whose opening words the expanded strip covers. That is the
- * accepted trade: the strip is bounded away from that row's own controls (it never passes the text
- * column's right edge) and it is shorter than a row (so it reaches one row, never two), and the
- * form a row opens with is the chip.
+ * The row above keeps its line: the strip starts past where that line ends whenever the column has
+ * room there, so a nametag or a command's head is never what it covers. It is bounded away from that
+ * row's own controls (it never passes the text column's right edge) and it is shorter than a row (so
+ * it reaches one row, never two).
  *
  * Coordinates are viewport pixels. The numbers are the shape a real row has, measured on a scene of
  * dialogue at the default density: a 36px row whose text column runs from 505 to 1175, inside a
@@ -96,6 +94,23 @@ describe("richTextToolbarPlacement", () => {
         const tall = { ...ROW, rowTop: 400, rowBottom: 508 };
         expect(richTextToolbarPlacement({ ...tall, ...PANE, ...STRIP })!.top).toBeCloseTo(370.4, 5);
         expect(richTextToolbarPlacement({ ...tall, rowTop: 120, rowBottom: 228, ...PANE, ...STRIP })!.top).toBe(228);
+    });
+
+    it("starts past the end of the row above's line, so it covers none of that row", () => {
+        // A continuation line under `@外观 美绪 笑 …`: at the line's first character the chip lay over
+        // the row above's `@外观`, the one word that says what that row is. Past the end of its line
+        // it covers nothing of it.
+        const at = richTextToolbarPlacement({ ...ROW, ...PANE, ...CHIP, clearOfAbove: 640 })!;
+        expect(at).toEqual({ top: ROW.rowTop - CHIP.height, left: 640 });
+        // Nothing above to keep clear of, or a line shorter than the text column's start: as before.
+        expect(richTextToolbarPlacement({ ...ROW, ...PANE, ...CHIP, clearOfAbove: null })!.left).toBe(ROW.textLeft);
+        expect(richTextToolbarPlacement({ ...ROW, ...PANE, ...CHIP, clearOfAbove: 480 })!.left).toBe(ROW.textLeft);
+        // A row above running to the column's end leaves no room: the strip ends at the column's edge.
+        const full = richTextToolbarPlacement({ ...ROW, ...PANE, ...STRIP, clearOfAbove: 1160 })!;
+        expect(full.left + STRIP.width).toBe(ROW.columnRight);
+        // Beneath the row there is no row above to clear, and the line's first character holds.
+        const beneath = richTextToolbarPlacement({ ...ROW, rowTop: 120, rowBottom: 156, ...PANE, ...CHIP, clearOfAbove: 640 })!;
+        expect(beneath).toEqual({ top: 156, left: ROW.textLeft });
     });
 
     it("stops short of the row's own controls", () => {

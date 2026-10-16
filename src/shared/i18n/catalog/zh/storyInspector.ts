@@ -258,10 +258,10 @@ export const storyInspector = {
     },
 
     cameraOperation: {
-        reset: "复位镜头",
+        reset: "重置镜头",
     },
 
-    cameraResetHint: "复位机位、色调与镜头效果。",
+    cameraResetHint: "重置机位、色调与镜头效果。",
 
     cameraLook: {
         memory: "回忆",
@@ -279,7 +279,7 @@ export const storyInspector = {
     },
 
     cameraLookHint: {
-        channel: "后添加的色调会覆盖舞台压暗。复位镜头会清除色调。",
+        channel: "后添加的色调会覆盖舞台压暗。重置镜头会清除色调。",
         monologue: "只降低整个舞台的饱和度与亮度。要压暗四周，请另加一行暗角。",
         hangover: "画面会先摇晃两次，再落到最终色调。这一行会等摇晃结束，时长决定摇晃的快慢。",
     },

@@ -88,6 +88,8 @@ export interface ProjectAudioTrack {
 
 /**
  * The three tracks every project has, seeded on first read and re-seeded if a document loses them.
+ * A project being created names them in its script language instead (`newProjectAudioTracks`); the
+ * English names here are what a project with no track document has always read.
  *
  * They are otherwise ordinary tracks - renameable, re-parentable, adjustable - and the only thing
  * that makes them special is that they cannot be deleted, because they are where an unresolvable
@@ -185,12 +187,16 @@ const BUILTIN_AUDIO_TRACK_NAME_KEYS: Readonly<Record<string, TranslationKey>> = 
 /**
  * The key a track's name is shown with, or undefined for a name an author gave it.
  *
- * The three seeded tracks are stored with English factory names ("Music", "SFX", "Voice") - the
- * same in every project, whatever its language - so a surface that names one shows the interface's
- * word for it instead, for as long as it still carries the name it was created with. A track the
- * author renamed, or one of their own that happens to share the name, keeps its name. The stored
- * data never changes: this is how a name is drawn, the way `factoryLayerNameKey` draws a seeded
- * blueprint layer.
+ * The three seeded tracks of a project created before tracks were named in the project's own
+ * language are stored with English factory names ("Music", "SFX", "Voice") - the same in every such
+ * project, whatever its language - so a surface that names one shows the interface's word for it
+ * instead, for as long as it still carries the name it was created with. A track the author renamed,
+ * or one of their own that happens to share the name, keeps its name. The stored data never changes:
+ * this is how a name is drawn, the way `factoryLayerNameKey` draws a seeded blueprint layer.
+ *
+ * A project created since names the three in the language its story is written in
+ * (`@shared/project/newProjectAudioTracks`). Those names are the project's own words and are shown
+ * as they are, like a scene's name; an English project's are the factory names, and still read here.
  */
 export function factoryAudioTrackNameKey(track: Pick<ProjectAudioTrack, "id" | "name">): TranslationKey | undefined {
     const builtin = builtinAudioTrack(track.id);

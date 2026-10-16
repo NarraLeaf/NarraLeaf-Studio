@@ -45,6 +45,16 @@ export function CharacterColorField({ data }: CustomFieldProps<CharacterEditorCo
     // Live while the panel is open, committed to the model when it closes: `onChange` fires on every
     // frame of a drag across the colour map, and each one would be a project write.
     const [draft, setDraft] = useState<ColorValue | null>(null);
+    // The panel keeps this field mounted when it moves to another character, so what it holds is
+    // read again for the one now inspected: kept, it showed the previous character's colour (and
+    // offered to clear it) on a character with none of her own.
+    const characterId = profile.getId();
+    const [heldFor, setHeldFor] = useState(characterId);
+    if (heldFor !== characterId) {
+        setHeldFor(characterId);
+        setStored(profile.getColor());
+        setDraft(null);
+    }
 
     const commit = (next: string | undefined): void => {
         setDraft(null);

@@ -54,7 +54,7 @@ export function DialogStateBridge(props: {
     /** Absent on a host that cannot name a speaker, which reads the same as a narrator line. */
     getCurrentNametag?: () => string | null;
     resolveAvatarAssetId?: (url: string) => string | null;
-    flushDialogElements: () => void;
+    flushDialogElements: (options?: { now?: boolean }) => Promise<void> | void;
 }) {
     const { core, getCurrentNametag, resolveAvatarAssetId, flushDialogElements } = props;
     const dialog = useDialog();
@@ -87,7 +87,10 @@ export function DialogStateBridge(props: {
         core.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_WAITING_STATE_KEY, dialog.done === true);
         core.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_TEXT_STATE_KEY, dialog.text ?? "");
         core.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_NARRATOR_STATE_KEY, dialog.isNarrator === true);
-        flushDialogElements();
+        // Now, not on the next frame: the box is painted with this line in the frame after this
+        // commit, and what its widgets show for it (the speaker's avatar above all) has to be in that
+        // frame rather than the previous line's for one or two more.
+        void flushDialogElements({ now: true });
     }, [
         core,
         dialog.done,

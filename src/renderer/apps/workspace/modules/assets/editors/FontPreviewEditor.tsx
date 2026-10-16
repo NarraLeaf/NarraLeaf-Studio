@@ -7,6 +7,7 @@ import { useTranslation } from "@/lib/i18n";
 import { ASSET_UNDECODABLE } from "@/lib/workspace/services/assets/assetReadFailure";
 import { useAssetBlobUrl } from "./useAssetBlobUrl";
 import { useAssetReadNotice, type AssetReadFailure } from "./useAssetReadNotice";
+import { EditorProjectUndoKeybindings } from "@/apps/workspace/components/layout/EditorProjectUndoKeybindings";
 
 /** A font file that was read and that the browser would not load as a face. */
 const UNDECODABLE_FONT: AssetReadFailure = { code: ASSET_UNDECODABLE };
@@ -21,7 +22,19 @@ const SAMPLE_SIZES = [32, 24, 18, 14, 12];
  * Font preview: loads the file as a FontFace under a tab-unique family name and renders sample
  * lines (Latin + CJK + digits) at several sizes, plus a free-typing line.
  */
-export function FontPreviewEditor({ tabId, payload }: EditorComponentProps<FontPreviewPayload>) {
+export function FontPreviewEditor(props: EditorComponentProps<FontPreviewPayload>) {
+    return (
+        <>
+            {/* The file's own steps - Replace File…, a conversion - are on the project's stack, and the
+                preview is where the author looks at what they did. The sample line is a text field,
+                which keeps its own undo: a binding stands down while one has focus. */}
+            <EditorProjectUndoKeybindings tabId={props.tabId} />
+            <FontPreviewBody {...props} />
+        </>
+    );
+}
+
+function FontPreviewBody({ tabId, payload }: EditorComponentProps<FontPreviewPayload>) {
     const { t } = useTranslation();
     const asset = payload?.asset;
     const { url, loading, failure } = useAssetBlobUrl(asset);

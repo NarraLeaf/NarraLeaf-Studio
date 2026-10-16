@@ -289,6 +289,12 @@ export interface RendererPreloadedInterface {
      * waiting for the author to trust it. Answered for the wizard window only.
      */
     registerCreatedProject(projectPath: string): Promise<RequestStatus<{ recorded: boolean }>>;
+    /**
+     * The app IDs the projects on this machine already use, with each project's name, for a new
+     * project's ID to be kept apart from. `folders` adds folders this window may read. Answered for
+     * the wizard window only.
+     */
+    listLocalAppIds(folders: string[]): Promise<RequestStatus<{ projects: { appId: string; key: string; projectName: string }[] }>>;
 
     // Workspace
     selectFolder(): Promise<RequestStatus<{ path: string | null }>>;

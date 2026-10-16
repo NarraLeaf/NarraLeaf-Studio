@@ -1391,6 +1391,13 @@ export const BLUEPRINT_NODE_TYPE_SOUND_RESUME = "blueprint.sound.resume" as cons
 export const BLUEPRINT_NODE_TYPE_SOUND_SET_VOLUME = "blueprint.sound.setVolume" as const;
 export const BLUEPRINT_NODE_TYPE_SOUND_SEEK = "blueprint.sound.seek" as const;
 export const BLUEPRINT_NODE_TYPE_SOUND_IS_PLAYING = "blueprint.sound.isPlaying" as const;
+/**
+ * The music of the page the graph runs on, for as long as that page is open - a music room playing
+ * the row the player pressed. Not a sound with a handle: the page's music hands over and comes back
+ * as pages come and go, exactly as the page inspector's Music setting does (see `pageMusic.ts`).
+ */
+export const BLUEPRINT_NODE_TYPE_SOUND_PLAY_PAGE_MUSIC = "blueprint.sound.playPageMusic" as const;
+export const BLUEPRINT_NODE_TYPE_SOUND_STOP_PAGE_MUSIC = "blueprint.sound.stopPageMusic" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD = "blueprint.game.getAutoForward" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SET_AUTO_FORWARD = "blueprint.game.setAutoForward" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED = "blueprint.game.getSkip" as const;

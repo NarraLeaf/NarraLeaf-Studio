@@ -7,7 +7,9 @@ import { VoicePanel } from "./VoicePanel";
 export const voicePanelModule: PanelModule = {
     metadata: {
         id: "narraleaf-studio:voice",
-        // Resolved lazily on read (module registration runs after i18n init).
+        // The header and rail read the key, so they follow a live language switch; `title` is
+        // captured as a string at registration.
+        titleKey: "placeholders.moduleTitles.voice",
         get title() {
             return translate("placeholders.moduleTitles.voice");
         },

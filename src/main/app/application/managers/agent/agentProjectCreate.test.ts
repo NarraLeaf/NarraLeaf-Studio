@@ -116,6 +116,68 @@ describe("writeAgentProject", () => {
         expect(result).toMatchObject({ ok: false, code: "invalid_args" });
     });
 
+    /**
+     * The app ID is permanent once the project exists and is the released game's identity on a
+     * player's machine, so it is kept apart from every project here before the project is written.
+     */
+    describe("the app ID", () => {
+        const inUse = (...entries: { appId: string; projectName: string }[]) => async () =>
+            entries.map(entry => ({
+                ...entry,
+                key: `com.narraleaf.games.${entry.appId}`,
+                projectPath: path.join(root, "elsewhere", entry.appId),
+            }));
+        const configOf = (projectPath: string) => {
+            const configFile = fs.readdirSync(projectPath).find(name => name.endsWith(".nlproj"))!;
+            return decodeProjectConfig(fs.readFileSync(path.join(projectPath, configFile)));
+        };
+
+        it("steps around an ID another project on this machine uses", async () => {
+            const result = await writeAgentProject(input(), {
+                templatesDir,
+                installedPlugins: plugins,
+                localAppIds: inUse({ appId: "ghost-story", projectName: "Ghost Story" }),
+            });
+            expect(result).toMatchObject({ ok: true, appId: "ghost-story-2", projectPath: path.join(parentDir, "ghost-story-2") });
+            if (!result.ok) return;
+            expect(configOf(result.projectPath).identifier).toBe("ghost-story-2");
+        });
+
+        it("leads with this installation's author line, and writes that line into the project", async () => {
+            const result = await writeAgentProject(input({ template: "empty" }), {
+                templatesDir,
+                installedPlugins: plugins,
+                defaultAuthor: "Leaf Studio",
+            });
+            expect(result).toMatchObject({ ok: true, appId: "leaf-studio-ghost-story" });
+            if (!result.ok) return;
+            expect(configOf(result.projectPath).metadata).toMatchObject({ author: "Leaf Studio" });
+        });
+
+        it("takes an ID the agent names", async () => {
+            const result = await writeAgentProject(input({ template: "empty", appId: "com.leaf.ghost" }), {
+                templatesDir,
+                installedPlugins: plugins,
+                defaultAuthor: "Leaf Studio",
+                localAppIds: inUse({ appId: "ghost-story", projectName: "Ghost Story" }),
+            });
+            expect(result).toMatchObject({ ok: true, appId: "com.leaf.ghost", projectPath: path.join(parentDir, "com.leaf.ghost") });
+        });
+
+        it("refuses a named ID another project uses, saying which, and one that is not an ID", async () => {
+            const taken = await writeAgentProject(input({ appId: "ghost-story" }), {
+                templatesDir,
+                installedPlugins: plugins,
+                localAppIds: inUse({ appId: "ghost-story", projectName: "Ghost Story" }),
+            });
+            expect(taken).toMatchObject({ ok: false, code: "invalid_args" });
+            expect(!taken.ok && taken.message).toContain("Ghost Story");
+            const malformed = await writeAgentProject(input({ appId: "Ghost Story" }), { templatesDir, installedPlugins: plugins });
+            expect(malformed).toMatchObject({ ok: false, code: "invalid_args" });
+            expect(fs.existsSync(parentDir) ? fs.readdirSync(parentDir) : []).toEqual([]);
+        });
+    });
+
     it("derives an app id the way the wizard does, with a fallback for names that romanize to nothing", () => {
         expect(suggestAppId("My  Game!")).toBe("my-game");
         expect(suggestAppId("小小的身影")).toMatch(/^[a-z0-9-]+$/);

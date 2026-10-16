@@ -7,7 +7,7 @@ import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEd
 import { HelpTrigger, requestContextHelp } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
-import { useFloatingLayer } from "@/lib/components/layout";
+import { isTopFloatingLayer, useFloatingLayer } from "@/lib/components/layout";
 
 /**
  * Individual dialog component
@@ -16,6 +16,10 @@ function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => v
     const { t } = useTranslation();
     const dialogRef = useRef<HTMLDivElement | null>(null);
     const defaultButtonRef = useRef<HTMLButtonElement | null>(null);
+    // Whether the press that ends in a click on the backdrop began with this dialog on top. A press
+    // there while a colour picker or a menu is open above is the press that closes that layer, and
+    // its click closed the dialog too - New Character lost its name and colour to it.
+    const backdropPressClosesRef = useRef(false);
     const defaultButtonIndex = dialog.buttons?.findIndex(button => button.primary && !button.disabled && !button.danger) ?? -1;
     // A destructive button is never the fallback default: Enter on a dialog nobody read must not be
     // able to delete or overwrite anything.
@@ -64,7 +68,15 @@ function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => v
             {/* Backdrop */}
             <div
                 className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"
-                onClick={dialog.closable ? onClose : undefined}
+                onPointerDown={() => {
+                    backdropPressClosesRef.current = isTopFloatingLayer(dialogRef.current);
+                }}
+                onClick={dialog.closable ? () => {
+                    if (backdropPressClosesRef.current) {
+                        onClose();
+                    }
+                    backdropPressClosesRef.current = false;
+                } : undefined}
             />
 
             {/* Dialog */}

@@ -75,6 +75,7 @@ export const HELP_TOPIC_IDS = [
     "inputActionsInBlueprints",
     "focusNavigation",
     "focusNavigationSettings",
+    "pageMusic",
     "uiComponents",
     "blueprints",
     "scripts",
@@ -179,7 +180,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "search",
         section: "start",
-        shortcuts: ["workspace-command-palette", "workspace-quick-open", "story.find"],
+        shortcuts: ["workspace-command-palette", "workspace-quick-open", "story.find", "search.undo", "search.redo"],
         related: ["storyScene"],
     },
     {
@@ -200,6 +201,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         section: "story",
         shortcuts: [
             "story.edit-active",
+            "story.edit-line",
             "story.edit.enter",
             "story.insert-blank-after-selection",
             "story.row.range-select",
@@ -404,6 +406,11 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         id: "focusNavigationSettings",
         section: "interface",
         related: ["focusNavigation", "uiSurfaces"],
+    },
+    {
+        id: "pageMusic",
+        section: "interface",
+        related: ["uiSurfaces", "blueprints"],
     },
     {
         id: "uiComponents",

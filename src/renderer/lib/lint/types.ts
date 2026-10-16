@@ -164,6 +164,7 @@ export type LintRuleId =
     | "story/character-missing"
     | "story/transition-unavailable"
     | "story/background-unchanged"
+    | "story/tag-name-shared"
     | "blueprint/reference-missing"
     | "blueprint/element-ref-missing"
     | "blueprint/fn-target-missing"

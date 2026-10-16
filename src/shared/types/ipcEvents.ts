@@ -252,6 +252,7 @@ export enum IPCEventType {
     projectWizardSelectPackage = "projectWizard.selectPackage",
     projectWizardGetDefaultDirectory = "projectWizard.getDefaultDirectory",
     projectWizardCreated = "projectWizard.created",
+    projectWizardListAppIds = "projectWizard.listAppIds",
     
     workspaceLaunch = "workspace.launch",
     workspaceOpenRecent = "workspace.openRecent",
@@ -2204,6 +2205,24 @@ export type IPCProjectWizardEvents = {
         };
         response: {
             recorded: boolean;
+        };
+    };
+    /**
+     * The app IDs the projects on this machine already use, for the wizard to keep a new one apart.
+     *
+     * Answered for the wizard window only. Always covers the projects Studio knows - the recent list
+     * and the trust ledger - and the projects folder; `folders` adds folders this window was granted
+     * to read (the one the author picked), whose projects are listed too. Names and IDs only: the
+     * wizard names the project an ID belongs to, and needs nothing about where it is.
+     */
+    [IPCEventType.projectWizardListAppIds]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            folders: string[];
+        };
+        response: {
+            projects: { appId: string; key: string; projectName: string }[];
         };
     };
 };

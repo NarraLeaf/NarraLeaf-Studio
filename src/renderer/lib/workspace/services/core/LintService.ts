@@ -617,6 +617,9 @@ export class LintService extends Service<LintService> implements ILintService {
                     id: character.profile.getId(),
                     name: character.profile.getName(),
                     assetIds: [...ids],
+                    ...(appearance.getKind() === "layered"
+                        ? { axes: appearance.getAxes().map(axis => ({ name: axis.name, tags: axis.tags.map(tag => tag.name) })) }
+                        : {}),
                 };
             });
         } catch (error) {
@@ -707,7 +710,8 @@ export class LintService extends Service<LintService> implements ILintService {
                 console.warn(`[LintService] voice document ${locale} failed to load`, error);
             }
         }
-        return { voicedLocales, documents, voiceChoices: config.voiceChoices };
+        const voicedLocaleNames = new Map(config.voicedLocales.map(locale => [locale.code, locale.displayName]));
+        return { voicedLocales, voicedLocaleNames, documents, voiceChoices: config.voiceChoices };
     }
 
     /**

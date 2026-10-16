@@ -1057,6 +1057,34 @@ export function promoteTempSpeaker(document: StoryDocument, name: string, charac
     return rebound;
 }
 
+/**
+ * {@link promoteTempSpeaker} as edits rather than a mutation: every line in the document spoken by
+ * the temp speaker `name`, pointed at `characterId`.
+ *
+ * Writing them through `StoryService.updateBlocks` is what gives the rebinding a document revision, a
+ * save and an undo step. Rewritten in place, it had none of the three, and undoing 「创建角色」 took
+ * back only the one row it was made from.
+ */
+export function promoteTempSpeakerEdits(document: StoryDocument, name: string, characterId: string): StorySpeakerEdit[] {
+    const target = name.trim();
+    if (!target || !characterId.trim()) {
+        return [];
+    }
+    const rows: StoryDialogueRowRef[] = [];
+    for (const scene of Object.values(document.scenes)) {
+        for (const block of Object.values(scene.blocks)) {
+            if (block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
+                continue;
+            }
+            if (block.payload.speakerName?.trim() !== target || block.payload.characterId?.trim()) {
+                continue;
+            }
+            rows.push({ sceneId: scene.id, blockId: block.id });
+        }
+    }
+    return bindRowsToCharacter(document, rows, characterId);
+}
+
 /** A dialogue row and the scene it sits in - enough to write it back through the story service. */
 export type StoryDialogueRowRef = {
     sceneId: StorySceneId;

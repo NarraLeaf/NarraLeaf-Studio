@@ -24,6 +24,7 @@ import { TitleBarMenus } from "../ui/titleBarMenus";
 import { HostVisibility } from "@/lib/components/layout";
 import { EditorClosedTabsKeybinding } from "./EditorClosedTabsKeybinding";
 import { WorkspaceUndoKeybindings } from "./WorkspaceUndoKeybindings";
+import { SearchUndoKeybindings } from "./SearchUndoKeybindings";
 import { WorkspaceHistoryMenu } from "./WorkspaceHistoryMenu";
 import { WorkspaceEditorQuickSwitch } from "./WorkspaceEditorQuickSwitch";
 import { CommandPalette } from "./CommandPalette";
@@ -1091,6 +1092,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 <WorkspaceHelp />
                 <EditorClosedTabsKeybinding />
                 <WorkspaceUndoKeybindings />
+                <SearchUndoKeybindings />
                 <WorkspaceHistoryMenu />
                 {/* The toast stack is told what it may not reach over. The right selector rail is a
                     permanent column of controls and the status bar is a permanent row of them; a

@@ -12,6 +12,7 @@ import {
     type HistoryLabel,
     type HistoryScopeId,
 } from "./historyModel";
+import { projectHistoryScope, searchReplaceHistoryScope } from "./historyScopes";
 
 /**
  * The workspace's undo stacks, all of them.
@@ -122,11 +123,52 @@ export type HistoryEvents = {
  */
 const RETAINED_INACTIVE_SCOPES = 8;
 
+/**
+ * Whether a stack belongs to the window rather than to an editor, and so is never evicted.
+ *
+ * The cap above is for stacks an editor left behind. The project's stack has no editor: nothing
+ * ever registers it, so by the cap's own rule it is always "inactive", and opening and closing nine
+ * scenes after deleting a character was enough to drop it - Ctrl+Z in the characters panel then had
+ * nothing to take back. The Search panel's stack of replaces is the same kind of stack.
+ */
+function isWindowStack(scopeId: HistoryScopeId): boolean {
+    return scopeId === projectHistoryScope() || scopeId === searchReplaceHistoryScope();
+}
+
+/** One stack's share of a grouped operation: a command entry of its own on that stack. */
+export type HistoryGroupMember = HistoryPushRequest & {
+    scopeId: HistoryScopeId;
+    /** Synchronous, like everything a group step runs; see {@link HistoryService.pushGroup}. */
+    undo: () => void;
+    redo: () => void;
+};
+
+/** What stepping a group did, member by member. */
+export type HistoryGroupStep = {
+    direction: "undo" | "redo";
+    /** Members whose own step was taken. */
+    stepped: HistoryScopeId[];
+    /**
+     * Members that could not be stepped in order: newer steps sit above the member's step on its
+     * stack, or the step has left that stack while its edit is still in place. Left as they were.
+     */
+    skipped: HistoryScopeId[];
+};
+
+type HeldGroupMember = {
+    scopeId: HistoryScopeId;
+    entry: HistoryEntry;
+    /** Whether the member's edit is in place, whichever door last undid or redid it. */
+    state: { applied: boolean };
+};
+
 export class HistoryService extends Service<HistoryService> implements IHistoryService {
     private readonly scopes = new Map<HistoryScopeId, HistoryScope>();
     private readonly stacks = new Map<HistoryScopeId, HistoryStack>();
     /** Touch order for the retention cap; most recently used last. */
     private readonly touchOrder: HistoryScopeId[] = [];
+    /** Stacks something still needs, by how many holders; never evicted. See {@link hold}. */
+    private readonly holds = new Map<HistoryScopeId, number>();
     private readonly events = new EventEmitter<HistoryEvents>();
     private activeScopeId: HistoryScopeId | null = null;
     private defaultLimit = DEFAULT_HISTORY_LIMIT;
@@ -286,6 +328,105 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
             }),
             request,
         );
+    }
+
+    /**
+     * Record one operation that left a step on several stacks, and one step on `scopeId` that takes
+     * those steps back together.
+     *
+     * Each member is an ordinary command entry on its own stack, so Ctrl+Z on that stack takes back
+     * that stack's share and nothing else. The group step takes a member back only while the
+     * member's entry is the top of its stack - the very step Ctrl+Z there would take - so the stacks
+     * never disagree about what has been undone, whichever door undid it:
+     *
+     *  - a member already taken back on its own stack is where the group is going, and is passed
+     *    over in silence;
+     *  - a member with newer steps above it cannot be taken back without undoing those first, which
+     *    would be undoing out of order. It is left alone and reported in `skipped`.
+     *
+     * Redo is the mirror image. The group step is spent either way: a press that could take back
+     * nothing still moves the group across, so the press after it reaches the group before.
+     *
+     * Member stacks are held for as long as the group step exists ({@link hold}). Without that a
+     * replace across twenty scenes nobody has open would lose twelve of them to the retention cap the
+     * next time any tab closed, and the group would report them skipped for no reason the author did.
+     *
+     * Member inverses must be synchronous: the group step runs them all inside one step of its own.
+     */
+    public pushGroup(
+        scopeId: HistoryScopeId,
+        request: HistoryPushRequest & {
+            members: readonly HistoryGroupMember[];
+            /** Told after every group step what it did; it must not throw, and is guarded anyway. */
+            onStep?: (step: HistoryGroupStep) => void;
+        },
+    ): boolean {
+        if (this.suppressionDepth > 0 || request.members.length === 0) {
+            return false;
+        }
+        const now = Date.now();
+        const members: HeldGroupMember[] = request.members.map(member => {
+            const state = { applied: true };
+            const entry = createCommandEntry({
+                scopeId: member.scopeId,
+                label: member.label,
+                undo: () => {
+                    member.undo();
+                    state.applied = false;
+                },
+                redo: () => {
+                    member.redo();
+                    state.applied = true;
+                },
+                mergeKey: member.mergeKey,
+                now,
+            });
+            this.pushEntry(entry, member);
+            return { scopeId: member.scopeId, entry, state };
+        });
+        const releases = members.map(member => this.hold(member.scopeId));
+        const report = (step: HistoryGroupStep) => {
+            try {
+                request.onStep?.(step);
+            } catch (error) {
+                // The members have already moved; failing the group step now would put it back
+                // over stacks that no longer match it.
+                console.warn("[History] a group step's report threw", error);
+            }
+        };
+        return this.pushEntry(
+            createCommandEntry({
+                scopeId,
+                label: request.label,
+                undo: () => report(this.stepGroup("undo", members)),
+                redo: () => report(this.stepGroup("redo", members)),
+                mergeKey: request.mergeKey,
+                now,
+                dispose: () => releases.forEach(release => release()),
+            }),
+            request,
+        );
+    }
+
+    /**
+     * Keep a scope's stack through eviction until the returned release is called, whether or not an
+     * editor has it registered. For a step on another stack that still needs this one to run.
+     */
+    public hold(scopeId: HistoryScopeId): () => void {
+        this.holds.set(scopeId, (this.holds.get(scopeId) ?? 0) + 1);
+        let released = false;
+        return () => {
+            if (released) {
+                return;
+            }
+            released = true;
+            const remaining = (this.holds.get(scopeId) ?? 1) - 1;
+            if (remaining > 0) {
+                this.holds.set(scopeId, remaining);
+            } else {
+                this.holds.delete(scopeId);
+            }
+        };
     }
 
     /**
@@ -474,6 +615,7 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
         this.scopes.clear();
         this.stacks.clear();
         this.touchOrder.length = 0;
+        this.holds.clear();
         this.activeScopeId = null;
         this.suppressionDepth = 0;
         this.pending = null;
@@ -558,6 +700,28 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
     }
 
     /**
+     * Step every member of a group whose entry is the next step of its own stack. Runs inside the
+     * group entry's own step, so it is synchronous and already guarded by the freeze check.
+     */
+    private stepGroup(direction: "undo" | "redo", members: readonly HeldGroupMember[]): HistoryGroupStep {
+        const stepped: HistoryScopeId[] = [];
+        const skipped: HistoryScopeId[] = [];
+        for (const member of members) {
+            const stack = this.stacks.get(member.scopeId);
+            const next = direction === "undo" ? stack?.peekUndo() : stack?.peekRedo();
+            if (next === member.entry) {
+                (this.step(direction, member.scopeId) ? stepped : skipped).push(member.scopeId);
+                continue;
+            }
+            const alreadyThere = direction === "undo" ? !member.state.applied : member.state.applied;
+            if (!alreadyThere) {
+                skipped.push(member.scopeId);
+            }
+        }
+        return { direction, stepped, skipped };
+    }
+
+    /**
      * Apply one entry in one direction.
      *
      * Throws (rather than returning false) when a checkpoint cannot be applied, so the caller's
@@ -612,12 +776,18 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
         this.touchOrder.push(scopeId);
     }
 
-    /** Drop the least-recently-touched stacks that nothing is registered against any more. */
+    /**
+     * Drop the least-recently-touched stacks that nothing is registered against any more.
+     *
+     * An evicted stack's entries leave for good, so they are let go as a clear lets them go.
+     */
     private evictInactive(): void {
-        const inactive = this.touchOrder.filter(id => !this.scopes.has(id) && this.stacks.has(id));
+        const inactive = this.touchOrder.filter(id =>
+            !this.scopes.has(id) && this.stacks.has(id) && !isWindowStack(id) && !this.holds.has(id));
         const excess = inactive.length - RETAINED_INACTIVE_SCOPES;
         for (let i = 0; i < excess; i++) {
             const scopeId = inactive[i];
+            this.stacks.get(scopeId)?.clear();
             this.stacks.delete(scopeId);
             const index = this.touchOrder.indexOf(scopeId);
             if (index >= 0) {

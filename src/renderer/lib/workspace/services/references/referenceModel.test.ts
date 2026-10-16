@@ -393,6 +393,26 @@ describe("extractUIDocumentAssetReferences", () => {
         });
     });
 
+    it("finds a page's music, and not a Game UI's", () => {
+        const document = {
+            ...doc([]),
+            surfaces: [
+                { id: "s1", name: "Title", kind: "appSurface", settings: { music: { assetId: "theme-1", volume: 0.8 } } },
+                { id: "s2", name: "Dialogue", kind: "stageSurface", settings: { music: { assetId: "theme-2" } } },
+            ],
+        } as unknown as UIDocument;
+
+        const references = uiReferences(document);
+
+        expect(references).toHaveLength(1);
+        expect(references[0]).toMatchObject({
+            assetId: "theme-1",
+            label: "Title",
+            field: "music",
+            target: { kind: "uiSurface", surfaceId: "s1" },
+        });
+    });
+
     it("reads a widget's bare assetId and posterAssetId", () => {
         // Before `nl.video` this walk knew `imageFill` and `fontAssetId` and nothing else. A widget
         // naming its prop `assetId` was preloaded by the shipped game

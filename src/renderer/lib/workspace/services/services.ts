@@ -58,8 +58,7 @@ import type { RefusableStatus } from "./assets/assetImportRefusal";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { Character } from "./character/Character";
 import { CharacterAppearanceKind, CharacterGroup } from "./character/types";
-import type { PuppetDescription } from "narraleaf-react";
-import type { PuppetDescriptionRequest, PuppetDescriptionResult } from "./puppet/puppetDescriptionModel";
+import type { DescribedPuppet, PuppetDescriptionRequest, PuppetDescriptionResult } from "./puppet/puppetDescriptionModel";
 import type { MediaAssetSupportRecord } from "./media/mediaAssetSupport";
 import type { NotificationAction } from "./ui/types";
 import type { MediaSupportScan } from "./media/MediaSupportService";
@@ -1393,9 +1392,9 @@ interface IPuppetDescriptionService extends IService {
     describe(request: PuppetDescriptionRequest, options?: { refresh?: boolean }): Promise<PuppetDescriptionResult>;
     describeCharacter(characterId: string, options?: { refresh?: boolean }): Promise<PuppetDescriptionResult>;
     /** What is already in memory, for render paths that cannot await. Null means "ask, then re-render". */
-    peek(request: PuppetDescriptionRequest): PuppetDescription | null;
+    peek(request: PuppetDescriptionRequest): DescribedPuppet | null;
     /** The same look addressed by character - what the story editor holds. Null for a non-puppet, or for an answer not in yet. */
-    peekCharacter(characterId: string): PuppetDescription | null;
+    peekCharacter(characterId: string): DescribedPuppet | null;
     invalidate(request?: PuppetDescriptionRequest): Promise<void>;
     onDescriptionChanged(handler: () => void): () => void;
 }

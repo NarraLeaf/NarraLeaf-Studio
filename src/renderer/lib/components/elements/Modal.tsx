@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { HelpTrigger, type HelpTopicId } from "@/lib/help";
-import { useFloatingLayer, useHostDocument, useWindowOverlayHost } from "@/lib/components/layout";
+import { isTopFloatingLayer, useFloatingLayer, useHostDocument, useWindowOverlayHost } from "@/lib/components/layout";
 import { useTranslation } from "@/lib/i18n";
 import { CONTROL_HEIGHT_CLASS } from "./controlSize";
 import { cn } from "../../utils/cn";
@@ -99,6 +99,8 @@ export function Modal({
     const overlayHost = useWindowOverlayHost();
     const doc = useHostDocument();
     const panelRef = useRef<HTMLDivElement | null>(null);
+    // Whether the press behind a backdrop click began with this dialog on top; see `DialogContainer`.
+    const overlayPressClosesRef = useRef(false);
     // A dialog: focus moves in when it opens, Tab cannot walk out to the page behind it, and focus
     // goes back to whatever opened it when it closes.
     useFloatingLayer({
@@ -121,7 +123,9 @@ export function Modal({
     if (!isOpen) return null;
 
     const handleOverlayClick = (e: React.MouseEvent) => {
-        if (closeOnOverlayClick && e.target === e.currentTarget) {
+        const pressClosed = overlayPressClosesRef.current;
+        overlayPressClosesRef.current = false;
+        if (closeOnOverlayClick && e.target === e.currentTarget && pressClosed) {
             onClose();
         }
     };
@@ -145,6 +149,9 @@ export function Modal({
                 inside the layer, below the titlebar, so the titlebar never crosses it. */}
             <div
                 className="bg-black/60 backdrop-blur-sm animate-fade-in fixed inset-0"
+                onPointerDown={() => {
+                    overlayPressClosesRef.current = isTopFloatingLayer(panelRef.current);
+                }}
                 onClick={handleOverlayClick}
             />
 

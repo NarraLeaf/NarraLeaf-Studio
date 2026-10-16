@@ -40,6 +40,9 @@ import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { LocalizationService } from "../localization/LocalizationService";
 import { EventEmitter } from "../ui/EventEmitter";
+import { HistoryService } from "../history/HistoryService";
+import type { HistoryLabel } from "../history/historyModel";
+import { projectHistoryScope } from "../history/historyScopes";
 import type { TranslatableUnitRef, StoryTranslationRow } from "../localization/localizationModel";
 import { VoiceProgress, computeVoiceProgress, extractVoiceableRows } from "./voiceModel";
 
@@ -408,6 +411,68 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
             return;
         }
         this.writeUnits(locale, document, changed);
+    }
+
+    /**
+     * Leave one step of undo on the project stack for takes a caller has just written to one voice
+     * language, together with what the same gesture did to the asset library (`library`: the
+     * recordings a pickup wrote over, and the files it imported).
+     *
+     * `before` names every line the gesture touched and the take it had before - null for a line that
+     * had none. Undo puts those takes back and then the library's half; when the library's half
+     * refuses (a file that could not be kept aside), the takes go back to what they were and the step
+     * stays where it was. Redo runs the other way round.
+     *
+     * What redo brings back is the takes as they were when undo ran: the clip lengths an import
+     * measures arrive after the gesture, and the step must not lose them.
+     *
+     * Returns false, and lets `library` go, when no step is left: inside a live session, whose own
+     * undo is the room's, or when nothing changed.
+     */
+    public recordTakesEdit(
+        locale: string,
+        before: readonly { unitId: string; unit: VoiceUnit | null }[],
+        label: HistoryLabel,
+        library?: { undo(): Promise<void>; redo(): Promise<void>; dispose(): void; isEmpty(): boolean },
+    ): boolean {
+        const document = this.documents.get(locale);
+        if (this.opSink || !document) {
+            library?.dispose();
+            return false;
+        }
+        const stored = before.map(entry => ({ unitId: entry.unitId, unit: entry.unit ? { ...entry.unit } : null }));
+        const read = () => {
+            const units = this.documents.get(locale)?.units ?? {};
+            return stored.map(entry => ({ unitId: entry.unitId, unit: units[entry.unitId] ? { ...units[entry.unitId] } : null }));
+        };
+        let after = read();
+        if (JSON.stringify(after) === JSON.stringify(stored) && (!library || library.isEmpty())) {
+            library?.dispose();
+            return false;
+        }
+        return this.getContext().services.get<HistoryService>(Services.History).pushCommand(projectHistoryScope(), {
+            label,
+            undo: async () => {
+                await this.loadDocument(locale);
+                const live = read();
+                this.setUnits(locale, stored);
+                try {
+                    await library?.undo();
+                } catch (error) {
+                    this.setUnits(locale, live);
+                    throw error;
+                }
+                after = live;
+                await this.flushPendingChanges();
+            },
+            redo: async () => {
+                await library?.redo();
+                await this.loadDocument(locale);
+                this.setUnits(locale, after);
+                await this.flushPendingChanges();
+            },
+            dispose: () => library?.dispose(),
+        });
     }
 
     /**

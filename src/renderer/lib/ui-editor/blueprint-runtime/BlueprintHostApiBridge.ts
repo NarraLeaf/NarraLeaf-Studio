@@ -810,6 +810,14 @@ export type BlueprintHostApiRuntime = {
         seek: (handle: BlueprintSoundHandle, timeMs: number) => Promise<void>;
         isPlaying: (handle: BlueprintSoundHandle) => boolean;
         /**
+         * Set the music of the page the calling graph runs on, for as long as that page is open:
+         * Play Page Music and Stop Page Music. What the page inspector's Music setting says, changed
+         * at run time - it hands over and comes back with the page exactly as that does
+         * (`runtime/app/pageMusic.ts`). While a game holds the screen the story decides the music,
+         * and the request changes nothing; the node says so in the debug log.
+         */
+        setPageMusic: (request: BlueprintPageMusicRequest) => Promise<void>;
+        /**
          * The volume a **host-owned** media element (the `nl.video` widget's `<video>`) must be set
          * to so it obeys the same mixer everything else does.
          *
@@ -970,6 +978,26 @@ function readMixPreferences(
     };
 }
 
+/** What Play Page Music and Stop Page Music ask of the page their graph runs on. */
+export type BlueprintPageMusicRequest =
+    | {
+        kind: "play";
+        assetId: string;
+        /** Absent or null: the Music track. */
+        audioTrackId?: string | null;
+        /** 0..1; absent is 1. */
+        volume?: number;
+        /** Absent: the track's own loop default. */
+        loop?: boolean;
+        /** How it comes in, and how it leaves when it hands over. Milliseconds. */
+        fadeMs?: number;
+    }
+    | {
+        kind: "stop";
+        /** How the music playing leaves. Absent: with its own fade. Milliseconds. */
+        fadeMs?: number;
+    };
+
 export type BlueprintSoundPlayInput = {
     assetId: string;
     /**
@@ -1112,6 +1140,13 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onSetSoundVolume?: (handle: BlueprintSoundHandle, volume: number, fadeMs: number) => Promise<void> | void;
     onSeekSound?: (handle: BlueprintSoundHandle, timeMs: number) => Promise<void> | void;
     onIsSoundPlaying?: (handle: BlueprintSoundHandle) => boolean;
+    /**
+     * Page music, set from a graph. `runtimeScopeId` names the page (or layer) the graph runs on,
+     * which is the one whose music changes. Answers false when a game holds the screen and the
+     * request changed nothing. Absent where no pages are drawn (the editor preview, a story
+     * preview), where the nodes do nothing.
+     */
+    onSetPageMusic?: (runtimeScopeId: string, request: BlueprintPageMusicRequest) => boolean;
     /**
      * Per-bus volume, backed by the engine's mixer. Absent in an environment with no running game,
      * where `Get Track Volume` reads unity and `Set Track Volume` is a no-op - the same degradation
@@ -2790,6 +2825,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onSetSoundVolume,
         onSeekSound,
         onIsSoundPlaying,
+        onSetPageMusic,
         onGetTrackVolume,
         onSetTrackVolume,
         onNetworkFetch,
@@ -5141,6 +5177,34 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     await onSeekSound?.(handle, Number.isFinite(timeMs) ? Math.max(0, timeMs) : 0);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setPageMusic: async (request: BlueprintPageMusicRequest) => {
+                const cap = "sound.setPageMusic";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const safe: BlueprintPageMusicRequest = request.kind === "play"
+                        ? {
+                            ...request,
+                            ...(request.volume !== undefined
+                                ? { volume: Number.isFinite(request.volume) ? Math.min(1, Math.max(0, request.volume)) : 1 }
+                                : {}),
+                            ...(request.fadeMs !== undefined ? { fadeMs: Math.max(0, request.fadeMs) } : {}),
+                        }
+                        : { kind: "stop", ...(request.fadeMs !== undefined ? { fadeMs: Math.max(0, request.fadeMs) } : {}) };
+                    if (onSetPageMusic && onSetPageMusic(stateScopeId, safe) === false) {
+                        // Not an error: a menu page opened over the running game and over the title is
+                        // the same page, and its graph has to survive being opened either way.
+                        emit({
+                            type: "devtools.log",
+                            level: "warn",
+                            message: translate("blueprint.runtimeError.pageMusicInGame", {
+                                node: translate(request.kind === "play" ? "blueprint.node.playPageMusic" : "blueprint.node.stopPageMusic"),
+                            }),
+                        });
+                    }
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

@@ -1,10 +1,11 @@
 import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
 import { STORY_EXPR_FUNCTIONS, STORY_VISITED_CALLS, type StoryVariableValueType, type StoryVisitedCall } from "@shared/types/story";
 import { formatStoryExpressionName } from "@shared/utils/storyExpressionParser";
-import { enumFreeformValue, freeTargetKind, paramHintKey, paramTypes, type StoryCommandParam, type StoryCommandParamType } from "./storyCommandGrammar";
+import { enumFreeformValue, freeTargetKind, paramHintKey, paramTypes, type StoryCommandEnumOption, type StoryCommandParam, type StoryCommandParamType } from "./storyCommandGrammar";
 import { listCommandDefs } from "./commands/registry";
 import { localizedParamKey, paramMatchesQuery } from "./commands/localizedParams";
 import { localizedEnumValue, matchEnumOptionLocalized } from "./commands/localizedEnums";
+import { reservedTargetName } from "./commands/reservedTargetNames";
 import type { StoryCommandCursor } from "./storyCommandCursor";
 import { assetChoices, BGM_OBJECT_NAME, puppetChannelNames, type StoryCommandContext, type StoryCommandNamedRef, type StoryCommandStageObjectKind, type StoryPuppetChannel, type StoryCommandValue } from "./storyCommandValues";
 
@@ -175,11 +176,23 @@ function targetCandidates(
     // The reserved words lead, the way `bgm` leads the audio list: they are the stage singletons an
     // author cannot discover by looking at what they have created, so a slot that answers to them has
     // to say so the moment the slot opens.
-    candidates.push(...refCandidates(
-        (type.reserved ?? []).map(name => ({ id: name, name })),
-        query,
-        () => ({ kind: "reservedTarget" }),
-    ));
+    //
+    // Each carries its name in the command language as the detail (`camera` · 镜头), and the filter
+    // reads that name too, so an author who types the word they know finds the target. The word is
+    // still what is inserted: it is the spelling the row prints and every locale parses.
+    const reserved = (type.reserved ?? []).map(name => ({ name, localized: reservedTargetName(name) }));
+    const spells = (entry: { name: string; localized: string | null }, match: (haystack: string, needle: string) => boolean) =>
+        match(entry.name, query) || (entry.localized !== null && match(entry.localized, query));
+    const prefixReserved = reserved.filter(entry => !query || spells(entry, startsWithFold));
+    const restReserved = query ? reserved.filter(entry => !spells(entry, startsWithFold) && spells(entry, containsFold)) : [];
+    for (const entry of [...prefixReserved, ...restReserved]) {
+        candidates.push({
+            value: entry.name,
+            label: entry.name,
+            ...(entry.localized ? { detail: entry.localized } : {}),
+            mark: { kind: "reservedTarget" },
+        });
+    }
     if (type.accepts.includes("character")) {
         candidates.push(...refCandidates(context.characters, query, entry => ({ kind: "character", characterId: entry.id })));
     }
@@ -200,12 +213,25 @@ function targetCandidates(
     // different things the line could mean, and the menu says which is which by picturing the file and
     // drawing a glyph for the object (see `storyCandidateMark`). Hiding either would leave the author
     // looking at a list that does not contain what they are about to type.
+    // A layered character's own layer pictures are not offered as things to put on stage: they still
+    // resolve when named, but listing 美绪's body and face layers among the backgrounds invited a
+    // single layer onto the stage as a picture.
+    const layerAssets = new Set(context.characterLayerAssetIds ?? []);
     for (const assetType of type.assets ?? []) {
         candidates.push(...refCandidates(
-            assetChoices(context, assetType, true),
+            assetChoices(context, assetType, true).filter(entry => assetType !== "image" || !layerAssets.has(entry.id)),
             query,
             entry => ({ kind: "asset", assetType, assetId: entry.id }),
         ));
+    }
+    // A name the query begins outranks one it only occurs in, whichever group either comes from: the
+    // first row is the one Enter takes, and 「N」 on the way to Narra lit `background` because the
+    // reserved words lead and each has an `n` inside it. Within each tier the order above stands.
+    if (query.trim()) {
+        const leads = (candidate: StoryCommandCandidate) => startsWithFold(candidate.label, query)
+            || (candidate.mark?.kind === "reservedTarget" && candidate.detail !== undefined && startsWithFold(candidate.detail, query));
+        const ranked = [...candidates.filter(leads), ...candidates.filter(candidate => !leads(candidate))];
+        candidates.splice(0, candidates.length, ...ranked);
     }
     // Offer the typed name back only where a free name is legal - the same rule resolution applies,
     // so the list never offers a name that then fails. A never-empty list keeps Tab and Enter
@@ -297,8 +323,26 @@ function candidatesForType(
             // model does not list is overwhelmingly a typo - and offering it as a candidate would
             // dress the typo up as a choice. It still commits (Enter submits an empty menu), and the
             // row then carries the `unknownPuppetName` mark, which is where a wrong name belongs.
-            const names = puppetChannelNames(context, ownerCharacterId(resolved[type.dependsOn]) ?? undefined, type.channel);
-            return nameCandidates(names, query, { kind: "puppetChannel", channel: type.channel });
+            const owner = ownerCharacterId(resolved[type.dependsOn]) ?? undefined;
+            const names = puppetChannelNames(context, owner, type.channel);
+            const labels = type.channel === "motion" && owner ? context.puppetByCharacterId[owner]?.motionLabels : undefined;
+            if (!labels) {
+                return nameCandidates(names, query, { kind: "puppetChannel", channel: type.channel });
+            }
+            // A motion its file names is shown by that name, with the motion's own beside it - the
+            // completion still inserts the motion's name, which is what the row stores. Either one
+            // finds it.
+            const labelOf = (name: string) => labels[name] ?? name;
+            const prefix = names.filter(name => startsWithFold(name, query) || startsWithFold(labelOf(name), query));
+            const rest = query
+                ? names.filter(name => !prefix.includes(name) && (containsFold(name, query) || containsFold(labelOf(name), query)))
+                : [];
+            return [...prefix, ...rest].map(name => ({
+                value: name,
+                label: labelOf(name),
+                ...(labels[name] ? { detail: name } : {}),
+                mark: { kind: "puppetChannel" as const, channel: type.channel },
+            }));
         }
         case "puppetParam": {
             // The ids the model reported, each showing the range it accepts - which is the whole reason
@@ -355,12 +399,21 @@ function candidatesForType(
             // The filter has to see the translated spelling too, or the list empties the moment the
             // author types the word they were just shown. `matchEnumOptionLocalized` covers the exact
             // hit; `containsFold` over the same spelling covers the partial one.
+            //
+            // And the first row is the one Enter takes, so the word the query spells comes first, then
+            // the words it begins, then the rest in the vocabulary's order. Matching in vocabulary order
+            // alone lit `blur` for a typed `dissolve`: its alias `blurdissolve` contains the word and
+            // `blur` is listed before `dissolve`.
+            const exact = query ? matchEnumOptionLocalized(type, query) : null;
+            const spellings = (option: StoryCommandEnumOption) => [option.value, localizedEnumValue(type, option), ...(option.aliases ?? [])];
+            const rank = (option: StoryCommandEnumOption) => (option === exact ? 0 : spellings(option).some(word => startsWithFold(word, query)) ? 1 : 2);
             return [
                 ...freeform,
                 ...type.options
-                    .filter(option => !query || matchEnumOptionLocalized(type, query) === option || containsFold(option.value, query)
-                        || containsFold(localizedEnumValue(type, option), query)
-                        || (option.aliases ?? []).some(alias => containsFold(alias, query)))
+                    .filter(option => !query || option === exact || spellings(option).some(word => containsFold(word, query)))
+                    .map((option, index) => ({ option, index }))
+                    .sort((a, b) => (query ? rank(a.option) - rank(b.option) : 0) || a.index - b.index)
+                    .map(entry => entry.option)
                     // The mark is keyed on the CANONICAL value while the row shows this locale's word, so
                     // 向左滑动 and `slide-left` draw the same arrow.
                     .map(option => ({ value: localizedEnumValue(type, option), label: localizedEnumValue(type, option), detail: option.aliases?.[0], mark: { kind: "word" as const, value: option.value } })),

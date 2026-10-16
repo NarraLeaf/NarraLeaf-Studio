@@ -153,9 +153,9 @@
       "target": "自動送りの待ち時間"
     },
     "key:config.bgm": {
-      "sourceHash": "fnv1a:f5afac07",
+      "sourceHash": "fnv1a:ba3ee816",
       "status": "translated",
-      "target": "BGM"
+      "target": "音楽"
     },
     "key:config.categorySound": {
       "sourceHash": "fnv1a:40e77494",
@@ -183,9 +183,9 @@
       "target": "オン"
     },
     "key:config.masterVolume": {
-      "sourceHash": "fnv1a:14562f0c",
+      "sourceHash": "fnv1a:ce70910c",
       "status": "translated",
-      "target": "全体音量"
+      "target": "全体の音量"
     },
     "key:config.muteOnBlur": {
       "sourceHash": "fnv1a:ea34f136",
@@ -376,6 +376,11 @@
       "sourceHash": "fnv1a:d02ee8a6",
       "status": "translated",
       "target": "ロード"
+    },
+    "key:log.replayVoice": {
+      "sourceHash": "fnv1a:736862cf",
+      "status": "translated",
+      "target": "ボイス再生"
     },
     "key:log.title": {
       "sourceHash": "fnv1a:2c9d9f0e",

@@ -631,6 +631,19 @@ export const lint = {
                 + "its transition. A cut takes no time.\n"
                 + "- Otherwise delete the row, or choose a different image.",
         },
+        storyTagNameShared: {
+            title: "Tag name on two axes",
+            description: "A character with layered sprites using one tag name on two axes",
+            message: "The tag \"{tag}\" is on both \"{first}\" and \"{second}\"",
+            help:
+                "A character with layered sprites has a tag of the same name on two of its axes, such as Blue under "
+                + "Outfit and under Hair. Names are compared ignoring case.\n"
+                + "\n"
+                + "A typed row such as /char names a look by its tag alone, so the name reaches only the tag on the "
+                + "earlier axis. The other tag can be chosen only in the row's Properties.\n"
+                + "\n"
+                + "- Rename one of the two tags in the character editor.",
+        },
         blueprintReferenceMissing: {
             title: "Missing target",
             description: "A node naming something the project no longer has",
@@ -1355,7 +1368,7 @@ export const lint = {
         voiceMissing: {
             title: "Missing voice",
             description: "A line with no recording in a voiced language",
-            message: "No {locale} recording",
+            message: "No {language} recording",
             help:
                 "A spoken line has no recording in one of the project's voice languages. Narration and "
                 + "dialogue rows are checked, and choice options too while Voice choice options is on. Prompts, "
@@ -1373,7 +1386,7 @@ export const lint = {
         voiceStale: {
             title: "Stale voice",
             description: "The line changed after it was recorded",
-            message: "{locale} recording is older than the line",
+            message: "{language} recording predates a change to the line",
             help:
                 "A recording was linked to a line whose text has changed since. The text compared is what "
                 + "that language's actor reads: the translation into that language if the project has one, "
@@ -1393,8 +1406,8 @@ export const lint = {
             description: "A recording whose line no longer exists",
             message: "{recordings} with no line",
             recordingCount: {
-                one: "{count} {locale} recording",
-                other: "{count} {locale} recordings",
+                one: "{count} {language} recording",
+                other: "{count} {language} recordings",
             },
             help:
                 "A voice language holds recordings linked to lines that are no longer in any story: lines "

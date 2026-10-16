@@ -443,6 +443,60 @@ describe("a new element's widget defaults", () => {
         expect(drawn(result.surfaces[0].elements.shot)).toMatchObject({ fillType: "image", imageFill: { mode: "cover", assetId: "art-1" } });
     });
 
+    /**
+     * A new element starts from its widget's defaults, but never from its default words: those depend
+     * on the Studio's language. The search that was meant to leave them out never matched (the
+     * sentinel's U+0000 is escaped in JSON), so a new text took the sentinel as its words. Beside a
+     * key, a project apply refused it as two sources of words; without the project's keys it went in.
+     */
+    describe("and its words", () => {
+        const KEYS = { sourceLocale: "en", keys: new Map([["menu.start", "Start"]]) };
+        const keyedText = `${PAGE}        Caption: nl.text id=caption @0,0 200x40\n            localizationKey = menu.start\n`;
+        const keyedButton = `${PAGE}        Go: nl.button id=go @0,0 200x40\n            localizationKey = menu.start\n`;
+        const holdsSentinel = (value: unknown) => JSON.stringify(value).includes("\\u0000");
+
+        it("takes a new keyed text's words from its key, against the project's keys", () => {
+            const result = compileUiFile(parseUiFile(keyedText), { existing: existingWith({}), textKeys: KEYS });
+            expect(result.diagnostics.filter(item => item.severity === "error")).toEqual([]);
+            const caption = result.surfaces[0].elements.caption;
+            expect(caption.props?.localizationKey).toBe("menu.start");
+            expect(caption.props).not.toHaveProperty("text");
+            expect(holdsSentinel(caption)).toBe(false);
+            // Still a new element: the widget's other defaults are there.
+            expect(caption.props?.fontSize).toBeDefined();
+        });
+
+        it("writes no words into a new keyed text without the project's keys either", () => {
+            const result = compileUiFile(parseUiFile(keyedText), { existing: existingWith({}) });
+            expect(result.diagnostics.filter(item => item.severity === "error")).toEqual([]);
+            const caption = result.surfaces[0].elements.caption;
+            expect(caption.props).not.toHaveProperty("text");
+            expect(holdsSentinel(caption)).toBe(false);
+        });
+
+        it("does the same for a new keyed button's label", () => {
+            const result = compileUiFile(parseUiFile(keyedButton), { existing: existingWith({}), textKeys: KEYS });
+            expect(result.diagnostics.filter(item => item.severity === "error")).toEqual([]);
+            const go = result.surfaces[0].elements.go;
+            expect(go.props).not.toHaveProperty("label");
+            expect(holdsSentinel(go)).toBe(false);
+        });
+
+        it("writes no sentinel into a new text given neither words nor a key, or under `+defaults`", () => {
+            const bare = `${PAGE}        Caption: nl.text id=caption @0,0 200x40\n            fontSize = 20\n`;
+            expect(holdsSentinel(compileUiFile(parseUiFile(bare), { existing: existingWith({}) }).surfaces[0].elements.caption)).toBe(false);
+            const short = `${PAGE}        Caption: nl.text id=caption @0,0 200x40 +defaults\n            fontSize = 20\n`;
+            expect(holdsSentinel(compileUiFile(parseUiFile(short)).surfaces[0].elements.caption)).toBe(false);
+        });
+
+        it("reads a `without` line naming a default made of words without a warning", () => {
+            const short = `${PAGE}        Go: nl.button id=go @0,0 200x40 +defaults\n            without label\n            localizationKey = menu.start\n`;
+            const result = compileUiFile(parseUiFile(short), { textKeys: KEYS });
+            expect(result.diagnostics.map(item => item.code)).not.toContain("ui.without_unknown");
+            expect(result.surfaces[0].elements.go.props).not.toHaveProperty("label");
+        });
+    });
+
     it("writes an element the document already has exactly as its lines say", () => {
         const existing = existingWith({ shot: { id: "shot", type: "nl.image", parentId: "root", childrenIds: [], layout: { x: 0, y: 0, width: 10, height: 10 }, props: {} } });
         const result = compileUiFile(parseUiFile(shot("")), { existing });

@@ -1,7 +1,7 @@
 {
   "name": "narraleaf-studio",
   "productName": "NarraLeaf Studio",
-  "version": "1.6.2",
+  "version": "1.6.3",
   "private": true,
   "description": "IDE for NarraLeaf Projects",
   "homepage": "https://github.com/NarraLeaf/NarraLeaf-Studio#readme",
@@ -71,7 +71,7 @@
     "monaco-editor": "^0.55.1",
     "motion": "^11",
     "msgpack-lite": "^0.1.26",
-    "narraleaf-react": "1.4.1",
+    "narraleaf-react": "1.5.0",
     "plist": "^3.1.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

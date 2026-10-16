@@ -74,6 +74,8 @@ import {
     BLUEPRINT_NODE_TYPE_MATH_MODULO,
     BLUEPRINT_NODE_TYPE_PAGE_BACK,
     BLUEPRINT_NODE_TYPE_PAGE_GO,
+    BLUEPRINT_NODE_TYPE_SOUND_PLAY,
+    BLUEPRINT_NODE_TYPE_SOUND_PLAY_PAGE_MUSIC,
 } from "@shared/types/blueprint/graph";
 
 type GraphNode = { id: string; type: string; params?: Record<string, unknown> };
@@ -804,5 +806,20 @@ describe("the starter template's EXTRA screen", () => {
         expect(start.params?.storyId ?? "").toBe("");
         // Nothing runs on the locked side of the gate.
         expect(graph.edges.some(edge => edge.from.nodeId === gate.id && edge.from.port === "false")).toBe(false);
+    });
+
+    it("makes a pressed track the page's music, so the next one takes over instead of playing over it", () => {
+        const graph = graphWith(on("Music rows", "nl.list").id, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK);
+        const gate = only(graph, BLUEPRINT_NODE_TYPE_FLOW_IF);
+        const play = only(graph, BLUEPRINT_NODE_TYPE_SOUND_PLAY_PAGE_MUSIC);
+        expect(Object.values(graph.nodes).some(node => node.type === BLUEPRINT_NODE_TYPE_SOUND_PLAY)).toBe(false);
+        expect(runsAfter(graph, gate.id, "true").has(play.id)).toBe(true);
+        expect(feeding(graph, play.id, "assetId").type).toBe(BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD);
+        // No track named: page music plays on the Music track, as the page inspector's does.
+        expect(play.params?.audioTrackId ?? "").toBe("");
+
+        // A voice is a sound, not the page's music: it plays over whatever the page is playing.
+        const voice = graphWith(on("Voice rows", "nl.list").id, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK);
+        expect(only(voice, BLUEPRINT_NODE_TYPE_SOUND_PLAY).params?.audioTrackId).toBe("voice");
     });
 });

@@ -538,7 +538,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                         >
                             <input
                                 autoFocus
-                                className={`${INPUT_CLASS} w-24 flex-none`}
+                                className={`${INPUT_CLASS} w-32 flex-none`}
                                 value={codeDraft}
                                 placeholder={t("workspace.localization.panel.codePlaceholder")}
                                 onChange={event => handleCodeDraftChange(event.target.value)}
