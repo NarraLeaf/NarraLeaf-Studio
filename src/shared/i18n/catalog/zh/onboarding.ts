@@ -73,6 +73,8 @@ export const onboarding = {
         title: "设置完成",
         expectation: "这里问到的每一项都在设置中。按 F1 查看光标所在处的说明",
         docs: "打开文档",
+        bilibili: "关注我们的哔哩哔哩账号",
+        youtube: "关注我们的 YouTube 账号",
     },
     skipConfirm: {
         title: "跳过设置",
