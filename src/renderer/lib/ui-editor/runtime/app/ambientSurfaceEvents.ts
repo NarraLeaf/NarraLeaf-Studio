@@ -161,13 +161,22 @@ export type AmbientSurfaceEventName =
     | "gamePreferenceChanged"
     | "windowFullscreenChanged"
     | "windowFocusChanged"
-    | "windowCloseRequested";
+    | "windowCloseRequested"
+    | "savedVariableChanged"
+    | "persistentVariableChanged";
 
 /**
- * The two whose heads a widget may place as well (`On Window Focus Changed`, `On Fullscreen Changed`
- * are offered on element blueprints); the other two are surface and global heads only.
+ * The ones whose heads a widget may place as well (`On Window Focus Changed`, `On Fullscreen Changed`
+ * and the two variable heads are offered on element blueprints); the other two are surface and
+ * global heads only.
  */
-const WIDGET_HEARD_EVENTS: ReadonlySet<AmbientSurfaceEventName> = new Set(["windowFullscreenChanged", "windowFocusChanged"]);
+const WIDGET_HEARD_EVENTS: ReadonlySet<AmbientSurfaceEventName> = new Set([
+    "windowFullscreenChanged",
+    "windowFocusChanged",
+    "savedVariableChanged",
+    "persistentVariableChanged",
+]);
+
 
 export type AmbientSurfaceDispatch = {
     blueprintDocument: BlueprintDocument;

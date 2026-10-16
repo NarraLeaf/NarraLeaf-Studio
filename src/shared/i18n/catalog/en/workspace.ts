@@ -665,6 +665,7 @@ export const workspace = {
             playtest_hover: "Hover in the game",
             playtest_key: "Press a key in the game",
             playtest_stop: "Stop playing",
+            playtest_variables: "Read the game's variables",
             console_read: "Read Studio's console",
             build: "Build the game",
         },

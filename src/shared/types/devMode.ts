@@ -115,6 +115,8 @@ export type DevModeAgentAction =
            * by that advance.
            */
           baseline?: boolean;
+          /** Also read the saved and persistent variables as the running game holds them. */
+          variables?: boolean;
       }
     /**
      * Read on `steps` lines. One step is one line: the click on a line shown in full that moves
@@ -150,7 +152,16 @@ export type DevModeAgentAction =
      * input actions bound to it and the focus navigation answer it - or a pointer gesture that names
      * no element (`rightClick`, `wheelUp`, `wheelDown`, aimed at the middle of the game).
      */
-    | { kind: "key"; key: string; shift?: boolean };
+    | {
+          kind: "key";
+          key: string;
+          shift?: boolean;
+          ctrl?: boolean;
+          alt?: boolean;
+          meta?: boolean;
+          /** Keep the key down this long before letting go - a held skip key, a long press. */
+          holdMs?: number;
+      };
 
 export type DevModeAgentPointerGesture = "click" | "hover";
 
@@ -160,7 +171,9 @@ export const DEV_MODE_AGENT_KEYS = [
     "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
     "PageUp", "PageDown", "Home", "End",
     "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
+    "Control", "Shift", "Alt", "Meta",
 ] as const;
+
 
 /** The pointer gestures `DevModeAgentAction.key` takes, which aim at the middle of the game. */
 export const DEV_MODE_AGENT_POINTER_KEYS = ["rightClick", "wheelUp", "wheelDown"] as const;
@@ -236,7 +249,14 @@ export type DevModeAgentResult =
            */
           rect?: { x: number; y: number; width: number; height: number };
       }
-    | { kind: "state"; state: DevModeAgentGameState; issues?: DevModeAgentIssue[] }
+    | {
+          kind: "state";
+          state: DevModeAgentGameState;
+          issues?: DevModeAgentIssue[];
+          /** With `variables`: each saved and persistent variable and its value now. */
+          variables?: { scope: "saved" | "persistent"; id: string; name: string; value: unknown }[];
+      }
+
     | {
           kind: "advance";
           advanced: number;
@@ -270,8 +290,9 @@ export const DEV_MODE_AGENT_BUDGET_MS = {
     capture: 10_000,
     state: 12_000,
     advance: 120_000,
-    pointer: 10_000,
-    key: 10_000,
+    // Room for a graph the act started to finish (`inputGraphMaxMs`), and for a held key.
+    pointer: 15_000,
+    key: 25_000,
 } as const satisfies Record<DevModeAgentAction["kind"], number>;
 
 export const DEV_MODE_AGENT_ANSWER_GRACE_MS = 5_000;

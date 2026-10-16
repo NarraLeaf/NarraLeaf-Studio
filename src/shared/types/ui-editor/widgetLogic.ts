@@ -298,7 +298,23 @@ const WINDOW_EVENTS: readonly WidgetLogicEventDef[] = [
         dispatchKind: "interaction",
         headNodeTypes: ["blueprint.event.head.windowFocusChanged"],
     },
+    // Story state, as ambient as the window: a widget showing a flag the story sets hears it change.
+    {
+        id: "savedVariableChanged",
+        displayName: "Saved variable changed",
+        description: "Fires when one saved variable of the playthrough takes a new value.",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.savedVariableChanged"],
+    },
+    {
+        id: "persistentVariableChanged",
+        displayName: "Persistent variable changed",
+        description: "Fires when one persistent variable takes a new value.",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.persistentVariableChanged"],
+    },
 ];
+
 
 /**
  * The events the host raises on every widget on a page rather than the widget raising them itself:

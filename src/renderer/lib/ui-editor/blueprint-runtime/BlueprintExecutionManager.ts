@@ -53,7 +53,16 @@ export class BlueprintExecutionManager {
         };
     }
 
+    /**
+     * The executions running now, by id - a latent one (a Delay, a Wait For Layer) stays here until it
+     * finishes. Read by a play-test driver to tell "the screen is still" from "a graph is still going".
+     */
+    public listExecutionIds(): string[] {
+        return [...this.executions.keys()];
+    }
+
     public isScopeClosed(runtimeScopeId: string): boolean {
+
         return this.closedScopes.has(runtimeScopeId);
     }
 

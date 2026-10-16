@@ -268,6 +268,59 @@ A box of your own whose panel is a picture inside the container can hide that pi
 instead, the way the first layer shows the mark. Do not put this on the Choice page: a blueprint
 reaches only the elements of its own page (`blueprint-format`).
 
+## A phone chat (a page the story opens)
+
+A text conversation in the middle of a scene - the phone buzzes, the player reads, picks a reply,
+and the story goes on knowing what they said. Four pieces; check each node with `blueprint_node`.
+
+**1. The page** (`ui_apply`, `kind=appSurface`, `backgroundColor = transparent` so the scene shows
+round the phone, a dimming `nl.container` over the whole screen, the phone body on top):
+
+- A struct for one message: `struct chatMsg` with `field id: string`, `field text: string`,
+  `field them: boolean`, `field me: boolean`.
+- A page param holding the opening messages as its default:
+  `param messages messages type=list struct=chatMsg = [{"id":"o1","text":"在吗？","them":true,"me":false}]`.
+  `/page` passes no parameters, so the default is what the page opens with; a different opening per
+  scene is a different page, or an `init` blueprint that reads a saved variable.
+- The history: an `nl.list` with `itemsBinding = {"kind":"pageProp","key":"messages"}`,
+  `itemStructId = chatMsg`, `itemKeyFieldId = id`. Its row template is one `nl.container` with
+  `extra.listSlot = itemTemplate` holding **two** bubbles, left and right, each with
+  `bind layout.visible = field them` / `field me` and a text inside with `bind text = field text`.
+  A row cannot take its colour or side from a field any other way: the two-bubble switch is the
+  pattern. Bubbles are a fixed size; size them for the longest line.
+- The replies: a second `nl.list` (struct `chatReply`: `id`, `text`, the answer `reply`, a `score`,
+  a `tag`, a `round`), its rows containers with `navigation.focusable = always` so a pad or the
+  keyboard can pick one.
+- A "put the phone down" `nl.button`, `layout.visible = false` until the last round.
+
+**2. The replies' blueprint** (on the reply list, `widgetMain`):
+
+- `init` -> `Set List Content` with round one's replies (a blueprint var of type array).
+- `Item Click` -> `Memo` the item -> `Make Object` a `chatMsg` (`them=false`, `me=true`, `text` from
+  the item) -> `Append List Item` on the history -> `Scroll To Bottom` -> `Delay` 0.8 -> the answer
+  as a `chatMsg` with `them=true` -> append -> scroll.
+- Record what was chosen with `Set Saved Var` (`Get Field` values are JSON: `To Float` before you
+  add a score). Branch on `round`: the next round's replies, or hide the list and show the button.
+
+**3. Closing**: the button's `Mouse Click` -> `Close This Layer` with a `result` (say `true`).
+
+**4. The story**:
+
+```
+The phone buzzes on the desk.
+/page 手机 into=看完聊天
+/if 好感 >= 3
+  I keep smiling at the screen.
+```
+
+The story waits on the `/page` row until the page closes; `into=` gets the result (Back - Esc -
+closes it with none, and the variable keeps its default, which is how "put it down without
+answering" reads). The saved variables the replies set are there for every `/if` after it.
+
+**Check it**: `playtest_click` a reply row by `index`; the answer names the words the history
+gained and the variables that changed. `playtest_variables` shows them all.
+`ui_screenshot` the page with its `items` sample to judge the bubbles before playing.
+
 ## Templates instead
 
 `ui_templates` lists ready-made interface sets from Studio's template store and `ui_template_apply`

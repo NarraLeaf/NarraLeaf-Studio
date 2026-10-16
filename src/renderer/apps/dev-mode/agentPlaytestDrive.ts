@@ -31,8 +31,12 @@ import {
     describePointerAct,
     gameCentre,
     isPointerKey,
+    keyDown,
     keyEventInit,
+    keyUp,
+
     listDrawnSurfaces,
+    readDrawnPageTexts,
     PlaytestPointer,
     pressKey,
     resolveInputTarget,
@@ -80,6 +84,12 @@ export const PLAYTEST_TIMING = {
     inputQuietMs: 500,
     /** The most a pointer or key act waits for the screen to settle (a page transition, a fade). */
     inputMaxMs: 4000,
+    /**
+     * The most it waits while a blueprint the act started is still running - a Delay before a reply
+     * is appended, a Wait For Layer - so the answer describes what the act did rather than the first
+     * half of it.
+     */
+    inputGraphMaxMs: 8000,
 };
 
 export type PlaytestTiming = typeof PLAYTEST_TIMING;
@@ -611,7 +621,24 @@ function browserEnvironmentOf(controls: GameAppTestControls): InputEnvironment |
     return root ? browserInputEnvironment(root, controls.readUiDocument()) : null;
 }
 
-type ScreenReading = { state: DevModeAgentGameState; surfaces: string[] };
+type ScreenReading = {
+    state: DevModeAgentGameState;
+    surfaces: string[];
+    /** The words each drawn page shows; see `readDrawnPageTexts`. */
+    texts?: Record<string, string>;
+    /** Saved and persistent variables, `scope:name` to value, when the game reports them. */
+    variables?: Record<string, unknown>;
+    /** Blueprint executions running now, by id. */
+    running?: string[];
+};
+
+function readVariableMap(controls: GameAppTestControls): Record<string, unknown> | undefined {
+    const variables = controls.readVariables?.();
+    if (!variables) {
+        return undefined;
+    }
+    return Object.fromEntries(variables.map(variable => [`${variable.scope}:${variable.name}`, variable.value]));
+}
 
 function readScreen(getControls: () => GameAppTestControls | null, environment: PlaytestInputOptions["environment"]): ScreenReading {
     const controls = getControls();
@@ -619,13 +646,22 @@ function readScreen(getControls: () => GameAppTestControls | null, environment: 
         return { state: toAgentGameState(null), surfaces: [] };
     }
     const env = (environment ?? browserEnvironmentOf)(controls);
-    return { state: toAgentGameState(controls.readState()), surfaces: env ? listDrawnSurfaces(env) : [] };
+    const variables = readVariableMap(controls);
+    const running = controls.runningBlueprints?.();
+    return {
+        state: toAgentGameState(controls.readState()),
+        surfaces: env ? listDrawnSurfaces(env) : [],
+        ...(env ? { texts: readDrawnPageTexts(env) } : {}),
+        ...(variables ? { variables } : {}),
+        ...(running ? { running } : {}),
+    };
 }
 
 function screenKey(reading: ScreenReading): string {
     const { state } = reading;
     return JSON.stringify([
         state.ready, state.inGame, state.entries, state.page, state.line, state.choices, reading.surfaces,
+        reading.texts ?? null, reading.variables ?? null,
     ]);
 }
 
@@ -639,7 +675,11 @@ async function settleScreen(
     read: () => ScreenReading,
     clock: PlaytestClock,
     timing: PlaytestTiming,
-): Promise<ScreenReading> {
+    runningBefore: ReadonlySet<string> = new Set(),
+): Promise<ScreenReading & { stillRunning: number }> {
+    // Only the graphs the act started count: one that was already running before it - a loop a
+    // screen keeps going, a timer - would otherwise hold every answer to the long limit.
+    const startedByAct = (reading: ScreenReading) => (reading.running ?? []).filter(id => !runningBefore.has(id)).length;
     const start = clock.now();
     let last = read();
     let lastKey = screenKey(last);
@@ -654,11 +694,12 @@ async function settleScreen(
             lastKey = key;
             stableSince = now;
         }
-        if (now - start >= timing.inputMinMs && now - stableSince >= timing.inputQuietMs) {
-            return last;
+        const running = startedByAct(next);
+        if (now - start >= timing.inputMinMs && now - stableSince >= timing.inputQuietMs && running === 0) {
+            return { ...last, stillRunning: 0 };
         }
-        if (now - start >= timing.inputMaxMs) {
-            return last;
+        if (now - start >= (running > 0 ? timing.inputGraphMaxMs : timing.inputMaxMs)) {
+            return { ...last, stillRunning: running };
         }
     }
 }
@@ -699,7 +740,35 @@ export function describeScreenChange(before: ScreenReading, after: ScreenReading
     } else if (was.choices && !is.choices) {
         changed.push("the choice menu closed");
     }
+    // The words on a page that stayed open: a message appended, a value counted up.
+    for (const [name, text] of Object.entries(after.texts ?? {})) {
+        const previous = before.texts?.[name];
+        if (previous === undefined || previous === text) {
+            continue;
+        }
+        changed.push(`the words on "${name}" changed${describeTextChange(previous, text)}`);
+    }
+    for (const [key, value] of Object.entries(after.variables ?? {})) {
+        const previous = before.variables?.[key];
+        if (before.variables && JSON.stringify(previous) !== JSON.stringify(value)) {
+            const [scope, ...name] = key.split(":");
+            changed.push(`${scope} variable "${name.join(":")}" is now ${JSON.stringify(value)} (was ${JSON.stringify(previous)})`);
+        }
+    }
     return changed;
+}
+
+/** `: now ending "…"` with what was added after the words the two share, or nothing for a rewrite. */
+function describeTextChange(before: string, after: string): string {
+    let shared = 0;
+    while (shared < before.length && shared < after.length && before[shared] === after[shared]) {
+        shared += 1;
+    }
+    const added = after.slice(shared).trim();
+    if (!added) {
+        return "";
+    }
+    return `: now ending "${added.length > 80 ? `…${added.slice(-80)}` : added}"`;
 }
 
 async function runInputAction(
@@ -726,6 +795,7 @@ async function runInputAction(
         error: message,
     });
     const before = readScreen(getControls, environmentOf);
+    const runningBefore = new Set(before.running ?? []);
     let did: string;
     if (action.kind === "pointer") {
         const resolved = resolveInputTarget(env, { element: action.element, surface: action.surface, index: action.index });
@@ -755,20 +825,34 @@ async function runInputAction(
         if (!init) {
             return refuse(`"${action.key}" is not a key playtest_key presses. Keys: ${describeKnownKeys()}.`);
         }
-        pressKey(env, init, action.shift === true);
-        did = `Pressed ${action.shift ? "Shift+" : ""}${action.key}.`;
+        const modifiers = { shift: action.shift === true, ctrl: action.ctrl === true, alt: action.alt === true, meta: action.meta === true };
+        const chord = `${action.ctrl ? "Ctrl+" : ""}${action.alt ? "Alt+" : ""}${action.meta ? "Meta+" : ""}${action.shift ? "Shift+" : ""}${action.key}`;
+        if (action.holdMs && action.holdMs > 0) {
+            keyDown(env, init, modifiers);
+            await clock.sleep(Math.min(action.holdMs, 8000));
+            keyUp(env, init, modifiers);
+            did = `Held ${chord} for ${Math.round(Math.min(action.holdMs, 8000))} ms.`;
+        } else {
+            pressKey(env, init, modifiers);
+            did = `Pressed ${chord}.`;
+        }
     }
-    const after = await settleScreen(() => readScreen(getControls, environmentOf), clock, timing);
+    const after = await settleScreen(() => readScreen(getControls, environmentOf), clock, timing, runningBefore);
+    const changed = describeScreenChange(before, after);
+    if (after.stillRunning > 0) {
+        changed.push(`${after.stillRunning} blueprint(s) the act started were still running when this was read`);
+    }
     return {
         success: true,
         data: {
             kind: "input",
             did,
             surfaces: after.surfaces,
-            changed: describeScreenChange(before, after),
+            changed,
             state: after.state,
         },
     };
+
 }
 
 /**
@@ -868,7 +952,9 @@ async function runAgentDriveActionInner(
                     typingMs: timing.typingMs,
                 })
                 : game.read();
-            return { success: true, data: { kind: "state", state: toAgentGameState(state) } };
+            const variables = action.variables ? getControls()?.readVariables?.() : undefined;
+            return { success: true, data: { kind: "state", state: toAgentGameState(state), ...(variables ? { variables } : {}) } };
+
         } catch (error) {
             return { success: false, error: error instanceof Error ? error.message : String(error) };
         }

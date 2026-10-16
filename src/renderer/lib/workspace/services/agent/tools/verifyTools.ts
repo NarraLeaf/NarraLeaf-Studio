@@ -359,10 +359,51 @@ async function playtestPointer(
 export const playtestKey: AgentToolHandler = async (args, { ctx }) => {
     const key = readString(args, "key");
     const shift = readOptionalBoolean(args, "shift");
-    return playtestInput(ctx, { kind: "key", key, ...(shift ? { shift } : {}) });
+    const ctrl = readOptionalBoolean(args, "ctrl");
+    const alt = readOptionalBoolean(args, "alt");
+    const meta = readOptionalBoolean(args, "meta");
+    const holdMs = readOptionalInteger(args, "holdMs", { min: 0, max: 8000 });
+    return playtestInput(ctx, {
+        kind: "key",
+        key,
+        ...(shift ? { shift } : {}),
+        ...(ctrl ? { ctrl } : {}),
+        ...(alt ? { alt } : {}),
+        ...(meta ? { meta } : {}),
+        ...(holdMs ? { holdMs } : {}),
+    });
+
+};
+
+/**
+ * The saved and persistent variables as the running game holds them - what a story line, a screen or
+ * a page a `/page` row opened has written so far, which `variables_list` (declarations and defaults)
+ * cannot say.
+ */
+export const playtestVariables: AgentToolHandler = async (args, { ctx }) => {
+    const query = readOptionalString(args, "query")?.toLowerCase();
+    const result = await getInterface().devMode.agentControl(ctx.project.getConfig().projectPath, { kind: "state", variables: true });
+    if (!result.success) {
+        throw playtestRefusal(result);
+    }
+    if (result.data.kind !== "state") {
+        throw refuse("internal", "The game answered something other than its state.");
+    }
+    if (!result.data.variables) {
+        throw refuse("unavailable", "The game in the Dev Mode window cannot report its variables yet.", "Start a playtest (playtest_start) and try again.");
+    }
+    const variables = result.data.variables.filter(variable => !query || variable.name.toLowerCase().includes(query));
+    const lines = variables.map(variable => `- ${variable.scope} "${variable.name}" = ${JSON.stringify(variable.value) ?? "undefined"}`);
+    return answerJson(
+        { variables, ...gameStateData(result.data.state) },
+        variables.length === 0
+            ? (query ? `No saved or persistent variable matches "${query}".` : "The project declares no saved or persistent variables.")
+            : `Values in the running game now (scene variables are not listed):\n${lines.join("\n")}`,
+    );
 };
 
 export const playtestStop: AgentToolHandler = async (_args, { ctx }) => {
+
     const status = await devMode(ctx).stop();
     return answer(`Dev Mode is ${status}.`, { status });
 };

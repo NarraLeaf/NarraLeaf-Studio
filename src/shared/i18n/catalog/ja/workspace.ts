@@ -622,6 +622,7 @@ export const workspace = {
             playtest_hover: "プレイ中にポインターを重ねる",
             playtest_key: "プレイ中にキーを押す",
             playtest_stop: "プレイを終了",
+            playtest_variables: "ゲームの変数を読む",
             console_read: "コンソールを読む",
             build: "ゲームをビルド",
         },

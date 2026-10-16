@@ -90,6 +90,30 @@ const WINDOW_FULLSCREEN_EVENTS: readonly LifecycleEventDef[] = [
 ];
 
 /**
+ * A variable taking a new value, wherever it was written from - a story line, a screen, a page a
+ * `/page` row opened. Fired per variable and filtered by the head's own variable param, so a screen
+ * that shows story state redraws when the story moves it instead of polling. Not for a save loaded
+ * or a new game: every variable changes then, and a screen reads them again on its init.
+ */
+const VARIABLE_CHANGE_EVENTS: readonly LifecycleEventDef[] = [
+    {
+        id: "savedVariableChanged",
+        displayName: "Saved variable changed",
+        description: "Fires when one saved variable of the playthrough takes a new value.",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.savedVariableChanged"],
+    },
+    {
+        id: "persistentVariableChanged",
+        displayName: "Persistent variable changed",
+        description: "Fires when one persistent variable takes a new value.",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.persistentVariableChanged"],
+    },
+];
+
+
+/**
  * Fires when the user asks to close the application window (native close box, OS shortcut). The
  * main process holds the close open while the blueprint runs, then lets it proceed; a handler that
  * runs the `Keep Window Open` node (`blueprint.app.keepWindowOpen`) cancels the close instead, by
@@ -152,6 +176,7 @@ export const GLOBAL_LIFECYCLE_EVENTS: readonly LifecycleEventDef[] = [
     ...GAMEPAD_EVENTS,
     ...GAME_PREFERENCE_EVENTS,
     ...WINDOW_FULLSCREEN_EVENTS,
+    ...VARIABLE_CHANGE_EVENTS,
     ...WINDOW_CLOSE_EVENTS,
     ...INPUT_ACTION_EVENTS,
 ];
@@ -209,6 +234,7 @@ export const SURFACE_LIFECYCLE_EVENTS: readonly LifecycleEventDef[] = [
     ...GAMEPAD_EVENTS,
     ...GAME_PREFERENCE_EVENTS,
     ...WINDOW_FULLSCREEN_EVENTS,
+    ...VARIABLE_CHANGE_EVENTS,
     ...WINDOW_CLOSE_EVENTS,
     ...INPUT_ACTION_EVENTS,
 ];

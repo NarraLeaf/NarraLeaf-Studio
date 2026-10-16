@@ -966,13 +966,25 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
         {
             key: {
                 type: "string",
-                description: "Escape, Enter, Space, Tab, Backspace, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, PageUp, PageDown, Home, End, F1-F12, a single letter or digit, or rightClick, wheelUp, wheelDown.",
+                description: "Escape, Enter, Space, Tab, Backspace, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, PageUp, PageDown, Home, End, F1-F12, Control, Shift, Alt, Meta, a single letter or digit, or rightClick, wheelUp, wheelDown.",
             },
             shift: { type: "boolean", description: "Hold Shift (Shift+Tab moves the focus backwards)." },
+            ctrl: { type: "boolean", description: "Hold Ctrl with the key." },
+            alt: { type: "boolean", description: "Hold Alt with the key." },
+            meta: { type: "boolean", description: "Hold Cmd (Meta) with the key." },
+            holdMs: { type: "integer", description: "Keep the key down this long, up to 8000 ms - e.g. `Control` held to skip." },
+
         },
         ["key"],
     )),
+    ws(
+        "playtest_variables",
+        "Read the game's variables",
+        "The saved and persistent variables as the running Dev Mode game holds them now - what the story, a screen or a page has written so far (variables_list gives only declarations and defaults). Scene variables are not listed. playtest_click and playtest_key also name the variables an act changed.",
+        { query: { type: "string", description: "Only variables whose name contains this." } },
+    ),
     drivesGame(ws("playtest_stop", "Stop playing", "Closes the Dev Mode game.")),
+
     ws("console_read", "Read Studio's console", "Recent lines from Studio's console. Channels: `build` (builds, and everything Dev Mode reports - the running game's errors land here), `blueprint`, `lint`, `storage`, `agent` (your own calls), and `story` while a scene's editor is open.", { channel: { type: "string" }, level: { type: "string", enum: ["debug", "info", "warning", "error"] }, limit: { type: "integer", default: 100 } }),
     main(
         "build",

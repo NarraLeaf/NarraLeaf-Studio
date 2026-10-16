@@ -24,6 +24,8 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_FOCUS_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SAVED_VARIABLE_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_PERSISTENT_VARIABLE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
@@ -878,8 +880,39 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
         pins: [THEN_PIN, PIN_KEY, PIN_PREFERENCE_VALUE, PIN_PREFERENCE_PREVIOUS_VALUE],
     }),
     {
+        /**
+         * A saved variable of the playthrough changed - the story set it, or another screen did.
+         * Ambient like the window heads, so a widget showing story state can place one too.
+         */
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SAVED_VARIABLE_CHANGED,
+        displayName: "On Saved Var Changed",
+        category: "Events",
+        keywords: ["variable", "saved", "changed", "story", "flag", "watch", "set", "value"],
+        graphKinds: ["event"],
+        isPure: false,
+        role: "eventHead",
+        scope: { ownerKinds: ["globalMain", "surfaceMain", "widgetMain"] },
+        pins: [THEN_PIN, { id: "value", kind: "output", semantic: "data", valueType: "any", label: "Value" }],
+        inspectorParams: [{ key: "savedVariableId", label: "Saved variable", kind: "savedVariableRef" }],
+        execute: eventHeadExecute,
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_PERSISTENT_VARIABLE_CHANGED,
+        displayName: "On Persistent Changed",
+        category: "Events",
+        keywords: ["variable", "persistent", "global", "changed", "watch", "set", "value"],
+        graphKinds: ["event"],
+        isPure: false,
+        role: "eventHead",
+        scope: { ownerKinds: ["globalMain", "surfaceMain", "widgetMain"] },
+        pins: [THEN_PIN, { id: "value", kind: "output", semantic: "data", valueType: "any", label: "Value" }],
+        inspectorParams: [{ key: "persistentVariableId", label: "Persistent", kind: "persistentVariableRef" }],
+        execute: eventHeadExecute,
+    },
+    {
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED,
         displayName: "On Fullscreen Changed",
+
         category: "Events",
         keywords: ["fullscreen", "full", "screen", "window", "app", "changed", "display", "maximize"],
         graphKinds: ["event"],
