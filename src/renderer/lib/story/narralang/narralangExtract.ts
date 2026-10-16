@@ -94,6 +94,11 @@ export type NarralangIssueReason =
      * dialect has no sentence for one yet, and dropping it would play a QTE scene straight through.
      */
     | "inputAction"
+    /**
+     * A `/page` row. The dialect has no sentence for one, and dropping it would let the story run
+     * straight past the page it waits on, its variable never written.
+     */
+    | "pageAction"
     /** A condition computed by a blueprint (`/if` backed by a graph). */
     | "blueprintCondition"
     /** An inline value computed by a blueprint. */
@@ -1200,6 +1205,10 @@ function actionShape(ctx: NarralangExtractContext, block: StoryBlock, payload: S
         case "input":
             ctx.report(block.id, "inputAction");
             return { form: "silent" };
+        case "page":
+            ctx.report(block.id, "pageAction");
+            return { form: "silent" };
+
         default:
             ctx.report(block.id, "unknownPayload");
             return { form: "silent" };

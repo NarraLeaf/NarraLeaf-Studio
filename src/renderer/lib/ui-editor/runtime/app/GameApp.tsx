@@ -225,6 +225,8 @@ import {
 import { createDisplayAwakeController, DISPLAY_AWAKE_RECHECK_MS } from "./displayAwake";
 import { createSkipRunController, type SkipRunController } from "./skipRunController";
 import { createGameStoryInputHost, type GameStoryInputHost } from "@/lib/ui-editor/runtime/input/storyInputHost";
+import type { StoryPageHost } from "@/lib/ui-editor/runtime/game/storyPageRow";
+
 import { createSessionGate } from "./sessionGate";
 import {
     createStoryStartGate,
@@ -3476,6 +3478,40 @@ export function GameApp(props: GameAppProps): ReactNode {
     // A session going away takes its lock and its rumble with it.
     useEffect(() => () => storyInputHost.reset(), [nlrSession, storyInputHost]);
 
+    /**
+     * The layer stack, as a `/page` row asks for it.
+     *
+     * Made once and read through a ref, for the reason the ending and quit hooks are: a compile can be
+     * reused across renders, and the host it was handed has to keep reaching the current callbacks.
+     *
+     * The page goes up as `Show Layer` would put it up, with two choices made for it. Modal, because
+     * the story is waiting on the page and nothing under it - the quick menu included - should be
+     * answered while it does. And owned by no scope, because a story is not one: nothing closes the
+     * page but the page itself, Go back, a load clearing the stack, or the row being rolled back past
+     * (which the compiled row handles itself).
+     */
+    const storyPageLayersRef = useRef({ showLayer, waitLayer, hideLayer });
+    storyPageLayersRef.current = { showLayer, waitLayer, hideLayer };
+    const [storyPageHost] = useState<StoryPageHost>(() => ({
+        open: surfaceId => {
+            if (!currentBundleRef.current.ui.uidoc.surfaces.some(surface => surface.id === surfaceId)) {
+                return null;
+            }
+            return storyPageLayersRef.current.showLayer({
+                surfaceId,
+                props: {},
+                modal: true,
+                dismissible: true,
+                group: null,
+                ownerScopeId: "",
+            });
+        },
+        wait: handle => storyPageLayersRef.current.waitLayer(handle),
+        close: handle => {
+            void storyPageLayersRef.current.hideLayer(handle).catch(() => undefined);
+        },
+    }));
+
     const handleQuitToPage = useCallback((surfaceId: string) => {
         void quitGame(surfaceId).catch(error => {
             host.log("error", `[${host.id}] the quit page could not be opened: ${normalizeError(error)}`);
@@ -4661,6 +4697,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             onEndingReached: stableEndingReached,
             onQuitToPage: stableQuitToPage,
             storyInput: storyInputHost,
+            storyPages: storyPageHost,
             persistence: storyPersistence?.port,
             // A story row's `Log` node, and a story script's `ctx.devtools`, write to the stream a
             // Surface blueprint's host API already writes to - so one Output panel carries both, and

@@ -165,7 +165,9 @@ export function storyVerbCommandId(payload: StoryActionPayload): CommandId | nul
         case "camera": return payload.operation === "reset" ? "reset" : "transform";
         case "setVariable": return storyAssignmentShorthand(payload)?.commandId ?? "set";
         case "input": return INPUT[payload.operation] ?? null;
+        case "page": return "page";
         default: return null;
+
     }
 }
 

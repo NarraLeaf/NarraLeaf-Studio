@@ -45,7 +45,9 @@ const SECOND = scene("s2", "Rooftop", [block("b3", "The wind picks up.")]);
 const EVERY_REASON: Record<NarralangIssueReason, true> = {
     blueprintAction: true,
     inputAction: true,
+    pageAction: true,
     blueprintCondition: true,
+
     blueprintInterpolation: true,
     inlineEvent: true,
     invalidRow: true,

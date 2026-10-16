@@ -1791,6 +1791,24 @@ function actionSentence(
             };
         case "input":
             return inputSentence(payload, lookups, commandId);
+        case "page": {
+            // The page by name, as `/quit` prints its own - blank when no page answers to the id, so
+            // the line reads as the page-less row it now is and `story/page-missing` says why.
+            const pages = lookups.commandContext?.surfaces ?? [];
+            const name = pages.find(page => page.id === payload.surfaceId)?.name ?? "";
+            return {
+                commandId,
+                args: [
+                    positional("page", name, pages.length === 0 ? {} : {
+                        choices: pages.map(page => ({ value: page.id, label: page.name })),
+                        ...(payload.surfaceId ? { editValue: payload.surfaceId } : {}),
+                        apply: next => ({ ...payload, surfaceId: next }),
+                    }),
+                    arg("into", payload.resultTarget ? variableRefShortLabel(payload.resultTarget, lookups) : undefined),
+                ],
+            };
+        }
+
         case "blueprint":
             // `/blueprint` takes no arguments, so the line would say strictly less than the row's own
             // sentence (which names the bound blueprint). The prose stands.

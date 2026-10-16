@@ -155,6 +155,8 @@ export type LintRuleId =
     | "story/cut-point-unreachable"
     | "story/rows-after-ending"
     | "story/quit-page-missing"
+    | "story/page-missing"
+
     | "story/input-action-missing"
     | "story/input-locked-dialogue"
     | "story/ending-name-duplicate"

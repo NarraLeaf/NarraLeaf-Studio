@@ -187,6 +187,8 @@ export const story = {
         reason: {
             blueprintAction: "该行由蓝图执行，蓝图没有对应的脚本写法",
             inputAction: "该行涉及玩家输入或手柄振动，没有对应的脚本写法",
+            pageAction: "该行在剧情上方打开页面并等待其关闭，没有对应的脚本写法",
+
             blueprintCondition: "该条件由蓝图判定",
             blueprintInterpolation: "正文中有一处取值由蓝图计算",
             inlineEvent: "正文中带有逐字显示过程中触发的事件",
@@ -1319,6 +1321,7 @@ export const story = {
         // 画廊界面与通关测试读的都是这份记录。
         ending: { label: "结局", detail: "在此行结束剧情，并记录玩家到达的结局" },
         quit: { label: "退出到页面", detail: "在此行结束本次游玩并显示一个页面，不记录结局" },
+        page: { label: "打开页面", detail: "在剧情上方打开一个页面，等它关闭后再继续，可把页面关闭时返回的结果写入变量" },
         rumble: { label: "振动", detail: "使玩家的手柄振动，可选择预设或分别设置两侧马达" },
         input: { label: "输入锁定", detail: "锁定或解除玩家输入；锁定期间点击推进、推进键、自动播放与快进均无效，选项仍可选择；须在下一句对白前解除" },
         waitInput: { label: "等待输入", detail: "等待玩家执行一个输入动作，可设置时限" },
@@ -1373,6 +1376,7 @@ export const story = {
         cut: "截断点",
         ending: "结局",
         quit: "退出到页面",
+        page: "页面",
         rumble: "振动",
         input: "输入",
         jump: "跳转",
@@ -1445,6 +1449,9 @@ export const story = {
         cutUnknown: "截断点",
         ending: "结局 {name}",
         quit: "退出到 {page}",
+        page: "打开 {page}",
+        pageUnset: "打开页面",
+
         rumble: "振动：{shape}",
         rumbleStop: "停止振动",
         inputLock: "锁定玩家输入",

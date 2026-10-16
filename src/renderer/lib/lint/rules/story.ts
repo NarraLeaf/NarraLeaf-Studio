@@ -126,6 +126,23 @@ export function listQuitRows(ctx: LintContext): QuitRow[] {
     return rows;
 }
 
+/**
+ * Every live `/page` row in the project, with the page it opens - the same reading `listQuitRows`
+ * gives, for `story/page-missing` and for `ui/page-unreachable` (a page a story row opens is a page a
+ * player reaches).
+ */
+export function listPageRows(ctx: LintContext): QuitRow[] {
+    const rows: QuitRow[] = [];
+    for (const cursor of eachScene(ctx)) {
+        for (const block of liveBlocks(cursor.scene)) {
+            if (block.kind === "action" && block.payload.action === "page") {
+                rows.push({ ...cursor, block, surfaceId: block.payload.surfaceId.trim() });
+            }
+        }
+    }
+    return rows;
+}
+
 /** Direct children that are still live. The parent is assumed live, so no ancestor walk is needed. */
 function liveChildren(scene: StoryScene, block: StoryBlock): StoryBlock[] {
     const children: StoryBlock[] = [];
@@ -1111,7 +1128,43 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
     },
     {
         /**
+         * A `/page` row that names no page, or a page the project no longer has.
+         *
+         * Nothing opens and the story does not wait, so the variable the page was to answer into is
+         * never written and the `/if` after it always takes the same branch - the round trip the row
+         * exists for is silently gone. An error for the reason a quit row's missing page is one: the
+         * scene does not play as written, and nothing on the player's screen says why.
+         */
+        id: "story/page-missing",
+        category: "story",
+        defaultSeverity: "error",
+        slug: "storyPageMissing",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            // Quiet when the interface document could not be read, as `quit-page-missing` is.
+            const surfaces = ctx.uiDocument
+                ? new Set(ctx.uiDocument.surfaces.map(surface => surface.id))
+                : null;
+            for (const { entry, scene, block, surfaceId } of listPageRows(ctx)) {
+                if (surfaceId && (!surfaces || surfaces.has(surfaceId))) {
+                    continue;
+                }
+                findings.push({
+                    ruleId: "story/page-missing",
+                    messageKey: surfaceId
+                        ? "lint.rule.storyPageMissing.deleted"
+                        : "lint.rule.storyPageMissing.message",
+                    location: storyLocation(entry, scene, block.id),
+                    target: blockTarget(entry, scene, block.id),
+                });
+            }
+            return findings;
+        },
+    },
+    {
+        /**
          * A `/waitinput`, `/hold` or `/mash` row waiting for an input action the project no longer
+
          * declares.
          *
          * No input can ever perform it, so the row waits until its time limit and fails, or - with no

@@ -187,7 +187,22 @@ describe("compiling a .ui file", () => {
         expect(second.surfaces[0].dropped).toEqual([]);
     });
 
+    it("refuses an element indented under a line that holds none, rather than dropping it", () => {
+        // `Label` sits one level too deep, under the `width =` line instead of beside it. It used to
+        // vanish with its binding while the apply reported no problems.
+        const text = `${MINIMAL}        Row: nl.container @0,0 100x40\n            layout.width = 100\n                Label: nl.text @0,0 100x40\n`;
+        expect(() => parseUiFile(text)).toThrow(/line 5: this line is indented under line 4/);
+        expect(() => parseUiFile('struct demo.row\n    field caption: string\n        field shot: image\n')).toThrow(/line 3/);
+        expect(() => parseUiFile(`surface "S" id=s kind=appSurface size=800x600\n    param title "Title" = ""\n        Root: nl.root @0,0 800x600\n`)).toThrow(/line 3/);
+    });
+
+    it("still reads an element indented under the element it belongs to", () => {
+        const result = compile(`${MINIMAL}        Row: nl.container id=row @0,0 100x40\n            layout.width = 100\n            Label: nl.text id=label @0,0 100x40\n`);
+        expect(Object.keys(result.surfaces[0].elements)).toEqual(expect.arrayContaining(["row", "label"]));
+    });
+
     it("reads a struct block", () => {
+
         const result = compile('struct demo.row\n    field caption: string label="Caption"\n    field shot: image\n');
         expect(result.structs["demo.row"]).toEqual({
             id: "demo.row",

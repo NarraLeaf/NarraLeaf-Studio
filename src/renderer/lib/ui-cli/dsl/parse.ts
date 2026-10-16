@@ -223,10 +223,12 @@ function parseSurface(line: SourceLine, tokens: string[], body: SourceLine[]): U
                 ...(flags.struct !== undefined ? { struct: flags.struct } : {}),
                 ...(eq >= 0 ? { defaultValue: readJs(itemTokens[eq + 1] ?? '""', item.line) } : {}),
             });
+            leaf(item);
             continue;
         }
         if (itemTokens[0] === "setting" && itemTokens[2] === "=") {
             statement.settings.push(readAssignment(item.line, itemTokens.slice(1)));
+            leaf(item);
             continue;
         }
         if (itemTokens[0] === "answers") {
@@ -236,6 +238,7 @@ function parseSurface(line: SourceLine, tokens: string[], body: SourceLine[]): U
                 actionId: readString(itemTokens[1] ?? "", item.line),
                 consume: answerFlags.consume === undefined ? undefined : answerFlags.consume === "true",
             });
+            leaf(item);
             continue;
         }
         if (itemTokens[0] === "slot") {
@@ -246,6 +249,7 @@ function parseSurface(line: SourceLine, tokens: string[], body: SourceLine[]): U
                 name: readString(itemTokens[2] ?? itemTokens[1] ?? "", item.line),
                 rootElementId: slotFlags.root,
             });
+            leaf(item);
             continue;
         }
         if (statement.root) {
@@ -299,6 +303,7 @@ function parseComponent(line: SourceLine, tokens: string[], body: SourceLine[]):
                 type: flags.type === "text" || flags.type === "audioTrack" ? flags.type : "string",
                 defaultValue,
             });
+            leaf(item);
             continue;
         }
         if (statement.root) {
@@ -316,6 +321,7 @@ function parseStruct(line: SourceLine, tokens: string[], body: SourceLine[]): Ui
     }
     const statement: UiStructStatement = { kind: "struct", line: line.number, id, fields: [] };
     for (const item of blockItems(body)) {
+        leaf(item);
         const itemTokens = tokensOf(item.line);
         if (itemTokens[0] !== "field") {
             throw new UiParseError("a struct holds `field <key>: <type>` lines.", item.line.number);
@@ -345,6 +351,7 @@ function parseAction(line: SourceLine, tokens: string[], body: SourceLine[]): Ui
     const bindings: ({ kind: "pointer"; gesture: string } | { kind: "key"; key: string } | { kind: "gamepad"; button: string })[] = [];
     let navigationSlot: string | undefined;
     for (const item of blockItems(body)) {
+        leaf(item);
         const itemTokens = tokensOf(item.line);
         if (itemTokens[0] === "pointer") {
             bindings.push({ kind: "pointer", gesture: readString(itemTokens[1] ?? "", item.line) });
@@ -431,10 +438,12 @@ function parseElement(line: SourceLine, tokens: string[], body: SourceLine[]): U
         const itemTokens = tokensOf(item.line);
         if (itemTokens[1] === "=") {
             node.assignments.push(readAssignment(item.line, itemTokens));
+            leaf(item);
             continue;
         }
         if (itemTokens[0] === "bind") {
             node.bindings.push(readBinding(item.line, itemTokens));
+            leaf(item);
             continue;
         }
         // Not an element that happens to be named "without": that one's header has a colon.
@@ -448,6 +457,7 @@ function parseElement(line: SourceLine, tokens: string[], body: SourceLine[]): U
                 line: item.line.number,
                 keys: [...(node.withoutDefaults?.keys ?? []), ...keys],
             };
+            leaf(item);
             continue;
         }
         if (itemTokens[0] === "component") {
@@ -474,6 +484,7 @@ function parseElement(line: SourceLine, tokens: string[], body: SourceLine[]): U
                 params,
                 paramKeys,
             };
+            leaf(item);
             continue;
         }
         node.children.push(parseElement(item.line, itemTokens, item.body));
@@ -557,6 +568,25 @@ function blockItems(body: SourceLine[]): { line: SourceLine; body: SourceLine[] 
         index = next;
     }
     return out;
+}
+
+/**
+ * Refuse lines indented under a line that holds none - an assignment, a `bind`, a `param`, a field.
+ *
+ * Indentation is the tree, so a line indented one level too deep becomes the body of the line above
+ * it, and only an element header reads a body: under anything else the lines were dropped without a
+ * word. An element written one level too deep therefore vanished from the document while the apply
+ * reported no problems, and the author found an empty button on screen. The fix is always to outdent,
+ * so the error points at the first line that went too deep.
+ */
+function leaf(item: { line: SourceLine; body: SourceLine[] }): void {
+    if (item.body.length > 0) {
+        throw new UiParseError(
+            `this line is indented under line ${item.line.number} ("${item.line.text}"), which holds no lines of its own; `
+                + "outdent it to the level of the line it belongs beside.",
+            item.body[0].number,
+        );
+    }
 }
 
 function readString(token: string, line: SourceLine): string {

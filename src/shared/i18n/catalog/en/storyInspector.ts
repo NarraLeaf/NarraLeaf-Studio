@@ -653,6 +653,9 @@ export const storyInspector = {
         quitPage: "Page shown afterwards",
         quitPageUnset: "Not set",
         quitHint: "This playthrough ends at this line and the page takes the screen. No ending is recorded.",
+        pagePage: "Page",
+        pageHint: "The page opens over the story, and the story waits until the page closes itself with Close This Layer. What it closes with is written into the result variable, converted to the variable's type; a page closed with nothing leaves the variable as it was.",
+
         branch: "Branch",
         elseHint: "Else branch runs when previous branches do not match.",
     },

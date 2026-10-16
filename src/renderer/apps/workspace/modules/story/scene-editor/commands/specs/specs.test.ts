@@ -1399,7 +1399,17 @@ describe("input commands", () => {
         expect(commandLineIssues("/rumble custom left=2")).not.toEqual([]);
     });
 
+    it("/page names its page by id and writes its result into any variable", () => {
+        expect(build("/page Map into=gold")).toMatchObject({
+            kind: "action",
+            payload: { action: "page", surfaceId: "u1", resultTarget: { scope: "scene", variableId: "var_gold" } },
+        });
+        expect((build("/page Title") as { payload: object }).payload).toEqual({ action: "page", surfaceId: "u2" });
+        expect(build("/popup Map")).toMatchObject({ payload: { action: "page", surfaceId: "u1" } });
+    });
+
     it("/input lock and unlock", () => {
+
         expect(build("/input lock")).toMatchObject({ payload: { action: "input", operation: "lock" } });
         expect(build("/input unlock")).toMatchObject({ payload: { action: "input", operation: "unlock" } });
     });
