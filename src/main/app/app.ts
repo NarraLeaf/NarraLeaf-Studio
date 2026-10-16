@@ -55,6 +55,7 @@ import { DeferredWindowShow, createDeferredWindowShow } from "./application/defe
 import { handOverWorkspace } from "./application/workspaceHandOver";
 import { decideReopenAction } from "./application/reopenAction";
 import { shouldCheckpointOnClose } from "./application/closeCheckpoint";
+import { listLocalAppIds, type LocalAppId } from "./application/managers/localAppIds";
 
 export interface AppConfig extends BaseAppConfig {
 }
@@ -2015,6 +2016,21 @@ export class App extends BaseApp {
      * Shared by the launcher's launch IPC ({@link WorkspaceLaunchHandler}) and the native "Open
      * Recent" menu, so both grant identical access before a workspace touches the files.
      */
+    /**
+     * The app IDs of the projects this Studio knows on this machine - the recent list, every project
+     * the trust ledger has met, and whatever projects sit directly in `folders` - for a new project's
+     * ID to be kept apart from. See `listLocalAppIds`.
+     */
+    public listLocalAppIds(folders: readonly string[]): Promise<LocalAppId[]> {
+        return listLocalAppIds({
+            projectPaths: [
+                ...this.globalState.recentlyOpened.list().map(project => project.path),
+                ...this.projectTrustManager.listKnownPaths(),
+            ],
+            folders,
+        });
+    }
+
     public authorizeRecentProjectAccess(opener: AppWindow, projectPath: string): void {
         const recentProject = this.globalState.recentlyOpened.list().find(project =>
             normalizeProjectPath(project.path) === normalizeProjectPath(projectPath),

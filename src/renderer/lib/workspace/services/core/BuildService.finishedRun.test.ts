@@ -53,6 +53,9 @@ const PATCH_REQUEST = {
 
 const CLEAN_STORY = { id: "s1", name: "Main", scenes: {} } as unknown as StoryDocument;
 
+/** The cast's flush, which runs the work derived from the cast (the dialog avatar bake) first. */
+const characterFlush = vi.fn(async () => undefined);
+
 function mount() {
     const linting: LintingConfiguration = {
         runOnBuild: false,
@@ -119,6 +122,7 @@ function mount() {
                             listUnplayable: () => [],
                         };
                     case Services.Character:
+                        return { ...clean, flushPendingChanges: characterFlush };
                     case Services.UIDocument:
                     case Services.UIGraph:
                         return clean;
@@ -146,6 +150,17 @@ beforeEach(() => {
 
 afterEach(() => {
     vi.useRealTimers();
+});
+
+describe("BuildService before a build", () => {
+    it("flushes the cast with nothing dirty, so a stale dialog avatar is baked before it ships", async () => {
+        characterFlush.mockClear();
+        const { service } = mount();
+
+        await service.start(REQUEST);
+
+        expect(characterFlush).toHaveBeenCalledTimes(1);
+    });
 });
 
 describe("BuildService.getLastFinishedRun", () => {

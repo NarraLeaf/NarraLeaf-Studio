@@ -324,6 +324,11 @@ export type StoryCommandVideoClips =
  */
 export type StoryPuppetVocabulary = {
     motions: readonly string[];
+    /**
+     * What to call a motion in a list, keyed by its name, where Studio could read more than the name:
+     * a Live2D motion's file (`PuppetDescriptionService`). The name is still what a row stores.
+     */
+    motionLabels?: Readonly<Record<string, string>>;
     expressions: readonly string[];
     skins: readonly string[];
     params: readonly StoryPuppetParamSpec[];

@@ -180,7 +180,7 @@ describe("the shipped starter template, read where the Gallery plugin is not loa
             ? `${gap.sink.blueprintName} › ${gap.sink.nodeTitle} › ${gap.sink.pinLabel}`
             : `${gap.sink.surfaceName} › ${gap.sink.elementName} › ${gap.sink.propPath}`))).toEqual([
             "CG grid › Set Image Asset › Asset",
-            "Music rows › Play Sound › Asset Id",
+            "Music rows › Play Page Music › Asset Id",
             "Voice rows › Play Sound › Asset Id",
             "Viewer › Set Image Asset › Asset",
             "Extra › Art › imageFill.assetId",

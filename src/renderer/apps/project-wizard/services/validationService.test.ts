@@ -175,3 +175,36 @@ describe("the identifier suggested from a project name", () => {
         expect(ValidationService.generateAppId("星の詩 Prologue", "ja")).toBe("");
     });
 });
+
+/**
+ * The ID the field offers before the author types one: permanent once the project exists, so it is
+ * made unlikely to be another game's - another author's by the author line in front, another
+ * project's on this machine by a number on the end.
+ */
+describe("the app ID the wizard suggests", () => {
+    const none = () => false;
+
+    it("is the name's slug when there is no author line and nothing uses it", () => {
+        expect(ValidationService.suggestAppId({ name: "My Game", author: "", locale: "en", isTaken: none })).toBe("my-game");
+    });
+
+    it("leads with the author line, read by the name's rule", () => {
+        expect(ValidationService.suggestAppId({ name: "My Game", author: "Leaf Studio", locale: "en", isTaken: none }))
+            .toBe("leaf-studio-my-game");
+        expect(ValidationService.suggestAppId({ name: "我的游戏", author: "叶子", locale: "zh", isTaken: none }))
+            .toBe("ye-zi-wo-de-you-xi");
+        // A Han author line is not guessed at outside Chinese, and the name then stands alone.
+        expect(ValidationService.suggestAppId({ name: "My Game", author: "葉っぱ工房", locale: "ja", isTaken: none }))
+            .toBe("my-game");
+    });
+
+    it("steps around an ID another project on this machine uses", () => {
+        const taken = new Set(["wo-de-you-xi", "wo-de-you-xi-2"]);
+        expect(ValidationService.suggestAppId({ name: "我的游戏", author: "", locale: "zh", isTaken: id => taken.has(id) }))
+            .toBe("wo-de-you-xi-3");
+    });
+
+    it("suggests nothing for a name it cannot spell, author line or not", () => {
+        expect(ValidationService.suggestAppId({ name: "放課後", author: "Leaf", locale: "ja", isTaken: () => true })).toBe("");
+    });
+});

@@ -1431,6 +1431,8 @@ export class AgentManager implements AgentMainToolHost {
             written = await writeAgentProject(input, {
                 templatesDir: this.app.resolveResource(PROJECT_TEMPLATES_DIR),
                 installedPlugins: () => this.app.pluginManager.listPlugins(),
+                localAppIds: () => this.app.listLocalAppIds([this.defaultProjectsDir(), input.parentDir]),
+                defaultAuthor: String(this.app.globalState.get("project.defaultAuthor") ?? ""),
             });
         } catch (error) {
             return agentRefusal("internal", `The project could not be written: ${describe(error)}`);

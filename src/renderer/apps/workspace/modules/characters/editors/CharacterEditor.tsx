@@ -52,6 +52,8 @@ import { PuppetEditor } from "./components/PuppetEditor";
 import { InlineName, nextAutoName } from "./components/InlineName";
 import { PoseFilmstrip } from "./components/PoseFilmstrip";
 import { PortraitCropBox } from "./components/PortraitCropBox";
+import { inheritedPosePortrait } from "@/lib/workspace/services/character/poseFraming";
+import { usePosePictureSizes } from "@/lib/workspace/hooks/usePosePictureSizes";
 import { AvatarSection } from "./components/AvatarSection";
 import { ICON_BTN, ICON_BTN_ON } from "./components/iconButton";
 import { characterKindLabel } from "../characterKindLabel";
@@ -381,6 +383,8 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
     // Baking is the panel's job on open; this instance exists only for the manual re-bake and for
     // the receipt, which is why it is created disabled.
     const { rebake, running: rebaking, summary: bakeSummary } = useCharacterAvatarBake(false);
+    // What a pose's inherited avatar framing is decided by; see `inheritedPosePortrait`.
+    const posePictureSizes = usePosePictureSizes(kind === "preset" ? appearance?.getPoses() : null);
 
     const onMeasured = useCallback((layerId: string, size: LayerSize) => {
         setSizes(current => (
@@ -588,7 +592,19 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
     const cropScoped = scopeIntent && scopeIntent.key === avatarKey
         ? scopeIntent.on
         : scopedCrop !== undefined;
-    const effectiveCrop = scopedCrop ?? profilePortrait;
+    // A pose framed by neither itself nor the character is shown as the bake cuts it: with the
+    // framing of a same-size pose when there is one (`inheritedPosePortrait`), which is not this
+    // pose's own and so is nothing to reset.
+    const inheritedCrop = kind === "preset" && previewPoseId
+        ? inheritedPosePortrait({
+            poses: appearance.getPoses(),
+            defaultPoseId: appearance.getDefaultPoseId(),
+            poseId: previewPoseId,
+            sizeOf: assetId => posePictureSizes[assetId],
+        })
+        : undefined;
+    const effectiveCrop = scopedCrop ?? profilePortrait ?? inheritedCrop;
+    const cropResettable = cropScoped ? scopedCrop !== undefined : profilePortrait !== undefined;
 
     /** Write (or clear) the differential's own framing, whichever store its kind keeps it in. */
     const writeScopedCrop = (crop: PortraitCrop | undefined) => {
@@ -828,6 +844,7 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
                             avatarKey={avatarKey}
                             selection={avatarSelection}
                             crop={effectiveCrop}
+                            cropResettable={cropResettable}
                             cropScoped={cropScoped}
                             onToggleScope={avatarKey ? toggleCropScope : null}
                             onResetCrop={resetCrop}

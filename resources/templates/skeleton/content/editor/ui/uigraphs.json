@@ -22074,9 +22074,9 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "Runs when a row is pressed. A locked row does nothing; an unlocked one plays the row's track on the Music track, so the Music slider on the Config page sets its volume. Voice rows does the same on the Voice track. The two are not one component: the track is picked on Play Sound and has no pin, so a param cannot set it.",
+                      "text": "Runs when a row is pressed. A locked row does nothing; an unlocked one makes the row's track this page's music with Play Page Music, so it takes over from the track pressed before instead of playing over it, and leaving the page brings back the music of the page underneath. It plays on the Music track, so the Music slider on the Config page sets its volume. Voice rows plays its row with Play Sound instead: a voice is a sound, not the page's music.",
                       "width": 1100,
-                      "height": 130
+                      "height": 160
                     },
                     "meta": {
                       "editorLayout": {
@@ -22135,10 +22135,8 @@
                   },
                   "play": {
                     "id": "play",
-                    "type": "blueprint.sound.play",
-                    "params": {
-                      "audioTrackId": "bgm"
-                    },
+                    "type": "blueprint.sound.playPageMusic",
+                    "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": -4800,
@@ -22712,7 +22710,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "Runs when a row is pressed. A locked row does nothing; an unlocked one plays the row's clip on the Voice track, so the Voice slider on the Config page sets its volume. Music rows does the same on the Music track. The two are not one component: the track is picked on Play Sound and has no pin, so a param cannot set it.",
+                      "text": "Runs when a row is pressed. A locked row does nothing; an unlocked one plays the row's clip on the Voice track, so the Voice slider on the Config page sets its volume. Music rows is not the same component: it makes its row the page's music with Play Page Music, where this plays a sound with Play Sound.",
                       "width": 1100,
                       "height": 130
                     },

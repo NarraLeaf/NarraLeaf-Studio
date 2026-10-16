@@ -1,11 +1,13 @@
 import { useCallback } from "react";
 import type { StoryBlock, StoryCharacterTagSelection } from "@shared/types/story";
-import { representativeAssetId } from "@shared/utils/characterVariant";
+import { representativeAssetId, resolvePoseEntry } from "@shared/utils/characterVariant";
 import { parseCharacterAvatarAssetId, resolveOffStageCharacterAvatarAssetId } from "@shared/utils/characterAvatar";
 import { mapCharacterStoreEntriesToSummaries } from "@shared/utils/characterSummaries";
 import { HeadThumbnail } from "@/apps/workspace/modules/characters/editors/components/HeadThumbnail";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useCompositedSprite } from "@/lib/workspace/hooks/useCompositedSprite";
+import { usePosePictureSizes } from "@/lib/workspace/hooks/usePosePictureSizes";
+import { inheritedPosePortrait, type ImageSize } from "@/lib/workspace/services/character/poseFraming";
 import type { NormalizedCrop } from "@/lib/utils/headCrop";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
@@ -82,19 +84,34 @@ const FACE_COMPOSITE_PX = 96;
  * A layered character has no single sprite: this returns its bottom-most drawing layer, which the
  * face uses only until the composite of the whole stack arrives (and as the fallback when the
  * compositor cannot draw). See {@link useCharacterFace}.
+ *
+ * Exported for `storyCharacterFace.test`.
  */
-function resolveCharacterFaceImage(
+export function resolveCharacterFaceImage(
     character: Character,
     pose: string | undefined,
     tags: StoryCharacterTagSelection | undefined,
     lookupAsset: (assetId: string) => Asset<AssetType.Image> | null,
+    poseSizes: Readonly<Record<string, ImageSize>>,
 ): { asset: Asset<AssetType.Image> | null; frame?: NormalizedCrop } {
     const appearance = character.profile.appearance;
     const summary = appearance.getKind() === "preset"
         ? { kind: "preset" as const, poses: appearance.getPoses().map(p => ({ id: p.id, name: p.name, assetId: p.assetId })), defaultPoseId: appearance.getDefaultPoseId() }
         : { kind: "layered" as const, canvas: appearance.getCanvas(), axes: appearance.getAxes(), layers: appearance.getLayers() };
     const assetId = representativeAssetId(summary, { poseId: pose, tags });
-    const frame = (pose ? appearance.getPose(pose)?.portrait : undefined) ?? character.profile.getPortrait();
+    // The pose the picture is, which for a row naming none is the default one - framed by its own
+    // framing, as the game's avatar for it is, rather than by the automatic crop.
+    const posed = summary.kind === "preset" ? resolvePoseEntry(summary, pose)?.id : undefined;
+    // Framed as the bake frames the avatar: the pose, the character, then a same-size pose's framing.
+    const inherited = posed
+        ? inheritedPosePortrait({
+            poses: appearance.getPoses(),
+            defaultPoseId: appearance.getDefaultPoseId(),
+            poseId: posed,
+            sizeOf: id => poseSizes[id],
+        })
+        : undefined;
+    const frame = (posed ? appearance.getPose(posed)?.portrait : undefined) ?? character.profile.getPortrait() ?? inherited;
     return { asset: assetId ? lookupAsset(assetId) : null, frame };
 }
 
@@ -171,8 +188,13 @@ export function useCharacterAvatar(
     // for a sprite nobody will look at is work: skip the resolve and the composite both.
     const thumbnailWins = spec.preferThumbnail === true && thumbnailId !== null;
     const pictureLook = character !== null && character !== undefined && spec.resolveVariant && !thumbnailWins;
+    // Read only where a framing could be inherited: a preset character with a framed pose.
+    const presetPoses = pictureLook && character?.profile.appearance.getKind() === "preset"
+        ? character.profile.appearance.getPoses()
+        : null;
+    const poseSizes = usePosePictureSizes(presetPoses?.some(entry => entry.portrait) ? presetPoses : null);
     const resolved = character && pictureLook
-        ? resolveCharacterFaceImage(character, spec.pose, spec.tags, lookupAsset)
+        ? resolveCharacterFaceImage(character, spec.pose, spec.tags, lookupAsset, poseSizes)
         : { asset: null as Asset<AssetType.Image> | null, frame: undefined };
     const offStageId = spec.offStage && character && !resolved.asset ? offStageAvatarAssetId(character) : null;
     const offStageAsset = offStageId ? lookupAsset(offStageId) : null;

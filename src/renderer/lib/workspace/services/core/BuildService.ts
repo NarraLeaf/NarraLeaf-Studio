@@ -1691,9 +1691,9 @@ export class BuildService extends Service<BuildService> {
         if (story.isDirty()) {
             await story.flushPendingChanges();
         }
-        if (character.isDirty()) {
-            await character.flushPendingChanges();
-        }
+        // Whether or not the cast is dirty: the flush runs the work derived from it first (the dialog
+        // avatar bake), which can owe a build a picture without any character having been edited.
+        await character.flushPendingChanges();
     }
 
     private projectPath(): string {

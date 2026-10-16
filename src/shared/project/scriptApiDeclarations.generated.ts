@@ -1356,6 +1356,14 @@ declare module "@narraleaf/script" {
     		seek: (handle: BlueprintSoundHandle, timeMs: number) => Promise<void>;
     		isPlaying: (handle: BlueprintSoundHandle) => boolean;
     		/**
+    		 * Set the music of the page the calling graph runs on, for as long as that page is open:
+    		 * Play Page Music and Stop Page Music. What the page inspector's Music setting says, changed
+    		 * at run time - it hands over and comes back with the page exactly as that does
+    		 * (\`runtime/app/pageMusic.ts\`). While a game holds the screen the story decides the music,
+    		 * and the request changes nothing; the node says so in the debug log.
+    		 */
+    		setPageMusic: (request: BlueprintPageMusicRequest) => Promise<void>;
+    		/**
     		 * The volume a **host-owned** media element (the \`nl.video\` widget's \`<video>\`) must be set
     		 * to so it obeys the same mixer everything else does.
     		 *
@@ -1480,6 +1488,22 @@ declare module "@narraleaf/script" {
     	devtools: {
     		log: (level: string, message: string) => void;
     	};
+    };
+    type BlueprintPageMusicRequest = {
+    	kind: "play";
+    	assetId: string;
+    	/** Absent or null: the Music track. */
+    	audioTrackId?: string | null;
+    	/** 0..1; absent is 1. */
+    	volume?: number;
+    	/** Absent: the track's own loop default. */
+    	loop?: boolean;
+    	/** How it comes in, and how it leaves when it hands over. Milliseconds. */
+    	fadeMs?: number;
+    } | {
+    	kind: "stop";
+    	/** How the music playing leaves. Absent: with its own fade. Milliseconds. */
+    	fadeMs?: number;
     };
     type BlueprintSoundPlayInput = {
     	assetId: string;

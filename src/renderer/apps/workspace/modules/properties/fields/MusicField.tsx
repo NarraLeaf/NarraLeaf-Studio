@@ -51,11 +51,20 @@ export type MusicEdit = "asset" | "clear" | "volume" | "track" | "loop" | "fade"
 export function MusicField({
     music,
     onChange,
+    emptyLabel,
+    emptyActions,
+    onClearEmpty,
     chooseLabel,
     readOnly,
 }: {
     music: MusicSetting | null;
     onChange: (next: MusicSetting | null, edit: MusicEdit) => void;
+    /** What the picker row reads with no clip in it. Absent: "No music", which is what a scene without one has. */
+    emptyLabel?: string;
+    /** Choices beside Choose while no clip is set; see `AssetPickerRow`. */
+    emptyActions?: readonly { label: string; onClick: () => void }[];
+    /** The empty row is a choice made, cleared with this; see `AssetPickerRow`. */
+    onClearEmpty?: () => void;
     /** The picker row's empty-state action and the picker's title. */
     chooseLabel: string;
     readOnly?: boolean;
@@ -64,7 +73,7 @@ export function MusicField({
     return (
         <div className="flex flex-col gap-1.5">
             <AssetPickerRow
-                emptyLabel={t("properties.music.none")}
+                emptyLabel={emptyLabel ?? t("properties.music.none")}
                 chooseLabel={chooseLabel}
                 missingLabel={t("properties.music.missing")}
                 icon={Music}
@@ -72,6 +81,8 @@ export function MusicField({
                 assetId={music?.assetId ?? null}
                 // A new clip keeps the options set for the old one, as an element sound's does.
                 onChange={next => (next ? onChange({ ...(music ?? {}), assetId: next }, "asset") : onChange(null, "clear"))}
+                {...(emptyActions ? { emptyActions } : {})}
+                {...(onClearEmpty ? { onClearEmpty } : {})}
                 readOnly={readOnly}
             />
             {music ? <MusicOptions music={music} onChange={onChange} readOnly={readOnly} /> : null}

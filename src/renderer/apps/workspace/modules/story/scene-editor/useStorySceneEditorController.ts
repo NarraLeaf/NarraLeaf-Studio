@@ -832,6 +832,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             if (description) {
                 vocabularies[characterId] = {
                     motions: description.motions,
+                    ...(description.motionLabels ? { motionLabels: description.motionLabels } : {}),
                     expressions: description.expressions,
                     skins: description.skins,
                     params: description.params,

@@ -114,9 +114,10 @@ and the `content.<locale>/` overlays only).
 - Keep the copies, identical in shape, when the difference cannot go through a param, and say why
   in the note:
   - which node runs (the three toggle pairs each change their setting with a different node; the
-    master volume is set with Set Global Volume, not a track);
+    master volume is set with Set Global Volume, not a track; the Extra page's Music rows make the
+    row the page's music with Play Page Music, and its Voice rows play a sound with Play Sound);
   - a setting that is a field on the node with no pin, because a param reaches only a pin (the
-    Gallery nodes' Type, which is why the four Extra lists stay copies; Play Sound's track);
+    Gallery nodes' Type, which is why the four Extra lists stay copies);
   - a label or any other prop: a component instance draws its definition's props, so instances
     cannot differ in text on the canvas. That is why the volume component holds the slider and its
     number but not the row's label.

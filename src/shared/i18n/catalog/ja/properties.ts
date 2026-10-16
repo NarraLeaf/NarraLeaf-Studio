@@ -112,6 +112,8 @@ export const properties = {
     music: {
         title: "音楽",
         none: "音楽なし",
+        keep: "今の音楽のまま",
+        silent: "音楽なし",
         choosePage: "ページの音楽を選ぶ",
         chooseScene: "シーンの音楽を選ぶ",
         missing: "音楽が見つからない",

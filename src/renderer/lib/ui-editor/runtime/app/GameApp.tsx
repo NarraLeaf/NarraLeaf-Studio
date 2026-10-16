@@ -95,6 +95,7 @@ import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/Widg
 import {
     createBlueprintDevtoolsApi,
     type BlueprintLayerShowRequest,
+    type BlueprintPageMusicRequest,
     type BlueprintStoryEnding,
     type DevModeWidgetRuntimePatch,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
@@ -184,9 +185,24 @@ import {
     restoreLiveGameToHistory,
     STUDIO_SKIP_KEY_BINDING,
 } from "./gameUiSlots";
-import type { ProjectAudioTrack } from "@shared/types/audioTrack";
+import { BUILTIN_AUDIO_TRACKS, resolveAudioTrack, type ProjectAudioTrack } from "@shared/types/audioTrack";
 import { createSoundTransport } from "./soundTransport";
-import { createPageMusicController, pageMusicCueFor } from "./pageMusic";
+import {
+    createPageMusicController,
+    pageMusicCueOf,
+    pageMusicDecisionFor,
+    pageMusicFor,
+    type PageMusicController,
+    type PageMusicDecision,
+    type PageMusicScreenEntry,
+} from "./pageMusic";
+import {
+    createLiveGamePageMusicMix,
+    createPageMusicPlayer,
+    createWebAudioPageMusicBackend,
+    type LiveGamePageMusicMix,
+    type PageMusicMixSource,
+} from "./pageMusicPlayer";
 import { attachAudioBusPersistence, audioTracksToBusDeclarations } from "./audioBusRuntime";
 import {
     attachPlayerPreferences,
@@ -895,6 +911,21 @@ export function GameApp(props: GameAppProps): ReactNode {
     const layerStack = useMemo(() => providedLayerStack ?? new LayerStackController(), [providedLayerStack]);
     const layerState = useLayerStack(layerStack);
     const layers = layerState.layers;
+    /**
+     * What opened pages have been told about the music while they are open, by instance key (see
+     * `pageMusic.ts`): set by a graph on the page with Play / Stop Page Music, and carried over to a
+     * page that keeps by the Replace Page that opened it. Read when the screen's music is worked out;
+     * the revision is what makes that happen again after a write.
+     */
+    /**
+     * True while a game start is under way. Starting a game takes the music from the pages before
+     * any state says a game is running - the compile and the mount come first - so the start says
+     * so itself, and the page's music fades out as the press lands (see `pageMusic.ts`).
+     */
+    const pageMusicHeldForStartRef = useRef(false);
+    const pageMusicSetWhileOpenRef = useRef(new Map<string, PageMusicDecision>());
+    const pageMusicCarriedOverRef = useRef(new Map<string, PageMusicDecision>());
+    const [pageMusicRevision, setPageMusicRevision] = useState(0);
     const [prepaintReadyKeys, setPrepaintReadyKeys] = useState<Set<string>>(() => new Set());
     const [nlrSession, setNlrSessionState] = useState<NlrStageSession | null>(null);
     const [nlrPreloadDone, setNlrPreloadDone] = useState(false);
@@ -1792,6 +1823,102 @@ export function GameApp(props: GameAppProps): ReactNode {
     ]);
 
     /**
+     * Record what one opened page says about the music, dropping whatever was recorded for an
+     * instance that has left the screen, and have the screen's music worked out again.
+     */
+    const writePageMusic = useCallback((
+        table: "setWhileOpen" | "carriedOver",
+        key: string,
+        decision: PageMusicDecision,
+    ): void => {
+        const onScreen = new Set<string>([
+            ...navigation.getState().navStack.map(entry => entry.key),
+            ...layerStack.getState().map(layer => layer.key),
+        ]);
+        for (const map of [pageMusicSetWhileOpenRef.current, pageMusicCarriedOverRef.current]) {
+            for (const known of [...map.keys()]) {
+                if (!onScreen.has(known)) {
+                    map.delete(known);
+                }
+            }
+        }
+        (table === "setWhileOpen" ? pageMusicSetWhileOpenRef : pageMusicCarriedOverRef).current.set(key, decision);
+        setPageMusicRevision(revision => revision + 1);
+    }, [layerStack, navigation]);
+
+    /**
+     * A page opened by Replace Page takes on the music the page it replaced had playing, so a page
+     * that keeps the music keeps it across the swap. Asked of the stack from the replaced page down,
+     * as it stood before the swap; the layers over it belong to the page leaving and go with it.
+     */
+    const carryPageMusicOver = useCallback((replacedKey: string): void => {
+        const stack = navigation.getState().navStack;
+        const index = stack.findIndex(entry => entry.key === replacedKey);
+        const incoming = stack[stack.length - 1];
+        if (index < 0 || !incoming || incoming.key === replacedKey) {
+            return;
+        }
+        const decision = pageMusicDecisionFor({
+            entries: stack.slice(0, index + 1).reverse().map(entry => ({
+                key: entry.key,
+                surface: findSurface(bundle, entry.surfaceId),
+            })),
+            setWhileOpen: pageMusicSetWhileOpenRef.current,
+            carriedOver: pageMusicCarriedOverRef.current,
+            tracks: bundle.audio?.tracks,
+            locale: readGameLocale(),
+            sourceLocale: bundle.localization?.sourceLocale,
+        });
+        if (decision) {
+            writePageMusic("carriedOver", incoming.key, decision);
+        }
+    }, [bundle, navigation, readGameLocale, writePageMusic]);
+
+    /**
+     * Play / Stop Page Music: the music of the page the graph runs on, for as long as it is open.
+     *
+     * The page is the one whose scope the graph runs in - a page, or a layer. A graph in a scope that
+     * is neither (a page drawn inside a frame) speaks for the screen it is part of, the topmost one.
+     * While a game holds the screen the story decides the music, and nothing is changed.
+     */
+    const setPageMusicFromGraph = useCallback((runtimeScopeId: string, request: BlueprintPageMusicRequest): boolean => {
+        if (pageMusicHeldForStartRef.current
+            || gameEnteredRef.current
+            || gameStageVisibleRef.current
+            || studioPageHiddenForGameRef.current) {
+            return false;
+        }
+        const stack = navigation.getState().navStack;
+        const onScreenLayers = layerStack.getState();
+        const owner = onScreenLayers.find(layer => layer.key === runtimeScopeId)
+            ?? stack.find(entry => entry.key === runtimeScopeId)
+            ?? onScreenLayers[onScreenLayers.length - 1]
+            ?? stack[stack.length - 1];
+        if (!owner) {
+            return true;
+        }
+        const decision: PageMusicDecision = request.kind === "stop"
+            ? (request.fadeMs !== undefined ? { kind: "silence", leaveFadeMs: request.fadeMs } : { kind: "silence" })
+            : {
+                kind: "play",
+                cue: pageMusicCueOf(
+                    {
+                        assetId: request.assetId,
+                        ...(request.audioTrackId ? { audioTrackId: request.audioTrackId } : {}),
+                        ...(request.volume !== undefined ? { volume: request.volume } : {}),
+                        ...(request.loop !== undefined ? { loop: request.loop } : {}),
+                        ...(request.fadeMs !== undefined ? { fadeMs: request.fadeMs } : {}),
+                    },
+                    // The node has already chosen the member of an asset set for the game's language.
+                    { surfaceId: owner.surfaceId },
+                    { tracks: bundle.audio?.tracks },
+                ),
+            };
+        writePageMusic("setWhileOpen", owner.key, decision);
+        return true;
+    }, [bundle, layerStack, navigation, writePageMusic]);
+
+    /**
      * `Replace Page`: open a page, then take the page it covered out of the stack.
      *
      * The page replaced is the one on top when the call arrives, which is the page whose graph is
@@ -1808,9 +1935,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         const replaceable = replaced !== null && !isGameHiddenEntry(replaced);
         await openSurface(surfaceId, props);
         if (replaceable) {
+            carryPageMusicOver(replaced.key);
             navigation.forget(replaced.key);
         }
-    }, [isGameHiddenEntry, navigation, openSurface]);
+    }, [carryPageMusicOver, isGameHiddenEntry, navigation, openSurface]);
 
     /**
      * Close down to `targetIndex` in one transition. `goBack` is this with the default index;
@@ -2756,67 +2884,77 @@ export function GameApp(props: GameAppProps): ReactNode {
     useEffect(() => () => soundTransport.dispose(), [soundTransport]);
 
     /**
-     * True while a game start is under way. Starting a game takes the music from the pages before
-     * any state says a game is running - the compile and the mount come first - so the start says
-     * so itself, and the page's music fades out as the press lands (see `pageMusic.ts`).
+     * The page's music, on an audio graph of its own rather than the engine's: starting a game,
+     * swapping the session for the title's and a hot reload all reset the engine's audio, and the
+     * page's music has to outlive all three - to fade out where a game starts, and to carry on
+     * where nothing about it changed (see `pageMusicPlayer.ts`). The player's settings reach it
+     * through the mix, read off the live game while one is up and held over the moments none is.
+     *
+     * Owned by an effect rather than a memo so that a StrictMode remount, which disposes and comes
+     * back, comes back to a working player. Everything it reads is read through refs, so it lives as
+     * long as the window does and a hot reload of the bundle does not throw away the music playing.
      */
-    const pageMusicHeldForStartRef = useRef(false);
-    /**
-     * The page's music, on a transport of its own: a graph's Stop Sound with no handle stops every
-     * sound a blueprint started, and the page's music is not one of them. Built once and read
-     * through refs, so a hot reload of the bundle does not throw away the music that is playing.
-     */
-    const pageMusicTransport = useMemo(() => createSoundTransport({
-        getLiveGame: () => nlrLiveGameRef.current,
-        waitForLiveGame,
-        resolveAssetUrl: (assetId, assetType) => hostRef.current.resolveStoryAssetUrl(assetId, assetType),
-        getAudioTracks: () => currentBundleRef.current.audio?.tracks,
-        createSound: ({ busId, ...config }) => new Sound({ ...config, type: busId }),
-        getClip: assetId => currentBundleRef.current.audio?.clips?.[assetId],
-        log: (level, message) => hostRef.current.log(level, message),
-    }), [waitForLiveGame]);
-    const pageMusic = useMemo(() => createPageMusicController({
-        play: cue => pageMusicTransport.play({
-            assetId: cue.assetId,
-            audioTrackId: cue.audioTrackId,
-            volume: cue.volume,
-            loop: cue.loop ?? null,
-            fadeInMs: cue.fadeMs,
-        }),
-        stop: (handle, fadeMs) => {
-            void pageMusicTransport.stop(handle, fadeMs);
-        },
-        setVolume: (handle, volume, fadeMs) => {
-            void pageMusicTransport.setVolume(handle, volume, fadeMs);
-        },
-        currentEngine: () => nlrLiveGameRef.current,
-        isHeld: () => pageMusicHeldForStartRef.current
-            || gameEnteredRef.current
-            || gameStageVisibleRef.current
-            || studioPageHiddenForGameRef.current,
-    }), [pageMusicTransport]);
-    useEffect(() => () => {
-        pageMusic.dispose();
-        pageMusicTransport.dispose();
-    }, [pageMusic, pageMusicTransport]);
-    /** The music the pages on screen call for: the layers over the page stack first, each lane top first. */
-    const pageMusicCue = useMemo(() => {
+    const pageMusicRef = useRef<{ controller: PageMusicController; mix: LiveGamePageMusicMix } | null>(null);
+    useEffect(() => {
+        const mix = createLiveGamePageMusicMix({
+            getLiveGame: () => nlrLiveGameRef.current as unknown as PageMusicMixSource | null,
+            waitForLiveGame,
+            subscribeChanges: subscribeGamePreferences,
+            outputGate: () => focusMute.getGain(),
+        });
+        const player = createPageMusicPlayer({
+            resolveAssetUrl: assetId => hostRef.current.resolveStoryAssetUrl(assetId, "audio"),
+            getClip: assetId => currentBundleRef.current.audio?.clips?.[assetId],
+            trackLoops: trackId => {
+                const tracks = currentBundleRef.current.audio?.tracks;
+                return resolveAudioTrack(tracks && tracks.length > 0 ? tracks : BUILTIN_AUDIO_TRACKS, trackId, "bgm").loop;
+            },
+            mix,
+            backend: createWebAudioPageMusicBackend(),
+            isHeld: () => pageMusicHeldForStartRef.current
+                || gameEnteredRef.current
+                || gameStageVisibleRef.current
+                || studioPageHiddenForGameRef.current,
+            log: (level, message) => hostRef.current.log(level, message),
+        });
+        const controller = createPageMusicController(player);
+        pageMusicRef.current = { controller, mix };
+        return () => {
+            pageMusicRef.current = null;
+            controller.dispose();
+            player.dispose();
+            mix.dispose();
+        };
+    }, [focusMute, subscribeGamePreferences, waitForLiveGame]);
+    /** The pages on screen as page music asks them: the layers over the page stack first, each lane top first. */
+    const pageMusicEntries = useMemo((): PageMusicScreenEntry[] => {
         const surfaceById = (surfaceId: string) => bundle.ui.uidoc.surfaces.find(surface => surface.id === surfaceId);
-        return pageMusicCueFor({
-            surfaces: [
-                ...[...layers].reverse().map(layer => surfaceById(layer.surfaceId)),
-                ...[...navStack].reverse().map(entry => surfaceById(entry.surfaceId)),
-            ],
+        return [
+            ...[...layers].reverse().map(layer => ({ key: layer.key, surface: surfaceById(layer.surfaceId) })),
+            ...[...navStack].reverse().map(entry => ({ key: entry.key, surface: surfaceById(entry.surfaceId) })),
+        ];
+    }, [bundle, layers, navStack]);
+    const pageMusicTarget = useMemo(() => {
+        void pageMusicRevision;
+        return pageMusicFor({
+            entries: pageMusicEntries,
+            setWhileOpen: pageMusicSetWhileOpenRef.current,
+            carriedOver: pageMusicCarriedOverRef.current,
             tracks: bundle.audio?.tracks,
             locale: readGameLocale(),
             sourceLocale: bundle.localization?.sourceLocale,
         });
-    }, [bundle, layers, navStack, readGameLocale]);
-    // The game-held states are dependencies because the rule reads them (through refs) to decide
-    // whether the pages have the music at all, and the session because a new one is a new engine.
+    }, [bundle, pageMusicEntries, pageMusicRevision, readGameLocale]);
+    // A new session has a mixer of its own; the music follows the player's settings on that one.
     useEffect(() => {
-        pageMusic.update(pageMusicCue);
-    }, [pageMusic, pageMusicCue, gameStageVisible, studioPageHiddenForGame, nlrSession]);
+        pageMusicRef.current?.mix.sessionChanged();
+    }, [nlrSession]);
+    // The game-held states are dependencies because the rule reads them (through refs) to decide
+    // whether the pages have the music at all, and the session because the music waits for the first
+    // one to read the player's settings off.
+    useEffect(() => {
+        pageMusicRef.current?.controller.update(pageMusicTarget);
+    }, [pageMusicTarget, gameStageVisible, studioPageHiddenForGame, nlrSession]);
 
     /**
      * A take that would not play, said to both channels a host has.
@@ -4733,6 +4871,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             onSetSoundVolume: soundTransport.setVolume,
             onSeekSound: soundTransport.seek,
             onIsSoundPlaying: soundTransport.isPlaying,
+            onSetPageMusic: setPageMusicFromGraph,
             onGetTrackVolume: soundTransport.getTrackVolume,
             onSetTrackVolume: soundTransport.setTrackVolume,
             onNetworkFetch: host.networkFetch,
@@ -5176,7 +5315,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         // the moment it is on screen: the title's music fades out as the press lands, and nothing
         // the session swap below does can start it again. Given back if the start fails.
         pageMusicHeldForStartRef.current = true;
-        pageMusic.refresh();
+        pageMusicRef.current?.controller.refresh();
         try {
             // Fast path: the environment is already mounted with this story from the boot preload and
             // has not entered a game yet. Just enter it (newGame + reveal) — no recompile, no re-mount,
@@ -5199,9 +5338,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             await enterMountedGame();
         } finally {
             pageMusicHeldForStartRef.current = false;
-            pageMusic.refresh();
+            pageMusicRef.current?.controller.refresh();
         }
-    }, [activeSurface, compileStoryRequest, core, enterMountedGame, mountNlrSession, pageMusic]);
+    }, [activeSurface, compileStoryRequest, core, enterMountedGame, mountNlrSession]);
 
     // Boot-time init of the default scene environment: mount + preheat, WITHOUT entering the game.
     const initDefaultSceneEnvironment = useCallback(async (

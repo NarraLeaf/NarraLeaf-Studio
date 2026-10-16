@@ -155,6 +155,8 @@ export const UNCHECKED_OPTIONS_SOURCES: ReadonlySet<string> = new Set([
     "audioTracks",
     // The same tracks, for `Play Sound`; the same reasoning.
     "soundTracks",
+    // And for `Play Page Music`, whose empty choice is the Music track.
+    "musicTracks",
     // Scoped to whichever list the node targets, not to the project: a field id is only meaningful
     // against one shape, and the set of all shapes would call every id in the project valid.
     // `ui/list-item-field-missing` asks the question against the right shape.

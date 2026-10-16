@@ -27,6 +27,7 @@ import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { PuppetRuntimeInstaller, type PuppetRuntimeInstallTarget } from "./PuppetRuntimeInstaller";
 import {
     puppetChoiceOptions,
+    puppetNameOption,
     type PuppetDescriptionRequest,
 } from "@/lib/workspace/services/puppet/puppetDescriptionModel";
 import { Services } from "@/lib/workspace/services/services";
@@ -83,6 +84,8 @@ function ChoiceField(props: {
     label: string;
     placeholder: string;
     available: readonly string[];
+    /** What to call each name in the list, where Studio has more to say than the name (a motion's file). */
+    labels?: Readonly<Record<string, string>>;
     value: string | null;
     onChange: (value: string | null) => void;
 }) {
@@ -115,7 +118,7 @@ function ChoiceField(props: {
                     // The empty option is the engine's `null`, which is a real state - the model
                     // rests with nothing applied - and not the absence of a choice.
                     { value: "", label: props.placeholder },
-                    ...options.map(name => ({ value: name, label: name })),
+                    ...options.map(name => puppetNameOption(name, props.labels)),
                 ]}
                 value={value ?? ""}
                 size="sm"
@@ -577,6 +580,7 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
                 label={t("characters.editor.puppet.motion")}
                 placeholder={t("characters.editor.puppet.stateNone")}
                 available={description?.motions ?? []}
+                labels={description?.motionLabels}
                 value={defaultState.motion}
                 onChange={value => appearance.setPuppetDefaultState("motion", value)}
             />

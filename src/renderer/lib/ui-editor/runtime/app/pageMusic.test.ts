@@ -1,10 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { UISurface, UISurfaceSettings } from "@shared/types/ui-editor/document";
-import type { UIPageMusic } from "@shared/types/ui-editor/pageMusic";
+import type { UIPageMusicSetting } from "@shared/types/ui-editor/pageMusic";
 import { BUILTIN_AUDIO_TRACKS, type ProjectAudioTrack } from "@shared/types/audioTrack";
-import { createPageMusicController, pageMusicCueFor, type PageMusicCue } from "./pageMusic";
+import {
+    createPageMusicController,
+    pageMusicCueOf,
+    pageMusicDecisionFor,
+    pageMusicFor,
+    type PageMusicCue,
+    type PageMusicDecision,
+    type PageMusicScreenEntry,
+    type PageMusicTarget,
+} from "./pageMusic";
 
-function page(id: string, music?: UIPageMusic, extra?: Partial<UISurfaceSettings>): UISurface {
+function page(id: string, music?: UIPageMusicSetting, extra?: Partial<UISurfaceSettings>): UISurface {
     return {
         id,
         name: id,
@@ -27,21 +36,36 @@ const gameUi: UISurface = {
     mount: { kind: "slot", slotId: "dialog" },
 };
 
+/** Pages on screen, top first, each opened once under its own id as the instance key. */
+function screen(...surfaces: (UISurface | null)[]): PageMusicScreenEntry[] {
+    return surfaces.map((surface, index) => ({ key: surface ? `${surface.id}:${index}` : `missing:${index}`, surface }));
+}
+
+const title = page("title", { assetId: "theme", fadeMs: 1000 });
+const settings = page("settings");
+const movie = page("movie", { silent: true });
+
 describe("the music the pages on screen call for", () => {
     it("is the top page's own music", () => {
-        const cue = pageMusicCueFor({ surfaces: [page("extra", { assetId: "room" }), page("title", { assetId: "theme" })] });
-        expect(cue?.assetId).toBe("room");
-        expect(cue?.surfaceId).toBe("extra");
+        const target = pageMusicFor({ entries: screen(page("extra", { assetId: "room" }), title) });
+        expect(target.cue?.assetId).toBe("room");
+        expect(target.cue?.surfaceId).toBe("extra");
     });
 
-    it("is the music of the page beneath when the top page has none", () => {
-        const cue = pageMusicCueFor({ surfaces: [page("settings"), page("title", { assetId: "theme" })] });
-        expect(cue?.assetId).toBe("theme");
-        expect(cue?.surfaceId).toBe("title");
+    it("carries on under a page that keeps the music", () => {
+        const target = pageMusicFor({ entries: screen(settings, title) });
+        expect(target.cue?.assetId).toBe("theme");
+        expect(target.cue?.surfaceId).toBe("title");
     });
 
-    it("is nothing when no page has music, and never a Game UI's", () => {
-        expect(pageMusicCueFor({ surfaces: [page("settings"), gameUi, null, undefined] })).toBeNull();
+    it("is silence under a page that asks for it, whatever plays beneath", () => {
+        expect(pageMusicFor({ entries: screen(movie, title) })).toEqual({ cue: null });
+        // A page that keeps, opened over the silent one, keeps the silence.
+        expect(pageMusicFor({ entries: screen(settings, movie, title) })).toEqual({ cue: null });
+    });
+
+    it("is nothing when every page keeps, and never a Game UI's", () => {
+        expect(pageMusicFor({ entries: screen(settings, gameUi, null) })).toEqual({ cue: null });
     });
 
     it("plays on the Music track unless the page names another, and a deleted track lands on Music", () => {
@@ -49,29 +73,70 @@ describe("the music the pages on screen call for", () => {
             ...BUILTIN_AUDIO_TRACKS,
             { id: "ambience", name: "Ambience", parentId: null, volume: 1, loop: true },
         ];
-        expect(pageMusicCueFor({ surfaces: [page("a", { assetId: "x" })], tracks })?.audioTrackId).toBe("bgm");
-        expect(pageMusicCueFor({ surfaces: [page("a", { assetId: "x", audioTrackId: "ambience" })], tracks })?.audioTrackId)
-            .toBe("ambience");
-        expect(pageMusicCueFor({ surfaces: [page("a", { assetId: "x", audioTrackId: "gone" })], tracks })?.audioTrackId)
-            .toBe("bgm");
+        const trackOf = (music: UIPageMusicSetting) => pageMusicFor({ entries: screen(page("a", music)), tracks }).cue?.audioTrackId;
+        expect(trackOf({ assetId: "x" })).toBe("bgm");
+        expect(trackOf({ assetId: "x", audioTrackId: "ambience" })).toBe("ambience");
+        expect(trackOf({ assetId: "x", audioTrackId: "gone" })).toBe("bgm");
     });
 
     it("carries the page's volume, loop and fade, and names the same clip on the same track the same music", () => {
-        const a = pageMusicCueFor({ surfaces: [page("a", { assetId: "theme", volume: 0.5, loop: false, fadeMs: 1500 })] })!;
-        const b = pageMusicCueFor({ surfaces: [page("b", { assetId: "theme", volume: 2 })] })!;
+        const a = pageMusicFor({ entries: screen(page("a", { assetId: "theme", volume: 0.5, loop: false, fadeMs: 1500 })) }).cue!;
+        const b = pageMusicFor({ entries: screen(page("b", { assetId: "theme", volume: 2 })) }).cue!;
         expect(a).toMatchObject({ volume: 0.5, loop: false, fadeMs: 1500 });
         expect(b.volume).toBe(1);
         expect(b.loop).toBeUndefined();
         expect(b.fadeMs).toBe(0);
         expect(a.key).toBe(b.key);
-        const otherTrack = pageMusicCueFor({ surfaces: [page("c", { assetId: "theme", audioTrackId: "sound" })] })!;
+        const otherTrack = pageMusicFor({ entries: screen(page("c", { assetId: "theme", audioTrackId: "sound" })) }).cue!;
         expect(otherTrack.key).not.toBe(a.key);
     });
 
     it("plays the member of an asset set the build resolved for the game's language", () => {
         const surface = page("title", { assetId: "set" }, { assetVariants: { set: { en: "theme-en", ja: "theme-ja" } } });
-        expect(pageMusicCueFor({ surfaces: [surface], locale: "ja", sourceLocale: "en" })?.assetId).toBe("theme-ja");
-        expect(pageMusicCueFor({ surfaces: [surface], locale: "fr", sourceLocale: "en" })?.assetId).toBe("theme-en");
+        expect(pageMusicFor({ entries: screen(surface), locale: "ja", sourceLocale: "en" }).cue?.assetId).toBe("theme-ja");
+        expect(pageMusicFor({ entries: screen(surface), locale: "fr", sourceLocale: "en" }).cue?.assetId).toBe("theme-en");
+    });
+});
+
+describe("the music an opened page was given while it is open", () => {
+    const room = (assetId: string, fadeMs = 0): PageMusicDecision => ({
+        kind: "play",
+        cue: pageMusicCueOf({ assetId, fadeMs }, { surfaceId: "extra" }, {}),
+    });
+
+    it("overrides the page's own setting for that instance only", () => {
+        const entries = screen(page("extra"), title);
+        const setWhileOpen = new Map([[entries[0]!.key, room("track-2")]]);
+        expect(pageMusicFor({ entries, setWhileOpen }).cue?.assetId).toBe("track-2");
+        // Back: the music room's instance has gone, and the title's own theme is what is left.
+        expect(pageMusicFor({ entries: entries.slice(1), setWhileOpen }).cue?.assetId).toBe("theme");
+    });
+
+    it("overrides a page's own music too, which is how a title changes its theme after the game is cleared", () => {
+        const entries = screen(title);
+        const setWhileOpen = new Map([[entries[0]!.key, room("theme-after-clear")]]);
+        expect(pageMusicFor({ entries, setWhileOpen }).cue?.assetId).toBe("theme-after-clear");
+    });
+
+    it("silences with the fade it was asked to leave with", () => {
+        const entries = screen(page("extra"), title);
+        const setWhileOpen = new Map<string, PageMusicDecision>([[entries[0]!.key, { kind: "silence", leaveFadeMs: 2000 }]]);
+        expect(pageMusicFor({ entries, setWhileOpen })).toEqual({ cue: null, leaveFadeMs: 2000 });
+    });
+
+    it("carries a replaced page's music over to a page that keeps, and never over one with its own", () => {
+        // Title (theme), Replace with a menu that keeps: the menu carries the theme on.
+        const before = screen(title);
+        const carried = pageMusicDecisionFor({ entries: before });
+        expect(carried?.kind).toBe("play");
+        const keeping = screen(page("menu"));
+        const carriedOver = new Map([[keeping[0]!.key, carried!]]);
+        expect(pageMusicFor({ entries: keeping, carriedOver }).cue?.assetId).toBe("theme");
+
+        const ownMusic = [{ key: keeping[0]!.key, surface: page("menu", { assetId: "menu-theme" }) }];
+        expect(pageMusicFor({ entries: ownMusic, carriedOver }).cue?.assetId).toBe("menu-theme");
+        const silent = [{ key: keeping[0]!.key, surface: page("menu", { silent: true }) }];
+        expect(pageMusicFor({ entries: silent, carriedOver })).toEqual({ cue: null });
     });
 });
 
@@ -80,7 +145,6 @@ type Handle = { id: number; assetId: string };
 function harness() {
     let nextId = 0;
     let held = false;
-    let engine: object = {};
     const log: string[] = [];
     const pending: { cue: PageMusicCue; resolve: (handle: Handle | null) => void }[] = [];
     const controller = createPageMusicController<Handle>({
@@ -90,10 +154,9 @@ function harness() {
         }),
         stop: (handle, fadeMs) => log.push(`stop ${handle.assetId}#${handle.id} fade=${fadeMs}`),
         setVolume: (handle, volume, fadeMs) => log.push(`volume ${handle.assetId}#${handle.id} ${volume} fade=${fadeMs}`),
-        currentEngine: () => engine,
         isHeld: () => held,
     });
-    /** Let every play started so far settle, as the engine answering. */
+    /** Let every play started so far settle, as the player answering. */
     const settle = async (answer: "play" | "nothing" = "play") => {
         for (const entry of pending.splice(0)) {
             entry.resolve(answer === "play" ? { id: nextId++, assetId: entry.cue.assetId } : null);
@@ -101,25 +164,26 @@ function harness() {
         await Promise.resolve();
         await Promise.resolve();
     };
-    const cue = (assetId: string, more: Partial<PageMusicCue> = {}): PageMusicCue => ({
-        key: `${assetId}\u0000bgm`,
-        surfaceId: "page",
-        assetId,
-        audioTrackId: "bgm",
-        volume: 1,
-        fadeMs: 0,
-        ...more,
+    const cue = (assetId: string, more: Partial<PageMusicCue> = {}): PageMusicTarget => ({
+        cue: {
+            key: `${assetId}\u0000bgm`,
+            surfaceId: "page",
+            assetId,
+            audioTrackId: "bgm",
+            volume: 1,
+            fadeMs: 0,
+            ...more,
+        },
     });
+    const none: PageMusicTarget = { cue: null };
     return {
         controller,
         log,
         settle,
         cue,
+        none,
         hold: (value: boolean) => {
             held = value;
-        },
-        newEngine: () => {
-            engine = {};
         },
     };
 }
@@ -149,13 +213,21 @@ describe("page music as the screen changes", () => {
         await h.settle();
         h.controller.update(h.cue("room", { fadeMs: 300 }));
         await h.settle();
-        h.controller.update(null);
+        h.controller.update(h.none);
         expect(h.log).toEqual([
             "play theme fade=1000",
             "stop theme#0 fade=1000",
             "play room fade=300",
             "stop room#1 fade=300",
         ]);
+    });
+
+    it("lets the music go with the fade the screen asks for, when it asks", async () => {
+        const h = harness();
+        h.controller.update(h.cue("theme", { fadeMs: 1000 }));
+        await h.settle();
+        h.controller.update({ cue: null, leaveFadeMs: 2500 });
+        expect(h.log.at(-1)).toBe("stop theme#0 fade=2500");
     });
 
     it("never leaves a music playing whose page moved on before it started", async () => {
@@ -166,7 +238,7 @@ describe("page music as the screen changes", () => {
         expect(h.log).toEqual(["play theme fade=0", "play room fade=0", "stop theme#0 fade=0"]);
     });
 
-    it("gives the music to the game while one holds the screen, and back when it ends", async () => {
+    it("gives the music to the game while one holds the screen, fading out as the press lands", async () => {
         const h = harness();
         h.controller.update(h.cue("theme", { fadeMs: 1000 }));
         await h.settle();
@@ -195,20 +267,12 @@ describe("page music as the screen changes", () => {
         expect(h.log.at(-1)).toBe("play theme fade=0");
     });
 
-    it("starts the music again on a new engine, and asks again when nothing could be played", async () => {
+    it("asks again when nothing could be played", async () => {
         const h = harness();
         h.controller.update(h.cue("theme"));
-        await h.settle();
-        h.newEngine();
-        h.controller.refresh();
         await h.settle("nothing");
         h.controller.refresh();
-        expect(h.log).toEqual([
-            "play theme fade=0",
-            "stop theme#0 fade=0",
-            "play theme fade=0",
-            "play theme fade=0",
-        ]);
+        expect(h.log).toEqual(["play theme fade=0", "play theme fade=0"]);
     });
 
     it("stops at once when the host goes away", async () => {
