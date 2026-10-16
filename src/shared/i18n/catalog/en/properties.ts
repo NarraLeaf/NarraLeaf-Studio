@@ -120,11 +120,9 @@ export const properties = {
         // playback options, plus loop and fade.
         title: "Music",
         none: "No music",
-        // The page's three-way choice: what the page does to the music while it is on screen.
-        keep: "Keep the current music",
-        play: "Play music",
+        // A page's music row with no clip in it (it keeps what is playing), and the choice beside it.
+        keep: "Keep current music",
         silent: "No music",
-        notChosen: "No music chosen",
         choosePage: "Choose page music",
         chooseScene: "Choose scene music",
         missing: "Missing music",

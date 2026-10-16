@@ -28,6 +28,16 @@ export type AssetPickerRowProps = {
     assetType: AssetType;
     assetId: string | null;
     onChange: (next: string | null) => void;
+    /**
+     * Choices offered beside Choose while the slot holds nothing: a page's "No music", which is an
+     * answer of its own rather than a clip.
+     */
+    emptyActions?: readonly { label: string; onClick: () => void }[];
+    /**
+     * The empty slot reads as a choice made rather than a gap - a page set to No music - so its
+     * label is drawn as a value and Clear is offered, calling this.
+     */
+    onClearEmpty?: () => void;
     /** A frozen workspace: the row still names the asset, and offers neither the picker nor Clear. */
     readOnly?: boolean;
 };
@@ -49,6 +59,8 @@ export function AssetPickerRow({
     assetType,
     assetId,
     onChange,
+    emptyActions,
+    onClearEmpty,
     readOnly = false,
 }: AssetPickerRowProps) {
     const { t } = useTranslation();
@@ -96,8 +108,13 @@ export function AssetPickerRow({
 
     const handleClear = useCallback((event: MouseEvent<HTMLSpanElement>) => {
         event.stopPropagation();
-        onChange(null);
-    }, [onChange]);
+        if (assetId) {
+            onChange(null);
+        } else {
+            onClearEmpty?.();
+        }
+    }, [assetId, onChange, onClearEmpty]);
+    const actionClass = "shrink-0 rounded-md px-1.5 py-0.5 text-2xs tracking-wider text-fg-subtle hover:bg-fill hover:text-fg-muted";
 
     return (
         <>
@@ -117,20 +134,31 @@ export function AssetPickerRow({
                     className="flex w-full items-center gap-2 rounded-md border border-edge bg-surface px-2 py-1.5 text-left text-xs text-fg focus:outline-none focus:ring-1 focus:ring-primary/40 disabled:cursor-default"
                 >
                     <Icon className="h-3.5 w-3.5 shrink-0 text-fg-muted" />
-                    <span className={assetId ? "min-w-0 flex-1 truncate" : "min-w-0 flex-1 truncate text-fg-subtle"}>
+                    <span className={assetId || onClearEmpty ? "min-w-0 flex-1 truncate" : "min-w-0 flex-1 truncate text-fg-subtle"}>
                         {valueLabel}
                     </span>
-                    {readOnly ? null : assetId ? (
-                        <span
-                            role="button"
-                            tabIndex={-1}
-                            onClick={handleClear}
-                            className="shrink-0 rounded-md px-1.5 py-0.5 text-2xs tracking-wider text-fg-subtle hover:bg-fill hover:text-fg-muted"
-                        >
+                    {readOnly ? null : assetId || onClearEmpty ? (
+                        <span role="button" tabIndex={-1} onClick={handleClear} className={actionClass}>
                             {t("common.clear")}
                         </span>
                     ) : (
-                        <span className="shrink-0 text-2xs tracking-wider text-fg-subtle">{chooseLabel}</span>
+                        <>
+                            {emptyActions?.map(action => (
+                                <span
+                                    key={action.label}
+                                    role="button"
+                                    tabIndex={-1}
+                                    onClick={event => {
+                                        event.stopPropagation();
+                                        action.onClick();
+                                    }}
+                                    className={actionClass}
+                                >
+                                    {action.label}
+                                </span>
+                            ))}
+                            <span className="shrink-0 text-2xs tracking-wider text-fg-subtle">{chooseLabel}</span>
+                        </>
                     )}
                 </button>
             </div>
