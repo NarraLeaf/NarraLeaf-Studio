@@ -134,6 +134,7 @@ export type LintRuleId =
     | "assets/missing"
     | "assets/unreadable"
     | "assets/oversized"
+    | "assets/sprite-animation-finite"
     | "assets/group-incomplete"
     | "portability/media-format"
     | "portability/vfx-alpha"

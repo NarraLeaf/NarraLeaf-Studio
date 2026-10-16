@@ -289,6 +289,9 @@ export const properties = {
         descriptionPlaceholder: "输入描述…",
         info: {
             dimensions: "尺寸",
+            animation: "动画",
+            animationLoops: "{frames} 帧，无限循环",
+            animationPlays: "{frames} 帧，播放 {plays} 次",
             format: "格式",
             size: "大小",
             hash: "哈希",

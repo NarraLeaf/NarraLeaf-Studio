@@ -104,6 +104,25 @@ export const lint = {
                 + "measures the file in the project.\n"
                 + "- Raise the limit, or set this rule to Off, under Project ▸ Project ▸ Project check.",
         },
+        assetsSpriteAnimationFinite: {
+            title: "Sprite animation that stops",
+            description: "A character sprite that is an animated PNG set to play a fixed number of times",
+            message: "{asset} is an animated PNG that plays {plays} × and then holds its last frame",
+            help:
+                "An image used in a character's appearance that is an animated PNG (APNG) declaring a fixed "
+                + "number of plays. Animations that loop forever, such as blinking or breathing, are not reported.\n"
+                + "\n"
+                + "The stage plays a sprite's animation the way a browser plays an image, not in step with the "
+                + "story. It starts when the sprite is first drawn. When the sprite is hidden and shown again, it "
+                + "can stay on the last frame instead of playing again.\n"
+                + "\n"
+                + "- For a looping effect, export the APNG with infinite loops, then right-click the asset in the "
+                + "Assets panel and choose Replace File….\n"
+                + "- For a one-off reaction, use separate still images as a tag of the character, or a "
+                + "Live2D or Spine model.\n"
+                + "- Set this rule to Off under Project ▸ Project ▸ Project check if the last frame is what "
+                + "should stay on screen.",
+        },
         assetsGroupIncomplete: {
             title: "Unfinished asset set",
             description: "A set that does not resolve to exactly one file for every variant it declares",
