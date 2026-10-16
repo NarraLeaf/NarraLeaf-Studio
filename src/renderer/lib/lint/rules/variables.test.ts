@@ -1385,6 +1385,15 @@ describe("a wait's result variable", () => {
         expect(run("variables/read-never-written", without)).toHaveLength(1);
     });
 
+    it("counts a /page row's into= as writing the flag too", () => {
+        const pageInto: BlockSpec = { id: "p1", kind: "action", payload: { action: "page", surfaceId: "phone", resultTarget: MET_REF } };
+        const ctx = createTestLintContext({
+            stories: [story("s1", "Story", [scene("a", "A", [metDeclaration, pageInto, guardOnMet])])],
+        });
+        expect(run("variables/read-never-written", ctx)).toEqual([]);
+    });
+
+
     it("is a use, so the declaration is not unused and a deleted one is undeclared", () => {
         expect(run("variables/unused", createTestLintContext({
             stories: [story("s1", "Story", [scene("a", "A", [

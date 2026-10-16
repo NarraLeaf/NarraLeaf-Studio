@@ -220,6 +220,9 @@ those you deliberately keep.
   value is converted to the variable's type, and a page closed with nothing - Back included - leaves it
   as it was). The page also writes variables itself while it is open (`Set Saved Var`), so `/if` after
   the row reads both. The page is modal: the quick menu under it does not answer until it closes.
+  The row passes the page no parameters, so the page's own `param`s take their defaults; give a page
+  what it starts with as those defaults, or have its `init` blueprint read saved variables.
+
 
 - **Loops:** `/repeat 3`, `/until <expression>`, `/break` - rare in a VN.
 - **Together:** rows run one after another; rows indented under `/parallel` start at once, and the row

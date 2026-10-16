@@ -384,12 +384,15 @@ function collectSceneWrites(scene: StoryScene, blueprintWrites: SceneFlowBluepri
             }
             continue;
         }
-        if (block.payload.action === "input") {
+        if (block.payload.action === "input" || block.payload.action === "page") {
+
             // A wait naming a result variable (`into=`) writes `true` or `false` into it, and which
             // one is the player's doing - so the honest delta is `unknown`, on this row's arm, like a
             // graph's. The row writes a boolean, which no range here is about; the write is still
             // recorded so a variable later re-declared as a number does not keep a range this row
-            // contradicts, and so the call absorption below sees the key as written.
+            // contradicts, and so the call absorption below sees the key as written. A `/page` row's
+            // `into=` is the same: whatever the page closed with, which only the player decides.
+
             const target = storyRowAssignedVariable(block);
             if (target) {
                 writes.push({
