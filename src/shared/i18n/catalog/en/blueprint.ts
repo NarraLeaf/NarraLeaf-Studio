@@ -1538,6 +1538,8 @@ export const blueprint = {
         onFullscreenChanged: "On Fullscreen Changed",
         onWindowCloseRequested: "On Window Close Requested",
         onWindowFocusChanged: "On Window Focus Changed",
+        onSavedVarChanged: "On Saved Var Changed",
+        onPersistentChanged: "On Persistent Changed",
         onAction: "On Action",
         onKeyDown: "On Key Down",
         onKeyUp: "On Key Up",

@@ -104,6 +104,25 @@ export const lint = {
                 + "measures the file in the project.\n"
                 + "- Raise the limit, or set this rule to Off, under Project ▸ Project ▸ Project check.",
         },
+        assetsSpriteAnimationFinite: {
+            title: "Sprite animation that stops",
+            description: "A character sprite that is an animated PNG set to play a fixed number of times",
+            message: "{asset} is an animated PNG that plays {plays} × and then holds its last frame",
+            help:
+                "An image used in a character's appearance that is an animated PNG (APNG) declaring a fixed "
+                + "number of plays. Animations that loop forever, such as blinking or breathing, are not reported.\n"
+                + "\n"
+                + "The stage plays a sprite's animation the way a browser plays an image, not in step with the "
+                + "story. It starts when the sprite is first drawn. When the sprite is hidden and shown again, it "
+                + "can stay on the last frame instead of playing again.\n"
+                + "\n"
+                + "- For a looping effect, export the APNG with infinite loops, then right-click the asset in the "
+                + "Assets panel and choose Replace File….\n"
+                + "- For a one-off reaction, use separate still images as a tag of the character, or a "
+                + "Live2D or Spine model.\n"
+                + "- Set this rule to Off under Project ▸ Project ▸ Project check if the last frame is what "
+                + "should stay on screen.",
+        },
         assetsGroupIncomplete: {
             title: "Unfinished asset set",
             description: "A set that does not resolve to exactly one file for every variant it declares",
@@ -425,6 +444,20 @@ export const lint = {
                 + "- Move the rows above the ending if they should play first.\n"
                 + "- If the story should end only in some cases, put the ending inside an /if branch.\n"
                 + "- Otherwise delete the rows.",
+        },
+        storyPageMissing: {
+            title: "Open page with no page",
+            description: "A /page row that names no page, or one the project no longer has",
+            message: "This row names no page, so nothing opens and the story goes straight on",
+            deleted: "The page this row names is no longer in the project, so nothing opens and the story goes straight on",
+            help:
+                "A /page row (Open page) that names no page, or names a page this project no longer has.\n"
+                + "\n"
+                + "The row opens nothing and the story does not wait, so its variable is never written and "
+                + "an /if that reads it always takes the same branch.\n"
+                + "\n"
+                + "- Pick a page on the row\n"
+                + "- Delete the row if the page is gone for good",
         },
         storyQuitPageMissing: {
             title: "Quit with no page",

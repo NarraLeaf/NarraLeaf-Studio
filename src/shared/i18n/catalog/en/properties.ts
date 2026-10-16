@@ -309,6 +309,9 @@ export const properties = {
         descriptionPlaceholder: "Enter description…",
         info: {
             dimensions: "Dimensions",
+            animation: "Animation",
+            animationLoops: "{frames} frames, loops forever",
+            animationPlays: "{frames} frames, plays {plays} ×",
             format: "Format",
             size: "Size",
             hash: "Hash",

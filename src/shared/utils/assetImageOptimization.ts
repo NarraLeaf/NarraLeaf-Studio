@@ -177,7 +177,10 @@ const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
  * data, so anything after it cannot change the answer, and walking a 30 MB
  * image's data chunks to find that out would be pure cost.
  */
-function walkPngChunksBeforeData(bytes: Uint8Array, visit: (type: string) => boolean): boolean {
+function walkPngChunksBeforeData(
+    bytes: Uint8Array,
+    visit: (type: string, dataOffset: number, length: number) => boolean,
+): boolean {
     if (bytes.length < 12 || PNG_SIGNATURE.some((byte, index) => bytes[index] !== byte)) {
         return false;
     }
@@ -192,7 +195,7 @@ function walkPngChunksBeforeData(bytes: Uint8Array, visit: (type: string) => boo
         if (type === "IDAT" || type === "IEND") {
             return false;
         }
-        if (visit(type)) {
+        if (visit(type, offset + 8, length)) {
             return true;
         }
         // A length that overflows the buffer means truncated or malformed bytes;
@@ -209,6 +212,30 @@ function walkPngChunksBeforeData(bytes: Uint8Array, visit: (type: string) => boo
 /** APNG: an `acTL` chunk ahead of the image data declares the frame count. */
 export function pngIsAnimated(bytes: Uint8Array): boolean {
     return walkPngChunksBeforeData(bytes, type => type === "acTL");
+}
+
+/** What an APNG's `acTL` declares. `plays` is 0 for an animation that loops forever. */
+export type PngAnimation = { frames: number; plays: number };
+
+/**
+ * The frame count and loop count an APNG declares, or null for a still PNG.
+ *
+ * Read from `acTL` alone. A file whose frame chunks disagree with its declaration is a broken
+ * file, and the decoder's problem; what an author chose about looping is only ever written here.
+ */
+export function pngAnimation(bytes: Uint8Array): PngAnimation | null {
+    let found: PngAnimation | null = null;
+    walkPngChunksBeforeData(bytes, (type, dataOffset, length) => {
+        if (type !== "acTL") {
+            return false;
+        }
+        if (length >= 8 && dataOffset + 8 <= bytes.length) {
+            const data = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+            found = { frames: data.getUint32(dataOffset), plays: data.getUint32(dataOffset + 4) };
+        }
+        return true;
+    });
+    return found;
 }
 
 export function pngHasIccProfile(bytes: Uint8Array): boolean {

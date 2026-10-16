@@ -225,6 +225,8 @@ import {
 import { createDisplayAwakeController, DISPLAY_AWAKE_RECHECK_MS } from "./displayAwake";
 import { createSkipRunController, type SkipRunController } from "./skipRunController";
 import { createGameStoryInputHost, type GameStoryInputHost } from "@/lib/ui-editor/runtime/input/storyInputHost";
+import type { StoryPageHost } from "@/lib/ui-editor/runtime/game/storyPageRow";
+
 import { createSessionGate } from "./sessionGate";
 import {
     createStoryStartGate,
@@ -280,6 +282,7 @@ import {
     resolveEngineNvlKeys,
 } from "./engineNvlKeys";
 import { announceSavedVariableWrites } from "./savedVariableWrites";
+import { subscribeBlueprintStateWrites } from "@/lib/ui-editor/blueprint-runtime/blueprintStateWrites";
 import { shrinkSaveCapture } from "./saveCapture";
 import { copyDeclaredSavedDefaults, readSavedVariableForScreen } from "./savedVariableReads";
 import { declaredSavedDefaults } from "@shared/variables/mergedPersistentView";
@@ -475,6 +478,14 @@ export type GameAppTestControls = {
     readGameRoot(): HTMLElement | null;
     /** The interface document the game is drawing, for naming the elements found under the root. */
     readUiDocument(): UIDocument;
+    /**
+     * The saved and persistent variables as the running game holds them now - what an agent asks to
+     * check that a screen or a story line wrote what it should. Scene variables are not listed: they
+     * belong to the scene being played and are read through its rows.
+     */
+    readVariables?(): { scope: "saved" | "persistent"; id: string; name: string; value: unknown }[];
+    /** The ids of the blueprint executions still running (see `BlueprintExecutionManager`). */
+    runningBlueprints?(): string[];
 };
 
 /**
@@ -3476,6 +3487,40 @@ export function GameApp(props: GameAppProps): ReactNode {
     // A session going away takes its lock and its rumble with it.
     useEffect(() => () => storyInputHost.reset(), [nlrSession, storyInputHost]);
 
+    /**
+     * The layer stack, as a `/page` row asks for it.
+     *
+     * Made once and read through a ref, for the reason the ending and quit hooks are: a compile can be
+     * reused across renders, and the host it was handed has to keep reaching the current callbacks.
+     *
+     * The page goes up as `Show Layer` would put it up, with two choices made for it. Modal, because
+     * the story is waiting on the page and nothing under it - the quick menu included - should be
+     * answered while it does. And owned by no scope, because a story is not one: nothing closes the
+     * page but the page itself, Go back, a load clearing the stack, or the row being rolled back past
+     * (which the compiled row handles itself).
+     */
+    const storyPageLayersRef = useRef({ showLayer, waitLayer, hideLayer });
+    storyPageLayersRef.current = { showLayer, waitLayer, hideLayer };
+    const [storyPageHost] = useState<StoryPageHost>(() => ({
+        open: surfaceId => {
+            if (!currentBundleRef.current.ui.uidoc.surfaces.some(surface => surface.id === surfaceId)) {
+                return null;
+            }
+            return storyPageLayersRef.current.showLayer({
+                surfaceId,
+                props: {},
+                modal: true,
+                dismissible: true,
+                group: null,
+                ownerScopeId: "",
+            });
+        },
+        wait: handle => storyPageLayersRef.current.waitLayer(handle),
+        close: handle => {
+            void storyPageLayersRef.current.hideLayer(handle).catch(() => undefined);
+        },
+    }));
+
     const handleQuitToPage = useCallback((surfaceId: string) => {
         void quitGame(surfaceId).catch(error => {
             host.log("error", `[${host.id}] the quit page could not be opened: ${normalizeError(error)}`);
@@ -4661,6 +4706,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             onEndingReached: stableEndingReached,
             onQuitToPage: stableQuitToPage,
             storyInput: storyInputHost,
+            storyPages: storyPageHost,
             persistence: storyPersistence?.port,
             // A story row's `Log` node, and a story script's `ctx.devtools`, write to the stream a
             // Surface blueprint's host API already writes to - so one Output panel carries both, and
@@ -5425,9 +5471,24 @@ export function GameApp(props: GameAppProps): ReactNode {
             },
             readGameRoot: () => gameRootRef.current,
             readUiDocument: () => bundle.ui.uidoc,
+            readVariables: () => [
+                ...Object.values(bundle.ui.savedVariables ?? {}).map(entry => ({
+                    scope: "saved" as const,
+                    id: entry.id,
+                    name: entry.name,
+                    value: getSavedVariableInGame(entry.id).value,
+                })),
+                ...Object.values(bundle.ui.persistentVariables ?? {}).map(entry => ({
+                    scope: "persistent" as const,
+                    id: entry.id,
+                    name: entry.name,
+                    value: core.scopeBridge.persistenceGet(entry.storageKey),
+                })),
+            ],
+            runningBlueprints: () => core.executionManager.listExecutionIds(),
         });
         return () => onTestControlsChanged(null);
-    }, [activeSurface, bundle.ui.uidoc, choiceMenus, core, nextInGame, nlrSession, onTestControlsChanged, playHead, selectChoiceInGame, startStoryInGame]);
+    }, [activeSurface, bundle.ui.persistentVariables, bundle.ui.savedVariables, bundle.ui.uidoc, choiceMenus, core, getSavedVariableInGame, nextInGame, nlrSession, onTestControlsChanged, playHead, selectChoiceInGame, startStoryInGame]);
 
     const buildHostAdapterBundle = useCallback((entry: AppSurfaceLayerNavEntry, surface: UISurface) => {
         if (!core || !gameHostCapabilities) {
@@ -6919,7 +6980,64 @@ export function GameApp(props: GameAppProps): ReactNode {
         });
     }, [ambientDispatch, host]);
 
+    /**
+     * `On Saved Var Changed` / `On Persistent Changed`: a variable write, wherever it came from - a
+     * story line, a `/page` row's answer, another screen - reaching every live screen as one ambient
+     * event, so a screen that shows story state redraws when the story moves it rather than polling.
+     *
+     * Heard on the state-write channel value bindings already listen to. A whole-store write (a save
+     * loaded, a new game, the store reloaded) is not fired: every variable changes then, and a screen
+     * reads them again on its init. A write that leaves the value as it was is not fired either, and
+     * a head that writes the variable it watches does not hear its own write - the loop that would
+     * otherwise be one `Set Saved Var` away.
+     */
+    useEffect(() => {
+        if (!ambientDispatch) {
+            return;
+        }
+        const lastValue = new Map<string, unknown>();
+        const dispatching = new Set<string>();
+        const fire = (key: string, eventName: "savedVariableChanged" | "persistentVariableChanged", variableId: string, value: unknown) => {
+            const previous = lastValue.get(key);
+            lastValue.set(key, value);
+            if (Object.is(previous, value) && (value === null || typeof value !== "object")) {
+                return;
+            }
+            if (dispatching.has(key)) {
+                return;
+            }
+            dispatching.add(key);
+            dispatchAmbientSurfaceEvent(ambientDispatch, eventName, { variableId, value })
+                .catch(err => host.log("error", normalizeError(err)))
+                .finally(() => dispatching.delete(key));
+        };
+        return subscribeBlueprintStateWrites(key => {
+            if (key.endsWith("*")) {
+                return;
+            }
+            if (key.startsWith("saved\0")) {
+                const variableId = key.slice("saved\0".length);
+                const read = getSavedVariableInGame(variableId);
+                if (read.found) {
+                    fire(key, "savedVariableChanged", variableId, read.value);
+                }
+                return;
+            }
+            if (key.startsWith("persistent\0")) {
+                const storageKey = key.slice("persistent\0".length);
+                const value = ambientDispatch.core.scopeBridge.persistenceGet(storageKey);
+                // The head names the variable by its registry id; the write is by storage key.
+                for (const entry of Object.values(ambientDispatch.persistentVariables)) {
+                    if (entry.storageKey === storageKey) {
+                        fire(`${key}\0${entry.id}`, "persistentVariableChanged", entry.id, value);
+                    }
+                }
+            }
+        });
+    }, [ambientDispatch, getSavedVariableInGame, host]);
+
     // The user asked to close the window; the main process holds the close open until the blueprint
+
     // decides. A shared event control travels through the global blueprint and then every live
     // surface from the top down, so `Keep Window Open` in any of them cancels the close and the
     // surfaces under it are not asked. Absent that, the window closes. Surface heads only: the widget

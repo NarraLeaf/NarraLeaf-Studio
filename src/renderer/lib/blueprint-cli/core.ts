@@ -515,7 +515,7 @@ function countGraphs(blueprint: Blueprint, kind: "events" | "functions"): number
     return Object.keys(blueprint.graphs[kind] ?? {}).length;
 }
 
-function countNodes(blueprint: Blueprint): number {
+export function countNodes(blueprint: Blueprint): number {
     const graphs = blueprint.graphs;
     let total = 0;
     for (const pool of [graphs.events, graphs.functions]) {

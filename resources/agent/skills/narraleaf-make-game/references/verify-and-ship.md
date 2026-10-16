@@ -111,12 +111,18 @@ and keyboard do, so every button you wired can be exercised, not just looked at:
   `Enter` or `Space` presses the focused one, `Escape` goes back or dismisses a layer, `Tab` /
   `{key:"Tab", shift:true}` steps through controls. `rightClick`, `wheelUp` and `wheelDown` are the
   pointer gestures that aim at no element (by default right click opens the menu and wheel up the
-  backlog).
+  backlog). `ctrl`, `alt`, `meta` hold a modifier; `{key:"Control", holdMs:2000}` holds a key down
+  (skip, a long press).
+- `playtest_variables` lists the saved and persistent variables as the running game holds them -
+  what the story and the screens have written so far, which `variables_list` cannot tell you.
 
 Each answer says what was done, what changed - pages and layers that opened or closed (`now showing
-"Load"`), a story starting, the line on screen - and which surfaces are on screen now. "Nothing
-visible changed" means the element does not answer that press, or changed something not on screen
-(a setting): check with `playtest_screenshot` and `console_read {channel:"blueprint"}`.
+"Load"`), a story starting, the line on screen, the words on an open page (a chat message appended),
+variables that took a new value - and which surfaces are on screen now. An answer waits for the
+blueprints the act started (a Delay, a Wait For Layer) to finish, up to about 8 s, and says so when
+one is still running. "Nothing visible changed" means the element does not answer that press, or
+changed something not on screen (a setting): check with `playtest_screenshot` and
+`console_read {channel:"blueprint"}`.
 
 Verifying a button, the recipe:
 
