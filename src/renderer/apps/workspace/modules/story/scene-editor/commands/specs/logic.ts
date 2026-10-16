@@ -409,7 +409,14 @@ export const page = defineStoryCommand({
     examples: ["/page Map", "/page Map into=met"],
     params: {
         page: { hint: "quitPage", type: { kind: "surface" }, positional: true, core: true },
-        into: { aliases: ["result"], hint: "inputResult", type: { kind: "variable" } },
+        into: {
+            aliases: ["result"],
+            hint: "inputResult",
+            type: { kind: "variable" },
+            about: "Takes the value the page closes with (Close This Layer's result), converted to the variable's type; "
+                + "a page closed with none, Back included, leaves the variable as it was. The page gets no parameters: its params take their defaults.",
+        },
+
     },
     build(args, ctx): StoryBlock {
         return {

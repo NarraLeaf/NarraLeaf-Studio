@@ -58,6 +58,8 @@ export type CommandParamDetail = {
     skippable: boolean;
     /** One line per branch of a union type, in the order the spec declares them. */
     types: readonly string[];
+    /** The spec's own sentence about the slot, when it has one. */
+    about?: string;
 };
 
 export type CommandDetail = {
@@ -174,6 +176,7 @@ function paramDetail(param: StoryCommandParam): CommandParamDetail {
         greedy: param.greedy === true,
         skippable: param.skippable === true,
         types: paramTypes(param).map(describeParamType),
+        ...(param.about ? { about: param.about } : {}),
     };
 }
 
@@ -378,8 +381,10 @@ function formatParam(param: CommandParamDetail, named: boolean): string {
         : param.types.map(type => `\n        ${type}`).join("");
     // Padded to a column, but never glued to the name: a long name with aliases overruns the column
     // and still has to be a space away from its type.
-    return `${head.padEnd(28)}${head.length >= 28 ? "  " : ""}${types}${tail}`;
+    const about = param.about ? `\n        ${param.about}` : "";
+    return `${head.padEnd(28)}${head.length >= 28 ? "  " : ""}${types}${tail}${about}`;
 }
+
 
 export function formatCategories(): string {
     const counts = new Map<string, number>();

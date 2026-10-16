@@ -40,7 +40,42 @@ const document = {
 } as unknown as StoryDocument;
 const stories = [{ id: "story", name: "Skeleton", document }];
 
+describe("storyUsesNotFitting in expressions and waits", () => {
+    const v = { kind: "var", target, name: "好感" };
+    const exprRows: StoryBlock[] = [
+        row("h", { control: "conditionBranch", branch: "if", condition: { kind: "expression", expression: { source: "好感", ast: v } } }, "control"),
+        row("i", { action: "setVariable", target, value: 0, expression: { source: "true", ast: { kind: "literal", value: true } } }),
+        row("j", { control: "conditionBranch", branch: "if", condition: { kind: "expression", expression: { source: "好感 == true", ast: { kind: "binary", op: "==", left: v, right: { kind: "literal", value: true } } } } }, "control"),
+        row("k", { action: "input", operation: "wait", resultTarget: target }),
+        row("l", { control: "conditionBranch", branch: "if", condition: { kind: "expression", expression: { source: "好感 >= 1", ast: { kind: "binary", op: ">=", left: v, right: { kind: "literal", value: 1 } } } } }, "control"),
+    ];
+    const exprStories = [{
+        id: "story",
+        name: "Skeleton",
+        document: {
+            ...document,
+            scenes: { scene: { ...document.scenes.scene, rootBlockIds: exprRows.map(block => block.id), blocks: Object.fromEntries(exprRows.map(block => [block.id, block])) } },
+        } as unknown as StoryDocument,
+    }];
+
+    it("finds a bare test, a literal set, a literal comparison and a wait's boolean when it becomes a number", () => {
+        expect(storyUsesNotFitting(exprStories, VAR, "number")).toEqual([
+            'story "Skeleton", scene "车厢", row 1: tests it as true or false',
+            'story "Skeleton", scene "车厢", row 2: sets it to true',
+            'story "Skeleton", scene "车厢", row 3: compares it with true (==)',
+            'story "Skeleton", scene "车厢", row 4: writes true or false into it (its into=)',
+        ]);
+    });
+
+    it("finds the ordering when it becomes a boolean", () => {
+        expect(storyUsesNotFitting(exprStories, VAR, "boolean")).toEqual([
+            'story "Skeleton", scene "车厢", row 5: orders it (>=)',
+        ]);
+    });
+});
+
 describe("storyUsesNotFitting", () => {
+
     it("names each row whose literal or test a number no longer fits, and leaves computed ones alone", () => {
         expect(storyUsesNotFitting(stories, VAR, "number")).toEqual([
             'story "Skeleton", scene "车厢", row 1: sets it to true',

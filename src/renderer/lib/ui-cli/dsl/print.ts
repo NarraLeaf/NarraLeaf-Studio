@@ -271,6 +271,12 @@ export function printElementTree(
     if (element.assetVariants !== undefined) {
         lines.push(`${inner}assetVariants = ${printValue(element.assetVariants)}`);
     }
+    for (const [key, value] of Object.entries(element.navigation ?? {})) {
+        if (value !== undefined) {
+            lines.push(`${inner}navigation.${key} = ${printValue(value)}`);
+        }
+    }
+
     if (options.withoutChildren) {
         if ((element.childrenIds ?? []).length > 0) {
             lines.push(`${inner}# ${element.childrenIds.length} child element(s) not shown`);

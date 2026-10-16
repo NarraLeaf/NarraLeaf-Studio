@@ -201,7 +201,28 @@ describe("compiling a .ui file", () => {
         expect(Object.keys(result.surfaces[0].elements)).toEqual(expect.arrayContaining(["row", "label"]));
     });
 
+    it("reads a hex colour written without quotes, and still strips a real comment", () => {
+        const result = compile(`${MINIMAL}        Panel: nl.container id=panel @0,0 10x10\n            props.appearance.backgroundColor = #1a2b3c # the panel\n`);
+        const props = result.surfaces[0].elements.panel.props as Record<string, any>;
+        expect(props.appearance.backgroundColor).toBe("#1a2b3c");
+        // Not a colour, so still a comment - and the assignment it leaves has no value.
+        expect(() => parseUiFile(`${MINIMAL}        Panel: nl.container @0,0 10x10\n            props.label = #notacolour\n`)).toThrow(/has no value/);
+    });
+
+    it("accepts `type=` on a struct field", () => {
+        const result = compile("struct demo.row\n    field id type=string\n    field count: type=number\n");
+        expect(result.structs["demo.row"].fields.map(field => field.type)).toEqual(["string", "number"]);
+        expect(result.diagnostics).toEqual([]);
+    });
+
+    it("writes an element's navigation and prints it back", () => {
+        const result = compile(`${MINIMAL}        Row: nl.container id=row @0,0 10x10\n            navigation.focusable = always\n`);
+        expect(result.surfaces[0].elements.row.navigation).toEqual({ focusable: "always" });
+        expect(result.surfaces[0].elements.row.props?.navigation).toBeUndefined();
+    });
+
     it("reads a struct block", () => {
+
 
         const result = compile('struct demo.row\n    field caption: string label="Caption"\n    field shot: image\n');
         expect(result.structs["demo.row"]).toEqual({

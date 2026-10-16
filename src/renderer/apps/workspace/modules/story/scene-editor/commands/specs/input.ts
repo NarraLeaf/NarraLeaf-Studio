@@ -65,7 +65,13 @@ function timeoutParam(): StoryCommandParamSpec {
 
 /** `into=` - the boolean variable the outcome is written into. */
 function resultParam(): StoryCommandParamSpec {
-    return { aliases: ["result"], hint: "inputResult", type: { kind: "variable" } };
+    return {
+        aliases: ["result"],
+        hint: "inputResult",
+        type: { kind: "variable" },
+        about: "A boolean variable: set to true when the player made it in time, false when the time limit passed first.",
+    };
+
 }
 
 /** The fields the three waiting commands share, read off their args. */

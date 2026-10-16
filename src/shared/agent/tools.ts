@@ -722,11 +722,17 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
         { query: { type: "string" }, category: { type: "string" }, owner: { type: "string" }, widget: { type: "string" }, limit: { type: "integer", default: 60 } },
     ),
     ws("blueprint_node", "Blueprint node details", "Pins, inspector params, graph kinds and scope of one node type.", { type: { type: "string" } }, ["type"]),
-    ws("blueprint_list", "List blueprints", "Lists blueprints with their owner (surface/element) and event heads.", { query: { type: "string" } }),
+    ws(
+        "blueprint_list",
+        "List blueprints",
+        "Lists blueprints with their owner (surface/element) and event heads. Empty ones (no nodes) are left out unless `query` or `all` is given.",
+        { query: { type: "string" }, all: { type: "boolean", description: "Also list blueprints that hold no nodes." } },
+    ),
+
     ws(
         "blueprint_show",
         "Read a blueprint as text",
-        "Prints one blueprint (or all of one owner) in the `.bp` text format, with each blueprint's `revision`. Blueprint names are in the project's language (the skeleton's title Start button's is `开始` in a Chinese project), so find one by its owner: ui_show prints `# blueprint: <name>` after the element that owns it, and an owner key `widgetMain:<surfaceId>:<elementId>` shows all of that element's blueprints.",
+        "Prints one blueprint (or all of one owner) in the `.bp` text format, with each blueprint's `revision`. Blueprint names are in the project's language (the skeleton's title Start button's is `开始` in a Chinese project), so find one by its owner: ui_show prints `# blueprint: <name>` after the element that owns it, and an owner key `widgetMain:<surfaceId>:<elementId>`, passed as `blueprint`, shows all of that element's blueprints.",
         { blueprint: { type: "string", description: "Blueprint name or id, or an owner key `widgetMain:<surfaceId>:<elementId>`." } },
         ["blueprint"],
     ),

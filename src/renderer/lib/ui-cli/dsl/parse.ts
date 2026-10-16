@@ -58,7 +58,8 @@ const ASSIGN_TARGETS = new Map<string, UiAssignTarget>([
  * Keys of the element record itself, written without a prefix because they are not props. The first
  * segment decides, so `animation.enter = fade` is the element's own enter as well.
  */
-const ELEMENT_KEYS = new Set(["animation", "assetVariants"]);
+const ELEMENT_KEYS = new Set(["animation", "assetVariants", "navigation"]);
+
 
 /**
  * How a prop's key is written so that it reads back as that prop.
@@ -88,19 +89,46 @@ export function parseUiFile(source: string): UiFile {
     return { statements };
 }
 
+/** A hex colour written straight after `=`: `#fff`, `#ffff`, `#ffffff`, `#ffffffff`. */
+const BARE_HEX_COLOUR = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})(?![0-9a-z_])/i;
+
+/**
+ * Where a line's comment starts, or -1 for none.
+ *
+ * A `#` opens a comment unless it is the first character of a hex colour that is an assignment's
+ * value - `backgroundColor = #000000` - which authors write unquoted as a matter of course, and which
+ * used to be read as `backgroundColor =` with nothing after it. Anything else after `=` that starts
+ * with `#` is still a comment, so `width = 10 # px` keeps working.
+ */
+function commentStart(text: string): number {
+    let offset = 0;
+    for (;;) {
+        let hit: number;
+        try {
+            hit = indexOfTopLevel(text.slice(offset), "#");
+        } catch {
+            // An unbalanced line is reported where it is used, with a better message than "#".
+            return -1;
+        }
+        if (hit < 0) {
+            return -1;
+        }
+        const at = offset + hit;
+        const colour = /=\s*$/.test(text.slice(0, at)) ? BARE_HEX_COLOUR.exec(text.slice(at)) : null;
+        if (!colour) {
+            return at;
+        }
+        offset = at + colour[0].length;
+    }
+}
+
 /** Strips comments and blank lines, and measures indentation with a tab worth four columns. */
 function readLines(source: string): SourceLine[] {
     const out: SourceLine[] = [];
     const raw = source.split(/\r?\n/);
     for (let i = 0; i < raw.length; i += 1) {
         const text = raw[i];
-        let cut: number;
-        try {
-            cut = indexOfTopLevel(text, "#");
-        } catch {
-            // An unbalanced line is reported where it is used, with a better message than "#".
-            cut = -1;
-        }
+        const cut = commentStart(text);
         const body = cut >= 0 ? text.slice(0, cut) : text;
         if (body.trim().length === 0) {
             continue;
@@ -329,8 +357,12 @@ function parseStruct(line: SourceLine, tokens: string[], body: SourceLine[]): Ui
         // `field slot: string label="Slot" id=slot`
         const head = itemTokens[1] ?? "";
         const key = readString(head.endsWith(":") ? head.slice(0, -1) : head, item.line);
-        const type = readString(itemTokens[2] ?? "string", item.line);
+        // `type=number` is accepted for the positional type too: every other line in the format names
+        // its options `key=value`, so it is the form an author reaches for first.
+        const typeToken = itemTokens[2] ?? "string";
+        const type = readString(typeToken.startsWith("type=") ? typeToken.slice("type=".length) : typeToken, item.line);
         const flags = readFlags(itemTokens.slice(3), item.line);
+
         statement.fields.push({
             line: item.line.number,
             id: flags.id ?? key,

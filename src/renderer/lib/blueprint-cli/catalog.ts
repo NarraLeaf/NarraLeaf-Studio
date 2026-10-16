@@ -228,6 +228,14 @@ export type NodeDetail = {
     requiresListItemContext: boolean;
     role?: string;
     scope?: unknown;
+    /**
+     * The owner kinds whose graphs may hold the node, asked of the palette the editor uses - so the
+     * answer includes what the scope cannot say, such as the host API a story call does not have.
+     * Empty for a node kept only for old graphs.
+     */
+    owners: string[];
+    /** Set when the node reaches the full host API, which is what keeps it out of a story call. */
+    requiresHostApi: boolean;
     pins: {
         id: string;
         kind: "input" | "output";
@@ -299,6 +307,14 @@ export type NodeDetail = {
     structs?: { id: string; fields: { key: string; type: string }[] }[];
 };
 
+/** The owner kinds whose palette offers the node, for any graph kind it declares and any widget it is scoped to. */
+function allowedOwnerKinds(def: { type: string; graphKinds: BlueprintGraphKind[]; scope?: { widgetElementTypes?: string[] } }): string[] {
+    const widgetTypes: (string | undefined)[] = [undefined, ...(def.scope?.widgetElementTypes ?? [])];
+    return (Object.keys(SYNTHETIC_OWNERS) as BlueprintOwnerRef["kind"][]).filter(kind =>
+        def.graphKinds.some(graphKind => widgetTypes.some(widgetElementType =>
+            paletteTypesFor({ ownerKind: kind, graphKind, widgetElementType }).has(def.type))));
+}
+
 export function describeNode(type: string, params?: Record<string, unknown>): NodeDetail | null {
     const def = blueprintNodeRegistry.get(type);
     if (!def) {
@@ -322,6 +338,8 @@ export function describeNode(type: string, params?: Record<string, unknown>): No
         requiresListItemContext: def.requiresListItemContext === true,
         role: def.role,
         scope: def.scope,
+        owners: allowedOwnerKinds(def),
+        requiresHostApi: def.requiresHostApi === true,
         pins: entry.pins.map(pin => ({
             id: pin.id,
             kind: pin.kind,
@@ -484,6 +502,14 @@ export function formatNodeDetail(detail: NodeDetail): string {
     if (detail.scope) {
         lines.push(`  scope      ${JSON.stringify(detail.scope)}`);
     }
+    if (!detail.hideInPalette) {
+        const owners = detail.owners.length > 0 ? detail.owners.join(", ") : "none";
+        const story = detail.requiresHostApi && !detail.owners.includes("storyAction")
+            ? " (not in storyAction: it needs the full host API, which a story row does not have)"
+            : "";
+        lines.push(`  owners     ${owners}${story}`);
+    }
+
     if (detail.keywords.length > 0) {
         lines.push(`  keywords   ${detail.keywords.join(", ")}`);
     }
